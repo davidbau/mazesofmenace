@@ -81,7 +81,7 @@ import { livelog_printf } from './pline.js';
 import { experience, more_experienced, newexplevel } from './exper.js';
 import { explode, mon_explodes, adtyp_to_expltype } from './explode.js';
 import { rehumanize, body_part, mbodypart, uunstick } from './polyself.js';
-import { mon_nam, Monnam, x_monnam, x_monnam_tame, Hallucination, type_is_pname, pmname, a_monnam, safe_oname } from './do_name.js';
+import { mon_nam, Monnam, x_monnam, x_monnam_tame, Hallucination, type_is_pname, pmname, a_monnam, safe_oname, s_suffix } from './do_name.js';
 import { artifact_hit, youmonst, is_art, artifact_exists, shade_glare, find_artifact } from './artifact.js';
 import { xname, vtense, The, An, an, singular, makeplural, cxname, simpleonames, otense, mshot_xname, Yobjnam2, doname, corpse_xname } from './objnam.js';
 import { abuse_dog, tamedog } from './dog.js';
@@ -256,18 +256,6 @@ export function m_is_steadfast(mtmp) {
         }
     }
     return false;
-}
-
-/** C ref: hacklib.c s_suffix — local for cream-pie splash whom. */
-function s_suffix(s) {
-    if (!s) return s;
-    if (s === 'it' || s === 'It') return 'its';
-    if (s === 'you' || s === 'You') return 'your';
-    if (s.endsWith('s') || s.endsWith('z') || s.endsWith('x')
-        || s.endsWith('ch') || s.endsWith('sh')) {
-        return `${s}'`;
-    }
-    return `${s}'s`;
 }
 
 /**
@@ -3332,7 +3320,7 @@ function resists_blnd_mon(mtmp) {
  * Cry/recoil are pline_mon (D-1240); flash_hits_mon awaken/blind stay pline.
  * Named omissions: SetVoice; map_invisible when !canspotmon after hit.
  */
-async function light_hits_gremlin(mon, dmg) {
+export async function light_hits_gremlin(mon, dmg) {
     if (!mon) return;
     const mx = mon.mx | 0;
     const my = mon.my | 0;

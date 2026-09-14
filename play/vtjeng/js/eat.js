@@ -50,6 +50,7 @@ import {
     SATIATED,
     SHOCK_RES,
     SICK,
+    SICK_RES,
     SICK_VOMITABLE,
     SLEEP_RES,
     SLIMED,
@@ -86,12 +87,13 @@ import {
     check_capacity, endRunning, inv_cnt, losehp, nomul, rounddiv,
     You_can_move_again,
 } from './hack.js';
-import { dist2 } from './hacklib.js';
+import { dist2, lcase } from './hacklib.js';
 import {
     INVLET_BASIC,
     addinv_nomerge,
     freeinv,
     getobj,
+    obj_here,
     useup,
     useupf,
     will_feel_cockatrice,
@@ -105,6 +107,7 @@ import {
     carnivorous,
     cantvomit,
     control_teleport,
+    defended,
     dmgtype,
     flesh_petrifies,
     herbivorous,
@@ -122,12 +125,13 @@ import {
     is_undead,
     olfaction,
 } from './mondata.js';
-import { AD_ACID, AT_BREA } from './monsters.js';
+import { AD_ACID, AD_DISE, AT_BREA } from './monsters.js';
 import { monflee } from './monmove.js';
 import {
     AD_HALU,
     AD_STUN,
     AT_MAGC,
+    LOW_PM,
     M1_CARNIVORE,
     M1_HERBIVORE,
     M1_METALLIVORE,
@@ -295,6 +299,34 @@ export const TIN_VARIETIES = Object.freeze([
     Object.freeze({ name: 'pureed', healthFood: true }),
 ]);
 const TIN_VARIETY_COUNT = TIN_VARIETIES.length;
+
+// C ref: eat.c tin_variety_txt() (1405-1421). Find a known tin variety at
+// the start of a description and return the number of characters consumed,
+// including the following space. The final empty tintxts[] row is a
+// terminator and is therefore excluded from the scan.
+export function tin_variety_txt(text, varietyRef = null) {
+    // C initializes *tinvariety whenever both pointers are non-null;
+    // an empty string still takes that initialization before the scan.
+    if (typeof text !== 'string'
+        || !varietyRef || typeof varietyRef !== 'object')
+        return 0;
+    varietyRef.value = -1;
+    if (text.length === 0) return 0;
+    for (let index = 0; index < TIN_VARIETY_COUNT; index++) {
+        const name = TIN_VARIETIES[index].name;
+        if (strncmpi(text, name) && text.length > name.length
+            && text[name.length] === ' ') {
+            varietyRef.value = index;
+            return name.length + 1;
+        }
+    }
+    return 0;
+}
+
+function strncmpi(text, prefix) {
+    return text.length >= prefix.length
+        && lcase(text.slice(0, prefix.length)) === lcase(prefix);
+}
 function tinEnv(env = {}) {
     const random = env.random ?? { rn2 };
     if (typeof random.rn2 !== 'function')
@@ -323,6 +355,15 @@ function hungerProperty(state, index) {
 function propertyActive(state, index) {
     const property = hungerProperty(state, index);
     return Boolean(property.intrinsic || property.extrinsic);
+}
+
+// C ref: youprop.h Sick_resistance (67-70). In addition to the intrinsic and
+// extrinsic property bits, a wielded sickness-defending artifact or green
+// dragon armor (through mondata.c defended()) confers this resistance.
+function sickResistance(state) {
+    const property = hungerProperty(state, SICK_RES);
+    return Boolean(property.intrinsic || property.extrinsic
+        || defended(state.youmonst, AD_DISE, state));
 }
 
 // C ref: youprop.h:399 Unaware. js/trap.js unconscious() carries the pending-
@@ -636,6 +677,22 @@ export async function gethungry(state = game, env = {}) {
     u.uhunger = nextNutrition;
     await newuhs(true, state, env);
     return nutritionLoss;
+}
+
+// C ref: eat.c eating_dangerous_corpse() (475-494). A temporary resistance
+// must survive until the active corpse meal finishes or is interrupted.
+export function eating_dangerous_corpse(res, state = game) {
+    const food = state.context?.victual?.piece;
+    if (state.go?.occupation === eatfood
+        && food
+        && food.otyp === CORPSE
+        && food.corpsenm >= LOW_PM
+        && (carried(food) || obj_here(food, state.u.ux, state.u.uy, state))) {
+        const species = state.mons[food.corpsenm];
+        if (res === ACID_RES && acidic(species)) return true;
+        if (res === STONE_RES && flesh_petrifies(species)) return true;
+    }
+    return false;
 }
 
 export function nonrotting_corpse(mnum, state = game) {
@@ -1800,14 +1857,19 @@ async function eatcorpse(otmp, state) {
         }
 
     /* now any corpse left too long will make you mildly ill */
-    } else if (rotted > 3) {
-        // C's condition is `(rotted > 5L || (rotted > 3L && rn2(5)))
-        // && !Sick_resistance`, and the taint stop above already covers
-        // `rotted > 5`. The stop precedes the rn2(5) draw because
-        // Sick_resistance carries a defended(&gy.youmonst, AD_DISE) term that
-        // needs mondata.c defended(), so the arm cannot be decided yet.
-        throw new UnsupportedEatError(
-            "eatcorpse()'s mildly sickening rotted corpse",
+    } else if ((rotted > 5 || (rotted > 3 && rn2(5)))
+               && !sickResistance(state)) {
+        tp++;
+        await ttyPline(
+            `${hungerProperty(state, SICK).intrinsic ? 'You feel very sick.'
+                : 'You feel sick.'}`,
+            state,
+        );
+        await losehp(
+            rnd(8),
+            !glob ? 'cadaver' : 'rotted glob',
+            KILLED_BY_AN,
+            state,
         );
     }
 

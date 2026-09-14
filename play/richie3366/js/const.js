@@ -3157,6 +3157,10 @@ export function has_omonst(obj) { return !!(obj?.oextra && obj.oextra.omonst); }
 export function OMID(obj) { return obj?.oextra?.omid | 0; }
 /** C: has_omid(o) — oextra && OMID(o) nonzero */
 export function has_omid(obj) { return !!(obj?.oextra && (obj.oextra.omid | 0)); }
+/** C: OMAILCMD(o) — scroll-of-mail feedback command (empty = none) */
+export function OMAILCMD(obj) { return obj?.oextra?.omailcmd || ''; }
+/** C: has_omailcmd(o) — oextra && OMAILCMD(o) */
+export function has_omailcmd(obj) { return !!obj?.oextra?.omailcmd; }
 export function MGIVENNAME(mtmp) { return mtmp?.mextra?.mgivenname || mtmp?.mgivenname || ''; }
 export function has_mgivenname(mtmp) { return !!(mtmp?.mextra?.mgivenname || mtmp?.mgivenname); }
 

@@ -2,7 +2,8 @@
 // C ref: src/potion.c dodrink() (526-615), drink_ok() (505-521),
 //        dopotion() (618-641), peffects() (1333-1425),
 //        make_confused() (89-104), self_invis_message() (471-478),
-//        peffect_confusion() (1014-1027),
+//        peffect_booze() (771-792), peffect_confusion() (1014-1027),
+//        peffect_paralysis() (881-898),
 //        peffect_speed() (1052-1070), peffect_oil() (1259-1294),
 //        speed_up() (2918-2928),
 //        itimeout/itimeout_incr/set_itimeout/incr_itimeout (55-86),
@@ -10,13 +11,14 @@
 //        potionbreathe() (1931-2118), make_blinded() (261-331),
 //        make_hallucinated() (387-442), toggle_blindness() (336-364).
 //
-// dodrink() is the #quaff command entry point. Branches for strangled,
-// fountain/sink, underwater, worn-potion, milky/smoky are fail-closed;
+// dodrink() is the #quaff command entry point. Branches for underwater,
+// worn-potion, and milky/smoky potions are fail-closed;
 // the common path calls getobj() -> dopotion() -> peffects().
 //
-// peffects() dispatches 26 potion types; POT_CONFUSION, POT_SICKNESS,
-// POT_SPEED (with spell alias SPE_HASTE_SELF), and POT_OIL are ported. The
-// other 22 arms throw
+// peffects() dispatches 26 potion types; POT_BOOZE, POT_CONFUSION, POT_SICKNESS,
+// POT_SPEED (with spell alias SPE_HASTE_SELF), POT_OIL, the
+// POT_FRUIT_JUICE arm of peffect_see_invisible(), and the ordinary
+// POT_PARALYSIS arm are ported. The other arms throw
 // UnsupportedQuaffError.
 //
 // toggle_blindness() is called by Blindf_on() and Blindf_off() when blindness
@@ -40,6 +42,7 @@ import {
     FACE,
     FAST,
     FAINTED,
+    FOOT,
     FROMOUTSIDE,
     HALLUC,
     HALLUC_RES,
@@ -56,6 +59,8 @@ import {
     INVIS,
     IS_FOUNTAIN,
     IS_SINK,
+    Is_airlevel,
+    Is_waterlevel,
     KILLED_BY,
     KILLED_BY_AN,
     FIXED_ABIL,
@@ -77,17 +82,19 @@ import {
 } from './const.js';
 import { adjattrib, exercise, poisontell } from './attrib.js';
 import {
-    see_monsters, see_objects, see_traps, swallowed, tmp_at,
+    bot, newsym, see_monsters, see_objects, see_traps, swallowed, tmp_at,
 } from './display.js';
 import { heal_legs, trycall } from './do.js';
 import { Amonnam, capitalizedMonsterName } from './do_name.js';
 import { tamedog } from './dog.js';
 import { can_reach_floor } from './engrave.js';
-import { drinkfountain } from './fountain.js';
+import { drinkfountain, drinksink } from './fountain.js';
 import { more_experienced } from './exper.js';
 import { fruitname, makeplural } from './fruit.js';
 import { game } from './gstate.js';
-import { losehp, nomul, You_can_move_again } from './hack.js';
+import {
+    endRunning, losehp, nomul, You_can_move_again,
+} from './hack.js';
 import {
     getobj, hands_obj, learn_unseen_invent, obfree, update_inventory, useup,
 } from './invent.js';
@@ -107,7 +114,8 @@ import { body_part } from './polyself.js';
 import { d, rn1, rn2, rnd, rne, rnz } from './rng.js';
 import { canSpotMonster } from './startup_a11y.js';
 import { burn_away_slime } from './timeout.js';
-import { unconscious } from './trap.js';
+import { Levitation, unconscious } from './trap.js';
+import { surface } from './dungeon.js';
 import { cansee, vision_recalc } from './vision.js';
 import { Cold_resistance, Fire_resistance, makewish } from './zap.js';
 import {
@@ -151,6 +159,7 @@ import {
 } from './objects.js';
 import { heroIsBlind } from './startup_a11y.js';
 import { ttyPline } from './tty_message.js';
+import { note_unported } from './unported.js';
 
 // Thrown where potion.c reaches a vapor effect this port has not ported.
 export class UnsupportedPotionError extends Error {
@@ -162,9 +171,9 @@ export class UnsupportedPotionError extends Error {
 }
 
 // Thrown where dodrink/dopotion/peffects reaches a branch this port has not
-// ported: the 23 potion types besides POT_CONFUSION, POT_SPEED, and POT_OIL,
-// and the
-// strangled, fountain, sink, underwater, worn-potion, milky and smoky
+// ported: the 20 potion types besides POT_CONFUSION, POT_SICKNESS, POT_SPEED,
+// POT_OIL, POT_FRUIT_JUICE, and POT_PARALYSIS, and the
+// underwater, worn-potion, milky and smoky
 // branches of dodrink().
 export class UnsupportedQuaffError extends Error {
     constructor(reason) {
@@ -318,19 +327,19 @@ export function incr_itimeout(prop, incr) {
 // C ref: potion.c make_glib() (460-468). Set or clear "slippery fingers".
 // polymon() calls make_glib(0) when the new form has no hands, clearing any
 // Glib timeout so the status line updates.
-export function make_glib(xtime, state = game) {
+export function make_glib(xtime, state = game, env = {}) {
     const prop = state.u?.uprops?.[GLIB];
     if (!prop) return; // property not initialized
-    const wasGlib = Boolean(prop.intrinsic & TIMEOUT);
+    const wasGlib = Boolean(prop.intrinsic);
     const willBeGlib = Boolean(xtime);
-    if (wasGlib !== willBeGlib) {
+    // Preserve C's (!Glib ^ !!xtime), including its equal-truth-value case.
+    if (!wasGlib !== willBeGlib) {
         state.disp ??= {};
         state.disp.botl = true;
     }
     set_itimeout(prop, xtime);
-    // C: if (uarmg) update_inventory(); — may change "(being worn; slippery)"
-    // The dragon-HP slice reaches this only with xtime=0 and no gloves
-    // (nohands form), so the uarmg guard is always false here.
+    // potion.c:467: the worn-glove annotation can change with Glib.
+    if (state.uarmg) update_inventory({ ...env, state });
 }
 
 // C ref: potion.c self_invis_message() (471-478). The optional message seam
@@ -459,7 +468,7 @@ function Unaware(state) {
 // C ref: potion.c make_confused() (89-104). Replace HConfusion's timeout,
 // report a cleared condition when requested, and mark the status line only
 // when confusion starts or ends.
-export async function make_confused(xtime, talk, state = game) {
+export async function make_confused(xtime, talk, state = game, env = {}) {
     const prop = state.u.uprops[CONFUSION] ??= {
         intrinsic: 0,
         extrinsic: 0,
@@ -469,7 +478,7 @@ export async function make_confused(xtime, talk, state = game) {
     if (Unaware(state)) talk = false;
 
     if (!xtime && old && talk) {
-        await ttyPline(
+        await (env.message ?? ttyPline)(
             `You feel less ${Hallucination(state) ? 'trippy' : 'confused'} now.`,
             state,
         );
@@ -526,6 +535,37 @@ export async function make_hallucinated(
         await ttyPline(message, state);
     }
     return true;
+}
+
+// C ref: potion.c peffect_booze() (771-792).
+async function peffect_booze(otmp, state = game) {
+    state.gp.potion_unkn++;
+    await ttyPline(`Ooph!  This tastes like ${otmp.odiluted
+        ? 'watered down ' : ''}${Hallucination(state)
+        ? 'dandelion wine' : 'liquid fire'}!`, state);
+    if (!otmp.blessed) {
+        // C reads u.uhs before adding the potion's nutrition.
+        await make_confused(itimeout_incr(
+            state.u.uprops[CONFUSION].intrinsic,
+            d(2 + state.u.uhs, 8),
+        ), false, state);
+    }
+    if (!otmp.odiluted) healup(1, 0, false, false, state);
+    state.u.uhunger += 10 * (2 + bcsign(otmp));
+    const { newuhs } = await import('./eat.js');
+    await newuhs(false, state, {
+        message: ttyPline,
+        endRunning,
+        statusRefresh: () => bot(),
+    });
+    await exercise(A_WIS, false, state);
+    if (otmp.cursed) {
+        await ttyPline('You pass out.', state);
+        // This is C's direct assignment, not nomul(): do not clear running,
+        // invulnerability, usleep or an existing multi_reason/callback.
+        state.multi = -rnd(15);
+        state.nomovemsg = 'You awake with a headache.';
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -743,6 +783,112 @@ async function peffect_oil(otmp, state = game) {
 }
 
 // ---------------------------------------------------------------------------
+// peffect_see_invisible
+// C ref: potion.c peffect_see_invisible() (841-880).
+// ---------------------------------------------------------------------------
+
+// C ref: potion.c peffect_see_invisible() (841-880). The fruit-juice arm
+// shares the taste and identification preamble with POT_SEE_INVISIBLE, then
+// adds nutrition, refreshes the hunger status, and returns before the
+// see-invisible continuation. The dispatcher keeps POT_SEE_INVISIBLE behind
+// its existing refusal until that continuation's remaining caller contract is
+// ported.
+async function peffect_see_invisible(otmp, state = game, env = {}) {
+    // C evaluates these locals before the shared potion_unknown increment.
+    // The fruit arm returns before either local is consumed, but retaining the
+    // source order keeps the later see-invisible continuation source-shaped.
+    const msg = Invis(state) && !heroIsBlind(state);
+    const permchance = 10
+        - (state.u.uprops[INVIS]?.intrinsic ? 3 : 0)
+        - (See_invisible(state) ? 6 : 0);
+
+    state.gp.potion_unkn++;
+    if (otmp.cursed) {
+        await ttyPline(
+            `Yecch!  This tastes ${Hallucination(state) ? 'overripe' : 'rotten'}.`,
+            state,
+        );
+    } else {
+        const hallucinating = Hallucination(state);
+        const juiceName = fruitname(true, state);
+        await ttyPline(hallucinating
+            ? `This tastes like 10% real ${otmp.odiluted
+                ? 'reconstituted ' : ''}${juiceName} all-natural beverage.`
+            : `This tastes like ${otmp.odiluted
+                ? 'reconstituted ' : ''}${juiceName}.`, state);
+    }
+
+    if (otmp.otyp === POT_FRUIT_JUICE) {
+        state.u.uhunger += (otmp.odiluted ? 5 : 10) * (2 + bcsign(otmp));
+        // eat.js imports potion.js for shared potion effects, so defer this
+        // import until the branch executes and avoid another initialization
+        // cycle at module load time.
+        const { newuhs } = await import('./eat.js');
+        await newuhs(false, state, {
+            ...env,
+            message: env.message ?? ttyPline,
+            endRunning: env.endRunning
+                ?? ((currentState) => endRunning(currentState)),
+            statusRefresh: env.statusRefresh ?? (() => bot()),
+        });
+        return;
+    }
+
+    // The code below is the existing source continuation for a real
+    // see-invisible potion. peffects() still refuses that potion at its
+    // dispatcher boundary, so no new caller reaches this tail in this span.
+    if (!otmp.cursed)
+        await make_blinded(0, true, state);
+    if (otmp.blessed && !rn2(permchance))
+        state.u.uprops[SEE_INVIS].intrinsic |= FROMOUTSIDE;
+    else
+        incr_itimeout(state.u.uprops[SEE_INVIS], rn1(100, 750));
+    // C's set_mimic_blocking() return is discarded. Record the unported gap
+    // and continue with the source's visible-monster and hero redraws.
+    note_unported('display.c set_mimic_blocking');
+    see_monsters(state);
+    newsym(state.u.ux, state.u.uy);
+    if (msg && !heroIsBlind(state)) {
+        await ttyPline(
+            'You can see through yourself, but you are visible!', state);
+        state.gp.potion_unkn--;
+    }
+}
+
+// C ref: potion.c peffect_paralysis() (881-898). A Free_action hero only
+// stiffens momentarily. Every other case reports where the hero is held,
+// spends the source-ordered rn1() duration, stores the interruption reason
+// and completion message for unmul(), and exercises Dexterity downward.
+async function peffect_paralysis(otmp, state = game) {
+    if (Free_action(state)) {
+        await ttyPline('You stiffen momentarily.', state);
+        return;
+    }
+
+    const hero = state.u;
+    if (Levitation(state)
+        || Is_airlevel(hero.uz)
+        || Is_waterlevel(hero.uz)) {
+        await ttyPline('You are motionlessly suspended.', state);
+    } else if (hero.usteed) {
+        await ttyPline('You are frozen in place!', state);
+    } else {
+        await ttyPline(
+            `Your ${makeplural(body_part(FOOT, state.youmonst))} are frozen`
+                + ` to the ${surface(hero.ux, hero.uy, state)}!`,
+            state,
+        );
+    }
+
+    // C evaluates rn1() as nomul()'s argument before writing either
+    // multi_reason or nomovemsg. bcsign() supplies the blessed/cursed offset.
+    nomul(-(rn1(10, 25 - 12 * bcsign(otmp))), state);
+    state.multi_reason = 'frozen by a potion';
+    state.nomovemsg = You_can_move_again;
+    await exercise(A_DEX, false, state);
+}
+
+// ---------------------------------------------------------------------------
 // peffects / dopotion / dodrink
 // C ref: potion.c peffects() (1333-1425), dopotion() (618-641),
 //        drink_ok() (505-521), dodrink() (526-615).
@@ -761,17 +907,21 @@ export async function peffects(otmp, state = game) {
     case POT_WATER:
         throw new UnsupportedQuaffError('peffect_water()');
     case POT_BOOZE:
-        throw new UnsupportedQuaffError('peffect_booze()');
+        await peffect_booze(otmp, state);
+        break;
     case POT_ENLIGHTENMENT:
         throw new UnsupportedQuaffError('peffect_enlightenment()');
     case SPE_INVISIBILITY:
     case POT_INVISIBILITY:
         throw new UnsupportedQuaffError('peffect_invisibility()');
     case POT_SEE_INVISIBLE:
-    case POT_FRUIT_JUICE:
         throw new UnsupportedQuaffError('peffect_see_invisible()');
+    case POT_FRUIT_JUICE:
+        await peffect_see_invisible(otmp, state);
+        break;
     case POT_PARALYSIS:
-        throw new UnsupportedQuaffError('peffect_paralysis()');
+        await peffect_paralysis(otmp, state);
+        break;
     case POT_SLEEPING:
         throw new UnsupportedQuaffError('peffect_sleeping()');
     case POT_MONSTER_DETECTION:
@@ -820,16 +970,18 @@ export async function peffects(otmp, state = game) {
     return -1;
 }
 
-// C ref: youprop.h:119-120 Hallucination, the bare HALLUC intrinsic minus
-// the blocked term. Local because each file that needs it defines its own.
+// C ref: youprop.h:115-120. A hallucination timeout is effective only without
+// intrinsic or extrinsic hallucination resistance.
 function Hallucination(state) {
     const prop = state.u?.uprops?.[HALLUC];
-    return Boolean(prop?.intrinsic && !prop?.blocked);
+    const resistance = state.u?.uprops?.[HALLUC_RES];
+    return Boolean(prop?.intrinsic
+        && !(resistance?.intrinsic || resistance?.extrinsic));
 }
 
 // C ref: potion.c dopotion() (618-641). Called by dodrink() after the potion
 // has been selected and milky/smoky checks have passed.
-async function dopotion(otmp, state = game) {
+export async function dopotion(otmp, state = game) {
     otmp.in_use = true;
     state.gp.potion_nothing = 0;
     state.gp.potion_unkn = 0;
@@ -860,9 +1012,7 @@ async function dopotion(otmp, state = game) {
 // C ref: potion.c dodrink() (526-615). The #quaff command entry point.
 //
 // Fail-closed branches:
-// - Strangled: the hero cannot drink while strangled.
-// - Fountain, sink, underwater: the hero is not near these features on the
-//   speed-potion path this slice ports.
+// - Underwater: drinking the water surrounding the hero.
 // - Worn-potion (owornmask): splitobj/remove_worn_item for worn potions.
 // - Milky potion: ghost_from_bottle().
 // - Smoky potion: djinni_from_bottle().
@@ -881,8 +1031,7 @@ export async function dodrink(state = game) {
     let drink_ok_extra = 0;
 
     // C ref: potion.c:540-569. Fountain, sink, and underwater checks are
-    // guarded by !iflags.menu_requested (i.e. no 'm' prefix). Fail-closed
-    // because the speed-potion validation path does not exercise any of them.
+    // guarded by !iflags.menu_requested (i.e. no 'm' prefix).
     if (!state.iflags.menu_requested) {
         // C ref: potion.c:542-549. Fountain on the hero's square.
         const typ = state.level.at(hero.ux, hero.uy).typ;
@@ -900,9 +1049,15 @@ export async function dodrink(state = game) {
             }
             ++drink_ok_extra;
         }
-        // C ref: potion.c:552-554. Kitchen sink on the hero's square.
-        if (IS_SINK(typ)) {
-            throw new UnsupportedQuaffError('the sink prompt in dodrink()');
+        // C ref: potion.c:552-559. Kitchen sink on the hero's square.
+        if (IS_SINK(typ) && can_reach_floor(false, state)) {
+            const { y_n } = await import('./cmd.js');
+            if (await y_n('Drink from the sink?', state)
+                === 'y'.charCodeAt(0)) {
+                await drinksink(state);
+                return ECMD_TIME;
+            }
+            ++drink_ok_extra;
         }
         // C ref: potion.c:562-564. Surrounded by water.
         if (hero.uinwater && !hero.uswallow) {

@@ -44,7 +44,7 @@
 // nextoid shop-price
 // oid match; stolen_value callers beyond revive/kick/dig/lock/costly_alteration
 // / rloc_to minvent (D-1163);
-// copy_oextra / free_omid / Is_candle on bill_dummy;
+// Is_candle gate on bill_dummy lamplit;
 // ghod_hitsu; clear_no_charge shop-rival filter / buriedobjlist;
 // mbodypart/body_part lunge text; sleep(1) door-yank pause.
 
@@ -54,7 +54,7 @@ import { dist2, highc, online2, upstart, depth } from './hacklib.js';
 import { choose_stairs } from './wizard.js';
 import { in_rooms, stop_occupation } from './hack.js';
 import {
-    ESHK, EPRI, IS_ROOM, IS_DOOR, IS_WALL, ZAP_POS, NOTONL, u_at, isok,
+    ESHK, EPRI, BEFORE, NOW, IS_ROOM, IS_DOOR, IS_WALL, ZAP_POS, NOTONL, u_at, isok,
     ROOMOFFSET, SHOPBASE, ACH_SHOP, SVALL, ROWNO, COLNO,
     D_CLOSED, D_BROKEN, D_LOCKED, REPAIR_DELAY,
     LANDMINE, BEAR_TRAP, HOLE, PIT, SPIKED_PIT,
@@ -92,8 +92,9 @@ import { se_mutter_imprecations } from './generated/seffects_data.js';
 import { Hello } from './roles.js';
 import { shtypes, shkname, Shknam, saleable, is_izchak } from './shknam.js';
 import {
-    splitobj, next_ident, obj_extract_self, objects_at, place_object,
-    mksobj, weight, newomid, obj_stop_timers, dealloc_obj,
+    splitobj, next_ident, obj_extract_self, objects_at, place_object, sobj_at,
+    mksobj, weight, newomid, free_omid, copy_oextra, obj_stop_timers,
+    dealloc_obj,
 } from './mkobj.js';
 import { add_to_minv, mpickobj, makemon } from './makemon.js';
 import { acurr, acurrstr, A_CHA, A_WIS, adjalign, exercise, Fast } from './attrib.js';
@@ -437,6 +438,48 @@ async function rob_shop(shkp) {
     return true;
 }
 
+/** C shk.c credit_snap — BEFORE/NOW snapshot of shop credit/debit/loan. */
+const credit_snap = [
+    [0, 0, 0],
+    [0, 0, 0],
+];
+
+/**
+ * C ref: shk.c credit_report `:628–661` — snapshot `eshkp->credit/debit/loan`
+ * into the BEFORE (`idx` 0, baseline, no message) or NOW (`idx` nonzero → 1)
+ * row, then report the delta (`Your("debt has increased/credit has been
+ * reduced by %ld %s.")`). Async only because the report plines.
+ */
+export async function credit_report(shkp, idx, silent) {
+    const eshkp = ESHK(shkp);
+    if (!idx) {
+        credit_snap[BEFORE][0] = credit_snap[NOW][0] = 0;
+        credit_snap[BEFORE][1] = credit_snap[NOW][1] = 0;
+        credit_snap[BEFORE][2] = credit_snap[NOW][2] = 0;
+    } else {
+        idx = 1;
+    }
+
+    credit_snap[idx][0] = eshkp.credit | 0;
+    credit_snap[idx][1] = eshkp.debit | 0;
+    credit_snap[idx][2] = eshkp.loan | 0;
+
+    if (idx && !silent) {
+        let amt = 0;
+        let msg = 'debt has increased';
+
+        if (credit_snap[NOW][0] < credit_snap[BEFORE][0]) {
+            amt = credit_snap[BEFORE][0] - credit_snap[NOW][0];
+            msg = 'credit has been reduced';
+        } else if (credit_snap[NOW][1] > credit_snap[BEFORE][1]) {
+            amt = credit_snap[NOW][1] - credit_snap[BEFORE][1];
+        } else if (credit_snap[NOW][2] > credit_snap[BEFORE][2]) {
+            amt = credit_snap[NOW][2] - credit_snap[BEFORE][2];
+        }
+        if (amt) await pline(`Your ${msg} by ${amt} ${currency(amt)}.`);
+    }
+}
+
 /**
  * C ref: shk.c remote_burglary `:664–682` — unpaid pickup from outside
  * the shop (grappling hook / telekinesis). pick_obj is the caller.
@@ -482,14 +525,6 @@ function hero_detect_monsters() {
     const u = game.u || {};
     return !!(u.Detect_monsters
         || (u.HDetect_monsters | 0) || (u.EDetect_monsters | 0));
-}
-
-/** C mkobj.c sobj_at — first floor object of otyp at (x,y). */
-function sobj_at_shk(otyp, x, y) {
-    for (let o = objects_at(x, y); o; o = o.nexthere) {
-        if ((o.otyp | 0) === otyp) return o;
-    }
-    return null;
 }
 
 /**
@@ -695,8 +730,8 @@ export async function u_entered_shop(enterstring) {
             should_block = true;
         } else {
             should_block = !!(Fast()
-                && (sobj_at_shk(PICK_AXE, u.ux, u.uy)
-                    || sobj_at_shk(DWARVISH_MATTOCK, u.ux, u.uy)));
+                && (sobj_at(PICK_AXE, u.ux, u.uy)
+                    || sobj_at(DWARVISH_MATTOCK, u.ux, u.uy)));
         }
         if (should_block) {
             const { dochug } = await import('./monmove.js');
@@ -836,6 +871,42 @@ export function unpaid_cost(unp_obj, cost_type) {
 }
 
 /**
+ * C ref: shk.c splitbill `:3623–3658` — otmp was split off unpaid obj:
+ * shrink obj's bill entry by otmp->quan, open a new entry for otmp
+ * carrying the old price (or clear otmp->unpaid when the bill is full).
+ * Sync: splitobj is sync, so the four C impossible() diagnostics stay
+ * named omissions (as in sub_one_frombill); early-return control flow
+ * is preserved. bquan under/zero-quantity arms fall through in C.
+ */
+export function splitbill(obj, otmp) {
+    /* otmp has been split off from obj */
+    const shkp = shop_keeper(game.u?.ushops || '');
+    if (!shkp || !inhishop(shkp)) return;
+    const bp = onbill(obj, shkp, false);
+    if (!bp) return;
+    bp.bquan = (bp.bquan | 0) - (otmp.quan | 0);
+
+    const eshk = ESHK(shkp);
+    if ((eshk.billct | 0) === BILLSZ) {
+        otmp.unpaid = 0;
+    } else {
+        const tmp = bp.price | 0;
+        const bill = eshk.bill_p || eshk.bill;
+        if (!Array.isArray(bill)) {
+            otmp.unpaid = 0;
+            return;
+        }
+        bill[eshk.billct | 0] = {
+            bo_id: otmp.o_id | 0,
+            bquan: otmp.quan | 0,
+            useup: false,
+            price: tmp,
+        };
+        eshk.billct = (eshk.billct | 0) + 1;
+    }
+}
+
+/**
  * C ref: shk.c sub_one_frombill `:3660–3690` — remove obj from shk bill
  * or (bquan > quan) clone the used-up slice onto billobjs.
  */
@@ -927,7 +998,7 @@ function carried_shop(obj) {
 /**
  * C ref: mkobj.c bill_dummy_object — charge for fully used unpaid item.
  * Dummy lands on billobjs via add_one_tobill (D-1714). Named: nextoid
- * price-matched oid (uses next_ident); copy_oextra / free_omid.
+ * price-matched oid (uses next_ident).
  */
 export async function bill_dummy_object(otmp) {
     if (!otmp) return;
@@ -945,6 +1016,8 @@ export async function bill_dummy_object(otmp) {
     dummy.where = OBJ_FREE;
     dummy.o_id = next_ident();
     dummy.timed = 0;
+    copy_oextra(dummy, otmp);
+    if (has_omid(dummy)) free_omid(dummy); // only one association with m_id
     dummy.lamplit = 0;
     dummy.owornmask = 0;
     dummy.nobj = null;
@@ -1079,6 +1152,32 @@ function discard_damage_struct(dam) {
         if (prev) prev.next = dam.next || null;
     }
     dam.next = null;
+}
+
+/**
+ * C ref: shk.c discard_damage_owned_by `:4529–4552` — drop every damagelist
+ * entry in shkp's shop (`strchr(in_rooms(x, y, SHOPBASE), shoproom)`).
+ * shop_owns_cell is that test (:1029). C order: prevdam walk, unlink owned,
+ * memset+free (JS: unlink and drop; GC frees). Called by shkgone (mhitm.js).
+ */
+export function discard_damage_owned_by(shkp) {
+    if (!game.level) return;
+    let prevdam = null;
+    let dam = game.level.damagelist || null;
+    while (dam) {
+        const x = dam.place?.x | 0, y = dam.place?.y | 0;
+        let dam2;
+        if (shop_owns_cell(shkp, x, y)) {
+            dam2 = dam.next || null;
+            if (prevdam) prevdam.next = dam2;
+            if (dam === game.level.damagelist) game.level.damagelist = dam2;
+            dam.next = null;
+        } else {
+            prevdam = dam;
+            dam2 = dam.next || null;
+        }
+        dam = dam2;
+    }
 }
 
 const LITTER_UPDATE = 0x01;

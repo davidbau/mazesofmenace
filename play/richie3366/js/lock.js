@@ -4,7 +4,7 @@
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
-import { pline, newsym, canseemon, pline_mon, clear_nhwindow_message, verbalize, feel_location } from './display.js';
+import { pline, newsym, canseemon, clear_nhwindow_message, verbalize, feel_location } from './display.js';
 import { yn_function } from './getline.js';
 import { vision_recalc, recalc_block_point, cansee } from './vision.js';
 import { stop_occupation, in_rooms, closed_door, confdir } from './hack.js';
@@ -41,6 +41,10 @@ import { stumble_onto_mimic } from './uhitm.js';
 import { update_mapseen_for } from './dungeon.js';
 import { is_drawbridge_wall, is_db_wall } from './dbridge.js';
 import { m_at, wake_nearto } from './mon.js';
+// C ref: monmove.c mb_trapped `:54–74` — canonical trapped-door export
+// (KABOOM/hear, wake_nearto 49, mstun, rnd(15), mondied/lifesave,
+// mon_learns_traps TRAPPED_DOOR); hoisted fn, cycle-safe per imports.mjs.
+import { mb_trapped } from './monmove.js';
 import { b_trapped, t_at } from './trap.js';
 import { currency, cmdq_add_key } from './invent.js';
 import { show_text_pages, dowhatdoes_core } from './pager.js';
@@ -786,35 +790,6 @@ async function You_hear(line) {
 }
 
 /**
- * C monmove.c mb_trapped :54–74 — monster on a trapped door that
- * just exploded. doorlock :1215–1218 calls this so wake_nearto
- * lives here (loudness stays 0 in doorlock). Named: mondied /
- * lifesave; mon_learns_traps(TRAPPED_DOOR).
- */
-async function mb_trapped(mtmp, canseeit) {
-    if (game.flags?.verbose !== false) {
-        if (canseeit && !Unaware()) {
-            await pline_mon(mtmp, 'KABOOM!!  You see a door explode.');
-        } else if (!Deaf()) {
-            const far = dist2_lock(
-                mtmp.mx, mtmp.my, game.u?.ux | 0, game.u?.uy | 0,
-            ) > 7 * 7;
-            await You_hear(`a ${far ? 'distant' : 'nearby'} explosion.`);
-        }
-    }
-    await wake_nearto(mtmp.mx | 0, mtmp.my | 0, 7 * 7);
-    mtmp.mstun = 1;
-    mtmp.mhp -= rnd(15);
-    if ((mtmp.mhp | 0) < 1) {
-        mtmp.mhp = 0;
-        mtmp.mx = 0;
-        mtmp.my = 0;
-        return true;
-    }
-    return false;
-}
-
-/**
  * C ref: lock.c obstructed — mon/obj blocks closing a door.
  * `quietly` (doorlock mysterywand) skips pline. Named omissions:
  * worm-tail phrasing; map_invisible; Something vs Some_Monnam.
@@ -844,7 +819,7 @@ async function obstructed_close(x, y) {
  * C ref: lock.c doclose — #close / `c` command.
  * Envelope: nohands/pit gates, getdir (cmdassist) + getdir-tail confdir(FALSE),
  * impaired-direction TIME, door mask arms, close roll.
- * Named omissions: stumble_on_door_mimic; Blind feel_location/mapseen;
+ * Named omissions: stumble_on_door_mimic;
  * portcullis/drawbridge; steed close path;
  * feel_newsym mapseen gating; Some_Monnam obstructed polish.
  * @returns {Promise<boolean>} true when C would return ECMD_TIME
@@ -878,19 +853,31 @@ export async function doclose() {
     }
 
     let res = false; // C: res starts ECMD_OK
+    // C lock.c doclose `:985–996` — !isok goes to nodoor while res is still
+    // ECMD_OK (the Confusion/Stunned turn cost comes after, with
+    // stumble_on_door_mimic deferred between them).
+    if (x < 1 || x >= COLNO || y < 0 || y >= ROWNO) {
+        await pline(`You ${Blind() ? 'feel' : 'see'} no door there.`);
+        return res;
+    }
     // C lock.c doclose — impaired direction choice costs a turn even when no
     // door is targeted: if (Confusion || Stunned) res = ECMD_TIME.
     // C Confusion/Stunned ≡ H-fields (youprop.h); flat mirrors per repo idiom.
     if ((u.HConfusion | 0) || u.Confusion || (u.HStun | 0) || u.Stunned) res = true;
-    if (x < 1 || x >= COLNO || y < 0 || y >= ROWNO) {
-        await pline('You see no door there.');
-        return res;
-    }
 
     const loc = game.level?.at(x, y);
+    // C lock.c doclose — Blind: feel_location + mapseen; LEARNED when
+    // lastseentyp changes. C also compares door->glyph, which JS cells
+    // don't model (game.js), so only the lastseentyp half is live —
+    // same idiom as doopen_indir above.
+    if (Blind()) {
+        const oldlastseentyp = update_mapseen_for(x, y);
+        feel_location(x, y);
+        if ((game.lastseentyp?.[x]?.[y] | 0) !== (oldlastseentyp | 0)) res = true;
+    }
     if (!loc || !IS_DOOR(loc.typ)) {
         // C: portcullis/drawbridge arms deferred
-        await pline('You see no door there.');
+        await pline(`You ${Blind() ? 'feel' : 'see'} no door there.`);
         return res;
     }
 
@@ -1246,8 +1233,10 @@ export async function boxlock_invent(obj) {
  * loudness wake_nearto + shop add_damage(0) (`:1260–1265`).
  * picking_at → stop_occupation + reset_pick (`:1267–1271`; SDOOR
  * OPENING/KNOCK and Rogue LOCKING early return skip this). mbhit
- * doorlock is D-1484. Named: mondied / mon_learns_traps in mb_trapped;
- * Soundeffect. obstructed Some_Monnam / worm-tail / map_invisible.
+ * doorlock is D-1484. Trapped-monster arm runs the canonical
+ * `monmove.js` mb_trapped (wake_nearto, mondied/lifesave,
+ * mon_learns_traps TRAPPED_DOOR). Named: Soundeffect.
+ * obstructed Some_Monnam / worm-tail / map_invisible.
  */
 export async function doorlock(otmp, x, y) {
     const door = game.level?.at?.(x, y);

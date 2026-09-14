@@ -347,6 +347,88 @@ const QUEST_GOAL_ALT = {
     Arc: `You have returned to %ns lair.`,
 };
 
+/**
+ * C ref: dat/quest.lua killed_nemesis (all 13 roles, raw lua text).
+ * stinky_nemesis scans the hero role's entry for noxious/poisonous/toxic
+ * plus " gas"/" fumes": only Arc, Cav and Pri match (questpgr.c comment).
+ */
+const QUEST_KILLED_NEMESIS = {
+    Arc: `The body of %n dissipates in a cloud of noxious fumes.`,
+    Bar: `%nC falls to the ground, and utters a last curse at you.  Then %nj
+body fades slowly, seemingly dispersing into the air around you.  You
+slowly become aware that the overpowering aura of magic in the air has
+begun to fade.`,
+    Cav: `%nC sinks to the ground, her heads flailing about.
+As she dies, a cloud of noxious fumes billows about her.`,
+    Hea: `The battered body of %n slumps to the ground and gasps
+out one last curse:
+
+    "You have defeated me, %p, but I shall have my revenge.
+    How, I shall not say, but this curse shall be like a cancer
+    on you."
+
+With that %n dies.`,
+    Kni: `As %n sinks to the ground, blood gushing from %nj open mouth, %nh
+defiantly curses you and %l:
+
+    "Thou hast not won yet, %r.  By the gods, I shall return
+    and dog thy steps to the grave!"
+
+%nJ tail flailing madly, %n tries to crawl towards you, but slumps
+to the ground and dies in a pool of %nj own blood.`,
+    Mon: `%nC gasps:
+
+    "You have only defeated this mortal body.  Know this: my spirit
+    is strong.  I shall return and reclaim what is mine!"
+
+With that, %n expires.`,
+    Pri: `You feel a wrenching shift in the ether as %ns body dissolves
+into a cloud of noxious gas.
+
+Suddenly, a voice booms out:
+
+    "Thou hast defeated the least of my minions, %r.
+    Know now that Moloch is aware of thy presence.
+    As for thee, %n, I shall deal with thy failure
+    at my leisure."
+
+You then hear the voice of %n, screaming in terror...`,
+    Ran: `%nC collapses to the ground, cursing you and %l, then says:
+
+    "You have defeated me, %r!  But I curse you one final time, with
+    my dying breath!  You shall die before you leave my castle!"`,
+    Rog: `"I know what you are thinking, %p.  It is not too late for you
+to use %o wisely.  For the sake of your guild
+%sp, do what is right."
+
+You sit and wait for death to come for %n, and then you
+brace yourself for your next meeting with %l!`,
+    Sam: `Your healing skills tell you that %ns wounds are mortal.
+
+You know that the bushido tells you to finish him and let his kami
+die with honor, but the thought of so many samurai dead due to this
+man's dishonor prevents you from giving the final blow.
+
+You order that his unwashed head be given to the crows and his body
+thrown into the sea.`,
+    Tou: `You turn in the direction of %n.  As his earthly body begins
+to vanish before your eyes, you hear him curse:
+
+    "You shall never be rid of me, %p!
+    I will find you where ever you go and regain what is rightly mine."`,
+    Val: `A look of surprise and horror appears on %ns face.
+
+    "No!!!  %o has lied to me!  I have been misled!"
+
+Suddenly, %n grasps his head and screams in agony, then dies.`,
+    Wiz: `%nC, whose body begins to shrivel up, croaks out:
+
+    "I shall haunt your progress until the end of time.  A thousand
+    curses on you and %l."
+
+Then, the body bursts into a cloud of choking dust, and blows away.`,
+};
+
 /** C ref: quest.lua msg_fallbacks — used when the role table has no msgid. */
 const QUEST_MSG_FALLBACKS = {
     goal_alt: 'goal_next',
@@ -433,6 +515,52 @@ const QUEST_MSG_META = {
             synopsis: '[You feel the taunts %n, but after offering a prayer to %d, you proceed.]',
         },
     },
+    killed_nemesis: {
+        Bar: {
+            output: 'text',
+            synopsis: '[%nC curses you, but you feel the overpowering aura of magic fading.]',
+        },
+        Hea: {
+            output: 'text',
+            synopsis: '[%nC curses you as %nh dies.]',
+        },
+        Kni: {
+            output: 'text',
+            synopsis: '[%nC curses you as %nh dies.]',
+        },
+        Mon: {
+            output: 'text',
+            synopsis: '[As %n dies, %nh threatens to return.]',
+        },
+        Pri: {
+            output: 'text',
+            synopsis: '[%nC dies.  Moloch is aware of you and angry at %n.]',
+        },
+        Ran: {
+            output: 'text',
+            synopsis: '[%nC curses you as %nh dies.]',
+        },
+        Rog: {
+            output: 'text',
+            synopsis: '[Before dying, %n tells you to use the %o wisely.]',
+        },
+        Sam: {
+            output: 'text',
+            synopsis: '[%nC dies without honor.]',
+        },
+        Tou: {
+            output: 'text',
+            synopsis: '[%nC curses at you as %nh dies.]',
+        },
+        Val: {
+            output: 'text',
+            synopsis: '[%nC dies.]',
+        },
+        Wiz: {
+            output: 'text',
+            synopsis: '[%nC curses you as %nh dies.]',
+        },
+    },
 };
 
 /** C ref: dat/quest.lua common.legacy synopsis (output=menu). */
@@ -451,6 +579,7 @@ const QUEST_ROLE_TEXT = {
     goal_first: QUEST_GOAL_FIRST,
     goal_next: QUEST_GOAL_NEXT,
     goal_alt: QUEST_GOAL_ALT,
+    killed_nemesis: QUEST_KILLED_NEMESIS,
 };
 
 /** C ref: questpgr.c ldrname */
@@ -799,8 +928,8 @@ async function deliver_by_window(raw, _how) {
  *
  * Named omissions: lua VM / msg_fallbacks beyond goal_alt; array rn2
  * (angel_cuss/demon_cuss); explicit single-line output=text; NHW_MENU
- * except legacy; other-role bodies; pauper_legacy; rawtext
- * killed_nemesis (stinky_nemesis). convert_arg catalogue is D-1649;
+ * except legacy; other-role bodies; pauper_legacy.
+ * convert_arg catalogue is D-1649;
  * convert_line pronoun %Xh is D-1634. qt_pager common retry is D-1662.
  *
  * @param {string} section role filecode or "common"
@@ -849,6 +978,33 @@ async function com_pager_core(section, msgid, showerror, rawOut) {
 }
 
 /**
+ * C ref: questpgr.c stinky_nemesis `:148–194` — does the dead nemesis's
+ * kill text describe a noxious/poisonous/toxic gas or fumes? C reads the
+ * hero's own role text (gu.urole.filecode, no common retry) via the
+ * com_pager_core rawtext arm — which returns the text with no display —
+ * flattens newlines to spaces (strNsubst, count 0 = all), then
+ * case-insensitively (strstri) matches one of noxious/poisonous/toxic
+ * with a later " gas"/" fumes". Only Arc, Cav and Pri texts match.
+ * Caller: mon.c m_detach MS_NEMESIS arm (via js/mhitm.js).
+ *
+ * @param {object} mtmp C monst (nhUse: the gas depends on the shown text)
+ * @returns {Promise<number>} 1 when the nemesis leaves a gas cloud, else 0
+ */
+export async function stinky_nemesis(mtmp) {
+    void mtmp;
+    const rawOut = {};
+    await com_pager_core(game.urole?.filecode || 'Tou', 'killed_nemesis', false, rawOut);
+    const mesg = rawOut.text || null;
+    if (!mesg) return 0;
+    const flat = String(mesg).split('\n').join(' ');
+    const p = strstri(flat, 'noxious')
+        || strstri(flat, 'poisonous')
+        || strstri(flat, 'toxic');
+    if (!p) return 0;
+    return (strstri(p, ' gas') || strstri(p, ' fumes')) ? 1 : 0;
+}
+
+/**
  * C ref: questpgr.c com_pager(msgid) → com_pager_core("common", …).
  * Named omissions: other common msgids (portal again/demand live;
  * quest_complete_no_bell D-1312); menu output; array rn2 picks.
@@ -861,8 +1017,7 @@ export async function com_pager(msgid) {
  * C ref: questpgr.c qt_pager `:629–634`.
  * com_pager_core(filecode, msgid, FALSE) then, on miss,
  * com_pager_core("common", msgid, TRUE). Each core runs nhl_init
- * (second shuffle is C). Array rn2 / pauper_legacy / killed_nemesis
- * rawtext still named.
+ * (second shuffle is C). Array rn2 / pauper_legacy still named.
  */
 export async function qt_pager(msgid) {
     const code = game.urole?.filecode || 'Tou';

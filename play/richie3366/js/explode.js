@@ -32,8 +32,9 @@
 // Role_switch damu only for known role pm;
 // resists_magm worn/artifact ANTIMAGIC scan;
 // explode_show_visible already owns explosion_to_glyph;
-// scatter MAY_FRACTURE/MAY_DESTROY/shop bill/flooreffects/VIS_EFFECTS/
-// uball chain shatter/hideunder.
+// scatter shop bill live via shk.js credit_report (D-2282);
+// VIS_EFFECTS/boulder-restack named (VIS_EFFECTS commented out in C;
+// sobj_at residual row).
 
 import { game } from './gstate.js';
 import { d, rn2, rnd } from './rng.js';
@@ -42,7 +43,7 @@ import {
     canspotmon, Hallucination, impossible,
 } from './display.js';
 import { cansee } from './vision.js';
-import { m_at, setmangry, seemimic } from './mon.js';
+import { m_at, setmangry, seemimic, hideunder } from './mon.js';
 import { Monnam, rndmonnam } from './do_name.js';
 import { strstri, dist2 } from './hacklib.js';
 import {
@@ -53,7 +54,7 @@ import { sticks } from './engrave.js';
 import { Soundeffect, se_blast } from './sndprocs.js';
 import { digests } from './mhitu.js';
 import {
-    maybe_half_phys, nomul, stop_occupation,
+    maybe_half_phys, nomul, stop_occupation, You_hear, in_rooms,
 } from './hack.js';
 import { exercise, A_STR } from './attrib.js';
 import {
@@ -65,12 +66,13 @@ import {
     PLNMSG_CAUGHT_IN_EXPLOSION, PLNMSG_TOWER_OF_FLAME,
     engulfing_u,
     N_DIRS, xdir, ydir, ZAP_POS, IS_DOOR, IS_SINK, STONE,
-    LARGEST_INT, MAY_HITMON, MAY_HITYOU,
-    D_ISOPEN, D_NODOOR, D_BROKEN,
+    LARGEST_INT, MAY_HITMON, MAY_HITYOU, MAY_DESTROY, MAY_FRACTURE,
+    D_ISOPEN, D_NODOOR, D_BROKEN, STATUE_TRAP, SHOPBASE,
 } from './const.js';
 import {
     pmnames, G_UNIQ, MR_FIRE, MR_COLD, MR_ELEC, MR_DISINT, MR_POISON,
     MR_ACID, nonliving, is_demon, is_vampshifter, bigmonst, is_mplayer,
+    hides_under,
 } from './monsters.js';
 import {
     PM_CLERIC, PM_MONK, PM_WIZARD, PM_HEALER, PM_KNIGHT, monsterNames,
@@ -81,6 +83,17 @@ import {
 } from './mkobj.js';
 import { ohitmon, thitu } from './mthrowu.js';
 import { dmgval } from './weapon.js';
+import { Tobjnam } from './objnam.js';
+import { unpunish } from './read.js';
+import { fracture_rock, break_statue } from './dig.js';
+import { shop_keeper, costly_spot, credit_report, addtobill } from './shk.js';
+import { breaks } from './dothrow.js';
+import { flooreffects } from './do.js';
+import { maybe_unhide_at } from './monmove.js';
+import { t_at, deltrap } from './trap.js';
+import {
+    se_chain_shatters, se_stone_breaking, se_stone_crumbling,
+} from './generated/seffects_data.js';
 
 const PM_PAPER_GOLEM = monsterNames.indexOf('PM_PAPER_GOLEM');
 const PM_STRAW_GOLEM = monsterNames.indexOf('PM_STRAW_GOLEM');
@@ -109,6 +122,13 @@ const WAN_DIGGING = objectNames.indexOf('WAN_DIGGING');
 const WAN_SLEEP = objectNames.indexOf('WAN_SLEEP');
 const POT_OIL = objectNames.indexOf('POT_OIL');
 const SCR_FIRE = objectNames.indexOf('SCR_FIRE');
+/** C ref: explode.c scatter — fractured/scattered otyps (cf. dig.js/trap.js). */
+const BOULDER = objectNames.indexOf('BOULDER');
+const STATUE = objectNames.indexOf('STATUE');
+const EGG = objectNames.indexOf('EGG');
+const GOLD_PIECE = objectNames.indexOf('GOLD_PIECE');
+/** C ref: objclass.h material order — GLASS == 19 (cf. dothrow.js). */
+const GLASS = 19;
 
 /** C ref: hacklib.c s_suffix */
 function s_suffix(s) {
@@ -839,12 +859,18 @@ function closed_door(x, y) {
 
 /**
  * C ref: explode.c scatter — fling objects from (sx,sy) by blastforce.
- * Branch envelope (D-0986): individual_object or pile peel via splitobj;
- * random 8-dir flight; stop on !isok / !ZAP_POS / closed_door / sink;
- * MAY_HITMON → ohitmon; MAY_HITYOU → thitu; place_object+stackobj.
- * Live caller: trap.js launch_obj ROLL LANDMINE (D-1256) with C flags.
- * Named omit: MAY_FRACTURE/MAY_DESTROY; shop credit/stolen; flooreffects
- * (always place); VIS_EFFECTS; uball/uchain shatter; hideunder.
+ * Branch envelope (D-0986 + landmine arm): individual_object or pile peel
+ * via splitobj; uball/uchain shatter; MAY_FRACTURE boulder/statue;
+ * MAY_DESTROY glass/egg/`!rn2(10)`; random 8-dir flight; stop on !isok /
+ * !ZAP_POS / closed_door / sink; MAY_HITMON → ohitmon; MAY_HITYOU → thitu;
+ * flooreffects-gated place_object+stackobj; hideunder/mtrapped/maybe_unhide
+ * tail. Live callers: trap.js launch_obj ROLL LANDMINE (D-1256) and
+ * blow_up_landmine (trap.c:3178) with C flags.
+ * Shop arms live (D-2282): shop_origin baseline + gold addtobill/lostgoods
+ * via the canonical shk.js credit_report.
+ * Named omit: boulder restack sobj_at (residual exact-name clones dbridge/
+ * music/steed + 7 renamed variants, own Open row); VIS_EFFECTS (commented
+ * out in C too).
  * @returns {number} total quantity that left the origin square
  */
 export async function scatter(sx, sy, blastforce, scflags, obj = null) {
@@ -853,12 +879,34 @@ export async function scatter(sx, sy, blastforce, scflags, obj = null) {
     const schain = [];
     let farthest = 0;
     let total = 0;
+    let lostgoods = false;
+
+    // C explode.c:747-749 — scattered obj must be at the scatter site.
+    if (individual && ((obj.ox | 0) !== (sx | 0) || (obj.oy | 0) !== (sy | 0))) {
+        await impossible(
+            `scattered object <${obj.ox},${obj.oy}> not at scatter site <${sx},${sy}>`,
+        );
+    }
+
+    // C explode.c:744-747 — shop baseline for the scatter credit report.
+    const originRooms = in_rooms(sx, sy, SHOPBASE);
+    const shkp = shop_keeper(originRooms ? originRooms.charCodeAt(0) : 0);
+    const shop_origin = !!shkp && costly_spot(sx, sy);
+    if (shop_origin) await credit_report(shkp, 0, true);
 
     while (true) {
         let otmp = individual ? obj : objects_at(sx, sy);
         if (!otmp) break;
 
-        // uball/uchain shatter deferred
+        // C explode.c:762-771 — punished ball/chain shatters instead.
+        const uu = game.u || {};
+        if (otmp === uu.uball || otmp === uu.uchain) {
+            const waschain = otmp === uu.uchain;
+            Soundeffect(se_chain_shatters, 25);
+            await pline('The chain shatters!');
+            unpunish();
+            if (waschain) continue;
+        }
         if ((otmp.quan | 0) > 1) {
             let qtmp = (otmp.quan | 0) - 1;
             if (qtmp > LARGEST_INT) qtmp = LARGEST_INT;
@@ -868,22 +916,62 @@ export async function scatter(sx, sy, blastforce, scflags, obj = null) {
             obj = null;
         }
         obj_extract_self(otmp);
-        // MAY_FRACTURE / MAY_DESTROY deferred
+        let used_up = false;
 
-        const dir = rn2(N_DIRS);
-        let range = (blastforce | 0) - Math.trunc((otmp.owt | 0) / 40);
-        if (range < 1) range = 1;
-        range = rnd(range);
-        if (range > farthest) farthest = range;
-        schain.push({
-            obj: otmp,
-            ox: sx | 0,
-            oy: sy | 0,
-            dx: xdir[dir],
-            dy: ydir[dir],
-            range,
-            stopped: false,
-        });
+        // C explode.c:782-821 — 9 in 10 fracture of boulders/statues.
+        if ((flags & MAY_FRACTURE)
+            && ((otmp.otyp | 0) === BOULDER || (otmp.otyp | 0) === STATUE)
+            && rn2(10)) {
+            if ((otmp.otyp | 0) === BOULDER) {
+                if (cansee(sx, sy)) {
+                    await pline(`${Tobjnam(otmp, 'break')} apart.`);
+                } else {
+                    Soundeffect(se_stone_breaking, 100);
+                    await You_hear('stone breaking.');
+                }
+                fracture_rock(otmp);
+                place_object(otmp, sx, sy);
+                // C restack of a second boulder via sobj_at omitted.
+            } else {
+                const statueTrap = t_at(sx, sy);
+                if (statueTrap && (statueTrap.ttyp | 0) === STATUE_TRAP) {
+                    deltrap(statueTrap);
+                }
+                if (cansee(sx, sy)) {
+                    await pline(`${Tobjnam(otmp, 'crumble')}.`);
+                } else {
+                    Soundeffect(se_stone_crumbling, 100);
+                    await You_hear('stone crumbling.');
+                }
+                await break_statue(otmp);
+                place_object(otmp, sx, sy);
+            }
+            newsym(sx, sy);
+            used_up = true;
+        } else if ((flags & MAY_DESTROY)
+            && (!rn2(10)
+                || (game.objects?.[otmp.otyp]?.oc_material | 0) === GLASS
+                || (otmp.otyp | 0) === EGG)) {
+            // C explode.c:823-829 — 1 in 10, glass, egg destruction.
+            if (await breaks(otmp, sx, sy)) used_up = true;
+        }
+
+        if (!used_up) {
+            const dir = rn2(N_DIRS);
+            let range = (blastforce | 0) - Math.trunc((otmp.owt | 0) / 40);
+            if (range < 1) range = 1;
+            range = rnd(range);
+            if (range > farthest) farthest = range;
+            schain.push({
+                obj: otmp,
+                ox: sx | 0,
+                oy: sy | 0,
+                dx: xdir[dir],
+                dy: ydir[dir],
+                range,
+                stopped: false,
+            });
+        }
         if (individual && !obj) break;
     }
 
@@ -947,19 +1035,48 @@ export async function scatter(sx, sy, blastforce, scflags, obj = null) {
         }
     }
 
+    // C explode.c:913 — hero shop room for the bill check below (`''` when
+    // the hero is outside a shop; `includes('')` is true, matching C
+    // `strchr(u.urooms, '\0')` returning non-null).
+    const heroShopRooms = in_rooms(game.u?.ux | 0, game.u?.uy | 0, SHOPBASE);
+    const heroShopCh = (heroShopRooms || '')[0] || '';
     for (const stmp of schain) {
         const x = stmp.ox | 0;
         const y = stmp.oy | 0;
+        let obj_left_shop = false;
         if (stmp.obj) {
             if (x !== (sx | 0) || y !== (sy | 0)) {
                 total += stmp.obj.quan | 0;
+                obj_left_shop = shop_origin && !costly_spot(x, y);
             }
-            // flooreffects deferred — always place
-            place_object(stmp.obj, x, y);
-            stackobj(stmp.obj);
+            if (!(await flooreffects(stmp.obj, x, y, 'land'))) {
+                if (obj_left_shop && ((game.u?.urooms || '').includes(heroShopCh))) {
+                    // C explode.c:914-929 — only gold is billed on the way
+                    // out of the shop; other goods keep the full
+                    // asking-price bill by default.
+                    if ((stmp.obj.otyp | 0) === GOLD_PIECE) {
+                        await addtobill(stmp.obj, false, false, true);
+                        lostgoods = true;
+                    }
+                }
+                place_object(stmp.obj, x, y);
+                stackobj(stmp.obj);
+            }
         }
         newsym(x, y);
     }
     newsym(sx, sy);
+    // C explode.c:938-944 — hider back under cover, trap released.
+    if (u_at(sx, sy) && (game.u?.uundetected) && hides_under(game.youmonst?.data)) {
+        hideunder(game.youmonst);
+    }
+    {
+        const mtmp = m_at(sx, sy);
+        if (mtmp && mtmp.mtrapped) mtmp.mtrapped = 0;
+    }
+    await maybe_unhide_at(sx, sy);
+    // C explode.c:944-945 — report the scattered-out gold (implies
+    // shop_origin, so shkp is valid).
+    if (lostgoods) await credit_report(shkp, 1, false);
     return total;
 }

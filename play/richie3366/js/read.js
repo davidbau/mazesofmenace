@@ -42,7 +42,9 @@
 // SPE_REMOVE_CURSE seffects
 // arm (throne fake book D-1033; #cast still deferred);
 // Teleport_control getpos; confused light yellow/black-light pets;
-// snuff_lit / impact_arti_light / Punished ball; gremlin light-hit list;
+// litroom invent-loop snuff_lit/impact_arti_light (D-2250); set_lit
+// snuff_light_source + gremlin queue/drain, move_bc pick-up/re-place,
+// engulfer-lit plines (D-2263);
 // Rogue whole-room light; Sunsword radius-0; remove-curse shop water
 // costly_alteration; Punished/unpunish; buried_ball_to_freedom; steed saddle
 // Yobjnam2 glow; update_inventory; enchant-weapon confused erodeproof
@@ -74,7 +76,9 @@
 // SPE_REMOVE_CURSE seffects
 // arm (throne fake book D-1033; #cast still deferred);
 // Teleport_control getpos; confused light yellow/black-light pets;
-// snuff_lit / impact_arti_light / Punished ball; gremlin light-hit list;
+// litroom invent-loop snuff_lit/impact_arti_light (D-2250); set_lit
+// snuff_light_source + gremlin queue/drain, move_bc pick-up/re-place,
+// engulfer-lit plines (D-2263);
 // Rogue whole-room light; Sunsword radius-0; remove-curse shop water
 // costly_alteration; Punished/unpunish; buried_ball_to_freedom; steed saddle
 // Yobjnam2 glow; update_inventory; enchant-weapon confused erodeproof
@@ -111,7 +115,7 @@ import { trycall, hcolor, Monnam, mon_nam, s_suffix, hliquid } from './do_name.j
 import { chwepon, is_weptool } from './wield.js';
 import { destroy_arm, some_armor, setworn, hard_helmet } from './do_wear.js';
 import { dropy, flooreffects } from './do.js';
-import { placebc, set_bc } from './ball.js';
+import { placebc, set_bc, move_bc } from './ball.js';
 import { rn2, rnd, rn1, d } from './rng.js';
 import {
     COLNO, ROWNO, SDOOR, CORR, ROOMOFFSET, Is_rogue_level, Is_waterlevel,
@@ -149,10 +153,14 @@ import { mons, NON_PM, LOW_PM, NUMMONS, amorphous, passes_walls, noncorporeal, i
     G_GENO, G_UNIQ, G_NOCORPSE, is_human, is_demon, pmnames, NEUTRAL,
     MALE, FEMALE, is_male, is_female,
     M2_PNAME, monsterNames, nonliving, weirdnonliving, PM_ACID_BLOB,
+    hates_light,
 } from './monsters.js';
 import { makemon, makemon_appear_msg, rndmonst, create_critters, newcham } from './makemon.js';
 import { kill_genocided_monsters, mongone, m_at, setmangry, wake_nearto, wakeup } from './mon.js';
-import { killed } from './uhitm.js';
+import { killed, light_hits_gremlin } from './uhitm.js';
+import { digests } from './mhitu.js';
+import { mbodypart } from './polyself.js';
+import { snuff_light_source } from './light.js';
 import { mondied } from './mhitm.js';
 import { losehp } from './hack.js';
 import { done } from './end.js';
@@ -358,18 +366,27 @@ async function seffect_teleportation(sobj) {
     // learnscroll handled inside scrolltele; do not set known here
 }
 
+/* C read.c: static `struct litmon *gremlins` — gremlins standing on newly
+   lit squares, drained by litroom after vision_recalc(0). LIFO: C prepends
+   on queue (`gremlin->nxt = gremlins`) and pops the head, so unshift/shift
+   (D-2263). */
+let gremlins = [];
+
 /**
- * C ref: read.c set_lit — levl[x][y].lit = !!val; gremlin queue deferred.
+ * C ref: read.c set_lit — levl[x][y].lit = !!val; light arm queues a
+ * light-struck gremlin (`m_at` + `data == &mons[PM_GREMLIN]` ≡ hates_light);
+ * dark arm snuffs a burning floor source (D-2263).
  */
 function set_lit(x, y, val) {
     const loc = game.level?.at(x, y);
     if (!loc) return;
     if (val) {
         loc.lit = 1;
-        // PM_GREMLIN light-hit list deferred
+        const mtmp = m_at(x, y);
+        if (mtmp && hates_light(mtmp.data)) gremlins.unshift(mtmp);
     } else {
         loc.lit = 0;
-        // snuff_light_source deferred
+        snuff_light_source(x, y);
     }
 }
 
@@ -379,7 +396,12 @@ function set_lit(x, y, val) {
  * no_op message; vision_recalc(2) + delayed full recalc.
  * Invent lights: `!on` snuff_lit / impact_arti_light(worsen) + still_lit
  * dimmer message; blessed `on` impact_arti_light(raise) (C `:2503–2552`).
- * Deferred: Punished move_bc / gremlin hits / Underwater beyond no_op gate.
+ * Swallowed `on`: engulfer stomach-lit / whirly-shine / glisten plines
+ * (C `:2554–2562`, D-2263). Punished `!on` sighted: move_bc pick-up before
+ * the lighting and re-place after vision_recalc(2) (C `:2559–2564`,
+ * `:2610–2612`, D-2263). Tail: delayed full recalc + gremlin drain after a
+ * forced recalc(0), `light_hits_gremlin(mon, rnd(5))` LIFO (C `:2615–2633`).
+ * Deferred: Underwater beyond the no_op gate.
  */
 export async function litroom(on, obj) {
     const u = game.u || {};
@@ -427,7 +449,17 @@ export async function litroom(on, obj) {
             }
         }
         if (u.uswallow) {
-            // engulfer-lit messages deferred (Blind-silent matches C)
+            /* C read.c litroom `:2554–2562` — the light goes off inside the
+               swallower (D-2263). */
+            if (!Blind && u.ustuck) {
+                if (digests(u.ustuck.data)) {
+                    await pline(`${s_suffix(Monnam(u.ustuck))} ${mbodypart(u.ustuck, STOMACH)} is lit.`);
+                } else if (is_whirly(u.ustuck.data)) {
+                    await pline(`${Monnam(u.ustuck)} shines briefly.`);
+                } else {
+                    await pline(`${Monnam(u.ustuck)} glistens.`);
+                }
+            }
         } else if (!Blind && (!Is_rogue_level(u.uz)
             || game.level?.at(u.ux, u.uy)?.typ !== CORR)) {
             await pline(`A lit field ${no_op ? 'briefly ' : ''}surrounds you!`);
@@ -435,6 +467,13 @@ export async function litroom(on, obj) {
     }
 
     if (no_op) return;
+
+    /* C read.c litroom `:2559–2564` — darkening while Punished (≡ uball)
+       and sighted: pick the ball&chain up first so an out-of-sight
+       ball/chain is not remembered; re-placed after vision_recalc(2)
+       below (D-2263). */
+    if (u.uball && u.uchain && !on && !Blind)
+        move_bc(1, 0, u.uball.ox | 0, u.uball.oy | 0, u.uchain.ox | 0, u.uchain.oy | 0);
 
     if (Is_rogue_level(u.uz)) {
         const rnum = (game.level?.at(u.ux, u.uy)?.roomno | 0) - ROOMOFFSET;
@@ -464,10 +503,22 @@ export async function litroom(on, obj) {
 
     if (!Blind) {
         vision_recalc(2);
-        // Punished move_bc restore deferred
+
+        /* C `:2610–2612` — replace ball&chain after the forced redraw. */
+        if (u.uball && u.uchain && !on)
+            move_bc(0, 0, u.uball.ox | 0, u.uball.oy | 0, u.uchain.ox | 0, u.uchain.oy | 0);
     }
-    game.vision_full_recalc = 1;
-    // gremlin light_hits after forced recalc deferred
+
+    game.vision_full_recalc = 1; /* delayed vision recalculation */
+    /* C `:2615–2633` — after vision is current, monsters hit by the light
+       take effect now (vision_recalc(0) first; can't delay after all). */
+    if (gremlins.length) {
+        vision_recalc(0);
+        while (gremlins.length) {
+            const grm = gremlins.shift();
+            await light_hits_gremlin(grm, rnd(5));
+        }
+    }
 }
 
 /**

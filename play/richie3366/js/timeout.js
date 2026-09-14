@@ -1584,6 +1584,35 @@ export function end_burn(obj, timer_attached) {
 }
 
 /**
+ * C ref: light.c obj_split_light_source `:779–803` — copy the light
+ * source(s) attached to src onto dest (splitobj `:500–501`, gated by
+ * `obj_sheds_light`). Struct copy per LS_OBJECT match on src; candle
+ * splits recompute both ranges via `candle_light_range` + set
+ * `vision_full_recalc`; each copy inserts at the head of the list (C
+ * `new_ls->next = gl.light_base`, never interfering with the walk —
+ * hence the snapshot here); dest lamplit. Null-safe guards (C
+ * NONNULLARG12); `Is_candle`/`candle_light_range` are file-local.
+ */
+export function obj_split_light_source(src, dest) {
+    const list = game.light_base;
+    if (!list?.length || !src || !dest) return;
+    for (const ls of list.slice()) {
+        if (ls.type === LS_OBJECT && ls.id === src) {
+            const new_ls = { ...ls };
+            if (Is_candle(src)) {
+                /* split candles may emit less light than original group */
+                ls.range = candle_light_range(src);
+                new_ls.range = candle_light_range(dest);
+                game.vision_full_recalc = 1; /* in case range changed */
+            }
+            new_ls.id = dest;
+            list.unshift(new_ls);
+            dest.lamplit = 1; /* now an active light source */
+        }
+    }
+}
+
+/**
  * C ref: light.c obj_merge_light_sources — src folded into dest.
  * src === dest means adding candles to a lit candelabrum (range only).
  */

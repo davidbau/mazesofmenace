@@ -175,8 +175,7 @@ function incr_prop_timeout(p, amt) {
  * incr + `Timeout for %s …` pline; post-arm float_vs_flight /
  * rescham / pooleffects tail (C `:1080–1087`).
  * Named omissions: count-prefix menu digits; unavailcmd ecname wording;
- * make_blinded Blindfolded/Eyes talk variants; make_sick KILLED_BY vs
- * KILLED_BY_AN `#wizintrinsic` cause polish (potion.js always AN).
+ * make_blinded Blindfolded/Eyes talk variants.
  */
 export async function wiz_intrinsic() {
     if (!(game.flags?.debug || game.flags?.wizard)) {

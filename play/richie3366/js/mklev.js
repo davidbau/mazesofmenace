@@ -98,7 +98,7 @@ import {
     curse, bless, uncurse, blessorcurse, place_object, add_to_buried, weight, OBJ,
     set_corpsenm, obj_stop_timers, start_timer, spot_stop_timers,
     obj_extract_self, is_organic,
-    add_to_container, objects_at, stackobj, oc_merge_of, dealloc_obj,
+    add_to_container, objects_at, sobj_at, stackobj, oc_merge_of, dealloc_obj,
 } from './mkobj.js';
 import {
     makemon, mkclass, MM_NOGRP, set_mimic_sym, mpickobj, add_to_minv, newcham,
@@ -1281,13 +1281,6 @@ function level_difficulty() {
 }
 
 // place_object / weight / add_to_container / dealloc_obj imported from mkobj.js
-// C ref: mkobj.c sobj_at — first floor object of otyp at (x,y)
-function sobj_at(otyp, x, y) {
-    for (let otmp = objects_at(x, y); otmp; otmp = otmp.nexthere) {
-        if (otmp.otyp === otyp) return otmp;
-    }
-    return null;
-}
 
 // make_grave imported from engrave.js (C engrave.c)
 

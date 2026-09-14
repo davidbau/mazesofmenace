@@ -18,7 +18,7 @@
 import { game } from './gstate.js';
 import { pline, newsym, canseemon, Hallucination, canspotmon } from './display.js';
 import { cansee, recalc_block_point, vision_recalc } from './vision.js';
-import { obj_extract_self, delobj, objects_at } from './mkobj.js';
+import { obj_extract_self, delobj, objects_at, sobj_at } from './mkobj.js';
 import { m_at } from './mon.js';
 import {
     mons, is_flyer, is_floater, is_swimmer, likes_lava, noncorporeal,
@@ -115,14 +115,6 @@ function wake_nearto(x, y, distance) {
             if (mtmp.mstrategy != null) mtmp.mstrategy &= ~0x01;
         }
     }
-}
-
-/** C ref: mkobj.c sobj_at — first floor object of otyp at (x,y). */
-function sobj_at(otyp, x, y) {
-    for (let o = objects_at(x, y); o; o = o.nexthere) {
-        if ((o.otyp | 0) === (otyp | 0)) return o;
-    }
-    return null;
 }
 
 /**

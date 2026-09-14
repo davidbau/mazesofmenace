@@ -49,7 +49,7 @@ import {
     WORN_HELMET, WORN_SHIELD, WORN_SHIRT, WORN_ARMOR, WORN_BLINDF, WORN_AMUL,
     DISPLACED, INVIS, SEE_INVIS, CLAIRVOYANT, LEVITATION,
     PROT_FROM_SHAPE_CHANGERS,
-    DRAIN_RES, SICK_RES, INFRAVISION, STONE_RES, SLOW_DIGESTION, FREE_ACTION,
+    ACID_RES, DRAIN_RES, SICK_RES, INFRAVISION, STONE_RES, SLOW_DIGESTION, FREE_ACTION,
     BOLT_LIM, LEFT_HANDED, GLIB, FROMOUTSIDE,
     ARTICLE_YOUR, SUPPRESS_SADDLE, SUPPRESS_HALLUCINATION,
     MENU_TRADITIONAL, MENU_COMBINATION, MENU_FULL,
@@ -96,6 +96,12 @@ const GAUNTLETS_OF_FUMBLING = objectNames.indexOf('GAUNTLETS_OF_FUMBLING');
 const GAUNTLETS_OF_DEXTERITY = objectNames.indexOf('GAUNTLETS_OF_DEXTERITY');
 const CLOAK_OF_PROTECTION = objectNames.indexOf('CLOAK_OF_PROTECTION');
 const CLOAK_OF_DISPLACEMENT = objectNames.indexOf('CLOAK_OF_DISPLACEMENT');
+const CLOAK_OF_INVISIBILITY = objectNames.indexOf('CLOAK_OF_INVISIBILITY');
+const CLOAK_OF_MAGIC_RESISTANCE = objectNames.indexOf('CLOAK_OF_MAGIC_RESISTANCE');
+const ORCISH_CLOAK = objectNames.indexOf('ORCISH_CLOAK');
+const DWARVISH_CLOAK = objectNames.indexOf('DWARVISH_CLOAK');
+const OILSKIN_CLOAK = objectNames.indexOf('OILSKIN_CLOAK');
+const LEATHER_CLOAK = objectNames.indexOf('LEATHER_CLOAK');
 const ROBE = objectNames.indexOf('ROBE');
 const MUMMY_WRAPPING = objectNames.indexOf('MUMMY_WRAPPING');
 const ALCHEMY_SMOCK = objectNames.indexOf('ALCHEMY_SMOCK');
@@ -926,10 +932,12 @@ function hero_Invisible() {
 }
 
 /**
- * C ref: do_wear.c Cloak_on — PROTECTION makeknown; DISPLACEMENT
- * toggle_displacement; ELVEN_CLOAK toggle_stealth (D-0970). Named
- * omissions: MUMMY_WRAPPING / INVISIBILITY / OILSKIN / ALCHEMY_SMOCK;
- * update_inventory.
+ * C ref: do_wear.c Cloak_on `:326–380` — full otyp switch in C order:
+ * plain cloaks break; PROTECTION makeknown (D-0970); ELVEN toggle_stealth;
+ * DISPLACEMENT toggle_displacement; MUMMY_WRAPPING newsym + You can see;
+ * INVISIBILITY makeknown + newsym + Suddenly pline; OILSKIN fit-tightly
+ * pline; ALCHEMY_SMOCK EAcid_resistance |= WORN_CLOAK (oc_oprop POISON_RES
+ * is already conferred by setworn). No find_ac here (D-0810).
  */
 async function Cloak_on() {
     const o = game.u?.uarmc;
@@ -939,17 +947,59 @@ async function Cloak_on() {
     const extr = u.uprops?.[oprop]?.extrinsic | 0;
     const oldprop = extr & ~WORN_CLOAK;
 
-    if (o.otyp === CLOAK_OF_PROTECTION) {
+    switch (o.otyp | 0) {
+    case ORCISH_CLOAK:
+    case DWARVISH_CLOAK:
+    case CLOAK_OF_MAGIC_RESISTANCE:
+    case ROBE:
+    case LEATHER_CLOAK:
+        break;
+    case CLOAK_OF_PROTECTION:
         makeknown(o.otyp);
-    } else if (o.otyp === ELVEN_CLOAK) {
+        break;
+    case ELVEN_CLOAK:
         await toggle_stealth(o, oldprop, true);
-    } else if (o.otyp === CLOAK_OF_DISPLACEMENT) {
+        break;
+    case CLOAK_OF_DISPLACEMENT:
         await toggle_displacement(o, oldprop, true);
+        break;
+    case MUMMY_WRAPPING:
+        /* C: already worn, so cheat — HInvis/EInvis flats, not full Invis. */
+        if (((u.HInvis | 0) || (u.EInvis | 0)) && !Blind()) {
+            newsym((u.ux | 0), (u.uy | 0));
+            await pline(`You can ${See_invisible_dw() ? 'no longer see through yourself' : 'see yourself'}!`);
+        }
+        break;
+    case CLOAK_OF_INVISIBILITY:
+        /* C: mummy wasn't worn, so no need to check oldprop against blocked. */
+        if (!oldprop && !(u.HInvis | 0) && !Blind()) {
+            makeknown(o.otyp);
+            newsym((u.ux | 0), (u.uy | 0));
+            await pline(`Suddenly you can${See_invisible_dw() ? ' see through' : 'not see'} yourself.`);
+        }
+        break;
+    case OILSKIN_CLOAK:
+        await pline(`${Tobjnam(o, 'fit')} very tightly.`);
+        break;
+    /* C: alchemy smock gives poison _and_ acid resistance. */
+    case ALCHEMY_SMOCK: {
+        if (!u.uprops) u.uprops = {};
+        const prop = u.uprops[ACID_RES] || (u.uprops[ACID_RES] = {
+            intrinsic: 0, extrinsic: 0, blocked: 0,
+        });
+        prop.extrinsic |= WORN_CLOAK;
+        break;
     }
-    // MUMMY / INVIS / OILSKIN / ALCHEMY deferred
+    default:
+        await impossible(`Cloak_on: unknown cloak type ${o.otyp | 0}`);
+        break;
+    }
     // C Cloak_on: known=1 for status-line AC; no find_ac here (D-0810).
     // Delay-0 displacement You_feel --More-- must show pre-cloak uac.
-    if (!o.known) o.known = 1;
+    if (!o.known) {
+        o.known = 1;
+        update_inventory();
+    }
     return 0;
 }
 async function Shield_on() {

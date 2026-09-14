@@ -12,7 +12,7 @@ import {
 import { cansee, vision_recalc } from './vision.js';
 import { rn2, rnd, rn1 } from './rng.js';
 import {
-    place_object, splitobj, stackobj, delobj, is_crackable, objects_at,
+    place_object, splitobj, stackobj, delobj, is_crackable, sobj_at,
     weight,
 } from './mkobj.js';
 import {
@@ -2635,13 +2635,6 @@ function closed_door_hurtle(x, y) {
     return !!((loc.doormask || 0) & (D_CLOSED | D_LOCKED));
 }
 
-function sobj_at_hurtle(otyp, x, y) {
-    for (let o = objects_at(x, y); o; o = o.nexthere) {
-        if ((o.otyp | 0) === otyp) return o;
-    }
-    return null;
-}
-
 /**
  * C ref: dothrow.c hurtle_step — one cell of hero hurtle.
  * in_out_region after isok, before *range==0 (D-1165; C 787–790).
@@ -2683,7 +2676,7 @@ export async function hurtle_step(rangeArg, x, y) {
         why = 'crashing into iron bars';
         await pline('You crash into some iron bars.  Ouch!');
     } else {
-        const obj = sobj_at_hurtle(BOULDER, x, y);
+        const obj = sobj_at(BOULDER, x, y);
         if (obj) {
             why = 'bumping into a boulder';
             await pline(`You bump into a ${xname(obj)}.  Ouch!`);

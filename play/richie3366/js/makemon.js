@@ -2960,15 +2960,17 @@ function makemon_rnd_goodpos(mon, gpflags, cc) {
         const Blind = !!(game.u?.ublind || game.u?.Blind);
         let bl = (game.in_mklev || Blind) ? 1 : 0;
 
+        // C makemon.c:1102–1104 clears the parameter itself
+        // (`gpflags &= ~GP_CHECKSCARY`), so the bl==1 pass and the stairway
+        // retry below also skip the scary check — no per-pass copy.
         for (; bl < 2; bl++) {
-            let gp = gpflags;
-            if (!bl) gp &= ~GP_CHECKSCARY;
+            if (!bl) gpflags &= ~GP_CHECKSCARY;
             for (let dx = 0; dx < COLNO; dx++) {
                 for (let dy = 0; dy < ROWNO; dy++) {
                     nx = ((dx + xofs) % (COLNO - 1)) + 1;
                     ny = ((dy + yofs) % (ROWNO - 1)) + 1;
                     if (bl === 0 && cansee(nx, ny)) continue;
-                    if (goodpos(nx, ny, mon, gp)) {
+                    if (goodpos(nx, ny, mon, gpflags)) {
                         cc.x = nx;
                         cc.y = ny;
                         return true;

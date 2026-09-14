@@ -90,7 +90,7 @@ import {
     BALL_CLASS, CHAIN_CLASS, VENOM_CLASS, ILLOBJ_CLASS,
     def_char_to_objclass, def_oc_syms,
 } from './objects.js';
-import { objects_at, weight } from './mkobj.js';
+import { objects_at, sobj_at, weight } from './mkobj.js';
 import { makeknown, consume_obj_charge, observe_object, currency } from './invent.js';
 import { hidden_gold } from './vault.js';
 import { findgold } from './steal.js';
@@ -308,14 +308,6 @@ function def_char_is_furniture(ch) {
     // C defsyms contiguous furniture: stairs…fountain (`<>_{|\`)
     if ('<>_{|\\'.includes(ch)) return 1;
     return -1;
-}
-
-/** C ref: mkobj.c sobj_at — first floor object of otyp at (x,y). */
-function sobj_at(otyp, x, y) {
-    for (let obj = objects_at(x, y); obj; obj = obj.nexthere) {
-        if (obj.otyp === otyp) return obj;
-    }
-    return null;
 }
 
 const LENSES = objectNames.indexOf('LENSES');

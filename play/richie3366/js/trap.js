@@ -22,7 +22,7 @@ import {
     mksobj, place_object, weight, stackobj, dealloc_obj, relobj_on_death,
     is_flammable, is_rustprone, is_rottable, is_corrodeable, is_crackable,
     erosion_matters, delobj, mkcorpstat, add_to_container, obj_extract_self,
-    objects_at, splitobj, nxtobj, add_to_migration,
+    objects_at, sobj_at, splitobj, nxtobj, add_to_migration,
     obj_ice_effects, spot_stop_timers, stop_timer,
 } from './mkobj.js';
 import { find_mac, make_corpse, mon_to_stone, vamp_stone, monstone, mondead } from './mhitm.js';
@@ -30,10 +30,10 @@ import { mon_explodes, scatter } from './explode.js';
 import {
     newsym, pline, pline_mon, pline_xy, urgent_pline, mon_visible, see_with_infrared,
     You_feel, unmap_object, glyph_is_invisible, tmp_at, nh_delay_output,
-    obj_glyph, flush_topl_more, feel_newsym, canspotmon, map_invisible,
-    set_msg_xy, Hallucination, Norep, impossible,
+    obj_glyph, flush_topl_more, feel_newsym, canspotmon, map_invisible, under_water,
+    set_msg_xy, shieldeff, Hallucination, Norep, impossible,
 } from './display.js';
-import { doname, an, the, The, xname, yname, cxname, makeplural, vtense, ansimpleoname, safe_qbuf, gloves_simple_name, aobjnam, Yobjnam2 } from './objnam.js';
+import { doname, an, the, The, xname, yname, cxname, makeplural, vtense, otense, simpleonames, ansimpleoname, safe_qbuf, gloves_simple_name, aobjnam, Yname2, Yobjnam2 } from './objnam.js';
 import {
     Amonnam, Monnam, mon_nam, x_monnam, y_monnam, noit_Monnam, pmname,
     christen_monst, rndmonnam, hliquid, rndcolor, mon_pmname, YMonnam,
@@ -45,7 +45,7 @@ import {
     G_FREQ, G_UNIQ, verysmall, grounded, passes_walls,
     is_flyer, is_floater, is_clinger,
     mon_knows_traps, mon_learns_traps,
-    amorphous, unsolid, is_whirly, breathless, MZ_SMALL, MZ_HUGE,
+    amorphous, unsolid, is_whirly, breathless, can_teleport, MZ_SMALL, MZ_HUGE,
     likes_gems, mons, webmaker, throws_rocks,
     is_animal, mindless, haseyes,
     bigmonst, is_golem, is_mplayer, is_rider,
@@ -81,12 +81,12 @@ import {
     UTOTYPE_NONE, UTOTYPE_FALLING, Is_stronghold,
     KILLED_BY, KILLED_BY_AN, NO_KILLER_PREFIX, NO_PART, STONING,
     ARTICLE_NONE, ARTICLE_THE, SUPPRESS_SADDLE, has_mgivenname,
-    DISMOUNT_POLY, DISMOUNT_FELL,
+    DISMOUNT_POLY, DISMOUNT_FELL, DISMOUNT_GENERIC,
     WATER, BURNING, DROWNING, DISSOLVED, PLNMSG_BACK_ON_GROUND,
     TT_NONE, TT_BEARTRAP, TT_PIT, TT_WEB, TT_LAVA, TT_INFLOOR, TT_BURIEDBALL,
     LEFT_SIDE, RIGHT_SIDE, BOTH_SIDES, FOOT, LEG, SPINE,
     HEAD, ARM, FINGER, HAND,
-    NOTELL, NC_SHOW_MSG,
+    NOTELL, NC_SHOW_MSG, POLY_NOFLAGS,
     W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU, W_WEP, W_SWAPWEP,
     W_SADDLE, I_SPECIAL,
     CORPSTAT_NONE, CORPSTAT_HISTORIC, CORPSTAT_GENDER, CORPSTAT_MALE,
@@ -99,11 +99,11 @@ import {
     MAY_DESTROY, MAY_HIT, MAY_FRACTURE, VIS_EFFECTS,
     IS_OBSTRUCTED, IS_STWALL, IS_TREE, IRONBARS,
     HVY_ENCUMBER, EXT_ENCUMBER, UNENCUMBERED, SLT_ENCUMBER, WT_TOOMUCH_DIAGONAL,
-    TELEDS_ALLOW_DRAG,
+    TELEDS_ALLOW_DRAG, TELEDS_TELEPORT, TELEPORT, TELEPORT_CONTROL,
     ECMD_OK, ECMD_TIME, MON_DETACH,
     Is_container, Waterproof_container, Is_box,
     xytodir, DIR_180, DIR_ERR,
-    OBJ_FLOOR, OBJ_FREE, SHOPBASE, ESHK, M_SEEN_ELEC,
+    OBJ_FLOOR, OBJ_FREE, SHOPBASE, ESHK, M_SEEN_ELEC, CONTAINED_TOO, BURIED_TOO,
     P_RIDING, P_BASIC, M_AP_FURNITURE, M_AP_OBJECT,
     A_LAWFUL, XKILL_NOMSG, SHOP_HOLE_COST,
 } from './const.js';
@@ -112,7 +112,7 @@ import {
     maybe_half_phys, nomul, unmul, losehp, finish_maybe_wail, stop_occupation,
     in_rooms, set_uinwater,
 } from './hack.js';
-import { goodpos, mlevel_tele_trap, mtele_trap, tele_trap, level_tele_trap, domagicportal, rloco, random_teleport_level, teleds } from './teleport.js';
+import { goodpos, mlevel_tele_trap, mtele_trap, tele_trap, level_tele_trap, domagicportal, rloco, random_teleport_level, teleds, safe_teleds, noteleport_level, dotele } from './teleport.js';
 import { get_level, on_level, at_dgn_entrance } from './dungeon.js';
 import {
     objectNames, POTION_CLASS, SCROLL_CLASS, SPBOOK_CLASS, ARMOR_CLASS,
@@ -121,7 +121,7 @@ import {
 import { monsterNames, PM_ROGUE } from './generated/monsters_data.js';
 import { thitu, ohitmon, hits_bars } from './mthrowu.js';
 import { dmgval, MON_WEP, mwepgone, wet_a_towel, dry_a_towel, is_wet_towel, P_SKILL } from './weapon.js';
-import { observe_object, encumber_msg, near_capacity, makeknown, update_inventory, currency, calc_capacity, inv_weight, weight_cap } from './invent.js';
+import { observe_object, encumber_msg, near_capacity, makeknown, update_inventory, currency, calc_capacity, inv_weight, weight_cap, prinv } from './invent.js';
 import { makemon, rndmonnum_adj, mpickobj, set_malign, newcham } from './makemon.js';
 import {
     A_CHA, A_STR, A_DEX, A_CON, A_WIS, adjattrib, exercise, adjalign,
@@ -137,12 +137,12 @@ import { get_obj_location } from './timeout.js';
 import { costly_spot, shop_keeper, stolen_value, make_angry_shk, add_damage, sellobj } from './shk.js';
 import { unpunish, seffects } from './read.js';
 import { create_gas_cloud } from './region.js';
-import { polymon, body_part, mbodypart, float_vs_flight } from './polyself.js';
+import { polymon, body_part, mbodypart, float_vs_flight, Unchanging, polyself } from './polyself.js';
 import { done } from './end.js';
-import { make_blinded, dropx } from './do.js';
+import { make_blinded, dropx, setnotworn } from './do.js';
 import { mon_adjust_speed } from './muse.js';
-import { m_dowear } from './worn.js';
-import { m_unleash } from './apply.js';
+import { m_dowear, extract_from_minvent, update_mon_extrinsics } from './worn.js';
+import { m_unleash, number_leashed, unleash_all } from './apply.js';
 import { hard_helmet, helm_simple_name, cloak_simple_name, suit_simple_name } from './do_wear.js';
 import { unplacebc, placebc, ballfall } from './ball.js';
 import { carried, is_fainted, reset_faint } from './eat.js';
@@ -151,11 +151,12 @@ import { ynq } from './getline.js';
 import { more_experienced, newexplevel } from './exper.js';
 import { killed, stumble_onto_mimic } from './uhitm.js';
 import { rider_cant_reach, dismount_steed } from './steed.js';
-import { resist } from './zap.js';
+import { resist, blank_novel, poly_obj } from './zap.js';
 import { fill_pit, bury_an_obj } from './dig.js';
 import { u_wield_art, attacks, bare_artifactname, has_magic_key } from './artifact.js';
 import { ART_STING } from './generated/artifacts_data.js';
-import { maybe_unhide_at } from './monmove.js';
+import { maybe_unhide_at, locomotion } from './monmove.js';
+import { is_waterwall, hero_Swimming, hero_Amphibious, hero_Breathless } from './dbridge.js';
 // C obj.h stone_missile lives in dothrow.js (canonical); same-file passes_rocks below (D-2195).
 import { stone_missile } from './dothrow.js';
 
@@ -198,6 +199,9 @@ const PM_ARCHEOLOGIST = monsterNames.indexOf('PM_ARCHEOLOGIST');
 const PM_RANGER = monsterNames.indexOf('PM_RANGER');
 const PM_PIT_VIPER = monsterNames.indexOf('PM_PIT_VIPER');
 const PM_PIT_FIEND = monsterNames.indexOf('PM_PIT_FIEND');
+const SADDLE = objectNames.indexOf('SADDLE');
+const KICKING_BOOTS = objectNames.indexOf('KICKING_BOOTS');
+const IRON_SHOES = objectNames.indexOf('IRON_SHOES');
 const something = 'something';
 
 /** C ref: hacklib.c upstart — capitalize first letter. */
@@ -632,6 +636,13 @@ function dng_bottom(lev) {
         if (!game.u?.uevent?.invoked) bottom -= 1;
     }
     return bottom;
+}
+
+// C ref: trap.c clamp_hole_destination — min(dlevel, dng_bottom)
+export function clamp_hole_destination(dlev) {
+    const bottom = dng_bottom(dlev);
+    if ((dlev.dlevel | 0) > bottom) dlev.dlevel = bottom;
+    return dlev;
 }
 
 // C ref: trap.c hole_destination
@@ -1768,6 +1779,17 @@ function u_locomotion_pit(defWord) {
     return defWord;
 }
 
+/**
+ * C ref: hack.c u_locomotion `:1817–1829` — Levitation → float, Flying →
+ * fly, else monster locomotion() on the hero form ("step" arrives lowercase,
+ * so the capitalize arm never fires). Used by the poly-trap message.
+ */
+function u_locomotion_verb(def) {
+    if (hero_Levitation()) return 'float';
+    if (hero_Flying()) return 'fly';
+    return locomotion(game.youmonst?.data, def);
+}
+
 /** C hack.c losehp then maybe_wail / done(DIED). */
 async function finish_hero_losehp() {
     await finish_maybe_wail();
@@ -1783,8 +1805,11 @@ async function finish_hero_losehp() {
  * C ref: trap.c steedintrap `:3101–3168`
  * Returns 0 when no steed (hero takes the hit); 1 if the steed was hit;
  * Trap_Killed_Mon if the steed died. MAGIC_TRAP (and other default ttyp)
- * only writes mx/my. Dart/arrow/slp-gas/landmine/poly callers of this
- * helper remain named omitted at those trapeffect sites.
+ * only writes mx/my. Wired at every C call site: dart/arrow `!rn2(2)`
+ * (`:1211/:1276`), pit (`:1921`), magic (`:2313`), poly (`:2491`),
+ * landmine under the recursive_mine guard (`:2578`). The slp-gas hero
+ * arm (incl. its steedintrap call `:1578`) stays deferred with the
+ * Sleep_resistance/fall_asleep body.
  */
 async function steedintrap(trap, otmp) {
     const u = game.u || {};
@@ -2138,10 +2163,12 @@ async function trapeffect_dart_trap(mtmp, trap) {
         let otmp = t_missile(DART, trap);
         if (!rn2(6)) otmp.opoisoned = 1;
         const dam = dmgval(otmp, game.youmonst || mtmp);
-        // steedintrap arm deferred (usteed rare at L1 commons)
         const box = { obj: otmp };
-        // thitu plines are sync-append-safe after the shoot message
-        if (await thitu(7, maybe_half_phys(dam), box, 'little dart')) {
+        // C: `u.usteed && !rn2(2) && steedintrap(trap, otmp)` — steed takes it
+        if (u.usteed && !rn2(2) && await steedintrap(trap, otmp)) {
+            /* nothing — otmp consumed by thitm inside steedintrap */
+        } else if (await thitu(7, maybe_half_phys(dam), box, 'little dart')) {
+            // thitu plines are sync-append-safe after the shoot message
             otmp = box.obj;
             if (otmp) {
                 // poisoned() body deferred — still consume dart (obfree)
@@ -2149,13 +2176,15 @@ async function trapeffect_dart_trap(mtmp, trap) {
                 // obfree: no obj_resists (delobj would burn rn2)
             }
             return Trap_Effect_Finished;
-        }
-        otmp = box.obj;
-        if (otmp) {
-            place_object(otmp, u.ux, u.uy);
-            if (!u.Blind) observe_object(otmp);
-            stackobj(otmp);
-            newsym(u.ux, u.uy);
+        } else {
+            otmp = box.obj;
+            if (otmp) {
+                place_object(otmp, u.ux, u.uy);
+                if (!u.Blind) observe_object(otmp);
+                stackobj(otmp);
+                newsym(u.ux, u.uy);
+            }
+            return Trap_Effect_Finished;
         }
         return Trap_Effect_Finished;
     }
@@ -2180,8 +2209,9 @@ async function trapeffect_dart_trap(mtmp, trap) {
 // C ref: trap.c trapeffect_arrow_trap `:1189-1248` — hero + monster
 // branches. Shape mirrors trapeffect_dart_trap above: the monster arm is
 // t_missile(ARROW) (mksobj o_id + full WEAPON init, quan forced to 1) with
-// NO poison roll, then thitm(8, …); the hero arm plines and thitu(8, …).
-// Omissions mirror the dart port: Soundeffect, steedintrap, the gone-arm
+// NO poison roll, then thitm(8, …); the hero arm plines, gates
+// `u.usteed && !rn2(2) && steedintrap(trap, otmp)`, then thitu(8, …).
+// Omissions mirror the dart port: Soundeffect, the gone-arm
 // pline_mon, in_sight gating on seetrap, obfree obj_resists (all draw-free
 // except the gone-arm rn2(15), which is kept). C trace for
 // scen-poly-Priest-92021 drew o_id + mksobj_init `:877/:878/:881` +
@@ -2201,20 +2231,25 @@ async function trapeffect_arrow_trap(mtmp, trap) {
         let otmp = t_missile(ARROW, trap);
         const dam = dmgval(otmp, game.youmonst || mtmp);
         const box = { obj: otmp };
-        // thitu plines are sync-append-safe after the shoot message
-        if (await thitu(8, maybe_half_phys(dam), box, 'arrow')) {
+        // C: `u.usteed && !rn2(2) && steedintrap(trap, otmp)` — steed takes it
+        if (u.usteed && !rn2(2) && await steedintrap(trap, otmp)) {
+            /* nothing — otmp consumed by thitm inside steedintrap */
+        } else if (await thitu(8, maybe_half_phys(dam), box, 'arrow')) {
+            // thitu plines are sync-append-safe after the shoot message
             otmp = box.obj;
             if (otmp) {
                 // obfree: no obj_resists (delobj would burn rn2)
             }
             return Trap_Effect_Finished;
-        }
-        otmp = box.obj;
-        if (otmp) {
-            place_object(otmp, u.ux, u.uy);
-            if (!u.Blind) observe_object(otmp);
-            stackobj(otmp);
-            newsym(u.ux, u.uy);
+        } else {
+            otmp = box.obj;
+            if (otmp) {
+                place_object(otmp, u.ux, u.uy);
+                if (!u.Blind) observe_object(otmp);
+                stackobj(otmp);
+                newsym(u.ux, u.uy);
+            }
+            return Trap_Effect_Finished;
         }
         return Trap_Effect_Finished;
     }
@@ -2239,15 +2274,6 @@ export function feeltrap(trap) {
     if (!trap) return;
     trap.tseen = true;
     newsym(trap.tx, trap.ty);
-}
-
-/** C ref: mkobj.c sobj_at — first floor object of otyp at (x,y). */
-function sobj_at(otyp, x, y) {
-    // objects_at returns nexthere chain head, not an array
-    for (let o = objects_at(x, y); o; o = o.nexthere) {
-        if ((o.otyp | 0) === (otyp | 0)) return o;
-    }
-    return null;
 }
 
 /**
@@ -4725,16 +4751,21 @@ async function trapeffect_web(mtmp, trap, trflags) {
 
 /**
  * C ref: trap.c blow_up_landmine — shared hero/mon landmine detonation.
- * Named omissions: scatter(MAY_DESTROY|MAY_HIT|MAY_FRACTURE|VIS_EFFECTS);
- * drawbridge destroy; fillholetyp/liquid_flow; fill_pit; maybe_dunk_boulders;
- * spot_checks.
+ * C order: scatter(4, MAY_DESTROY|MAY_HIT|MAY_FRACTURE|VIS_EFFECTS) first,
+ * then del_engr_at/wake_nearto/door/drawbridge/pit/fill.
+ * Named omissions: drawbridge destroy; fillholetyp/liquid_flow;
+ * fill_pit; maybe_dunk_boulders; spot_checks.
  */
-function blow_up_landmine(trap) {
+async function blow_up_landmine(trap) {
     if (!trap) return;
     const x = trap.tx | 0;
     const y = trap.ty | 0;
     const lev = game.level?.locations?.[x]?.[y];
-    // scatter deferred — object blast RNG named omission
+    await scatter(
+        x, y, 4,
+        MAY_DESTROY | MAY_HIT | MAY_FRACTURE | VIS_EFFECTS,
+        null,
+    );
     del_engr_at(x, y);
     wake_nearto(x, y, 400);
     if (lev && IS_DOOR(lev.typ)) lev.doormask = D_BROKEN;
@@ -4755,11 +4786,90 @@ function blow_up_landmine(trap) {
 }
 
 /**
+ * C ref: trap.c trapeffect_poly_trap `:2453–2525` — hero + monster.
+ * Hero: steed-article verb ("trigger" / "lead <steed> onto" / "<locomotion>
+ * onto"), iron-shoes poly_obj arm, Antimagic/Unchanging shieldeff arm, else
+ * steedintrap + deltrap + polyself. Monster: iron-shoes forcible-unwear +
+ * poly_obj re-equip arm, resists_magm arm, else newcham.
+ * Named omissions: monster resists_magm `shieldeff_mon` flash (display-only,
+ * no live exporter).
+ */
+async function trapeffect_poly_trap(mtmp, trap, trflags) {
+    if (is_youmonst(mtmp)) {
+        const u = game.u || {};
+        const viasitting = (trflags & VIASITTING) !== 0;
+        let steed_article = ARTICLE_THE;
+
+        /* suppress article in various steed messages when using its
+           name (which won't occur when hallucinating) */
+        if (u.usteed && has_mgivenname(u.usteed) && !Hallucination()) {
+            steed_article = ARTICLE_NONE;
+        }
+
+        seetrap(trap);
+        let verbbuf;
+        if (viasitting) {
+            verbbuf = 'trigger'; /* follows "You sit down." */
+        } else if (u.usteed) {
+            verbbuf = `lead ${x_monnam(u.usteed, steed_article, null, SUPPRESS_SADDLE, false)} onto`;
+        } else {
+            verbbuf = `${u_locomotion_verb('step')} onto`;
+        }
+        await pline(`You ${verbbuf} a polymorph trap!`);
+        if (wearing_iron_shoes(mtmp)) {
+            deltrap(trap);
+            await pline(`${Yname2(u.uarmf)} warps strangely.`);
+            await poly_obj(u.uarmf, (u.uarmf?.otyp | 0) === IRON_SHOES ? KICKING_BOOTS : IRON_SHOES);
+            update_inventory();
+            if (u.uarmf) await prinv(null, u.uarmf, 0);
+        } else if (Antimagic_prop() || Unchanging()) {
+            await shieldeff(u.ux, u.uy);
+            await You_feel('momentarily different.');
+            /* Trap did nothing; don't remove it --KAA */
+        } else {
+            void (await steedintrap(trap, null));
+            deltrap(trap); /* delete trap before polymorph */
+            newsym(u.ux, u.uy); /* get rid of trap symbol */
+            await You_feel('a change coming over you.');
+            await polyself(POLY_NOFLAGS);
+        }
+        return Trap_Effect_Finished;
+    }
+    const in_sight = canseemon(mtmp) || (mtmp === game.u?.usteed);
+    if (wearing_iron_shoes(mtmp)) {
+        /* remove and readd the shoes to forcibly unwear them */
+        let shoes = which_armor(mtmp, W_ARMF);
+        extract_from_minvent(mtmp, shoes, true, true);
+        if (mpickobj(mtmp, shoes)) {
+            await impossible('re-equipping iron shoes destroyed them?');
+            return Trap_Effect_Finished;
+        }
+        shoes = await poly_obj(shoes, (shoes?.otyp | 0) === IRON_SHOES ? KICKING_BOOTS : IRON_SHOES);
+        /* now equip them again */
+        if (shoes) {
+            mtmp.misc_worn_check = (mtmp.misc_worn_check | 0) | W_ARMF;
+            shoes.owornmask = W_ARMF;
+            update_mon_extrinsics(mtmp, shoes, true, true);
+        }
+    } else if (resists_magm(mtmp)) {
+        /* Named omission: shieldeff_mon(mtmp) — display-only flash, no live exporter */
+    } else if (!(await resist(mtmp, WAND_CLASS, 0, NOTELL))) {
+        void (await newcham(mtmp, null, NC_SHOW_MSG));
+        if (in_sight) seetrap(trap);
+    }
+    return Trap_Effect_Finished;
+}
+
+/* C trap.c trapeffect_landmine — function-static recursion guard so the
+   steed's blast cannot re-trigger the hero's landmine before deltrap. */
+let recursive_mine = false;
+
+/**
  * C ref: trap.c trapeffect_landmine — hero + monster.
  * Monster: rnd(16) damage, iron-shoes quarter, weight gate rn2(cwt+1)
  * vs WT_ELF/2, m_in_air rn2(3), blow_up, thitm, recursive mintrap.
  * Hero: Lev/Fly discovery arms + wounded legs + losehp + recursive dotrap.
- * Named omissions: which_armor iron shoes; steedintrap / keep_saddle;
+ * Named omissions: which_armor iron shoes; keep_saddle_with_steedcorpse;
  * scatter via blow_up; fill_pit; unconscious awaken polish.
  */
 async function trapeffect_landmine(mtmp, trap, trflags) {
@@ -4795,12 +4905,25 @@ async function trapeffect_landmine(mtmp, trap, trflags) {
                     : 'it'} off!`,
             );
         } else {
-            // recursive_mine / steedintrap deferred
+            /* prevent landmine from killing steed, throwing you to
+             * the ground, and then that same landmine affecting you
+             * again because it hasn't been deleted yet
+             */
+            if (recursive_mine) return Trap_Effect_Finished;
             feeltrap(trap);
             await pline(
                 `KAABLAMM!!!  You triggered ${a_your[trap.madeby_u ? 1 : 0]}`
                 + ` land mine!`,
             );
+            const steed_mid = u.usteed ? (u.usteed.m_id | 0) : 0;
+            recursive_mine = true;
+            void (await steedintrap(trap, null));
+            recursive_mine = false;
+            const saddle = sobj_at(SADDLE, u.ux, u.uy);
+            /* Named omission: keep_saddle_with_steedcorpse(steed_mid, fobj,
+               saddle) (C `:2591–2592`) — no live importer; floor saddle stays. */
+            void steed_mid;
+            void saddle;
             await set_wounded_legs(LEFT_SIDE, rn1(35, 41));
             await set_wounded_legs(RIGHT_SIDE, rn1(35, 41));
             exercise(A_DEX, false);
@@ -4808,7 +4931,7 @@ async function trapeffect_landmine(mtmp, trap, trflags) {
         trap.ttyp = PIT;
         trap.madeby_u = false;
         await losehp(maybe_half_phys(damage), 'land mine', KILLED_BY_AN);
-        blow_up_landmine(trap);
+        await blow_up_landmine(trap);
         newsym(u.ux, u.uy);
         const pit = t_at(u.ux, u.uy);
         if (pit) await dotrap(pit, RECURSIVETRAP);
@@ -4852,7 +4975,7 @@ async function trapeffect_landmine(mtmp, trap, trflags) {
         await pline('Kaablamm!  You hear an explosion in the distance!');
     }
     // C captures tx/ty before blow_up for fill_pit (deferred)
-    blow_up_landmine(trap);
+    await blow_up_landmine(trap);
     /* explosion might have destroyed a drawbridge; don't dish out more
        damage if monster is already dead */
     if ((mtmp.mhp | 0) <= 0
@@ -4870,7 +4993,7 @@ async function trapeffect_landmine(mtmp, trap, trflags) {
         : (mtmp.mtrapped ? Trap_Caught_Mon : Trap_Effect_Finished);
 }
 
-// C ref: trap.c trapeffect_selector — dart/arrow/rock/pit/sqky/hole/magic/fire/slp/telep/bear/rust/web/landmine
+// C ref: trap.c trapeffect_selector — dart/arrow/rock/pit/sqky/hole/magic/fire/slp/telep/bear/rust/web/landmine/poly
 async function trapeffect_selector(mtmp, trap, trflags) {
     switch (trap.ttyp) {
     case DART_TRAP:
@@ -4901,6 +5024,8 @@ async function trapeffect_selector(mtmp, trap, trflags) {
         return trapeffect_fire_trap(mtmp, trap, trflags);
     case MAGIC_TRAP:
         return trapeffect_magic_trap(mtmp, trap, trflags);
+    case POLY_TRAP:
+        return trapeffect_poly_trap(mtmp, trap, trflags);
     case SLP_GAS_TRAP:
         return trapeffect_slp_gas_trap(mtmp, trap, trflags);
     case TELEP_TRAP:
@@ -5051,18 +5176,64 @@ const SPE_BOOK_OF_THE_DEAD = objectNames.indexOf('SPE_BOOK_OF_THE_DEAD');
 const SPE_NOVEL = objectNames.indexOf('SPE_NOVEL');
 const CAN_OF_GREASE = objectNames.indexOf('CAN_OF_GREASE');
 const TOWEL = objectNames.indexOf('TOWEL');
+// C MAIL_STRUCTURES is on (global.h:430): mail resists water-fade.
+const SCR_MAIL = objectNames.indexOf('SCR_MAIL');
 
 /**
- * C ref: trap.c water_damage
+ * C ref: trap.c pot_acid_damage `:4657–4710` (staticfn) — water hits a
+ * potion of acid: it explodes (setnotworn + delobj). First message is
+ * "A/Some <name> explode(s)" (`simpleonames` + `vtense`, dknown picks
+ * the word via the chain acid context: second and subsequent same-chain
+ * explosions with matching dknown say "Another/More"); after a grease
+ * wash-off the potion is already described, so just "The potion(s)
+ * explode(s)!". `Blind` off-invent unidentifies first.
+ * @returns {Promise<void>}
+ */
+async function pot_acid_damage(obj, in_invent, described) {
+    const one = ((obj.quan ?? 1) | 0) === 1;
+    let exploded = false;
+
+    if (Blind() && !in_invent)
+        obj.dknown = 0;
+    const actx = game.acid_ctx;
+    if (actx && actx.ctx_valid)
+        exploded = ((obj.dknown ? actx.dkn_boom : actx.unk_boom) > 0);
+    if (described) {
+        /* just gave "The grease washes off ..."; don't re-describe here */
+        await pline(
+            `The potion${((obj.quan ?? 1) | 0) !== 1 ? 's' : ''} ${otense(obj, 'explode')}!`,
+        );
+    } else {
+        const bufp = simpleonames(obj);
+        await pline(
+            `${!exploded ? (one ? 'A ' : 'Some ') : (one ? 'Another ' : 'More ')}${bufp} ${vtense(bufp, 'explode')}!`,
+        );
+    }
+    if (actx && actx.ctx_valid) {
+        if (obj.dknown) actx.dkn_boom = (actx.dkn_boom | 0) + 1;
+        else actx.unk_boom = (actx.unk_boom | 0) + 1;
+    }
+    setnotworn(obj);
+    delobj(obj);
+    if (in_invent)
+        update_inventory();
+}
+
+/**
+ * C ref: trap.c water_damage `:4712–4851`
  * Branch envelope: null → ER_NOTHING; splash_lit (D-1337); CAN_OF_GREASE;
- * TOWEL wet; greased wash rn2(2); Is_container / Waterproof_container
- * before luck rn2(20); potion dilute / scroll fade / spellbook fade;
- * else `erode_obj(..., ERODE_RUST, EF_NONE)` (D-0683 / D-0928 #1101).
- * Named omit: pot_acid_damage boom; SPE_NOVEL blank_novel.
+ * TOWEL wet; greased wash rn2(2) + `pot_acid_damage` when the wash
+ * exposes acid; Is_container / Waterproof_container before luck rn2(20);
+ * scroll fade (SCR_MAIL immune, MAIL_STRUCTURES) / spellbook fade
+ * (Book of the Dead steams, `blank_novel` on SPE_NOVEL) / potion dilute
+ * (`pot_acid_damage` on POT_ACID); else `erode_obj(..., ERODE_RUST,
+ * EF_NONE)` (D-0683 / D-0928 #1101). `Your` fades/dilutes and every
+ * mutation carry `update_inventory` (C `:4793/:4807/:4828/:4838/:4845`).
  */
 export async function water_damage(obj, ostr, force) {
     if (!obj) return ER_NOTHING;
     const in_invent = carried_obj(obj);
+    let described = false;
 
     // C: splash_lit before ostr / luck — extinguish skips further damage RNG
     if (await splash_lit(obj)) return ER_DAMAGED;
@@ -5081,10 +5252,12 @@ export async function water_damage(obj, ostr, force) {
             obj.greased = 0;
             if (in_invent) {
                 await pline(`The grease on ${yname(obj)} washes off.`);
+                described = true; /* used to modify potion feedback */
                 update_inventory();
             }
+            /* ungreased potions of acid will always be destroyed by water */
             if (obj.otyp === POT_ACID) {
-                // pot_acid_damage deferred
+                await pot_acid_damage(obj, in_invent, described);
                 return ER_DESTROYED;
             }
         }
@@ -5113,37 +5286,69 @@ export async function water_damage(obj, ostr, force) {
     }
 
     if (obj.oclass === SCROLL_CLASS) {
-        if (obj.otyp === SCR_BLANK_PAPER) return ER_NOTHING;
+        if (obj.otyp === SCR_BLANK_PAPER || obj.otyp === SCR_MAIL)
+            return ER_NOTHING;
+        if (in_invent)
+            await pline(`Your ${ostr} ${vtense(ostr, 'fade')}.`);
         obj.otyp = SCR_BLANK_PAPER;
         obj.dknown = 0;
         obj.spe = 0;
+        if (in_invent)
+            update_inventory();
         return ER_DAMAGED;
     }
     if (obj.oclass === SPBOOK_CLASS) {
-        if (obj.otyp === SPE_BOOK_OF_THE_DEAD) return ER_NOTHING;
-        if (obj.otyp === SPE_BLANK_PAPER) return ER_NOTHING;
-        const otyp = obj.otyp;
+        const otyp = obj.otyp | 0;
+        if (otyp === SPE_BOOK_OF_THE_DEAD) {
+            let ox = 0, oy = 0;
+
+            /* note: The Book of the Dead can't be contained or buried */
+            const bloc = get_obj_location(obj, CONTAINED_TOO | BURIED_TOO);
+            if (bloc) {
+                ox = bloc.x | 0; oy = bloc.y | 0;
+                obj.ox = ox; obj.oy = oy;
+            }
+            if (isok(ox, oy) && cansee(ox, oy))
+                await pline(`Steam rises from ${the(xname(obj))}.`);
+            return ER_NOTHING;
+        } else if (otyp === SPE_BLANK_PAPER) {
+            return ER_NOTHING;
+        }
+        if (in_invent)
+            await pline(`Your ${ostr} ${vtense(ostr, 'fade')}.`);
         obj.otyp = SPE_BLANK_PAPER;
-        if (obj.spestudied) obj.spestudied = rn2(obj.spestudied);
+        /* same re-init as over-reading or polymorph; matters if it gets
+           polymorphed into non-blank */
+        if (obj.spestudied)
+            obj.spestudied = rn2(obj.spestudied);
         obj.dknown = 0;
-        void otyp; // SPE_NOVEL blank_novel deferred
-        void SPE_NOVEL;
+        /* blanking a novel is more involved than blanking a spellbook */
+        if (otyp === SPE_NOVEL) /* old type */
+            blank_novel(obj);
+        if (in_invent)
+            update_inventory();
         return ER_DAMAGED;
     }
     if (obj.oclass === POTION_CLASS) {
         if (obj.otyp === POT_ACID) {
-            // pot_acid_damage deferred
+            await pot_acid_damage(obj, in_invent, described);
             return ER_DESTROYED;
-        }
-        if (obj.odiluted) {
+        } else if (obj.odiluted) {
+            if (in_invent)
+                await pline(`Your ${ostr} ${vtense(ostr, 'dilute')} further.`);
             obj.otyp = POT_WATER;
             obj.dknown = 0;
             obj.blessed = obj.cursed = false;
             obj.odiluted = 0;
+            if (in_invent)
+                update_inventory();
             return ER_DAMAGED;
-        }
-        if (obj.otyp !== POT_WATER) {
+        } else if (obj.otyp !== POT_WATER) {
+            if (in_invent)
+                await pline(`Your ${ostr} ${vtense(ostr, 'dilute')}.`);
             obj.odiluted = (obj.odiluted | 0) + 1;
+            if (in_invent)
+                update_inventory();
             return ER_DAMAGED;
         }
         return ER_NOTHING;
@@ -5178,20 +5383,47 @@ export async function fire_damage_chain(chain, force, here, x, y) {
 }
 
 /**
- * C ref: trap.c water_damage_chain — walk invent / floor chain.
- * acid_ctx / bhitpos save deferred.
+ * C ref: trap.c water_damage_chain `:4854–4890` — walk invent / floor
+ * chain, snapshotting next before `water_damage` may delobj. Initializes
+ * the acid context so second and subsequent same-chain acid explosions
+ * with matching dknown say "Another/More"; saves and restores bhitpos
+ * (it can be live up the call stack, e.g. a thrown item hurtling the
+ * levitating hero into water) around the erode_obj visibility checks.
  */
 export async function water_damage_chain(objOrList, here) {
     if (!objOrList) return;
+    /* so far, neither seen (dknown) nor unseen acid has exploded here */
+    game.acid_ctx = { dkn_boom: 0, unk_boom: 0, ctx_valid: true };
+    /* don't permanently overwrite bhitpos below */
+    const save_bhitpos = {
+        x: game.bhitpos?.x | 0,
+        y: game.bhitpos?.y | 0,
+    };
+    const head = Array.isArray(objOrList) ? objOrList[0] : objOrList;
+    if (head) {
+        const bloc = get_obj_location(head, CONTAINED_TOO);
+        if (!game.bhitpos) game.bhitpos = {};
+        if (bloc) {
+            game.bhitpos.x = bloc.x | 0;
+            game.bhitpos.y = bloc.y | 0;
+        }
+    }
     if (Array.isArray(objOrList)) {
         for (const obj of [...objOrList]) {
             await water_damage(obj, null, false);
         }
-        return;
+    } else {
+        for (let obj = objOrList; obj;) {
+            const otmp = here ? obj.nexthere : obj.nobj;
+            await water_damage(obj, null, false);
+            obj = otmp;
+        }
     }
-    for (let obj = objOrList; obj; obj = here ? obj.nexthere : obj.nobj) {
-        await water_damage(obj, null, false);
-    }
+    /* reset acid context and bhitpos */
+    game.acid_ctx = { dkn_boom: 0, unk_boom: 0, ctx_valid: false };
+    if (!game.bhitpos) game.bhitpos = {};
+    game.bhitpos.x = save_bhitpos.x;
+    game.bhitpos.y = save_bhitpos.y;
 }
 
 /**
@@ -5274,51 +5506,152 @@ export function rnd_nextto_goodpos(pos, mtmp) {
 }
 
 /**
- * C ref: trap.c drown `:5058–5199` — fall/plunge into pool/waterwall;
- * crawl out via rnd_nextto_goodpos + emergency_disrobe + teleds.
- * Branch envelope: first-entry fall/plunge + sink; water_damage_chain;
- * usleep unmul / reset_faint; mmove + rnd_nextto_goodpos; waterlevel
- * skip disrobe else emergency_disrobe; crawl/Pheew/teleds(ALLOW_DRAG)
- * or But-in-vain. Fail-crawl set_uinwater(1) is D-1267.
- * Named omissions: Amphibious/Breathless/Swimming wade set_uinwater;
- * post-rescue set_uinwater(0); gremlin/iron golem; leash;
- * Teleportation escape; steed dismount; drowning done() loop;
- * Hallucination Titanic; feel_newsym waterwall.
- * @returns {Promise<boolean>} true if hero relocated
+ * C ref: trap.c drown `:5059–5199` — fall/plunge into pool/waterwall;
+ * wade / Amphibious / teleport / steed / crawl-out / drowning loop.
+ * Branch envelope in C order: feel_newsym waterwall map; uinwater wade
+ * (prev-cell is_pool + Swim/Amphib/Breathless, rn2(5) inpool_ok else
+ * early FALSE); first-entry fall/plunge + Titanic/rock sink;
+ * water_damage_chain; gremlin rn2(3) split_mon / iron-golem
+ * Maybe_Half_Phys(d(2,6)) rust; inpool_ok early FALSE; leash slip;
+ * Amphibious/Breathless/Swimming (verbose aren't-drowning, waterlevel
+ * bottom/keel, Punished unplacebc/placebc, vision_recalc, set_uinwater,
+ * under_water) early FALSE; Teleportation/can_teleport + !Unaware +
+ * (Teleport_control || rn2(3) < Luck+2) dotele escape; usteed
+ * dismount_steed(GENERIC); usleep unmul / reset_faint; mmove +
+ * rnd_nextto_goodpos + waterlevel/emergency_disrobe crawl + Pheew/teleds
+ * or But-in-vain; set_uinwater(1) + urgent You-drown + 2x done(DROWNING)
+ * / safe_teleds loop (deep-water/limitless format arms) + set_uinwater(0)
+ * + rescued_from_terrain TRUE. Fail-crawl set_uinwater(1) is D-1267.
+ * C macros: is_solid ≡ is_waterwall (dbridge.c:37); Swimming ≡
+ * H||E||steed is_swimmer, Amphibious/Breathless ≡ H||E Magical_breathing
+ * || form (youprop.h:264–279) via dbridge hero_*; Punished ≡ uball != 0
+ * (:77); Unaware ≡ multi<0 && (unconscious||is_fainted) (:399) via eat.js
+ * (local trap.js Unaware is usleep-only); Luck ≡ uluck+moreluck (you.h);
+ * Teleportation/Teleport_control ≡ H||E (+uprops slot mirror).
+ * You/Your/pline_The render as plain pline (no second You clone).
+ * @returns {Promise<boolean>} true if hero relocated (or drowned); false if wading/swimming on
  */
 export async function drown() {
     const u = game.u;
     if (!u) return false;
-    const isSolid = isok(u.ux, u.uy)
-        && game.level?.at(u.ux, u.uy)?.typ === WATER;
+    /* C trap.c:5065 — boolean is_solid = is_waterwall(u.ux, u.uy) */
+    const isSolid = is_waterwall(u.ux | 0, u.uy | 0);
+    let inpool_ok = false;
 
-    if (!u.uinwater) {
-        const body = waterbody_name(u.ux, u.uy);
-        await pline(`You ${isSolid ? 'plunge' : 'fall'} into the ${body}!`);
-        if (!isSolid) {
-            await pline('You sink like a rock.');
-        }
+    feel_newsym(u.ux | 0, u.uy | 0); /* in case Blind, map the water here */
+    /* happily wading in the same contiguous pool */
+    if ((u.uinwater | 0)
+        && is_pool((u.ux | 0) - (u.dx | 0), (u.uy | 0) - (u.dy | 0))
+        && (hero_Swimming() || hero_Amphibious() || hero_Breathless())) {
+        /* water effects on objects every now and then */
+        if (!rn2(5))
+            inpool_ok = true;
+        else
+            return false;
+    }
+
+    if (!(u.uinwater | 0)) {
+        const body = waterbody_name(u.ux | 0, u.uy | 0);
+        const punct = (hero_Amphibious() || hero_Swimming() || hero_Breathless()) ? '.' : '!';
+        await pline(`You ${isSolid ? 'plunge' : 'fall'} into the ${body}${punct}`);
+        if (!hero_Swimming() && !isSolid)
+            await pline(Hallucination() ? 'You sink like the Titanic.' : 'You sink like a rock.');
     }
 
     await water_damage_chain(game.invent, false);
 
+    if ((u.umonnum | 0) === PM_GREMLIN && rn2(3)) {
+        const { split_mon } = await import('./sit.js');
+        await split_mon(game.youmonst, null);
+    } else if ((u.umonnum | 0) === PM_IRON_GOLEM) {
+        await pline('You rust!');
+        const i = maybe_half_phys(d(2, 6));
+        if ((u.mhmax | 0) > i)
+            u.mhmax = (u.mhmax | 0) - i;
+        losehp(i, 'rusting away', KILLED_BY);
+        if (game._losehp_needs_done || game.program_state?.gameover) {
+            const { finish_losehp_done } = await import('./end.js');
+            await finish_losehp_done();
+            return true;
+        }
+    }
+    if (inpool_ok)
+        return false;
+
+    const leashed = number_leashed();
+    if (leashed > 0) {
+        await pline(`The leash${leashed > 1 ? 'es' : ''} slip${leashed > 1 ? '' : 's'} loose.`);
+        unleash_all();
+    }
+
+    if (hero_Amphibious() || hero_Breathless() || hero_Swimming()) {
+        if (hero_Amphibious() || hero_Breathless()) {
+            if (game.flags?.verbose !== false)
+                await pline("But you aren't drowning.");
+            if (!Is_waterlevel(u.uz)) {
+                if (Hallucination())
+                    await pline('Your keel hits the bottom.');
+                else
+                    await pline('You touch bottom.');
+            }
+        }
+        if (u.uball) {
+            unplacebc();
+            placebc();
+        }
+        vision_recalc(2); /* unsee old position */
+        await set_uinwater(1); /* u.uinwater = 1 */
+        await under_water(1);
+        game.vision_full_recalc = 1;
+        return false;
+    }
+    {
+        const teleportation = !!((u.HTeleportation | 0) || (u.ETeleportation | 0) || u.Teleportation
+            || (u.uprops?.[TELEPORT]?.intrinsic | 0) || (u.uprops?.[TELEPORT]?.extrinsic | 0));
+        /* local Unaware() is usleep-only; C :399 needs unconscious||faint */
+        const { Unaware: UnawareProp } = await import('./eat.js');
+        const teleportControl = !!((u.HTeleport_control | 0) || (u.ETeleport_control | 0)
+            || u.Teleport_control
+            || (u.uprops?.[TELEPORT_CONTROL]?.intrinsic | 0)
+            || (u.uprops?.[TELEPORT_CONTROL]?.extrinsic | 0));
+        const luck = (u.uluck | 0) + (u.moreluck | 0);
+        if ((teleportation || can_teleport(game.youmonst?.data)) && !UnawareProp()
+            && (teleportControl || rn2(3) < luck + 2)) {
+            await pline('You attempt a teleport spell.'); /* utcsri!carroll */
+            if (!noteleport_level(game.youmonst)) {
+                await dotele(false);
+                if (!is_pool(u.ux | 0, u.uy | 0))
+                    return true;
+            } else {
+                await pline('The attempted teleport spell fails.');
+            }
+        }
+    }
+    if (u.usteed) {
+        await dismount_steed(DISMOUNT_GENERIC);
+        if (!is_pool(u.ux | 0, u.uy | 0))
+            return true;
+    }
     /* if sleeping, wake up now so that we don't crawl out of water
-       while still asleep; unmul() clears u.usleep */
-    if (u.usleep) await unmul('Suddenly you wake up!');
+       while still asleep; we can't do that the same way that waking
+       due to combat is handled; note unmul() clears u.usleep */
+    if (u.usleep)
+        await unmul('Suddenly you wake up!');
     /* being doused will revive from fainting */
-    if (is_fainted()) await reset_faint();
+    if (is_fainted())
+        await reset_faint();
 
     const pos = { x: u.ux, y: u.uy };
     /* have to be able to move in order to crawl */
     if ((game.multi | 0) >= 0 && (game.youmonst?.data?.mmove | 0)
         && rnd_nextto_goodpos(pos, game.youmonst)) {
         const lostRef = { lost: false };
+        /* time to do some strip-tease... */
         const succ = Is_waterlevel(u.uz) ? true : await emergency_disrobe(lostRef);
 
         await pline(`You try to crawl out of the ${hliquid('water')}.`);
-        if (lostRef.lost) {
+        if (lostRef.lost)
             await pline('You dump some of your gear to lose weight...');
-        }
         if (succ) {
             await pline('Pheew!  That was close.');
             await teleds(pos.x, pos.y, TELEDS_ALLOW_DRAG);
@@ -5329,7 +5662,37 @@ export async function drown() {
     }
 
     await set_uinwater(1); /* C trap.c:5170 — u.uinwater = 1 */
-    await pline('You drown.');
+    await urgent_pline('You drown.');
+    /* first pass is survivable by using up an amulet of life-saving or by
+       answering no to "Die?" in explore|wizard mode; second pass can only
+       be survivable via the latter */
+    for (let i = 0; i < 2; i++) {
+        /* killer format and name are reconstructed every iteration
+           because lifesaving resets them */
+        let pool_of_water = waterbody_name(u.ux | 0, u.uy | 0);
+        if (!game.killer) game.killer = { name: '', format: 0 };
+        game.killer.format = KILLED_BY_AN;
+        /* avoid "drowned in [a] water" */
+        if (pool_of_water === 'water') {
+            pool_of_water = 'deep water';
+            game.killer.format = KILLED_BY;
+        /* avoid "drowned in _a_ limitless water" on Plane of Water */
+        } else if (pool_of_water === 'limitless water') {
+            game.killer.format = KILLED_BY;
+        }
+        game.killer.name = pool_of_water;
+        await done(DROWNING);
+        /* oops, we're still alive.  better get out of the water. */
+        if (game.program_state?.gameover) return true;
+        if (await safe_teleds(TELEDS_ALLOW_DRAG | TELEDS_TELEPORT))
+            break; /* successful life-save */
+        /* nowhere safe to land; repeat drowning loop... */
+        await pline("You're still drowning.");
+    }
+
+    if (u.uinwater | 0)
+        await set_uinwater(0); /* u.uinwater = 0 */
+    await rescued_from_terrain(DROWNING);
     return true;
 }
 

@@ -46,7 +46,7 @@ import { maketrap, t_at, set_utrap, reset_utrap, deltrap, selftouch, mselftouch 
 import {
     fillholetyp, liquid_flow,
 } from './dig.js';
-import { obj_extract_self, delobj, objects_at } from './mkobj.js';
+import { obj_extract_self, delobj, sobj_at } from './mkobj.js';
 import { losehp, maybe_half_phys, in_rooms } from './hack.js';
 import { xkilled } from './uhitm.js';
 import { makeknown, consume_obj_charge } from './invent.js';
@@ -492,14 +492,6 @@ function generic_lvl_desc() {
     if (In_sokoban(uz)) return 'puzzle';
     if (In_V_tower(uz)) return 'tower';
     return 'dungeon';
-}
-
-/** C mkobj.c sobj_at — first floor object of otyp at (x,y). */
-function sobj_at(otyp, x, y) {
-    for (let otmp = objects_at(x, y); otmp; otmp = otmp.nexthere) {
-        if ((otmp.otyp | 0) === (otyp | 0)) return otmp;
-    }
-    return null;
 }
 
 /**

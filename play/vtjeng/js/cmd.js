@@ -111,6 +111,7 @@ import {
     UnsupportedApplyError,
 } from './apply.js';
 import { UnsupportedArtifactDisplayError, doinvoke } from './artifacts.js';
+import { ballrelease, placebc, unplacebc } from './ball.js';
 import {
     dosearch,
     reveal_terrain,
@@ -2503,8 +2504,8 @@ export async function makemap_prepost(pre, wiztower = false, state = game) {
             state.context.achieveo.soko_prize_oid = 0;
         }
         if (Punished(state)) {
-            note_unported('ball.c ballrelease');
-            note_unported('ball.c unplacebc');
+            await ballrelease(false, state);
+            unplacebc(state);
         }
         maybe_reset_pick(null, state);
         if (on_level(state.context.digging?.level, state.u.uz))
@@ -2543,8 +2544,8 @@ export async function makemap_prepost(pre, wiztower = false, state = game) {
         note_unported('do.c u_collide_m');
     initrack(state);
     if (Punished(state)) {
-        note_unported('ball.c unplacebc');
-        note_unported('ball.c placebc');
+        unplacebc(state);
+        placebc(state);
     }
     await docrt();
     await flush_screen(1);
@@ -2923,10 +2924,10 @@ export function failClosedCommandRefusals() {
         // nor already called something.
         UnsupportedItemDestructionError,
         UnsupportedPotionError,
-        // potion.c dodrink()/dopotion()/peffects() raises this for the 22
-        // potion types besides POT_SPEED and for the strangled, sink,
-        // underwater, worn-potion, milky and smoky branches of dodrink()
-        // that this port has not reached.
+        // potion.c dodrink()/dopotion()/peffects() raises this for the
+        // unported potion effects and for the strangled, sink, underwater,
+        // worn-potion, milky and smoky branches of dodrink() that this port
+        // has not reached.
         UnsupportedQuaffError,
         // fountain.c drinkfountain(), dowaterdemon(), dipfountain(),
         // and dryup() raise this for the fountain-effect arms this port

@@ -41,7 +41,8 @@ import {
     undead_to_corpse, can_be_hatched, dead_species, copy_mextra,
     zombie_form,
 } from './mon.js';
-import { nartifact_exist, mk_artifact, permapoisoned } from './artifact.js';
+import { oname } from './do_name.js';
+import { confers_luck, nartifact_exist, mk_artifact, permapoisoned } from './artifact.js';
 import {
     mons, is_male, is_female, is_neuter, is_human, verysmall, PM_LICHEN, monsterNames,
     G_NOCORPSE, NON_PM as MON_NON_PM,
@@ -63,14 +64,18 @@ import {
     CORPSTAT_NEUTER, CORPSTAT_FEMALE, CORPSTAT_MALE,
     CXN_NO_PFX,
     Is_rogue_level, isok, ICE, DRAWBRIDGE_UP, DB_UNDER, DB_ICE,
-    LS_OBJECT, LS_MONSTER, OMONST, has_omonst, OMID, has_omid, MON_DETACH,
+    LS_OBJECT, LS_MONSTER, ONAME, has_oname, OMONST, has_omonst, OMID, has_omid,
+    OMAILCMD, has_omailcmd, ONAME_SKIP_INVUPD, MON_DETACH,
     IRONBARS, ROOM, IS_ALTAR, Is_airlevel, Is_waterlevel,
     MAX_OIL_IN_FLASK, nothing_happens, EPRI, PLNMSG_OBJ_GLOWS,
+    In_quest, SPINACH_TIN, RANDOM_TIN,
 } from './const.js';
+import { set_tin_variety } from './eat.js';
+import { set_moreluck } from './attrib.js';
 import { recalc_block_point, cansee } from './vision.js';
 import { del_light_source, discard_flashes, obj_sheds_light, obj_adjust_light_radius } from './light.js';
-import { arti_light_radius, get_obj_location } from './timeout.js';
-import { obfree } from './shk.js';
+import { arti_light_radius, get_obj_location, obj_split_light_source } from './timeout.js';
+import { obfree, splitbill } from './shk.js';
 import { hands_obj } from './weapon.js';
 import { obj_resists } from './dogmove.js';
 import { newsym, pline } from './display.js';
@@ -342,7 +347,7 @@ export function next_ident() {
  * C ref: mkobj.c splitobj — reduce obj->quan by num; return new stack of num.
  * nextoid shop-price search omitted: ordinary items take first oid then
  * next_ident() (one rnd(2)), matching non-shop dog_invent / throw paths.
- * Deferred: unpaid/splitbill, copy_oextra, light sources, Lua where.
+ * Light split live via obj_split_light_source (C `:500–501`).
  */
 export function splitobj(obj, num) {
     const quan = obj?.quan || 1;
@@ -382,8 +387,17 @@ export function splitobj(obj, num) {
         otmp.nexthere = obj.nexthere || null;
         obj.nexthere = otmp;
     }
+    // C: lua isn't tracking the split-off portion even if it happens to
+    // be tracking the original.
+    if (otmp.where === OBJ_LUAFREE) otmp.where = OBJ_FREE;
+    // C mkobj.c:493–494: if (obj->unpaid) splitbill(obj, otmp).
+    if (obj.unpaid) splitbill(obj, otmp);
+    copy_oextra(otmp, obj);
+    if (has_omid(otmp)) free_omid(otmp); // only one association with m_id
     // C: if (obj->timed) obj_split_timers(obj, otmp)
     if (obj.timed) obj_split_timers(obj, otmp);
+    // C mkobj.c:500-501: if (obj_sheds_light(obj)) obj_split_light_source(obj, otmp)
+    if (obj_sheds_light(obj)) obj_split_light_source(obj, otmp);
     return otmp;
 }
 
@@ -504,8 +518,9 @@ export function unsplitobj(obj) {
  * (`maybe_adjust_light` plines); every state change below precedes the
  * first await, so long-standing sync callers (mksobj_init, mklev gen,
  * mplayer loadout — always unlit there) observe identical behavior.
- * Named omit: COIN_CLASS guard, confers_luck/set_moreluck, BAG_OF_HOLDING
- * weight, uwep bimanual/reset_remarm, uswapwep drop, SPBOOK book_cursed.
+ * Named omit: COIN_CLASS guard, BAG_OF_HOLDING weight, uwep
+ * bimanual/reset_remarm, uswapwep drop, SPBOOK book_cursed
+ * (luck arm live via set_moreluck, D-2287).
  */
 export async function curse(otmp) {
     if (!otmp) return;
@@ -514,8 +529,11 @@ export async function curse(otmp) {
     const old_light = otmp.lamplit ? arti_light_radius(otmp) : 0;
     otmp.cursed = true;
     otmp.blessed = false;
-    // C mkobj.c curse — FIGURINE attach when carried/mcarried + typed
-    if ((otmp.otyp | 0) === FIGURINE
+    // C mkobj.c curse `:1803–1804` — carried luck-conferrer → set_moreluck;
+    // FIGURINE attach when carried/mcarried + typed (else-if: no obj is both).
+    if ((otmp.where | 0) === OBJ_INVENT && confers_luck(otmp)) {
+        set_moreluck();
+    } else if ((otmp.otyp | 0) === FIGURINE
         && (otmp.corpsenm | 0) !== NON_PM
         && !dead_species(otmp.corpsenm | 0, true)
         && figurine_is_carried(otmp)) {
@@ -526,15 +544,19 @@ export async function curse(otmp) {
 /**
  * C ref: mkobj.c bless `:1744–1764` — async only for the lamplit tail;
  * state changes precede the first await (see curse). Named omit:
- * COIN_CLASS guard, confers_luck/set_moreluck, BAG_OF_HOLDING weight.
+ * COIN_CLASS guard, BAG_OF_HOLDING weight (luck arm live, D-2287).
  */
 export async function bless(otmp) {
     if (!otmp) return;
     const old_light = otmp.lamplit ? arti_light_radius(otmp) : 0;
     otmp.blessed = true;
     otmp.cursed = false;
-    // C mkobj.c bless — stop FIG_TRANSFORM if figurine timed
-    if ((otmp.otyp | 0) === FIGURINE && (otmp.timed | 0)) {
+    // C mkobj.c bless `:1755–1756` — carried luck-conferrer → set_moreluck
+    // (else-if: a luckstone is never a timed figurine).
+    if ((otmp.where | 0) === OBJ_INVENT && confers_luck(otmp)) {
+        set_moreluck();
+    } else if ((otmp.otyp | 0) === FIGURINE && (otmp.timed | 0)) {
+        // C mkobj.c bless — stop FIG_TRANSFORM if figurine timed
         stop_timer(FIG_TRANSFORM, otmp);
     }
     if (otmp.lamplit) await maybe_adjust_light(otmp, old_light);
@@ -543,12 +565,16 @@ export async function bless(otmp) {
 /**
  * C ref: mkobj.c unbless `:1766–1780` — async only for the lamplit tail;
  * state change precedes the first await (see curse). Named omit:
- * confers_luck/set_moreluck, BAG_OF_HOLDING weight.
+ * BAG_OF_HOLDING weight (luck arm live, D-2287).
  */
 export async function unbless(otmp) {
     if (!otmp) return;
     const old_light = otmp.lamplit ? arti_light_radius(otmp) : 0;
     otmp.blessed = false;
+    // C mkobj.c unbless `:1774–1775` — carried luck-conferrer → set_moreluck.
+    if ((otmp.where | 0) === OBJ_INVENT && confers_luck(otmp)) {
+        set_moreluck();
+    }
     if (otmp.lamplit) await maybe_adjust_light(otmp, old_light);
 }
 
@@ -565,15 +591,19 @@ export function set_bknown(obj, onoff) {
 
 /**
  * C ref: mkobj.c uncurse `:1821–1838` — async only for the lamplit tail;
- * state changes precede the first await (see curse). Named omit:
- * confers_luck/set_moreluck.
+ * state changes precede the first await (see curse). Luck arm live
+ * via set_moreluck (D-2287).
  */
 export async function uncurse(otmp) {
     if (!otmp) return;
     const old_light = otmp.lamplit ? arti_light_radius(otmp) : 0;
     otmp.cursed = false;
+    // C mkobj.c uncurse `:1829–1832` — carried luck-conferrer → set_moreluck
+    // first, then BAG_OF_HOLDING weight, then timed FIGURINE (C order).
     const bag = objectNames.indexOf('BAG_OF_HOLDING');
-    if (bag >= 0 && (otmp.otyp | 0) === bag) otmp.owt = weight(otmp);
+    if ((otmp.where | 0) === OBJ_INVENT && confers_luck(otmp)) {
+        set_moreluck();
+    } else if (bag >= 0 && (otmp.otyp | 0) === bag) otmp.owt = weight(otmp);
     else if ((otmp.otyp | 0) === FIGURINE && (otmp.timed | 0)) {
         stop_timer(FIG_TRANSFORM, otmp);
     }
@@ -745,8 +775,8 @@ export function rnd_class(first, last) {
 const SPBOOK_no_NOVEL = 0 - SPBOOK_CLASS;
 const SPE_BLANK_PAPER = objectNames.indexOf('SPE_BLANK_PAPER');
 
-// C ref: mkobj.c mkbox_cnts — ICE_BOX → mksobj(CORPSE); else boxiprobs.
-// Deferred: BAG_OF_HOLDING Is_mbag→SACK / WAN_CANCELLATION re-roll.
+// C ref: mkobj.c mkbox_cnts — ICE_BOX → mksobj(CORPSE); else boxiprobs,
+// incl. BAG_OF_HOLDING Is_mbag→SACK / WAN_CANCELLATION re-roll (D-2265).
 function mkbox_cnts(box) {
     let n;
     const name = otypName(box.otyp);
@@ -778,6 +808,8 @@ function mkbox_cnts(box) {
     }
     const DILITHIUM_CRYSTAL = objectNames.indexOf('DILITHIUM_CRYSTAL');
     const LOADSTONE = objectNames.indexOf('LOADSTONE');
+    const WAN_LIGHT = objectNames.indexOf('WAN_LIGHT');
+    const WAN_LIGHTNING = objectNames.indexOf('WAN_LIGHTNING');
     for (n = rn2(n + 1); n > 0; n--) {
         let otmp;
         if (name === 'ICE_BOX') {
@@ -802,7 +834,21 @@ function mkbox_cnts(box) {
                     otmp.owt = weight(otmp);
                 }
             }
-            // BAG_OF_HOLDING nested-bag / cancellation wand rewrite deferred
+            // C ref: mkobj.c mkbox_cnts `:371–379` — no nested magic bags;
+            // re-roll wands of cancellation (D-2265)
+            if (name === 'BAG_OF_HOLDING') {
+                // C obj.h `Is_mbag` — BAG_OF_HOLDING || BAG_OF_TRICKS
+                const bn = otypName(otmp.otyp);
+                if (bn === 'BAG_OF_HOLDING' || bn === 'BAG_OF_TRICKS') {
+                    otmp.otyp = objectNames.indexOf('SACK');
+                    otmp.spe = 0;
+                    otmp.owt = weight(otmp);
+                } else {
+                    while (otypName(otmp.otyp) === 'WAN_CANCELLATION') {
+                        otmp.otyp = rnd_class(WAN_LIGHT, WAN_LIGHTNING);
+                    }
+                }
+            }
         }
         add_to_container(box, otmp);
     }
@@ -1120,6 +1166,32 @@ export function start_timer(when, kind, action, arg) {
     insert_timer(gnu);
     if (isObj) obj.timed = (obj.timed | 0) + 1;
     return when;
+}
+
+/**
+ * C ref: timeout.c obj_move_timers `:2339–2353` — reassign every
+ * TIMER_OBJECT on src to dest, leaving src untimed. Repoints the queue
+ * entry (no reinsert: timeout is absolute, order unchanged) and bumps
+ * dest.timed per moved timer; count must equal src.timed or C panics
+ * (JS throws like dealloc_obj's C-panic ports — impossible() is async).
+ * C has zero callers in pinned upstream (migrating-object carry API,
+ * extern.h:3247); named omit of the D-1572 envelope, residual after
+ * D-2275 copy_oextra / D-2279 light split. In C position directly
+ * before obj_split_timers (`:2339` before `:2358`).
+ */
+export function obj_move_timers(src, dest) {
+    if (!src || !dest) return;
+    const g = timer_base();
+    let count = 0;
+    for (let curr = g._timer_base; curr; curr = curr.next) {
+        if ((curr.kind | 0) === TIMER_OBJECT && curr.obj === src) {
+            curr.obj = dest;
+            dest.timed = (dest.timed | 0) + 1;
+            count++;
+        }
+    }
+    if (count !== (src.timed | 0)) throw new Error('obj_move_timers');
+    src.timed = 0;
 }
 
 /**
@@ -1527,6 +1599,8 @@ function mksobj_init(otmp, artif) {
         }
         break;
     case FOOD_CLASS: {
+        // C ref: mkobj.c mksobj_init FOOD — `otmp->oeaten = 0` (D-2265)
+        otmp.oeaten = 0;
         const name = otypName(otmp.otyp);
         if (name === 'CORPSE') {
             // C ref: mkobj.c mksobj_init FOOD CORPSE — undead_to_corpse + G_NOCORPSE retry
@@ -1551,21 +1625,21 @@ function mksobj_init(otmp, artif) {
         } else if (name === 'KELP_FROND') {
             otmp.quan = rnd(2);
         } else if (name === 'TIN') {
-            // C ref: mkobj.c TIN + eat.c set_tin_variety(RANDOM_TIN)
+            // C ref: mkobj.c mksobj_init FOOD TIN — spinach 1/6
+            // via eat.c set_tin_variety, else loop undead_to_corpse until
+            // an edible (cnutrit) non-NOCORPSE monster, then RANDOM_TIN
+            // (D-2265; was inline clone missing the cnutrit gate + the
+            // ROTTEN_TIN→HOMEMADE_TIN remap)
+            otmp.corpsenm = NON_PM; /* empty (so far) */
             if (!rn2(6)) {
-                otmp.corpsenm = -1; // SPINACH_TIN
-                otmp.spe = 1;
+                set_tin_variety(otmp, SPINACH_TIN);
             } else {
-                // C ref: mkobj.c TIN — undead_to_corpse(rndmonnum()) until edible
                 for (let tryct = 200; tryct > 0; --tryct) {
                     const mndx = undead_to_corpse(rndmonnum());
-                    const ptr = mons(mndx);
                     const mv = game.mvitals?.[mndx]?.mvflags ?? 0;
-                    if (ptr && !(mv & G_NOCORPSE)) {
+                    if ((mons(mndx)?.cnutrit | 0) && !(mv & G_NOCORPSE)) {
                         otmp.corpsenm = mndx;
-                        // set_tin_variety(RANDOM_TIN): rn2(TTSZ-1) with TTSZ=16
-                        const r = rn2(15);
-                        otmp.spe = -(r + 1);
+                        set_tin_variety(otmp, RANDOM_TIN);
                         break;
                     }
                 }
@@ -1598,6 +1672,8 @@ function mksobj_init(otmp, artif) {
         break;
     }
     case GEM_CLASS: {
+        // C ref: mkobj.c mksobj_init GEM — `corpsenm = 0` LOADSTONE hack (D-2265)
+        otmp.corpsenm = 0;
         const name = otypName(otmp.otyp);
         if (name === 'LOADSTONE') curse(otmp);
         else if (name === 'ROCK') otmp.quan = rn1(6, 6);
@@ -1627,7 +1703,8 @@ function mksobj_init(otmp, artif) {
         } else if (name === 'CHEST' || name === 'LARGE_BOX') {
             otmp.olocked = !!rn2(5);
             otmp.otrapped = !rn2(10);
-            if (otmp.otrapped && !rn2(100)) otmp.tknown = 1;
+            // C: `tknown = otrapped && !rn2(100)` — assigned, not just set
+            otmp.tknown = (otmp.otrapped && !rn2(100)) ? 1 : 0;
             mkbox_cnts(otmp);
         } else if (name === 'ICE_BOX' || name === 'SACK' || name === 'OILSKIN_SACK'
             || name === 'BAG_OF_HOLDING') {
@@ -1684,6 +1761,8 @@ function mksobj_init(otmp, artif) {
         }
         break;
     case SPBOOK_CLASS:
+        // C ref: mkobj.c mksobj_init SPBOOK — `spestudied = 0` (D-2265)
+        otmp.spestudied = 0;
         blessorcurse(otmp, 17);
         break;
     case ARMOR_CLASS:
@@ -1706,10 +1785,11 @@ function mksobj_init(otmp, artif) {
         if (artif && !rn2(40 + (10 * nartifact_exist()))) {
             mk_artifact(otmp);
         }
-        // C ref: mkobj.c ARMOR_CLASS — lacquered armor for Samurai
+        // C ref: mkobj.c ARMOR_CLASS — lacquered armor for samurai
+        // (`moves <= 1 || In_quest`; D-0079 shipped moves, D-2265 the quest arm)
         if (game.urole?.mnum === PM_SAMURAI
             && otypName(otmp.otyp) === 'SPLINT_MAIL'
-            && ((game.moves ?? 0) <= 1 /* || In_quest deferred */)) {
+            && ((game.moves ?? 0) <= 1 || In_quest(game.u?.uz))) {
             otmp.oerodeproof = 1;
             otmp.rknown = 1;
         }
@@ -2011,7 +2091,8 @@ export function oc_merge_of(otyp) {
 
 /**
  * C ref: invent.c mergable() — floor-stack subset + globby early TRUE.
- * Named omit: shop/mail/candle polish beyond current checks.
+ * Mail-command gate is live (invent.c:4477–4481). Named omit: shop/unpaid
+ * + candle polish beyond current checks.
  */
 export function mergable(otmp, obj) {
     if (!obj || !otmp || obj === otmp || obj.otyp !== otmp.otyp) return false;
@@ -2035,6 +2116,11 @@ export function mergable(otmp, obj) {
     }
     // C: dknown must match; known may differ and is reconciled in merged()
     if (!!obj.dknown !== !!otmp.dknown) return false;
+    // C invent.c mergable: one-sided mail command must match exactly.
+    if (!has_omailcmd(obj) ? has_omailcmd(otmp)
+        : (!has_omailcmd(otmp) || OMAILCMD(obj) !== OMAILCMD(otmp))) {
+        return false;
+    }
     // C invent.c mergable `:4379–4499` (whole body) has NO owornmask check:
     // floor pickups merge into quivered/wielded stacks, and addinv_core0
     // tries the quiver first (`:1098–1106`). Reject only a worn combine
@@ -2105,6 +2191,18 @@ export function stackobj(obj) {
         // C may reassign *potmp; keep local binding current
         obj = potmp.obj;
     }
+}
+
+/**
+ * C ref: invent.c sobj_at `:1466–1475` — first floor object of otyp at (x,y).
+ * Walks the nexthere pile chain (svl.level.objects[x][y]); canonical export
+ * for the file-local clones (D-2274 boulder-restack residual).
+ */
+export function sobj_at(otyp, x, y) {
+    for (let otmp = objects_at(x, y); otmp; otmp = otmp.nexthere) {
+        if ((otmp.otyp | 0) === (otyp | 0)) return otmp;
+    }
+    return null;
 }
 
 /**
@@ -2916,6 +3014,27 @@ export function free_omid(otmp) {
 }
 
 /**
+ * C ref: mkobj.c new_omailcmd `:157–167` — ensure oextra, drop any old
+ * mail command, dup the response string (scroll-of-mail feedback).
+ */
+export function new_omailcmd(otmp, response_cmd) {
+    if (!otmp) return;
+    newoextra(otmp);
+    if (OMAILCMD(otmp)) free_omailcmd(otmp);
+    otmp.oextra.omailcmd = response_cmd ? String(response_cmd) : '';
+}
+
+/**
+ * C ref: mkobj.c free_omailcmd `:169–176` — drop the mail command string.
+ */
+export function free_omailcmd(otmp) {
+    if (otmp?.oextra?.omailcmd) {
+        otmp.oextra.omailcmd = null;
+        delete otmp.oextra.omailcmd;
+    }
+}
+
+/**
  * C ref: mkobj.c dealloc_oextra `:95–111` — drop oname / omonst /
  * omailcmd then the oextra bag. Caller dealloc_obj_real. Named: zap.c
  * poly_obj caller.
@@ -2927,6 +3046,38 @@ export function dealloc_oextra(o) {
     if (x.omonst) free_omonst(o);
     if (x.omailcmd) x.omailcmd = 0;
     o.oextra = null;
+}
+
+/**
+ * C ref: mkobj.c copy_oextra `:416–448` — copy obj1's oextra bag onto
+ * obj2 (callers splitobj `:495`, bill_dummy_object `:727`). No-op unless
+ * obj1 carries oextra; obj2's bag is created when missing. oname via
+ * oname(ONAME_SKIP_INVUPD); omonst via whole-struct copy with mextra +
+ * nmon cleared (the `#if 0` m_id renewal stays out — m_id is copied),
+ * then copy_mextra when the source keeps mextra; omailcmd via
+ * new_omailcmd; omid via newomid (callers free_omid after: only one
+ * association with m_id).
+ */
+export function copy_oextra(obj2, obj1) {
+    if (!obj2 || !obj1 || !obj1.oextra) return;
+    if (!obj2.oextra) newoextra(obj2);
+    if (has_oname(obj1)) oname(obj2, ONAME(obj1), ONAME_SKIP_INVUPD);
+    if (has_omonst(obj1)) {
+        if (!OMONST(obj2)) newomonst(obj2);
+        const dst = OMONST(obj2);
+        const src = OMONST(obj1);
+        // C memcpy: dst becomes an exact copy, no stale fields survive.
+        for (const k of Object.keys(dst)) delete dst[k];
+        Object.assign(dst, src);
+        dst.mextra = null;
+        dst.nmon = null;
+        if (src.mextra) copy_mextra(dst, src);
+    }
+    if (has_omailcmd(obj1)) new_omailcmd(obj2, OMAILCMD(obj1));
+    if (has_omid(obj1)) {
+        if (!OMID(obj2)) newomid(obj2);
+        obj2.oextra.omid = OMID(obj1);
+    }
 }
 
 /**

@@ -271,7 +271,7 @@ import {
     killed, xkilled, flash_hits_mon, m_is_steadfast, that_is_a_mimic,
     disguised_as_mon, disguised_as_non_mon,
 } from './uhitm.js';
-import { mon_nam, Monnam, noit_Monnam, christen_monst, hliquid, Hallucination, rndmonnam } from './do_name.js';
+import { mon_nam, Monnam, noit_Monnam, christen_monst, hliquid, Hallucination, rndmonnam, free_oname } from './do_name.js';
 import { rnd_hallublast } from './mthrowu.js';
 import { finish_losehp_done, done } from './end.js';
 import {
@@ -308,7 +308,7 @@ import { abuse_dog, wary_dog, tamedog } from './dog.js';
 import { setuwep, setuswapwep, setuqwep, set_twoweap } from './wield.js';
 import { remove_worn_item } from './steal.js';
 import {
-    mkobj, mksobj, delobj, delobj_core, objects_at, replace_object, rnd_class, weight, splitobj,
+    mkobj, mksobj, delobj, delobj_core, objects_at, replace_object, rnd_class, weight, splitobj, container_weight,
     oc_merge_of, uncurse, unbless, attach_egg_hatch_timeout, obj_extract_self,
     eaten_stat, start_timer, spot_stop_timers, spot_time_left, obj_stop_timers,
     obj_ice_effects, place_object, stackobj, mergable, set_corpsenm, kill_egg,
@@ -3247,7 +3247,8 @@ export async function unturn_you() {
 /**
  * C ref: zap.c cancel_item — strip charges/enchant + blank scrolls/books
  * + water potions; unbless/uncurse. Worn ABON / uhitinc/udaminc before
- * spe clear. Named omit: blank_novel; corpse revive→rot timer swap.
+ * spe clear. `blank_novel` on SPE_NOVEL (C `:1330`). Named omit:
+ * corpse revive→rot timer swap.
  */
 async function cancel_item(obj) {
     if (!obj) return;
@@ -3350,7 +3351,9 @@ async function cancel_item(obj) {
             if (otyp !== SPE_CANCELLATION && otyp !== SPE_BOOK_OF_THE_DEAD) {
                 await costly_alteration(obj, COST_CANCEL);
                 obj.otyp = SPE_BLANK_PAPER;
-                // blank_novel deferred
+                /* C: cancelling a novel is more involved than a spellbook */
+                if (otyp === SPE_NOVEL) /* old type */
+                    blank_novel(obj);
             }
             break;
         case POTION_CLASS: {
@@ -3373,6 +3376,21 @@ async function cancel_item(obj) {
     // corpse revive→rot timer deferred
     await unbless(obj);
     await uncurse(obj);
+}
+
+/**
+ * C ref: zap.c blank_novel `:1367–1380` — soaking or cancelling a novel
+ * converts it into a blank spellbook but needs more than just changing
+ * its otyp (caller is responsible for that). `novelidx` overloads
+ * corpsenm, unused for spellbooks; drop the former title; a blank
+ * spellbook weighs more than a novel so refresh the weight chain.
+ * Callers: `cancel_item` `:1330`, `water_damage` (trap.c `:4820`).
+ */
+export function blank_novel(obj) {
+    /* C: assert(obj->otyp == SPE_BLANK_PAPER) — caller-assigned */
+    obj.novelidx = 0;
+    free_oname(obj); /* get rid of [former] novel's title */
+    container_weight(obj);
 }
 
 /**

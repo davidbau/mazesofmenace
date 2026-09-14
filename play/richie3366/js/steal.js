@@ -12,8 +12,12 @@
 // owornmask → setnotworn pointer-walk; W_BALL|W_CHAIN + unchain → unpunish;
 // W_WEAPONS → *gone. Named omit: donning/cancel_don; in_use; uskin
 // skinback; Amulet_off; Ring_gone / Blindf_off (still setworn).
-// Named omissions: monkey_business cant_take / ROLL_FROM how[]; stealarm
-// afternmv; Punished/uchain/buried-ball nothing_to_steal; Adornment ring
+// **stealarm + unstolenarm** (D-2271): multi-turn armor-steal completion
+// via afternmv (stealoid/stealmid, shop subfrombill, freeinv+mpickobj,
+// monflee+rloc) and dead-thief unstolenarm restore (thiefdead swap lives
+// in mhitm.js next to the C caller mon.c:2783).
+// Named omissions: monkey_business cant_take / ROLL_FROM how[];
+// Punished/uchain/buried-ball nothing_to_steal; Adornment ring
 // priority when gloves absent; leash; shop subfrombill; petrify corpse;
 // full armor_simple_name / yname polish; stop_donning.
 
@@ -29,16 +33,16 @@ import {
     COIN_CLASS, ARMOR_CLASS, TOOL_CLASS, AMULET_CLASS, RING_CLASS,
     FOOD_CLASS, objectNames, objects,
 } from './objects.js';
-import { monnear } from './mon.js';
-import { is_animal, throws_rocks, can_teleport, slithy } from './monsters.js';
+import { monnear, dist2 } from './mon.js';
+import { is_animal, throws_rocks, can_teleport, slithy, dmgtype } from './monsters.js';
 import { subfrombill, shop_keeper, money_cnt } from './shk.js';
 import { tele_restrict, rloc } from './teleport.js';
 import { ART_ORB_OF_DETECTION } from './generated/artifacts_data.js';
-import { canspotmon, pline, newsym } from './display.js';
+import { canspotmon, pline, newsym, impossible } from './display.js';
 import { Monnam, Some_Monnam, s_suffix, y_monnam } from './do_name.js';
 import { doname, makeplural } from './objnam.js';
 import {
-    setworn,
+    setworn, armor_simple_name,
     Armor_off, Cloak_off, Boots_off, Gloves_off,
     Helmet_off, Shield_off, Shirt_off,
 } from './do_wear.js';
@@ -443,7 +447,7 @@ export async function steal(mtmp, objnambuf) {
                 if ((game.multi | 0) < 0) {
                     game.stealoid = otmp.o_id | 0;
                     game.stealmid = mtmp.m_id | 0;
-                    // afternmv = stealarm deferred
+                    game.afternmv = stealarm;
                     return 0;
                 }
             }
@@ -477,6 +481,80 @@ export async function steal(mtmp, objnambuf) {
     mpickobj(mtmp, otmp);
     // petrify corpse arm deferred
     return (game.multi | 0) < 0 ? 0 : 1;
+}
+
+/* AD_SITM — monattk.h:63 — steals item (nymphs); dmgtype gate in stealarm. */
+const AD_SITM = 21;
+
+/**
+ * C ref: steal.c unstolenarm `:144–162` — called via afternmv when the hero
+ * finishes taking off armor that was slated to be stolen but the thief died
+ * in the interim (thiefdead swapped stealarm → unstolenarm). Finds the
+ * stealoid object before clearing stealoid (already not-worn, still in
+ * invent), You() finish message if still present. Returns 0.
+ */
+export async function unstolenarm() {
+    const stealoid = game.stealoid | 0;
+    let obj = null;
+    for (const o of game.invent || []) {
+        if ((o.o_id | 0) === stealoid) { obj = o; break; }
+    }
+    game.stealoid = 0;
+    if (obj) {
+        await pline(`You finish taking off your ${armor_simple_name(obj)}.`);
+    }
+    return 0;
+}
+
+/**
+ * C ref: steal.c stealarm `:165–211` — finish stealing armor that took
+ * multiple turns to take off (afternmv set by steal() when multi < 0).
+ * stealoid/stealmid gate → find stealoid in invent → find stealmid on fmon
+ * (DEADMONSTER impossible arm) → dmgtype AD_SITM + distu ≤ 2 gates → shop
+ * subfrombill → freeinv → pline → mpickobj → monflee → rloc. botm clears
+ * both stealoid and stealmid in every path. Returns 0.
+ */
+export async function stealarm() {
+    if (!(game.stealoid | 0) || !(game.stealmid | 0)) {
+        game.stealoid = 0;
+        game.stealmid = 0;
+        return 0;
+    }
+    const stealoid = game.stealoid | 0;
+    const stealmid = game.stealmid | 0;
+    const u = game.u || {};
+    for (const otmp of game.invent || []) {
+        if ((otmp.o_id | 0) !== stealoid) continue;
+        for (const mtmp of game.fmon || []) {
+            if ((mtmp.m_id | 0) !== stealmid) continue;
+            if ((mtmp.mhp | 0) <= 0) {
+                await impossible('stealarm(): dead monster stealing');
+                game.stealoid = 0;
+                game.stealmid = 0;
+                return 0;
+            }
+            /* C distu(xx,yy) ≡ dist2(xx,yy,u.ux,u.uy) (hack.h:1531). */
+            if (!dmgtype(mtmp.data, AD_SITM)
+                || dist2(mtmp.mx, mtmp.my, u.ux, u.uy) > 2) {
+                game.stealoid = 0;
+                game.stealmid = 0;
+                return 0;
+            }
+            if (otmp.unpaid) subfrombill(otmp, shop_keeper((u.ushops || '')[0]));
+            freeinv(otmp);
+            const buf = doname(otmp);
+            await pline(`${Monnam(mtmp)} steals ${buf}!`);
+            mpickobj(mtmp, otmp); /* may free otmp */
+            /* Implies seduction — no mavenge bit (C steal.c:199-200). */
+            await monflee(mtmp, 0, false, false);
+            if (!(await tele_restrict(mtmp))) await rloc(mtmp, RLOC_MSG);
+            break;
+        }
+        break;
+    }
+    game.stealoid = 0;
+    game.stealmid = 0; /* in case only one has been reset so far */
+    return 0;
 }
 
 /**

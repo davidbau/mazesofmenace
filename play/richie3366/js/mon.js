@@ -46,7 +46,7 @@ import {
     resist_conflict, m_canseeu, on_fire,
 } from './mondata.js';
 import {
-    objects_at, kill_egg, place_object, stackobj, delobj, is_metallic,
+    objects_at, sobj_at, kill_egg, place_object, stackobj, delobj, is_metallic,
     is_rustprone, mksobj_at, is_organic, is_mines_prize, is_soko_prize,
     obj_extract_self, nxtobj, splitobj,
 } from './mkobj.js';
@@ -347,7 +347,7 @@ export function onscary(x, y, mtmp) {
         && (ptr?.mlet === 'S_VAMPIRE' || is_vampshifter(mtmp))) {
         return true;
     }
-    if (sobj_at_otyp(SCR_SCARE_MONSTER, x, y)) return true;
+    if (sobj_at(SCR_SCARE_MONSTER, x, y)) return true;
     const ep = engr_at(x, y);
     if (ep && String(ep.engr_txt || '') === 'Elbereth') {
         const u = game.u || {};
@@ -364,14 +364,6 @@ export function onscary(x, y, mtmp) {
         }
     }
     return false;
-}
-
-/** C ref: mkobj.c sobj_at — first floor object of otyp. */
-function sobj_at_otyp(otyp, x, y) {
-    for (let o = objects_at(x, y); o; o = o.nexthere) {
-        if (o.otyp === otyp) return o;
-    }
-    return null;
 }
 
 /** C ref: invent.c m_carrying — first matching otyp in minvent chain. */
@@ -2219,7 +2211,7 @@ export async function meatcorpse(mtmp) {
     const y = mtmp.my | 0;
     const verbose = game.flags?.verbose !== false;
 
-    for (let otmp = sobj_at_otyp(CORPSE, x, y); otmp;
+    for (let otmp = sobj_at(CORPSE, x, y); otmp;
          otmp = nxtobj(otmp, CORPSE, true)) {
         const corpsepm = mons(otmp.corpsenm);
         if (vegan(corpsepm)

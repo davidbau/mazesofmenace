@@ -35,7 +35,7 @@ import { yn_function } from './getline.js';
 import { kick_steed } from './steed.js';
 import { near_capacity, inv_weight, weight_cap, currency } from './invent.js';
 import {
-    objects_at, obj_extract_self, add_to_migration, mksobj_at, mksobj, mkgold,
+    objects_at, sobj_at, obj_extract_self, add_to_migration, mksobj_at, mksobj, mkgold,
     weight, rnd_class, place_object, stackobj, splitobj, delobj,
 } from './mkobj.js';
 import {
@@ -228,14 +228,6 @@ function is_ice(x, y) {
 function Passes_walls() {
     const u = game.u || {};
     return !!(u.Passes_walls || u.HPasses_walls || u.EPasses_walls);
-}
-
-/** C hack.c / mkobj.c sobj_at — first floor object of otyp at x,y. */
-function sobj_at(otyp, x, y) {
-    for (let o = objects_at(x, y); o; o = o.nexthere) {
-        if ((o.otyp | 0) === otyp) return o;
-    }
-    return null;
 }
 
 /** C ref: hack.c closed_door. */

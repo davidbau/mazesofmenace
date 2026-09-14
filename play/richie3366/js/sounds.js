@@ -137,10 +137,12 @@ function gold_at(x, y) {
 }
 
 /**
- * C ref: mkroom.c search_special — first room/subroom matching type.
- * Sentinel: rooms terminated by hx < 0.
+ * C ref: mkroom.c search_special `:764–780` — first room/subroom matching
+ * type. Sentinel: rooms terminated by hx < 0. Canonical export: the
+ * teleport.js twin lacks the ANY_TYPE arm (clone drift, named in data.md);
+ * import this one, do not add a third copy. Imported by mhitm.js shkgone.
  */
-function search_special(type) {
+export function search_special(type) {
     const lists = [game.level?.rooms, game.level?.subrooms];
     for (const rooms of lists) {
         if (!rooms) continue;

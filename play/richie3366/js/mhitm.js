@@ -114,7 +114,7 @@ import {
     weight, mksobj, set_corpsenm, obj_stop_timers, mkgold, clear_dknown,
     obj_extract_self, add_to_minv,
 } from './mkobj.js';
-import { findgold } from './steal.js';
+import { findgold, stealarm, unstolenarm } from './steal.js';
 import { munslime } from './muse.js';
 import { Monnam, mon_nam, mon_nam_too, Adjmonnam, oname, pmname, x_monnam, hliquid, YMonnam, s_suffix, free_mgivenname, a_monnam, y_monnam, some_mon_nam } from './do_name.js';
 import { an, xname, makeplural, cxname, vtense, The, simpleonames } from './objnam.js';
@@ -131,7 +131,7 @@ import { update_inventory } from './invent.js';
 import { bury_an_obj } from './dig.js';
 import { is_pole, is_weptool } from './wield.js';
 import { mswings_verb, Conflict, unstuck } from './mhitu.js';
-import { mon_offmap, set_apparxy } from './monmove.js';
+import { mon_offmap, set_apparxy, mb_trapped } from './monmove.js';
 import { hurtle, mhurtle, will_hurtle } from './dothrow.js';
 import { make_stunned } from './potion.js';
 import { m_is_steadfast } from './uhitm.js';
@@ -156,11 +156,13 @@ import { recalc_block_point } from './vision.js';
 import { mon_leaving_level } from './mon.js';
 import { wary_dog } from './dog.js';
 import { wizdeadorgone } from './wizard.js';
-import { nemdead, leaddead } from './quest.js';
+import { nemdead, leaddead, nemesis_stinks } from './quest.js';
+import { stinky_nemesis } from './questpgr.js';
 import { record_achievement } from './insight.js';
 import { livelog_printf } from './pline.js';
 import { shtypes } from './shknam.js';
-import { obfree, setpaid } from './shk.js';
+import { obfree, setpaid, discard_damage_owned_by } from './shk.js';
+import { search_special } from './sounds.js';
 import { closed_door } from './hack.js';
 import { emits_light, del_light_source } from './light.js';
 import { on_level } from './dungeon.js';
@@ -176,6 +178,7 @@ import {
     D_NODOOR,
     D_TRAPPED,
     SHOPBASE,
+    ANY_SHOP,
     ESHK,
     ROOMOFFSET,
     LS_MONSTER,
@@ -2817,9 +2820,10 @@ export async function lifesaved_monster(mtmp) {
  * mhp restore, ustuck release (expels when swallowing), newcham (a failed
  * revert returns !DEADMONSTER), cham fixup, canspotmon rise pline +
  * vamp_rise_msg, closed-door smash (You_hear/You_see/pline_The in C order,
- * then D_NODOOR + recalc), newsym. Unaware is the house u.Unaware field.
- * Named omissions: trapped-door mb_trapped + "is destroyed!" pline
- * (monmove.js:1035 clone omits full mondead/lifesave — needs its own row);
+ * then D_NODOOR + recalc, trapped mb_trapped with verbose suppression +
+ * unconditional "is destroyed!" when the trap kills), newsym. Unaware is
+ * the house u.Unaware field.
+ * Named omissions:
  * gd.disintegested writer in xkilled (uhitm names it; monkilled sets it).
  */
 export async function vamprises(mtmp) {
@@ -2889,6 +2893,20 @@ export async function vamprises(mtmp) {
 
             if (door) door.doormask = D_NODOOR;
             recalc_block_point(x, y);
+            if (trapped) {
+                // C mon.c `:2969–2980` — suppress mb_trapped() messages
+                // (that makes the 'seeit' arg moot), restore after; a
+                // killed vampire was mondead()ed inside with no death
+                // pline yet, so print unconditional "destroyed".
+                if (!game.flags) game.flags = {};
+                const saveVerbose = game.flags.verbose;
+                game.flags.verbose = false;
+                const trap_killed = await mb_trapped(mtmp, seeit);
+                game.flags.verbose = saveVerbose;
+                if (trap_killed && canspotmon(mtmp) && !unaware) {
+                    await pline_mon(mtmp, `${Monnam(mtmp)} is destroyed!`);
+                }
+            }
         }
         newsym(x, y);
         return true;
@@ -2975,29 +2993,41 @@ export function logdeadmon(mtmp, mndx) {
 
 /**
  * C ref: steal.c thiefdead `:119–128` — a dead thief ends theft-in-progress.
- * Named omission: afternmv==stealarm → unstolenarm arm (steal-armor
- * occupation never set in JS; steal.js:379).
+ * C order: stealmid = 0, then if afternmv == stealarm swap to unstolenarm
+ * (hero finishes taking off the armor instead of handing it over) and
+ * clear nomovemsg. stealarm/unstolenarm live in steal.js (D-2271).
  */
 export function thiefdead() {
+    /* hero is busy taking off an item of armor which takes multiple turns */
     game.stealmid = 0;
+    if (game.afternmv === stealarm) {
+        game.afternmv = unstolenarm;
+        game.nomovemsg = null;
+    }
 }
 
 /**
  * C ref: shk.c shkgone `:234–269` — a dead shopkeeper's level effects:
- * resident cleared, floor stock de-charged, bill paid out and the room
- * struck from u.ushops (C strchr/memmove on the room-char string).
+ * damage discarded, resident cleared, has_shop cleared, floor stock
+ * de-charged, bill paid out and the room struck from u.ushops
+ * (C strchr/memmove on the room-char string).
  * ESHK/rooms/ushops follow the shk.js idioms (:253, :1031); floor stock is
  * the game.fobj chain filtered by ox/oy (place_object stamps both).
- * setpaid joins the shk.js edge (same SCC, hoisted).
- * Named omissions: discard_damage_owned_by (no JS port) and the
- * has_shop clear (needs search_special(ANY_SHOP); no JS port).
+ * setpaid/discard_damage_owned_by join the shk.js edge (same SCC, hoisted);
+ * search_special is the canonical sounds.js export (same SCC, hoisted,
+ * call-time use only — no top-level TDZ read). has_shop is a C 1-bit
+ * bitfield (rm.h:435); JS clears to 0 like C `:248–249`.
  */
 export function shkgone(mtmp) {
     const eshk = ESHK(mtmp);
     if (!eshk) return;
     if (on_level(eshk.shoplevel, game.u?.uz)) {
+        discard_damage_owned_by(mtmp);
         const sroom = game.level?.rooms?.[(eshk.shoproom | 0) - ROOMOFFSET];
         if (sroom) sroom.resident = null;
+        if (!search_special(ANY_SHOP)) {
+            if (game.level?.flags) game.level.flags.has_shop = 0;
+        }
         if (sroom) {
             const lx = sroom.lx | 0, hx = sroom.hx | 0;
             const ly = sroom.ly | 0, hy = sroom.hy | 0;
@@ -3029,9 +3059,8 @@ export function shkgone(mtmp) {
  * usteed dismount. mptr is the pre-death data (mondeadsaves it before the
  * cham/were restore, `:3112`). Callers: mondead (TRUE); mongone keeps its
  * D-1149 body (FALSE arm still named).
- * Named omissions: stinky_nemesis/nemesis_stinks gas (quest-text
- * com_pager_core dependency; questpgr.js:811); minimal_monnam format in
- * the already-detached impossible arm (no JS port; mon_nam used).
+ * Named omissions: minimal_monnam format in the already-detached
+ * impossible arm (no JS port; mon_nam used).
  */
 export async function m_detach(mtmp, mptr, due_to_death) {
     const mx = mtmp.mx, my = mtmp.my;
@@ -3047,6 +3076,8 @@ export async function m_detach(mtmp, mptr, due_to_death) {
     if (due_to_death) {
         if ((mtmp.data?.msound | 0) === MS_NEMESIS) {
             await nemdead();
+            // C mon.c:2770-2773 — Arc/Cav/Pri kill texts leave a gas cloud.
+            if (await stinky_nemesis(mtmp)) await nemesis_stinks(mx, my);
         }
         if ((mtmp.data?.msound | 0) === MS_LEADER) leaddead();
         relobj_on_death(mtmp);
@@ -3083,9 +3114,11 @@ export async function m_detach(mtmp, mptr, due_to_death) {
 // restore, mvitals, quest/mail marks, Kops respawn, logdeadmon, unmap,
 // m_detach. Dead mons stay on fmon until dmonsfree — do not splice here.
 // Named omissions: mongone's m_detach(FALSE) caller arm (D-1149 body kept);
-// stinky_nemesis gas + minimal_monnam format inside m_detach; thiefdead
-// stealarm arm; shkgone damage/has_shop arms; xkilled-side disintegested
-// writer + Maybe-not/vamp_rise readers (uhitm names them).
+// minimal_monnam format inside m_detach; thiefdead stealarm arm LIVE
+// (D-2271; steal.js stealarm/unstolenarm); shkgone damage/has_shop arms LIVE
+// (this D; shk.js discard_damage_owned_by + sounds.js search_special);
+// xkilled-side disintegested writer + Maybe-not/vamp_rise readers
+// (uhitm names them).
 export async function mondead(mtmp) {
     // C `:3089–3090` — potential pet message flag; always cleared.
     const beSad = !!(game.iflags && game.iflags.sad_feeling);

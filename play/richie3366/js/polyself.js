@@ -92,6 +92,7 @@ import {
     eggs_in_water,
     mindless,
     telepathic,
+    infravision,
     can_teleport,
     control_teleport,
     regenerates,
@@ -148,6 +149,7 @@ import {
     ACID_RES,
     STONE_RES,
     DRAIN_RES,
+    INFRAVISION,
     REGENERATION,
     KILLED_BY_AN,
     BOLT_LIM,
@@ -640,7 +642,7 @@ function resists_drli_you(mdat) {
  * via set_mon_data (prorates u.umovement when new form is slower).
  * Named omissions: defended(AD_DRLI) disjunct of resists_drli (no JS
  * defended export); ANTIMAGIC;
- * SICK_RES fungus/ghoul; STUNNED/HALLUC_RES/SEE_INVIS/TELEPAT/INFRAVISION/
+ * SICK_RES fungus/ghoul; STUNNED/HALLUC_RES/SEE_INVIS/TELEPAT/
  * INVIS/LEVITATION/SWIMMING/PASSES_WALLS/
  * REFLECTING/BLND_RES; vamp cham; polysense;
  * light-source bookkeeping.
@@ -670,6 +672,11 @@ export function set_uasmon() {
     propset_fromform(STONE_RES, 'HStone_resistance', !!(mres & MR_STONE));
     // C: PROPSET(DRAIN_RES, resists_drli(&gy.youmonst)) with uwep suppressed
     propset_fromform(DRAIN_RES, 'HDrain_resistance', resists_drli_you(mdat));
+    // C polyself.c set_uasmon — PROPSET(INFRAVISION, infravision(Upolyd ?
+    // mdat : &mons[gu.urace.mnum])): form grants while poly'd, else race.
+    // The enlightenment/from_what "from your creature form" suffix reads it.
+    propset_fromform(INFRAVISION, 'HInfravision',
+        infravision(Upolyd(u) ? mdat : mons(game.urace?.mnum)));
     // C polyself.c:94-95 — PROPSET(TELEPORT, can_teleport(mdat)) and
     // PROPSET(TELEPORT_CONTROL, control_teleport(mdat)): a tengu form
     // confers FROMFORM teleport, gating moveloop rn2(85) (allmain.c:308).

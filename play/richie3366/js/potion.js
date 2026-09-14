@@ -942,8 +942,7 @@ export async function make_stoned(xtime, msg, killedby, killername) {
  * C ref: potion.c make_sick — fatal illness / food poisoning TIMEOUT.
  * Branch envelope: onset (Sick_resistance gate + talk msgs); cure by
  * usick_type mask (partial vs full); delayed SICK killer.
- * Named omissions: Unaware talk suppress; #wizintrinsic KILLED_BY vs
- * KILLED_BY_AN cause polish.
+ * Named omissions: Unaware talk suppress.
  */
 export async function make_sick(xtime, cause, talk, type) {
     const u = game.u || (game.u = {});
@@ -982,7 +981,12 @@ export async function make_sick(xtime, cause, talk, type) {
     if (u.Sick) {
         exercise(A_CON, false);
         if (xtime || !old || !kptr) {
-            delayed_killer(SICK, KILLED_BY_AN, cause || '');
+            // C potion.c — a "#wizintrinsic" cause takes KILLED_BY (bare
+            // killer name, no article); every other cause KILLED_BY_AN.
+            const kpfx = (cause && cause === '#wizintrinsic')
+                ? KILLED_BY
+                : KILLED_BY_AN;
+            delayed_killer(SICK, kpfx, cause || '');
         }
     } else {
         dealloc_killer(kptr);
@@ -2409,8 +2413,9 @@ function BLevitation() {
  * Branch envelope: fountain-at-feet yn → dipfountain; sink-at-feet yn →
  * dipsink (D-1113); pool yn → wash_hands / water_damage (D-1128);
  * potion getobj → potion_dip mix (D-1457).
- * Deferred: m-prefix skip floor polish, inaccessible_equipment,
- * pot_acid_damage boom+delobj (ER_DESTROYED without delete).
+ * Deferred: m-prefix skip floor polish, inaccessible_equipment.
+ * Pool-dip acid boom rides live `water_damage` → `pot_acid_damage`
+ * (trap.js; ER_DESTROYED deletes, `in_use` short-circuit per C).
  * @returns {number} ECMD_*
  */
 export async function dodip() {

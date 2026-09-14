@@ -45,7 +45,7 @@ import { m_at, hideunder, seemimic, bad_rock } from './mon.js';
 import { recalc_block_point } from './vision.js';
 import { is_hider, hides_under, throws_rocks, noncorporeal, metallivorous, mons, is_flyer, is_swimmer, verysmall, bigmonst, passes_bars, dmgtype } from './monsters.js';
 import {
-    objects_at, obj_extract_self, place_object, delobj,
+    objects_at, sobj_at, obj_extract_self, place_object, delobj,
     peek_timer, stop_timer, start_timer, splitobj,
 } from './mkobj.js';
 import { objectNames } from './generated/objects_data.js';
@@ -98,13 +98,6 @@ const RUBBER_HOSE = objectNames.indexOf('RUBBER_HOSE');
 const LEATHER = 7;
 const CANDELABRUM_OF_INVOCATION =
     objectNames.indexOf('CANDELABRUM_OF_INVOCATION');
-
-function sobj_at(otyp, x, y) {
-    for (let o = objects_at(x, y); o; o = o.nexthere) {
-        if ((o.otyp | 0) === otyp) return o;
-    }
-    return null;
-}
 
 /** C ref: hack.c doorless_door — D_NODOOR / D_BROKEN only. */
 function doorless_door(x, y) {

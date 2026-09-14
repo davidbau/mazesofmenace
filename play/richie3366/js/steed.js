@@ -7,7 +7,7 @@
 // exercise_steed (riding-skill training every 100 turns).
 
 import { game } from './gstate.js';
-import { mksobj, objects_at } from './mkobj.js';
+import { mksobj, sobj_at } from './mkobj.js';
 import { makeknown, near_capacity, encumber_msg } from './invent.js';
 import {
     humanoid, noncorporeal, verysmall, bigmonst, nohands,
@@ -154,13 +154,6 @@ function distu(x, y) {
 function t_at(x, y) {
     for (let t = game.ftrap; t; t = t.ntrap) {
         if (t.tx === x && t.ty === y) return t;
-    }
-    return null;
-}
-
-function sobj_at(otyp, x, y) {
-    for (let o = objects_at(x, y); o; o = o.nexthere) {
-        if ((o.otyp | 0) === otyp) return o;
     }
     return null;
 }

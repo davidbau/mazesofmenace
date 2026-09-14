@@ -25,7 +25,7 @@ import {
 import { cansee, couldsee, clear_path } from './vision.js';
 import { worm_known } from './worm.js';
 import {
-    place_object, splitobj, stackobj, obj_extract_self, delobj, objects_at,
+    place_object, splitobj, stackobj, obj_extract_self, delobj, objects_at, sobj_at,
     mksobj, weight, is_flammable,
 } from './mkobj.js';
 import { observe_object, makeknown, hold_another_object } from './invent.js';
@@ -265,14 +265,6 @@ function blocking_terrain(x, y) {
         return true;
     }
     return false;
-}
-
-function sobj_at(otyp, x, y) {
-    // objects_at returns nexthere chain head, not an array
-    for (let o = objects_at(x, y); o; o = o.nexthere) {
-        if (o.otyp === otyp) return o;
-    }
-    return null;
 }
 
 /**

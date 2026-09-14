@@ -17,7 +17,10 @@ import { dist2 } from './hacklib.js';
 import { place_object, obj_extract_self } from './mkobj.js';
 import { simpleonames, otense, xname } from './objnam.js';
 import { monsterNames } from './monsters.js';
-import { ignitable, artifact_light } from './timeout.js';
+import { ignitable, artifact_light, end_burn } from './timeout.js';
+import { objectNames } from './objects.js';
+
+const MAGIC_LAMP = objectNames.indexOf('MAGIC_LAMP');
 
 function pm(name) {
     return monsterNames.indexOf(`PM_${name}`);
@@ -117,7 +120,30 @@ export function obj_is_burning(obj) {
 }
 
 /**
- * C ref: light.c obj_sheds_light `:762–767` — so far only burning
+ * C ref: light.c snuff_light_source `:729–758` — snuff the burning floor
+ * light at (x,y), if any (read.c set_lit dark arm, D-2263). First LS_OBJECT
+ * entry at the cell wins; artifact lights are skipped (only unwielding
+ * snuffs Sunsword). `end_burn` removes the entry, invalidating the scan,
+ * so return right after (C `ls->next is now invalid`).
+ */
+export function snuff_light_source(x, y) {
+    const list = game.light_base;
+    if (!list?.length) return;
+    const xx = x | 0, yy = y | 0;
+    for (let i = 0; i < list.length; i++) {
+        const ls = list[i];
+        if (ls.type === LS_OBJECT && (ls.x | 0) === xx && (ls.y | 0) === yy) {
+            const obj = ls.id;
+            if (obj_is_burning(obj)) {
+                if (artifact_light(obj)) continue;
+                end_burn(obj, (obj.otyp | 0) !== MAGIC_LAMP);
+                return;
+            }
+        }
+    }
+}
+
+/** C ref: light.c obj_sheds_light `:762–767` — so far only burning
  * objects. Caller mkobj.c dealloc_obj (D-1743).
  */
 export function obj_sheds_light(obj) {

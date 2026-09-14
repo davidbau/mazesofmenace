@@ -64,7 +64,7 @@ import {
 import { can_blow, little_to_big, big_to_little, hero_conflict } from './mondata.js';
 import { wield_tool, welded, is_pole, mwelded } from './wield.js';
 import {
-    splitobj, delobj, objects_at, unbless, attach_egg_hatch_timeout, kill_egg,
+    splitobj, delobj, objects_at, sobj_at, unbless, attach_egg_hatch_timeout, kill_egg,
     obj_extract_self, place_object, stackobj, weight, mksobj, stop_timer,
     start_timer, hornoplenty,
 } from './mkobj.js';
@@ -3302,13 +3302,6 @@ function accessible_apply(x, y) {
     return true;
 }
 
-function sobj_at_nexthere(otyp, x, y) {
-    for (let o = objects_at(x, y); o; o = o.nexthere) {
-        if ((o.otyp | 0) === otyp) return o;
-    }
-    return null;
-}
-
 function bimanual_apply(obj) {
     if (!obj) return false;
     const oc = game.objects?.[obj.otyp];
@@ -3452,7 +3445,7 @@ export async function use_whip(obj) {
         await pline(`The bullwhip slips out of your ${body_part(HAND)}.`);
         await dropx(obj);
     } else if (u.utrap && (u.utraptype | 0) === TT_PIT) {
-        let wrapped_what = sobj_at_nexthere(BOULDER, rx, ry)
+        let wrapped_what = sobj_at(BOULDER, rx, ry)
             ? 'a boulder'
             : (IS_FURNITURE(game.level?.at?.(rx, ry)?.typ) ? 'something' : null);
         let did_attack = false;
@@ -3900,7 +3893,7 @@ export async function use_pole(obj, autohit) {
         }
         await thitmonst(mtmp, u.uwep);
     } else if (glyph_is_statue_glyph_at(cc.x, cc.y)
-        && sobj_at_nexthere(STATUE, cc.x, cc.y)) {
+        && sobj_at(STATUE, cc.x, cc.y)) {
         const t = t_at(cc.x, cc.y);
         if (t && (t.ttyp | 0) === STATUE_TRAP
             && (await activate_statue_trap(t, t.tx, t.ty, false))) {
@@ -3912,7 +3905,7 @@ export async function use_pole(obj, autohit) {
     } else {
         unmap_invisible(cc.x, cc.y);
         if (glyph_to_obj_boulder_at(cc.x, cc.y)
-            && sobj_at_nexthere(BOULDER, cc.x, cc.y)) {
+            && sobj_at(BOULDER, cc.x, cc.y)) {
             await pline(thump.replace('%s', 'boulder'));
             await wake_nearto(cc.x, cc.y, 25);
         } else if (!accessible_apply(cc.x, cc.y)
@@ -4206,7 +4199,7 @@ async function mkundead(mm, revive_corpses, mm_flags) {
         if (mdat && enexto(cc, mm.x, mm.y, mdat)) {
             let skipMakemon = false;
             if (revive_corpses) {
-                const otmp = sobj_at_nexthere(CORPSE, cc.x, cc.y);
+                const otmp = sobj_at(CORPSE, cc.x, cc.y);
                 if (otmp && await revive(otmp, false)) skipMakemon = true;
             }
             if (!skipMakemon) makemon(mdat, cc.x, cc.y, mm_flags);
@@ -4369,7 +4362,7 @@ async function figurine_location_checks(obj, cc, quietly) {
         }
         return false;
     }
-    if (sobj_at_nexthere(BOULDER, x, y) && !passes_walls(ptr)
+    if (sobj_at(BOULDER, x, y) && !passes_walls(ptr)
         && !throws_rocks(ptr)) {
         if (!quietly) {
             await pline('You cannot fit the figurine on the boulder.');
@@ -4850,8 +4843,8 @@ export async function use_candelabrum(obj) {
 /**
  * C ref: apply.c use_candle — attach to carried candelabrum (spe<7) or
  * use_lamp. Swallow → no_elbow_room. Named omit: safe_qbuf truncation;
- * SetVoice; update_inventory; obj_split_light_source on lit split;
- * obfree oextra.
+ * SetVoice; update_inventory; obfree oextra.
+ * Lit split carries its light via splitobj → obj_split_light_source.
  */
 export async function use_candle(optr) {
     let obj = optr;
@@ -5392,14 +5385,6 @@ function closed_door_xy(x, y) {
     return (m & (D_CLOSED | D_LOCKED)) !== 0;
 }
 
-function sobj_at_otyp(otyp, x, y) {
-    if (otyp < 0) return null;
-    for (const obj of objects_at(x, y) || []) {
-        if ((obj.otyp | 0) === otyp) return obj;
-    }
-    return null;
-}
-
 function distu_xy(x, y) {
     const u = game.u || {};
     return dist2(u.ux | 0, u.uy | 0, x, y);
@@ -5423,7 +5408,7 @@ function check_jump(traj, x, y) {
             }
         }
     }
-    if (sobj_at_otyp(BOULDER, x, y)
+    if (sobj_at(BOULDER, x, y)
         && !throws_rocks(game.youmonst?.data)) {
         return false;
     }
