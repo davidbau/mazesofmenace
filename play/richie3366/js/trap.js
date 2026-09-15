@@ -23,7 +23,7 @@ import {
     is_flammable, is_rustprone, is_rottable, is_corrodeable, is_crackable,
     erosion_matters, delobj, mkcorpstat, add_to_container, obj_extract_self,
     objects_at, sobj_at, splitobj, nxtobj, add_to_migration,
-    obj_ice_effects, spot_stop_timers, stop_timer,
+    obj_ice_effects, spot_stop_timers, stop_timer, spot_time_left,
 } from './mkobj.js';
 import { find_mac, make_corpse, mon_to_stone, vamp_stone, monstone, mondead } from './mhitm.js';
 import { mon_explodes, scatter } from './explode.js';
@@ -89,7 +89,7 @@ import {
     HEAD, ARM, FINGER, HAND,
     NOTELL, NC_SHOW_MSG, POLY_NOFLAGS,
     W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU, W_WEP, W_SWAPWEP,
-    W_SADDLE, I_SPECIAL,
+    W_SADDLE, I_SPECIAL, W_ARTI,
     CORPSTAT_NONE, CORPSTAT_HISTORIC, CORPSTAT_GENDER, CORPSTAT_MALE,
     CORPSTAT_FEMALE, MM_NOCOUNTBIRTH, MM_NOMSG, MM_ADJACENTOK, MM_MALE,
     MM_FEMALE, NO_MINVENT, M_AP_TYPE, ismnum, ANIMATE_NORMAL,
@@ -111,7 +111,7 @@ import {
     COST_BURN, COST_RUST, COST_ROT, COST_CORRODE, COST_CRACK,
 } from './const.js';
 import {
-    is_pool, is_lava, waterbody_name, crawl_destination,
+    is_pool, is_lava, waterbody_name, crawl_destination, SURFACE_AT,
     maybe_half_phys, nomul, unmul, losehp, finish_maybe_wail, stop_occupation,
     in_rooms, set_uinwater,
 } from './hack.js';
@@ -156,12 +156,13 @@ import { ynq } from './getline.js';
 import { more_experienced, newexplevel } from './exper.js';
 import { killed, stumble_onto_mimic } from './uhitm.js';
 import { rider_cant_reach, dismount_steed, test_move_ok } from './steed.js';
-import { resist, blank_novel, poly_obj } from './zap.js';
+import { resist, blank_novel, poly_obj, is_ice } from './zap.js';
 import { fill_pit, fillholetyp, liquid_flow, maybe_dunk_boulders, bury_an_obj } from './dig.js';
 import { u_wield_art, attacks, bare_artifactname, has_magic_key } from './artifact.js';
 import { ART_STING } from './generated/artifacts_data.js';
 import { maybe_unhide_at, locomotion } from './monmove.js';
 import { is_waterwall, hero_Swimming, hero_Amphibious, hero_Breathless, is_drawbridge_wall, find_drawbridge, destroy_drawbridge } from './dbridge.js';
+import { surface } from './sit.js';
 // C obj.h stone_missile lives in dothrow.js (canonical); same-file passes_rocks below (D-2195).
 import { stone_missile } from './dothrow.js';
 
@@ -2798,13 +2799,81 @@ export async function drain_en(n, max_already_drained) {
 }
 
 /**
- * C ref: trap.c back_on_ground — simplified surface wording.
- * Named omissions: ice_descr / surface / Levitation-Flying preposition
- * matrix beyond solid-ground default.
+ * C ref: pager.c ice_descr — ice thickness wording for back_on_ground /
+ * mention_decor. `icetyp[]` table + `spot_time_left(MELT_ICE_AWAY)` rating
+ * in C order; `iflags.ice_rating` is C's secondary output for
+ * mention_decor. C writes into a caller `char icebuf[QBUFSZ]`; JS returns
+ * the string (every C caller uses the return value). Far/unseen ice falls
+ * back to waterbody_name; a non-ICE surface (raised-drawbridge case) keeps
+ * C's `[ice:%d?]` marker.
+ */
+const ICETYP = ['solid', 'sturdy', 'steady', 'unsteady', 'thin', 'slushy'];
+
+export function ice_descr(x, y) {
+    const u = game.u || {};
+    const xr = (u.xray_range | 0);
+    const r = xr > 2 ? xr : 2;
+    const neardist = (r * r) * 2 - r; /* same as r*r + r*(r-1) */
+    if (!game.iflags) game.iflags = {};
+    game.iflags.ice_rating = -1; /* secondary output, for 'mention_decor' */
+    if (SURFACE_AT(x, y) !== ICE) {
+        const lev = game.level?.at?.(x, y);
+        return `[ice:${(lev?.typ | 0)}?]`;
+    }
+    /* C distu(x, y); dist2 is symmetric and already imported */
+    if ((dist2((u.ux | 0), (u.uy | 0), (x | 0), (y | 0)) > neardist
+         || (!cansee(x, y) && (!u_at(x, y) || hero_Levitation())))
+        && !game.decor_levitate_override) { /* probe_decor (pickup.c) */
+        return waterbody_name(x, y); /* "ice" or "frozen <liquid>" */
+    }
+    const time_left = spot_time_left(x, y, MELT_ICE_AWAY);
+    /* other, real ice thickness/strength terminology exists but seems
+       to be too unfamiliar for nethack's use */
+    const rating = !time_left ? 0 /* solid */
+        : time_left > 1000 ? 1 /* sturdy */
+        : time_left > 100 ? 2 /* steady */
+        : time_left > 50 ? 3 /* unsteady */
+        : time_left > 14 ? 4 /* thin */
+        : 5; /* slushy */
+    game.iflags.ice_rating = rating;
+    return `${ICETYP[rating]} ${waterbody_name(x, y)}`;
+}
+
+/**
+ * C ref: trap.c back_on_ground `:4976–5008` — full surface wording matrix.
+ * surface() is the shared sit.js port (D-2008, C dungeon.c:1750); the
+ * uswallow maw/husk arm stays its named omission (fires only while
+ * swallowed by an animal). C compares with strcmpi; both surface() sides
+ * return lowercase literals so === is exact (the lone `air` arm is
+ * strcmp in C).
  */
 export async function back_on_ground(rescued) {
-    const prefix = rescued ? 'You find yourself' : 'You are back';
-    await pline(`${prefix} on solid ground.`);
+    const u = game.u || {};
+    let preposit = (hero_Levitation() || hero_Flying()) ? 'over' : 'on';
+    let surf = surface(u.ux, u.uy);
+    if (is_ice(u.ux, u.uy)) {
+        /* "on ice" */
+        surf = ice_descr(u.ux, u.uy);
+    } else if (surf === 'floor' || surf === 'ground') {
+        /* "on solid ground" */
+        surf = 'solid ground';
+    } else if (surf === 'bridge' || surf === 'altar'
+               || surf === 'headstone') {
+        /* "on a bridge" */
+        surf = an(surf);
+    } else if (surf === 'stairs' || surf === 'lava'
+               || surf === 'bottom') {
+        /* "on the stairs" */
+        surf = the(surf);
+    } else { /* "cloud", "air", "air bubble", "wall", "fountain", "doorway" */
+        /* "in a cloud", "in the air" */
+        surf = surf === 'air' ? the(surf) : an(surf);
+        preposit = 'in';
+    }
+    const you_are_back = rescued
+        ? 'You find yourself'
+        : (game.flags?.verbose !== false ? 'You are back' : 'Back');
+    await pline(`${you_are_back} ${preposit} ${surf}.`);
     if (!game.iflags) game.iflags = {};
     game.iflags.last_msg = PLNMSG_BACK_ON_GROUND;
 }
@@ -2850,14 +2919,20 @@ function Flying_fu() {
 }
 
 /**
- * C ref: trap.c float_up — gain levitation messages + float_vs_flight +
- * encumber_msg.
+ * C ref: trap.c float_up (`:3937–4006`) — gain levitation messages +
+ * float_vs_flight + encumber_msg.
  * Branch envelope: utrap PIT/lava/infloor/buriedball/web/bear; uinwater
  * spoteffects; uswallow animal/spiral; Hallucination; airlevel; default;
- * steed flyer/floater gate + dismount; Flying lose-control; float_vs_flight;
- * encumber_msg.
- * Named omissions: buried_ball exact coord; Lev_at_will steed float;
- * surface() wording (floor/ground stand-in).
+ * steed flyer/floater gate + Lev_at_will float vs dismount; Flying
+ * lose-control; float_vs_flight; encumber_msg.
+ * D-0956 residuals retired here: buried_ball exact coord (exported from
+ * dig.js, C dig.c:1884–1932); Lev_at_will steed float (youprop.h:242–245);
+ * surface() wording via dungeon.c maw/husk inline (shared sit.js surface
+ * still names that arm). WEB arm kept dead per C: `:3963` compares
+ * utraptype against trap-type WEB=18 (trap.h:77), not TT_WEB=3
+ * (you.h:349), so a TT_WEB hero falls through to the bear-trap arm.
+ * Flying via canonical mhitu.js export (C youprop.h:253–255 incl. steed
+ * flyer); file-local Flying_fu stays for float_down and below.
  */
 export async function float_up() {
     const u = game.u || (game.u = {});
@@ -2877,13 +2952,20 @@ export async function float_up() {
                 `Your body pulls upward, but your ${makeplural(body_part(LEG))} are still stuck.`,
             );
         } else if (typ === TT_BURIEDBALL) {
-            // buried_ball(&cc) deferred — room vs ground via hero cell
-            const loc = game.level?.at(u.ux | 0, u.uy | 0);
+            // C trap.c:3950-3962: buried_ball(&cc) finds the first buried
+            // ball within 2 steps (dig.c:1884-1932), floor/ground read at
+            // the ball cell, not the hero cell.
+            const { buried_ball } = await import('./dig.js');
+            const cc = { x: u.ux | 0, y: u.uy | 0 };
+            buried_ball(cc);
+            const loc = game.level?.at(cc.x, cc.y);
             const ground = loc && IS_ROOM(loc.typ) ? 'floor' : 'ground';
             await pline(
                 `You feel lighter, but your ${body_part(LEG)} is still chained to the ${ground}.`,
             );
-        } else if (typ === TT_WEB) {
+        } else if (typ === WEB) {
+            // Dead in C (trap.c:3963 vs trap.h:77 WEB=18, you.h:349
+            // TT_WEB=3): kept literal so TT_WEB falls through below.
             await pline(
                 `You float up slightly, but you are still stuck in the ${trapname(WEB, false)}.`,
             );
@@ -2898,7 +2980,13 @@ export async function float_up() {
     } else if (u.uswallow) {
         const stuck = u.ustuck;
         if (stuck && is_animal(stuck.data)) {
-            await pline('You float away from the floor.');
+            // C trap.c:3974-3975 via dungeon.c surface():1749-1759 — u_at
+            // && uswallow && is_animal always holds here, so surface is
+            // maw/husk/nonesuch, never the terrain word.
+            const { digests, enfolds } = await import('./mhitu.js');
+            const surf = digests(stuck.data) ? 'maw'
+                : enfolds(stuck.data) ? 'husk' : 'nonesuch';
+            await pline(`You float away from the ${surf}.`);
         } else if (stuck) {
             await pline(`You spiral up into ${mon_nam(stuck)}.`);
         }
@@ -2911,13 +2999,26 @@ export async function float_up() {
     }
 
     if (u.usteed && !is_floater(u.usteed.data) && !is_flyer(u.usteed.data)) {
-        // Lev_at_will steed float deferred — always dismount path
-        await pline(`You cannot stay on ${mon_nam(u.usteed)}.`);
-        const { dismount_steed } = await import('./steed.js');
-        const { DISMOUNT_GENERIC } = await import('./const.js');
-        await dismount_steed(DISMOUNT_GENERIC);
+        // C trap.c:3987-3995 with youprop.h:242-245 Lev_at_will: at-will
+        // sources only (HLevitation&I_SPECIAL or ELevitation&W_ARTI, no
+        // other H/E bits) keep the rider mounted.
+        const HLev = u.HLevitation | 0, ELev = u.ELevitation | 0;
+        const levAtWill = ((HLev & I_SPECIAL) !== 0 || (ELev & W_ARTI) !== 0)
+            && (HLev & ~(I_SPECIAL | TIMEOUT)) === 0
+            && (ELev & ~W_ARTI) === 0;
+        if (levAtWill) {
+            await pline(`${Monnam(u.usteed)} magically floats up!`);
+        } else {
+            await pline(`You cannot stay on ${mon_nam(u.usteed)}.`);
+            const { dismount_steed } = await import('./steed.js');
+            const { DISMOUNT_GENERIC } = await import('./const.js');
+            await dismount_steed(DISMOUNT_GENERIC);
+        }
     }
-    if (Flying_fu()) {
+    // C trap.c:3997 `if (Flying)` — canonical youprop.h:253-255 export
+    // (incl. steed flyer), not the file-local subset below.
+    const { Flying } = await import('./mhitu.js');
+    if (Flying()) {
         await pline('You are no longer able to control your flight.');
     }
     const { float_vs_flight } = await import('./polyself.js');

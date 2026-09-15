@@ -14,8 +14,8 @@ import {
     LEFT_SIDE, RIGHT_SIDE, LEFT_RING, RIGHT_RING, LEG, HAND, HAIR,
     POOL, DROWNING, KILLED_BY_AN,
     MAGICAL_BREATHING, SWIMMING, Is_medusa_level, Is_waterlevel,
-    W_ARMS, W_WEP, W_AMUL, W_ARM, W_ARMG, NEUTRAL, BOLT_LIM, STONING, KILLED_BY, M_SEEN_FIRE,
-    M_SEEN_SLEEP, M_SEEN_ACID, STUNNED, TELEPORT_CONTROL,
+    W_ARMS, W_WEP, W_AMUL, W_ARM, W_ARMG, W_ARMH, NEUTRAL, BOLT_LIM, STONING, KILLED_BY, M_SEEN_FIRE,
+    M_SEEN_SLEEP, M_SEEN_ACID, STUNNED, TELEPORT_CONTROL, BLINDED,
     REFLECTING, A_CHAOTIC, LARGEST_INT,
     M_AP_NOTHING, M_AP_OBJECT, WORN_HELMET, TELEDS_ALLOW_DRAG,
     something, Something, u_at, ERODE_RUST, ERODE_CORRODE,
@@ -69,6 +69,7 @@ import {
 } from './monsters.js';
 import { done_in_by, done, finish_losehp_done, delayed_killer } from './end.js';
 import { make_blinded } from './do.js';
+import { objdescr_is } from './apply.js';
 import { msummon, Inhell } from './minion.js';
 import { new_were, were_summon, Protection_from_shape_changers, set_ulycn } from './were.js';
 import { growl_sound } from './sounds.js';
@@ -493,7 +494,8 @@ export async function missmu(mtmp, nearmiss, mattk) {
  * speed is taken away. HFast = 0; !Fast → "You slow down." else
  * (speed boots / EFast) "Your quickness feels less natural.";
  * exercise(A_DEX, FALSE). Callers: zap.c zapyourself WAN/SPE_SLOW
- * (D-1433). mhitu AD_SLOW gaze / uhitm mhitm_ad_slow still named.
+ * (D-1433). mhitu AD_SLOW gaze still named; uhitm damageum_ad_slow
+ * (uhitm.js) + mhitm mhitm_ad_slow (mhitm.js) live.
  */
 export async function u_slow_down() {
     const u = game.u || (game.u = {});
@@ -1112,7 +1114,7 @@ export function digests(ptr) {
 /**
  * C ref: mondata.h enfolds — AT_ENGL + AD_WRAP (trapper / lurker).
  */
-function enfolds(ptr) {
+export function enfolds(ptr) {
     const slots = ptr?.mattk;
     if (!slots) return false;
     for (const a of slots) {
@@ -1730,17 +1732,20 @@ export async function expels(mtmp, mdat, message) {
 }
 
 /**
- * C ref: mondata.c can_blnd AT_ENGL arm (mdef == youmonst, obj NULL) for gulpmu.
- * haseyes + raven-vs-raven + !(Blindfolded||Unaware||ucreamed); WEAP/SPIT/NONE
+ * C ref: mondata.c can_blnd `:305–398` AT_ENGL arm (mdef == youmonst, obj NULL)
+ * for gulpmu, in C switch order: haseyes + raven-vs-raven; WEAP/SPIT/NONE
  * with NULL obj cannot blind; EXPL/BOOM/GAZE/MAGC/BREA need !mcan +
- * !resists_blnd; CLAW needs !ublindf; TUCH/STNG need !mcan (C switch order).
- * Named omission: worn visored-helmet check (same debt as can_blnd_u).
+ * !resists_blnd; ENGL needs !(Blindfolded||Unaware||ucreamed) (C youprop.h:96
+ * Blindfolded ≡ EBlinded); CLAW needs !ublindf + visor tail; TUCH/STNG need
+ * !mcan. Visor tail `:388–396` runs only when check_visor was set (VENOM obj
+ * or CLAW), so AT_ENGL never scans — C leaves check_visor FALSE there.
  */
 function gulpmu_can_blnd(mtmp, mattk) {
     const you = game.youmonst;
     if (!haseyes(you?.data)) return false;
     const raven = mons(monsterNames.indexOf('PM_RAVEN'));
     if (raven && mtmp?.data === raven && you?.data === raven) return false;
+    let check_visor = false;
     switch (mattk?.aatyp | 0) {
     case AT_EXPL:
     case AT_BOOM:
@@ -1760,6 +1765,7 @@ function gulpmu_can_blnd(mtmp, mattk) {
     }
     case AT_CLAW:
         if (game.u?.ublindf) return false;
+        check_visor = true;
         break;
     case AT_TUCH:
     case AT_STNG:
@@ -1768,7 +1774,33 @@ function gulpmu_can_blnd(mtmp, mattk) {
     default:
         break;
     }
+    // C mondata.c:388-396 — worn visored-helmet tail (owornmask & W_ARMH +
+    // objdescr_is "visored helmet" over hero invent). Only reached when
+    // check_visor was set, so the gulpmu AT_ENGL path is unaffected.
+    if (check_visor && visored_helmet_worn()) return false;
     return true;
+}
+
+/**
+ * C ref: mondata.c can_blnd `:389–394` visor scan — hero invent entries with
+ * owornmask & W_ARMH whose appearance is "visored helmet".
+ */
+function visored_helmet_worn() {
+    const u = game.u || {};
+    const inv = game.invent;
+    const seen = new Set();
+    const scan = (o) => {
+        if (!o || seen.has(o)) return false;
+        seen.add(o);
+        return (((o.owornmask | 0) & W_ARMH) !== 0) && objdescr_is(o, 'visored helmet');
+    };
+    if (Array.isArray(inv)) {
+        for (const o of inv) if (scan(o)) return true;
+    } else {
+        for (let o = inv; o; o = o.nobj) if (scan(o)) return true;
+    }
+    if (u.uarmh && !seen.has(u.uarmh)) return scan(u.uarmh);
+    return false;
 }
 
 /**
@@ -1928,9 +1960,19 @@ async function gulpmu(mtmp, mattk) {
                 await make_blinded(tmp, false);
                 if (!was_blinded && !Blind()) await pline('Your vision clears.');
             } else {
-                // C potion.c incr_itimeout(&HBlinded, 1L) — TIMEOUT bits only
-                u.HBlinded = ((u.HBlinded | 0) & ~TIMEOUT)
+                // C mhitu.c:1482 + potion.c incr_itimeout(&HBlinded, 1L) —
+                // TIMEOUT bits only. C HBlinded IS uprops[BLINDED].intrinsic
+                // (youprop.h:87 same storage), so mirror the do.js
+                // set_itimeout_HBlinded convention: flat + intrinsic together.
+                const nextBlinded = ((u.HBlinded | 0) & ~TIMEOUT)
                     | ((BlindedTimeout() + 1) & TIMEOUT);
+                u.HBlinded = nextBlinded;
+                if (!u.uprops) u.uprops = {};
+                if (!u.uprops[BLINDED]) {
+                    u.uprops[BLINDED] = { intrinsic: 0, extrinsic: 0, blocked: 0 };
+                }
+                u.uprops[BLINDED].intrinsic =
+                    ((u.uprops[BLINDED].intrinsic | 0) & ~TIMEOUT) | (nextBlinded & TIMEOUT);
             }
         }
         tmp = 0;

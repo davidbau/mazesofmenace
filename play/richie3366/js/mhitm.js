@@ -36,6 +36,7 @@ import {
     W_ARMG,
     TAINT_AGE,
     NORMAL_SPEED,
+    MSLOW,
     engulfing_u,
     NEED_WEAPON,
     NEED_HTH_WEAPON,
@@ -116,7 +117,7 @@ import {
     obj_extract_self, add_to_minv,
 } from './mkobj.js';
 import { findgold, stealarm, unstolenarm } from './steal.js';
-import { munslime } from './muse.js';
+import { munslime, mon_adjust_speed } from './muse.js';
 import { Monnam, mon_nam, mon_nam_too, Adjmonnam, oname, pmname, x_monnam, hliquid, YMonnam, s_suffix, free_mgivenname, a_monnam, y_monnam, some_mon_nam, minimal_monnam } from './do_name.js';
 import { an, xname, makeplural, cxname, vtense, The, simpleonames } from './objnam.js';
 import { mon_explodes } from './explode.js';
@@ -321,6 +322,7 @@ const AD_BLND = 11; /* blinds — monattk.h (Archon gaze) */
 const AD_STUN = 12; /* stuns — monattk.h */
 const AD_HALU = 36; /* hallucinate (black light AT_EXPL) */
 const AD_SLEE = 4; /* sleep ray — monattk.h */
+const AD_SLOW = 13; /* slows — monattk.h */
 const AD_PLYS = 14; /* paralyzes — monattk.h */
 const AD_ENCH = 41; /* remove enchantment (disenchanter) — monattk.h */
 const AD_CORR = 42; /* corrode armor (black pudding) — monattk.h */
@@ -1066,6 +1068,34 @@ export async function mhitm_ad_plys(magr, mattk, mdef, mhm) {
             await pline(`${Monnam(mdef)} is frozen by ${mon_nam(magr)}.`);
         }
         paralyze_monst(mdef, rnd(10));
+    }
+}
+
+/**
+ * C ref: uhitm.c mhitm_ad_slow `:3676–3686` — mhitm (mon→mon) arm.
+ * The gate (FALSE) always burns rn2(10); then `!negated && mspeed
+ * != MSLOW` → mon_adjust_speed(-1) (its own vis-gated "seems to be
+ * moving slower" + learnwand live in muse.js, worn.c D-0871),
+ * WAITFORU cleared, then "slows down." pline_mon on an actual change
+ * when vis && canspotmon. Leftover d() is kept (the slow rides on top
+ * of the hit; mdamagem applies it after knockback, like PLYS).
+ * Named omissions: defended(mdef, AD_SLOW) early return (`:3659–3660`,
+ * RNG-free wielded-artifact / blue-scales arm, deferred with the
+ * fire/cold defended omits per D-2043); uhitm you-as-agr arm is
+ * damageum_ad_slow in uhitm.js; mhitu you-as-def arm is
+ * mhitm_ad_slow_u in mhitu.js (D-2043).
+ */
+export async function mhitm_ad_slow(magr, mattk, mdef, mhm) {
+    void mattk;
+    void mhm; /* leftover d() stays */
+    const negated = await mhitm_mgc_atk_negated(magr, mdef, false);
+    if (!negated && (mdef.mspeed | 0) !== MSLOW) {
+        const oldspeed = mdef.mspeed | 0;
+        await mon_adjust_speed(mdef, -1, null);
+        mdef.mstrategy = (mdef.mstrategy | 0) & ~STRAT_WAITFORU;
+        if ((mdef.mspeed | 0) !== oldspeed && _mm_vis && canspotmon(mdef)) {
+            await pline_mon(mdef, `${Monnam(mdef)} slows down.`);
+        }
     }
 }
 
@@ -4248,6 +4278,26 @@ async function mdamagem(magr, mdef, mattk, mwep, dieroll) {
             done: false,
         };
         await mhitm_ad_plys(magr, mattk, mdef, mhm);
+        damage = mhm.damage | 0;
+        hitflags = mhm.hitflags | 0;
+        if (mhm.done || !damage) {
+            // C mhitm.c:1061 — knockback still runs; every path here returns hitflags
+            await mhitm_knockback(magr, mdef, mattk, mhm, !!mwep);
+            return mhm.hitflags;
+        }
+    }
+
+    // C: mhitm_adtyping → mhitm_ad_slow for AD_SLOW (uhitm.c:3676–3686
+    // mhitm arm). The arm never zeroes leftover or sets done, so like
+    // AD_PLYS above this falls through to the shared knockback + HP
+    // tail; a zero-dice attack returns hitflags after knockback.
+    if ((mattk.adtyp | 0) === AD_SLOW) {
+        const mhm = {
+            damage,
+            hitflags: M_ATTK_MISS,
+            done: false,
+        };
+        await mhitm_ad_slow(magr, mattk, mdef, mhm);
         damage = mhm.damage | 0;
         hitflags = mhm.hitflags | 0;
         if (mhm.done || !damage) {

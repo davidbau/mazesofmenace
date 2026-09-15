@@ -25608,18 +25608,18 @@ function selection_iterate(sel, fn) {
 }
 
 // C ref: selvar.c selection_new — empty COLNO×ROWNO selection (Set-backed)
-function selection_new() {
+export function selection_new() {
     return { pts: new Set(), lx: COLNO, ly: ROWNO, hx: 0, hy: 0 };
 }
 
 // C ref: selvar.c selection_getpoint
-function selection_getpoint(x, y, sel) {
+export function selection_getpoint(x, y, sel) {
     if (!sel || x < 0 || y < 0 || x >= COLNO || y >= ROWNO) return 0;
     return sel.pts.has(`${x},${y}`) ? 1 : 0;
 }
 
 // C ref: selvar.c selection_setpoint — set/clear; update bounds on set
-function selection_setpoint(x, y, sel, c) {
+export function selection_setpoint(x, y, sel, c) {
     if (!sel || x < 0 || y < 0 || x >= COLNO || y >= ROWNO) return;
     const key = `${x},${y}`;
     if (c) {

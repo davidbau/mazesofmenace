@@ -50,11 +50,11 @@ import {
     POOL, MOAT, WATER, LAVAPOOL, LAVAWALL, ICE, IRONBARS, AIR,
     FOUNTAIN, SINK, THRONE, GRAVE, ALTAR, VIBRATING_SQUARE,
     ROGUESET, Is_rogue_level,
-    HI_ZAP,
+    HI_ZAP, TIP_GETPOS,
 } from './const.js';
 import { paint_corner_nhw_menu } from './invent.js';
 import { t_at } from './trap.js';
-import { invocation_pos } from './hack.js';
+import { invocation_pos, handle_tip } from './hack.js';
 import { is_valid_travelpt } from './cmd.js';
 import { ok_to_quest } from './quest.js';
 import { visctrl } from './dokeylist.js';
@@ -1137,7 +1137,7 @@ async function getpos_help(force, goal) {
  * select_menu PICK_NONE) → wintty H2344 corner offx. Not NHW_TEXT
  * fullscreen; map under/left of the panel stays.
  */
-async function show_getpos_tip() {
+export async function show_getpos_tip() {
     // Exact nhcore.lua [[...]] lines (nhl_text splits on \n; wrap at 76).
     // C: nhl_text → select_menu(PICK_NONE) — Esc/Return/Space dismiss;
     // other keys re-prompt (C xwaitforspace).
@@ -1188,13 +1188,8 @@ export async function getpos(ccp, force, goal, describeAt) {
     let msg_given = true;
     let show_goal_msg = false;
     if (!g.context) g.context = {};
-    if (!g.context.tips_given) g.context.tips_given = {};
-    if (!g.context.tips_given.TIP_GETPOS) {
-        g.context.tips_given.TIP_GETPOS = true;
-        await show_getpos_tip();
-        // C handle_tip → show_goal_msg = TRUE
-        show_goal_msg = true;
-    }
+    // C getpos.c:838-839: if (handle_tip(TIP_GETPOS)) show_goal_msg = TRUE
+    if (await handle_tip(TIP_GETPOS)) show_goal_msg = true;
 
     // C: getpos_hilitefunc(TRUE) after sethilite when HiliteGoodposSymbol —
     // glyph highlight deferred; getvalid still active for auto_describe.

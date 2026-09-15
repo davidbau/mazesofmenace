@@ -11,8 +11,8 @@
 // create_msg_region (#if 0; never sets enter/leave_msg in live C);
 // can_enter/leave/enter/leave table indices (gas NO_CALLBACK);
 // attach_2_m skip is m_in_out_region (D-1176; update_monster_region
-// does not skip — C); region_danger / region_safety still use geometry
-// (run_regions hero inside_f uses the REG_HERO_INSIDE bit, D-1169);
+// does not skip — C); region_danger / region_safety use the
+// REG_HERO_INSIDE bit (run_regions hero inside_f did since D-1169);
 // mfndpos m_poisongas_ok D-1159 (mon.js; this file keeps a local clone
 // — mon.js imports visible_region_at). fumaroles whoosh D-1156. Walk
 // in_out_region D-1157. hurtle_step in_out_region D-1165. goto_level
@@ -32,7 +32,7 @@ import { CLR_GRAY, CLR_BRIGHT_GREEN } from './terminal.js';
 import {
     isok, ACCESSIBLE, COLNO, ROWNO, u_at, TIMEOUT, REG_HERO_INSIDE,
     REG_NOT_HEROS,
-    PLNMSG_ENVELOPED_IN_GAS, KILLED_BY_AN, EYE, LUNG, POISON_RES,
+    PLNMSG_ENVELOPED_IN_GAS, KILLED_BY_AN, EYE, LUNG, MAGICAL_BREATHING, POISON_RES,
     M_SEEN_POISON, M_POISONGAS_OK, M_POISONGAS_MINOR, M_POISONGAS_BAD,
     Is_waterlevel,
     MON_OFFMAP,
@@ -1083,15 +1083,15 @@ function Breathless() {
 /**
  * C ref: region.c region_danger — prayer trouble: hero in damaging gas.
  * Completely harmless when nonliving/Breathless; Poison_resistance skips.
- * Membership still uses inside_region geometry (named; C uses
- * hero_inside()). run_regions inside_f is the bit (D-1169).
+ * Membership is the REG_HERO_INSIDE bit (C region.h hero_inside), kept
+ * by walk/hurtle/goto_level in_out_region, teleds update_player_regions
+ * and add_region — not inside_region geometry (D-1169 follow-up).
  */
 export function region_danger() {
-    const u = game.u || {};
     const data = game.youmonst?.data;
     let n = 0;
     for (const reg of game.regions || []) {
-        if (!inside_region(reg, u.ux | 0, u.uy | 0)) continue;
+        if (!hero_inside(reg)) continue;
         if (reg.inside_f !== INSIDE_GAS_CLOUD) continue;
         if ((data && nonliving(data)) || Breathless()) continue;
         if (Poison_resistance()) continue;
@@ -1104,15 +1104,16 @@ export function region_danger() {
  * C ref: region.c region_safety — clear prayer gas-cloud trouble.
  * Envelope: multi/non-expiring → safe_teleds (+ Magical_breathing if
  * still in danger); single expiring → remove_region; already gone msg.
- * Membership still geometric (named; C uses hero_inside()).
- * Named omissions: BlindedTimeout==1 make_blinded polish.
+ * Membership is the REG_HERO_INSIDE bit (C region.h hero_inside), same
+ * as region_danger (D-1169 follow-up). Tail cures blindness when
+ * BlindedTimeout==1 via make_blinded(0, TRUE) (C :1403-1404).
  */
 export async function region_safety() {
     const u = game.u || (game.u = {});
     let r = null;
     let n = 0;
     for (const reg of game.regions || []) {
-        if (!inside_region(reg, u.ux | 0, u.uy | 0)) continue;
+        if (!hero_inside(reg)) continue;
         if (reg.inside_f !== INSIDE_GAS_CLOUD) continue;
         if (!n++ && (reg.ttl | 0) >= 0) r = reg;
     }
@@ -1122,10 +1123,20 @@ export async function region_safety() {
         const { TELEDS_NO_FLAGS } = await import('./const.js');
         await safe_teleds(TELEDS_NO_FLAGS);
         if (region_danger()) {
-            // C: set_itimeout(&HMagical_breathing, d(4,4)+4)
+            // C: set_itimeout(&HMagical_breathing, d(4,4)+4);
+            // youprop.h:270 HMagical_breathing ≡
+            // uprops[MAGICAL_BREATHING].intrinsic — dual-write flat +
+            // slot TIMEOUT bits (HBlinded precedent in do.js).
             const xt = d(4, 4) + 4;
             u.HMagical_breathing = ((u.HMagical_breathing | 0) & ~TIMEOUT)
                 | (xt >= TIMEOUT ? TIMEOUT : xt);
+            if (!u.uprops) u.uprops = {};
+            if (!u.uprops[MAGICAL_BREATHING]) {
+                u.uprops[MAGICAL_BREATHING] = { intrinsic: 0, extrinsic: 0, blocked: 0 };
+            }
+            u.uprops[MAGICAL_BREATHING].intrinsic =
+                ((u.uprops[MAGICAL_BREATHING].intrinsic | 0) & ~TIMEOUT)
+                | (u.HMagical_breathing & TIMEOUT);
             await You_feel('able to breathe.');
         }
     } else if (r) {
@@ -1134,5 +1145,12 @@ export async function region_safety() {
     } else {
         await pline('The gas cloud has dissipated.');
     }
-    // BlindedTimeout==1 make_blinded deferred (do.js↔region cycle)
+    // C region.c:1403-1404: maybe cure blindness too.
+    // C youprop.h:93 BlindedTimeout ≡ HBlinded & TIMEOUT; do.js keeps
+    // BlindedTimeout local, so read the flat here. Dynamic import keeps
+    // the existing file pattern (safe_teleds above) — no new static edge.
+    if (((u.HBlinded | 0) & TIMEOUT) === 1) {
+        const { make_blinded } = await import('./do.js');
+        await make_blinded(0, true);
+    }
 }

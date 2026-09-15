@@ -5,8 +5,9 @@
 //        uleftvault (D-1140);
 //        hidden_gold (D-1731; vault.c :1256–1268; doprgold FALSE);
 //        paygd (D-1812; vault.c :1204–1247; really_done);
-//        move_gold (D-1946; vault.c :632–643; live, wallify_vault unwired).
-// Named omissions: wallify_vault body (cleanup calls stub);
+//        move_gold (D-1946; vault.c :632–643; live, wallify_vault wired);
+//        wallify_vault (this iter; vault.c :646–731; cleanup-awaited).
+// Named omissions: wallify_vault xy_set_wall_state (mklev.js-local);
 // Croesus mon_wield;
 // fracture_rock boulder shatter; reset_faint; SetVoice; spot_stop_timers;
 // xy_set_wall_state; mimic_obj_name; full Deaf/Blind message variants that
@@ -26,15 +27,15 @@ import {
 import { getlin } from './getline.js';
 import { Monnam, noit_Monnam, noit_mon_nam, pmname } from './do_name.js';
 import { adjalign } from './attrib.js';
-import { nomul, in_rooms } from './hack.js';
+import { nomul, in_rooms, You_hear } from './hack.js';
 import { makeplural } from './objnam.js';
-import { cansee, couldsee, recalc_block_point } from './vision.js';
+import { cansee, couldsee, recalc_block_point, block_point } from './vision.js';
 import { COIN_CLASS } from './objects.js';
 import { del_engr_at, make_grave } from './engrave.js';
 import { t_at, deltrap } from './trap.js';
 import { rloc } from './teleport.js';
 import { yelp } from './sounds.js';
-import { place_object, stackobj, obj_extract_self } from './mkobj.js';
+import { place_object, stackobj, obj_extract_self, g_at, sobj_at } from './mkobj.js';
 import {
     VAULT, VAULT_GUARD_TIME, ROOMOFFSET, COLNO, ROWNO,
     ROOM, CORR, SCORR, STONE, HWALL, VWALL, DOOR, D_NODOOR,
@@ -43,14 +44,18 @@ import {
     M_AP_OBJECT, M_AP_TYPE, EGD, u_at,
     A_LAWFUL, Has_contents, IS_ROOM, ACCESSIBLE, isok,
     GD_EATGOLD, GD_DESTROYGOLD,
-    RLOC_NOMSG, RLOC_MSG, FEMALE, MALE,
+    RLOC_NOMSG, RLOC_MSG, FEMALE, MALE, IN_SIGHT, COULD_SEE,
 } from './const.js';
+import { m_at } from './mon.js';
+import { obfree } from './shk.js';
 import { monsterNames, mons, pmnames } from './monsters.js';
 import { m_canseeu, mhe } from './mondata.js';
 import { objectNames } from './generated/objects_data.js';
 
 const PM_GUARD = monsterNames.indexOf('PM_GUARD');
 const GOLD_PIECE = objectNames.indexOf('GOLD_PIECE');
+const ROCK = objectNames.indexOf('ROCK');
+const BOULDER = objectNames.indexOf('BOULDER');
 
 /** C ref: invent.c money_cnt — invent is a JS array. */
 function money_cnt(invent) {
@@ -294,13 +299,119 @@ export function move_gold(gold, vroom) {
 }
 
 /**
- * C ref: vault.c wallify_vault — restore vault-room boundary walls.
- * Stub: cleanup still parks + restfakecorr + Suddenly; wall repair /
- * whisper / distant-chant / gold-move plines deferred.
- * (move_gold above is live; the wallify_vault body that calls it is stub.)
+ * C ref: vault.c wallify_vault `:646–731` — restore vault-room boundary walls.
+ * C order: boundary-ring scan (skip interior); non-wall-or-gold-or-rock
+ * cells outside fakecorr → tame yelp + rloc else limbo, move_gold into the
+ * vault, subsume ROCK/BOULDER via extract+obfree, deltrap, corner/HWALL/
+ * VWALL typ by side + wall_info=0, del_engr_at, IN_SIGHT|COULD_SEE newsym
+ * pulse with viz restore, block_point; tail whisper vs distant-chant +
+ * gold-moved + walls-restored plines.
+ * `xy_set_wall_state` stays deferred (mklev.js file-local; invault same).
+ * `m_at`/`obfree` are static imports (`imports.mjs --can` → SAFE, hoisted,
+ * same SCC); `m_into_limbo` stays dynamic (clear_fcorr idiom).
  */
-function wallify_vault(_grd) {
-    /* deferred */
+async function wallify_vault(grd) {
+    const egrd = EGD(grd);
+    if (!egrd) return;
+    const vlt = egrd.vroom | 0;
+    const rooms = game.level?.rooms || [];
+    const rm = rooms[vlt];
+    if (!rm) return;
+    const lox = (rm.lx | 0) - 1;
+    const hix = (rm.hx | 0) + 1;
+    const loy = (rm.ly | 0) - 1;
+    const hiy = (rm.hy | 0) + 1;
+    let fixed = false;
+    let movedgold = false;
+
+    for (let x = lox; x <= hix; x++) {
+        for (let y = loy; y <= hiy; y++) {
+            /* if not on the room boundary, skip ahead */
+            if (x !== lox && x !== hix && y !== loy && y !== hiy) continue;
+            const lev = game.level?.at?.(x, y);
+            if (!lev) continue;
+
+            if ((!IS_WALL(lev.typ | 0) || g_at(x, y)
+                 || sobj_at(ROCK, x, y) || sobj_at(BOULDER, x, y))
+                && !in_fcorridor(grd, x, y)) {
+                const mon = m_at(x, y);
+                if (mon && mon !== grd) {
+                    if (mon.mtame) await yelp(mon);
+                    if (!(await rloc(mon, RLOC_MSG))) {
+                        const { m_into_limbo } = await import('./mon.js');
+                        await m_into_limbo(mon);
+                    }
+                }
+                /* move gold at wall locations into the vault */
+                const gold = g_at(x, y);
+                if (gold) {
+                    move_gold(gold, EGD(grd).vroom);
+                    movedgold = true;
+                }
+                /* destroy rocks and boulders (subsume them into the
+                   walls); other objects stay intact and become embedded */
+                let rocks = sobj_at(ROCK, x, y);
+                while (rocks) {
+                    obj_extract_self(rocks);
+                    obfree(rocks, null);
+                    rocks = sobj_at(ROCK, x, y);
+                }
+                rocks = sobj_at(BOULDER, x, y);
+                while (rocks) {
+                    obj_extract_self(rocks);
+                    obfree(rocks, null);
+                    rocks = sobj_at(BOULDER, x, y);
+                }
+                const trap = t_at(x, y);
+                if (trap) deltrap(trap);
+
+                let typ;
+                if (x === lox) {
+                    typ = (y === loy) ? TLCORNER
+                        : (y === hiy) ? BLCORNER
+                        : VWALL;
+                } else if (x === hix) {
+                    typ = (y === loy) ? TRCORNER
+                        : (y === hiy) ? BRCORNER
+                        : VWALL;
+                } else {
+                    /* not left or right side, must be top or bottom */
+                    typ = HWALL;
+                }
+
+                lev.typ = typ;
+                lev.wall_info = 0;
+                /* xy_set_wall_state deferred (mklev.js local clone) */
+                del_engr_at(x, y);
+                /*
+                 * hack: player knows walls are restored because of the
+                 * message, below, so show this on the screen.
+                 */
+                const row = game.viz_array?.[y];
+                const tmp_viz = row ? row[x] : undefined;
+                if (row) row[x] = IN_SIGHT | COULD_SEE;
+                newsym(x, y);
+                if (row) row[x] = tmp_viz;
+                block_point(x, y);
+                fixed = true;
+            }
+        }
+    }
+
+    if (movedgold || fixed) {
+        if (in_fcorridor(grd, grd.mx, grd.my) || cansee(grd.mx, grd.my)) {
+            await pline(`${noit_Monnam(grd)} whispers an incantation.`);
+        } else {
+            await You_hear('a distant chant.');
+        }
+        if (movedgold) {
+            await pline('A mysterious force moves the gold into the vault.');
+        }
+        if (fixed) {
+            /* C pline_The renders with the The-phrase as plain pline */
+            await pline("The damaged vault's walls are magically restored!");
+        }
+    }
 }
 
 /**
@@ -312,7 +423,7 @@ async function gd_move_cleanup(grd, semi_dead, disappear_msg_seen) {
     const y = grd.my | 0;
     const see_guard = canspotmon(grd);
     parkguard(grd);
-    wallify_vault(grd);
+    await wallify_vault(grd);
     await restfakecorr(grd);
     const u = game.u;
     if (!semi_dead && u
@@ -758,7 +869,8 @@ function um_dist(x, y, n) {
  * adjacent dig while-loop (wall→DOOR if beyond ROOM, else ortho
  * redirect, else STONE→CORR) + place guard + restfakecorr;
  * early/gddone/begone → gd_move_cleanup.
- * Named omissions: goldincorridor; wallify body;
+ * Named omissions: goldincorridor; hostile-gd_move wallify calls
+ * (:913/:920, gd_move still early-returns when !mpeaceful);
  * other verbalize arms; gd_mv_monaway; mpickgold; stuck
  * find_guard_dest retry / confused disappears; dig del_engr_at;
  * clear_fcorr Punished arm (occupant yelp/rloc/limbo live); corridor-disappears /

@@ -19,7 +19,7 @@ import {
     getobj_from_cmdq, getobj_display_pickinv, freeinv, display_inventory,
     splittable, will_feel_cockatrice, feel_cockatrice, is_worn,
     not_fully_identified,
-    taking_off, count_unpaid, getobj, Blind, hold_another_object, currency,
+    taking_off, count_unpaid, tally_BUCX, getobj, Blind, hold_another_object, currency,
 } from './invent.js';
 import {
     nomul, check_special_room, set_uinwater, is_pool, is_lava, in_rooms, dosinkfall,
@@ -164,8 +164,8 @@ const PM_HOUSECAT = monsterNames.indexOf('PM_HOUSECAT');
 const INVLET_BASIC = 52;
 /* C hack.h stoning_checks — u_safe_from_fatal_corpse tests. */
 const st_gloves = 0x1;
-const st_corpse = 0x2;
-const st_petrifies = 0x4;
+export const st_corpse = 0x2;
+export const st_petrifies = 0x4;
 const st_resists = 0x8;
 export const st_all = st_gloves | st_corpse | st_petrifies | st_resists;
 
@@ -818,22 +818,10 @@ export async function query_objlist(qstr, olist, qflags, how, allow) {
     return finish_picks(picked);
 }
 
-function tally_BUCX_list(objs, here) {
-    const t = { b: 0, u: 0, c: 0, x: 0, o: 0, j: 0 };
-    walk_obj_list(objs, here, (list) => {
-        if (list.pickup_prev) t.j++;
-        if (list.oclass === COIN_CLASS) {
-            if (game.flags?.goldX) t.x++;
-            else t.u++;
-            return;
-        }
-        if (!list.bknown) t.x++;
-        else if (list.blessed) t.b++;
-        else if (list.cursed) t.c++;
-        else t.u++;
-    });
-    return t;
-}
+/* C invent.c tally_BUCX is canonical here (D-2388): the local clone
+ * dropped C's Role_if(PM_CLERIC) bknown force (`:3593–3595`), so a
+ * priest's TRADITIONAL prompt lost the B/U/C ilets and the pile kept
+ * bknown clear. No local clone — import from invent.js (same SCC). */
 
 /**
  * C ref: pickup.c force_decor — wand-of-probing / Blind-ice look_here.
@@ -3340,9 +3328,12 @@ const ynaqchars = 'ynaq';
 const ynNaqchars = 'yn#aq';
 const NOINVSYM = '#';
 
-/** C pickup.c simple_look — NHW_MENU of doname for query_classes ':'. */
+/** C pickup.c simple_look `:75–98` — NHW_MENU of doname for query_classes ':'. */
 async function simple_look(otmp, here) {
-    if (!otmp) return;
+    if (!otmp) {
+        await impossible('simple_look(null)');
+        return;
+    }
     if (Array.isArray(otmp)) {
         if (otmp.length <= 1) {
             if (otmp[0]) await pline(doname(otmp[0]));
@@ -3365,7 +3356,11 @@ async function simple_look(otmp, here) {
 /**
  * C pickup.c query_classes `:140–262` — Traditional class getlin.
  * Callers: traditional_loot (D-1581); floor pickup (D-1620).
- * C `count_unpaid` walks nobj (fobj remainder from a floor head).
+ * C `count_unpaid` walks nobj (fobj remainder from a floor head —
+ * JS `place_object` threads the same fobj chain, so this is exact).
+ * C `:158` sets m_seen once; ask_again `:198–201` does NOT reset it,
+ * so an 'm' survives ':'/'i' look-agains. ESC: JS getlin only ever
+ * returns exactly '\x1b' (nonempty ESC clears), so `===` ≡ C `*inbuf`.
  */
 async function query_classes(action, objs, here, menu_on_demand) {
     const itemcount = { n: 0 };
@@ -3386,7 +3381,9 @@ async function query_classes(action, objs, here, menu_on_demand) {
     }
     if (itemcount.n && menu_on_demand) ilets += 'm';
     if (count_unpaid(objs)) ilets += 'u';
-    const buc = tally_BUCX_list(objs, here);
+    /* C `:181` — canonical tally_BUCX (invent.c `:3580–3616`), incl. the
+     * Role_if(PM_CLERIC) bknown force. ocnt unused both sides. */
+    const buc = tally_BUCX(objs, here);
     if (buc.b) ilets += 'B';
     if (buc.u) ilets += 'U';
     if (buc.c) ilets += 'C';
@@ -3400,7 +3397,8 @@ async function query_classes(action, objs, here, menu_on_demand) {
             everything = false;
             let not_everything = false;
             let filtered = false;
-            m_seen = false;
+            /* C ask_again `:198–201` resets everything above but NOT
+             * m_seen (set once at `:158`): an 'm' survives look-agains. */
             const qbuf = `What kinds of thing do you want to ${action}? [${ilets}]`;
             const inbuf = await getlin(qbuf);
             if (inbuf === '\x1b') {

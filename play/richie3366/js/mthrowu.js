@@ -31,11 +31,11 @@ import {
 import { observe_object, makeknown, hold_another_object } from './invent.js';
 import {
     MON_WEP, select_rwep, mon_wield_item, monmulti, dmgval, hitval,
-    should_mulch_missile,
+    should_mulch_missile, autoreturn_weapon,
 } from './weapon.js';
 import { find_mac, mondied, monkilled, shade_miss, AT_WEAP, AT_SPIT } from './mhitm.js';
 import { xkilled, can_blnd } from './uhitm.js';
-import { ammo_and_launcher, is_launcher, is_pole } from './wield.js';
+import { ammo_and_launcher, is_launcher, is_pole, mwelded } from './wield.js';
 import { acurr, acurrstr, A_DEX, A_STR, exercise, poisoned } from './attrib.js';
 import { calc_capacity, Blind } from './invent.js';
 import { losehp, nomul, maybe_half_phys, dissolve_bars, is_pool, is_lava, stop_occupation } from './hack.js';
@@ -221,13 +221,10 @@ function mhis_mtoss(mtmp) {
 }
 
 /**
- * C weapon.c autoreturn_weapon — AKLYS only (boomerang row commented out).
+ * C weapon.c autoreturn_weapon — canonical `autoreturn_weapon` imported
+ * from `./weapon.js` (AKLYS only; boomerang row commented out in C).
  * m_throw tethered = obj==MON_WEP && arw->tethered (before unwield).
  */
-function autoreturn_weapon(otmp) {
-    if (!otmp || (otmp.otyp | 0) !== AKLYS) return null;
-    return { otyp: AKLYS, range: AKLYS_LIM * AKLYS_LIM, tethered: 1 };
-}
 
 /**
  * C ref: mthrowu.c m_has_launcher_and_ammo — wielded launcher + matching ammo.
@@ -984,7 +981,8 @@ export async function return_from_mtoss(magr, otmp, tethered_weapon) {
  * Tethered AKLYS sets return_flightpath instead of drop_throw, then
  * return_from_mtoss (D-1334). shade_miss caller D-1382 (`:680–686`).
  * MT_FLIGHTCHECK IRONBARS via hits_bars + IS_SINK + sink/misses plines
- * (`:552-569`, `:798-823`). thrwmu always_toss / polearm still named.
+ * (`:552-569`, `:798-823`). thrwmu polearm still named; always_toss live
+ * in thrwmu_body below.
  */
 export async function m_throw(mon, x, y, dx, dy, range, obj) {
     // C :584–587 — arw / tethered before setmnotwielded
@@ -1371,8 +1369,10 @@ export async function thrwmm(mtmp, mtarg) {
 }
 
 /**
- * C ref: mthrowu.c thrwmu — select missile, line up, monshoot.
- * Polearm / autoreturn deferred.
+ * C ref: mthrowu.c thrwmu `:1175–1267` — select missile, line up, monshoot.
+ * Polearm arm (`:1195–1240` is_pole/MON_POLE_DIST/couldsee/canseemon +
+ * mswings_verb/dmgval/thitu) still named (own row when a falsifier fires).
+ * Autoreturn always_toss arm (`:1241–1247`) live below.
  */
 export async function thrwmu(mtmp) {
     if (Is_rogue_level(game.u?.uz)) return;
@@ -1395,15 +1395,32 @@ async function thrwmu_body(mtmp) {
     const otmp = select_rwep(mtmp);
     if (!otmp) return;
 
+    // C mthrowu.c:1241-1247 — throw-and-return always tosses. Short-circuit
+    // order matches C: autoreturn_weapon first, then !mwelded; range gate
+    // before couldsee. (C's polearm `:1195` if-arm above this else-if stays
+    // deferred; AKLYS is never is_pole so the subset semantics match.)
+    let always_toss = false;
+    {
+        const arw = autoreturn_weapon(otmp);
+        if (arw && !mwelded(otmp)) {
+            const rang = dist2(mtmp.mx, mtmp.my, mtmp.mux, mtmp.muy);
+            if (rang > arw.range || !couldsee(mtmp.mx, mtmp.my)) return;
+            always_toss = true;
+        }
+    }
+
     const x = mtmp.mx;
     const y = mtmp.my;
     const u = game.u || {};
     const uretreating = distmin(u.ux, u.uy, x, y)
         > distmin(u.ux0 ?? u.ux, u.uy0 ?? u.uy, x, y);
 
+    // C :1255-1259 — !always_toss short-circuits before rn2, so a tethered
+    // AKLYS draws no BOLT_LIM retreat roll.
     if (!lined_up(mtmp)
         || (uretreating
-            && rn2(BOLT_LIM - distmin(x, y, mtmp.mux | 0, mtmp.muy | 0)))) {
+            && (!always_toss
+                && rn2(BOLT_LIM - distmin(x, y, mtmp.mux | 0, mtmp.muy | 0))))) {
         return;
     }
 

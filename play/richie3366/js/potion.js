@@ -897,6 +897,12 @@ export async function make_slimed(xtime, msg) {
     const u = game.u || (game.u = {});
     const old = u.Slimed | 0;
     u.Slimed = ((u.Slimed | 0) & ~TIMEOUT) | itimeout(xtime);
+    // C: Slimed ≡ uprops[SLIMED].intrinsic (youprop.h, single storage;
+    // potion.c set_itimeout `:75-79` writes TIMEOUT bits only). Mirror so
+    // the nh_timeout generic -- (which decrements uprops) sees what C wrote.
+    if (!u.uprops) u.uprops = {};
+    if (!u.uprops[SLIMED]) u.uprops[SLIMED] = { intrinsic: 0, extrinsic: 0, blocked: 0 };
+    u.uprops[SLIMED].intrinsic = ((u.uprops[SLIMED].intrinsic | 0) & ~TIMEOUT) | itimeout(xtime);
     if ((!!xtime) !== (!!old)) {
         if (game.flags) game.flags.botl = true;
         if (game.disp) game.disp.botl = true;
@@ -915,6 +921,11 @@ export async function make_stoned(xtime, msg, killedby, killername) {
     const u = game.u || (game.u = {});
     const old = u.Stoned | 0;
     u.Stoned = ((u.Stoned | 0) & ~TIMEOUT) | itimeout(xtime);
+    // C: Stoned ≡ uprops[STONED].intrinsic (single storage; set_itimeout
+    // `:75-79`). Mirror TIMEOUT bits for the nh_timeout generic --.
+    if (!u.uprops) u.uprops = {};
+    if (!u.uprops[STONED]) u.uprops[STONED] = { intrinsic: 0, extrinsic: 0, blocked: 0 };
+    u.uprops[STONED].intrinsic = ((u.uprops[STONED].intrinsic | 0) & ~TIMEOUT) | itimeout(xtime);
     if ((!!xtime) !== (!!old)) {
         if (game.flags) game.flags.botl = true;
         if (game.disp) game.disp.botl = true;
@@ -948,6 +959,14 @@ export async function make_sick(xtime, cause, talk, type) {
             );
         }
         u.Sick = ((u.Sick | 0) & ~TIMEOUT) | itimeout(xtime);
+        // C: Sick ≡ uprops[SICK].intrinsic (youprop.h:108, single storage;
+        // set_itimeout `:75-79`). Mirror TIMEOUT bits so the nh_timeout
+        // generic -- decrements what C wrote (diseasemu re-sickens mid-turn,
+        // between ticks; without this the stale uprops value clobbers the
+        // flat on the next -- and Sick stays large).
+        if (!u.uprops) u.uprops = {};
+        if (!u.uprops[SICK]) u.uprops[SICK] = { intrinsic: 0, extrinsic: 0, blocked: 0 };
+        u.uprops[SICK].intrinsic = ((u.uprops[SICK].intrinsic | 0) & ~TIMEOUT) | itimeout(xtime);
         u.usick_type = (u.usick_type | 0) | (type | 0);
         if (game.flags) game.flags.botl = true;
         if (game.disp) game.disp.botl = true;
@@ -958,9 +977,16 @@ export async function make_sick(xtime, cause, talk, type) {
             if (talk) await You_feel('somewhat better.');
             u.Sick = ((u.Sick | 0) & ~TIMEOUT)
                 | itimeout((old & TIMEOUT) * 2);
+            // Mirror partial-cure TIMEOUT bits (C `:169` set_itimeout).
+            if (!u.uprops) u.uprops = {};
+            if (!u.uprops[SICK]) u.uprops[SICK] = { intrinsic: 0, extrinsic: 0, blocked: 0 };
+            u.uprops[SICK].intrinsic = ((u.uprops[SICK].intrinsic | 0) & ~TIMEOUT)
+                | itimeout((old & TIMEOUT) * 2);
         } else {
             if (talk) await You_feel('cured.  What a relief!');
             u.Sick = 0;
+            // C `:173` Sick = 0L clears the single storage fully.
+            if (u.uprops?.[SICK]) u.uprops[SICK].intrinsic = 0;
         }
         if (game.flags) game.flags.botl = true;
         if (game.disp) game.disp.botl = true;

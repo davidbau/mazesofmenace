@@ -14,7 +14,7 @@ import {
     LL_CONDUCT, Upolyd, P_BARE_HANDED_COMBAT, P_TWO_WEAPON_COMBAT, P_BASIC, P_WHIP,
     A_CHAOTIC, INTRINSIC, CORPSTAT_BURIED, CORPSTAT_NONE, ONAME_NO_FLAGS,
     P_DAGGER, P_KNIFE, P_AXE, P_SABER, P_NONE, P_SKILLED, NEED_WEAPON,
-    M_ATTK_MISS, M_ATTK_HIT, M_ATTK_DEF_DIED, NATTK,
+    M_ATTK_MISS, M_ATTK_HIT, M_ATTK_DEF_DIED, NATTK, MSLOW,
     M_AP_OBJECT, M_AP_FURNITURE, M_AP_MONSTER, M_AP_TYPE, M_AP_NOTHING,
     M_AP_TYPMASK, MHID_ALTMON,
     MIM_REVEAL, MIM_OMIT_WAIT, engulfing_u, OBJ_FREE, OBJ_INVENT, MON_DETACH,
@@ -101,7 +101,7 @@ import { mselftouch, instapetrify } from './trap.js';
 import { merge_choice_invent } from './pickup.js';
 import { addinv } from './u_init.js';
 import { dropy } from './do.js';
-import { munslime } from './muse.js';
+import { munslime, mon_adjust_speed } from './muse.js';
 import { night } from './calendar.js';
 
 const PM_BLACK_PUDDING = monsterNames.indexOf('PM_BLACK_PUDDING');
@@ -140,6 +140,7 @@ const AD_BLND = 11; // monattk.h — yellow-light AT_EXPL
 const AD_HALU = 36; // monattk.h — black-light AT_EXPL
 const AD_ACID = 8;
 const AD_STUN = 12;
+const AD_SLOW = 13; /* slows — monattk.h */
 const AD_PLYS = 14;
 const AD_DREN = 16;
 const AD_STON = 18;
@@ -854,10 +855,11 @@ function hmonas_toggle_altwep(u) {
 
 /**
  * C ref: uhitm.c hmon_hitmon_dmg_recalc — udaminc + dbon + weapon_dam_bonus.
+ * Async for the `use_skill` may-advance arm (single caller `hmon` is async).
  * Named omissions: PROJECTILE→launcher
  * skillwep swap (ammo uses weapon_type(obj) until shot path ports).
  */
-function hmon_hitmon_dmg_recalc(dmg, obj, thrown, twohits, use_weapon_skill,
+async function hmon_hitmon_dmg_recalc(dmg, obj, thrown, twohits, use_weapon_skill,
     train_weapon_skill) {
     let dmgbonus = game.u?.udaminc | 0;
     const u = game.u || {};
@@ -883,7 +885,7 @@ function hmon_hitmon_dmg_recalc(dmg, obj, thrown, twohits, use_weapon_skill,
             const wtype = thrown
                 ? weapon_type(skillwep)
                 : (u.twoweap ? P_TWO_WEAPON_COMBAT : weapon_type(u.uwep));
-            use_skill(wtype, 1);
+            await use_skill(wtype, 1);
         }
     }
     dmg += dmgbonus;
@@ -1128,7 +1130,7 @@ async function hmon(mon, obj, thrown, _dieroll) {
     }
     // C: if (hmd.dmg > 0) hmon_hitmon_dmg_recalc — before stagger
     if (dmg > 0) {
-        dmg = hmon_hitmon_dmg_recalc(dmg, obj, thrown, twohits,
+        dmg = await hmon_hitmon_dmg_recalc(dmg, obj, thrown, twohits,
             use_weapon_skill, train_weapon_skill);
     }
 
@@ -1502,7 +1504,8 @@ function mpoisons_subj_u(magr, mattk) {
  * resists_poison → "doesn't seem to affect"; else `!rn2(10)` deadly
  * (damage = mhp) or damage += rn1(10, 6).
  * Named omissions: mhitm (mon→mon) arm (mhitm_really_poison live,
- * dispatch row named per mhitm_ad_phys D-1447); uhitm AD_SLOW arm.
+ * dispatch row named per mhitm_ad_phys D-1447); uhitm AD_SLOW arm is
+ * damageum_ad_slow below.
  */
 async function damageum_ad_drst(mdef, mattk, mhm) {
     const magr = game.youmonst;
@@ -1568,6 +1571,32 @@ async function damageum_ad_plys(mdef, mhm) {
             await pline(`${Monnam(mdef)} is frozen by you!`);
         }
         paralyze_monst(mdef, rnd(10));
+    }
+}
+
+/**
+ * C ref: uhitm.c mhitm_ad_slow `:3662–3670` — uhitm (you→mon) arm.
+ * The gate (FALSE) always burns rn2(10); then `!negated && mspeed
+ * != MSLOW` → mon_adjust_speed(-1) (its own vis-gated "seems to be
+ * moving slower" + learnwand live in muse.js, worn.c D-0871), then
+ * "slows down." plain pline on an actual change when canseemon (C
+ * `:3668–3669`, like the freeze arm above). Leftover damageum d() is
+ * kept (the slow rides on top of the hit). No STRAT_WAITFORU here —
+ * damageum clears it in its tail for every arm (C `:4859`).
+ * Named omissions: defended(mdef, AD_SLOW) early return (`:3659–3660`;
+ * the mhitu arm mhitm_ad_slow_u carries the same omit, D-2043);
+ * mhitm (mon→mon) arm is mhitm_ad_slow in mhitm.js.
+ */
+async function damageum_ad_slow(mdef, mhm) {
+    const magr = game.youmonst;
+    const negated = await mhitm_mgc_atk_negated(magr, mdef, false);
+    void mhm; /* leftover d() stays */
+    if (!negated && (mdef.mspeed | 0) !== MSLOW) {
+        const oldspeed = mdef.mspeed | 0;
+        await mon_adjust_speed(mdef, -1, null);
+        if ((mdef.mspeed | 0) !== oldspeed && canseemon(mdef)) {
+            await pline(`${Monnam(mdef)} slows down.`);
+        }
     }
 }
 
@@ -1863,6 +1892,9 @@ async function damageum_adtyping(mattk, mdef, mhm) {
         await damageum_ad_drli(mdef, mhm);
     } else if (adtyp === AD_PLYS) {
         await damageum_ad_plys(mdef, mhm);
+    } else if (adtyp === AD_SLOW) {
+        /* C ref: uhitm.c mhitm_ad_slow `:3662–3670` — uhitm arm. */
+        await damageum_ad_slow(mdef, mhm);
     } else if (adtyp === AD_SAMU) {
         /* C ref: uhitm.c mhitm_ad_samu `:4573–4576` — uhitm (hero as
            attacker) arm zeroes the leftover d(); no message, no steal

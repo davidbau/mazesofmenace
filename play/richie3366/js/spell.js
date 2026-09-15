@@ -221,6 +221,7 @@ import {
 } from './const.js';
 import { objectNames, objectNameStrs } from './generated/objects_data.js';
 import { PM_KNIGHT, PM_WIZARD, monsterNames } from './generated/monsters_data.js';
+import { use_skill } from './weapon.js';
 
 /** C: spell.c explodes[] */
 const EXPLODES = 'radiates explosive energy';
@@ -1150,17 +1151,6 @@ export function known_spell(otyp) {
         }
     }
     return spe_Unknown;
-}
-
-/**
- * C ref: weapon.c use_skill — advance practice; may-advance msg deferred.
- * Local copy avoids weapon.js ↔ spell.js import cycle.
- */
-function use_skill(skill, degree) {
-    if (skill === P_NONE) return;
-    const ws = game.u?.weapon_skills?.[skill];
-    if (!ws || ws.skill === P_ISRESTRICTED) return;
-    ws.advance = (ws.advance || 0) + (degree | 0);
 }
 
 /** C ref: spell.c spl_sort_types enum `:1842–1852` */
@@ -2458,7 +2448,7 @@ export async function spelleffects(spell_otyp, atme, force) {
         await pline('Nothing happens.');
     }
 
-    if (!force) use_skill(skill, spellev(spell));
+    if (!force) await use_skill(skill, spellev(spell));
     return ECMD_TIME;
 }
 

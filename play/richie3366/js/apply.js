@@ -123,6 +123,7 @@ import {
 import { Blindf_on, Blindf_off, cursed_check, fingers_or_gloves } from './do_wear.js';
 import {
     dropx, setnotworn, fire_damage, make_blinded, revive_corpse,
+    obj_no_longer_held,
 } from './do.js';
 import { polymon, mbodypart, body_part } from './polyself.js';
 import { unpunish } from './read.js';
@@ -141,8 +142,6 @@ const BULLWHIP = objectNames.indexOf('BULLWHIP');
 const GRAPPLING_HOOK = objectNames.indexOf('GRAPPLING_HOOK');
 const CORPSE = objectNames.indexOf('CORPSE');
 const STATUE = objectNames.indexOf('STATUE');
-const CRYSKNIFE = objectNames.indexOf('CRYSKNIFE');
-const WORM_TOOTH = objectNames.indexOf('WORM_TOOTH');
 const POT_OIL = objectNames.indexOf('POT_OIL');
 const CREAM_PIE = objectNames.indexOf('CREAM_PIE');
 const EUCALYPTUS_LEAF = objectNames.indexOf('EUCALYPTUS_LEAF');
@@ -3095,23 +3094,6 @@ function bimanual_apply(obj) {
     return !!(oc?.oc_bimanual || oc?.oc_big);
 }
 
-/** C ref: do.c obj_no_longer_held — recurse contents; CRYSKNIFE → worm tooth. */
-async function obj_no_longer_held_apply(obj) {
-    if (!obj) return;
-    for (let contents = obj.cobj; contents; contents = contents.nobj) {
-        await obj_no_longer_held_apply(contents);
-    }
-    if ((obj.otyp | 0) === CRYSKNIFE) {
-        if (!obj.oerodeproof || !rn2(10)) {
-            if (!game.context?.mon_moving && !game.program_state?.gameover) {
-                await costly_alteration(obj, COST_DEGRD);
-            }
-            obj.otyp = WORM_TOOTH;
-            obj.oerodeproof = 0;
-        }
-    }
-}
-
 /** C ref: weapon.c uwep_skill_type. */
 function uwep_skill_type() {
     if (game.u?.twoweap) return P_TWO_WEAPON_COMBAT;
@@ -3349,7 +3331,7 @@ async function whip_attack(obj, mtmp, rx, ry, proficient) {
                 await pline(
                     `You yank ${the(onambuf)} from ${s_suffix_apply(mon_nam(mtmp))} ${mon_hand}!`,
                 );
-                await obj_no_longer_held_apply(otmp);
+                await obj_no_longer_held(otmp);
                 place_object(otmp, mtmp.mx, mtmp.my);
                 stackobj(otmp);
                 break;

@@ -430,16 +430,16 @@ export function steed_vs_stealth() {
  * Called from domove right after the tentative occupy + usteed mx/my set
  * (hack.c:2880–2884), even when the move later bounces on a safemon swap.
  */
-export function exercise_steed() {
+export async function exercise_steed() {
     const u = game.u || {};
     if (!u.usteed) return;
     // C: ++u.urideturns >= 100 → reset + use_skill(P_RIDING, 1).
     // `| 0` covers fresh JS saves where urideturns was never set (C decl
-    // zero-init).
+    // zero-init). Async for the `use_skill` may-advance arm.
     u.urideturns = ((u.urideturns | 0) + 1);
     if ((u.urideturns | 0) >= 100) {
         u.urideturns = 0;
-        use_skill(P_RIDING, 1);
+        await use_skill(P_RIDING, 1);
     }
 }
 

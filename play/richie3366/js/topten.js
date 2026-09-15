@@ -210,9 +210,9 @@ function outheader(emit) {
 }
 
 /**
- * C ref: topten.c outentry.
- * Named omissions: astral plane text;
- * choked/poisoned/crushed/petrified first-line arms.
+ * C ref: topten.c outentry :946–1107.
+ * Named omissions: none (astral-plane text + choked/poisoned/crushed/
+ * petrified arms ported; wrap/Hp columns were already live).
  */
 function outentry(rank, t1, so, emit) {
     let second_line = true;
@@ -244,27 +244,65 @@ function outentry(rank, t1, so, emit) {
         linebuf += `ascended to demigod${t1.plgend[0] === 'F' ? 'dess' : ''}-hood`;
         second_line = false;
     } else {
-        // C: quit/starved/died share the dungeon/level append below
+        // second_line TRUE (quit/starved above set it FALSE) and share the
+        // location append below. strncmp lengths: quit 4, "died of st" 10,
+        // "choked" 6, "poisoned" 8, "crushed" 7, "petrified by " 13.
         if (death.startsWith('quit')) {
             linebuf += 'quit';
             second_line = false;
         } else if (death.startsWith('died of st')) {
             linebuf += 'starved to death';
             second_line = false;
+        } else if (death.slice(0, 6) === 'choked') {
+            linebuf += `choked on h${t1.plgend?.[0] === 'F' ? 'er' : 'is'} food`;
+        } else if (death.slice(0, 8) === 'poisoned') {
+            linebuf += 'was poisoned';
+        } else if (death.slice(0, 7) === 'crushed') {
+            linebuf += 'was crushed to death';
+        } else if (death.slice(0, 13) === 'petrified by ') {
+            linebuf += 'turned to stone';
         } else {
             linebuf += 'died';
         }
 
-        // astral plane arm deferred — ordinary dungeon / knox
-        const dname = game.dungeons?.[t1.deathdnum | 0]?.dname
-            || 'The Dungeons of Doom';
-        linebuf += ` in ${dname}`;
-        const knoxDnum = game.knox_level?.dnum;
-        if (knoxDnum == null || (t1.deathdnum | 0) !== (knoxDnum | 0)) {
-            linebuf += ` on level ${t1.deathlev | 0}`;
-        }
-        if ((t1.deathlev | 0) !== (t1.maxlvl | 0)) {
-            linebuf += ` [max ${t1.maxlvl | 0}]`;
+        // C topten.c:1004–1035 — astral plane text vs dungeon/level append.
+        const astralDnum = game.astral_level?.dnum;
+        if (astralDnum != null && (t1.deathdnum | 0) === (astralDnum | 0)) {
+            let fmt = ' on the Plane of %s';
+            let arg = 'Void';
+            switch (t1.deathlev | 0) {
+            case -5:
+                fmt = ' on the %s Plane';
+                arg = 'Astral';
+                break;
+            case -4:
+                arg = 'Water';
+                break;
+            case -3:
+                arg = 'Fire';
+                break;
+            case -2:
+                arg = 'Air';
+                break;
+            case -1:
+                arg = 'Earth';
+                break;
+            default:
+                arg = 'Void';
+                break;
+            }
+            linebuf += fmt.replace('%s', arg);
+        } else {
+            const dname = game.dungeons?.[t1.deathdnum | 0]?.dname
+                || 'The Dungeons of Doom';
+            linebuf += ` in ${dname}`;
+            const knoxDnum = game.knox_level?.dnum;
+            if (knoxDnum == null || (t1.deathdnum | 0) !== (knoxDnum | 0)) {
+                linebuf += ` on level ${t1.deathlev | 0}`;
+            }
+            if ((t1.deathlev | 0) !== (t1.maxlvl | 0)) {
+                linebuf += ` [max ${t1.maxlvl | 0}]`;
+            }
         }
 
         // C: kludge for "quit while already on Charon's boat"

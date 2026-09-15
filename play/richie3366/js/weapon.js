@@ -50,7 +50,7 @@ import {
     NO_WEAPON_WANTED, W_WEP, W_ARMS, W_ARMG,
     W_ARM, W_ARMC, W_ARMH, W_ARMF, W_ARMU, W_RINGL, W_RINGR,
     ECMD_OK, STR18, Upolyd, MAXULEV, HAND, WT_IRON_BALL_INCR,
-    NON_PM, TIP_ENHANCE,
+    NON_PM, TIP_ENHANCE, BOLT_LIM, AKLYS_LIM,
 } from './const.js';
 import { obj_extract_self, place_object, stackobj } from './mkobj.js';
 import { flooreffects } from './do.js';
@@ -411,6 +411,19 @@ export function multishot_class_bonus(pm, ammo, launcher) {
 
 function otyp(name) {
     return objectNames.indexOf(name);
+}
+
+/**
+ * C ref: weapon.c autoreturn_weapon `:519–529` over `arwep[]` `:513–517`
+ * (`AKLYS_LIM` `:512` = `BOLT_LIM / 2`; `{ AKLYS, AKLYS_LIM², tethered }`;
+ * the `{ BOOMERANG, 5, 0 }` row is commented out in C, so only AKLYS
+ * returns non-null). Canonical export: `js/dothrow.js`, `js/monmove.js`
+ * and `js/mthrowu.js` import this instead of local clones.
+ */
+export function autoreturn_weapon(otmp) {
+    if (!otmp) return null;
+    if ((otmp.otyp | 0) !== otyp('AKLYS')) return null;
+    return { otyp: otyp('AKLYS'), range: AKLYS_LIM * AKLYS_LIM, tethered: 1 };
 }
 
 /**
@@ -934,9 +947,9 @@ export async function drain_weapon_skill(n) {
 /**
  * C ref: weapon.c enhance_weapon_skill (#enhance) + add_skills_to_menu.
  * Branch envelope: wizard y_n + speedy PICK_ONE loop + skill_advance;
- * non-wizard / no-advance PICK_NONE; * / # legend. add_weapon_skill now
- * awaits give_may_advance_msg; lose_weapon_skill / use_skill may-advance
- * arms still deferred (sync hot paths — see use_skill).
+ * non-wizard / no-advance PICK_NONE; * / # legend. add_weapon_skill and
+ * use_skill now await give_may_advance_msg; lose_weapon_skill may-advance
+ * arm still deferred.
  */
 export async function enhance_weapon_skill() {
     await flush_topl_more();
@@ -1227,17 +1240,20 @@ export function weapon_dam_bonus(weapon) {
 
 /**
  * C ref: weapon.c use_skill `:1424–1434` — advance practice; before/after
- * `can_advance` → `give_may_advance_msg(skill)`.
- * Named omission: the may-advance arm stays unwired — this is sync and its
- * callers include sync hot paths (`hmon_hitmon_dmg_recalc`, `exercise_steed`
- * via cmd move), so awaiting the async export needs an async cascade of its
- * own. The export is live above for the wired `add_weapon_skill` arm.
+ * `can_advance(skill, FALSE)` → `give_may_advance_msg(skill)`.
+ * Async: the may-advance arm awaits the live export above (pline can reach
+ * nhgetch); all five C callers ride the async cascade (hack/dokick/uhitm
+ * recalc/steed/spell — spell.js imports this instead of its old clone).
  */
-export function use_skill(skill, degree) {
+export async function use_skill(skill, degree) {
     if (skill === P_NONE) return;
     const ws = game.u?.weapon_skills?.[skill];
     if (!ws || ws.skill === P_ISRESTRICTED) return;
+    const advance_before = can_advance(skill, false);
     ws.advance = (ws.advance || 0) + (degree | 0);
+    if (!advance_before && can_advance(skill, false)) {
+        await give_may_advance_msg(skill);
+    }
 }
 
 /**

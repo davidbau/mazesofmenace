@@ -64,7 +64,7 @@ import { finish_quest } from './quest.js';
 import { align_gname } from './roles.js';
 import { find_mac } from './mhitm.js';
 import { digests } from './mhitu.js';
-import { hitval, weapon_hit_bonus, should_mulch_missile, dmgval } from './weapon.js';
+import { hitval, weapon_hit_bonus, should_mulch_missile, dmgval, autoreturn_weapon } from './weapon.js';
 import { spec_abon, artifact_hit, is_art } from './artifact.js';
 import { ART_MJOLLNIR } from './generated/artifacts_data.js';
 import {
@@ -241,14 +241,11 @@ function AutoReturn(o, wmsk) {
 }
 
 /**
- * C weapon.c autoreturn_weapon — AKLYS only (boomerang row commented out).
+ * C weapon.c autoreturn_weapon — canonical `autoreturn_weapon` imported
+ * from `./weapon.js` (AKLYS only; boomerang row commented out in C).
  * throwit uses arw->tethered && W_WEP (D-1311 DISP_TETHER/BACKTRACK).
  * arw->range is AKLYS_LIM²; throwit min(range, isqrt(arw->range)) D-1323.
  */
-function autoreturn_weapon(otmp) {
-    if (!otmp || (otmp.otyp | 0) !== AKLYS) return null;
-    return { otyp: AKLYS, range: AKLYS_LIM * AKLYS_LIM, tethered: 1 };
-}
 
 /** C hacklib.c isqrt — integer square root (odd-subtraction). */
 function isqrt(val) {
@@ -869,6 +866,12 @@ export async function throw_gold(obj) {
         if (await flooreffects(obj, bhitpos.x | 0, bhitpos.y | 0, 'fall')) {
             return ECMD_TIME;
         }
+    }
+    {
+        // C dothrow.c:1808 — crysknife reverts when no longer held, before
+        // the shk pick-snatch (named omit) and snuff/ship arms.
+        const { obj_no_longer_held } = await import('./do.js');
+        await obj_no_longer_held(obj);
     }
     if ((u.dz | 0) > 0) {
         // C surface() — room → floor; full dungeon.c surface named

@@ -29,7 +29,7 @@ import {
     LL_ACHIEVE, LL_DEBUG,
     OBJ_FREE, OBJ_FLOOR, OBJ_INVENT, OBJ_MINVENT, OBJ_CONTAINED, OBJ_BURIED,
     CXN_SINGULAR,
-    CONTAINED_TOO, BURIED_TOO, ER_DESTROYED, WT_SPLASH_THRESHOLD,
+    CONTAINED_TOO, BURIED_TOO, ER_DESTROYED, WT_SPLASH_THRESHOLD, COST_DEGRD,
     TT_PIT, FIRE_RES, PIT,
     ROOM, CORR, DRAWBRIDGE_UP, TRAPDOOR, HOLE,
     IS_WATERWALL, IS_ALTAR, is_pit, is_hole, u_at, Has_contents,
@@ -96,6 +96,7 @@ import {
     notice_mon_off, notice_mon_on, notice_all_mons,
     impact_disturbs_zombies, set_uinwater,
 } from './hack.js';
+import { show_getpos_tip } from './getpos.js';
 import { place_object, stackobj, weight, delobj, obj_extract_self,
     obj_nexto_xy, obj_meld, pudding_merge_message,
     save_timers, restore_timers, run_timers, splitobj,
@@ -141,7 +142,7 @@ import {
 } from './generated/monsters_data.js';
 import { dismount_steed, place_monster } from './steed.js';
 import { place_wsegs } from './worm.js';
-import { set_residency } from './shk.js';
+import { set_residency, costly_alteration } from './shk.js';
 import { set_ustuck, gulp_blnd_check } from './mhitu.js';
 import { onquest, ok_to_quest } from './quest.js';
 import { resurrect } from './wizard.js';
@@ -177,6 +178,8 @@ const ICE_BOX = objectNames.indexOf('ICE_BOX');
 const CHEST = objectNames.indexOf('CHEST');
 const LARGE_BOX = objectNames.indexOf('LARGE_BOX');
 const STATUE = objectNames.indexOf('STATUE');
+const CRYSKNIFE = objectNames.indexOf('CRYSKNIFE');
+const WORM_TOOTH = objectNames.indexOf('WORM_TOOTH');
 /** C worn.c worn[] — hero slot pointer + mask (setnotworn). */
 const WORN_SLOTS = [
     ['uarm', W_ARM],
@@ -637,6 +640,33 @@ async function lava_damage(obj, x, y) {
 }
 
 /**
+ * C ref: do.c obj_no_longer_held `:893–920` — things that must change when
+ * not held; recurse into containers. Called for both player and monsters.
+ * C order: null return; `Has_contents` (cobj non-null) recursion over the
+ * `cobj`/`nobj` chain; CRYSKNIFE arm with `!oerodeproof || !rn2(10)`
+ * short-circuit (normal crysknife draws no RNG; fixed draws one `rn2(10)`),
+ * `!mon_moving && !gameover` costly_alteration(COST_DEGRD), then
+ * otyp=WORM_TOOTH + oerodeproof=0.
+ */
+export async function obj_no_longer_held(obj) {
+    if (!obj) return;
+    if (Has_contents(obj)) {
+        for (let contents = obj.cobj; contents; contents = contents.nobj) {
+            await obj_no_longer_held(contents);
+        }
+    }
+    if ((obj.otyp | 0) === CRYSKNIFE) {
+        if (!obj.oerodeproof || !rn2(10)) {
+            if (!game.context?.mon_moving && !game.program_state?.gameover) {
+                await costly_alteration(obj, COST_DEGRD);
+            }
+            obj.otyp = WORM_TOOTH;
+            obj.oerodeproof = 0;
+        }
+    }
+}
+
+/**
  * C ref: do.c doaltarobj — drop/land feedback + bknown on altar.
  * Named omit: livelog_printf conduct.
  */
@@ -1088,8 +1118,9 @@ function ensure_nhcore_available() {
  * C ref: nhlua.c l_nhcore_call — skip if !available; if nhcore.<name> is
  * a Lua function, pcall it, else mark unavailable.
  * JS: ENTER/LEAVE → tutorial_enter/leave. GETPOS_TIP is a Lua function
- * (wired in getpos.js, not here). start/restore/moveloop/exit are
- * commented out in nhcore.lua so the first call disables them.
+ * (nhcore.lua getpos_tip = show_getpos_tip, exported from getpos.js).
+ * start/restore/moveloop/exit are commented out in nhcore.lua so the
+ * first call disables them.
  */
 export async function l_nhcore_call(callidx) {
     if (callidx < 0 || callidx >= NUM_NHCORE_CALLS) return;
@@ -1103,8 +1134,14 @@ export async function l_nhcore_call(callidx) {
         await tutorial_leave();
         return;
     }
+    if (callidx === NHCORE_GETPOS_TIP) {
+        // C: pcall nhcore.getpos_tip = show_getpos_tip (nhcore.lua:108-121);
+        // the Lua function exists so the call stays available.
+        await show_getpos_tip();
+        return;
+    }
     // C: lua_type != LUA_TFUNCTION → available[callidx] = FALSE
-    if (callidx !== NHCORE_GETPOS_TIP) avail[callidx] = false;
+    avail[callidx] = false;
 }
 
 /**

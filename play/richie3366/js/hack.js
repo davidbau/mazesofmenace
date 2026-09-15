@@ -4,7 +4,8 @@
 import { game } from './gstate.js';
 import {
     Upolyd, KILLED_BY, M_AP_FURNITURE, M_AP_OBJECT, M_AP_NOTHING,
-    M_AP_TYPMASK, M_AP_TYPE, isok, u_at, TIP_ENHANCE, TIP_UNTRAP_MON,
+    M_AP_TYPMASK, M_AP_TYPE, isok, u_at, TIP_ENHANCE, TIP_UNTRAP_MON, TIP_GETPOS,
+    NUM_TIPS, NHCORE_GETPOS_TIP,
     IS_OBSTRUCTED, IRONBARS, IS_DOOR, IS_WALL, IS_TREE, IS_STWALL,
     D_NODOOR, D_BROKEN, D_ISOPEN, D_CLOSED, D_LOCKED, D_TRAPPED,
     NO_ROOM, SHARED, SHARED_PLUS, ROOMOFFSET, SHOPBASE, COLNO, ROWNO,
@@ -79,7 +80,7 @@ import { Hello } from './roles.js';
 import { SetVoice } from './sndprocs.js';
 import { set_ustuck, Conflict } from './mhitu.js';
 import { sticks } from './engrave.js';
-import { revive_corpse } from './do.js';
+import { revive_corpse, l_nhcore_call } from './do.js';
 
 export { set_msg_xy };
 
@@ -1016,7 +1017,8 @@ export function maybe_half_phys(dmg) {
 
 /**
  * C hack.c end_running `:4129–4158` — stop run; optional travel/mv.
- * Named omit: gt.travelmap selection_free (travelmap not allocated).
+ * C `:4151–4153` frees gt.travelmap unconditionally (even when and_travel
+ * is false); game.travelmap is heap, never saved (selection lives in mklev).
  * @param {boolean} and_travel also clear travel / travel1 / mv
  */
 export function end_running(and_travel) {
@@ -1038,6 +1040,8 @@ export function end_running(and_travel) {
         game.context.travel1 = 0;
         game.context.mv = 0;
     }
+    /* C :4151–4153 — the travel-session visited set dies with the run. */
+    game.travelmap = null;
     if ((game.multi | 0) > 0) game.multi = 0;
 }
 
@@ -1553,11 +1557,12 @@ function u_simple_floortyp(x, y) {
 /**
  * C ref: hack.c handle_tip `:1852–1882` — tips option + once-per-bit
  * context.tips. Arms in C switch order: TIP_ENHANCE, TIP_SWIM,
- * TIP_UNTRAP_MON. TIP_GETPOS (lua NHCORE `l_nhcore_call`) named.
+ * TIP_UNTRAP_MON, TIP_GETPOS (`l_nhcore_call(NHCORE_GETPOS_TIP)` →
+ * nhcore.lua getpos_tip = show_getpos_tip).
  */
 export async function handle_tip(tip) {
     if (game.flags?.tips === false) return false;
-    if (tip < 0 || tip >= 4 /* NUM_TIPS */) return false;
+    if (tip < 0 || tip >= NUM_TIPS) return false;
     if (!game.context) game.context = {};
     const bits = game.context.tips | 0;
     if (bits & (1 << tip)) return false;
@@ -1573,6 +1578,11 @@ export async function handle_tip(tip) {
     }
     if (tip === TIP_UNTRAP_MON) {
         await pline('(Tip: perhaps #untrap would help?)');
+        return true;
+    }
+    if (tip === TIP_GETPOS) {
+        // C hack.c:1871-1873: l_nhcore_call(NHCORE_GETPOS_TIP); break → TRUE
+        await l_nhcore_call(NHCORE_GETPOS_TIP);
         return true;
     }
     return false;
@@ -2225,7 +2235,7 @@ export async function domove_fight_web(x, y) {
         return true;
     } else {
         await pline(`You ${uwep ? 'cut' : 'punch'} through the web.`);
-        use_skill(wtype, 1);
+        await use_skill(wtype, 1);
     }
     deltrap(trap);
     newsym(x, y);

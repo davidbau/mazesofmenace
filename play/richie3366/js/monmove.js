@@ -63,7 +63,7 @@ import {
 import { doname, distant_name, ansimpleoname, vtense, an, xname, makeplural, yname } from './objnam.js';
 import { mpickobj, set_malign } from './makemon.js';
 import { may_dig, mdig_tunnel, bury_an_obj } from './dig.js';
-import { MON_WEP, mon_wield_item, select_rwep } from './weapon.js';
+import { MON_WEP, mon_wield_item, select_rwep, autoreturn_weapon } from './weapon.js';
 import { lined_up, m_has_launcher_and_ammo } from './mthrowu.js';
 import { is_pole } from './wield.js';
 import { acurrstr } from './attrib.js';
@@ -1599,12 +1599,9 @@ export async function postmov(mtmp, omx, omy, mmoved, can_tunnel, can_unlock, ca
 }
 
 /**
- * C ref: weapon.c autoreturn_weapon — AKLYS only (boomerang row commented out in C).
+ * C ref: weapon.c autoreturn_weapon — canonical `autoreturn_weapon` imported
+ * from `./weapon.js` (AKLYS only; boomerang row commented out in C).
  */
-function autoreturn_weapon(otmp) {
-    if (!otmp || otmp.otyp !== AKLYS) return null;
-    return { otyp: AKLYS, range: AKLYS_LIM * AKLYS_LIM, tethered: 1 };
-}
 
 /**
  * C ref: mhitu.c ranged_attk_available — DISTANCE_ATTK_TYPE with m_seenres gate

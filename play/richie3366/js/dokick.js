@@ -914,7 +914,7 @@ async function kickdmg(mon, clumsy) {
 
     await passive(mon, uarmf, true, (mon.mhp | 0) > 0, AT_KICK, false);
     if ((mon.mhp | 0) <= 0 && !trapkilled) await killed(mon);
-    if (kick_skill !== P_NONE) use_skill(kick_skill, 1);
+    if (kick_skill !== P_NONE) await use_skill(kick_skill, 1);
 }
 
 /**

@@ -511,7 +511,7 @@ const HEAVY_IRON_BALL = objectNames.indexOf('HEAVY_IRON_BALL');
  * @param {{x:number,y:number}} cc
  * @returns {object|null}
  */
-function buried_ball(cc) {
+export function buried_ball(cc) {
     const u = game.u || {};
     let ball = null;
     let bdist = 0;

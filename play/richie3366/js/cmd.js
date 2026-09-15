@@ -35,6 +35,7 @@ import { COLNO, ROWNO, STONE, DOOR, CORR, ROOM, IRONBARS, TREE, SDOOR,
          LARGEST_INT, GC_NOFLAGS, GC_SAVEHIST, GC_CONDHIST, GC_ECHOFIRST,
          SUPPRESS_HISTORY,
          In_sokoban,
+         TRAVP_TRAVEL, TRAVP_VALID,
          } from './const.js';
 import { FOOD_CLASS, objectNames } from './objects.js';
 import { EXTCMDLIST } from './generated/extcmdlist_data.js';
@@ -55,7 +56,7 @@ import {
 import { dovspell, docast, num_spells } from './spell.js';
 import { doeat } from './eat.js';
 import { dodrink } from './potion.js';
-import { dozap } from './zap.js';
+import { dozap, You } from './zap.js';
 import { doread } from './read.js';
 import { doengrave, maybe_smudge_engr, set_occupation, can_reach_floor, engr_at } from './engrave.js';
 import { dothrow, dofire } from './dothrow.js';
@@ -83,7 +84,7 @@ import { an, doname } from './objnam.js';
 import { m_monnam, mon_nam, Hallucination } from './do_name.js';
 import { spoteffects, dopickup, doloot, dotip } from './pickup.js';
 import { objects_at } from './mkobj.js';
-import { stairway_at, u_on_newpos, maybe_adjust_hero_bubble } from './mklev.js';
+import { stairway_at, u_on_newpos, maybe_adjust_hero_bubble, selection_new, selection_getpoint, selection_setpoint } from './mklev.js';
 import { In_tutorial } from './dungeon.js';
 import { ATR_INVERSE } from './terminal.js';
 import { dopay } from './shk.js';
@@ -221,6 +222,8 @@ function reset_cmd_vars(reset_cmdq) {
     if (game.iflags) game.iflags.menu_requested = false;
     game.context.travel = 0;
     game.context.travel1 = 0;
+    /* C cmd.c:3616–3618 — the travel-session visited set dies here. */
+    game.travelmap = null;
     if (reset_cmdq) {
         cmdq_clear(CQ_CANNED);
         cmdq_clear(CQ_REPEAT);
@@ -1102,6 +1105,11 @@ function travel_test_move(ux, uy, dx, dy) {
     if (IS_OBSTRUCTED(typ) || typ === IRONBARS) {
         // C :1011–1073. Blind feel_location, autodig/use_pick_axe2 and the
         // drawbridge/Sokoban/mention_walls plines are DO_MOVE-only.
+        // C :1016–1023: Underwater blocks before the tunnels/IRONBARS arms
+        // on every mode (only the There() pline is DO_MOVE-gated) — an
+        // underwater tunneling polyform or passes-bars form no longer
+        // routes travel through rock/bars (D-1971 review-941 debt).
+        if ((game.u?.uinwater | 0)) return false;
         if (typ === IRONBARS) {
             if (!(passWalls || test_move_hero_passes_bars())) return false;
         } else if (!(ydat && tunnels(ydat) && !needspick(ydat))) {
@@ -1696,7 +1704,19 @@ export async function continue_run() {
     // C ref: hack.c domove_core — travel recomputes step each turn
     if (game.context?.travel) {
         // C: if (!findtravelpath(TRAVP_TRAVEL)) findtravelpath(TRAVP_GUESS)
-        if (!findtravelpath_travel() && !findtravelpath_guess()) {
+        let travelStep = findtravelpath_travel();
+        if (travelStep === TRAVEL_STEP_UNSURE) {
+            await You('stop, unsure which way to go.');
+            travelStep = TRAVEL_STEP;
+        }
+        if (!travelStep) {
+            travelStep = findtravelpath_guess();
+            if (travelStep === TRAVEL_STEP_UNSURE) {
+                await You('stop, unsure which way to go.');
+                travelStep = TRAVEL_STEP;
+            }
+        }
+        if (!travelStep) {
             end_running(true);
             game.context.move = 0;
             return false;
@@ -1724,15 +1744,42 @@ const DIRS_ORD = [
     DIR_W, DIR_N, DIR_E, DIR_S, DIR_NW, DIR_NE, DIR_SE, DIR_SW,
 ];
 
+/* findtravelpath step results. C returns boolean, but the TRAVP_TRAVEL
+ * visited arm must print You("stop, unsure which way to go.") and You is
+ * async-only in JS — so the sync BFS reports TRAVEL_STEP_UNSURE and the
+ * async TRAVEL wrappers print it in C order (message, then the step).
+ * TRAVP_VALID never reports it (C :1405–1413 gates the message on TRAVEL). */
+const TRAVEL_NOPATH = 0;
+const TRAVEL_STEP = 1;
+const TRAVEL_STEP_UNSURE = 2;
+
+/**
+ * C ref: hack.c findtravelpath :1268–1269 (`if (!gt.travelmap)
+ * gt.travelmap = selection_new()`) — the visited set for this travel
+ * session. Every hero cell a TRAVP_TRAVEL/VALID step starts from is marked,
+ * so stepping from a marked cell stops travel with "unsure which way to
+ * go". Per-game heap like C (never saved); cleared by reset_cmd_vars
+ * (cmd.c:3616) and end_running (hack.c:4151).
+ */
+function travelmap_ensure() {
+    if (!game.travelmap) game.travelmap = selection_new();
+    return game.travelmap;
+}
+
 /**
  * C-style BFS from (fromX,fromY) until (toX,toY)=hero is adjacent.
  * Sets u.dx/u.dy to step from hero onto the connecting neighbor.
  * C ref: hack.c findtravelpath TRAVP_TRAVEL / noguess.
  * @param {boolean} guessMode — TRAVP_GUESS expand: require couldsee(nx,ny)
  * @param {boolean} [couldseeOnly] — sighted: require couldsee (ignore seenv)
+ * @param {number} [mode] — TRAVP_TRAVEL (visited stop + travelcc) or
+ *   TRAVP_VALID (mark + step only, C :1400–1418)
+ * @returns {number} TRAVEL_NOPATH / TRAVEL_STEP / TRAVEL_STEP_UNSURE
  */
-function findtravelpath_bfs(fromX, fromY, toX, toY, guessMode, couldseeOnly = false) {
+function findtravelpath_bfs(fromX, fromY, toX, toY, guessMode, couldseeOnly = false, mode = TRAVP_TRAVEL) {
     const u = game.u;
+    // C :1268–1269 — the travel-session visited set is allocated on entry.
+    const tmap = travelmap_ensure();
     const travel = new Map();
     let cur = [{ x: fromX, y: fromY }];
     // C: memset travel 0 — the start cell matrix stays 0 (only discovered
@@ -1774,22 +1821,33 @@ function findtravelpath_bfs(fromX, fromY, toX, toY, guessMode, couldseeOnly = fa
                 if (!travel_test_move(x, y, nx - x, ny - y)) continue;
 
                 if (nx === toX && ny === toY) {
-                    // Path reached hero from neighbor (x,y) → step onto it
+                    // C :1400–1418 — TRAVP_TRAVEL/VALID success. visited is
+                    // read off the CURRENT cell (x,y); the step from hero
+                    // onto it is set either way; only TRAVP_TRAVEL stops
+                    // (nomul + run=8) on destination-or-visited, clearing
+                    // travelcc on a fresh destination and reporting UNSURE
+                    // on a revisit (the wrapper prints the C You() line).
+                    const visited = selection_getpoint(x, y, tmap);
                     u.dx = x - toX;
                     u.dy = y - toY;
-                    // C: when step cell is the travel destination, stop after
-                    // this step and clear travelcc (visited arm deferred).
-                    if (!guessMode && x === fromX && y === fromY) {
+                    if (!guessMode && mode === TRAVP_TRAVEL
+                        && (x === fromX && y === fromY || visited)) {
                         nomul(0);
+                        /* reset run so domove run checks work */
                         if (game.context) game.context.run = 8;
-                        if (!game.iflags) game.iflags = {};
-                        if (!game.iflags.travelcc) {
-                            game.iflags.travelcc = { x: 0, y: 0 };
+                        if (!visited) {
+                            if (!game.iflags) game.iflags = {};
+                            if (!game.iflags.travelcc) {
+                                game.iflags.travelcc = { x: 0, y: 0 };
+                            }
+                            game.iflags.travelcc.x = 0;
+                            game.iflags.travelcc.y = 0;
                         }
-                        game.iflags.travelcc.x = 0;
-                        game.iflags.travelcc.y = 0;
+                        selection_setpoint(u.ux, u.uy, tmap, 1);
+                        return visited ? TRAVEL_STEP_UNSURE : TRAVEL_STEP;
                     }
-                    return true;
+                    selection_setpoint(u.ux, u.uy, tmap, 1);
+                    return TRAVEL_STEP;
                 }
                 const key = `${nx},${ny}`;
                 if (travel.has(key)) continue;
@@ -1810,14 +1868,21 @@ function findtravelpath_bfs(fromX, fromY, toX, toY, guessMode, couldseeOnly = fa
         radius++;
         if (radius > COLNO * ROWNO) break;
     }
-    return false;
+    return TRAVEL_NOPATH;
 }
 
+/**
+ * C ref: hack.c findtravelpath TRAVP_TRAVEL adjacent fast path (:1272–1292)
+ * + dest→hero BFS. Adjacent TEST_MOVE stays the blocksMove/boulder
+ * stand-ins (full test_move TEST_MOVE unported, named); the BFS success arm
+ * is C :1400–1418.
+ * @returns {number} TRAVEL_NOPATH / TRAVEL_STEP / TRAVEL_STEP_UNSURE
+ */
 function findtravelpath_travel(couldseeOnly = false) {
     const u = game.u;
     const destX = u.tx | 0;
     const destY = u.ty | 0;
-    if (!isok(destX, destY)) return false;
+    if (!isok(destX, destY)) return TRAVEL_NOPATH;
 
     const ctx = game.context;
     // Adjacent reachable → normal one-step move; clear travel destination
@@ -1834,10 +1899,10 @@ function findtravelpath_travel(couldseeOnly = false) {
         if (!game.iflags.travelcc) game.iflags.travelcc = { x: 0, y: 0 };
         game.iflags.travelcc.x = 0;
         game.iflags.travelcc.y = 0;
-        return true;
+        return TRAVEL_STEP;
     }
 
-    if (destX === u.ux && destY === u.uy) return false;
+    if (destX === u.ux && destY === u.uy) return TRAVEL_NOPATH;
 
     return findtravelpath_bfs(destX, destY, u.ux, u.uy, false, couldseeOnly);
 }
@@ -1846,15 +1911,16 @@ function findtravelpath_travel(couldseeOnly = false) {
  * C ref: hack.c findtravelpath(TRAVP_GUESS) — BFS from hero through
  * couldsee cells, pick matrix cell closest to u.tx/u.ty, then
  * TRAVP_TRAVEL from that pick back to hero.
- * Named omissions: travelmap visited stop; travel_test_move arms
- * (may_passwall, worm_cross, block_entry, wand-unknown, Known_*walking).
+ * Named omissions: travel_test_move arms (may_passwall, worm_cross,
+ * block_entry, wand-unknown, Known_*walking); TEST_MOVE in the no-guess arm.
+ * @returns {number} TRAVEL_NOPATH / TRAVEL_STEP / TRAVEL_STEP_UNSURE
  */
 function findtravelpath_guess() {
     const u = game.u;
     const destX = u.tx | 0;
     const destY = u.ty | 0;
-    if (!isok(destX, destY)) return false;
-    if (destX === u.ux && destY === u.uy) return false;
+    if (!isok(destX, destY)) return TRAVEL_NOPATH;
+    if (destX === u.ux && destY === u.uy) return TRAVEL_NOPATH;
 
     // C: start BFS at hero; travel[hero] stays 0 (not a guess candidate).
     const travel = new Map();
@@ -1940,15 +2006,17 @@ function findtravelpath_guess() {
         // C: no guesses — sgn toward dest if TEST_MOVE allows
         const dx = Math.sign(destX - u.ux);
         const dy = Math.sign(destY - u.uy);
-        if (!dx && !dy) return false;
+        if (!dx && !dy) return TRAVEL_NOPATH;
         const nx = (u.ux | 0) + dx;
         const ny = (u.uy | 0) + dy;
-        if (!isok(nx, ny) || blocksMove(nx, ny) || boulder_at(nx, ny)) return false;
-        if (travel_avoids_cell(nx, ny)) return false;
-        if (travel_blocks_tight_diag(u.ux, u.uy, nx, ny)) return false;
+        if (!isok(nx, ny) || blocksMove(nx, ny) || boulder_at(nx, ny)) return TRAVEL_NOPATH;
+        if (travel_avoids_cell(nx, ny)) return TRAVEL_NOPATH;
+        if (travel_blocks_tight_diag(u.ux, u.uy, nx, ny)) return TRAVEL_NOPATH;
         u.dx = dx;
         u.dy = dy;
-        return true;
+        // C :1484–1487 — the general-direction step also marks travelmap.
+        selection_setpoint(u.ux, u.uy, travelmap_ensure(), 1);
+        return TRAVEL_STEP;
     }
 
     // C: mode = TRAVP_TRAVEL; goto noguess from (px,py) toward hero
@@ -1959,9 +2027,10 @@ function findtravelpath_guess() {
  * C ref: hack.c is_valid_travelpt — getpos auto_describe appends
  * " (no travel path)" when getloc_travelmode && !is_valid_travelpt.
  * TRAVP_VALID: findtravelpath swaps ends — BFS from hero toward dest
- * (unlike TRAVP_TRAVEL which BFS dest→hero). Restores tx/ty; VALID must
- * not clear travelcc (unlike TRAVEL success). Named: travelmap visited;
- * glyph_is_cmap S_stone via typ≈STONE|SCORR blank showsyms.
+ * (unlike TRAVP_TRAVEL which BFS dest→hero). Restores tx/ty; VALID marks
+ * travelmap and steps but never stops (no nomul/run/travelcc/message —
+ * C :1400–1418 gates those on TRAVP_TRAVEL). Named: glyph_is_cmap S_stone
+ * via typ≈STONE|SCORR blank showsyms.
  */
 export function is_valid_travelpt(x, y) {
     const u = game.u;
@@ -1980,11 +2049,11 @@ export function is_valid_travelpt(x, y) {
     const savedTccY = tcc ? tcc.y : 0;
     u.tx = x | 0;
     u.ty = y | 0;
-    let ret = false;
+    let ret = TRAVEL_NOPATH;
     try {
         // C findtravelpath(TRAVP_VALID): start at hero, seek dest
         // (not dest→hero — that falsely succeeds from impassable stone).
-        ret = findtravelpath_bfs(u.ux, u.uy, u.tx, u.ty, false, false);
+        ret = findtravelpath_bfs(u.ux, u.uy, u.tx, u.ty, false, false, TRAVP_VALID);
     } finally {
         u.tx = savedTx;
         u.ty = savedTy;
@@ -1995,7 +2064,7 @@ export function is_valid_travelpt(x, y) {
             tcc.y = savedTccY;
         }
     }
-    return ret;
+    return ret !== TRAVEL_NOPATH;
 }
 
 /**
@@ -2039,7 +2108,19 @@ async function dotravel_target() {
     // Do NOT prefer couldsee-only first: that skipped seenv CLOUD cells on
     // Quest and stepped SE while C walked S (D-0784 / seed0360 @104904).
     let stepped = false;
-    if (findtravelpath_travel(false) || findtravelpath_guess()) {
+    let travelStep = findtravelpath_travel(false);
+    if (travelStep === TRAVEL_STEP_UNSURE) {
+        await You('stop, unsure which way to go.');
+        travelStep = TRAVEL_STEP;
+    }
+    if (!travelStep) {
+        travelStep = findtravelpath_guess();
+        if (travelStep === TRAVEL_STEP_UNSURE) {
+            await You('stop, unsure which way to go.');
+            travelStep = TRAVEL_STEP;
+        }
+    }
+    if (travelStep) {
         const nx = (u.ux | 0) + (u.dx | 0);
         const ny = (u.uy | 0) + (u.dy | 0);
         const before = Math.max(
@@ -2073,7 +2154,7 @@ async function dotravel_target() {
 /**
  * C ref: cmd.c dotravel — '_' / #travel getpos then dotravel_target.
  * Branch envelope: cancel, already-here, adjacent step, greedy BFS step.
- * Menu getpos / full TEST_TRAV / GUESS / travelmap deferred.
+ * Menu getpos / full test_move (TEST_MOVE/DO_MOVE modes) deferred.
  * @returns {Promise<number>} ECMD_*
  */
 export async function dotravel() {
@@ -3497,7 +3578,7 @@ async function domove(dx, dy) {
         u.usteed.my = newy;
         /* C hack.c:2883 [if move attempt ends up being blocked, should
          * training count?] exercise_steed(); train riding skill */
-        exercise_steed();
+        await exercise_steed();
     }
 
     if (mtmp && is_safemon(mtmp)

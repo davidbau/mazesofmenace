@@ -1158,7 +1158,7 @@ export function count_unpaid(list) {
  * C invent.c tally_BUCX `:3578–3616`. Priest Role_if(PM_CLERIC) sets
  * bknown (coins stay unknown). Coins: flags.goldX → X else U.
  * ocp is zeroed and unused (C comment: gold is no longer skipped).
- * Caller dotypeinv (D-1687); pickup.c still has a local tally clone.
+ * Caller dotypeinv (D-1687); pickup.c query_classes (D-2388).
  * @param {object[]|object|null} list
  * @param {boolean} by_nexthere
  * @returns {{ b: number, u: number, c: number, x: number, o: number, j: number }}

@@ -38,7 +38,7 @@ import {
     M_AP_TYPE, M_AP_MONSTER,
     FIRE_RES, STONE_RES, INTRINSIC,
 } from './const.js';
-import { G_NOCORPSE, G_UNIQ, mons, likes_gold, likes_gems, likes_objs, likes_magic, is_vampshifter } from './monsters.js';
+import { G_NOCORPSE, G_UNIQ, mons, likes_gold, likes_gems, likes_objs, likes_magic, is_vampshifter, is_undead } from './monsters.js';
 import { m_at, mongone, dmonsfree, zombie_maker, m_carrying } from './mon.js';
 import { can_carry, mon_offmap } from './monmove.js';
 import { enexto, rloc_to, single_level_branch } from './teleport.js';
@@ -1108,7 +1108,7 @@ async function really_done(how) {
     }
 
     // C: finish_paybill after disclosure, before bones
-    if (bones_ok && taken) finish_paybill();
+    if (bones_ok && taken) await finish_paybill();
 
     // C end.c:1351-1361 — grave-arise feedback even when bones won't be
     // made (its presence must not tip off bones); flushed to the message
@@ -1163,7 +1163,7 @@ async function really_done(how) {
  * C ref: shk.c finish_paybill — drop invent at repo loc (no messages).
  * Named omissions: unleash_all; impossible off-map arm.
  */
-function finish_paybill() {
+async function finish_paybill() {
     const repo = game.repo || {};
     const shkp = repo.shopkeeper || null;
     let ox = repo.location?.x | 0;
@@ -1178,7 +1178,7 @@ function finish_paybill() {
         const umoney = money_cnt(game.invent);
         if (umoney) money2mon(shkp, umoney);
     }
-    drop_upon_death(null, null, ox, oy);
+    await drop_upon_death(null, null, ox, oy);
 }
 
 /**
@@ -1382,18 +1382,23 @@ function give_u_to_m_resistances(mtmp) {
 /**
  * C ref: bones.c drop_upon_death `:259–303` — curse invent; mtmp /
  * cont / nearby-gate placement; cont owt refresh.
- * Named omissions: obj_no_longer_held (no JS equivalent); lamp
- * artifact_light/end_burn arm.
+ * C bones.c:279–280 `if (!mtmp || is_undead(mtmp->data))`
+ * obj_no_longer_held(otmp) is live via the do.js export (D-2060 residual
+ * retired here); lamp artifact_light/end_burn arm stays named.
  */
-function drop_upon_death(mtmp, cont, x, y) {
+async function drop_upon_death(mtmp, cont, x, y) {
     const u = game.u || {};
     u.twoweap = false;
     if (!game.invent) game.invent = [];
+    const { obj_no_longer_held } = await import('./do.js');
     while (game.invent.length) {
         const otmp = game.invent.shift();
         otmp.owornmask = 0;
         otmp.where = OBJ_FREE;
         otmp.nobj = null;
+
+        // C bones.c:279–280 — slime keeps gear held; other arises do not
+        if (!mtmp || is_undead(mtmp.data)) await obj_no_longer_held(otmp);
 
         // C `:287–288` after owornmask=0, before rn2(5) curse
         if ((otmp.otyp | 0) === SLIME_MOLD) goodfruit(otmp.spe);
@@ -1529,14 +1534,14 @@ async function savebones(how, when, corpse) {
         let mtmp = makemon(mons(arise), u.ux | 0, u.uy | 0, NO_MINVENT);
         game.in_mklev = prevMklev;
         if (!mtmp) { /* arise-type might have been genocided */
-            drop_upon_death(null, null, u.ux, u.uy);
+            await drop_upon_death(null, null, u.ux, u.uy);
             u.ugrave_arise = NON_PM; /* in case caller cares */
             return;
         }
         give_u_to_m_resistances(mtmp);
         mtmp = christen_monst(mtmp, game.plname || 'Player');
         newsym(u.ux | 0, u.uy | 0);
-        drop_upon_death(mtmp, null, u.ux | 0, u.uy | 0);
+        await drop_upon_death(mtmp, null, u.ux | 0, u.uy | 0);
         /* 'mtmp' now has hero's inventory; if 'mtmp' is a mummy, give it
            a wrapping unless already carrying one */
         if (mtmp.data?.mlet === 'S_MUMMY' && !m_carrying(mtmp, MUMMY_WRAPPING))
@@ -1558,10 +1563,10 @@ async function savebones(how, when, corpse) {
             STATUE, mons((u.umonnum | 0)), u.ux | 0, u.uy | 0,
             game.plname || 'Player',
         );
-        drop_upon_death(null, statue, u.ux | 0, u.uy | 0);
+        await drop_upon_death(null, statue, u.ux | 0, u.uy | 0);
         if (!statue) return;
     } else {
-        drop_upon_death(null, null, u.ux, u.uy);
+        await drop_upon_death(null, null, u.ux, u.uy);
         const prev = game.in_mklev;
         game.in_mklev = true;
         let mtmp = makemon(mons(PM_GHOST), u.ux | 0, u.uy | 0, MM_NONAME);
