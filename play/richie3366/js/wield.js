@@ -5,10 +5,11 @@
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import { flush_screen, flush_topl_more, pline } from './display.js';
-import { xprname, xname, aobjnam, makeplural, vtense, an, doname, The, body_part_latebound, simpleonames, is_plural, otense, Yname2, arti_light_description } from './objnam.js';
+import { xprname, xname, yname, aobjnam, makeplural, vtense, an, doname, The, body_part_latebound, simpleonames, is_plural, otense, Yname2, arti_light_description } from './objnam.js';
+import { strstri } from './hacklib.js';
 import { yn_function } from './getline.js';
 import { hands_obj, is_wet_towel } from './weapon.js';
-import { humanoid, mons } from './monsters.js';
+import { humanoid, mons, nohands, verysmall } from './monsters.js';
 import { AT_WEAP } from './mhitm.js';
 import { acurr, A_DEX, exercise } from './attrib.js';
 import { rn2, rnd } from './rng.js';
@@ -166,6 +167,11 @@ function will_weld(obj) {
     return n === 'HEAVY_IRON_BALL' || n === 'IRON_CHAIN' || n === 'TIN_OPENER';
 }
 
+/** C ref: mondata.h cantwield — nohands || verysmall (eat.js/polyself.js convention). */
+function cantwield(ptr) {
+    return nohands(ptr) || verysmall(ptr);
+}
+
 /**
  * C ref: wield.c mwelded `:1077–1084` — monster's cursed welded weapon.
  * Caller must pass a monster's item. monmove.js still has a local clone.
@@ -200,9 +206,12 @@ export async function weldmsg(obj) {
 }
 
 /**
- * C ref: wield.c wield_tool — #rub / apply pick/whip/polearm auto-wield.
- * Named omissions: welded verbose hand/plural; cantwield; bimanual+shield;
- * will_weld → ready_weapon; untwoweapon side effects beyond basic clear.
+ * C ref: wield.c wield_tool `:683–758` — #rub / apply pick/whip/polearm auto-wield.
+ * C order: already-wielded → what/more_than_1 → worn-armor (yname + them/it) →
+ * welded (verbose welded-to-hand/those/that vs quiet can't) → cantwield →
+ * shield+bimanual → quiver/swapwield → will_weld→ready_weapon else doname+setuwep
+ * (+pushweapon) → rewield-death → untwoweapon → unweapon.
+ * Named omissions: untwoweapon side effects beyond basic clear.
  * Lamp #rub path uses the common doname wield message.
  * @returns {Promise<boolean>} TRUE if ready to use as uwep
  */
@@ -210,16 +219,38 @@ export async function wield_tool(obj, verb) {
     const u = game.u || {};
     if (u.uwep && obj === u.uwep) return true;
     if (!verb) verb = 'wield';
+    // C `:689–692` — what + more_than_1 ahead of the guard arms.
+    const what = xname(obj);
+    let more_than_1 = ((obj.quan | 0) > 1 || strstri(what, 'pair of ') != null
+        || strstri(what, 's of ') != null);
 
     if ((obj.owornmask || 0) & (W_ARMOR | W_ACCESSORY)) {
-        await pline(`You can't ${verb} ${xname(obj)} while wearing it.`);
+        // C `:694–698` — You_cant "%s %s while wearing %s." (verb, yname, them/it).
+        await pline(`You can't ${verb} ${yname(obj)} while wearing ${more_than_1 ? 'them' : 'it'}.`);
         return false;
     }
     if (u.uwep && welded(u.uwep)) {
-        await pline("You can't do that.");
+        // C `:699–717` — verbose welded-to-hand arm vs quiet can't.
+        if (game.flags?.verbose !== false) {
+            let hand = body_part_latebound(HAND);
+            if (bimanual(u.uwep)) hand = makeplural(hand);
+            if (strstri(what, 'pair of ') != null) more_than_1 = false;
+            await pline(`Since your weapon is welded to your ${hand}, you cannot ${verb} ${more_than_1 ? 'those' : 'that'} ${xname(obj)}.`);
+        } else {
+            await pline("You can't do that.");
+        }
         return false;
     }
-    // cantwield / bimanual+shield deferred
+    // C `:718–721` — cantwield (mondata.h: nohands || verysmall).
+    if (cantwield(game.youmonst?.data)) {
+        await pline(`You can't hold ${more_than_1 ? 'them' : 'it'} strongly enough.`);
+        return false;
+    }
+    // C `:722–727` — shield + two-handed obj.
+    if (u.uarms && bimanual(obj)) {
+        await pline(`You cannot ${verb} a two-handed ${obj.oclass === WEAPON_CLASS ? 'weapon' : 'tool'} while wearing a shield.`);
+        return false;
+    }
 
     if (u.uquiver === obj) setuqwep(null);
     if (u.uswapwep === obj) {

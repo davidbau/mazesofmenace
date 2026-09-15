@@ -7,7 +7,7 @@ import {
     flush_screen, flush_topl_more, pline, pline_mon, canseemon, canspotmon, newsym,
     map_invisible, unmap_invisible, glyph_is_invisible, You_feel, sensemon,
     verbalize, mon_visible, tp_sensemon, see_with_infrared, tmp_at,
-    set_msg_xy,
+    set_msg_xy, bot,
 } from './display.js';
 import { cansee, couldsee, howmonseen } from './vision.js';
 import {
@@ -38,7 +38,7 @@ import {
     IS_TREE, W_NONPASSWALL, FIG_TRANSFORM, TIMER_OBJECT, OBJ_MINVENT,
     EXACT_NAME, DISP_BEAM, DISP_END, HI_ZAP,
     MONSEEN_NORMAL, MONSEEN_SEEINVIS, MONSEEN_INFRAVIS,
-    GETOBJ_PROMPT, GETOBJ_EXCLUDE as GETOBJ_EXCLUDE_C,
+    GETOBJ_PROMPT, GETOBJ_NOFLAGS, GETOBJ_EXCLUDE as GETOBJ_EXCLUDE_C,
 } from './const.js';
 import { pick_lock, getdir } from './lock.js';
 import { ustatusline, mstatusline } from './insight.js';
@@ -48,7 +48,7 @@ import {
 } from './mon.js';
 import {
     compactify_invlets, makeknown, near_capacity, observe_object, prinv,
-    hold_another_object, consume_obj_charge, update_inventory, getobj,
+    hold_another_object, consume_obj_charge, freeinv, update_inventory, getobj,
     getobj_from_cmdq, getobj_record_repeat, getobj_display_pickinv, useupall,
     useup, useupf,
 } from './invent.js';
@@ -64,11 +64,11 @@ import {
 import { can_blow, little_to_big, big_to_little, hero_conflict } from './mondata.js';
 import { wield_tool, welded, is_pole, mwelded } from './wield.js';
 import {
-    splitobj, delobj, objects_at, sobj_at, unbless, attach_egg_hatch_timeout, kill_egg,
+    splitobj, unsplitobj, delobj, objects_at, sobj_at, unbless, attach_egg_hatch_timeout, kill_egg,
     obj_extract_self, place_object, stackobj, weight, mksobj, stop_timer,
-    start_timer, hornoplenty,
+    start_timer, hornoplenty, spot_stop_timers,
 } from './mkobj.js';
-import { xname, the, The, makeplural, vtense, doname, an, singular, cxname, thesimpleoname, simpleonames, yname, shk_your, Tobjnam, gloves_simple_name } from './objnam.js';
+import { xname, the, The, makeplural, vtense, doname, an, singular, cxname, thesimpleoname, simpleonames, yname, shk_your, Tobjnam, gloves_simple_name, otense } from './objnam.js';
 import { obj_resists } from './dogmove.js';
 import { acurr, A_CHA, A_STR, A_DEX, A_CON, change_luck, Fumbling } from './attrib.js';
 import { Monnam, mon_nam, x_monnam, y_monnam, Hallucination, a_monnam, Amonnam, monverbself, l_monnam } from './do_name.js';
@@ -90,7 +90,7 @@ import {
 import { yn_function, paranoid_query } from './getline.js';
 import {
     costly_alteration, costly_spot, add_damage, bill_dummy_object, shop_keeper,
-    check_unpaid_usage,
+    check_unpaid_usage, check_unpaid, obfree,
 } from './shk.js';
 import { zappable, release_hold, revive } from './zap.js';
 import { explode } from './explode.js';
@@ -100,6 +100,8 @@ import {
 } from './uhitm.js';
 import { digests, set_ustuck } from './mhitu.js';
 import { growl, yelp, whimper, mon_msound } from './sounds.js';
+import { Soundeffect } from './sndprocs.js';
+import { se_wall_of_force } from './generated/seffects_data.js';
 import { vault_summon_gd } from './vault.js';
 import { fill_pit, buried_ball_to_freedom } from './dig.js';
 import {
@@ -112,13 +114,13 @@ import { show_transient_light, transient_light_cleanup } from './light.js';
 import { set_occupation, u_wipe_engr } from './engrave.js';
 import { makemon, mkclass } from './makemon.js';
 import { make_familiar } from './dog.js';
-import { addinv } from './u_init.js';
+import { addinv, addinv_nomerge } from './u_init.js';
 import { stairway_at, morguemon } from './mklev.js';
 import {
     make_glib, Glib, make_sick, make_confused, make_stunned, make_vomiting,
     make_hallucinated, make_deaf, djinni_from_bottle,
 } from './potion.js';
-import { Blindf_on, Blindf_off, cursed_check } from './do_wear.js';
+import { Blindf_on, Blindf_off, cursed_check, fingers_or_gloves } from './do_wear.js';
 import {
     dropx, setnotworn, fire_damage, make_blinded, revive_corpse,
 } from './do.js';
@@ -333,118 +335,11 @@ function apply_ok(obj) {
     return GETOBJ_EXCLUDE_SELECTABLE;
 }
 
-/** Invent-order SUGGEST letters only (C getobj; DOWNPLAY stays off prompt). */
-function apply_lets() {
-    const lets = [];
-    for (const o of game.invent || []) {
-        if (o?.invlet && apply_ok(o) === GETOBJ_SUGGEST) lets.push(o.invlet);
-    }
-    return lets.join('');
-}
-
-/** C invent.c getobj: if (suggested > 5) compactify(bp) for prompt only. */
-function apply_prompt_lets(raw) {
-    if (!raw || raw.length <= 5) return raw;
-    return compactify_invlets(raw);
-}
-
-/** True when invent has DOWNPLAY (forces prompt even if SUGGEST empty). */
-function apply_has_downplay() {
-    for (const o of game.invent || []) {
-        if (apply_ok(o) === GETOBJ_DOWNPLAY) return true;
-    }
-    return false;
-}
-
-/**
- * C ref: invent.c getobj("use or apply", apply_ok) — loop on missing letter;
- * flush_topl_more before re-prompt so "don't have" gets --More--.
- * Empty SUGGEST with no DOWNPLAY/hands → early "don't have anything"
- * (C suggested==0 && !forceprompt && !allownone); do not prompt [*].
- * Canned CMDQ_KEY live; CMDQ_INT aborts (!ALLOWCNT).
- */
-async function getobj_apply() {
-    const cq = getobj_from_cmdq(apply_ok, false);
-    if (!cq.skip) return cq.otmp;
-
-    const lets0 = apply_lets();
-    // C: apply_ok(NULL) is GETOBJ_EXCLUDE — no hands; DOWNPLAY sets forceprompt.
-    if (!lets0 && !apply_has_downplay()) {
-        await pline("You don't have anything to use or apply.");
-        return null;
-    }
-
-    for (;;) {
-        await flush_topl_more();
-        const rawLets = apply_lets();
-        if (!rawLets && !apply_has_downplay()) {
-            await pline("You don't have anything to use or apply.");
-            return null;
-        }
-        // C: Strcpy(lets, bp); if (suggested > 5) compactify(bp); prompt uses bp
-        const lets = apply_prompt_lets(rawLets);
-        const query = lets
-            ? `What do you want to use or apply? [${lets} or ?*]`
-            : 'What do you want to use or apply? [*]';
-        const prompt = `${query} `;
-        game._pending_message = prompt;
-        await flush_screen(1);
-        const disp = game.nhDisplay;
-        if (disp?.setCursor) disp.setCursor(prompt.length, 0);
-
-        const key = await nhgetch();
-        const ch = String.fromCharCode(key);
-        if (key === 27 || ch === ' ' || ch === '\n' || ch === '\r') {
-            if (game.flags?.verbose !== false) await pline('Never mind.');
-            return null;
-        }
-        if (ch === '?' || ch === '*') {
-            // C: display_pickinv uses non-compacted lets[]; redo_menu D-1578
-            const counted = { cnt: 0, cntgiven: false };
-            const ilet = await getobj_display_pickinv(
-                ch, rawLets, false, counted,
-                { word: 'use or apply', allownone: false, promptHasHands: false },
-            );
-            if (ilet === '\x1b') {
-                if (game.flags?.verbose !== false) await pline('Never mind.');
-                return null;
-            }
-            if (!ilet) {
-                if (game.iflags?.force_invmenu) return null;
-                continue; // Space/Return → re-prompt getobj
-            }
-            const picked = (game.invent || []).find((o) => o.invlet === ilet);
-            if (!picked) {
-                await pline("You don't have that object.");
-                continue;
-            }
-            const rank = apply_ok(picked);
-            if (rank === GETOBJ_EXCLUDE) {
-                await pline('That is a silly thing to apply.');
-                return null;
-            }
-            game._pending_message = '';
-            getobj_record_repeat(picked, ilet);
-            return picked;
-        }
-        const otmp = (game.invent || []).find((o) => o.invlet === ch);
-        if (!otmp) {
-            // C: You("don't have that object."); continue;
-            await pline("You don't have that object.");
-            continue;
-        }
-        const rank = apply_ok(otmp);
-        if (rank === GETOBJ_EXCLUDE) {
-            await pline('That is a silly thing to apply.');
-            return null;
-        }
-        // SUGGEST / DOWNPLAY / EXCLUDE_SELECTABLE → return; doapply default
-        // prints "Sorry…" for EXCLUDE_SELECTABLE otyps.
-        game._pending_message = '';
-        getobj_record_repeat(otmp, ch);
-        return otmp;
-    }
-}
+/* doapply/dorub call live invent.c getobj directly (C apply.c:4226/:1793);
+ * retired clones: getobj_apply (raw nhgetch instead of yn_function, no
+ * in_doagain/force_invmenu, hardcoded '...to apply.' silly_thing, no botl),
+ * apply_lets/apply_prompt_lets/apply_has_downplay (charCode-free sortloot
+ * SORTLOOT_INVLET + DOWNPLAY altlets now live in getobj_filter_prompt). */
 
 /**
  * C ref: apply.c use_stethoscope — one free use per hero_seq; '.' → ustatusline.
@@ -1094,8 +989,7 @@ async function broken_wand_explode(obj, dmg, expltype) {
  * WAN_CREATE_MONSTER makemon + dig shop pay_for_damage (D-0950);
  * strike/cancel/poly/tele/undead adjacent bhitm/bhitpile/zapyourself
  * + WAN_LIGHT litroom (D-0952).
- * Named omit: check_unpaid bill polish; ICE spot_stop_timers;
- * HOLE goto_level; revive container/buried polish.
+ * Named omit: HOLE goto_level fall; revive container/buried polish.
  * @returns {number} ECMD_*
  */
 async function do_break_wand(obj) {
@@ -1132,13 +1026,13 @@ async function do_break_wand(obj) {
     );
 
     if (obj.unpaid) {
-        // check_unpaid deferred — costly_alteration bills destroy
+        await check_unpaid(obj); /* Extra charge for use */
         await costly_alteration(obj, COST_DSTROY);
     }
 
-    game.current_wand = obj;
-    freeinv_pie(obj);
-    setnotworn(obj);
+    game.current_wand = obj; /* destroy_items might reset this */
+    freeinv(obj); /* hide it from destroy_items instead... */
+    setnotworn(obj); /* so we need to do this ourselves */
 
     if (!zappable(obj)) {
         await pline(NOTHING_ELSE_HAPPENS);
@@ -1188,8 +1082,10 @@ async function do_break_wand(obj) {
         await broken_wand_explode(obj, dmg, EXPL_MAGICAL);
         return ECMD_TIME;
     case WAN_STRIKING:
+        /* we want this before the explosion instead of at the very end */
+        Soundeffect(se_wall_of_force, 65);
         await pline('A wall of force smashes down around you!');
-        dmg = d(1 + (obj.spe | 0), 6);
+        dmg = d(1 + (obj.spe | 0), 6); /* normally 2d12 */
         // FALLTHROUGH
     case WAN_CANCELLATION:
     case WAN_POLYMORPH:
@@ -1214,7 +1110,7 @@ async function do_break_wand(obj) {
     const {
         DIGCHECK_FAILED, DIGCHECK_FAIL_BOULDER, IS_WALL, IS_DOOR,
         Can_dig_down, PIT, HOLE, ROOM, ICE, N_DIRS, xdir, ydir, isok,
-        SHOPBASE, NO_MM_FLAGS, NO_KILLER_PREFIX,
+        SHOPBASE, NO_MM_FLAGS, NO_KILLER_PREFIX, MELT_ICE_AWAY,
     } = await import('./const.js');
     const { in_rooms, losehp, maybe_half_phys } = await import('./hack.js');
     const { makemon } = await import('./makemon.js');
@@ -1239,9 +1135,11 @@ async function do_break_wand(obj) {
         const y = (obj.oy | 0) + (ydir[i] | 0);
         if (!isok(x, y)) continue;
 
+        /* C gb.bhitpos single slot; hit_zap reads game.bhitpos, bhitm game._bhitpos */
         if (!game._bhitpos) game._bhitpos = { x: 0, y: 0 };
         game._bhitpos.x = x;
         game._bhitpos.y = y;
+        game.bhitpos = game._bhitpos;
 
         if (obj.otyp === WAN_DIGGING) {
             const dcres = dig_check(BY_OBJECT, x, y);
@@ -1251,8 +1149,7 @@ async function do_break_wand(obj) {
                     await watch_dig(null, x, y, true);
                     if (in_rooms(x, y, SHOPBASE)) shop_damage = true;
                 }
-                // ICE spot_stop_timers deferred
-                void ICE;
+                if ((lev?.typ | 0) === (ICE | 0)) spot_stop_timers(x, y, MELT_ICE_AWAY);
                 const typ = fillholetyp(x, y, false);
                 if (typ !== ROOM) {
                     if (lev) {
@@ -1287,22 +1184,25 @@ async function do_break_wand(obj) {
         if (x !== (u.ux | 0) || y !== (u.uy | 0)) {
             const mon = m_at(x, y);
             if (mon) await bhitm(mon, obj);
+            /* if (disp.botl) bot(); — C has this commented out after bhitm */
             if (affects_objects && objects_at(x, y)) {
                 await bhitpile(obj, bhito, x, y, 0);
+                if (game.disp?.botl || game.flags?.botl) await bot(); /* potion effects */
             }
         } else {
             if (affects_objects && objects_at(x, y)) {
                 await bhitpile(obj, bhito, x, y, 0);
+                if (game.disp?.botl || game.flags?.botl) await bot(); /* potion effects */
             }
             const damage = await zapyourself(obj, false);
             if (damage) {
-                const him = game.flags?.female ? 'her' : 'him';
-                const buf = `killed ${him}self by breaking a wand`;
+                const buf = `killed ${uhim()}self by breaking a wand`;
                 losehp(maybe_half_phys(damage), buf, NO_KILLER_PREFIX);
                 if (game._losehp_needs_done || game.program_state?.gameover) {
                     await finish_losehp_done();
                 }
             }
+            if (game.disp?.botl || game.flags?.botl) await bot(); /* blindness */
         }
     }
 
@@ -2108,7 +2008,7 @@ export async function flip_coin(obj) {
     } else if (Glib_apply() || Fumbling()
         || (acurr(A_DEX) < 10 && !rn2(acurr(A_DEX)))) {
         await pline(
-            `It slips between your ${fingers_or_gloves_apply(false)}.`,
+            `It slips between your ${fingers_or_gloves(false)}.`,
         );
         lose_coin = true;
     }
@@ -2131,11 +2031,7 @@ export async function flip_coin(obj) {
     return ECMD_TIME;
 }
 
-/** C objnam.c Tobjnam — The(xname) + otense (use_grease). */
-function Tobjnam_grease(obj, verb) {
-    if ((obj?.quan | 0) !== 1) return `${The(xname(obj))} ${verb}`;
-    return `${The(xname(obj))} ${vtense(null, verb)}`;
-}
+/** C objnam.c Tobjnam — live export covers the use_grease arms (D-2349). */
 
 /**
  * C ref: do_wear.c inaccessible_equipment predicate (no messages).
@@ -2159,7 +2055,7 @@ export function equipment_is_inaccessible(obj, only_if_known_cursed) {
 
 /**
  * C ref: do_wear.c inaccessible_equipment — messages when verb is set.
- * Named omit: shk_owns shop prefix (unpaid / floor costly).
+ * shk_owns shop prefix ("Foobar's ") via shk_your (D-2349).
  */
 export async function inaccessible_equipment(obj, verb, only_if_known_cursed) {
     if (!equipment_is_inaccessible(obj, only_if_known_cursed)) return false;
@@ -2220,7 +2116,7 @@ export async function use_grease(obj) {
 
     if (Glib()) {
         await pline(
-            `${Tobjnam(obj, 'slip')} from your ${fingers_or_gloves_apply(false)}.`,
+            `${Tobjnam(obj, 'slip')} from your ${fingers_or_gloves(false)}.`,
         );
         await dropx(obj);
         return ECMD_TIME;
@@ -2230,7 +2126,7 @@ export async function use_grease(obj) {
         if ((obj.cursed || Fumbling()) && !rn2(2)) {
             await consume_obj_charge(obj, true);
             await pline(
-                `${Tobjnam(obj, 'slip')} from your ${fingers_or_gloves_apply(false)}.`,
+                `${Tobjnam(obj, 'slip')} from your ${fingers_or_gloves(false)}.`,
             );
             await dropx(obj);
             return ECMD_TIME;
@@ -2251,13 +2147,13 @@ export async function use_grease(obj) {
             if (obj.cursed && !nohands(game.youmonst?.data)) {
                 make_glib(oldglib + rn1(6, 10)); /* + 10..15 */
                 await pline(
-                    `Some of the grease gets all over your ${fingers_or_gloves_apply(true)}.`,
+                    `Some of the grease gets all over your ${fingers_or_gloves(true)}.`,
                 );
             }
         } else {
             make_glib(oldglib + rn1(11, 5)); /* + 5..15 */
             await pline(
-                `You coat your ${fingers_or_gloves_apply(true)} with grease.`,
+                `You coat your ${fingers_or_gloves(true)} with grease.`,
             );
         }
     } else if (obj.known) {
@@ -2398,7 +2294,8 @@ export async function doapply() {
     }
 
     // C doapply: struct obj *obj is mutated via &obj (light_cocktail, …)
-    let obj = await getobj_apply();
+    // C apply.c:4226 getobj("use or apply", apply_ok, GETOBJ_NOFLAGS)
+    let obj = await getobj('use or apply', apply_ok, GETOBJ_NOFLAGS);
     if (!obj) return false;
 
     // C: WAND_CLASS → do_break_wand (before tool cases in C after getobj)
@@ -2996,157 +2893,47 @@ function jelly_ok(obj) {
 }
 
 /**
- * C ref: invent.c getobj("rub the royal jelly on", jelly_ok, GETOBJ_PROMPT).
- * Prompt even with no eggs. Canned KEY live; CMDQ_INT aborts (!ALLOWCNT).
- */
-async function getobj_jelly() {
-    const word = 'rub the royal jelly on';
-    const cq = getobj_from_cmdq(jelly_ok, false);
-    if (!cq.skip) return cq.otmp;
-
-    const suggest_lets = () => {
-        const lets = [];
-        for (const o of game.invent || []) {
-            if (o?.invlet && jelly_ok(o) === GETOBJ_SUGGEST) lets.push(o.invlet);
-        }
-        return lets.join('');
-    };
-
-    for (;;) {
-        await flush_topl_more();
-        const rawLets = suggest_lets();
-        // C GETOBJ_PROMPT: still ask when suggested==0
-        const lets = rawLets.length > 5 ? compactify_invlets(rawLets) : rawLets;
-        const query = lets
-            ? `What do you want to ${word}? [${lets} or ?*]`
-            : `What do you want to ${word}? [*]`;
-        const prompt = `${query} `;
-        game._pending_message = prompt;
-        await flush_screen(1);
-        const disp = game.nhDisplay;
-        if (disp?.setCursor) disp.setCursor(prompt.length, 0);
-
-        const key = await nhgetch();
-        const ch = String.fromCharCode(key);
-        if (key === 27 || ch === ' ' || ch === '\n' || ch === '\r') {
-            if (game.flags?.verbose !== false) await pline('Never mind.');
-            return null;
-        }
-        if (ch === '?' || ch === '*') {
-            const counted = { cnt: 0, cntgiven: false };
-            const ilet = await getobj_display_pickinv(
-                ch, rawLets, false, counted,
-                { word, allownone: false, promptHasHands: false },
-            );
-            if (ilet === '\x1b') {
-                if (game.flags?.verbose !== false) await pline('Never mind.');
-                return null;
-            }
-            if (!ilet) {
-                if (game.iflags?.force_invmenu) return null;
-                continue;
-            }
-            const picked = (game.invent || []).find((o) => o.invlet === ilet);
-            if (!picked) {
-                await pline("You don't have that object.");
-                continue;
-            }
-            const rank = jelly_ok(picked);
-            if (rank === GETOBJ_EXCLUDE) {
-                await pline(`That is a silly thing to ${word}.`);
-                return null;
-            }
-            game._pending_message = '';
-            getobj_record_repeat(picked, ilet);
-            return picked;
-        }
-        const otmp = (game.invent || []).find((o) => o.invlet === ch);
-        if (!otmp) {
-            await pline("You don't have that object.");
-            continue;
-        }
-        const rank = jelly_ok(otmp);
-        if (rank === GETOBJ_EXCLUDE) {
-            await pline(`That is a silly thing to ${word}.`);
-            return null;
-        }
-        game._pending_message = '';
-        getobj_record_repeat(otmp, ch);
-        return otmp;
-    }
-}
-
-/** C ref: invent.c freeinv — drop from invent[]; where=OBJ_FREE. */
-function freeinv_jelly(obj) {
-    if (!obj) return;
-    const inv = game.invent || [];
-    const idx = inv.indexOf(obj);
-    if (idx >= 0) inv.splice(idx, 1);
-    obj.where = OBJ_FREE;
-    obj.pickup_prev = 0;
-}
-
-/**
- * C ref: mkobj.c unsplitobj — OBJ_FREE/FLOOR return null. After
- * use_royal_jelly freeinv the lump is OBJ_FREE so cancel is a no-op
- * (C same: stack quan already reduced).
- */
-function unsplitobj_jelly(obj) {
-    if (!obj || obj.where !== OBJ_INVENT) return null;
-    const split = game.context?.objsplit;
-    if (!split) return null;
-    let parent = null;
-    let child = null;
-    if (obj.o_id === split.child_oid) {
-        child = obj;
-        parent = (game.invent || []).find((o) => o.o_id === split.parent_oid);
-    } else if (obj.o_id === split.parent_oid) {
-        parent = obj;
-        child = (game.invent || []).find((o) => o.o_id === split.child_oid);
-    }
-    if (!parent || !child || parent === child) return null;
-    parent.quan = (parent.quan | 0) + (child.quan | 0);
-    const inv = game.invent || [];
-    const idx = inv.indexOf(child);
-    if (idx >= 0) inv.splice(idx, 1);
-    child.where = OBJ_FREE;
-    child.quan = 0;
-    return parent;
-}
-
-/**
- * C ref: apply.c use_royal_jelly — split/freeinv; getobj egg; killer→queen;
- * cursed kill_egg; else attach_egg_hatch_timeout + blessed spe=2; obfree lump.
- * Named omit: update_inventory redraw.
+ * C ref: apply.c use_royal_jelly `:3616–3683` — split/freeinv; getobj egg
+ * (GETOBJ_PROMPT); killer→queen; cursed kill_egg; else
+ * attach_egg_hatch_timeout + blessed spe=2; setnotworn + obfree lump.
+ * Helpers are canonical live imports (invent.js getobj/freeinv/unsplitobj/
+ * update_inventory, u_init.js addinv_nomerge, objnam.js otense, shk.js
+ * obfree) — no local clones. C `*optr = 0`: both live callers (dorub
+ * `:1800`, doapply `:4263`) return the ECMD code immediately without
+ * touching obj, so the OBJ_FREE lump is simply dropped (GC) on the JS side.
  * @returns {number} ECMD_CANCEL | ECMD_TIME
  */
 async function use_royal_jelly(obj) {
+    // C: `boolean splitit = (obj->quan > 1L)`; split before freeinv so the
+    // lump is not offered as a self-rub choice.
     const splitit = (obj.quan || 1) > 1;
     let lump = obj;
     if (splitit) {
         const child = splitobj(obj, 1);
         if (child) lump = child;
     }
-    // C: freeinv so the lump is not offered as a self-rub choice
-    freeinv_jelly(lump);
+    freeinv(lump);
 
-    const eobj = await getobj_jelly();
+    // C: `eobj = getobj("rub the royal jelly on", jelly_ok, GETOBJ_PROMPT)`
+    const eobj = await getobj('rub the royal jelly on', jelly_ok, GETOBJ_PROMPT);
     if (!eobj) {
         if (splitit) {
-            unsplitobj_jelly(lump);
+            unsplitobj(lump);
+            // C: freeinv() updated perminv w/ obj omitted
+            update_inventory();
         } else {
-            const { addinv_nomerge } = await import('./u_init.js');
+            // C: this lump was already separate; prevent merge
             await addinv_nomerge(lump);
         }
         return ECMD_CANCEL;
     }
 
+    // C: `You("smear royal jelly all over %s.", yname(eobj))`
     await pline(`You smear royal jelly all over ${yname(eobj)}.`);
     if (eobj.otyp !== EGG) {
-        await pline(nothing_happens);
+        await pline(nothing_happens); // C: pline1(nothing_happens)
         setnotworn(lump);
-        lump.quan = 0;
-        lump.where = OBJ_FREE;
+        obfree(lump, null);
         return ECMD_TIME;
     }
 
@@ -3158,22 +2945,22 @@ async function use_royal_jelly(obj) {
     if (lump.cursed) {
         if ((eobj.timed | 0) || (eobj.corpsenm ?? NON_PM) !== oldcorpsenm) {
             await pline(
-                `The ${xname(eobj)} ${otense_stone(eobj, 'quiver')} feebly.`,
+                `The ${xname(eobj)} ${otense(eobj, 'quiver')} feebly.`,
             );
         } else {
             await pline(nothing_seems_to_happen);
         }
         kill_egg(eobj);
         setnotworn(lump);
-        lump.quan = 0;
-        lump.where = OBJ_FREE;
+        obfree(lump, null);
         return ECMD_TIME;
     }
 
     const was_timed = eobj.timed | 0;
     if ((eobj.corpsenm ?? NON_PM) !== NON_PM) {
         if (!(eobj.timed | 0)) attach_egg_hatch_timeout(eobj, 0);
-        // C: blessed jelly → hatched creature thinks you're the parent
+        // C: blessed jelly makes the hatched creature think you're the
+        // parent — but has no effect if you laid the egg (!eobj->spe)
         if (lump.blessed && !(eobj.spe | 0)) eobj.spe = 2;
     }
 
@@ -3181,15 +2968,15 @@ async function use_royal_jelly(obj) {
         || (eobj.spe | 0) === 2
         || (eobj.corpsenm ?? NON_PM) !== oldcorpsenm) {
         await pline(
-            `The ${xname(eobj)} ${otense_stone(eobj, 'quiver')} briefly.`,
+            `The ${xname(eobj)} ${otense(eobj, 'quiver')} briefly.`,
         );
     } else {
         await pline(nothing_seems_to_happen);
     }
 
+    // C useup_jelly: not useup() because freeinv() was already done
     setnotworn(lump);
-    lump.quan = 0;
-    lump.where = OBJ_FREE;
+    obfree(lump, null);
     return ECMD_TIME;
 }
 
@@ -4111,21 +3898,9 @@ function Yname2_oil(obj) {
     const s = `${shk_your_apply(obj)}${xname(obj)}`;
     return s.charAt(0).toUpperCase() + s.slice(1);
 }
-function otense_oil(obj, verb) {
-    if ((obj?.quan | 0) !== 1) return verb;
-    return vtense(null, verb);
-}
-function Tobjnam_oil(obj, verb) {
-    return `${The(xname(obj))} ${otense_oil(obj, verb)}`;
-}
+/** C objnam.c otense/Tobjnam — live exports cover the lamp arms (D-2349). */
 
-/** C do_wear.c fingers_or_gloves — gloves vs makeplural(FINGER). */
-function fingers_or_gloves_apply(check_gloves) {
-    if (check_gloves && game.u?.uarmg) {
-        return gloves_simple_name(game.u.uarmg);
-    }
-    return makeplural(body_part(FINGER));
-}
+/** C do_wear.c fingers_or_gloves — live export covers the apply arms (D-2349). */
 
 function Stunned_apply() {
     const u = game.u || {};
@@ -4251,7 +4026,7 @@ export async function use_bell(obj) {
             if (mtmp) {
                 await pline(`You summon ${a_monnam(mtmp)}!`);
                 if (!obj_resists(obj, 93, 100)) {
-                    await pline(`${Tobjnam_grease(obj, 'have')} shattered!`);
+                    await pline(`${Tobjnam(obj, 'have')} shattered!`);
                     useup(obj);
                     obj = null;
                 } else {
@@ -4284,7 +4059,7 @@ export async function use_bell(obj) {
             wakem = true;
         } else if (invoking) {
             await pline(
-                `${Tobjnam_grease(obj, 'issue')} an unsettling shrill sound...`,
+                `${Tobjnam(obj, 'issue')} an unsettling shrill sound...`,
             );
             obj.age = game.moves | 0;
             learno = true;
@@ -4809,7 +4584,7 @@ export async function use_candelabrum(obj) {
         );
         if (!Blind()) {
             await pline(
-                `${(obj.spe | 0) === 1 ? 'It is' : 'They are'} lit.  ${Tobjnam_oil(obj, 'shine')} dimly.`,
+                `${(obj.spe | 0) === 1 ? 'It is' : 'They are'} lit.  ${Tobjnam(obj, 'shine')} dimly.`,
             );
         }
     } else {
@@ -4830,9 +4605,9 @@ export async function use_candelabrum(obj) {
     } else {
         if ((obj.spe | 0) === 7) {
             if (Blind()) {
-                await pline(`${Tobjnam_oil(obj, 'radiate')} a strange warmth!`);
+                await pline(`${Tobjnam(obj, 'radiate')} a strange warmth!`);
             } else {
-                await pline(`${Tobjnam_oil(obj, 'glow')} with a strange light!`);
+                await pline(`${Tobjnam(obj, 'glow')} with a strange light!`);
             }
         }
         obj.known = 1;
@@ -4974,12 +4749,12 @@ export async function use_lamp(obj) {
     if (obj.cursed && !rn2(2)) {
         if ((obj.otyp === OIL_LAMP || obj.otyp === MAGIC_LAMP) && !rn2(3)) {
             await pline(
-                `The lamp spills and covers your ${fingers_or_gloves_apply(true)} with oil.`,
+                `The lamp spills and covers your ${fingers_or_gloves(true)} with oil.`,
             );
             make_glib((Glib() & TIMEOUT) + d(2, 10));
         } else if (!Blind()) {
             await pline(
-                `${Tobjnam_oil(obj, 'flicker')} for a moment, then ${otense_oil(obj, 'die')}.`,
+                `${Tobjnam(obj, 'flicker')} for a moment, then ${otense(obj, 'die')}.`,
             );
         } else {
             await pline(nothing_seems_to_happen);
@@ -4991,7 +4766,7 @@ export async function use_lamp(obj) {
         await pline(`${Shk_Your_apply(obj)}${lamp} is now on.`);
     } else {
         await pline(
-            `${s_suffix_apply(Yname2_oil(obj))} flame${plur_quan(obj.quan)} ${otense_oil(obj, 'burn')}${Blind() ? '.' : ' brightly!'}`,
+            `${s_suffix_apply(Yname2_oil(obj))} flame${plur_quan(obj.quan)} ${otense(obj, 'burn')}${Blind() ? '.' : ' brightly!'}`,
         );
         // candle unpaid verbalize / bill_dummy deferred
     }
@@ -5232,54 +5007,10 @@ function rub_ok(obj) {
     return GETOBJ_EXCLUDE;
 }
 
-function rub_suggest_lets() {
-    const lets = [];
-    for (const o of game.invent || []) {
-        if (o?.invlet && rub_ok(o) === GETOBJ_SUGGEST) lets.push(o.invlet);
-    }
-    lets.sort((a, b) => a.charCodeAt(0) - b.charCodeAt(0));
-    return lets.join('');
-}
-
-/**
- * C ref: invent.c getobj("rub", rub_ok).
- * Canned KEY live (dorub re-queue); CMDQ_INT aborts (!ALLOWCNT).
- */
-async function getobj_rub() {
-    const cq = getobj_from_cmdq(rub_ok, false);
-    if (!cq.skip) return cq.otmp;
-
-    const raw = rub_suggest_lets();
-    if (!raw) {
-        await pline("You don't have anything to rub.");
-        return null;
-    }
-    for (;;) {
-        await flush_topl_more();
-        const lets = raw.length > 5 ? compactify_invlets(raw) : raw;
-        const query = `What do you want to rub? [${lets} or ?*]`;
-        const prompt = `${query} `;
-        game._pending_message = prompt;
-        await flush_screen(1);
-        const disp = game.nhDisplay;
-        if (disp?.setCursor) disp.setCursor(prompt.length, 0);
-
-        const key = await nhgetch();
-        if (key === 27) return null;
-        const ch = String.fromCharCode(key);
-        if (ch === '?' || ch === '*') {
-            // menu listing deferred — re-prompt
-            continue;
-        }
-        for (const o of game.invent || []) {
-            if (o.invlet === ch && rub_ok(o) === GETOBJ_SUGGEST) {
-                getobj_record_repeat(o, ch);
-                return o;
-            }
-        }
-        await pline(`You don't have that object.`);
-    }
-}
+/* getobj_rub retired to live getobj too (C apply.c:1793): the clone sorted
+ * lets by charCode, read raw nhgetch instead of yn_function, dropped
+ * `?`/`*` into a re-prompt with no display_pickinv, returned silent null
+ * on ESC, and missed in_doagain/force_invmenu/botl entirely. */
 
 /** C ref: cmd.c cmdq_add_ec / cmdq_add_key for dorub re-queue after wield. */
 function cmdq_add_ec(fn) {
@@ -5304,7 +5035,8 @@ export async function dorub() {
         await pline("You aren't able to rub anything without hands.");
         return ECMD_OK;
     }
-    const obj = await getobj_rub();
+    // C apply.c:1793 getobj("rub", rub_ok, GETOBJ_NOFLAGS)
+    const obj = await getobj('rub', rub_ok, GETOBJ_NOFLAGS);
     if (!obj) return ECMD_CANCEL;
 
     if (obj.oclass === GEM_CLASS || obj.oclass === FOOD_CLASS) {

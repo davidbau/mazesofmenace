@@ -2270,6 +2270,14 @@ export function set_y_monnam(fn) {
     _y_monnam = fn;
 }
 
+// C shk.c shk_your: shk_owns lives in shk.js (shk.c home); registered here
+// late-bound like _y_monnam so objnam.js keeps no static edge into shk.js
+// (a static edge reorders eval onto polyself's top-level set_body_part).
+let _shk_owns_prefix = null;
+export function set_shk_owns_prefix(fn) {
+    _shk_owns_prefix = fn;
+}
+
 /**
  * Late-bound from do_name.js — C objnam.c doname LEASH uses noit_mon_nam.
  * Same cycle as y_monnam.
@@ -2455,6 +2463,9 @@ export function shk_your(obj) {
     const chk_pm = objectNames[obj.otyp] === 'CORPSE' && ismnum(obj.corpsenm);
     if (chk_pm && type_is_pname_objnam(mons(obj.corpsenm))) return '';
     if (chk_pm && the_unique_pm(mons(obj.corpsenm))) return 'the ';
+    // C shk.c shk_your: shk_owns (unpaid / costly floor goods) before mon_owns.
+    const own = _shk_owns_prefix ? _shk_owns_prefix(obj) : null;
+    if (own) return own;
     // C mon_owns: OBJ_MINVENT → s_suffix(y_monnam(ocarry))
     if (obj.where === OBJ_MINVENT && obj.ocarry) {
         const nam = _y_monnam ? _y_monnam(obj.ocarry) : 'it';

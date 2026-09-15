@@ -2076,8 +2076,8 @@ export async function dighole(pit_only, by_magic, cc) {
  * Branch envelope: weapon/level/pos gates; dig_check / petrified / hard wall;
  * Fumbling; effort + dwarf ×2; down → traps / dighole; lateral finish
  * statue/boulder/rock/wall/door/tree + shop pay; mid-effort hit msg.
- * Named omit: altar_wrath/angry_priest; earth elemental
- * debris; drawbridge wall string; steed fumble.
+ * Named omit: earth elemental debris; drawbridge wall string;
+ * steed fumble.
  * @returns {number} 1 continue, 0 done
  */
 async function dig() {
@@ -2230,7 +2230,13 @@ async function dig() {
             digging.effort = 0;
             return 0;
         }
-        // altar_wrath deferred
+        // C dig.c:427-430 — pickaxe destroys altar: wrath + priest anger.
+        if (IS_ALTAR(lev.typ)) {
+            const { altar_wrath } = await import('./pray.js');
+            await altar_wrath(dpx, dpy);
+            const { angry_priest } = await import('./priest.js');
+            await angry_priest();
+        }
         if (await dighole(true, false, null)) {
             digging.level.dnum = 0;
             digging.level.dlevel = -1;

@@ -77,7 +77,7 @@ import {
     A_STR, A_INT, A_WIS, A_DEX, A_CON, A_CHA, acurr, adjattrib, exercise,
     poisoned, Fast, adjalign, minuhpmax,
 } from './attrib.js';
-import { xkilled, killed, Hate_silver } from './uhitm.js';
+import { xkilled, killed, Hate_silver, dynamic_multi_reason } from './uhitm.js';
 import {
     m_seenres, cvt_adtyp_to_mseenres, monstseesu, monstunseesu, m_canseeu,
     mhis, on_fire,
@@ -2468,7 +2468,8 @@ async function mhitm_ad_stck_u(mtmp, mattk, mhm) {
  * C ref: uhitm.c mhitm_ad_plys `:3443–3462` — mhitu (monster→you) arm.
  * hitmsg, then multi >= 0 && !rn2(3) && !mgc_negated(TRUE) (rn2 before
  * the gate per C short-circuit); Free_action stiffens, else freeze with
- * nomul(-rnd(10)), nomovemsg, multi_reason, DEX exercise.
+ * nomul(-rnd(10)), nomovemsg, dynamic_multi_reason "paralyzed by <mon>",
+ * DEX exercise.
  */
 async function mhitm_ad_plys_u(mtmp, mattk, mhm) {
     void mhm;
@@ -2482,9 +2483,8 @@ async function mhitm_ad_plys_u(mtmp, mattk, mhm) {
             else await pline(`You are frozen by ${mon_nam(mtmp)}!`);
             game.nomovemsg = 'You can move again.';
             nomul(-rnd(10));
-            /* C dynamic_multi_reason "paralyzed by <mon>"; static
-               'paralyzed by a monster' is the mcastu.c precedent */
-            game.multi_reason = 'paralyzed by a monster';
+            // C :3457-3459 — 3.6.x "paralyzed by a monster"; be specific
+            dynamic_multi_reason(mtmp, 'paralyzed', false);
             exercise(A_DEX, false);
         }
     }

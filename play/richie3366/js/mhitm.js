@@ -93,6 +93,7 @@ import {
     EF_GREASE,
     EF_VERBOSE,
     ER_NOTHING,
+    PROTECTION,
 } from './const.js';
 import {
     verysmall, G_FREQ, G_NOCORPSE, G_UNIQ, is_neuter, nonliving,
@@ -2040,15 +2041,41 @@ async function passivemm(magr, mdef, mhitb, mdead, mwep) {
 }
 
 /**
- * C ref: mhitu.c magic_negation — worn armor a_can max for hero.
- * Amulet/extrinsic Protection bumps deferred (same as invent subset).
+ * C ref: mhitu.c magic_negation — hero arm (is_you, so the
+ * `if (is_you || gotprot) continue` skips the protects() scan: only the
+ * worn a_can max, the amulet-of-guarding branch, extrinsic Protection
+ * and the intrinsic floor apply; the monster arm is magic_negation_mon,
+ * D-1405). oc_level packs oc_oc2 ≡ a_can for armor
+ * (scripts/extract-objects.py; objclass.h:103).
  */
-function magic_negation_you() {
+export function magic_negation_you() {
+    const u = game.u || {};
+    // C: gotprot = (EProtection != 0L) — flat mirror or uprops extrinsic
+    const gotprot = (((u.EProtection | 0)
+        || (u.uprops?.[PROTECTION]?.extrinsic | 0)) !== 0);
+    const AMULET_OF_GUARDING = objectNames.indexOf('AMULET_OF_GUARDING');
     let mc = 0;
+    let via_amul = false;
     for (const o of game.invent || []) {
         if (((o.owornmask || 0) & W_ARMOR) !== 0) {
+            // C: objects[o->otyp].a_can — packed as oc_level for armor
             const armpro = game.objects?.[o.otyp]?.oc_level ?? 0;
             if (armpro > mc) mc = armpro;
+        } else if (((o.owornmask || 0) & W_AMUL) !== 0) {
+            // C: via_amul = (o->otyp == AMULET_OF_GUARDING)
+            via_amul = (o.otyp === AMULET_OF_GUARDING);
+        }
+    }
+    if (gotprot) {
+        // C: mc += via_amul ? 2 : 1, capped at 3
+        mc += via_amul ? 2 : 1;
+        if (mc > 3) mc = 3;
+    } else if (mc < 1) {
+        // C: (HProtection && u.ublessed > 0) || u.uspellprot → mc = 1
+        const hprot = (((u.HProtection | 0)
+            || (u.uprops?.[PROTECTION]?.intrinsic | 0)) !== 0);
+        if ((hprot && ((u.ublessed | 0) > 0)) || ((u.uspellprot | 0) !== 0)) {
+            mc = 1;
         }
     }
     return mc;

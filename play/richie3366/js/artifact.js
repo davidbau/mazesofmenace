@@ -10,7 +10,7 @@ import {
 } from './generated/artifacts_data.js';
 import { objectNames, NUM_OBJECTS, objectDescrs, objects, WEAPON_CLASS } from './objects.js';
 import { obj_shuffle_range } from './o_init.js';
-import { monsterNames, NON_PM, M2_UNDEAD, M2_WERE, is_demon, is_dprince, is_dlord, resists_ston, hates_silver, bigmonst, has_head, noncorporeal, amorphous, is_covetous, is_mplayer, nonliving } from './monsters.js';
+import { monsterNames, NON_PM, M2_UNDEAD, M2_WERE, is_demon, is_dprince, is_dlord, resists_ston, hates_silver, bigmonst, has_head, noncorporeal, amorphous, is_covetous, is_mplayer, nonliving, mons } from './monsters.js';
 import { Fire_resistance, Cold_resistance, Shock_resistance, Drain_resistance, resists_fire, resists_cold, resists_elec, resists_poison, resists_drli, cancel_monst, resist, probe_monster, destroy_items } from './zap.js';
 import {
     A_NONE,
@@ -68,6 +68,8 @@ import {
     MAGICENLIGHTENMENT,
     ENL_GAMEINPROGRESS,
     P_EXPERT,
+    P_SKILLED,
+    P_BASIC,
     Upolyd,
     ismnum,
     engulfing_u,
@@ -97,7 +99,7 @@ import {
     set_sting_effects, glyph_at, glyph_is_trap, canspotmon, map_invisible, shieldeff,
 } from './display.js';
 import { cansee } from './vision.js';
-import { mon_nam, s_suffix, Monnam, mon_aligntyp_nam, hcolor } from './do_name.js';
+import { mon_nam, s_suffix, Monnam, mon_aligntyp_nam, hcolor, oname } from './do_name.js';
 import { wake_nearto, healmon } from './mon.js';
 import { burn_away_slime } from './timeout.js';
 import { compactify_invlets, update_inventory, getobj_take_count, getobj_apply_count, getobj_from_cmdq, getobj_display_pickinv, getobj, observe_object } from './invent.js';
@@ -105,16 +107,23 @@ import { xname, the, The, vtense, cxname, otense, set_undiscovered_artifact, set
 import { recalc_telepat_range } from './do_wear.js';
 import { t_at, ignite_items } from './trap.js';
 import { livelog_printf } from './pline.js';
-import { inside_shop } from './shk.js';
+import { inside_shop, obfree } from './shk.js';
 import { losehp, maybe_half_phys, finish_maybe_wail, nomul } from './hack.js';
 import { sticks } from './engrave.js';
 import { set_ustuck } from './mhitu.js';
 import { monflee } from './monmove.js';
 import { make_stunned, make_confused, healup } from './potion.js';
 import { losexp } from './exper.js';
-import { monhp_per_lvl } from './makemon.js';
+import { monhp_per_lvl, race_hostile } from './makemon.js';
 import { upstart } from './hacklib.js';
 import { exercise, A_WIS } from './attrib.js';
+// C mk_artifact by_align — mksobj/obj_extract_self are hoisted fns, cycle-safe
+// (mkobj.js already imports artifact.js; runtime-only calls, no top-level
+// reads either way; `imports.mjs --can artifact.js mkobj.js mksobj`: SAFE).
+import { mksobj, obj_extract_self } from './mkobj.js';
+// C mk_artifact skill_compatibility — P_MAX_SKILL is a hoisted fn, cycle-safe
+// (same 90-module SCC; runtime-only call).
+import { P_MAX_SKILL } from './weapon.js';
 // C mondata.c defended — hoisted fn, cycle-safe (mondata.js already imports
 // artifact.js; runtime-only calls, no top-level reads either way).
 import { defended } from './mondata.js';
@@ -302,6 +311,10 @@ export function artifacts_globals_init() {
         acolor: raw.acolor | 0,
         // C artifact.h cost — sold-to-hero price; 0 → 100× oc_cost (D-1719)
         cost: raw.cost | 0,
+        // C artilist.h A() gs — spe adjustment for gifts/finds (D-2337)
+        gen_spe: raw.genSpe | 0,
+        // C artilist.h A() gv — endgame-quality gifts gated by value (D-2337)
+        gift_value: raw.giftValue | 0,
     }));
     // C: artiexist[NROFARTIFACTS+1]
     game.artiexist = Array.from({ length: NROFARTIFACTS + 1 }, () => ({
@@ -960,50 +973,127 @@ export function nartifact_exist() {
 }
 
 /**
- * C ref: artifact.c mk_artifact — A_NONE converts otmp to matching artifact.
- * Named omissions: by_align gift path (mksobj + role/skill checks);
- * gift_value / gen_spe (extractor lacks gv/gs; max_giftvalue=99 covers
- * normal arts; gen_spe defaults 0 → spe adjust no-op); permapoisoned.
+ * C ref: artifact.c dispose_of_orig_obj `:312–319` — static helper for
+ * mk_artifact (extract + free the replaced original).
+ */
+function dispose_of_orig_obj(obj) {
+    if (!obj) return;
+    obj_extract_self(obj);
+    obfree(obj, 0);
+}
+
+/**
+ * C ref: artifact.c mk_artifact `:172–309` — eligible-artifact gather
+ * (exists / SPFX_NOGEN|unique / gift_value-vs-role gates), A_NONE otyp
+ * match vs by_align alignment+race gate with role first-choice break and
+ * skill-compatibility randomized short-circuit, fallback altn list,
+ * mksobj + dispose for gifts, oname christen, oeroded clear,
+ * artifact_origin, gen_spe clamp, permapoisoned tail.
+ * Named omissions: none — pray.c bestow_artifact caller wiring stays its
+ * own row (pray.js:2200).
  */
 export function mk_artifact(otmp, alignment = A_NONE, max_giftvalue = 99,
     adjust_spe = true) {
     const list = artilist();
     const by_align = alignment !== A_NONE;
-    if (by_align) {
-        // Gift / altar path deferred — return otmp unchanged
-        return otmp;
-    }
-    if (!otmp) return otmp;
+    const o_typ = (by_align || !otmp) ? 0 : otmp.otyp | 0;
     const objects = game.objects;
-    const o_typ = otmp.otyp | 0;
-    const unique = !!(objects?.[o_typ]?.oc_unique);
+    const unique = !by_align && !!otmp && !!(objects?.[o_typ]?.oc_unique);
     const ax = game.artiexist || [];
+    // C: short eligible[NROFARTIFACTS] with n/altn counts; the fallback
+    // list shares the same array once n > 0, so model both explicitly.
     const eligible = [];
+    const fallback = [];
+    let n = 0;
     for (let m = 1; m < list.length; m++) {
         const a = list[m];
         if (!a || !a.otyp) break;
         if (ax[m]?.exists) continue;
         if ((a.spfx & SPFX_NOGEN) || unique) continue;
-        // gift_value deferred (max_giftvalue=99 always passes for known arts)
-        void max_giftvalue;
-        if (a.otyp === o_typ) eligible.push(m);
-    }
-    if (eligible.length) {
-        const m = eligible[rn2(eligible.length)];
-        const a = list[m];
-        if (!otmp.oextra) otmp.oextra = {};
-        otmp.oextra.oname = a.name;
-        artifact_exists(otmp, a.name, true, 0);
-        otmp.oartifact = m;
-        artifact_origin(otmp, ONAME_RANDOM);
-        otmp.oeroded = 0;
-        otmp.oeroded2 = 0;
-        if (adjust_spe) {
-            const genSpe = a.gen_spe | 0;
-            const newSpe = (otmp.spe | 0) + genSpe;
-            if (newSpe >= -10 && newSpe < 10) otmp.spe = newSpe;
+        // C: gift_value caps generated gifts unless it's the role's own
+        if ((a.gift_value | 0) > (max_giftvalue | 0) && !Role_if(a.role)) {
+            continue;
+        }
+
+        if (!by_align) {
+            // C: particular item type, not a divine gift — the role's
+            // first choice is irrelevant here
+            if (a.otyp === o_typ) eligible[n++] = m;
+            continue;
+        }
+
+        // C: alignment-specific gift suitable for hero's role+race
+        if ((a.alignment === alignment || a.alignment === A_NONE)
+            && (a.race === NON_PM || !race_hostile(mons(a.race)))) {
+            // C: role-specific first choice is the only possibility
+            if (Role_if(a.role)) {
+                eligible[0] = m;
+                n = 1;
+                break;
+            }
+
+            // C: skill compatibility from the weapon skill (or its
+            // maximum when oc_skill is negative)
+            let skill_compatibility = P_SKILLED;
+            if ((objects?.[a.otyp]?.oc_class | 0) === WEAPON_CLASS) {
+                const skill = objects?.[a.otyp]?.oc_skill | 0;
+                skill_compatibility = P_MAX_SKILL(skill < 0 ? -skill : skill);
+            }
+
+            // C short-circuit order: aligned (or ugifts / rn2(3) for
+            // unaligned) AND (rn2(4) / skilled / basic+rn2(2))
+            if ((a.alignment !== A_NONE || (game.u?.ugifts | 0) > 0
+                    || !rn2(3))
+                && (!rn2(4) || skill_compatibility >= P_SKILLED
+                    || (skill_compatibility >= P_BASIC && rn2(2)))) {
+                eligible[n++] = m;
+            } else if (!n) {
+                // C: fallback while no regular candidate found yet;
+                // overwritten (irrelevant) once n > 0
+                fallback.push(m);
+            }
         }
     }
+
+    // C: resort to fallback list if main list was empty
+    let pool = eligible;
+    if (!n) {
+        pool = fallback;
+        n = fallback.length;
+    }
+
+    if (n) {
+        // C: pick one at random, then make an appropriate object for gifts
+        const m = pool[rn2(n)];
+        const a = list[m];
+
+        if (by_align) {
+            // C: otmp is irrelevant for gifts; cope with a stray original
+            const artiobj = mksobj(a.otyp, true, false);
+            if (otmp) dispose_of_orig_obj(otmp);
+            otmp = artiobj;
+        }
+        // C assert(otmp != 0): A_NONE carries the caller's obj, by_align
+        // carries fresh mksobj output (mksobj is total, artif=FALSE skips
+        // its own mk_artifact call, so no recursion here).
+        otmp.oeroded = 0;
+        otmp.oeroded2 = 0;
+        otmp = oname(otmp, a.name, 0);
+        otmp.oartifact = m;
+        artifact_origin(otmp, ONAME_RANDOM);
+        if (adjust_spe) {
+            // C: gen_spe adjust clamped to the normal range (no-op for
+            // non-weapons, whose gen_spe is always 0)
+            const newSpe = (otmp.spe | 0) + (a.gen_spe | 0);
+            if (newSpe >= -10 && newSpe < 10) otmp.spe = newSpe;
+        }
+    } else if (by_align && otmp) {
+        // C: nothing appropriate; callers passing alignment + NULL otmp
+        // accept a NULL return, so dispose the stray original
+        dispose_of_orig_obj(otmp);
+        otmp = 0;
+    }
+    if (otmp && permapoisoned(otmp)) otmp.opoisoned = 1;
     return otmp;
 }
 

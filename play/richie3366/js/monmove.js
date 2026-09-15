@@ -79,7 +79,7 @@ import {
     newsym, pline, canseemon as display_canseemon, pline_mon, pline_xy,
     canspotmon as display_canspotmon, sensemon, Norep, verbalize, set_msg_xy,
 } from './display.js';
-import { dog_move, finish_meating } from './dogmove.js';
+import { dog_move, finish_meating, cursed_object_at } from './dogmove.js';
 import { worm_move, worm_nomove, see_wsegs, worm_known, wormhitu } from './worm.js';
 import { shk_move, gd_move, pri_move, costly_spot, inhishop } from './shk.js';
 import { cuss, tactics } from './wizard.js';
@@ -1098,7 +1098,7 @@ function helpless_mon(mtmp) {
  * C ref: monmove.c can_hide_under_obj — floor obj; non-pit trap blocks;
  * <10 coins alone cannot hide under. NO_HIDING_UNDER_STATUES off in C.
  */
-function can_hide_under_obj(obj) {
+export function can_hide_under_obj(obj) {
     if (!obj || obj.where !== OBJ_FLOOR) return false;
     const t = t_at(obj.ox, obj.oy);
     if (t && !is_pit(t.ttyp)) return false;
@@ -1182,8 +1182,8 @@ export async function msg_mon_movement(mtmp, omx, omy) {
 /**
  * C ref: mon.c hideunder — set mundetected under object / pool for eels.
  * You_see "%s %s under %s" when canseemon before hide (forces --More--
- * when prior topline cannot append). Named omissions: pet
- * cursed_object_at; cockatrice corpse skip; youmonst path;
+ * when prior topline cannot append). Named omissions: youmonst path
+ * (is_u Stone_resistance / u.uundetected; mon.js covers the sync half);
  * set_msg_xy / PLNMSG_HIDE_UNDER / last_hider.
  */
 async function hideunder(mtmp) {
@@ -1214,12 +1214,22 @@ async function hideunder(mtmp) {
             }
         } else if (hides_under(mtmp.data)) {
             const otmp = objects_at(x, y);
+            /* C: can_hide_under_obj + pets refuse cursed piles +
+               !is_pool_or_lava */
             if (otmp && can_hide_under_obj(otmp)
-                && !is_pool(x, y) && !is_lava(x, y)
-                /* pet cursed_object_at deferred */) {
+                && (!mtmp.mtame || !cursed_object_at(x, y))
+                && !is_pool(x, y) && !is_lava(x, y)) {
                 if (seeit) seenobj = ansimpleoname(otmp);
-                // cockatrice corpse skip deferred — any hideable obj counts
-                undetected = true;
+                /* C: most monsters won't hide under a cockatrice corpse
+                   but they can hide under a pile containing more than
+                   just such corpses */
+                let o = otmp;
+                if (!resists_ston(mtmp)) {
+                    while (o && o.otyp === CORPSE
+                        && touch_petrifies(mons(o.corpsenm)))
+                        o = o.nexthere;
+                }
+                if (o) undetected = true;
             }
         }
     }

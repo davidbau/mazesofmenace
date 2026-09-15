@@ -19,7 +19,7 @@ import {
     M_AP_TYPMASK, MHID_ALTMON,
     MIM_REVEAL, MIM_OMIT_WAIT, engulfing_u, OBJ_FREE, OBJ_INVENT, MON_DETACH,
     has_mgivenname, ARTICLE_NONE, ARTICLE_THE, ARTICLE_A, ARTICLE_YOUR, SUPPRESS_SADDLE,
-    SUPPRESS_NAME, SUPPRESS_IT, SUPPRESS_INVISIBLE, EXACT_NAME,
+    SUPPRESS_NAME, SUPPRESS_IT, SUPPRESS_INVISIBLE, SUPPRESS_HALLUCINATION, EXACT_NAME,
     HAND, LEG, A_LAWFUL, Is_airlevel, Is_waterlevel, PARANOID_HIT, LOW_PM,
     W_ARM, W_ARMC, W_ARMH, W_ARMU, W_ARMG, W_RINGL, W_RINGR, W_ARMF, W_AMUL, W_WEP,
     MON_EXPLODE, NO_MM_FLAGS, NO_TRAP_FLAGS, DISP_ALWAYS, DISP_END, STOMACH, DIED, NO_KILLER_PREFIX, ERODE_CORRODE, ERODE_BURN, EF_GREASE, EF_NONE,
@@ -189,6 +189,24 @@ const WAN_LIGHT = objectNames.indexOf('WAN_LIGHT');
 const LOADSTONE = objectNames.indexOf('LOADSTONE');
 // C objclass.h ARM_SHIELD — armor oc_skill / oc_armcat
 const ARM_SHIELD = 1;
+
+/**
+ * C ref: uhitm.c dynamic_multi_reason :104-124 — multi_reason is usually
+ * a literal; here the causing monster's type is included ("m_id:verb by
+ * <mon>" in multireasonbuf, multi_reason past the "m_id:" prefix, for
+ * done_in_by's killer-match trim). x_monnam ARTICLE_A with IT/INVISIBLE/
+ * HALLUCINATION/SADDLE/NAME suppressed (no personal name, M2_PNAME
+ * excepted); the gaze arm uses s_suffix(who) + " gaze".
+ */
+export function dynamic_multi_reason(mon, verb, by_gaze) {
+    const who = x_monnam(mon, ARTICLE_A, null,
+        SUPPRESS_IT | SUPPRESS_INVISIBLE | SUPPRESS_HALLUCINATION
+        | SUPPRESS_SADDLE | SUPPRESS_NAME, false);
+    game.multireasonbuf = `${mon?.m_id | 0}:${verb} by ${by_gaze ? s_suffix(who) : who}${by_gaze ? ' gaze' : ''}`;
+    const colon = game.multireasonbuf.indexOf(':');
+    game.multi_reason = colon >= 0
+        ? game.multireasonbuf.slice(colon + 1) : game.multireasonbuf;
+}
 
 /** C youprop.h Levitation for m_is_steadfast. */
 function Levitation_steadfast() {
@@ -2203,6 +2221,9 @@ export async function passive(mon, weapon, mhitb, maliveb, aatyp, wep_was_destro
                     } else {
                         await pline(`You are frozen by ${mon_nam(mon)}'s gaze!`);
                         nomul((acurr(A_WIS) > 12 || rn2(4)) ? -tmp : -127);
+                        // C uhitm.c :6042-6046 — 3.6.x "frozen by a
+                        // monster's gaze"; be more specific
+                        dynamic_multi_reason(mon, 'frozen', true);
                     }
                 } else {
                     await pline(`${mon_nam(mon)} cannot defend itself.`);
@@ -2212,9 +2233,12 @@ export async function passive(mon, weapon, mhitb, maliveb, aatyp, wep_was_destro
                 }
             } else if (Free_action) {
                 await pline('You momentarily stiffen.');
-            } else {
+            } else { /* gelatinous cube */
                 await pline(`You are frozen by ${mon_nam(mon)}!`);
                 nomul(-tmp);
+                // C uhitm.c :6059-6063 — 3.6.x "frozen by a monster";
+                // be more specific
+                dynamic_multi_reason(mon, 'frozen', false);
                 exercise(A_DEX, false);
             }
             break;

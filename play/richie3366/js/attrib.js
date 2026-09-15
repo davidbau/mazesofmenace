@@ -42,9 +42,17 @@ import {
     POISONING,
     DIED,
     LUCKADD,
+    Is_astralevel,
+    A_CG_CONVERT,
+    A_CG_HELM_ON,
+    A_CG_HELM_OFF,
+    LL_ALIGNMENT,
 } from './const.js';
 import { objectNames } from './objects.js';
-import { pline, You_feel, impossible } from './display.js';
+import { pline, You_feel, impossible, Hallucination } from './display.js';
+import { aligns } from './roles.js';
+import { make_confused } from './potion.js';
+import { livelog_printf } from './pline.js';
 import { ysimple_name } from './objnam.js';
 import { carrying } from './hack.js';
 import { what_gives, bare_artifactname, confers_luck, u_wield_art, is_art } from './artifact.js';
@@ -96,6 +104,7 @@ function setAmax(i, v) {
 
 const GAUNTLETS_OF_POWER = objectNames.indexOf('GAUNTLETS_OF_POWER');
 const DUNCE_CAP = objectNames.indexOf('DUNCE_CAP');
+const HELM_OF_OPPOSITE_ALIGNMENT = objectNames.indexOf('HELM_OF_OPPOSITE_ALIGNMENT');
 
 // C ref: attrib.c acurr() — clamp non-STR to [3,25]; STR 3..125 encoding
 export function acurr(i) {
@@ -718,6 +727,74 @@ export function adjalign(n) {
         u.ualign.record = newalign;
         const lim = ALIGNLIM();
         if (u.ualign.record > lim) u.ualign.record = lim | 0;
+    }
+}
+
+/**
+ * C ref: attrib.c uchangealign `:1319–1362` — altar conversion
+ * (A_CG_CONVERT) + helm on/off arms.
+ * Named omissions: summon_furies (C makemon.c:2605, helm-on astral/abuse
+ * arm) + retouch_equipment (C artifact.c:2639, align-change tail); both
+ * have no live JS counterpart, so the arms name them instead of stubbing.
+ */
+export async function uchangealign(newalign, reason) {
+    const u = game.u || (game.u = {});
+    if (!u.ualign) u.ualign = { type: 0, record: 0, abuse: 0 };
+    const oldalign = u.ualign.type | 0;
+
+    u.ublessed = 0; /* lose divine protection */
+    /* You/Your/pline message with call flush_screen(), triggering bot(),
+       so the actual data change needs to come before the message */
+    if (game.flags) game.flags.botl = true; /* status line needs updating */
+    if (reason === A_CG_CONVERT) {
+        /* conversion via altar */
+        livelog_printf(
+            LL_ALIGNMENT,
+            `permanently converted to ${aligns[1 - newalign]?.adj}`,
+        );
+        if (!u.ualignbase) u.ualignbase = {};
+        u.ualignbase.current = newalign;
+        /* worn helm of opposite alignment might block change */
+        if (!u.uarmh || (u.uarmh.otyp | 0) !== HELM_OF_OPPOSITE_ALIGNMENT) {
+            u.ualign.type = u.ualignbase.current;
+        }
+        await pline(
+            `You have a ${
+                (u.ualign.type | 0) !== oldalign ? 'sudden ' : ''
+            }sense of a new direction.`,
+        );
+    } else {
+        /* putting on or taking off a helm of opposite alignment */
+        u.ualign.type = newalign;
+        if (reason === A_CG_HELM_ON) {
+            adjalign(-7); /* for abuse -- record will be cleared shortly */
+            await pline(
+                `Your mind oscillates ${
+                    Hallucination() ? 'wildly' : 'briefly'
+                }.`,
+            );
+            await make_confused(rn1(2, 3), false);
+            if (Is_astralevel(u.uz) || rn2(50) < (u.ualign.abuse | 0)) {
+                /* summon_furies named — C makemon.c:2605 */
+            }
+            /* don't livelog taking it back off */
+            livelog_printf(
+                LL_ALIGNMENT,
+                `used a helm to turn ${aligns[1 - newalign]?.adj}`,
+            );
+        } else if (reason === A_CG_HELM_OFF) {
+            await pline(
+                `Your mind is ${
+                    Hallucination()
+                        ? 'much of a muchness'
+                        : 'back in sync with your body'
+                }.`,
+            );
+        }
+    }
+    if ((u.ualign.type | 0) !== oldalign) {
+        u.ualign.record = 0; /* slate is wiped clean */
+        /* retouch_equipment named — C artifact.c:2639 */
     }
 }
 

@@ -94,7 +94,7 @@ import {
 } from './objects.js';
 import { shtypes, stock_room } from './shknam.js';
 import { setgemprobs } from './o_init.js';
-import { maketrap, t_at, undestroyable_trap } from './trap.js';
+import { maketrap, t_at, undestroyable_trap, deltrap } from './trap.js';
 import {
     mkobj, mksobj, mksobj_at, mksobj_migr_to_species, mkobj_at, mkgold,
     mkcorpstat, next_ident,
@@ -131,7 +131,7 @@ import { name_to_monplus, name_to_mon, set_mon_data } from './mondata.js';
 import { fruit_from_name } from './objnam.js';
 import { christen_monst, christen_orc, rndorcname, new_oname, oname, lookup_novel } from './do_name.js';
 import { makeroguerooms, makerogueghost } from './extralev.js';
-import { make_engr_at, make_grave, wipe_engr_at, random_engraving, del_engr_at } from './engrave.js';
+import { make_engr_at, make_grave, wipe_engr_at, random_engraving, del_engr_at, engr_at, del_engr } from './engrave.js';
 import { cmd_from_ecname } from './dokeylist.js';
 import {
     find_level, dungeon_branch, at_dgn_entrance, insert_branch, get_level,
@@ -149,6 +149,7 @@ import { monst_to_any } from './hack.js';
 import { begin_burn } from './timeout.js';
 import { nexttodoor } from './fountain.js';
 import { ndemon } from './minion.js';
+import { m_dowear } from './worn.js'; // C: sp_lev.c spo_end_moninvent → m_dowear(TRUE); creation path runs sync-through (no await), same as makemon.js
 import { readobjnam, rnd_otyp_by_namedesc } from './readobjnam.js';
 // C mkmap.c envelope lives in ./mkmap.js; splev_initlev MINES awaits it.
 // Cycle-safe: mkmap only calls back into mklev function declarations.
@@ -4305,9 +4306,8 @@ function load_bigrm_12() {
 
 /**
  * C ref: dat/Bar-strt.lua via load_special — full script through branch
- * levregion; m_dowear after Pelias invent still partial.
- * Named omissions: m_dowear after custom invent; flip_level lregion
- * coord update (C also leaves lregions unflipped in this port path).
+ * levregion; m_dowear after Pelias invent live (sp_lev.c spo_end_moninvent).
+ * Branch levregion stored pre-flip so flip_level remaps it (D-0782 pattern).
  */
 function load_bar_strt() {
     const g = game;
@@ -4428,7 +4428,9 @@ function load_bar_strt() {
                 obj_extract_self(otmp);
                 mpickobj(mtmp, otmp);
             }
-            // spo_end_moninvent → m_dowear deferred (C-JS-MAP)
+            // C: sp_lev.c spo_end_moninvent `:3032–3035` → m_dowear(TRUE) after
+            // Pelias custom invent (creation: sync-through, no messages/RNG).
+            m_dowear(mtmp, true);
         }
     }
 
@@ -4495,16 +4497,20 @@ function load_bar_strt() {
         }
     }
 
+    // des.levregion({ region={62,02,62,02}, type="branch" }) — store pre-flip
+    // (C levregion_add during Lua); flip_level updates inarea/delarea
+    // (sp_lev.c:698-734), fixup_special places (mkmaze.c:585-646).
+    g.lregions = g.lregions || [];
+    g.lregions.push({
+        rtype: LR_BRANCH,
+        rname: null,
+        inarea: { x1: mx + 62, y1: my + 2, x2: mx + 62, y2: my + 2 },
+        delarea: { x1: -1, y1: -1, x2: -1, y2: -1 },
+    });
     // C load_special: wallification → flip_level_rnd → fixup_special
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
-    // des.levregion({ region={62,02,62,02}, type="branch" }) via fixup
-    // C levregion_add then fixup place_lregion oneshot (rn2(1) x2).
-    place_lregion(
-        mx + 62, my + 2, mx + 62, my + 2,
-        0, 0, 0, 0, LR_BRANCH, null,
-    );
     fixup_special();
 }
 
@@ -5206,9 +5212,8 @@ function load_wiz_goal() {
 
 /**
  * C ref: dat/Pri-strt.lua via load_special — Priest quest start.
- * Named omissions: spo_end_moninvent m_dowear after Arch Priest invent;
- * flip_level lregion coord update (same shortcut as Bar-strt);
- * fill_special_room TEMPLE beyond FILL_LVFLAGS has_temple.
+ * Arch Priest invent wears via m_dowear (sp_lev.c spo_end_moninvent).
+ * Named omissions: fill_special_room TEMPLE beyond FILL_LVFLAGS has_temple.
  */
 function load_pri_strt() {
     const g = game;
@@ -5348,7 +5353,9 @@ function load_pri_strt() {
                 obj_extract_self(otmp);
                 mpickobj(mtmp, otmp);
             }
-            // spo_end_moninvent → m_dowear deferred
+            // C: sp_lev.c spo_end_moninvent `:3032–3035` → m_dowear(TRUE) after
+            // Arch Priest custom invent (creation: sync-through, no messages/RNG).
+            m_dowear(mtmp, true);
         }
     }
 
@@ -5398,18 +5405,20 @@ function load_pri_strt() {
         if (mtmp) mtmp.female = female;
     }
 
+    // des.levregion({ region={05,04,05,04}, type="branch" }) — store pre-flip
+    // (C levregion_add during Lua); flip_level updates inarea/delarea
+    // (sp_lev.c:698-734), fixup_special places (mkmaze.c:585-646).
+    g.lregions = g.lregions || [];
+    g.lregions.push({
+        rtype: LR_BRANCH,
+        rname: null,
+        inarea: { x1: mx + 5, y1: my + 4, x2: mx + 5, y2: my + 4 },
+        delarea: { x1: -1, y1: -1, x2: -1, y2: -1 },
+    });
     // C load_special: wallification → flip_level_rnd → fixup_special
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
-    // des.levregion({ region={05,04,05,04}, type="branch" })
-    // Place after flip at pre-flip map offsets (same Bar-strt shortcut;
-    // flip_level lregion coord update named omission — portal lands at
-    // unflipped (mx+5,my+4) which is still ROOM after both flips).
-    place_lregion(
-        mx + 5, my + 4, mx + 5, my + 4,
-        0, 0, 0, 0, LR_BRANCH, null,
-    );
     fixup_special();
 }
 
@@ -5722,7 +5731,8 @@ xxxxx...xxxxxx....xxxxxxxx
 
 /**
  * C ref: dat/Arc-strt.lua via load_special — Archeologist quest start.
- * Named omissions: spo_end_moninvent m_dowear;
+ * Lord Carnarvon invent wears via m_dowear (sp_lev.c spo_end_moninvent).
+ * Named omissions:
  * humidity-aware get_location for water-likers (eels use fixed moat).
  */
 function load_arc_strt() {
@@ -5836,6 +5846,9 @@ function load_arc_strt() {
                 obj_extract_self(otmp);
                 mpickobj(mtmp, otmp);
             }
+            // C: sp_lev.c spo_end_moninvent `:3032–3035` → m_dowear(TRUE) after
+            // Lord Carnarvon custom invent (creation: sync-through, no messages/RNG).
+            m_dowear(mtmp, true);
         }
     }
 
@@ -5908,15 +5921,20 @@ function load_arc_strt() {
         placeClassMon(cls, rx, ry);
     }
 
+    // des.levregion({ region={63,06,63,06}, type="branch" }) — store pre-flip
+    // (C levregion_add during Lua); flip_level updates inarea/delarea
+    // (sp_lev.c:698-734), fixup_special places (mkmaze.c:585-646).
+    g.lregions = g.lregions || [];
+    g.lregions.push({
+        rtype: LR_BRANCH,
+        rname: null,
+        inarea: { x1: mx + 63, y1: my + 6, x2: mx + 63, y2: my + 6 },
+        delarea: { x1: -1, y1: -1, x2: -1, y2: -1 },
+    });
     // C load_special: wallification → flip_level_rnd → fixup_special
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
-    // des.levregion({ region={63,06,63,06}, type="branch" })
-    place_lregion(
-        mx + 63, my + 6, mx + 63, my + 6,
-        0, 0, 0, 0, LR_BRANCH, null,
-    );
     fixup_special();
 }
 
@@ -6306,8 +6324,8 @@ function load_arc_goal() {
  * C ref: dat/Kni-strt.lua via load_special — Knight quest start (Arthur).
  * solidfill ROOM then mines fg=bg="." lit-field kludge; Camelot map;
  * COURT FILL_LVFLAGS; CUSTOM_INVENT Excalibur + plate; warhorse saddles.
- * Named omissions: spo_end_moninvent m_dowear; humidity get_location;
- * flip_level lregion coord update (branch at pre-flip map offsets);
+ * King Arthur invent wears via m_dowear (sp_lev.c spo_end_moninvent).
+ * Named omissions: humidity get_location;
  * light_region wall expansion; ensure_way_out / map_cleanup.
  */
 async function load_kni_strt() {
@@ -6448,7 +6466,9 @@ async function load_kni_strt() {
                     mpickobj(mtmp, otmp);
                 }
             }
-            // spo_end_moninvent → m_dowear deferred
+            // C: sp_lev.c spo_end_moninvent `:3032–3035` → m_dowear(TRUE) after
+            // King Arthur custom invent (creation: sync-through, no messages/RNG).
+            m_dowear(mtmp, true);
         }
     }
 
@@ -6507,16 +6527,20 @@ async function load_kni_strt() {
             mpickobj(mtmp, otmp);
     }
 
+    // des.levregion({ region={20,14,20,14}, type="branch" }) — store pre-flip
+    // (C levregion_add during Lua); flip_level updates inarea/delarea
+    // (sp_lev.c:698-734), fixup_special places (mkmaze.c:585-646).
+    g.lregions = g.lregions || [];
+    g.lregions.push({
+        rtype: LR_BRANCH,
+        rname: null,
+        inarea: { x1: mx + 20, y1: my + 14, x2: mx + 20, y2: my + 14 },
+        delarea: { x1: -1, y1: -1, x2: -1, y2: -1 },
+    });
     // C load_special: wallification → flip_level_rnd → fixup_special
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
-    // des.levregion({ region={20,14,20,14}, type="branch" }) after flip
-    // at pre-flip map offsets (Bar-strt / Pri-strt shortcut).
-    place_lregion(
-        mx + 20, my + 14, mx + 20, my + 14,
-        0, 0, 0, 0, LR_BRANCH, null,
-    );
     fixup_special();
 }
 
@@ -6860,7 +6884,7 @@ function load_kni_goal() {
  * shuffle four exits (stair vs mimics appear_as ter:staircase down);
  * floodfill streets; CUSTOM_INVENT; lua math.random wanderers.
  * Named omissions: humidity get_location; spo_end_moninvent m_dowear;
- * ensure_way_out; flip_level lregion coord update.
+ * ensure_way_out.
  */
 function load_rog_strt() {
     const g = game;
@@ -7019,14 +7043,19 @@ function load_rog_strt() {
     for (let i = 0, n = lua_random2(7, 10); i < n; i++)
         streetMon('chameleon');
 
+    // des.levregion branch {19,09} — store pre-flip (C levregion_add
+    // during Lua); flip_level updates inarea/delarea (sp_lev.c:698-734),
+    // fixup_special places (mkmaze.c:585-646).
+    g.lregions = g.lregions || [];
+    g.lregions.push({
+        rtype: LR_BRANCH,
+        rname: null,
+        inarea: { x1: mx + 19, y1: my + 9, x2: mx + 19, y2: my + 9 },
+        delarea: { x1: -1, y1: -1, x2: -1, y2: -1 },
+    });
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
-    // des.levregion branch {19,09} after flip (pre-flip map offsets)
-    place_lregion(
-        mx + 19, my + 9, mx + 19, my + 9,
-        0, 0, 0, 0, LR_BRANCH, null,
-    );
     fixup_special();
 }
 
@@ -7447,14 +7476,19 @@ xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
     splev_create_monster('fire giant', 0, { rx: 18, ry: 1 });
     splev_create_monster('fire giant', 0, { rx: 10, ry: 16 });
 
+    // des.levregion branch {66,17} — store pre-flip (C levregion_add
+    // during Lua); flip_level updates inarea/delarea (sp_lev.c:698-734),
+    // fixup_special places (mkmaze.c:585-646).
+    g.lregions = g.lregions || [];
+    g.lregions.push({
+        rtype: LR_BRANCH,
+        rname: null,
+        inarea: { x1: mx + 66, y1: my + 17, x2: mx + 66, y2: my + 17 },
+        delarea: { x1: -1, y1: -1, x2: -1, y2: -1 },
+    });
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
-    // des.levregion branch {66,17} after flip (absolute; C leaves unflipped)
-    place_lregion(
-        mx + 66, my + 17, mx + 66, my + 17,
-        0, 0, 0, 0, LR_BRANCH, null,
-    );
     fixup_special();
 }
 
@@ -7901,14 +7935,19 @@ function load_sam_strt() {
     splev_create_monster('ninja', 0, { rx: 68, ry: 2 });
     splev_create_monster('stalker', undefined);
 
+    // des.levregion branch rect — store pre-flip (C levregion_add
+    // during Lua); flip_level updates inarea/delarea (sp_lev.c:698-734),
+    // fixup_special places (mkmaze.c:585-646).
+    g.lregions = g.lregions || [];
+    g.lregions.push({
+        rtype: LR_BRANCH,
+        rname: null,
+        inarea: { x1: mx + 62, y1: my + 12, x2: mx + 70, y2: my + 17 },
+        delarea: { x1: -1, y1: -1, x2: -1, y2: -1 },
+    });
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
-    // des.levregion branch rect after flip (pre-flip map offsets, Bar-strt shortcut)
-    place_lregion(
-        mx + 62, my + 12, mx + 70, my + 17,
-        0, 0, 0, 0, LR_BRANCH, null,
-    );
     fixup_special();
 }
 
@@ -8427,14 +8466,19 @@ PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP
     for (let i = 0; i < 5; i++) splev_create_monster('D', 0);
     for (let i = 0; i < 5; i++) splev_create_monster('S', 0);
 
+    // des.levregion branch point — store pre-flip (C levregion_add
+    // during Lua); flip_level updates inarea/delarea (sp_lev.c:698-734),
+    // fixup_special places (mkmaze.c:585-646).
+    g.lregions = g.lregions || [];
+    g.lregions.push({
+        rtype: LR_BRANCH,
+        rname: null,
+        inarea: { x1: mx + 4, y1: my + 12, x2: mx + 4, y2: my + 12 },
+        delarea: { x1: -1, y1: -1, x2: -1, y2: -1 },
+    });
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
-    // des.levregion branch point after flip (pre-flip map offsets, Sam-strt shortcut)
-    place_lregion(
-        mx + 4, my + 12, mx + 4, my + 12,
-        0, 0, 0, 0, LR_BRANCH, null,
-    );
     fixup_special();
 }
 
@@ -8931,13 +8975,17 @@ function load_tou_strt() {
     // C load_special: wallification → flip_level_rnd → fixup_special
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
+    // des.levregion({ region={68,14,68,14}, type="branch" }) — store pre-flip
+    // (C levregion_add during Lua); flip_level updates inarea/delarea
+    // (sp_lev.c:698-734), fixup_special places (mkmaze.c:585-646).
+    g.lregions = g.lregions || [];
+    g.lregions.push({
+        rtype: LR_BRANCH,
+        rname: null,
+        inarea: { x1: mx + 68, y1: my + 14, x2: mx + 68, y2: my + 14 },
+        delarea: { x1: -1, y1: -1, x2: -1, y2: -1 },
+    });
     flip_level_rnd(3, false);
-    // des.levregion({ region={68,14,68,14}, type="branch" }) after flip
-    // at pre-flip map offsets (Bar-strt / Pri-strt / Kni-strt shortcut)
-    place_lregion(
-        mx + 68, my + 14, mx + 68, my + 14,
-        0, 0, 0, 0, LR_BRANCH, null,
-    );
     fixup_special();
 }
 
@@ -9607,11 +9655,20 @@ async function load_ran_strt() {
     for (let i = 0; i < 6; i++) splev_create_monster('plains centaur', 0);
     for (let i = 0; i < 2; i++) splev_create_monster('scorpion', 0);
 
+    // des.levregion branch rect {51,2,77,18} region_islev=1 (dat/Ran-strt.lua:47)
+    // — absolute cells stored pre-flip (C levregion_add during Lua, in_islev);
+    // flip_level updates inarea/delarea (sp_lev.c:698-734), fixup_special
+    // places (mkmaze.c:585-646).
+    g.lregions = g.lregions || [];
+    g.lregions.push({
+        rtype: LR_BRANCH,
+        rname: null,
+        inarea: { x1: 51, y1: 2, x2: 77, y2: 18 },
+        delarea: { x1: -1, y1: -1, x2: -1, y2: -1 },
+    });
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
-    // des.levregion branch rect after flip (absolute islev cells)
-    place_lregion(51, 2, 77, 18, 0, 0, 0, 0, LR_BRANCH, null);
     fixup_special();
 }
 
@@ -9971,8 +10028,8 @@ async function load_ran_filb() {
  * FILL_LVFLAGS), floodfill runs before des.terrain (same ROOM seed either
  * way), Grand Master + robe +6 invent, no chest (tin + rations instead),
  * 8 abbots, 8 earth elementals + 4 xorns on siege duty.
- * Named omissions: humidity-aware get_location; spo_end_moninvent m_dowear;
- * flip_level lregion coord update (pre-flip shortcut, same as Pri-strt).
+ * Grand Master invent wears via m_dowear (sp_lev.c spo_end_moninvent).
+ * Named omissions: humidity-aware get_location.
  */
 function load_mon_strt() {
     const g = game;
@@ -10116,7 +10173,9 @@ function load_mon_strt() {
                 obj_extract_self(otmp);
                 mpickobj(mtmp, otmp);
             }
-            // spo_end_moninvent → m_dowear deferred
+            // C: sp_lev.c spo_end_moninvent `:3032–3035` → m_dowear(TRUE) after
+            // Grand Master custom invent (creation: sync-through, no messages/RNG).
+            m_dowear(mtmp, true);
         }
     }
 
@@ -10177,18 +10236,20 @@ function load_mon_strt() {
     // des.object({ id="food ration", coord = {46, 4}, quantity = 4})
     l_create_object({ id: 'food ration', x: 46, y: 4, quan: 4 });
 
+    // des.levregion({ region={05,04,05,04}, type="branch" }) — store pre-flip
+    // (C levregion_add during Lua); flip_level updates inarea/delarea
+    // (sp_lev.c:698-734), fixup_special places (mkmaze.c:585-646).
+    g.lregions = g.lregions || [];
+    g.lregions.push({
+        rtype: LR_BRANCH,
+        rname: null,
+        inarea: { x1: mx + 5, y1: my + 4, x2: mx + 5, y2: my + 4 },
+        delarea: { x1: -1, y1: -1, x2: -1, y2: -1 },
+    });
     // C load_special: wallification → flip_level_rnd → fixup_special
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
-    // des.levregion({ region={05,04,05,04}, type="branch" })
-    // Place after flip at pre-flip map offsets (same Bar-strt shortcut;
-    // flip_level lregion coord update named omission — portal lands at
-    // unflipped (mx+5,my+4) which is still ROOM after both flips).
-    place_lregion(
-        mx + 5, my + 4, mx + 5, my + 4,
-        0, 0, 0, 0, LR_BRANCH, null,
-    );
     fixup_special();
 }
 
@@ -10534,8 +10595,7 @@ function load_mon_filb() {
  * whole-map non_diggable; 2 fixed pits + 4 random traps; 12 hostile
  * bugbears on siege duty.
  * Named omissions: humidity-aware get_location for water-likers;
- * ensure_way_out; spo_end_moninvent m_dowear; flip_level lregion
- * coord update (pre-flip shortcut, same as Bar/Mon-strt).
+ * ensure_way_out; spo_end_moninvent m_dowear.
  */
 function load_cav_strt() {
     const g = game;
@@ -10726,15 +10786,19 @@ function load_cav_strt() {
     );
 
     // C load_special: wallification → flip_level_rnd → fixup_special
+    // des.levregion branch cell — store pre-flip (C levregion_add
+    // during Lua); flip_level updates inarea/delarea (sp_lev.c:698-734),
+    // fixup_special places (mkmaze.c:585-646).
+    g.lregions = g.lregions || [];
+    g.lregions.push({
+        rtype: LR_BRANCH,
+        rname: null,
+        inarea: { x1: mx + 71, y1: my + 9, x2: mx + 71, y2: my + 9 },
+        delarea: { x1: -1, y1: -1, x2: -1, y2: -1 },
+    });
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
-    // des.levregion branch cell after flip at pre-flip map offsets (same
-    // Bar/Mon-strt shortcut; flip_level lregion coord update named omission)
-    place_lregion(
-        mx + 71, my + 9, mx + 71, my + 9,
-        0, 0, 0, 0, LR_BRANCH, null,
-    );
     fixup_special();
 }
 
@@ -12895,8 +12959,8 @@ function load_soko4_1() {
 
 /**
  * C ref: dat/soko4-2.lua via load_special — Sokoban entry (bottom).
- * Named omissions: ensure_way_out;
- * levregion coords after flip (same Bar-strt pattern).
+ * Named omissions: ensure_way_out.
+ * Branch levregion stored pre-flip so flip_level remaps it (D-0782 pattern).
  */
 function load_soko4_2() {
     const g = game;
@@ -12982,16 +13046,35 @@ function load_soko4_2() {
     splev_create_object(RING_CLASS);
     splev_create_object(WAND_CLASS);
 
+    // des.levregion({ region={03,01,03,01}, type="branch" }) — store pre-flip
+    // (C levregion_add during Lua); flip_level updates inarea/delarea
+    // (sp_lev.c:698-734); the BRANCH drain below reads flipped coords,
+    // then solidify/fixup/premap (sp_lev.c load_special; mkmaze.c:585-646).
+    g.lregions = g.lregions || [];
+    g.lregions.push({
+        rtype: LR_BRANCH,
+        rname: null,
+        inarea: { x1: xstart + 3, y1: ystart + 1, x2: xstart + 3, y2: ystart + 1 },
+        delarea: { x1: -1, y1: -1, x2: -1, y2: -1 },
+    });
     // C ref: sp_lev.c load_special — wallify, flip, levregion, solidify, fixup, premap
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
-    // des.levregion({ region={03,01,03,01}, type="branch" })
-    place_lregion(
-        xstart + 3, ystart + 1, xstart + 3, ystart + 1,
-        0, 0, 0, 0, LR_BRANCH, null,
-    );
     solidify_map();
+    {
+        const lregions = g.lregions || [];
+        g.lregions = [];
+        for (const r of lregions) {
+            if (r.rtype === LR_BRANCH) {
+                place_lregion(
+                    r.inarea.x1, r.inarea.y1, r.inarea.x2, r.inarea.y2,
+                    r.delarea.x1, r.delarea.y1, r.delarea.x2, r.delarea.y2,
+                    LR_BRANCH, null,
+                );
+            }
+        }
+    }
     fixup_special();
     premap_detect();
 }
@@ -17705,9 +17788,12 @@ export function mkmap_flood_fill_rm(sx, sy, rmno, lit, anyroom, bounds) {
 }
 
 /**
- * C ref: sp_lev.c map_cleanup — after lua/special content, before
- * wallification/flip: strip boulders from lava/pool cells.
- * Named omissions: deltrap on liquid; del_engr; undestroyable_trap.
+ * C ref: sp_lev.c map_cleanup (`:328–356`) — after lua/special content,
+ * before wallification/flip: strip boulders, destroyable traps and
+ * engravings from lava/pool cells, in C arm order.
+ * Named omissions: the shared `deltrap` Sokoban PIT/HOLE
+ * `maybe_finish_sokoban` sub-arm (trap.c; callee not live in js/ —
+ * own row when the corpus reaches it).
  */
 function map_cleanup() {
     const g = game;
@@ -17729,6 +17815,12 @@ function map_cleanup() {
                 otmp.nexthere = null;
                 otmp.nobj = null;
             }
+            // C: traps on liquid (portal / vibrating square survive)?
+            const ttmp = t_at(x, y);
+            if (ttmp && !undestroyable_trap(ttmp.ttyp)) deltrap(ttmp);
+            // C: engravings?
+            const etmp = engr_at(x, y);
+            if (etmp) del_engr(etmp);
         }
     }
 }

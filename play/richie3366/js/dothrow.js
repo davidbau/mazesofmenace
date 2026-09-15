@@ -2351,6 +2351,11 @@ export async function throwit(obj, wep_mask = 0, twoweap = false, oldslot = null
     }
     // C: throwit → stackobj after place_object
     stackobj(obj);
+    // C dothrow.c:1840 — thrown iron ball landing pulls the hero (drop_ball)
+    if (obj === game.u?.uball) {
+        const { drop_ball } = await import('./ball.js');
+        await drop_ball(x, y);
+    }
     // C dothrow.c throwit: if (cansee(bhitpos)) newsym — land glyph
     if (cansee(x, y)) newsym(x, y);
     throwit_return(false);

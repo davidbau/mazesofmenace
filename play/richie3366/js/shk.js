@@ -98,7 +98,7 @@ import {
 } from './mkobj.js';
 import { add_to_minv, mpickobj, makemon } from './makemon.js';
 import { acurr, acurrstr, A_CHA, A_WIS, adjalign, exercise, Fast } from './attrib.js';
-import { simpleonames, makeplural, xprname } from './objnam.js';
+import { simpleonames, makeplural, xprname, set_shk_owns_prefix } from './objnam.js';
 import {
     xname, doname, paydoname, set_doname_shop_suffix,
     ansimpleoname, thesimpleoname, append_wizweight_suffix,
@@ -121,7 +121,7 @@ import { Soundeffect, se_alarm, SetVoice } from './sndprocs.js';
 import { livelog_printf } from './pline.js';
 import { enexto, rloc_to_flag, migrate_to_level } from './teleport.js';
 import { ledger_no } from './dungeon.js';
-import { Is_candle } from './timeout.js';
+import { Is_candle, get_obj_location as shk_full_get_obj_location } from './timeout.js';
 import { addinv } from './u_init.js';
 import { SchroedingersBox } from './pickup.js';
 import { arti_cost } from './artifact.js';
@@ -808,6 +808,28 @@ export function costly_spot(x, y) {
     return inside_shop(x, y)
         && !((x | 0) === (eshkp.shk?.x | 0) && (y | 0) === (eshkp.shk?.y | 0));
 }
+
+/**
+ * C ref: shk.c shk_owns `:5885–5898` (staticfn) — shop-owned prefix for
+ * shk_your: unpaid, or OBJ_FLOOR goods on a costly spot with no no_charge.
+ * Returns "Foobar's " (or "the " when the shop has no keeper) with the
+ * trailing space, else null. shk_your tries this before mon_owns, like C.
+ */
+export function shk_owns_prefix(obj) {
+    const loc = shk_full_get_obj_location(obj, 0);
+    if (!loc) return null;
+    if (!(obj?.unpaid
+        || (((obj?.where | 0) === OBJ_FLOOR) && !obj.no_charge
+            && costly_spot(loc.x, loc.y)))) {
+        return null;
+    }
+    const shkp = shop_keeper(inside_shop(loc.x, loc.y));
+    return shkp ? `${s_suffix(shkname(shkp))} ` : 'the ';
+}
+
+// Late-bind into objnam.js shk_your (like do_name.js set_y_monnam): no new
+// module edge, and no static objnam→shk edge (eval-order TDZ, D-2349).
+set_shk_owns_prefix(shk_owns_prefix);
 
 function Role_if(pm) {
     return game.urole?.mnum === pm;

@@ -11,7 +11,7 @@
 
 import { game } from './gstate.js';
 import { rn2, rnd, rn1, d } from './rng.js';
-import { depth } from './hacklib.js';
+import { depth, builds_up } from './hacklib.js';
 import {
     STAIRS, LADDER, ECMD_OK, ECMD_TIME, ECMD_FAIL, ECMD_CANCEL,
     W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU, W_ARMOR,
@@ -40,7 +40,7 @@ import {
     ERODE_BURN, EF_DESTROY,
     NHCORE_GETPOS_TIP, NHCORE_ENTER_TUTORIAL, NHCORE_LEAVE_TUTORIAL,
     NUM_NHCORE_CALLS,
-    GETOBJ_EXCLUDE, GETOBJ_SUGGEST,
+    GETOBJ_EXCLUDE, GETOBJ_SUGGEST, GETOBJ_PROMPT, GETOBJ_ALLOWCNT,
     MENU_TRADITIONAL, MENU_COMBINATION, MENU_FULL,
     ALL_FINISHED, ALL_TYPES, ALL_TYPES_SELECTED, CHOOSE_ALL,
     UNPAID_TYPES, JUSTPICKED, INCLUDE_VENOM, PICK_ANY,
@@ -56,7 +56,7 @@ import {
 } from './objects.js';
 import {
     pline, Norep, docrt, flush_screen, flush_topl_more, newsym,
-    mark_topline_prompt, assign_graphics, check_gold_symbol,
+    assign_graphics, check_gold_symbol,
     You_feel, canseemon, canspotmon, impossible, describe_level,
     see_monsters,
 } from './display.js';
@@ -109,9 +109,8 @@ import {
 import { Monnam, Amonnam, Adjmonnam, mon_nam } from './do_name.js';
 import { revive } from './zap.js';
 import {
-    compactify_invlets, near_capacity, learn_unseen_invent, encumber_msg,
-    freeinv_core, getobj_take_count, getobj_apply_count, getobj_from_cmdq,
-    getobj_display_pickinv, ggetobj,
+    near_capacity, learn_unseen_invent, encumber_msg,
+    freeinv_core, getobj, ggetobj,
 } from './invent.js';
 import { can_reach_floor, set_occupation } from './engrave.js';
 import {
@@ -156,7 +155,7 @@ import {
     haseyes, eyecount,
 } from './monsters.js';
 import {
-    placebc, unplacebc, drag_down, ballrelease, set_bc, ballfall,
+    placebc, unplacebc, drag_down, ballrelease, set_bc, ballfall, drop_ball,
 } from './ball.js';
 import { obj_resists } from './dogmove.js';
 import { Soundeffect, se_scratching, se_alarm } from './sndprocs.js';
@@ -1634,11 +1633,18 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     if (!game.flags) game.flags = {};
     game.flags.botl = true;
 
-    // C: dunlev_reached for non-builds_up
+    // C do.c goto_level :1678-1684 — usual case tracks the deepest
+    // dlevel reached; builds_up branches (Sokoban) track the shallowest
+    // (minimum) dlevel instead.
     const dun = game.dungeons?.[u.uz.dnum | 0];
     if (dun) {
         const dl = u.uz.dlevel | 0;
-        if ((dun.dunlev_ureached | 0) < dl) dun.dunlev_ureached = dl;
+        if (!builds_up(u.uz)) {
+            if ((dun.dunlev_ureached | 0) < dl) dun.dunlev_ureached = dl;
+        } else if ((dun.dunlev_ureached | 0) === 0
+            || dl < (dun.dunlev_ureached | 0)) {
+            dun.dunlev_ureached = dl;
+        }
     }
 
     stairway_free_all();
@@ -2247,8 +2253,9 @@ function freeinv_drop(obj) {
 /**
  * C ref: do.c dropz — place at hero feet; always encumber_msg (polyself
  * break_armor armor-drop More packs load before gloves).
- * Named omissions: engulf digest; shop sell wired (D-0994); altar; ball;
- * Blind+Levitation map_object. hitfloor dropz(TRUE) is D-1263.
+ * Punished uball → drop_ball (C do.c:834, D-2329); else shop sell (D-0994).
+ * Named omissions: engulf digest; altar; Blind+Levitation map_object.
+ * hitfloor dropz(TRUE) is D-1263.
  */
 export async function dropz(obj, with_impact) {
     if (!obj) return;
@@ -2272,8 +2279,10 @@ export async function dropz(obj, with_impact) {
         await container_impact_dmg(obj, u.ux | 0, u.uy | 0);
     }
     impact_disturbs_zombies(obj, !!with_impact);
-    // C: sellobj when has_shop (after place, before stack)
-    if (game.level?.flags?.has_shop) {
+    // C do.c:831-834 — uball → drop_ball, else shop sell (after place)
+    if (obj === u.uball) {
+        await drop_ball(u.ux | 0, u.uy | 0);
+    } else if (game.level?.flags?.has_shop) {
         const { sellobj } = await import('./shk.js');
         await sellobj(obj, u.ux | 0, u.uy | 0);
     }
@@ -2374,90 +2383,12 @@ export async function drop(obj) {
 }
 
 /**
- * C invent getobj any_obj_ok — every invent letter is SUGGEST;
- * suggested > 5 → compactify (invent.c).
- */
-function drop_raw_lets() {
-    const lets = [];
-    for (const o of game.invent || []) {
-        if (o?.invlet) lets.push(o.invlet);
-    }
-    lets.sort((a, b) => a.charCodeAt(0) - b.charCodeAt(0));
-    return lets.join('');
-}
-
-function drop_suggest_lets() {
-    const s = drop_raw_lets();
-    if (s.length > 5) return compactify_invlets(s);
-    return s;
-}
-
-/**
- * C invent.c any_obj_ok `:1709–1715`.
+ * C invent.c any_obj_ok `:1709–1715` — allows any object, but not hands
+ * (NULL → GETOBJ_EXCLUDE, so live getobj never takes the hands arm).
+ * dodrop/doddrop call live getobj directly (C do.c:35-36).
  */
 function drop_obj_ok(obj) {
     return obj ? GETOBJ_SUGGEST : GETOBJ_EXCLUDE;
-}
-
-/**
- * C ref: invent.c getobj("drop", any_obj_ok, GETOBJ_PROMPT|GETOBJ_ALLOWCNT)
- * via yn_function(qbuf, NULL, '\0'). Count prefix + split_otmp live.
- * Canned CMDQ_INT/KEY live. `?`/`*` → display_pickinv `&ctmp` (D-1559).
- */
-async function getobj_drop() {
-    const cq = getobj_from_cmdq(drop_obj_ok, true);
-    if (!cq.skip) return cq.otmp;
-    for (;;) {
-        await flush_topl_more();
-        const lets = drop_suggest_lets();
-        const query = lets
-            ? `What do you want to drop? [${lets} or ?*]`
-            : 'What do you want to drop? [*]';
-        // C invent.c getobj → yn_function(qbuf, (char *)0, '\0', FALSE)
-        let ch = await yn_function(query, null, '\0', false);
-        const counted = await getobj_take_count(ch, true);
-        if (counted.retry) continue;
-        ch = counted.ch;
-        if (ch === '\x1b' || ch === ' ' || ch === '\n' || ch === '\r') {
-            if (game.flags?.verbose !== false) await pline('Never mind.');
-            return null;
-        }
-        if (ch === '?' || ch === '*') {
-            const ilet = await getobj_display_pickinv(
-                ch, drop_raw_lets(), true, counted,
-            );
-            if (ilet === '\x1b') {
-                if (game.flags?.verbose !== false) await pline('Never mind.');
-                return null;
-            }
-            if (!ilet) continue;
-            const picked = (game.invent || []).find((o) => o.invlet === ilet);
-            if (!picked) {
-                await pline("You don't have that object.");
-                continue;
-            }
-            const got = await getobj_apply_count(
-                picked, 'drop', counted.cntgiven, counted.cnt,
-            );
-            if (!got) return null;
-            if (got.retry) continue;
-            mark_topline_prompt(game._pending_message);
-            return got;
-        }
-        const otmp = (game.invent || []).find((o) => o.invlet === ch);
-        if (!otmp) {
-            await pline("You don't have that object.");
-            continue;
-        }
-        const got = await getobj_apply_count(
-            otmp, 'drop', counted.cntgiven, counted.cnt,
-        );
-        if (!got) return null;
-        if (got.retry) continue;
-        // C: leave gt.toplines; !verbose drop stays silent until parse clear.
-        mark_topline_prompt(game._pending_message);
-        return got;
-    }
 }
 
 /**
@@ -2475,7 +2406,8 @@ export async function dodrop() {
         const { sellobj_state } = await import('./shk.js');
         const { SELL_DELIBERATE, SELL_NORMAL } = await import('./const.js');
         sellobj_state(SELL_DELIBERATE);
-        const obj = await getobj_drop();
+        // C do.c:35-36 getobj("drop", any_obj_ok, GETOBJ_PROMPT|GETOBJ_ALLOWCNT)
+        const obj = await getobj('drop', drop_obj_ok, GETOBJ_PROMPT | GETOBJ_ALLOWCNT);
         if (!obj) {
             sellobj_state(SELL_NORMAL);
             return ECMD_CANCEL;
@@ -2484,7 +2416,7 @@ export async function dodrop() {
         sellobj_state(SELL_NORMAL);
         return result;
     }
-    const obj = await getobj_drop();
+    const obj = await getobj('drop', drop_obj_ok, GETOBJ_PROMPT | GETOBJ_ALLOWCNT);
     if (!obj) return ECMD_CANCEL;
     return drop(obj);
 }

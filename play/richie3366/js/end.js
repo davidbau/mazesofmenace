@@ -4,7 +4,7 @@
 
 import { game } from './gstate.js';
 import { rn2, d } from './rng.js';
-import { depth } from './hacklib.js';
+import { depth, strstri } from './hacklib.js';
 import {
     pline, flush_topl_more, bot, You_feel, clear_nhwindow_message,
     canspotmon, Hallucination, curs_on_u, newsym,
@@ -13,7 +13,7 @@ import { yn_function, paranoid_query } from './getline.js';
 import { show_text_pages, show_nhw_menu_text } from './pager.js';
 import { genl_outrip_lines } from './rip.js';
 import { Goodbye } from './roles.js';
-import { an, doname, xname, the as theArt, the_unique_obj } from './objnam.js';
+import { an, doname, xname, the as theArt, the_unique_obj, the_unique_pm } from './objnam.js';
 import {
     COIN_CLASS, objectNameStrs, objects,
     AMULET_CLASS, GEM_CLASS, FIRST_REAL_GEM, LAST_REAL_GEM,
@@ -34,15 +34,15 @@ import {
     PARANOID_DIE, PARANOID_BONES, PARANOID_QUIT, TT_LAVA, Has_contents,
     has_oname, LIFESAVED, W_AMUL,
     DELPHI, ROOMOFFSET, Is_oracle_level, Is_astralevel, In_endgame,
-    In_quest, ismnum, has_ebones, has_mgivenname, MGIVENNAME,
+    In_quest, ismnum, has_ebones, has_mgivenname, MGIVENNAME, BUFSZ,
     M_AP_TYPE, M_AP_MONSTER,
     FIRE_RES, STONE_RES, INTRINSIC,
 } from './const.js';
-import { G_NOCORPSE, G_UNIQ, mons, likes_gold, likes_gems, likes_objs, likes_magic } from './monsters.js';
+import { G_NOCORPSE, G_UNIQ, mons, likes_gold, likes_gems, likes_objs, likes_magic, is_vampshifter } from './monsters.js';
 import { m_at, mongone, dmonsfree, zombie_maker, m_carrying } from './mon.js';
 import { can_carry, mon_offmap } from './monmove.js';
 import { enexto, rloc_to, single_level_branch } from './teleport.js';
-import { oname, christen_monst, free_oname, mon_nam, Monnam, pmname, Ugender, Mgender, type_is_pname } from './do_name.js';
+import { oname, christen_monst, free_oname, mon_nam, Monnam, m_monnam, pmname, Ugender, Mgender, type_is_pname } from './do_name.js';
 import { mkcorpstat, curse, place_object, stackobj, mksobj, add_to_minv, add_to_container, weight } from './mkobj.js';
 import { make_grave, sticks } from './engrave.js';
 import { makemon, adj_lev, mongets } from './makemon.js';
@@ -479,12 +479,14 @@ function should_query_disclose_option(category) {
 }
 
 /**
- * C ref: topten.c formatkiller — prefix + killer.name; helpless deferred.
+ * C ref: topten.c formatkiller :89-162 — prefix + killer.name; helpless
+ * suffix when incl_helpless and still occupied (multi < 0): ", while
+ * <multi_reason>", else ", while helpless" (C `siz` buffer guards;
+ * BUFSZ units here).
  * @param {number} how
  * @param {boolean} incl_helpless
  */
 export function formatkiller(how, incl_helpless = false) {
-    void incl_helpless;
     let buf = '';
     const fmt = game.killer?.format;
     let kname = String(game.killer?.name || '');
@@ -501,6 +503,17 @@ export function formatkiller(how, incl_helpless = false) {
         else if (c === '=') c = '_';
         else if (c === '\t') c = ' ';
         buf += c;
+    }
+    // C topten.c :145-155 — X <= siz counts the NUL: ", while " is 8
+    // with NUL, ", while helpless" is 17 with NUL.
+    if (incl_helpless && (game.multi | 0) < 0) {
+        const reason = game.multi_reason;
+        if (typeof reason === 'string' && reason
+            && reason.length + 8 <= BUFSZ - buf.length) {
+            buf += `, while ${reason}`;
+        } else if (17 <= BUFSZ - buf.length) {
+            buf += ', while helpless';
+        }
     }
     return buf;
 }
@@ -1173,12 +1186,15 @@ function finish_paybill() {
  * Ported: isshk → honorific + shkname + ", the shopkeeper" + KILLED_BY
  * (D-0313); G_UNIQ "the " (unless pname) + KILLED_BY with imitator /
  * High-Cleric gates (:195-205); minvis + hallucinogen-distorted prefixes
- * (:209-212); gendered pmname(Mgender) + "called"/"of" mgivenname suffix
- * (:270-282); killer-based grave arise (wraith/mummy/zombie/vampire/ghoul,
- * end.c:326-340) with the genocided-arise reset. C mptr is mtmp->data
- * here (the mimicker arm resets it at :255).
- * Named omissions: ghost arms / imitator+vampshifter / priest|minion
- * m_monnam / monhealthdescr wound prefix / multi_reason trim.
+ * (:209-212); imitator "%s imitating %s" + vampshifter "in %s form" +
+ * mimicker "disguised as %s" (:230-255); ispriest/isminion m_monnam
+ * (:262-267); gendered pmname(Mgender) + "called"/"of" mgivenname suffix
+ * (:270-282); killer-caused multi_reason trim (:288-316); killer-based
+ * grave arise (wraith/mummy/zombie/vampire/ghoul, end.c:326-340) with the
+ * genocided-arise reset. C mptr is mtmp->data here (the mimicker arm
+ * resets it at :255; JS arise reads mtmp.data directly, same value).
+ * Named omissions: ghost arms (no corpus reach). monhealthdescr (:208)
+ * is exact-omit: its body is `#if 0`'d to `*outbuf = '\0'` (pager.c).
  */
 export async function done_in_by(mtmp, how = DIED) {
     await pline(how === STONING ? 'You turn to stone...' : 'You die...');
@@ -1189,7 +1205,12 @@ export async function done_in_by(mtmp, how = DIED) {
     const champtr = ismnum(mtmp?.cham) ? mons(mtmp.cham) : mptr;
     const distorted = Hallucination() && canspotmon(mtmp);
     const mimicker = M_AP_TYPE(mtmp) === M_AP_MONSTER;
-    const imitator = mptr !== champtr || mimicker;
+    // C end.c:184-190 compares permonst pointers (mptr != champtr); mons()
+    // returns a fresh object per call, so compare indices instead — birth-state
+    // cham == mndx (makemon.c:1355-1359, mon.c:535-546) must read non-imitator.
+    const mptrNdx = mptr?.mndx ?? mnum;
+    const chamNdx = ismnum(mtmp?.cham) ? mtmp.cham : mptrNdx;
+    const imitator = mptrNdx !== chamNdx || mimicker;
     // C: svk.killer.format = KILLED_BY_AN; then branch may override
     game.killer.format = KILLED_BY_AN;
     let buf = '';
@@ -1204,8 +1225,33 @@ export async function done_in_by(mtmp, how = DIED) {
     // C end.c :209-212 — minvis / hallucinogen-distorted prefixes.
     if (mtmp?.minvis) buf += 'invisible ';
     if (distorted) buf += 'hallucinogen-distorted ';
-    // C end.c imitator + second ghost arms — named omissions (no corpus reach).
-    if (mtmp?.isshk) {
+    // C end.c :230-255 — imitator (shapeshifted killer). realnm is the
+    // true form (champtr), shape is the apparent form with C article
+    // rules (vampshifter/pname: bare; unique: "the"; else an()).
+    if (imitator) {
+        const gend = Mgender(mtmp);
+        const realnm = pmname(champtr, gend);
+        let fakenm = pmname(mptr, gend);
+        const alt = is_vampshifter(mtmp);
+        let shapeptr = mptr;
+        if (mimicker) {
+            // C: realnm already correct (champtr==mptr); fake from mappearance
+            shapeptr = mtmp?.mappearance != null ? mons(mtmp.mappearance) : mptr;
+            fakenm = pmname(shapeptr, gend);
+        } else if (alt && strstri(realnm, 'vampire') && fakenm === 'vampire bat') {
+            // C end.c imitator arm: !strcmp(fakenm, "vampire bat") → "bat",
+            // i.e. "vampire in bat form", not "vampire in vampire bat form"
+            fakenm = 'bat';
+        }
+        let shape;
+        if (alt || type_is_pname(shapeptr)) shape = fakenm;
+        else if (the_unique_pm(shapeptr)) shape = `the ${fakenm}`;
+        else shape = an(fakenm);
+        buf += alt ? `${realnm} in ${shape} form`
+            : mimicker ? `${realnm} disguised as ${shape}`
+            : `${realnm} imitating ${shape}`;
+    // C end.c second ghost arm — named omission (no corpus reach).
+    } else if (mtmp?.isshk) {
         // C end.c: isshk → "%s%s, the shopkeeper" + KILLED_BY
         const shknm = shkname(mtmp);
         const honorific = shkname_is_pname(mtmp)
@@ -1213,7 +1259,10 @@ export async function done_in_by(mtmp, how = DIED) {
             : (mtmp.female ? 'Ms. ' : 'Mr. ');
         buf += `${honorific}${shknm}, the shopkeeper`;
         game.killer.format = KILLED_BY;
-    // C end.c ispriest/isminion m_monnam arm — named omission (no corpus reach).
+    } else if (mtmp?.ispriest || mtmp?.isminion) {
+        // C end.c :262-267 — m_monnam suppresses "the"/invisible and
+        // overrides Hallucination on priestname()
+        buf += m_monnam(mtmp);
     } else {
         // C end.c :270-282 — gendered pmname + named-killer suffix.
         buf += pmname(mnum, Mgender(mtmp));
@@ -1222,6 +1271,24 @@ export async function done_in_by(mtmp, how = DIED) {
         }
     }
     game.killer.name = buf;
+    // C end.c :288-316 — killer-caused helplessness: multireasonbuf holds
+    // 'm_id:reason' with multi_reason pointing past the "m_id:" prefix
+    // (dynamic_multi_reason); when mtmp caused it, truncate at the first
+    // space so formatkiller prints "Killed by a ghoul, while paralyzed."
+    // instead of "..., while paralyzed by a ghoul."
+    if (typeof game.multi_reason === 'string' && game.multi_reason
+        && typeof game.multireasonbuf === 'string') {
+        const m = /^(\d+):(.)/s.exec(game.multireasonbuf);
+        const tail = m
+            ? game.multireasonbuf.slice(m[1].length + 1) : null;
+        if (m && tail === game.multi_reason
+            && (mtmp?.m_id | 0) === (Number(m[1]) | 0)) {
+            const spAll = game.multireasonbuf.indexOf(' ');
+            if (spAll >= 0) game.multireasonbuf = game.multireasonbuf.slice(0, spAll);
+            const sp = game.multi_reason.indexOf(' ');
+            if (sp >= 0) game.multi_reason = game.multi_reason.slice(0, sp);
+        }
+    }
     // C end.c:326-340 — undead transformation at death: the killer's kind
     // sets ugrave_arise (mummy/zombie via the hero's race); a genocided
     // arise is suppressed. Feeds the really_done arise pline.

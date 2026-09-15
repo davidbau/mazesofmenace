@@ -1094,7 +1094,7 @@ function skill_level_name(skill) {
 export function P_SKILL(type) {
     return game.u?.weapon_skills?.[type]?.skill ?? P_ISRESTRICTED;
 }
-function P_MAX_SKILL(type) {
+export function P_MAX_SKILL(type) {
     return game.u?.weapon_skills?.[type]?.max_skill ?? P_ISRESTRICTED;
 }
 function P_ADVANCE(type) {

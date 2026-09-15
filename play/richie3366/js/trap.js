@@ -68,7 +68,7 @@ import {
     is_hole, is_pit, unhideable_trap, is_xport, In_quest, isok, ZAP_POS, IS_DOOR, IS_LAVA,
     IS_ROOM, IS_WALL, IS_AIR, IS_FURNITURE, IS_FOUNTAIN, IS_SINK,
     STONE, SCORR, CORR, ROOM, DOOR, ICE, MAX_TYPE, SDOOR, STAIRS, LADDER, DRAWBRIDGE_UP,
-    DB_UNDER, DB_ICE, DB_FLOOR,
+    DRAWBRIDGE_DOWN, DB_UNDER, DB_ICE, DB_FLOOR,
     MELT_ICE_AWAY, ROT_ORGANIC,
     MAGIC_PORTAL, LEVEL_TELEP, Is_waterlevel, Is_airlevel,
     D_NODOOR, D_ISOPEN, D_CLOSED, D_LOCKED, D_BROKEN, D_TRAPPED,
@@ -115,7 +115,7 @@ import {
     maybe_half_phys, nomul, unmul, losehp, finish_maybe_wail, stop_occupation,
     in_rooms, set_uinwater,
 } from './hack.js';
-import { goodpos, mlevel_tele_trap, mtele_trap, tele_trap, level_tele_trap, domagicportal, rloco, random_teleport_level, teleds, safe_teleds, noteleport_level, dotele } from './teleport.js';
+import { goodpos, mlevel_tele_trap, mtele_trap, tele_trap, level_tele_trap, domagicportal, rloco, random_teleport_level, teleds, safe_teleds, noteleport_level, dotele, unconscious } from './teleport.js';
 import { get_level, on_level, at_dgn_entrance } from './dungeon.js';
 import {
     objectNames, POTION_CLASS, SCROLL_CLASS, SPBOOK_CLASS, ARMOR_CLASS,
@@ -157,11 +157,11 @@ import { more_experienced, newexplevel } from './exper.js';
 import { killed, stumble_onto_mimic } from './uhitm.js';
 import { rider_cant_reach, dismount_steed } from './steed.js';
 import { resist, blank_novel, poly_obj } from './zap.js';
-import { fill_pit, bury_an_obj } from './dig.js';
+import { fill_pit, fillholetyp, liquid_flow, maybe_dunk_boulders, bury_an_obj } from './dig.js';
 import { u_wield_art, attacks, bare_artifactname, has_magic_key } from './artifact.js';
 import { ART_STING } from './generated/artifacts_data.js';
 import { maybe_unhide_at, locomotion } from './monmove.js';
-import { is_waterwall, hero_Swimming, hero_Amphibious, hero_Breathless } from './dbridge.js';
+import { is_waterwall, hero_Swimming, hero_Amphibious, hero_Breathless, is_drawbridge_wall, find_drawbridge, destroy_drawbridge } from './dbridge.js';
 // C obj.h stone_missile lives in dothrow.js (canonical); same-file passes_rocks below (D-2195).
 import { stone_missile } from './dothrow.js';
 
@@ -2356,10 +2356,10 @@ export function force_launch_placement() {
  * KAABLAMM / fracture_rock / scatter + PIT/SPIKED_PIT/HOLE/TRAPDOOR
  * flooreffects + dist=-1 (D-1256). ROLL gate-drop via down_gate +
  * ship_object `:3424–3430`, post-switch flooreffects `:3509`, and
- * boulder-on-boulder chain `:3514–3529` (D-2318). Named omissions:
- * LAUNCH_UNSEEN bowling msgs; dig context clear; closed_door crash
- * (`pline_The` has no JS counterpart); STWALL `Thump!`; scatter
- * MAY_FRACTURE/MAY_DESTROY/VIS_EFFECTS (explode.js); curs_on_u.
+ * boulder-on-boulder chain `:3514–3529` (D-2318) and the
+ * closed_door crash-through `:3533–3541` (this D-log). Named omissions:
+ * LAUNCH_UNSEEN bowling msgs; dig context clear; STWALL `Thump!`;
+ * scatter MAY_FRACTURE/MAY_DESTROY/VIS_EFFECTS (explode.js); curs_on_u.
  * @returns {Promise<number>} 0 none, 1 placed, 2 used up
  */
 async function launch_obj(otyp, x1, y1, x2, y2, style) {
@@ -2602,6 +2602,22 @@ async function launch_obj(otyp, x1, y1, x2, y2, style) {
                 }
             }
 
+            /* C trap.c launch_obj `:3533–3541` — a boulder on the roll cell
+             * crashes through a closed door: cansee-gated set_msg_xy +
+             * pline_The, doormask=D_BROKEN, recalc while dist remains.
+             * pline_The renders as plain pline with the The-phrase
+             * (dokick.js:348 convention). File-local closed_door (trap.js:707)
+             * is the C predicate (IS_DOOR + D_CLOSED|D_LOCKED). */
+            if (otyp === BOULDER && closed_door(x, y)) {
+                if (cansee(x, y)) {
+                    set_msg_xy(x, y);
+                    await pline('The boulder crashes through a door.');
+                }
+                const doorloc = game.level?.at?.(x, y);
+                if (doorloc) doorloc.doormask = D_BROKEN;
+                if (dist) recalc_block_point(x, y);
+            }
+
             if (dist > 0 && isok(x + dx, y + dy)) {
                 const typ = game.level?.at?.(x + dx, y + dy)?.typ ?? 0;
                 if (typ === IRONBARS) {
@@ -2622,14 +2638,6 @@ async function launch_obj(otyp, x1, y1, x2, y2, style) {
                     xRest = x;
                     yRest = y;
                     break;
-                }
-                if (IS_DOOR(typ)) {
-                    const loc = game.level.at(x + dx, y + dy);
-                    const dm = loc?.doormask ?? loc?.flags ?? 0;
-                    if ((dm & (D_CLOSED | D_LOCKED)) !== 0) {
-                        // C: boulder crashes through closed door — continue
-                        if (loc) loc.doormask = D_BROKEN;
-                    }
                 }
             }
         }
@@ -4888,17 +4896,19 @@ async function trapeffect_web(mtmp, trap, trflags) {
 }
 
 /**
- * C ref: trap.c blow_up_landmine — shared hero/mon landmine detonation.
- * C order: scatter(4, MAY_DESTROY|MAY_HIT|MAY_FRACTURE|VIS_EFFECTS) first,
- * then del_engr_at/wake_nearto/door/drawbridge/pit/fill.
- * Named omissions: drawbridge destroy; fillholetyp/liquid_flow;
- * fill_pit; maybe_dunk_boulders; spot_checks.
+ * C ref: trap.c blow_up_landmine `:3172–3219` — shared hero/mon landmine
+ * detonation. C order: scatter(4, MAY_DESTROY|MAY_HIT|MAY_FRACTURE|
+ * VIS_EFFECTS) first, then del_engr_at/wake_nearto/door/drawbridge/
+ * pit/fill_pit/maybe_dunk_boulders/recalc/spot_checks.
+ * Named omission: spot_checks(x, y, old_typ) — no JS counterpart anywhere
+ * in `js/` (own future row when it lands).
  */
 async function blow_up_landmine(trap) {
     if (!trap) return;
     const x = trap.tx | 0;
     const y = trap.ty | 0;
     const lev = game.level?.locations?.[x]?.[y];
+    const old_typ = lev ? (lev.typ | 0) : 0;
     await scatter(
         x, y, 4,
         MAY_DESTROY | MAY_HIT | MAY_FRACTURE | VIS_EFFECTS,
@@ -4907,20 +4917,43 @@ async function blow_up_landmine(trap) {
     del_engr_at(x, y);
     wake_nearto(x, y, 400);
     if (lev && IS_DOOR(lev.typ)) lev.doormask = D_BROKEN;
-    // drawbridge destroy deferred
-    let t = t_at(x, y);
+    /* destroy drawbridge if present (C `:3186–3192`): under-portcullis
+       bridges are adjacent, so resolve via find_drawbridge. */
+    if (lev && ((lev.typ | 0) === DRAWBRIDGE_DOWN || is_drawbridge_wall(x, y) >= 0)) {
+        const db = { x, y };
+        /* if under the portcullis, the bridge is adjacent */
+        if (find_drawbridge(db)) await destroy_drawbridge(db.x, db.y);
+    }
+    let t = t_at(x, y); /* expected to be null after destruction */
+    /* or could be null if scatter blew up oil which melted ice */
+    /* convert landmine into pit */
     if (t) {
         if (Is_waterlevel(game.u?.uz) || Is_airlevel(game.u?.uz)) {
+            /* no pits here */
             deltrap(t);
         } else {
-            // fillholetyp → liquid_flow deferred; ordinary → PIT
-            t.ttyp = PIT;
-            t.madeby_u = false;
-            seetrap(t);
+            /* fill pit with water, if applicable */
+            const typ = fillholetyp(x, y, false);
+            if ((typ | 0) !== (ROOM | 0)) {
+                const levAfter = game.level?.locations?.[x]?.[y];
+                if (levAfter) levAfter.typ = typ;
+                await liquid_flow(
+                    x, y, typ, t,
+                    cansee(x, y) ? 'The hole fills with %s!' : null,
+                );
+            } else {
+                t.ttyp = PIT; /* explosion creates a pit */
+                t.madeby_u = false; /* resulting pit isn't yours */
+                seetrap(t); /* and it isn't concealed */
+            }
         }
     }
-    // fill_pit / maybe_dunk_boulders / spot_checks deferred
+    fill_pit(x, y);
+    await maybe_dunk_boulders(x, y);
     recalc_block_point(x, y);
+    /* C `:3218` spot_checks(x, y, old_typ) — no JS counterpart; old_typ
+       captured above for that call when it lands. */
+    void old_typ;
 }
 
 /**
@@ -5003,12 +5036,15 @@ async function trapeffect_poly_trap(mtmp, trap, trflags) {
 let recursive_mine = false;
 
 /**
- * C ref: trap.c trapeffect_landmine — hero + monster.
- * Monster: rnd(16) damage, iron-shoes quarter, weight gate rn2(cwt+1)
- * vs WT_ELF/2, m_in_air rn2(3), blow_up, thitm, recursive mintrap.
- * Hero: Lev/Fly discovery arms + wounded legs + losehp + recursive dotrap.
- * Named omissions: which_armor iron shoes; keep_saddle_with_steedcorpse;
- * scatter via blow_up; fill_pit; unconscious awaken polish.
+ * C ref: trap.c trapeffect_landmine `:2527–2657` — hero + monster.
+ * Monster: rnd(16) damage, iron-shoes quarter via live wearing_iron_shoes
+ * (trap.c:1097 which_armor(W_ARMF)+IRON), weight gate rn2(cwt+1) vs
+ * WT_ELF/2, m_in_air rn2(3), blow_up, thitm, recursive mintrap, fill_pit,
+ * unconscious awaken. Hero: Lev/Fly discovery arms + live steedintrap
+ * under the recursive_mine guard + wounded legs + losehp + blow_up +
+ * recursive dotrap + fill_pit.
+ * Named omission: keep_saddle_with_steedcorpse(steed_mid, fobj, saddle)
+ * (C `:2591–2592`) — no JS counterpart anywhere in `js/`.
  */
 async function trapeffect_landmine(mtmp, trap, trflags) {
     let damage = rnd(16);
@@ -5073,13 +5109,15 @@ async function trapeffect_landmine(mtmp, trap, trflags) {
         newsym(u.ux, u.uy);
         const pit = t_at(u.ux, u.uy);
         if (pit) await dotrap(pit, RECURSIVETRAP);
-        // fill_pit deferred
+        fill_pit(u.ux, u.uy);
         return Trap_Effect_Finished;
     }
 
     // Monster branch
     let trapkilled = false;
     const in_sight = canseemon(mtmp) || (mtmp === game.u?.usteed);
+    const tx = trap.tx | 0;
+    const ty = trap.ty | 0;
     const a_your = ['a', 'your'];
     /* heavier monsters are more likely to set off a land mine */
     const MINE_TRIGGER_WT = (WT_ELF / 2) | 0;
@@ -5112,7 +5150,6 @@ async function trapeffect_landmine(mtmp, trap, trflags) {
     if (!in_sight && !Deaf()) {
         await pline('Kaablamm!  You hear an explosion in the distance!');
     }
-    // C captures tx/ty before blow_up for fill_pit (deferred)
     await blow_up_landmine(trap);
     /* explosion might have destroyed a drawbridge; don't dish out more
        damage if monster is already dead */
@@ -5120,13 +5157,18 @@ async function trapeffect_landmine(mtmp, trap, trflags) {
         || await thitm(0, mtmp, null, damage, false)) {
         trapkilled = true;
     } else {
+        /* monsters recursively fall into new pit */
         if (await mintrap(mtmp, trflags | FORCETRAP) === Trap_Killed_Mon) {
             trapkilled = true;
         }
     }
-    // fill_pit deferred — thitm may have already destroyed the trap
+    /* a boulder may fill the new pit, crushing monster */
+    fill_pit(tx, ty); /* thitm may have already destroyed the trap */
     if ((mtmp.mhp | 0) <= 0) trapkilled = true;
-    // unconscious awaken deferred
+    if (unconscious()) {
+        game.multi = -1;
+        game.nomovemsg = 'The explosion awakens you!';
+    }
     return trapkilled ? Trap_Killed_Mon
         : (mtmp.mtrapped ? Trap_Caught_Mon : Trap_Effect_Finished);
 }

@@ -301,6 +301,7 @@ import {
 } from './const.js';
 import { stairway_at, stairs_description } from './mklev.js';
 import { objects_at } from './mkobj.js';
+import { magic_negation_you } from './mhitm.js';
 import { t_at, trapname } from './trap.js';
 import { visible_region_at, reg_damg } from './region.js';
 import { PM_SAMURAI, PM_MONK, PM_CLERIC, monsterNames } from './generated/monsters_data.js';
@@ -4471,21 +4472,11 @@ function pretty_weapon_descr(obj) {
 }
 
 /**
- * C ref: mhitu.c magic_negation — worn armor a_can (objects.oc_level for armor)
- * plus Protection bumps. Branch envelope: worn W_ARMOR a_can max; amulet/
- * extrinsic Protection deferred until a seed needs them.
+ * C ref: mhitu.c magic_negation — hero arm lives in mhitm.js
+ * (magic_negation_you, full C arm incl. amulet-of-guarding / extrinsic
+ * Protection / intrinsic floor); imported here for the enlightenment
+ * warded/guarded/protected display (insight.c uses the same C function).
  */
-function magic_negation_you() {
-    let mc = 0;
-    for (const o of game.invent || []) {
-        if (((o.owornmask || 0) & W_ARMOR) !== 0) {
-            // C: objects[o->otyp].a_can — packed as oc_level for armor
-            const armpro = game.objects?.[o.otyp]?.oc_level ?? 0;
-            if (armpro > mc) mc = armpro;
-        }
-    }
-    return mc;
-}
 
 /**
  * C ref: insight.c enlght_line — " %s%s%s%s." + not-contractions.

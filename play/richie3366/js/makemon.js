@@ -87,6 +87,8 @@ import {
     is_orc,
     hides_under,
     throws_rocks,
+    touch_petrifies,
+    resists_ston,
     M3_CLOSE, M3_WAITFORU, M3_WAITMASK, M3_COVETOUS,
 } from './monsters.js';
 import { big_to_little, set_mon_data, name_to_mon, name_to_monclass } from './mondata.js';
@@ -94,7 +96,7 @@ import {
     NO_MINVENT, NO_MM_FLAGS, MM_NOGRP, MM_ASLEEP, MM_NONAME, MM_ESHK, MM_EGD,
     MM_EMIN, MM_EPRI, MM_EDOG, MM_ANGRY, MM_ADJACENTOK, MM_NOTAIL, MM_NOWAIT,
     MM_MALE, MM_FEMALE, MM_MINVIS,
-    MM_NOMSG, MM_NOEXCLAM, MM_IGNOREWATER, M_SEEN_NOTHING,
+    MM_NOCOUNTBIRTH, MM_NOMSG, MM_NOEXCLAM, MM_IGNOREWATER, M_SEEN_NOTHING,
     GP_CHECKSCARY, GP_AVOID_MONPOS, Is_rogue_level, Is_earthlevel,
     Is_firelevel, Is_airlevel, Is_astralevel,
     In_mines, In_sokoban, In_endgame, Is_stronghold, Is_knox, In_V_tower,
@@ -176,7 +178,8 @@ import { deliver_obj_to_mon } from './dokick.js';
 import { can_be_hatched, m_at, seemimic, hideunder, onscary, monnear } from './mon.js';
 import { m_unleash, leashable } from './apply.js';
 import { update_inventory } from './invent.js';
-import { set_apparxy, monflee } from './monmove.js';
+import { set_apparxy, monflee, can_hide_under_obj } from './monmove.js';
+import { cursed_object_at } from './dogmove.js';
 import { roles } from './roles.js';
 
 /** C ref: shknam.c neweshk — allocate eshk for MM_ESHK makemon. */
@@ -2018,7 +2021,7 @@ function race_peaceful(ptr) {
     const mask = game.urace?.lovemask ?? 0;
     return !!(mask && (ptr.mflags2 & mask));
 }
-function race_hostile(ptr) {
+export function race_hostile(ptr) {
     const mask = game.urace?.hatemask ?? 0;
     return !!(mask && (ptr.mflags2 & mask));
 }
@@ -3038,6 +3041,9 @@ export function makemon(mdat, x, y, mmflags = 0) {
     let ptr = mdat;
     const anymon = !ptr;
     const allow_minvent = (mmflags & NO_MINVENT) === 0;
+    // C makemon.c:1160 — countbirth false under MM_NOCOUNTBIRTH (revival /
+    // statue-trap donors must not tally births).
+    const countbirth = (mmflags & MM_NOCOUNTBIRTH) === 0;
     const allowtail = (mmflags & MM_NOTAIL) === 0;
     const byyou = !!(game.u && x === game.u.ux && y === game.u.uy);
     // C: (mmflags & MM_IGNOREWATER) | GP_CHECKSCARY | GP_AVOID_MONPOS
@@ -3102,6 +3108,12 @@ export function makemon(mdat, x, y, mmflags = 0) {
             && ((tryct === 1 && throws_rocks(ptr) && In_sokoban(game.u?.uz))
                 || !goodpos(x, y, { data: ptr }, gpflags)));
     }
+
+    // C makemon.c:1233 — (void) propagate(mndx, countbirth, FALSE) once mndx
+    // is known (both ptr and random arms), before newmonst. Draw-free; still
+    // marks uniques / extinct-at-limit when tally is skipped. Named omit:
+    // ptr-arm G_GENOD veto + wizard extinct debugpline (:1204-1212, own row).
+    propagate(ptr.mndx, countbirth, false);
 
     // C: *mtmp = cg.zeromonst — mux/muy stay 0 until set_apparxy (not spawn xy)
     const mtmp = {
@@ -3255,20 +3267,29 @@ export function makemon(mdat, x, y, mmflags = 0) {
         // C: in_mklev → mkobj_at(RANDOM) then hideunder(mtmp).
         // hideunder only sets mundetected when hides_under(data) (M1_CONCEAL);
         // python is S_SNAKE but !M1_CONCEAL so stays visible (D-0628).
-        // Non-pit trap at site blocks hide (mon.c hideunder; Arc-goal traps
-        // before monsters — D-0630). pet cursed / can_hide_under_obj coins /
-        // cockatrice skip still deferred (inline; mon.js hideunder has trap).
+        // Inline hides_under path (seeit=0 in mklev; object just placed):
+        // non-pit trap blocks (Arc-goal traps before monsters — D-0630),
+        // can_hide_under_obj coins, pet cursed, cockatrice skip (this iter).
         if (game.in_mklev) {
             if (mtmp.mx && mtmp.my) mkobj_at(RANDOM_CLASS, mtmp.mx, mtmp.my, true);
-            // Inline hideunder hides_under path: seeit=0 in mklev; object just placed.
             if (hides_under(ptr)) {
                 const hx = mtmp.mx, hy = mtmp.my;
                 const t = t_at_local(hx, hy);
                 const typ = game.level?.at(hx, hy)?.typ ?? 0;
+                const otmp0 = objects_at(hx, hy);
                 if (!(t && !is_pit(t.ttyp))
                     && !IS_POOL(typ) && !IS_LAVA(typ)
-                    && objects_at(hx, hy)) {
-                    mtmp.mundetected = 1;
+                    && otmp0 && can_hide_under_obj(otmp0)
+                    && (!mtmp.mtame || !cursed_object_at(hx, hy))) {
+                    // C: cockatrice-corpse walk (newborn monsters take the
+                    // resists_ston branch; youmonst never births here)
+                    let o = otmp0;
+                    if (!resists_ston(mtmp)) {
+                        while (o && o.otyp === CORPSE
+                            && touch_petrifies(mons(o.corpsenm)))
+                            o = o.nexthere;
+                    }
+                    if (o) mtmp.mundetected = 1;
                 }
             }
         }

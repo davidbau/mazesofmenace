@@ -1,6 +1,6 @@
 // ball.js — Ball & chain placement / drag (partial).
 // C ref: ball.c placebc / placebc_core / move_bc / drag_ball / bc_order /
-//         set_bc / drag_down / ballrelease / litter.
+//         set_bc / drag_down / ballrelease / litter / drop_ball.
 //
 // **Blind move_bc glyph/felt arms + unplacebc Blind glyph restore
 // D-1777** (set_bc D-1769 takes the bglyph/cglyph snapshots; those are
@@ -9,9 +9,10 @@
 // callers, same deferral as hack.c movobj);
 // flooreffects rust; bcrestriction / breadcrumbs; **ballfall D-1778**
 // (C `:42–67`; `hard_helmet` is one export now, `js/do_wear.js`);
-// drop_ball; litter hitfloor/shop/impact (place at feet); Soundeffect
-// in drag_down; jerked-back hmon/miss body (rnd(20) still burned);
-// unpunish.
+// **drop_ball D-2329** (C `:881–961`; callers do.c:834 dropz +
+// dothrow.c:1840 throw land wired); litter hitfloor/shop/impact
+// (place at feet); Soundeffect in drag_down; jerked-back hmon/miss
+// body (rnd(20) still burned); unpunish.
 
 import { game } from './gstate.js';
 import { place_object, obj_extract_self, objects_at } from './mkobj.js';
@@ -19,7 +20,10 @@ import { newsym, pline, You_feel, cls, map_object } from './display.js';
 import {
     OBJ_FREE, BC_BALL, BC_CHAIN, IS_OBSTRUCTED, IS_DOOR,
     D_CLOSED, D_LOCKED, POOL, is_pit, is_hole, SLT_ENCUMBER,
-    W_ARMOR, W_ACCESSORY, W_SADDLE, A_STR, NO_KILLER_PREFIX, KILLED_BY_AN,
+    W_ARMOR, W_ACCESSORY, W_SADDLE, A_STR, NO_KILLER_PREFIX, KILLED_BY,
+    KILLED_BY_AN, LEG,
+    TT_PIT, TT_WEB, TT_LAVA, TT_BEARTRAP, TT_INFLOOR, TT_BURIEDBALL,
+    LEFT_SIDE, RIGHT_SIDE,
     Is_waterlevel, HEAD,
 } from './const.js';
 import { dist2, distmin } from './hacklib.js';
@@ -28,7 +32,18 @@ import {
 } from './hack.js';
 import { near_capacity, weight_cap, encumber_msg } from './invent.js';
 import { rn2, rnd, rn1 } from './rng.js';
-import { t_at } from './trap.js';
+// C drop_ball joins deltrap/reset_utrap/set_wounded_legs on the existing
+// trap.js edge (t_at was already imported); fill_pit (dig.js),
+// spoteffects (pickup.js), hliquid (do_name.js), Soundeffect (sndprocs.js),
+// body_part (polyself.js) and se_destroy_web (generated data) are new
+// static edges — imports.mjs --can SAFE/ALREADY for each (hoisted fns).
+import { t_at, deltrap, reset_utrap, set_wounded_legs } from './trap.js';
+import { fill_pit } from './dig.js';
+import { spoteffects } from './pickup.js';
+import { hliquid } from './do_name.js';
+import { body_part } from './polyself.js';
+import { Soundeffect } from './sndprocs.js';
+import { se_destroy_web } from './generated/seffects_data.js';
 import { mon_at } from './uhitm.js';
 import { hard_helmet } from './do_wear.js';
 import { welded, setuwep, setuswapwep, setuqwep } from './wield.js';
@@ -796,4 +811,115 @@ export async function drag_ball(x, y, allow_drag = true) {
     }
     out.cause_delay = true;
     return out;
+}
+
+/**
+ * C ref: ball.c drop_ball `:881–961` — the punished hero drops or throws
+ * the iron ball (callers do.c:834 dropz at the hero's feet, dothrow.c:1840
+ * throw land at bhitpos; the ball is already placed by the caller).
+ * Should not be called while swallowed (no uswallow arm in C).
+ *
+ * C order, preserved arm-for-arm: Blind snapshot first (`bc_order` then
+ * `bglyph` from the felt chain glyph or the landing glyph); when the
+ * landing differs from the hero spot, a live utrap (anything but INFLOOR
+ * / BURIEDBALL) yanks the hero out with the per-type pline (pit / web +
+ * web-destroy sound + deltrap / lava via hliquid / beartrap `rn2(3)`
+ * side + wounded legs + leg damage unless steed-riding) in C order,
+ * then `reset_utrap(TRUE)` + `fill_pit` at the old spot; hero slides to
+ * the landing only without Levitation, monster, or trap on a pool/pit/
+ * hole landing, else stops short by (dx,dy); vision recalc; Blind
+ * chain-glyph drop / felt clear / new-spot pickup; `movobj` chain;
+ * Blind `bc_order` refresh; `newsym` the old spot; `spoteffects` when
+ * the hero moved. `Your`/`pline_The` have no JS export (local clones
+ * elsewhere), so both lines go through `pline` with identical text.
+ * @param {number} x landing column (bhitpos or hero spot)
+ * @param {number} y landing row
+ */
+export async function drop_ball(x, y) {
+    const u = game.u || {};
+    const uchain = u.uchain;
+    if (!uchain) return;
+    x |= 0;
+    y |= 0;
+
+    if (Blind_bc()) {
+        /* get the order, pick up glyph */
+        u.bc_order = bc_order();
+        u.bglyph = (u.bc_order | 0) ? u.cglyph : levl_glyph_at(x, y);
+    }
+
+    if (x !== (u.ux | 0) || y !== (u.uy | 0)) {
+        const pullmsg = 'The ball pulls you out of the ';
+        if ((u.utrap | 0)
+            && (u.utraptype | 0) !== TT_INFLOOR
+            && (u.utraptype | 0) !== TT_BURIEDBALL) {
+            switch (u.utraptype | 0) {
+            case TT_PIT:
+                await pline(`${pullmsg}pit!`);
+                break;
+            case TT_WEB:
+                await pline(`${pullmsg}web!`);
+                Soundeffect(se_destroy_web, 30);
+                await pline('The web is destroyed!');
+                deltrap(t_at(u.ux | 0, u.uy | 0));
+                break;
+            case TT_LAVA:
+                await pline(`${pullmsg}${hliquid('lava')}!`);
+                break;
+            case TT_BEARTRAP: {
+                const side = rn2(3) ? LEFT_SIDE : RIGHT_SIDE;
+                await pline(`${pullmsg}bear trap!`);
+                await set_wounded_legs(side, rn1(1000, 500));
+                if (!u.usteed) {
+                    await pline(`Your ${(side === LEFT_SIDE) ? 'left' : 'right'} ${body_part(LEG)} is severely damaged.`);
+                    // C: losehp → maybe_wail (You_hear --More--)
+                    losehp(
+                        maybe_half_phys(2),
+                        'leg damage from being pulled out of a bear trap',
+                        KILLED_BY,
+                    );
+                    await finish_maybe_wail();
+                }
+                break;
+            }
+            }
+            reset_utrap(true);
+            fill_pit(u.ux | 0, u.uy | 0);
+        }
+
+        u.ux0 = u.ux | 0;
+        u.uy0 = u.uy | 0;
+        const Levitation = !!(u.Levitation || u.Lev);
+        let t = null;
+        if (!Levitation && !mon_at(x, y) && !(u.utrap | 0)
+            && (is_pool(x, y)
+                || ((t = t_at(x, y))
+                    && (is_pit(t.ttyp) || is_hole(t.ttyp))))) {
+            u.ux = x;
+            u.uy = y;
+        } else {
+            u.ux = x - (u.dx | 0);
+            u.uy = y - (u.dy | 0);
+        }
+        game.vision_full_recalc = 1; /* hero has moved, recalc vision later */
+
+        if (Blind_bc()) {
+            /* drop glyph under the chain */
+            if ((u.bc_felt | 0) & BC_CHAIN)
+                set_levl_glyph(uchain.ox | 0, uchain.oy | 0, u.cglyph);
+            u.bc_felt = 0; /* feel nothing */
+            /* pick up new glyph */
+            u.cglyph = (u.bc_order | 0)
+                ? u.bglyph
+                : levl_glyph_at(u.ux | 0, u.uy | 0);
+        }
+        movobj(uchain, u.ux | 0, u.uy | 0); /* has a newsym */
+        if (Blind_bc()) {
+            u.bc_order = bc_order();
+        }
+        newsym(u.ux0 | 0, u.uy0 | 0); /* clean up old position */
+        if ((u.ux0 | 0) !== (u.ux | 0) || (u.uy0 | 0) !== (u.uy | 0)) {
+            await spoteffects(true);
+        }
+    }
 }

@@ -61,6 +61,7 @@ import {
     AUTOSELECT_SINGLE, FEEL_COCKATRICE, INCLUDE_VENOM,
     MENU_INVERT_ALL, MENU_SELECT_ALL, MENU_UNSELECT_ALL,
     MENU_ITEMFLAGS_NONE, MENU_ITEMFLAGS_SKIPINVERT, PICK_NONE, PICK_ONE,
+    PICK_ANY,
     MENU_TRADITIONAL, MENU_COMBINATION, MENU_FULL,
     SHOPBASE,
     SLT_ENCUMBER, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER,
@@ -258,6 +259,27 @@ export function find_justpicked(olist) {
 /** C pickup.c allow_all `:516–520`. */
 export function allow_all(_obj) {
     return true;
+}
+
+/* C pickup.c `:767` — gv.val_for_n_or_more feeds the n_or_more callback. */
+let val_for_n_or_more = 0;
+
+/**
+ * C pickup.c n_or_more `:458–465` — query_objlist callback for "pick N of
+ * something": never the punished chain; the pile quantity must cover the
+ * reference value.
+ */
+function n_or_more(obj) {
+    if (!obj || obj === game.u?.uchain) return false;
+    return (obj.quan || 1) >= val_for_n_or_more;
+}
+
+/**
+ * C pickup.c all_but_uchain `:507–512` — manual `,` PICK_ANY allow: every
+ * floor (or engulfer-minvent) object but the punished chain.
+ */
+function all_but_uchain(obj) {
+    return obj !== game.u?.uchain;
 }
 
 /**
@@ -1334,32 +1356,62 @@ export async function pickup_object(obj, count, telekinesis) {
  * `@` MENU_INVERT_ALL / `.` SELECT_ALL / `-` UNSELECT_ALL (tty wintty).
  * INVORDER_SORT (sortpack): pack-order class headings via let_to_name;
  * menu letters assigned in that display order (no USE_INVLET on floor).
- * Sort: sortloot(SORTLOOT_LOOT|PACK|PETRIFY) + nexthere (D-0405, D-1599).
- * FEEL_COCKATRICE: will_feel during walk → look_here(0) abort (no menu).
- * Named omissions: count-N; menu_head_objsym; INCLUDE_VENOM;
- * engulfer; loot_classify subclass/disco/BUCX; SKIPINVERT;
+ * Sort: sortloot(SORTLOOT_LOOT|PACK + PETRIFY on PICK_ANY only) + nexthere
+ * (D-0405, D-1599).
+ * FEEL_COCKATRICE (PICK_ANY only per pickup.c:774-776; count-N PICK_ONE
+ * at :761-772 omits it): will_feel during walk → look_here(0) abort.
+ * PICK_ONE (count-N "Pick %d of what?"): AUTOSELECT_SINGLE still applies
+ * (C `:761` sets it before the count branch); a menu letter returns the
+ * single pick at once (tty PICK_ONE ends on first selection), prompt is
+ * the title. count fix-up (C `:1189–1190`) and the force-to-N correction
+ * (C `:772`) live with the caller.
+ * Named omissions: menu_head_objsym; INCLUDE_VENOM;
+ * loot_classify subclass/disco/BUCX; SKIPINVERT;
  * page invert/search; doloot Blind !uarmg feel before containers.
  * Floor TRADITIONAL query_classes is D-1620 (`pickup_traditional_floor`).
  *
- * @param {object[]} objList pile in nexthere order (head first)
+ * @param {object[]} objList pile in chain order (head first)
  * @param {((o: object) => boolean)|null} [extraAllow] C allow_category
- *        for traditional 'm' via_menu==-3; omit/null is C allow_all
+ *        for traditional 'm' via_menu==-3; omit/null is C allow_all;
+ *        manual `,` passes C all_but_uchain / count-N n_or_more
+ * @param {{ how?: number, prompt?: string, autoselect?: boolean }|null} [opts]
+ *        how C PICK_ANY/PICK_ONE; autoselect is C AUTOSELECT_SINGLE
  */
-async function query_objlist_pickup(objList, extraAllow = null) {
+async function query_objlist_pickup(objList, extraAllow = null, opts = null) {
+    const how = opts?.how ?? PICK_ANY;
+    const prompt = opts?.prompt ?? 'Pick up what?';
+    const autoselect = !!opts?.autoselect;
     const flags = game.flags || {};
     const doSort = flags.sortpack !== false;
     // C: sortflags — sortloot 'l'/'f' + !USE_INVLET → SORTLOOT_LOOT;
     // sortpack → SORTLOOT_PACK; FEEL_COCKATRICE → SORTLOOT_PETRIFY.
+    // C query_objlist gates PETRIFY on qflags & FEEL_COCKATRICE, and C
+    // pickup.c:774-776 sets FEEL_COCKATRICE only on the PICK_ANY arm
+    // (the count-N PICK_ONE arm at :761-772 omits it) → gate on PICK_ANY.
     // Floor pile is a nexthere chain.
     const sortlootOpt = flags.sortloot ?? 'l';
-    let sortflags = SORTLOOT_PETRIFY;
+    let sortflags = (how === PICK_ANY) ? SORTLOOT_PETRIFY : 0;
     if (sortlootOpt === 'l' || sortlootOpt === 'f') sortflags |= SORTLOOT_LOOT;
     if (doSort) sortflags |= SORTLOOT_PACK;
 
     const allowSet = new Set(objList);
     const allow = (o) => allowSet.has(o) && (!extraAllow || extraAllow(o));
-    const head = objList[0] || null;
-    const ranked = head ? sortloot(head, sortflags, true, allow) : [];
+    /* C query_objlist `:1051–1077` — count allowed before any menu; n == 0
+     * shows no menu (floor never sets SIGNAL_NOMENU); AUTOSELECT_SINGLE
+     * with one allowed item picks it unseen (petrify check is menu-build
+     * only, like C). sortloot takes the pile Array so floor (nexthere)
+     * and engulfer-minvent (nobj) piles both resolve. */
+    let n = 0;
+    let last = null;
+    for (const o of objList) {
+        if (o && allow(o)) {
+            last = o;
+            n++;
+        }
+    }
+    if (n === 0) return [];
+    if (n === 1 && autoselect && last) return [last];
+    const ranked = sortloot(objList, sortflags, true, allow);
 
     const items = [];
     let nextLet = 'a'.charCodeAt(0);
@@ -1367,7 +1419,9 @@ async function query_objlist_pickup(objList, extraAllow = null) {
     for (const { obj } of ranked) {
         // C query_objlist `:1111–1116` — FEEL_COCKATRICE CORPSE will_feel
         // destroys the menu and reverts to look_here(0, LOOKHERE_NOFLAGS).
-        if ((obj.otyp | 0) === CORPSE && will_feel_cockatrice(obj, false)) {
+        // Gated on qflags & FEEL_COCKATRICE, which C pickup.c:774-776 sets
+        // only on the PICK_ANY arm (count-N PICK_ONE at :761-772 omits it).
+        if (how === PICK_ANY && (obj.otyp | 0) === CORPSE && will_feel_cockatrice(obj, false)) {
             await look_here(0, LOOKHERE_NOFLAGS);
             return [];
         }
@@ -1386,7 +1440,7 @@ async function query_objlist_pickup(objList, extraAllow = null) {
 
     for (;;) {
         const entries = [
-            { text: 'Pick up what?', attr: ATR_INVERSE },
+            { text: prompt, attr: ATR_INVERSE },
             { text: '', attr: 0 },
         ];
         if (doSort) {
@@ -1426,6 +1480,15 @@ async function query_objlist_pickup(objList, extraAllow = null) {
             return items.filter((it) => it.selected).map((it) => it.obj);
         }
         const ch = String.fromCharCode(key);
+        const hit = items.find((it) => it.letch === ch);
+        /* C select_menu PICK_ONE ends on the first selection; group
+         * invert/select keys are PICK_ANY-only. */
+        if (how === PICK_ONE) {
+            if (hit) return [hit.obj];
+            if (key === 27) return [];
+            // Return with no letter, or any other key → re-prompt
+            continue;
+        }
         // C: wintty.c MENU_INVERT_ALL / SELECT_ALL / UNSELECT_ALL
         if (ch === MENU_INVERT_ALL) {
             for (const it of items) it.selected = !it.selected;
@@ -1439,7 +1502,6 @@ async function query_objlist_pickup(objList, extraAllow = null) {
             for (const it of items) it.selected = false;
             continue;
         }
-        const hit = items.find((it) => it.letch === ch);
         if (hit) hit.selected = !hit.selected;
         // invalid → re-prompt
     }
@@ -1550,13 +1612,15 @@ function autopick(olist, followNobj) {
  * `flags.pickup` is off (D-0928 #1127); `autopick()` (costly once-per-op,
  * thrown/stolen override, dropped/exploding reject, pickup_types,
  * exceptions; D-0368) then the menu_pickup loop with count = quan;
- * manual `,` AUTOSELECT_SINGLE / multi query_objlist PICK_ANY (D-0365);
+ * floor pile vs engulfer minvent via C FOLLOW (BY_NEXTHERE vs nobj);
+ * manual `,` AUTOSELECT_SINGLE / multi query_objlist PICK_ANY with
+ * all_but_uchain (D-0365); count-N "Pick %d of what?" PICK_ONE with
+ * n_or_more + force-to-N (val_for_n_or_more);
  * shared tail hides_under → hideunder, n_picked → newsym_force,
  * autopickup → check_here(n_picked>0) (D-0387).
  * MENU_TRADITIONAL && !menu_requested && ct>=2: There + query_classes
  * then yn/pickup_object (D-1620). 'm' → query_objlist_pickup.
- * Deferred: full is_pool, engulfer minvent chain (objchain_p/traverse_how
- * stay floor-only), count-N PICK_ONE/n_or_more menu, safe_qbuf truncation.
+ * Deferred: none in this body — safe_qbuf truncation shipped D-1654.
  */
 export async function pickup(what) {
     const autopickup = what > 0;
@@ -1580,10 +1644,12 @@ export async function pickup(what) {
     if (!u.uswallow) {
         // C: autopickup && (nopick || !OBJ_AT || pool || lava)
         if (autopickup) {
-            const loc = game.level?.at(u.ux, u.uy);
-            const typ = loc?.typ;
-            const poolish = IS_POOL(typ) && !u.Underwater;
-            const lavaish = IS_LAVA(typ);
+            /* C pickup.c:700-706 — dbridge.c predicates (live is_pool /
+             * is_lava, D-1077/D-1090), not the IS_POOL/IS_LAVA macro range:
+             * MOAT/WATER/is_moat count as pool, DRAWBRIDGE_UP only over
+             * moat (pool) or lava. */
+            const poolish = is_pool(u.ux, u.uy) && !u.Underwater;
+            const lavaish = is_lava(u.ux, u.uy);
             if (game.context?.nopick || !objects_at(u.ux, u.uy)
                 || poolish || lavaish) {
                 if (game.flags?.mention_decor) await describe_decor();
@@ -1647,16 +1713,23 @@ export async function pickup(what) {
     let n_tried = 0;
     let n_picked = 0;
     try {
+        /* C pickup.c:741-747 — floor pile via nexthere (BY_NEXTHERE) or
+         * engulfer minvent via nobj (traverse_how 0, C FOLLOW). Manual `,`
+         * while swallowed never reaches here (dopickup → loot_mon), but
+         * autopickup pickup(1) can arrive swallowed. */
+        const followNobj = !!u.uswallow;
+        const next = (o) => (followNobj ? o.nobj : o.nexthere);
+        const chainHead = followNobj
+            ? (u.ustuck?.minvent ?? null)
+            : objects_at(u.ux, u.uy);
         const objList = [];
-        for (let obj = objects_at(u.ux, u.uy); obj; obj = obj.nexthere) {
-            objList.push(obj);
-        }
+        for (let obj = chainHead; obj; obj = next(obj)) objList.push(obj);
         const ct = objList.length;
 
         if (autopickup) {
-            /* C pickup.c:750-752 + menu_pickup :772-784 — autopick fills
+            /* C pickup.c:750-755 + menu_pickup :779-791 — autopick fills
              * pick_list with count = quan; the loop breaks on res < 0. */
-            const ap = autopick(objList[0] || null, false);
+            const ap = autopick(objList[0] || null, followNobj);
             if (ap.n > 0) reset_justpicked(game.invent);
             n_tried = ap.n;
             for (const pi of ap.pick_list) {
@@ -1664,39 +1737,54 @@ export async function pickup(what) {
                 if (res < 0) break;
                 n_picked += res;
             }
-        } else if (ct === 1) {
-            /* C menu AUTOSELECT_SINGLE / traditional ct==1 pick the lone
-             * object without a prompt; traditional ct==1 && count takes
-             * min(quan, count). n_tried = 1 even when res == 0 (tried). */
-            const first = objList[0];
-            const lcount = count > 0
-                ? Math.min(first.quan || 1, count)
-                : 0;
-            reset_justpicked(game.invent);
-            n_tried = 1;
-            const res = await pickup_object(first, lcount, false);
-            if (res >= 0) n_picked += res;
-        } else if (ct > 1) {
+        } else {
             // C: flags.menu_style != MENU_TRADITIONAL || iflags.menu_requested
             const style = game.flags?.menu_style ?? MENU_FULL;
             if (style === MENU_TRADITIONAL && !game.iflags?.menu_requested) {
                 const tr = await pickup_traditional_floor(
-                    objList[0] || null, count);
+                    objList[0] || null, count, followNobj);
                 n_tried = tr.tried;
                 n_picked = tr.picked;
-            } else {
-                /* C: query_objlist("Pick up what?", …, PICK_ANY) then the
-                 * menu_pickup loop; n_tried = n (selected), not results. */
-                const pickList = await query_objlist_pickup(objList);
+            } else if (count > 0) {
+                /* C pickup.c:761-772 — "Pick N of what?" PICK_ONE with
+                 * n_or_more (AUTOSELECT_SINGLE still applies, so one
+                 * qualifying pile picks unseen); every pick_list count is
+                 * forced to N for the menu_pickup loop. A short pile
+                 * (quan < N filtered) picks nothing at all. */
+                val_for_n_or_more = count;
+                let one = [];
+                try {
+                    one = await query_objlist_pickup(objList, n_or_more, {
+                        how: PICK_ONE,
+                        prompt: `Pick ${count} of what?`,
+                        autoselect: true,
+                    });
+                } finally {
+                    val_for_n_or_more = 0;
+                }
+                if (one.length) {
+                    reset_justpicked(game.invent);
+                    n_tried = one.length;
+                    const res = await pickup_object(one[0], count, false);
+                    if (res >= 0) n_picked += res;
+                }
+            } else if (ct >= 1) {
+                /* C pickup.c:761 + 774-776 — query_objlist PICK_ANY with
+                 * all_but_uchain; AUTOSELECT_SINGLE picks a lone allowed
+                 * pile (or the iron ball beside its chain) unseen, and a
+                 * uchain-only pile selects nothing (n == 0, no menu, no
+                 * reset). Then the menu_pickup loop, n_tried = selected. */
+                const pickList = await query_objlist_pickup(
+                    objList, all_but_uchain, { autoselect: true });
                 if (pickList.length) {
                     reset_justpicked(game.invent);
                     n_tried = pickList.length;
                     for (const obj of pickList) {
-                        if (!obj || obj.where !== OBJ_FLOOR) continue;
-                        const lcount = count > 0
-                            ? Math.min(obj.quan || 1, count)
-                            : 0;
-                        const res = await pickup_object(obj, lcount, false);
+                        if (!obj) continue;
+                        if (followNobj
+                            ? obj.where !== OBJ_MINVENT
+                            : obj.where !== OBJ_FLOOR) continue;
+                        const res = await pickup_object(obj, 0, false);
                         if (res < 0) break;
                         n_picked += res;
                     }
@@ -3388,15 +3476,17 @@ async function query_classes(action, objs, here, menu_on_demand) {
  * existing sortpack. Returns {tried, picked} for the pickup() shared tail
  * (C n_tried / n_picked: ct==1&&count only counts picked when res > 0).
  */
-async function pickup_traditional_floor(head, count) {
+async function pickup_traditional_floor(head, count, followNobj = false) {
     let n_tried = 0;
     let n_picked = 0;
     let all_of_a_type = true;
     let selective = false;
     let oclasses = [];
+    /* C FOLLOW: floor piles walk nexthere, engulfer minvent walks nobj. */
+    const next = (o) => (followNobj ? o.nobj : o.nexthere);
 
     let ct = 0;
-    for (let o = head; o; o = o.nexthere) ct++;
+    for (let o = head; o; o = next(o)) ct++;
 
     if (ct === 1 && count) {
         const obj = head;
@@ -3412,18 +3502,21 @@ async function pickup_traditional_floor(head, count) {
             `There are ${ct <= 10 ? 'several' : 'many'} objects here.`,
         );
         const via_menu = { n: 0 };
-        const q = await query_classes('pick up', head, true, via_menu);
+        const q = await query_classes('pick up', head, !followNobj, via_menu);
         if (!q.ok) {
             if (!via_menu.n) return { tried: 0, picked: 0 };
             const pile = [];
-            for (let o = head; o; o = o.nexthere) pile.push(o);
+            for (let o = head; o; o = next(o)) pile.push(o);
             const extraAllow = via_menu.n === -2 ? null : allow_category;
             const pickList = await query_objlist_pickup(pile, extraAllow);
             if (!pickList.length) return { tried: 0, picked: 0 };
             reset_justpicked(game.invent);
             n_tried = pickList.length;
             for (const obj of pickList) {
-                if (!obj || obj.where !== OBJ_FLOOR) continue;
+                if (!obj) continue;
+                if (followNobj
+                    ? obj.where !== OBJ_MINVENT
+                    : obj.where !== OBJ_FLOOR) continue;
                 const res = await pickup_object(obj, 0, false);
                 if (res < 0) break;
                 n_picked += res;
@@ -3439,7 +3532,7 @@ async function pickup_traditional_floor(head, count) {
         || menu_class_present('C') || menu_class_present('X');
 
     for (let obj = head; obj; ) {
-        const obj2 = obj.nexthere;
+        const obj2 = next(obj);
         if (bycat ? !allow_category(obj)
             : (!selective && oclasses.length
                 && !oclasses.includes(obj.oclass))) {

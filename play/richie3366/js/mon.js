@@ -5,7 +5,7 @@
 
 import { game } from './gstate.js';
 import { rn2, rnd, d } from './rng.js';
-import { dochugw, m_everyturn_effect, monflee } from './monmove.js';
+import { dochugw, m_everyturn_effect, monflee, can_hide_under_obj } from './monmove.js';
 import {
     COLNO, ROWNO, IS_OBSTRUCTED, IS_DOOR, IS_TREE, D_CLOSED, D_LOCKED, D_BROKEN,
     ALLOW_ROCK, ALLOW_DIG, Is_rogue_level, NOTONL, ALLOW_ALL, ALLOW_BARS,
@@ -78,7 +78,7 @@ import { adjalign } from './attrib.js';
 import { SetVoice } from './sndprocs.js';
 import { maybe_gasp, growl } from './sounds.js';
 import { vtense, doname, distant_name } from './objnam.js';
-import { obj_resists } from './dogmove.js';
+import { obj_resists, cursed_object_at } from './dogmove.js';
 import { touch_artifact } from './artifact.js';
 import { experience, more_experienced, newexplevel } from './exper.js';
 import { hastrack } from './track.js';
@@ -3114,8 +3114,8 @@ export function restrap(mtmp) {
  * Used by hide_monst, teleds(&youmonst) (D-1131), and
  * hack.js hero_hideunder_after_move (D-1245). monmove.js keeps
  * a parallel local for postmov.
- * Named omissions: You_see pline; pet cursed_object_at; cockatrice skip;
- * can_hide_under_obj filter.
+ * Named omissions: You_see "%s %s under %s" pline + set_msg_xy /
+ * PLNMSG_HIDE_UNDER / last_hider (async boundary; both locals stay silent).
  */
 export function hideunder(mtmp) {
     if (!mtmp?.data) return false;
@@ -3137,9 +3137,25 @@ export function hideunder(mtmp) {
             && (!(u.Underwater) || !couldsee(x, y)));
     } else if (hides_under(mtmp.data)) {
         const otmp = objects_at(x, y);
-        /* C: !is_pool_or_lava — drawbridge-under via is_pool/is_lava */
-        if (otmp && !is_pool(x, y) && !is_lava(x, y)) {
-            undetected = true;
+        /* C: most things can be hidden under (can_hide_under_obj coins);
+           pets refuse cursed piles; no hiding under pool/lava */
+        if (otmp && can_hide_under_obj(otmp)
+            && (!mtmp.mtame || !cursed_object_at(x, y))
+            && !is_pool(x, y) && !is_lava(x, y)) {
+            /* C: most monsters won't hide under a cockatrice corpse but
+               they can hide under a pile containing more than just such
+               corpses; hero arm reads Stone_resistance */
+            let o = otmp;
+            const stoneproof = is_u
+                ? !!(u.Stone_resistance || u.HStone_resistance
+                    || u.EStone_resistance)
+                : !!resists_ston(mtmp);
+            if (!stoneproof) {
+                while (o && (o.otyp | 0) === CORPSE
+                    && touch_petrifies(mons(o.corpsenm)))
+                    o = o.nexthere;
+            }
+            if (o) undetected = true;
         }
     }
 

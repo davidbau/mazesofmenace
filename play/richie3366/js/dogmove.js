@@ -237,7 +237,7 @@ function can_reach_location(mon, mx, my, fx, fy) {
 }
 
 // C ref: dogmove.c cursed_object_at()
-function cursed_object_at(x, y) {
+export function cursed_object_at(x, y) {
     for (let otmp = objects_at(x, y); otmp; otmp = otmp.nexthere) {
         if (otmp.cursed) return true;
     }

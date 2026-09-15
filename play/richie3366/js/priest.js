@@ -7,13 +7,13 @@
 import { game } from './gstate.js';
 import { rn2, rn1, d } from './rng.js';
 import {
-    EPRI, EMIN, TEMPLE, ROOMOFFSET, SPINE, MM_NOMSG, IS_ALTAR, AM_SHRINE,
+    EPRI, EMIN, TEMPLE, ROOMOFFSET, SPINE, MM_NOMSG, IS_ALTAR, AM_SHRINE, AM_MASK,
     Amask2align, ACH_TMPL, In_endgame,
     CLAIRVOYANT, PROTECTION, FROMOUTSIDE, INTRINSIC, LL_CONDUCT,
 } from './const.js';
 import { pline, You_feel, canseemon, canspotmon, verbalize, newsym, Hallucination } from './display.js';
-import { makemon, set_malign } from './makemon.js';
-import { mongone } from './mon.js';
+import { makemon, set_malign, newemin } from './makemon.js';
+import { mongone, wakeup, setmangry } from './mon.js';
 import { mons, is_rider } from './monsters.js';
 import { monsterNames } from './generated/monsters_data.js';
 import { in_rooms, nomul } from './hack.js';
@@ -155,6 +155,56 @@ export function findpriest(roomno) {
         if (histemple_at(mtmp, mtmp.mx | 0, mtmp.my | 0)) return mtmp;
     }
     return null;
+}
+
+/**
+ * C ref: priest.c free_epri `:28–37` — release priest shrine memory.
+ * GC frees the struct; JS nulls the slot. ispriest cleared (C sets it
+ * again even though the caller already did).
+ * @param {object} mtmp
+ */
+export function free_epri(mtmp) {
+    if (mtmp?.mextra && EPRI(mtmp)) {
+        mtmp.mextra.epri = null;
+    }
+    if (mtmp) mtmp.ispriest = 0;
+}
+
+/**
+ * C ref: priest.c angry_priest `:876–911` — anger the priest of the
+ * hero's current temple (wake + hostile), and when its shrine altar is
+ * gone or converted, release it as a roaming minion keeping its old
+ * shrine alignment (non-renegade).
+ * Callers: dig.c pickaxe altar dig; pray.c conversion glow,
+ * sacrifice_your_race stain/vanish arms.
+ */
+export async function angry_priest() {
+    const priest = findpriest(temple_occupied(game.u?.urooms));
+    if (!priest) return;
+    const eprip = EPRI(priest);
+
+    await wakeup(priest, false);
+    await setmangry(priest, false);
+    /*
+     * If the altar has been destroyed or converted, let the
+     * priest run loose.
+     * (When it's just a conversion and there happens to be
+     * a fresh corpse nearby, the priest ought to have an
+     * opportunity to try converting it back; maybe someday...)
+     */
+    const lev = game.level?.at(eprip?.shrpos?.x | 0, eprip?.shrpos?.y | 0);
+    if (!lev || !IS_ALTAR(lev.typ)
+        || (Amask2align((lev.altarmask | 0) & AM_MASK) | 0) !== (eprip?.shralign | 0)) {
+        if (!EMIN(priest)) newemin(priest);
+        priest.ispriest = 0; /* now a roaming minion */
+        priest.isminion = 1;
+        EMIN(priest).min_align = eprip?.shralign;
+        EMIN(priest).renegade = false;
+        /* discard priest's memory of his former shrine;
+           if we ever implement the re-conversion mentioned
+           above, this will need to be removed */
+        free_epri(priest);
+    }
 }
 
 /**
