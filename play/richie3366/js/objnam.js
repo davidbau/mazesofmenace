@@ -649,7 +649,8 @@ function pretty_base(obj) {
     // if (typ == TIN && known) tin_details(...). Unidentified → bare "tin".
     if (n === 'TIN') return obj.known ? tin_details(obj) : 'tin';
     // C: FOOD_CLASS globby — "%s %s" size + OBJ_NAME (owt thresholds).
-    // Named omit: iflags.partly_eaten_hack (shrink_glob Yname2).
+    // C objnam.c `:775–781` partly_eaten_hack: shrink_glob() wants xname()
+    // (via Yname2) to add "partly eaten" that doname() would otherwise own.
     if (obj.globby) {
         const actualn = objectNameStrs[obj.otyp]
             || (n ? n.toLowerCase().replace(/_/g, ' ') : 'glob');
@@ -658,7 +659,8 @@ function pretty_base(obj) {
             : owt <= 300 ? 'medium'
                 : owt <= 500 ? 'large'
                     : 'very large';
-        return `${size} ${actualn}`;
+        const partly = (game.iflags?.partly_eaten_hack && obj.oeaten) ? 'partly eaten ' : '';
+        return `${partly}${size} ${actualn}`;
     }
     // C: corpse → "<monster> corpse" when corpsenm known
     if (n === 'CORPSE' && obj.corpsenm != null && obj.corpsenm >= 0)

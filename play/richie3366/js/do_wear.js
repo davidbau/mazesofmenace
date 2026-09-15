@@ -77,6 +77,7 @@ import { artifact_light, end_burn } from './timeout.js';
 import { rn2, rnd } from './rng.js';
 import { set_mimic_blocking } from './vision.js';
 import { restartcham, rescham } from './mon.js';
+import { gulp_blnd_check } from './mhitu.js';
 
 const FEDORA = objectNames.indexOf('FEDORA');
 const HELMET = objectNames.indexOf('HELMET');
@@ -1364,7 +1365,7 @@ export async function Blindf_on(otmp) {
 
 /**
  * C ref: do_wear.c Blindf_off — clear eyewear + see-again / still-blind.
- * Named omissions: gulp_blnd_check. Punished set_bc is D-1769.
+ * Punished set_bc is D-1769; swallowed AD_BLND re-gulp is gulp_blnd_check.
  */
 export async function Blindf_off(otmp) {
     const u = game.u || (game.u = {});
@@ -1373,9 +1374,16 @@ export async function Blindf_off(otmp) {
     // Null to skip the usual off message (polyself.c:1297).
     const nooffmsg = !otmp;
     if (!otmp) otmp = u.ublindf;
-    if (!otmp) return;
-
-    setworn(null, W_TOOL);
+    // C do_wear.c:1503-1506 — defensive; every C caller guards non-null.
+    if (!otmp) {
+        await impossible('Blindf_off without eyewear?');
+        return;
+    }
+    // C do_wear.c:1507 — drop a pending 'A' take-off of the eyewear slot.
+    if (game.context?.takeoff) {
+        game.context.takeoff.mask = (game.context.takeoff.mask | 0) & ~W_TOOL;
+    }
+    setworn(null, otmp.owornmask);
     if (!nooffmsg) await off_msg(otmp);
 
     let changed = false;
@@ -1391,8 +1399,11 @@ export async function Blindf_off(otmp) {
             if (u.uball) set_bc(0);
         }
     } else if (was_blind) {
-        changed = true;
-        await pline('You can see again.');
+        // C do_wear.c:1526 — swallowed engulf-blinder re-gulps instead.
+        if (!(await gulp_blnd_check())) {
+            changed = true;
+            await pline('You can see again.');
+        }
     }
     if (changed) {
         await toggle_blindness();

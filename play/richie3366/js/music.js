@@ -13,12 +13,13 @@
 // flooreffects full (boulder→pit thin); maketrap shop-hole named
 // (D-1280 PIT/HOLE set_levltyp + D-1296 DRAWBRIDGE_UP ice in trap.js);
 // Soundeffect; count_level_features on
-// fountain/sink morph; sleep_monst defended(AD_SLEE)/shieldeff;
+// fountain/sink morph; sleep_monst_music defended(AD_SLEE)/shieldeff live
+// (trap.js sleep_monst keeps its own named omit);
 // tamedog givemsg pline; set_entity crush on open/close.
 
 import { game } from './gstate.js';
 import { rn2, rnd, rn1, rnl, d } from './rng.js';
-import { pline, newsym, canseemon, Norep, You_feel } from './display.js';
+import { pline, newsym, canseemon, Norep, You_feel, shieldeff } from './display.js';
 import { yn_function, getlin } from './getline.js';
 import { objectNames, TOOL_CLASS, objects } from './objects.js';
 import {
@@ -62,7 +63,7 @@ import {
     open_drawbridge, close_drawbridge,
 } from './dbridge.js';
 import { record_achievement } from './insight.js';
-import { can_blow } from './mondata.js';
+import { can_blow, defended } from './mondata.js';
 import { Soundeffect } from './sndprocs.js';
 import { se_tumbler_click, se_gear_turn, se_thump, se_scream } from './generated/seffects_data.js';
 
@@ -79,9 +80,10 @@ const DRUM_OF_EARTHQUAKE = objectNames.indexOf('DRUM_OF_EARTHQUAKE');
 const BOULDER = objectNames.indexOf('BOULDER');
 const PM_GUARD = monsterNames.indexOf('PM_GUARD');
 
-/** C monattk.h — AD_FIRE/AD_COLD for horn buzz. */
+/** C monattk.h — AD_FIRE/AD_COLD for horn buzz; AD_SLEE for sleep defense. */
 const AD_FIRE = 2;
 const AD_COLD = 3;
+const AD_SLEE = 4;
 
 const PLAY_NORMAL = 0x00;
 const PLAY_STUNNED = 0x01;
@@ -296,9 +298,13 @@ function a_monnam(mtmp) {
 
 /**
  * C ref: mhitm.c sleep_monst — music TOOL_CLASS path (D-0974).
- * defended(AD_SLEE)/shieldeff deferred.
+ * C order: resists_sleep || defended(AD_SLEE) || (how>=0 && resist)
+ * → shieldeff + return 0. defended() is RNG-free so inserting it moves
+ * no RNG draw; shieldeff is display-only. resists_sleep ≡ MR_SLEEP bit
+ * (SLEEP_RES rsstmask is 1<<(3-1)); only SLEEP_RES oc_oprop items are
+ * orange dragon scales/mail, also covered by defended()'s W_ARM walk.
  */
-function sleep_monst_music(mon, amt, how) {
+async function sleep_monst_music(mon, amt, how) {
     if (!mon) return 0;
     if (how >= 0 && !mon.msleeping && !(mon.mfrozen | 0)
         && mon.data?.mlet === 'S_MIMIC'
@@ -309,7 +315,9 @@ function sleep_monst_music(mon, amt, how) {
     const sleepBits = (mon.data?.mresists | 0)
         | (mon.mextrinsics | 0) | (mon.mintrinsics | 0);
     if ((sleepBits & MR_SLEEP)
+        || defended(mon, AD_SLEE)
         || (how >= 0 && resist(mon, how, 0, NOTELL))) {
+        await shieldeff(mon.mx, mon.my);
         return 0;
     }
     if (mon.mcanmove) {
@@ -345,7 +353,7 @@ async function put_monsters_to_sleep(distance) {
     for (const mtmp of game.fmon || []) {
         if (!mtmp || (mtmp.mhp | 0) <= 0) continue;
         if (mdistu(mtmp) < distance
-            && sleep_monst_music(mtmp, d(10, 10), TOOL_CLASS)) {
+            && await sleep_monst_music(mtmp, d(10, 10), TOOL_CLASS)) {
             mtmp.msleeping = 1;
             await slept_monst(mtmp);
         }

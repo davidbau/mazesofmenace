@@ -77,7 +77,7 @@ import {
     A_STR, A_INT, A_WIS, A_DEX, A_CON, A_CHA, acurr, adjattrib, exercise,
     poisoned, Fast, adjalign, minuhpmax,
 } from './attrib.js';
-import { xkilled, killed, Hate_silver, dynamic_multi_reason } from './uhitm.js';
+import { xkilled, killed, Hate_silver, dynamic_multi_reason, attacktype_fordmg, can_blnd } from './uhitm.js';
 import {
     m_seenres, cvt_adtyp_to_mseenres, monstseesu, monstunseesu, m_canseeu,
     mhis, on_fire,
@@ -1769,6 +1769,28 @@ function gulpmu_can_blnd(mtmp, mattk) {
         break;
     }
     return true;
+}
+
+/**
+ * C ref: mhitu.c gulp_blnd_check `:1273–1285` — swallowed AD_BLND re-gulp.
+ * Blindf_off (do_wear), wipeoff (do) and use_towel (apply) call this when
+ * outer blindness clears: a hero still swallowed by an engulf-blinder
+ * re-gulps instead of taking the see-again path.
+ * @returns {Promise<boolean>} TRUE when gulpmu re-applied (caller skips see-again)
+ */
+export async function gulp_blnd_check() {
+    const u = game.u || {};
+    // C youprop.h:92 — Blinded is HBlinded-not-blocked (no EBlinded arm).
+    const blinded = !!((u.HBlinded | 0) && !(u.BBlinded | 0));
+    let mattk = null;
+    if (!blinded && (u.uswallow | 0)
+        && (mattk = attacktype_fordmg(u.ustuck?.data, AT_ENGL, AD_BLND))
+        && can_blnd(u.ustuck, game.youmonst, mattk.aatyp, null)) {
+        ++u.uswldtim; /* C: compensate for gulpmu change */
+        await gulpmu(u.ustuck, mattk);
+        return true;
+    }
+    return false;
 }
 
 /**

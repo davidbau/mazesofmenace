@@ -133,7 +133,7 @@ import { reset_pick } from './lock.js';
 import { Unaware } from './eat.js';
 import { addinv_nomerge } from './u_init.js';
 import {
-    set_artifact_intrinsic, Sting_effects,
+    set_artifact_intrinsic, revoke_invoked_property, Sting_effects,
 } from './artifact.js';
 import { more_experienced, newexplevel } from './exper.js';
 import {
@@ -142,7 +142,7 @@ import {
 import { dismount_steed, place_monster } from './steed.js';
 import { place_wsegs } from './worm.js';
 import { set_residency } from './shk.js';
-import { set_ustuck } from './mhitu.js';
+import { set_ustuck, gulp_blnd_check } from './mhitu.js';
 import { onquest, ok_to_quest } from './quest.js';
 import { resurrect } from './wizard.js';
 import { create_mplayers } from './mplayer.js';
@@ -2303,6 +2303,10 @@ export async function dropy(obj) {
 export async function dropx(obj) {
     if (!obj) return;
     freeinv_drop(obj);
+    // C invent.c:1383 + artifact.c:880–885 — W_ART off while the invoked
+    // toggle is on re-invokes to turn it off (async half; sync bits ran in
+    // freeinv_core, in C order before ship_object/doaltarobj).
+    if (obj.oartifact) await revoke_invoked_property(obj);
     const u = game.u || {};
     if (!u.uswallow) {
         if (await ship_object(obj, u.ux | 0, u.uy | 0, false)) return;
@@ -2824,11 +2828,6 @@ export async function make_blinded(xtime, talk) {
     }
 }
 
-/** C mhitu.c gulp_blnd_check — swallowed AD_BLND re-apply deferred. */
-function gulp_blnd_check() {
-    return false;
-}
-
 /**
  * C ref: do.c wipeoff — occupation tick; clear up to 4 cream/blind.
  * @returns {number} 1 = still busy, 0 = done
@@ -2845,7 +2844,7 @@ async function wipeoff() {
     if (!(u.HBlinded | 0)) {
         await pline("You've got the glop off.");
         u.ucreamed = 0;
-        if (!gulp_blnd_check()) {
+        if (!(await gulp_blnd_check())) {
             set_itimeout_HBlinded(1);
             await make_blinded(0, true);
         }
@@ -2860,7 +2859,7 @@ async function wipeoff() {
 
 /**
  * C ref: do.c dowipe — #wipe face cream / BlindedTimeout.
- * Named omissions: body_part poly face noun; gulp_blnd_check swallow arm.
+ * Named omissions: body_part poly face noun.
  * @returns {number} ECMD_TIME
  */
 export async function dowipe() {

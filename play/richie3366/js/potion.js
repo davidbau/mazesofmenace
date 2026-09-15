@@ -124,7 +124,7 @@ import {
     wash_hands, floating_above, mongrantswish,
 } from './fountain.js';
 import {
-    IS_FOUNTAIN, IS_SINK, IS_AIR, IS_ROOM, IS_WALL, IS_DOOR, SDOOR,
+    IS_FOUNTAIN, IS_SINK,
     ECMD_TIME, ECMD_CANCEL, ECMD_OK, ECMD_FAIL, HAND, BOLT_LIM, nothing_happens,
     nothing_seems_to_happen,
     OBJ_FREE,
@@ -177,7 +177,7 @@ import {
 import { objdescr_is } from './apply.js';
 import { remove_worn_item } from './steal.js';
 import { newuhs, fix_petrification, Unaware } from './eat.js';
-import { heal_legs, water_damage, float_up, self_invis_message } from './trap.js';
+import { heal_legs, water_damage, float_up, self_invis_message, ceiling } from './trap.js';
 import { aggravate } from './wizard.js';
 import {
     delayed_killer, find_delayed_killer, dealloc_killer,
@@ -584,18 +584,7 @@ function has_ceiling(lev) {
     return true;
 }
 
-/**
- * C dungeon.c ceiling — room/air labels for cursed levitation pline.
- * Named omit: vault/temple/shop in_rooms; water/fire/quest/Underwater.
- */
-function ceiling_at(x, y) {
-    const typ = game.level?.at?.(x, y)?.typ ?? 0;
-    if (IS_AIR(typ)) return 'sky';
-    if (IS_ROOM(typ) || IS_WALL(typ) || IS_DOOR(typ) || typ === SDOOR) {
-        return 'ceiling';
-    }
-    return 'rock cavern';
-}
+/* C dungeon.c ceiling — imported live from trap.js; do not re-clone here. */
 
 /** Sync flat HLevitation with uprops[LEVITATION].intrinsic. */
 function set_HLevitation(val) {
@@ -1260,8 +1249,8 @@ async function peffect_monster_detection(otmp) {
  * doup or has_ceiling rnd(!uarmh?10:!hard_helmet?6:3) losehp Maybe_Half_Phys
  * colliding with the ceiling. Blessed: incr rn1(50,250) + I_SPECIAL.
  * Uncursed: incr rn1(140,10). Levitation+sink → spoteffects(FALSE).
- * Always float_vs_flight. Cursed potion/spell upstairs / ceiling named
- * live; vault/temple/shop ceiling labels still named.
+ * Always float_vs_flight. Cursed upstairs / ceiling live via trap.js
+ * ceiling (full C arms, D-2379).
  */
 async function peffect_levitation(otmp) {
     const u = game.u || (game.u = {});
@@ -1290,7 +1279,7 @@ async function peffect_levitation(otmp) {
                     : !hard_helmet(u.uarmh) ? 6 : 3);
                 const { body_part } = await import('./polyself.js');
                 await pline(
-                    `You hit your ${body_part(HEAD)} on the ${ceiling_at(u.ux | 0, u.uy | 0)}.`,
+                    `You hit your ${body_part(HEAD)} on the ${ceiling(u.ux | 0, u.uy | 0)}.`,
                 );
                 losehp(
                     maybe_half_phys(dmg),
@@ -1433,8 +1422,9 @@ async function peffect_booze(otmp) {
 
 /**
  * C ref: potion.c peffect_water — plain / holy / unholy water.
- * Lycanthropy cure / force-change arms (D-1004). make_sick body deferred
- * (TIMEOUT clear only). mon_hates_blessings via is_undead|is_demon|vamp.
+ * Lycanthropy cure / force-change arms (D-1004). Blessed cure calls live
+ * make_sick(0, NULL, TRUE, SICK_ALL) (D-2377; was TIMEOUT-clear-only u.Sick=0).
+ * mon_hates_blessings via is_undead|is_demon|vamp.
  */
 async function peffect_water(otmp) {
     const u = game.u || (game.u = {});
@@ -1474,8 +1464,8 @@ async function peffect_water(otmp) {
         }
     } else if (otmp.blessed) {
         await You_feel('full of awe.');
-        // C: make_sick(0L, NULL, TRUE, SICK_ALL) — clear Sick TIMEOUT
-        u.Sick = 0;
+        // C potion.c:750: make_sick(0L, NULL, TRUE, SICK_ALL)
+        await make_sick(0, null, true, SICK_ALL);
         exercise(A_WIS, true);
         exercise(A_CON, true);
         if (ismnum(u.ulycn)) await you_unwere(true); // "Purified"
@@ -1708,8 +1698,7 @@ function assign_level(dest, src) {
  * Uncursed/blessed: pluslvl(FALSE); blessed u.uexp = rndexp(TRUE)
  * (middle of the new level's XP band, not the low point).
  * potionhit D-1472 / potionbreathe D-1477 / dipsink POT_GAIN_LEVEL still named.
- * ceiling() vault/temple/shop/water/fire/quest/Underwater still named
- * (ceiling_at).
+ * ceiling() full arms live via trap.js import (D-2379).
  */
 async function peffect_gain_level(otmp) {
     const u = game.u || (game.u = {});
@@ -1734,7 +1723,7 @@ async function peffect_gain_level(otmp) {
                 }
             }
             await pline(
-                `You rise up, through the ${ceiling_at(u.ux | 0, u.uy | 0)}!`,
+                `You rise up, through the ${ceiling(u.ux | 0, u.uy | 0)}!`,
             );
             const { goto_level } = await import('./do.js');
             await goto_level(newlevel, false, false, false);

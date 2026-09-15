@@ -117,7 +117,7 @@ import {
 } from './mkobj.js';
 import { findgold, stealarm, unstolenarm } from './steal.js';
 import { munslime } from './muse.js';
-import { Monnam, mon_nam, mon_nam_too, Adjmonnam, oname, pmname, x_monnam, hliquid, YMonnam, s_suffix, free_mgivenname, a_monnam, y_monnam, some_mon_nam } from './do_name.js';
+import { Monnam, mon_nam, mon_nam_too, Adjmonnam, oname, pmname, x_monnam, hliquid, YMonnam, s_suffix, free_mgivenname, a_monnam, y_monnam, some_mon_nam, minimal_monnam } from './do_name.js';
 import { an, xname, makeplural, cxname, vtense, The, simpleonames } from './objnam.js';
 import { mon_explodes } from './explode.js';
 import { makemon, newcham, pm_to_cham, is_home_elemental, clone_mon } from './makemon.js';
@@ -3086,8 +3086,8 @@ export function shkgone(mtmp) {
  * usteed dismount. mptr is the pre-death data (mondeadsaves it before the
  * cham/were restore, `:3112`). Callers: mondead (TRUE); mongone keeps its
  * D-1149 body (FALSE arm still named).
- * Named omissions: minimal_monnam format in the already-detached
- * impossible arm (no JS port; mon_nam used).
+ * Already-detached arm uses live `minimal_monnam(mtmp, FALSE)` (D-2375).
+ * Named omissions: none here.
  */
 export async function m_detach(mtmp, mptr, due_to_death) {
     const mx = mtmp.mx, my = mtmp.my;
@@ -3124,8 +3124,8 @@ export async function m_detach(mtmp, mptr, due_to_death) {
     }
 
     if (((mtmp.mstate | 0) & MON_DETACH) !== 0) {
-        // C impossible with minimal_monnam (no JS port; mon_nam stands in).
-        await impossible(`m_detach: ${mon_nam(mtmp)} is already detached?`);
+        // C mon.c:2791-2793 — impossible with minimal_monnam(mtmp, FALSE).
+        await impossible(`m_detach: ${minimal_monnam(mtmp, false)} is already detached?`);
     } else {
         mtmp.mstate = (mtmp.mstate | 0) | MON_DETACH;
         if (game.iflags) {
@@ -3141,7 +3141,7 @@ export async function m_detach(mtmp, mptr, due_to_death) {
 // restore, mvitals, quest/mail marks, Kops respawn, logdeadmon, unmap,
 // m_detach. Dead mons stay on fmon until dmonsfree — do not splice here.
 // Named omissions: mongone's m_detach(FALSE) caller arm (D-1149 body kept);
-// minimal_monnam format inside m_detach; thiefdead stealarm arm LIVE
+// minimal_monnam inside m_detach is LIVE (D-2375); thiefdead stealarm arm LIVE
 // (D-2271; steal.js stealarm/unstolenarm); shkgone damage/has_shop arms LIVE
 // (this D; shk.js discard_damage_owned_by + sounds.js search_special);
 // xkilled-side disintegested writer + Maybe-not/vamp_rise readers

@@ -42,7 +42,7 @@ import { getdir } from './lock.js';
 import { y_n } from './getline.js';
 import { m_at, cant_drown } from './mon.js';
 import { isok, strsubst } from './hacklib.js';
-import { Monnam, mon_nam, monverbself, pmname, Mgender, y_monnam, Hallucination, hliquid, x_monnam } from './do_name.js';
+import { Monnam, mon_nam, monverbself, pmname, Mgender, y_monnam, Hallucination, hliquid, x_monnam, minimal_monnam } from './do_name.js';
 import { losehp, maybe_half_phys, finish_maybe_wail, is_pool, is_lava } from './hack.js';
 import { set_wounded_legs, heal_legs, legs_in_no_shape, sokoban_guilt, mintrap } from './trap.js';
 import { finish_meating } from './dogmove.js';
@@ -1074,11 +1074,6 @@ export async function doride() {
     return ECMD_CANCEL;
 }
 
-/** C do_name.c minimal_monnam — display name for place_monster diags. */
-function place_mon_nam(mon) {
-    return mon_plain(mon);
-}
-
 /**
  * C ref: steed.c place_monster `:897–932` — occupy
  * `svl.level.monsters[x][y]` (JS `game._level_monsters`), set mx/my,
@@ -1100,7 +1095,7 @@ export function place_monster(mon, x, y) {
     if (!isok(x, y) && (x !== 0 || y !== 0 || !mon.isgd)) {
         buf = describe_level(0);
         void impossible(
-            `trying to place ${place_mon_nam(mon)} at <${x},${y}> mstate:${(mon.mstate | 0).toString(16)} on ${buf}`,
+            `trying to place ${minimal_monnam(mon, true)} at <${x},${y}> mstate:${(mon.mstate | 0).toString(16)} on ${buf}`,
         );
         x = 0;
         y = 0;
@@ -1117,8 +1112,8 @@ export function place_monster(mon, x, y) {
     // C checks the raw grid; JS ignores stale mx/my-only leftovers.
     if (othermon && level_mon_at(x, y)) {
         buf = describe_level(0);
-        const monnm = place_mon_nam(mon);
-        const othnm = (mon !== othermon) ? place_mon_nam(othermon) : 'itself';
+        const monnm = minimal_monnam(mon, false);
+        const othnm = (mon !== othermon) ? minimal_monnam(othermon, true) : 'itself';
         void impossible(
             `placing ${monnm} over ${othnm} at <${x},${y}>, mstates:${(othermon.mstate | 0).toString(16)} ${(mon.mstate | 0).toString(16)} on ${buf}?`,
         );

@@ -16,13 +16,12 @@
 // digactualhole altar → desecrate_altar; angrygods 0–8 + default zap
 // (punish/attrcurse/rndcurse/summon_minion/god_zaps_you);
 // #offer corpse → offer_corpse (D-1678).
-// Named omissions: pleased pat_on_head cases 1-4 gift arms, cases 7/8
-// gcrownu caller wiring (gcrownu / at_your_feet live below, unwired),
-// case 6 give_spell (no JS export); case-5 SetVoice pitch;
+// Named omissions: pleased case-5 SetVoice pitch;
 // p_type -2 (Moloch laughter + wake_nearby + adjalign + exercise,
 // Inhell fall-through) / -1 (undead godvoice + rehumanize + rnd(20)
 // losehp + exercise) / pray_revive (tame-corpse/statue scan + revive /
-// animate_statue ANIMATE_SPELL); bestow_artifact /
+// animate_statue ANIMATE_SPELL); bestow_artifact live + wired in
+// offer_corpse (sacrifice gift);
 // angry_priest (priest.js, D-2344) from sacrifice_your_race +
 // offer_different_alignment_altar; offer_too_soon / offer_fake_amulet /
 // offer_real_amulet live + wired in dosacrifice (dosacrifice ECMD_TIME
@@ -42,14 +41,14 @@ import { rn2, rn1, rnl, rnz, rnd, d, rn2_on_display_rng } from './rng.js';
 import { pline, verbalize, You_feel, newsym, impossible, see_monsters, shieldeff } from './display.js';
 import { nomul, carrying, losehp, finish_maybe_wail, You_hear } from './hack.js';
 import { upstart } from './hacklib.js';
-import { weapon_type, unrestrict_weapon_skill, add_weapon_skill } from './weapon.js';
+import { weapon_type, unrestrict_weapon_skill, add_weapon_skill, P_RESTRICTED } from './weapon.js';
 import {
     ART_EXCALIBUR,
     ART_STORMBRINGER,
     ART_VORPAL_BLADE,
 } from './generated/artifacts_data.js';
 import { m_at, wake_nearby } from './mon.js';
-import { revive } from './zap.js';
+import { revive, You } from './zap.js';
 import {
     A_WIS, A_STR, A_CON, A_MAX, change_luck, adjattrib, adjalign, exercise,
     ALIGNLIM, uchangealign,
@@ -57,18 +56,18 @@ import {
 import { align_gname, align_str, xlev_to_rank, uhim, u_gname, uhis, roles } from './roles.js';
 import {
     objects_at, uncurse, peek_at_iced_corpse_age, eaten_stat, get_mtraits,
-    mksobj, bless,
+    mksobj, bless, mkobj, place_object, rnd_class,
 } from './mkobj.js';
-import { yn_function, paranoid_query } from './getline.js';
+import { yn_function, y_n, paranoid_query } from './getline.js';
 import { livelog_printf } from './pline.js';
-import { can_chant, known_spell, spe_Unknown } from './spell.js';
+import { can_chant, known_spell, spe_Unknown, spe_Fresh, spe_Forgotten, spell_skilltype, force_learn_spell } from './spell.js';
 import { couldsee } from './vision.js';
 import { monflee } from './monmove.js';
 import { set_malign, makemon } from './makemon.js';
 import { killed, xkilled } from './uhitm.js';
 import { ureflects } from './mhitu.js';
 import { aggravate } from './wizard.js';
-import { setuhpmax, losexp } from './exper.js';
+import { setuhpmax, losexp, pluslvl } from './exper.js';
 import { done } from './end.js';
 import { monstseesu, monstunseesu } from './mondata.js';
 import { mon_nam, Monnam, a_monnam, oname, s_suffix, hcolor } from './do_name.js';
@@ -76,18 +75,19 @@ import { disintegrate_arm, setworn, stuck_ring, unchanger, Amulet_off } from './
 import { summon_minion, dlord } from './minion.js';
 import {
     near_capacity, encumber_msg, feel_cockatrice, useup, useupf,
-    observe_object, update_inventory,
+    observe_object, update_inventory, makeknown,
 } from './invent.js';
 import { punish, unpunish } from './read.js';
 import { attrcurse, rndcurse } from './sit.js';
 import {
     An, an, xname, makeplural, vtense, corpse_xname,
-    ansimpleoname, simpleonames,
+    ansimpleoname, simpleonames, otense, Yobjnam2, yname,
 } from './objnam.js';
 import {
     objectNames, POT_WATER, POTION_CLASS, WEAPON_CLASS, SPBOOK_CLASS,
 } from './objects.js';
 import {
+    is_human,
     is_undead as mon_is_undead,
     is_demon as mon_is_demon,
     is_vampshifter,
@@ -111,7 +111,7 @@ import {
 } from './potion.js';
 import { init_uhunger, floorfood, carried } from './eat.js';
 import { Soundeffect } from './sndprocs.js';
-import { se_thunderclap } from './generated/seffects_data.js';
+import { se_thunderclap, se_divine_music } from './generated/seffects_data.js';
 import { findpriest, temple_occupied, p_coaligned, angry_priest } from './priest.js';
 import { rider_corpse_revival } from './pickup.js';
 import { region_danger, region_safety } from './region.js';
@@ -124,7 +124,8 @@ import { make_blinded, dropy } from './do.js';
 import { buried_ball_to_freedom } from './dig.js';
 import {
     confers_luck, u_wield_art, exist_artifact, artiname, is_art,
-    discover_artifact,
+    discover_artifact, nartifact_exist, mk_artifact, artifact_origin,
+    bare_artifactname,
 } from './artifact.js';
 import {
     IS_ALTAR, Amask2align, Align2amask, AM_MASK, AM_SHRINE, AM_SANCTUM, AM_CHAOTIC,
@@ -144,8 +145,11 @@ import {
     EXT_ENCUMBER, HVY_ENCUMBER, TIMEOUT, isok, IS_OBSTRUCTED,
     SDOOR, SCORR, W_SADDLE, EYE, STOMACH,
     P_LONG_SWORD, P_BROAD_SWORD, ONAME_GIFT, ONAME_KNOW_ARTI,
-    nothing_happens,
+    nothing_happens, ACH_TUNE, PLNMSG_OBJ_GLOWS,
 } from './const.js';
+import { objectNameStrs } from './generated/objects_data.js';
+import { record_achievement } from './insight.js';
+import { obfree } from './shk.js';
 
 const AMULET_OF_YENDOR = objectNames.indexOf('AMULET_OF_YENDOR');
 const FAKE_AMULET_OF_YENDOR = objectNames.indexOf('FAKE_AMULET_OF_YENDOR');
@@ -170,6 +174,8 @@ const LONG_SWORD = objectNames.indexOf('LONG_SWORD');
 const RUNESWORD = objectNames.indexOf('RUNESWORD');
 const SPE_FINGER_OF_DEATH = objectNames.indexOf('SPE_FINGER_OF_DEATH');
 const SPE_RESTORE_ABILITY = objectNames.indexOf('SPE_RESTORE_ABILITY');
+const SPE_BLANK_PAPER = objectNames.indexOf('SPE_BLANK_PAPER');
+const MAGIC_MARKER = objectNames.indexOf('MAGIC_MARKER');
 const STRANGE_OBJECT = objectNames.indexOf('STRANGE_OBJECT');
 const PM_WRAITH = monsterNames.indexOf('PM_WRAITH');
 
@@ -179,6 +185,9 @@ const S_altar = 33;
 
 const STRIDENT = 4; // pray.c
 const DEVOUT = 14; // pray.c
+const PIOUS = 20; // pray.c:64
+// C: objclass.h:152 SPBOOK_no_NOVEL = -SPBOOK_CLASS (mkobj excludes novel/BotD)
+const SPBOOK_no_NOVEL = 0 - SPBOOK_CLASS;
 // C: pray.c TROUBLE_* (priority via in_trouble order, not magnitude)
 const TROUBLE_STONED = 14;
 const TROUBLE_SLIMED = 13;
@@ -1294,15 +1303,66 @@ async function gods_upset(g_align) {
 }
 
 /**
+ * C ref: pray.c give_spell `:999–1068` — pat_on_head case-6 divine spellbook:
+ * mkobj(SPBOOK_no_NOVEL) with ulevel+1 re-rolls toward unknown/unrestricted
+ * (blank paper acceptable undiscovered-or-marker); 25% direct divine learning
+ * via force_learn_spell unless Fresh, book discarded; else observe + makeknown
+ * (blank or 1%) + bless + at_your_feet + place + newsym.
+ */
+async function give_spell() {
+    const u = game.u || (game.u = {});
+    // C: not yet known + forgotten preferred over usable; trycnt = ulevel + 1
+    let trycnt = (u.ulevel | 0) + 1;
+    const otmp = mkobj(SPBOOK_no_NOVEL, true);
+    while (--trycnt > 0) {
+        if (otmp.otyp !== SPE_BLANK_PAPER) {
+            if (known_spell(otmp.otyp) <= spe_Unknown
+                && !P_RESTRICTED(spell_skilltype(otmp.otyp)))
+                break; // forgotten or not yet known
+        } else {
+            // blank paper acceptable undiscovered, or with a marker to write on
+            if (!game.objects?.[SPE_BLANK_PAPER]?.oc_name_known
+                || carrying(MAGIC_MARKER))
+                break;
+        }
+        otmp.otyp = rnd_class(game.bases[SPBOOK_CLASS], SPE_BLANK_PAPER);
+    }
+    // C: 25% direct learning unless already well known (spe_Fresh)
+    let spe_knowledge;
+    if (otmp.otyp !== SPE_BLANK_PAPER && !rn2(4)
+        && (spe_knowledge = known_spell(otmp.otyp)) !== spe_Fresh) {
+        let spe_let;
+        if ((spe_let = await force_learn_spell(otmp.otyp)) !== '\0') {
+            // C OBJ_NAME(objects[otyp]): spell name, not "spellbook of <name>"
+            const spe_name = objectNameStrs[otmp.otyp] || 'spell';
+            if (spe_knowledge === spe_Unknown)
+                await pline(`Divine knowledge of ${spe_name} fills your mind!  Spell '${spe_let}'.`);
+            else
+                await Your(`knowledge of spell '${spe_let}' - ${spe_name} is ${
+                    spe_knowledge === spe_Forgotten ? 'restored' : 'refreshed'}.`);
+        }
+        obfree(otmp, null); // discard the book
+    } else {
+        observe_object(otmp);
+        // don't set bknown
+        if (otmp.otyp === SPE_BLANK_PAPER || !rn2(100))
+            makeknown(otmp.otyp);
+        await bless(otmp);
+        await at_your_feet(upstart(ansimpleoname(otmp)));
+        place_object(otmp, u.ux, u.uy);
+        newsym(u.ux, u.uy);
+    }
+}
+
+/**
  * C ref: pray.c pleased — successful prayer favor.
  * Branch envelope: You_feel align msg; off-altar/low-record adjalign;
  * action rn1 + STRIDENT clamp; fix_worst_trouble switch (HIT D-0920);
- * pat_on_head rn2 dispatch + case-5 intrinsic gift-grant (D-2219);
+ * pat_on_head rn2 dispatch in C source order (cases 1, 3, 2, 4) + case-5
+ * intrinsic gift-grant (D-2219) + cases 7/8 gcrownu / 6 give_spell;
  * ublesscnt rnz(350) (+udemigod kick).
- * Named omissions: pleased pat_on_head cases 1-4 (uwep repair / tune hints /
- * golden heal / invent uncurse), cases 7/8 gcrownu caller wiring + case 6
- * give_spell; moves>100000 ublesscnt incr; on_altar wrong-god early return
- * polish; SetVoice pitch on the gift verbalize (file convention).
+ * Named omissions: moves>100000 ublesscnt incr; on_altar wrong-god early
+ * return polish; SetVoice pitch on the gift verbalize (file convention).
  */
 async function pleased(g_align) {
     const u = game.u || (game.u = {});
@@ -1368,25 +1428,140 @@ async function pleased(g_align) {
         }
     }
 
-    // C ref: pray.c:1167-1354 — pat_on_head gift switch in C order.
-    // Only case 5 (intrinsic gift-grant) is live; the other arms stay
-    // named-deferred in the map (no stub in a live arm).
+    // C ref: pray.c:1167-1354 — pat_on_head gift switch in C source order
+    // (cases 1, 3, 2, 4, 5, 7/8, 6); every arm live, no stub in a live arm.
     if (pat_on_head) {
         switch (rn2((Luck() + 6) >> 1)) {
         case 0:
             break;
-        case 1:
-            // deferred: uwep erosion/bless/uncurse repair (C :1170-1217)
+        case 1: {
+            // C :1170-1217 — wielded-weapon repair: erosion note + uncurse or
+            // bless glow, then erosion clear; repair_buf gates the trailing msg.
+            const uwep = u.uwep;
+            if (uwep && (welded(uwep) || uwep.oclass === WEAPON_CLASS
+                || is_weptool(uwep))) {
+                let repair_buf = '';
+                if ((uwep.oeroded | 0) || (uwep.oeroded2 | 0))
+                    repair_buf = ` and ${otense(uwep, 'are')} now as good as new`;
+
+                if (uwep.cursed) {
+                    if (!Blind()) {
+                        await pline(`${Yobjnam2(uwep, 'softly glow')} ${hcolor('amber')}${repair_buf}.`);
+                        if (!game.iflags) game.iflags = {};
+                        game.iflags.last_msg = PLNMSG_OBJ_GLOWS;
+                    } else
+                        await You_feel(`the power of ${u_gname(game.urole, u.ualign?.type)} over ${yname(uwep)}.`);
+                    await uncurse(uwep);
+                    uwep.bknown = 1; // ok to bypass set_bknown()
+                    repair_buf = '';
+                } else if (!uwep.blessed) {
+                    if (!Blind()) {
+                        await pline(`${Yobjnam2(uwep, 'softly glow')} with ${an(hcolor('light blue'))} aura${repair_buf}.`);
+                        if (!game.iflags) game.iflags = {};
+                        game.iflags.last_msg = PLNMSG_OBJ_GLOWS;
+                    } else
+                        await You_feel(`the blessing of ${u_gname(game.urole, u.ualign?.type)} over ${yname(uwep)}.`);
+                    await bless(uwep);
+                    uwep.bknown = 1; // ok to bypass set_bknown()
+                    repair_buf = '';
+                }
+
+                // fix rust/burn/rot, but don't protect against future damage
+                if ((uwep.oeroded | 0) || (uwep.oeroded2 | 0)) {
+                    uwep.oeroded = uwep.oeroded2 = 0;
+                    // only when no bless/uncurse message already given
+                    if (repair_buf)
+                        await pline(`${Yobjnam2(uwep, Blind() ? 'feel' : 'look')} as good as new!`);
+                }
+                update_inventory();
+            }
             break;
+        }
         case 3:
-            // deferred: Castle tune hints (C :1218-1245)
-            break;
+            // C :1218-1245 — Castle tune hints (skipped once past the Valley
+            // or with the drawbridge solved); else FALLTHROUGH to the heal.
+            if (!u.uevent?.uopened_dbridge && !u.uevent?.gehennom_entered) {
+                if (!u.uevent) u.uevent = {};
+                if ((u.uevent.uheard_tune | 0) < 1) {
+                    await godvoice(g_align, null);
+                    // C SetVoice(0, 0, 80, voice_deity) — pitch deferred
+                    await verbalize(`Hark, ${is_human(game.youmonst?.data) ? 'mortal' : 'creature'}!`);
+                    // C SetVoice — pitch deferred
+                    await verbalize('To enter the castle, thou must play the right tune!');
+                    u.uevent.uheard_tune = (u.uevent.uheard_tune | 0) + 1;
+                    break;
+                } else if ((u.uevent.uheard_tune | 0) < 2) {
+                    Soundeffect(se_divine_music, 50);
+                    await You_hear('a divine music...');
+                    await pline(`It sounds like:  "${game.tune || ''}".`);
+                    u.uevent.uheard_tune = (u.uevent.uheard_tune | 0) + 1;
+                    record_achievement(ACH_TUNE);
+                    break;
+                }
+            }
+            // FALLTHROUGH
+            /*FALLTHRU*/
         case 2:
-            // deferred: golden-glow heal + level restore (C :1246-1282)
+            // C :1246-1282 — golden-glow heal: lost levels treated like
+            // blessed full healing, else +5 max HP; STR restored; hunger,
+            // luck, cream and blindness reset.
+            if (!Blind())
+                await You(`are surrounded by ${an(hcolor('golden'))} glow.`);
+            if ((u.ulevel | 0) < (u.ulevelmax | 0)) {
+                u.ulevelmax = (u.ulevelmax | 0) - 1; // see potion.c
+                await pluslvl(false);
+            } else {
+                u.uhpmax = (u.uhpmax | 0) + 5;
+                if (u.uhpmax > (u.uhppeak | 0))
+                    u.uhppeak = u.uhpmax;
+                if (Upolyd(u))
+                    u.mhmax = (u.mhmax | 0) + 5;
+            }
+            u.uhp = u.uhpmax;
+            if (Upolyd(u))
+                u.mh = u.mhmax;
+            if (((u.acurr?.a?.[A_STR]) | 0) < ((u.amax?.a?.[A_STR]) | 0)) {
+                if (!u.acurr) u.acurr = { a: [] };
+                if (!u.acurr.a) u.acurr.a = [];
+                u.acurr.a[A_STR] = u.amax.a[A_STR] | 0;
+                game.flags.botl = true; // before potential message
+                await encumber_msg();
+            }
+            if ((u.uhunger | 0) < 900)
+                await init_uhunger();
+            if ((u.uluck | 0) < 0)
+                u.uluck = 0;
+            // superfluous when blinded (that is trouble, not pat_on_head)
+            u.ucreamed = 0;
+            await make_blinded(0, true);
+            game.flags.botl = true;
             break;
-        case 4:
-            // deferred: uncurse worn/carried invent (C :1283-1309)
+        case 4: {
+            // C :1283-1309 — uncurse carried invent (Helm of Opposite
+            // Alignment excepted, as in worst_cursed_item).
+            let any = 0;
+            if (Blind())
+                await You_feel(`the power of ${u_gname(game.urole, u.ualign?.type)}.`);
+            else
+                await You(`are surrounded by ${an(hcolor('light blue'))} aura.`);
+            for (const otmp of [...(game.invent || [])]) {
+                if (otmp.cursed
+                    && (otmp !== u.uarmh
+                        || (u.uarmh?.otyp | 0) !== HELM_OF_OPPOSITE_ALIGNMENT)) {
+                    if (!Blind()) {
+                        await pline(`${Yobjnam2(otmp, 'softly glow')} ${hcolor('amber')}.`);
+                        if (!game.iflags) game.iflags = {};
+                        game.iflags.last_msg = PLNMSG_OBJ_GLOWS;
+                        otmp.bknown = 1; // ok to bypass set_bknown()
+                        ++any;
+                    }
+                    await uncurse(otmp);
+                }
+            }
+            if (any)
+                update_inventory();
             break;
+        }
         case 5: {
             // C: static msg[] = "\"and thus I grant thee the gift of %s!\""
             await godvoice(u.ualign?.type | 0, 'Thou hast pleased me with thy progress,');
@@ -1413,10 +1588,17 @@ async function pleased(g_align) {
         }
         case 7:
         case 8:
-            // deferred: gcrownu crowning, live below but unwired (C :1340-1347)
-            break;
+            // C :1340-1347 — crowning when PIOUS and not yet crowned; else
+            // FALLTHROUGH to the spell gift.
+            if ((u.ualign?.record | 0) >= PIOUS && !u.uevent?.uhand_of_elbereth) {
+                await gcrownu();
+                break;
+            }
+            // FALLTHROUGH
+            /*FALLTHRU*/
         case 6:
-            // deferred: give_spell, no JS export (C :1348-1350)
+            // C :1348-1350 — divine spellbook / direct spell learning.
+            await give_spell();
             break;
         default:
             await impossible('Confused deity!');
@@ -1461,7 +1643,7 @@ export async function at_your_feet(str) {
  * lawful Hand of Elbereth / neutral Vorpal Blade / chaotic Stormbringer
  * (wielded bless, Excalibur transform, or floor gift); weapon enhance;
  * extra skill slot via add_weapon_skill(1).
- * Caller wiring (pleased pat_on_head case 7/8) deferred — see header.
+ * Wired in pleased pat_on_head cases 7/8 (record >= PIOUS, uncrowned).
  * Named omissions: SetVoice pitch; objnam.c actualoname (override_ID +
  * xname inline; minimal_xname has no JS export).
  */
@@ -2178,11 +2360,73 @@ async function offer_different_alignment_altar(otmp, altaralign) {
 }
 
 /**
+ * C ref: pray.c bestow_artifact `:1781–1836` — sacrifice artifact gift:
+ * ulevel>2 && raw uluck>=0 gate, wizard y_n vs !rn2(6+2*ugifts*nartifacts),
+ * mk_artifact(NULL, a_align, max_giftvalue, TRUE) NULL-able, artifact_origin
+ * GIFT|KNOW_ARTI, spe<0 clamp, uncurse, oerodeproof, Hallu/Blind buf +
+ * " named <bare>" when seen, at_your_feet(upstart) + dropy + godvoice,
+ * ugifts++, ublesscnt rnz(300+50*nartifacts), exercise WIS, livelog gift
+ * by god, unrestrict weapon skill, seen observe + makeknown + discover.
+ * @param {number} max_giftvalue
+ * @returns {Promise<boolean>}
+ */
+async function bestow_artifact(max_giftvalue) {
+    const u = game.u || (game.u = {});
+    if (!u.ualign) u.ualign = { type: 0, record: 0 };
+    const nartifacts = nartifact_exist();
+    let do_bestow = (u.ulevel | 0) > 2 && (u.uluck | 0) >= 0;
+    if (do_bestow) {
+        const wizard = !!(game.flags?.debug || game.flags?.wizard);
+        if (wizard)
+            do_bestow = (await y_n('Gift an artifact?')) === 'y';
+        else
+            do_bestow = !rn2(6 + (2 * (u.ugifts | 0) * nartifacts));
+    }
+
+    if (do_bestow) {
+        // C: mk_artifact() with NULL obj and a_align() arg can return NULL
+        const otmp = mk_artifact(
+            null, a_align(u.ux | 0, u.uy | 0), max_giftvalue | 0, true,
+        );
+        if (otmp) {
+            artifact_origin(otmp, ONAME_GIFT | ONAME_KNOW_ARTI);
+            if ((otmp.spe | 0) < 0) otmp.spe = 0;
+            if (otmp.cursed) await uncurse(otmp);
+            otmp.oerodeproof = 1;
+            let buf = Hallucination() ? 'a doodad'
+                : Blind() ? 'an object'
+                    : ansimpleoname(otmp);
+            if (!Blind()) buf += ` named ${bare_artifactname(otmp)}`;
+            await at_your_feet(upstart(buf));
+            await dropy(otmp);
+            await godvoice(u.ualign?.type | 0, 'Use my gift wisely!');
+            u.ugifts = (u.ugifts | 0) + 1;
+            u.ublesscnt = rnz(300 + (50 * nartifacts));
+            exercise(A_WIS, true);
+            livelog_printf(
+                LL_DIVINEGIFT | LL_ARTIFACT,
+                'was bestowed with %s by %s',
+                artiname(otmp.oartifact | 0),
+                align_gname(game.urole, u.ualign?.type | 0),
+            );
+            // C: make sure we can use this weapon
+            unrestrict_weapon_skill(weapon_type(otmp));
+            if (!Hallucination() && !Blind()) {
+                observe_object(otmp);
+                makeknown(otmp.otyp | 0);
+                discover_artifact(otmp.oartifact | 0);
+            }
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
  * C ref: pray.c offer_corpse `:1958–2120`.
  * Gnostic livelog; feel_cockatrice; rider revival; same-race / former
  * pet; eval_offering; cross-align offer_different_alignment_altar;
- * consume + mollify / absolve / blesscnt / luck.
- * Named: bestow_artifact.
+ * consume + mollify / absolve / blesscnt / bestow_artifact gift + luck.
  */
 async function offer_corpse(otmp, highaltar, altaralign) {
     const u = game.u || (game.u = {});
@@ -2301,7 +2545,8 @@ async function offer_corpse(otmp, highaltar, altaralign) {
             }
         }
     } else {
-        /* bestow_artifact named — mk_artifact by_align */
+        // C :2091 — sacrifice gift attempt before the luck increase.
+        if (await bestow_artifact(value)) return;
         const orig_luck = u.uluck | 0;
         let luck_increase = Math.trunc((value * LUCKMAX) / (MAXVALUE * 2));
         if (orig_luck > value) luck_increase = 0;

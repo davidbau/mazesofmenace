@@ -4460,7 +4460,7 @@ async function tipcontainer_gettarget(box) {
  * Named omissions: bag-of-holding explode; ice-box thaw; shop billing;
  * altarizing doaltarobj; cursed mbag item-gone; otrapped chest_trap;
  * dropy terse comma-list; toss_up; subfrombill after floor shop BoT/horn;
- * targetbox shop-bill per-item addtobill; BoT-target apply.
+ * targetbox shop-bill per-item addtobill.
  * SchroedingersBox is observe_quantum_cat before spill.
  * @param {object} box
  */
@@ -4471,6 +4471,14 @@ export async function tipcontainer(box) {
     // C tipcontainer `:3706` — target menu before any checks, even when empty.
     const { target: targetbox, cancelled } = await tipcontainer_gettarget(box);
     if (cancelled) return;
+    // C pickup.c tipcontainer_checks `:3961-3966` — undiscovered BoT as the
+    // destination: apply it once (bagotricks) before tipping the source box.
+    // Known BoT never reaches here (excluded from the target menu above).
+    if (targetbox && (targetbox.otyp | 0) === BAG_OF_TRICKS) {
+        const { bagotricks } = await import('./apply.js');
+        await bagotricks(targetbox, false, { n: 0 });
+        return; // C TIPCHECK_CANNOT — already done
+    }
     // C tipcontainer_checks: discover lock, refuse locked/empty
     if (!box.lknown) box.lknown = 1;
     if (box.olocked) {

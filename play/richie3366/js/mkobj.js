@@ -11,7 +11,7 @@
 
 import { game } from './gstate.js';
 import { rn2, rnd, rn1, rne, rnz } from './rng.js';
-import { depth as depth_of_level, level_difficulty as level_difficulty_of } from './hacklib.js';
+import { depth as depth_of_level, level_difficulty as level_difficulty_of, strsubst } from './hacklib.js';
 import {
     RANDOM_CLASS,
     WEAPON_CLASS,
@@ -48,8 +48,8 @@ import {
     G_NOCORPSE, NON_PM as MON_NON_PM,
 } from './monsters.js';
 import { PM_CLERIC, PM_SAMURAI } from './generated/monsters_data.js';
-import { update_inventory, Blind } from './invent.js';
-import { distant_name, doname, cxname, The, vtense, corpse_xname, Yname2, otense } from './objnam.js';
+import { update_inventory, Blind, near_capacity, encumber_msg, useupall } from './invent.js';
+import { distant_name, doname, cxname, The, vtense, corpse_xname, Yname2, otense, simpleonames } from './objnam.js';
 import {
     ROT_AGE, TAINT_AGE, TROLL_REVIVE_CHANCE,
     ROT_ORGANIC, ROT_CORPSE, REVIVE_MON, ZOMBIFY_MON,
@@ -69,17 +69,26 @@ import {
     IRONBARS, ROOM, IS_ALTAR, Is_airlevel, Is_waterlevel,
     MAX_OIL_IN_FLASK, nothing_happens, EPRI, PLNMSG_OBJ_GLOWS,
     In_quest, SPINACH_TIN, RANDOM_TIN,
+    BURIED_TOO,
 } from './const.js';
-import { set_tin_variety } from './eat.js';
+import { set_tin_variety, eating_glob } from './eat.js';
 import { set_moreluck } from './attrib.js';
 import { recalc_block_point, cansee } from './vision.js';
 import { del_light_source, discard_flashes, obj_sheds_light, obj_adjust_light_radius } from './light.js';
 import { arti_light_radius, get_obj_location, obj_split_light_source, Is_candle } from './timeout.js';
-import { obfree, splitbill, same_price } from './shk.js';
-import { hands_obj } from './weapon.js';
+import { obfree, splitbill, same_price, globby_bill_fixup } from './shk.js';
+import { hands_obj, MON_WEP, setmnotwielded } from './weapon.js';
 import { obj_resists } from './dogmove.js';
-import { newsym, pline, Hallucination } from './display.js';
+import { newsym, pline, Hallucination, impossible } from './display.js';
 import { maybe_unhide_at } from './monmove.js';
+/* C shrink_glob cluster: is_ice (zap home), remove_worn_item (steal home),
+   stop_occupation (hack home). All are hoisted function declarations used
+   only at runtime inside async shrink_glob/shrinking_glob_gone — same shape
+   as the established mkobj↔zap/eat/hack/steal edges (`imports.mjs --can`
+   SAFE on each name; no top-level TDZ read). */
+import { is_ice } from './zap.js';
+import { remove_worn_item } from './steal.js';
+import { stop_occupation } from './hack.js';
 
 const GOLD_PIECE = objectNames.indexOf('GOLD_PIECE');
 const HORN_OF_PLENTY = objectNames.indexOf('HORN_OF_PLENTY');
@@ -1408,10 +1417,9 @@ export async function rot_corpse(obj) {
  * C ref: timeout.c run_timers — fire due timers at start of list.
  * Called from nh_timeout after intrinsic TIMEOUT handling.
  * Envelope: ROT_CORPSE; ROT_ORGANIC (dig.c); TIMER_LEVEL MELT_ICE_AWAY
- * (D-0965/D-0967); BURN_OBJECT (D-0978); SHRINK_GLOB thin (D-0993);
- * FIG_TRANSFORM (D-1032); REVIVE_MON / ZOMBIFY_MON (D-1202).
- * Named omit: full shrink ice/eat catch-up. Local timers peel via
- * save_timers RANGE_LEVEL on goto_level (D-1037).
+ * (D-0965/D-0967); BURN_OBJECT (D-0978); SHRINK_GLOB full (D-0993 thin
+ * retired); FIG_TRANSFORM (D-1032); REVIVE_MON / ZOMBIFY_MON (D-1202).
+ * Local timers peel via save_timers RANGE_LEVEL on goto_level (D-1037).
  */
 export async function run_timers() {
     const g = timer_base();
@@ -1435,7 +1443,7 @@ export async function run_timers() {
             const { burn_object } = await import('./timeout.js');
             await burn_object(curr.obj, curr.timeout | 0);
         } else if (curr.action === SHRINK_GLOB && curr.obj) {
-            await shrink_glob(curr.obj);
+            await shrink_glob(curr.obj, curr.timeout | 0);
         } else if (curr.action === FIG_TRANSFORM && curr.obj) {
             const { fig_transform } = await import('./apply.js');
             await fig_transform(curr.obj, curr.timeout | 0);
@@ -1463,31 +1471,264 @@ export function start_glob_timeout(obj, when = 0) {
     start_timer(w, TIMER_OBJECT, SHRINK_GLOB, obj);
 }
 
+/* C ref: mkobj.c obj_on_ice `:1435–1439` — file-local enum used by
+   item_on_ice() and shrink_glob(). */
+const NOT_ON_ICE = 0;
+const SET_ON_ICE = 1;
+const BURIED_UNDER_ICE = 2;
+
 /**
- * C ref: mkobj.c shrink_glob — thin: −1 owt / destroy at 0; ice/eat/catch-up
- * polish deferred.
+ * C ref: mkobj.c item_on_ice `:1442–1469` (staticfn) — outermost container's
+ * floor/buried location on ice? Used by shrink_glob().
  */
-async function shrink_glob(obj) {
-    if (!obj?.globby) return;
-    const owt = (obj.owt | 0) - 1;
-    if (owt <= 0) {
-        const ox = obj.ox | 0;
-        const oy = obj.oy | 0;
-        const wasFloor = (obj.where | 0) === OBJ_FLOOR;
-        delobj(obj);
-        if (wasFloor) {
-            try {
-                const { newsym } = await import('./display.js');
-                newsym(ox, oy);
-            } catch { /* optional */ }
+function item_on_ice(item) {
+    let otmp = item;
+    /* if in a container, it might be nested so find outermost one since
+       that's the item whose location needs to be checked */
+    while ((otmp.where | 0) === OBJ_CONTAINED && otmp.ocontainer)
+        otmp = otmp.ocontainer;
+
+    const loc = get_obj_location(otmp, BURIED_TOO);
+    if (loc) {
+        switch (otmp.where | 0) {
+        case OBJ_FLOOR:
+            if (is_ice(loc.x, loc.y))
+                return SET_ON_ICE;
+            break;
+        case OBJ_BURIED:
+            if (is_ice(loc.x, loc.y))
+                return BURIED_UNDER_ICE;
+            break;
+        default:
+            break;
+        }
+    }
+    return NOT_ON_ICE;
+}
+
+/**
+ * C ref: mkobj.c check_glob `:3419–3443` (staticfn) — sanity: quan 1, owt
+ * nonzero, GLOB range (LOWEST_GLOB GLOB_OF_GRAY_OOZE … HIGHEST_GLOB
+ * GLOB_OF_BLACK_PUDDING; the `#if 0` multiple-of-20 arm stays out like C).
+ * C reports via insane_object (no JS port — own row when a falsifier fires);
+ * impossible() keeps the observable (a disorder pline, no state change).
+ * Missing quan reads as 1 (C always sets quan; JS-side unset convention,
+ * same guard as the simpleonames clone).
+ */
+async function check_glob(obj, mesg) {
+    if (((obj.quan ?? 1) | 0) !== 1 || !((obj.owt | 0))
+        || (obj.otyp | 0) < GLOB_OF_GRAY_OOZE || (obj.otyp | 0) > GLOB_OF_BLACK_PUDDING) {
+        const globbuf = ` glob ${obj.otyp | 0},quan=${(obj.quan ?? 1) | 0},owt=${obj.owt | 0} `;
+        await impossible(strsubst(mesg, ' obj ', globbuf));
+    }
+}
+
+/**
+ * C ref: mkobj.c shrinking_glob_gone `:1672–1701` (staticfn) — destroy a
+ * zero-weight glob: invent (unwear + stop_occupation + useupall) vs extract
+ * + floor unhide + obfree; MIGRATING owornmask clear; MINVENT wield clear.
+ * Async only because JS remove_worn_item/stop_occupation/maybe_unhide_at
+ * can reach pline --More--; no RNG on any arm.
+ */
+async function shrinking_glob_gone(obj) {
+    const owhere = obj.where | 0;
+
+    if (owhere === OBJ_INVENT) {
+        if (obj.owornmask) {
+            await remove_worn_item(obj, false);
+            await stop_occupation();
+        }
+        useupall(obj); /* freeinv()+obfree() */
+    } else {
+        if (owhere === OBJ_MIGRATING) {
+            /* destination flag overloads owornmask; clear it so obfree()'s
+               check for freeing a worn object doesn't get a false hit */
+            obj.owornmask = 0;
+        } else if (owhere === OBJ_MINVENT) {
+            /* monsters don't wield globs so this isn't strictly needed */
+            if (obj.owornmask && obj === MON_WEP(obj.ocarry))
+                setmnotwielded(obj.ocarry, obj); /* clears owornmask */
+        }
+        /* remove the glob from whatever list it's on and then delete it;
+           if it's contained, obj_extract_self() will update the container's
+           weight and if nested, the enclosing containers' weights too */
+        obj_extract_self(obj);
+        if (owhere === OBJ_FLOOR)
+            await maybe_unhide_at(obj.ox, obj.oy);
+        obfree(obj, null);
+    }
+}
+
+/**
+ * C ref: mkobj.c shrink_glob `:1497–1669` (extern.h:1699) — SHRINK_GLOB
+ * timer: catch up shrinkage while off-level, skip while eaten/on-ice thirds,
+ * −1 owt with halve-threshold messages, container weight fixup, gone →
+ * shrinking_glob_gone + floor "fades away" under the cansee gate.
+ * Async only because pline/encumber_msg can reach --More--; C draws no RNG
+ * here (reschedule RNG lives in start_glob_timeout, already rn2(5)-exact).
+ * Replaces the D-0993 thin −1/destroy.
+ */
+export async function shrink_glob(obj, expire_time = (game.moves | 0)) {
+    /* note: timer keeps going if an object gets buried or scheduled to
+       migrate to another level and can delete the glob in those states */
+    const moves = game.moves | 0;
+    const globloc = item_on_ice(obj);
+    const ininv = (obj.where | 0) === OBJ_INVENT;
+    let shrink = false, gone = false, updinv = false;
+    const contnr = ((obj.where | 0) === OBJ_CONTAINED) ? obj.ocontainer : 0;
+    let topcontnr = 0;
+    let old_top_owt = 0;
+
+    if (!obj.globby) {
+        await impossible('shrink_glob for non-glob [%d: %s]?',
+                         obj.otyp | 0, simpleonames(obj));
+        return; /* old timer is gone, don't start a new one */
+    }
+    /* note: if check_glob() complains about a problem, the " obj " here
+       will be replaced in the feedback with info about this glob */
+    await check_glob(obj, 'shrink obj ');
+
+    /*
+     * If shrinkage occurred while we were on another level, catch up now.
+     */
+    if ((expire_time | 0) < moves && globloc !== BURIED_UNDER_ICE) {
+        /* number of units of weight to remove */
+        const delta0 = Math.floor((moves - (expire_time | 0) + 24) / 25);
+        /* leftover amount to use for new timer */
+        const moddelta = 25 - (delta0 % 25);
+        let delta = delta0;
+
+        if (globloc === SET_ON_ICE)
+            delta = Math.floor((delta + 2) / 3);
+
+        if (delta >= (obj.owt | 0)) {
+            /* gone; no newsym() or message here--forthcoming map update for
+               level arrival is all that's needed */
+            obj.owt = 0; /* not required; accurately reflects obj's state */
+            await shrinking_glob_gone(obj);
+        } else {
+            /* shrank but not gone; reduce remaining weight */
+            obj.owt = (obj.owt | 0) - delta;
+            /* when contained, update container's weight (recursively if
+               nested); won't be in a container carried by hero (since
+               catching up for lost time never applies in that situation)
+               but might be in one on floor or one carried by a monster */
+            if (contnr)
+                container_weight(contnr);
+            /* resume regular shrinking */
+            start_glob_timeout(obj, moddelta);
         }
         return;
     }
-    obj.owt = owt;
-    if ((obj.where | 0) === OBJ_CONTAINED && obj.ocontainer) {
-        obj.ocontainer.owt = weight(obj.ocontainer);
+
+    /*
+     * When on ice, only shrink every third try.  If buried under ice,
+     * don't shrink at all, similar to being contained in an ice box
+     * except that the timer remains active.  [FIXME:  stop the timer
+     * for obj in pool that becomes frozen, restart it if/when unburied.]
+     *
+     * If the glob is actively being eaten by hero, skip weight reduction
+     * to avoid messing up the context.victual data (if/when eaten by a
+     * monster, timer won't have a chance to run before meal is finished).
+     */
+    if (eating_glob(obj)
+        || globloc === BURIED_UNDER_ICE
+        || (globloc === SET_ON_ICE && (moves % 3) === 1)) {
+        /* schedule next shrink attempt; for the being eaten case, the
+           glob and its timer might be deleted before this kicks in */
+        start_glob_timeout(obj, 0);
+        return;
     }
-    start_glob_timeout(obj, 0);
+
+    /* format "Your/Shk's/The [partly eaten] glob of <goo>" into
+       globnambuf[] before shrinking the glob; Yname2() calls yname()
+       which calls xname() which ordinarily leaves "partly eaten" to
+       doname() rather than inserting that itself; ask xname() to add
+       that when appropriate */
+    if (!game.iflags) game.iflags = {};
+    game.iflags.partly_eaten_hack = true;
+    let globnambuf = Yname2(obj);
+    game.iflags.partly_eaten_hack = false;
+
+    if ((obj.owt | 0) > 0) { /* sanity precaution */
+        /* globs start out weighing 20 units; give two messages per glob,
+           when going from 20 to 19 and from 10 to 9; a different message
+           is given for going from 1 to 0 (gone) */
+        const basewt = objs()?.[obj.otyp]?.oc_weight ?? 20; /* 20 */
+        const msgwt = ((Math.max(basewt, 1) + 1) / 2) | 0; /* 10 */
+
+        shrink = ((obj.owt | 0) % msgwt) === 0;
+        obj.owt = (obj.owt | 0) - 1;
+        /* if glob is partly eaten, reduce the amount still available (but
+           not all the way to 0 which would change it back to untouched) */
+        if ((obj.oeaten | 0) > 1)
+            obj.oeaten = (obj.oeaten | 0) - 1;
+    }
+    gone = !((obj.owt | 0));
+
+    /* timer might go off when the glob is migrating to another level and
+       possibly delete it; messages are only given for in-open-inventory,
+       inside-container-in-invent, and going away when can-see-on-floor */
+    if (ininv) {
+        if (shrink || gone)
+            await pline(`${globnambuf} ${gone ? 'dissolves completely' : 'shrinks'}.`);
+        updinv = true;
+    } else if (contnr) {
+        /* when in a container, it might be nested so find outermost one */
+        topcontnr = contnr;
+        while ((topcontnr.where | 0) === OBJ_CONTAINED && topcontnr.ocontainer)
+            topcontnr = topcontnr.ocontainer;
+        /* obj's weight has been reduced, but weight(s) of enclosing
+           container(s) haven't been adjusted for that yet */
+        old_top_owt = topcontnr.owt | 0;
+        /* update those weights now; recursively updates nested containers */
+        container_weight(contnr);
+
+        if ((topcontnr.where | 0) === OBJ_INVENT) {
+            /* for regular containers, the weight will always be reduced
+               when glob's weight has been reduced but we only say so
+               when shrinking beneath a particular threshold (N*20 to
+               (N-1)*20 + 19 or (N-1)*20 + 10 to (N-1)*20 + 9), or
+               if we're going to report a change in carrying capacity;
+               for a non-cursed bag of holding the total weight might not
+               change because only a fraction of glob's weight is counted;
+               however, always say the bag is lighter for the 'gone' case */
+            if (gone || (shrink && (topcontnr.owt | 0) !== old_top_owt)
+                || near_capacity() !== (game.oldcap | 0))
+                await pline(`${Yname2(topcontnr)} ${(topcontnr.owt | 0) !== old_top_owt ? 'becomes' : 'seems'}${!gone ? ' slightly' : ''} lighter.`);
+            updinv = true;
+        }
+    }
+
+    if (gone) {
+        let ox = 0, oy = 0;
+        /* check location for visibility before destroying obj */
+        const gloc = ((obj.where | 0) === OBJ_FLOOR) ? get_obj_location(obj, 0) : null;
+        const seeit = !!gloc && !!cansee(gloc.x, gloc.y);
+        if (gloc) {
+            ox = gloc.x;
+            oy = gloc.y;
+        }
+
+        /* weight has been reduced to 0 so destroy the glob */
+        await shrinking_glob_gone(obj);
+
+        if (seeit) {
+            newsym(ox, oy);
+            if ((ox !== ((game.u?.ux | 0)) || oy !== ((game.u?.uy | 0))) && globnambuf.startsWith('The '))
+                /* fortunately none of the glob adjectives warrant "An " */
+                globnambuf = strsubst(globnambuf, 'The ', 'A ');
+            /* again, quantity is always 1 so no need for otense()/vtense() */
+            await pline(`${globnambuf} fades away.`);
+        }
+    } else {
+        /* schedule next shrink ~25 turns from now */
+        start_glob_timeout(obj, 0);
+    }
+    if (updinv) {
+        update_inventory();
+        await encumber_msg();
+    }
 }
 
 // C ref: mkobj.c set_corpsenm — stop timers, set id, restart CORPSE/EGG timeouts
@@ -2325,14 +2566,6 @@ export function obj_nexto(otmp) {
 }
 
 /**
- * C ref: shk.c globby_bill_fixup — shop bill when globs merge.
- * Named omit: full unpaid/debit/credit scenarios (no-op when neither unpaid).
- */
-function globby_bill_fixup(_absorber, _absorbed) {
-    // deferred — unpaid shop merge not exercised by fortress public suite
-}
-
-/**
  * C ref: mkobj.c obj_absorb — *obj1 absorbs *obj2; free *obj2.
  * @param {{obj: object|null}} p1 survivor ref
  * @param {{obj: object|null}} p2 absorbed ref (nulled)
@@ -2342,7 +2575,11 @@ export function obj_absorb(p1, p2) {
     const otmp1 = p1?.obj;
     const otmp2 = p2?.obj;
     if (!otmp1 || !otmp2 || otmp1 === otmp2) return otmp1 || null;
-    globby_bill_fixup(otmp1, otmp2);
+    // C mkobj.c:3713 globby_bill_fixup(otmp1, otmp2) is sync in C but async
+    // here (scenarios 2-3 reach pline/verbalize); fire-and-forget like
+    // pudding_merge_message — scenario 1 runs fully synchronous, so bill
+    // state is settled before obj_absorb continues.
+    void globby_bill_fixup(otmp1, otmp2);
     if (!!otmp1.bknown !== !!otmp2.bknown) {
         otmp1.bknown = 0;
         otmp2.bknown = 0;

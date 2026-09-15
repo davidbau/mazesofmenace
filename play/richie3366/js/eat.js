@@ -38,7 +38,7 @@ import {
     pline, You_feel, newsym, see_monsters, more,
     canspotmon, canseemon, bot, Hallucination,
 } from './display.js';
-import { yn_function, paranoid_query } from './getline.js';
+import { yn_function, paranoid_query, y_n } from './getline.js';
 import {
     FOOD_CLASS, COIN_CLASS, WEAPON_CLASS, BALL_CLASS, CHAIN_CLASS,
     SCROLL_CLASS, POTION_CLASS, RING_CLASS, AMULET_CLASS,
@@ -47,12 +47,12 @@ import {
 import {
     weight, splitobj, objects_at, stackobj,
     g_at, is_metallic, is_organic, is_flammable, is_rustprone,
-    mksobj, obj_extract_self,
+    mksobj, obj_extract_self, set_bknown,
 } from './mkobj.js';
 import { BY_COOKIE, bcsign, outrumor } from './rumors.js';
 import {
     singular, xname, doname, the, makeplural, obj_is_pname, thesimpleoname,
-    an, killer_xname, yobjnam,
+    an, killer_xname, yobjnam, Tobjnam,
 } from './objnam.js';
 import {
     mons, acidic, poisonous, carnivorous, herbivorous, metallivorous,
@@ -73,7 +73,7 @@ import { set_occupation, can_reach_floor } from './engrave.js';
 import {
     OBJ_FREE, OBJ_INVENT,
     SLT_ENCUMBER, EXT_ENCUMBER, FROMFORM, W_ARTI, W_WEP, W_RINGL, W_RINGR,
-    W_ARMOR, W_TOOL, W_AMUL, W_SADDLE, W_BALL, W_CHAIN,
+    W_ARMOR, W_TOOL, W_AMUL, W_SADDLE, W_BALL, W_CHAIN, W_RING, NOSE,
     HUNGER, CONFLICT, REGENERATION, SLOW_DIGESTION, PROTECTION,
     SATIATED, NOT_HUNGRY, HUNGRY, WEAK, FAINTING, FAINTED, STOMACH, SICK_VOMITABLE,
     STONED, SICK, VOMITING,
@@ -106,7 +106,7 @@ import {
     nomul, unmul, losehp, still_chewing, is_pool, is_lava, stop_occupation,
     end_running,
 } from './hack.js';
-import { near_capacity, observe_object, makeknown, getobj,
+import { near_capacity, observe_object, makeknown, getobj, freeinv,
     encumber_msg, update_inventory, useupall, useup, useupf } from './invent.js';
 import {
     make_confused, make_vomiting, make_glib, make_stoned, make_slimed,
@@ -126,11 +126,11 @@ import { explode } from './explode.js';
 import { polymon, polyself, rehumanize, change_sex, body_part } from './polyself.js';
 import { costly_alteration, costly_spot } from './shk.js';
 import {
-    wield_tool, uwepgone, uswapwepgone, uqwepgone,
+    wield_tool, uwepgone, uswapwepgone, uqwepgone, welded,
 } from './wield.js';
 import { pluslvl, more_experienced, newexplevel, setuhpmax } from './exper.js';
 import { toggle_displacement, setworn, Ring_gone } from './do_wear.js';
-import { attrcurse } from './sit.js';
+import { attrcurse, surface } from './sit.js';
 import { dismount_steed } from './steed.js';
 import { unpunish } from './read.js';
 import { vault_gd_watching } from './vault.js';
@@ -139,6 +139,8 @@ import {
     PM_KNIGHT, PM_WIZARD, PM_ELF, PM_VALKYRIE,
 } from './generated/monsters_data.js';
 import { str_start_is } from './hacklib.js';
+import { retouch_object, touch_artifact } from './artifact.js';
+import { remove_worn_item } from './steal.js';
 
 /** C hack.h invlet_basic — a-zA-Z slots before invent-full dropy. */
 const INVLET_BASIC = 52;
@@ -268,6 +270,7 @@ const PM_MASTER_MIND_FLAYER = monsterNames.indexOf('PM_MASTER_MIND_FLAYER');
 const PM_VIOLET_FUNGUS = monsterNames.indexOf('PM_VIOLET_FUNGUS');
 const PM_PYROLISK = monsterNames.indexOf('PM_PYROLISK');
 const EGG = objectNames.indexOf('EGG');
+const GLOB_OF_GREEN_SLIME = objectNames.indexOf('GLOB_OF_GREEN_SLIME');
 const PANCAKE = objectNames.indexOf('PANCAKE');
 const CREAM_PIE = objectNames.indexOf('CREAM_PIE');
 const CANDY_BAR = objectNames.indexOf('CANDY_BAR');
@@ -1689,6 +1692,16 @@ export function eating_dangerous_corpse(res) {
     /* C: flesh_petrifies() includes Medusa as well as touch_petrifies() */
     if ((res | 0) === STONE_RES && flesh_petrifies(mons(mnum))) return true;
     return false;
+}
+
+/**
+ * C ref: eat.c eating_glob `:2077–2081` — hero is mid-meal of this glob
+ * (occupation identity gate; must live here: the gate compares against the
+ * module-local `eatfood` identity, same reason as `cant_finish_meal`,
+ * D-2223). Used by the shrink_glob timer routine.
+ */
+export function eating_glob(glob) {
+    return game.occupation === eatfood && glob === game.context?.victual?.piece;
 }
 
 /**
@@ -3846,13 +3859,96 @@ export async function use_tin_opener(obj) {
 }
 
 /**
+ * C ref: eat.c edibility_prompts() `:2626-2731` — blessed food-detection
+ * smell prompts in C order (tainted → stone/slime → tainted-resistant →
+ * rotten → poisonous → sleep-apple → monk-meat → acidic → rustproof →
+ * vegan → vegetarian). Worst-case rotted (no rn2(20)) to force the prompt.
+ * @returns {number} 1 = decline (ECMD_OK), 2 = eat anyway, 0 = no prompt
+ */
+async function edibility_prompts(otmp) {
+    const u = game.u || {};
+    const cadaver = (otmp.otyp === CORPSE);
+    let stoneorslime = false;
+    const material = game.objects?.[otmp.otyp]?.oc_material ?? 0;
+    const mnum = otmp.corpsenm | 0;
+    let rotted = 0;
+    const foodsmell = Tobjnam(otmp, 'smell');
+    const it_or_they = ((otmp.quan || 1) === 1) ? 'it' : 'they';
+    if (cadaver || otmp.otyp === EGG || otmp.otyp === TIN
+        || otmp.otyp === GLOB_OF_GREEN_SLIME) {
+        const youdata = game.youmonst?.data ?? hero_form_data();
+        stoneorslime = !!(ismnum(mnum) && flesh_petrifies(mons(mnum))
+            && !(u.Stone_resistance || u.HStone_resistance || u.EStone_resistance)
+            && !poly_when_stoned(youdata));
+        if (mnum === PM_GREEN_SLIME || otmp.otyp === GLOB_OF_GREEN_SLIME) {
+            const Unchanging = !!(u.Unchanging || u.HUnchanging || u.EUnchanging);
+            stoneorslime = !Unchanging && !slimeproof(youdata);
+        }
+        if (cadaver && !nonrotting_corpse(mnum)) {
+            const age = peek_at_iced_corpse_age(otmp);
+            rotted = Math.trunc(((game.moves ?? 0) - age) / 10);
+            if (otmp.cursed) rotted += 2;
+            else if (otmp.blessed) rotted -= 2;
+        }
+    }
+    let buf = '';
+    const Sick_resistance = !!(u.Sick_resistance || u.HSick_resistance
+        || u.ESick_resistance);
+    if (cadaver && rotted > 5 && !Sick_resistance) {
+        buf = `${foodsmell} like ${it_or_they} could be tainted!`;
+    } else if (stoneorslime) {
+        buf = `${foodsmell} like ${it_or_they} could be something very dangerous!`;
+    } else if (cadaver && rotted > 5 && Sick_resistance) {
+        buf = `${foodsmell} like ${it_or_they} could be tainted.`;
+    } else if (otmp.orotten || (cadaver && rotted > 3)) {
+        buf = `${foodsmell} like ${it_or_they} could be rotten!`;
+    } else if (cadaver && poisonous(mons(mnum))
+        && !(u.Poison_resistance || u.HPoison_resistance || u.EPoison_resistance)) {
+        buf = `${foodsmell} like ${it_or_they} might be poisonous!`;
+    } else if (otmp.otyp === APPLE && otmp.cursed
+        && !(u.Sleep_resistance || u.HSleep_resistance || u.ESleep_resistance)) {
+        buf = `${foodsmell} like ${it_or_they} might have been poisoned.`;
+    } else if (cadaver && !vegetarian(mons(mnum))
+        && !((u.uconduct?.unvegetarian | 0))
+        && ((game.urole?.mnum | 0) === PM_MONK)) {
+        buf = `${foodsmell} unhealthy.`;
+    } else if (cadaver && acidic(mons(mnum))
+        && !(u.Acid_resistance || u.HAcid_resistance || u.EAcid_resistance)) {
+        buf = `${foodsmell} rather acidic.`;
+    } else if (Upolyd(u) && ((u.umonnum | 0) === PM_RUST_MONSTER)
+        && is_metallic(otmp) && otmp.oerodeproof) {
+        buf = `${foodsmell} disgusting to you right now.`;
+    } else if (!(u.uconduct?.unvegan | 0)
+        && ((material === MAT_LEATHER || material === MAT_BONE
+            || material === MAT_DRAGON_HIDE || material === MAT_WAX)
+            || (cadaver && !vegan(mons(mnum))))) {
+        buf = `${foodsmell} foul and unfamiliar to you.`;
+    } else if (!(u.uconduct?.unvegetarian | 0)
+        && ((material === MAT_LEATHER || material === MAT_BONE
+            || material === MAT_DRAGON_HIDE)
+            || (cadaver && !vegetarian(mons(mnum))))) {
+        buf = `${foodsmell} unfamiliar to you.`;
+    }
+    if (buf) {
+        buf += `  Eat ${((otmp.quan || 1) === 1) ? 'it' : 'one'} anyway?`;
+        return ((await y_n(buf)) === 'n') ? 1 : 2;
+    }
+    return 0;
+}
+
+/**
  * C ref: eat.c doeat() — food-class path incl. TIN + multi-turn rations.
  * Ordinary rotten food via rottenfood + Hear_again (D-0911).
  * @returns {number} 0 = no turn (ECMD_OK), 1 = took time
  */
 export async function doeat() {
+    // C eat.c:2826-2829 — Strangled before any food prompt.
+    if (Strangled()) {
+        await pline("If you can't breathe air, how can you consume solids?");
+        return 0;
+    }
     // C: floorfood("eat", 0) — floor yn then invent getobj
-    const otmp0 = await floorfood_eat();
+    let otmp0 = await floorfood_eat();
     if (!otmp0) return 0;
 
     // C ref: eat.c doeat — check_capacity((char *)0) before is_edible
@@ -3860,6 +3956,16 @@ export async function doeat() {
     if (near_capacity() >= EXT_ENCUMBER) {
         await pline("You can't do that while carrying so much stuff.");
         return 0;
+    }
+
+    // C eat.c:2834-2845 — blessed food-detection smell prompts.
+    if ((game.u?.uedibility | 0)) {
+        const res = await edibility_prompts(otmp0);
+        if (res) {
+            await pline(`Your ${body_part(NOSE)} stops tingling and your sense of smell returns to normal.`);
+            game.u.uedibility = 0;
+            if (res === 1) return 0;
+        }
     }
 
     // C: floorfood &hands_obj → metallivore chewing IRONBARS via still_chewing
@@ -3887,6 +3993,46 @@ export async function doeat() {
     if (worn & (W_ARMOR | W_TOOL | W_AMUL | W_SADDLE)) {
         await pline("You can't eat something you're wearing.");
         return 0;
+    }
+
+    // C eat.c:2873-2877 — artifact blast costs a turn.
+    if (carried(otmp0)) {
+        if (!(await retouch_object(otmp0, false))) return 1;
+    } else {
+        if (!(await touch_artifact(otmp0, game.youmonst ?? null))) return 1;
+    }
+
+    // C eat.c:2878-2912 — rust-monster rustproofed metal: rknown, split one
+    // piece, Ulch pline, oerodeproof gone, rn2(10) stun; welded/cursed-ring
+    // is spat out, else dropped to the floor and stacked.
+    if (is_metallic(otmp0) && (((game.u?.umonnum | 0) === PM_RUST_MONSTER))
+        && otmp0.oerodeproof) {
+        otmp0.rknown = true;
+        if ((otmp0.quan || 1) > 1) {
+            if (!carried(otmp0)) {
+                splitobj(otmp0, (otmp0.quan | 0) - 1);
+            } else {
+                const child = splitobj(otmp0, 1);
+                if (child) otmp0 = child;
+            }
+        }
+        await pline(`Ulch - that ${xname(otmp0)} was rustproofed!`);
+        otmp0.oerodeproof = 0;
+        await make_stunned((((game.u?.HStun | 0) & TIMEOUT) + rn2(10)) | 0, true);
+        if (welded(otmp0) || (otmp0.cursed && ((otmp0.owornmask | 0) & W_RING))) {
+            set_bknown(otmp0, 1);
+            await pline(`You spit out ${the(xname(otmp0))}.`);
+        } else {
+            const u0 = game.u || {};
+            await pline(`You spit ${the(xname(otmp0))} out onto the ${surface(u0.ux | 0, u0.uy | 0)}.`);
+            if (carried(otmp0)) {
+                if (otmp0.owornmask) await remove_worn_item(otmp0, false);
+                freeinv(otmp0);
+                await dropy(otmp0);
+            }
+            stackobj(otmp0);
+        }
+        return 1;
     }
 
     // KMH — Slow digestion ring is indigestible

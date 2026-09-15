@@ -82,6 +82,7 @@ import { record_achievement } from './insight.js';
 import { reset_justpicked } from './pickup.js';
 import { throwing_weapon } from './dothrow.js';
 import { ART_MJOLLNIR } from './generated/artifacts_data.js';
+import { is_quest_artifact, artitouch } from './quest.js';
 
 // C ref: objclass.h ARM_* — oc_skill / oc_subtyp / oc_armcat for armor
 const ARM_SUIT = 0;
@@ -900,7 +901,7 @@ function reorder_invent() {
  * `added:` label for merged and fresh takes alike.
  * Named omit: set_moreluck luck recompute (no JS Luck engine yet).
  */
-async function addinv_core2(obj) {
+export async function addinv_core2(obj) {
     if (!obj) return;
     // C: confers_luck(obj) → set_moreluck() — named omit (see above).
     const oc = game.objects?.[obj.otyp];
@@ -929,11 +930,11 @@ async function addinv_core2(obj) {
  * called before merge/link (addinv_core0 `:1082`).
  * COIN → disp.botl; AMULET/CANDELABRUM/BELL/BOOK → uhave + record_achievement;
  * oartifact → set_artifact_intrinsic W_ART; mines/soko prize → achievement +
- * achieveo oid clear + nomerge=0. Sync like C; the two already-have
- * impossible() arms are a named omit (async pline, cf. artifact.js:496).
- * Named omit: questart/artitouch arm (no live artitouch/is_quest_artifact).
+ * achieveo oid clear + nomerge=0. The already-have impossible() arms are a
+ * named omit (async pline, cf. artifact.js:496). Async: the questart arm
+ * awaits artitouch (quest.c; qt_pager can reach nhgetch).
  */
-function addinv_core1(obj) {
+export async function addinv_core1(obj) {
     if (!obj) return;
     if ((obj.oclass | 0) === COIN_CLASS) {
         // C: disp.botl = TRUE
@@ -960,6 +961,14 @@ function addinv_core1(obj) {
         u.uhave.book = 1;
         record_achievement(ACH_BOOK);
     } else if (obj.oartifact) {
+        // C invent.c `:984–990` — quest artifact: uhave.questart + artitouch
+        // (already-have impossible() arm named omit, like the sibling arms).
+        if (is_quest_artifact(obj)) {
+            const u = game.u || (game.u = {});
+            if (!u.uhave) u.uhave = {};
+            u.uhave.questart = 1;
+            await artitouch(obj);
+        }
         set_artifact_intrinsic(obj, true, W_ART);
     }
     // C: "special achievements" — separate if/else chain after the above.
@@ -979,7 +988,7 @@ function addinv_core1(obj) {
 // (D-2207; was named). Named omissions: addinv_before; oname absorb;
 // worn combine-stack merge (mergable still rejects obj-worn: merged
 // setworn fixup unported); globby/pudding; lamplit timers;
-// questart/artitouch; addinv_core2 luck.
+// addinv_core2 luck.
 export async function addinv(obj) {
     if (!game.invent) game.invent = [];
     // C invent.c addinv_core0 — obj_was_thrown captured before merge
@@ -992,7 +1001,7 @@ export async function addinv(obj) {
         reset_justpicked(game.invent);
     }
     // C invent.c addinv_core0 `:1082` — addinv_core1(obj) before merge/link
-    addinv_core1(obj);
+    await addinv_core1(obj);
     // C invent.c merged() absorb for invent stacks: age/quan/weight
     // (+ coin bknown wipe) BEFORE known/bknown/rknown reconcile — gold
     // bknown=0 must precede the bknown discovery check or COIN merges

@@ -229,7 +229,7 @@ import {
     obj_glyph, cmap_to_glyph, glyph_is_invisible, map_invisible, unmap_object,
     bot, set_msg_xy, impossible,
 } from './display.js';
-import { cansee, couldsee } from './vision.js';
+import { cansee, couldsee, vision_recalc } from './vision.js';
 import { readobjnam_wish, HANDS_OBJ, NOTHING_OBJ } from './readobjnam.js';
 import {
     hold_another_object, makeknown, encumber_msg, enlightenment, freeinv_core,
@@ -237,7 +237,7 @@ import {
     update_inventory, set_cknown_lknown, getobj, useupall, useup,
 } from './invent.js';
 import { mstatusline, ustatusline } from './insight.js';
-import { setnotworn } from './do.js';
+import { setnotworn, boulder_hits_pool } from './do.js';
 import { doname, xname, yname, distant_name, vtense, The, the, an, An, aobjnam, killer_xname, ansimpleoname, makeplural } from './objnam.js';
 import { uhim, uhis } from './roles.js';
 import { fix_wall_spines } from './mklev.js';
@@ -256,7 +256,7 @@ import {
     G_UNIQ, G_NOCORPSE, is_rider, is_swimmer, mindless, MZ_MEDIUM, is_whirly,
     hides_under, is_golem, is_mplayer, vegetarian, carnivorous, NUMMONS,
 } from './monsters.js';
-import { m_at, wakeup, seemimic, dead_species, normal_shape, replmon, find_mid, mongone, restore_cham, m_respond, hideunder, healmon, can_be_hatched, cant_drown } from './mon.js';
+import { m_at, wakeup, seemimic, dead_species, normal_shape, replmon, find_mid, mongone, restore_cham, m_respond, hideunder, healmon, can_be_hatched, cant_drown, minliquid } from './mon.js';
 import { find_mac, monkilled, shade_miss, resists_sleep_slee, resists_blnd_mm, erode_armor } from './mhitm.js';
 import { update_mapseen_for } from './dungeon.js';
 import {
@@ -276,29 +276,32 @@ import { rnd_hallublast } from './mthrowu.js';
 import { finish_losehp_done, done } from './end.js';
 import {
     burnarmor, t_at, maketrap, delfloortrap, dotrap, mintrap, deltrap,
+    trap_ice_effects,
     NO_TRAP_FLAGS, ignite_items, openholdingtrap, closeholdingtrap,
     openfallingtrap, self_invis_message, trapname, animate_statue,
+    activate_statue_trap,
     acid_damage,
 } from './trap.js';
 import { potionbreathe, make_stunned, speed_up } from './potion.js';
 import { carried, fix_petrification, cant_finish_meal } from './eat.js';
+import { spoteffects } from './pickup.js';
 import { burn_away_slime, get_obj_location } from './timeout.js';
 import { show_transient_light, transient_light_cleanup } from './light.js';
 import { create_gas_cloud } from './region.js';
 import { recalc_block_point } from './vision.js';
 import { picking_at, reset_pick, boxlock, boxlock_invent, doorlock, getdir } from './lock.js';
-import { monflee, sticks } from './monmove.js';
+import { monflee, sticks, maybe_unhide_at } from './monmove.js';
 import { digests, set_ustuck, unstuck, expels, ureflects, u_slow_down } from './mhitu.js';
 import { newcham, makemon, create_critters, monhp_per_lvl, neweshk, add_to_minv, set_mimic_sym, newmcorpsenm } from './makemon.js';
 import { tele, u_teleport_mon, rloco, enexto } from './teleport.js';
-import { find_ac } from './u_init.js';
+import { find_ac, addinv_core1, addinv_core2 } from './u_init.js';
 import { rehumanize, polymon, body_part } from './polyself.js';
 import { costly_alteration, stolen_value, costly_spot, shop_keeper, hot_pursuit, obfree, delete_contents, addtobill } from './shk.js';
 import { dryup } from './fountain.js';
 import { explode } from './explode.js';
 import { unpunish, litroom } from './read.js';
 import { engr_at, del_engr, make_engr_at, wipe_engr_at, random_engraving, rloc_engr } from './engrave.js';
-import { bare_artifactname, defends, defends_when_carried, artifact_origin } from './artifact.js';
+import { bare_artifactname, defends, defends_when_carried, artifact_origin, revoke_invoked_property } from './artifact.js';
 import {
     Ring_gone, Ring_off, Ring_on, setworn, set_wear, hard_helmet,
 } from './do_wear.js';
@@ -308,7 +311,7 @@ import { abuse_dog, wary_dog, tamedog } from './dog.js';
 import { setuwep, setuswapwep, setuqwep, set_twoweap } from './wield.js';
 import { remove_worn_item } from './steal.js';
 import {
-    mkobj, mksobj, delobj, delobj_core, objects_at, replace_object, rnd_class, weight, splitobj, container_weight,
+    mkobj, mksobj, delobj, delobj_core, objects_at, sobj_at, replace_object, rnd_class, weight, splitobj, container_weight,
     oc_merge_of, uncurse, unbless, attach_egg_hatch_timeout, obj_extract_self,
     eaten_stat, start_timer, spot_stop_timers, spot_time_left, obj_stop_timers,
     obj_ice_effects, place_object, stackobj, mergable, set_corpsenm, kill_egg,
@@ -354,7 +357,7 @@ import {
     IS_POOL, CONTAINED_TOO, BURIED_TOO, ROOM, CORR, GRAVE,
     CORPSTAT_GENDER, CORPSTAT_MALE, CORPSTAT_FEMALE, MFAST,
     OMONST, has_oname, ONAME, has_omonst, has_omid, OMID, ESHK,
-    WEB, PIT, HOLE, TRAPDOOR, HEAD, FACE, FOOT, ARM, ENGRAVE, IS_FOUNTAIN, IS_WATERWALL, IS_WALL, HWALL, VWALL,
+    WEB, PIT, HOLE, TRAPDOOR, STATUE_TRAP, HEAD, FACE, FOOT, ARM, ENGRAVE, IS_FOUNTAIN, IS_WATERWALL, IS_WALL, HWALL, VWALL,
     TIMER_LEVEL, MELT_ICE_AWAY, EXPL_FIERY, EXPL_MAGICAL, COLNO, ROWNO,
     xytodir,
     IS_ALTAR, Is_earthlevel, IS_AIR, CLOUD, IS_SINK,
@@ -852,8 +855,8 @@ function useupf(obj, numused) {
     delobj(victim);
 }
 
-/** C ref: pline.c You — prefix "You ". */
-async function You(rest) {
+/** C ref: pline.c You — prefix "You ". Exported for pray.c pleased. */
+export async function You(rest) {
     await pline(`You ${rest}`);
 }
 
@@ -873,9 +876,10 @@ export function is_ice(x, y) {
 }
 
 /**
- * C ref: zap.c burn_floor_objects — burn scrolls/spellbooks/slime glob
- * on floor; return count destroyed. ignite_items still stub (D-0965).
- * give_feedback pline arm (D-0975); zap_over_floor still uses FALSE + smoke.
+ * C ref: zap.c burn_floor_objects `:4598–4656` — burn scrolls/spellbooks/
+ * slime glob on floor; per-unit `!rn2(3)` delquan; useupf when u_caused
+ * else partial quan/weight else delobj; give_feedback plines; ignite_items
+ * tail; return count destroyed.
  */
 export async function burn_floor_objects(x, y, give_feedback, u_caused) {
     let cnt = 0;
@@ -933,10 +937,10 @@ export async function burn_floor_objects(x, y, give_feedback, u_caused) {
 }
 
 /**
- * C ref: zap.c melt_ice — ICE/DB_ICE → pool/moat; stop melt timer;
- * obj_ice_effects + unearth_objs; Norep; hero spoteffects / mon
- * minliquid. Named omit: trap_ice_effects; Underwater vision;
- * boulder_hits_pool body (D-0965/D-0967).
+ * C ref: zap.c melt_ice `:5040–5079` — ICE/DB_ICE → pool/moat; stop melt
+ * timer; trap_ice_effects(TRUE) + obj_ice_effects + unearth_objs; Underwater
+ * vision_recalc; Norep; boulder settle via boulder_hits_pool; hero
+ * spoteffects / mon minliquid.
  */
 export async function melt_ice(x, y, msg) {
     const lev = game.level?.at?.(x, y);
@@ -950,23 +954,30 @@ export async function melt_ice(x, y, msg) {
         lev.icedpool = 0;
     }
     spot_stop_timers(x, y, MELT_ICE_AWAY);
-    // trap_ice_effects deferred
+    if (t_at(x, y)) await trap_ice_effects(x, y, true); // TRUE: ice_is_melting
     obj_ice_effects(x, y, false);
     await unearth_objs(x, y);
-    if (game.u?.Underwater) {
-        // vision_recalc(1) deferred
-    }
+    if (game.u?.Underwater) vision_recalc(1);
     newsym(x, y);
     if (cansee(x, y) || u_at(x, y)) await Norep(msg);
-    // boulder settle / boulder_hits_pool deferred
-    if (u_at(x, y)) {
-        // spoteffects(TRUE) deferred — drown/notice objects
-    } else if (is_pool(x, y)) {
-        const mtmp = m_at(x, y);
-        if (mtmp) {
-            const { minliquid } = await import('./mon.js');
-            await minliquid(mtmp);
+    let otmp = sobj_at(BOULDER, x, y);
+    if (otmp) {
+        if (cansee(x, y)) await pline(`${An(xname(otmp))} settles...`);
+        for (;;) {
+            obj_extract_self(otmp); // boulder isn't being pushed
+            if (!(await boulder_hits_pool(otmp, x, y, false)))
+                await impossible('melt_ice: no pool?');
+            /* try again if there's another boulder and pool didn't fill */
+            if (!is_pool(x, y)) break;
+            otmp = sobj_at(BOULDER, x, y);
+            if (!otmp) break;
         }
+        newsym(x, y);
+    }
+    if (u_at(x, y)) await spoteffects(true); // possibly drown, notice objects
+    else if (is_pool(x, y)) {
+        const mtmp = m_at(x, y);
+        if (mtmp) await minliquid(mtmp);
     }
 }
 
@@ -1730,12 +1741,12 @@ export async function destroy_items(mon, dmgtyp, dmg_in) {
 }
 
 /**
- * C ref: zap.c resist — alev by oclass; if resisted halve damage; apply
+ * C ref: zap.c resist :6100-6158 — alev by oclass; if resisted tell-shield
+ * (:6143-6144 `if (tell) shieldeff_mon(mtmp)`) then halve damage; apply
  * remaining damage and kill when fatal.
  * @returns {Promise<boolean>} true if resisted
  */
 export async function resist(mtmp, oclass, damage, tell) {
-    void tell; // shieldeff deferred
     // C: fake players always pass vs Conflict (RING_CLASS, 0 damage, NOTELL).
     if (oclass === RING_CLASS && !damage && !tell && is_mplayer(mtmp.data))
         return true;
@@ -1755,7 +1766,11 @@ export async function resist(mtmp, oclass, damage, tell) {
     const mr = mtmp.data?.mr | 0;
     const resisted = rn2(100 + alev - dlev) < mr;
     let dmg = damage | 0;
-    if (resisted) dmg = Math.trunc((dmg + 1) / 2);
+    if (resisted) {
+        // C :6143-6144: shield effect before the halve, only when tell.
+        if (tell) await shieldeff_mon(mtmp);
+        dmg = Math.trunc((dmg + 1) / 2);
+    }
     if (dmg) {
         mtmp.mhp = (mtmp.mhp | 0) - dmg;
         if ((mtmp.mhp | 0) < 1) {
@@ -4921,7 +4936,8 @@ async function stone_to_flesh_obj(obj) {
  * C ref: zap.c poly_obj — STRANGE_OBJECT class-preserving poly
  * (wand/pile + potion_dip D-1499) plus mksobj(id) for stone-to-flesh
  * (D-1461 :1728–1736). Invent worn remap + set_wear (D-1510).
- * Named: sokoban_guilt / egg/leash / addinv_core1/2 / shop bill /
+ * Invent side effects via addinv_core1/2 (C `:1910–1914`).
+ * Named: sokoban_guilt / egg/leash / shop bill /
  * gem mineral rnd / spestudied / floor boulder block.
  */
 export async function poly_obj(obj, id) {
@@ -5074,7 +5090,14 @@ export async function poly_obj(obj, id) {
         replace_object(obj, otmp);
         if (obj_location === OBJ_INVENT) {
             freeinv_core(obj);
-            /* addinv_core1/2 named */
+            /* C zap.c `:1910–1914` — freeinv_core(obj) then addinv_core1/2
+             * on otmp: the in-place invent swap's side effects (uhave /
+             * questart artitouch / W_ART intrinsic / archeologist decipher).
+             * Old-obj invoked-toggle reversal (artifact.c `:880–885`, D-2378)
+             * runs here, in C order before addinv_core1. */
+            if (obj.oartifact) await revoke_invoked_property(obj);
+            await addinv_core1(otmp);
+            await addinv_core2(otmp);
             if (old_wornmask) {
                 /* C :1921–1950 — keep weapon slots; else wearslot & old. */
                 const was_twohanded = bimanual(obj);
@@ -5411,16 +5434,56 @@ async function bhito(obj, otmp) {
 }
 
 /**
- * C ref: zap.c bhitpile — walk floor pile with fhito.
- * create_polymon / recreate_pile / fill_pit deferred.
+ * C ref: zap.c bhitpile :2426–2500 — walk floor pile with fhito.
+ * Head (:2436–2476) live: hidingunder/first init, WAN_STRIKING /
+ * SPE_FORCE_BOLT STATUE_TRAP pre-activate + learnwand (the default
+ * bhito -> break_statue -> activate_statue_trap sequence could
+ * otherwise operate on next_obj below the current statue), first=FALSE
+ * when the pile head changed, hidingunder up/down skips in the walk,
+ * maybe_unhide_at tail.
+ * Named omit (tails, own rows): create_polymon after poly_zapped,
+ * recreate_pile restack, fill_pit.
  */
-export async function bhitpile(wand, fhito, tx, ty, _zz) {
+export async function bhitpile(wand, fhito, tx, ty, zz) {
     let hitanything = 0;
     if (!objects_at(tx, ty)) return 0;
+
+    /* C :2440–2443 — hiding under an object gates the up/down skips. */
+    const hidingunder = (zz | 0) !== 0 && ((game.u?.uundetected | 0) !== 0)
+        && hides_under(game.youmonst?.data);
+    let first = true;
+
+    /* C :2446–2461 — striking/force-bolt pre-activates a statue trap
+     * before the walk (see the C comment for why the default calling
+     * sequence cannot be trusted here). */
+    if ((wand?.otyp | 0) === SPE_FORCE_BOLT
+        || (wand?.otyp | 0) === WAN_STRIKING) {
+        const t = t_at(tx, ty);
+        const topofpile = objects_at(tx, ty);
+        if (t && (t.ttyp | 0) === STATUE_TRAP
+            && (await activate_statue_trap(t, tx, ty, true)))
+            learnwand(wand);
+        /* C :2459–2461 — assume a changed pile head means the top item
+         * was a statue which activated. */
+        if (objects_at(tx, ty) !== topofpile)
+            first = false;
+    }
 
     game._poly_zapped = -1;
     for (let otmp = objects_at(tx, ty); otmp; ) {
         const next_obj = otmp.nexthere;
+        if (hidingunder) {
+            if (first) {
+                first = false; /* reset for next item */
+                if ((zz | 0) > 0) { /* down zap skips the top item */
+                    otmp = next_obj;
+                    continue;
+                }
+            } else if ((zz | 0) < 0) { /* up zap hits the top item only */
+                otmp = next_obj;
+                continue;
+            }
+        }
         if (otmp.where !== OBJ_FLOOR
             || (otmp.ox | 0) !== (tx | 0) || (otmp.oy | 0) !== (ty | 0)) {
             otmp = next_obj;
@@ -5429,6 +5492,8 @@ export async function bhitpile(wand, fhito, tx, ty, _zz) {
         hitanything += (await fhito(otmp, wand)) | 0;
         otmp = next_obj;
     }
+    /* C :2495–2497 — pile might have been destroyed or dispersed. */
+    if (hidingunder) await maybe_unhide_at(tx, ty);
     return hitanything;
 }
 

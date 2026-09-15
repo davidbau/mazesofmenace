@@ -70,7 +70,7 @@ import {
     STONE, SCORR, CORR, ROOM, DOOR, ICE, MAX_TYPE, SDOOR, STAIRS, LADDER, DRAWBRIDGE_UP,
     DRAWBRIDGE_DOWN, DB_UNDER, DB_ICE, DB_FLOOR,
     MELT_ICE_AWAY, ROT_ORGANIC,
-    MAGIC_PORTAL, LEVEL_TELEP, Is_waterlevel, Is_airlevel,
+    MAGIC_PORTAL, LEVEL_TELEP, Is_waterlevel, Is_airlevel, Is_firelevel,
     D_NODOOR, D_ISOPEN, D_CLOSED, D_LOCKED, D_BROKEN, D_TRAPPED,
     MAXULEV,
     ER_NOTHING, ER_GREASED, ER_DAMAGED, ER_DESTROYED,
@@ -104,7 +104,7 @@ import {
     ECMD_OK, ECMD_TIME, MON_DETACH,
     Is_container, Waterproof_container, Is_box,
     xytodir, DIR_180, DIR_ERR,
-    OBJ_FLOOR, OBJ_FREE, SHOPBASE, ESHK, M_SEEN_ELEC, CONTAINED_TOO, BURIED_TOO,
+    OBJ_FLOOR, OBJ_FREE, VAULT, TEMPLE, SHOPBASE, ESHK, M_SEEN_ELEC, CONTAINED_TOO, BURIED_TOO,
     GETOBJ_PROMPT, GETOBJ_SUGGEST, GETOBJ_EXCLUDE, GETOBJ_DOWNPLAY,
     P_RIDING, P_BASIC, M_AP_FURNITURE, M_AP_OBJECT,
     A_LAWFUL, XKILL_NOMSG, SHOP_HOLE_COST,
@@ -147,15 +147,15 @@ import { Soundeffect } from './sndprocs.js';
 import { se_loud_crash } from './generated/seffects_data.js';
 import { mon_adjust_speed } from './muse.js';
 import { m_dowear, extract_from_minvent, update_mon_extrinsics } from './worn.js';
-import { m_unleash, number_leashed, unleash_all } from './apply.js';
+import { m_unleash, number_leashed, unleash_all, check_leash } from './apply.js';
 import { hard_helmet, helm_simple_name, cloak_simple_name, suit_simple_name } from './do_wear.js';
-import { unplacebc, placebc, ballfall } from './ball.js';
+import { unplacebc, placebc, ballfall, drag_ball, move_bc } from './ball.js';
 import { carried, is_fainted, reset_faint } from './eat.js';
 import { inv_cnt, remove_worn_item } from './steal.js';
 import { ynq } from './getline.js';
 import { more_experienced, newexplevel } from './exper.js';
 import { killed, stumble_onto_mimic } from './uhitm.js';
-import { rider_cant_reach, dismount_steed } from './steed.js';
+import { rider_cant_reach, dismount_steed, test_move_ok } from './steed.js';
 import { resist, blank_novel, poly_obj } from './zap.js';
 import { fill_pit, fillholetyp, liquid_flow, maybe_dunk_boulders, bury_an_obj } from './dig.js';
 import { u_wield_art, attacks, bare_artifactname, has_magic_key } from './artifact.js';
@@ -693,6 +693,26 @@ function is_pool_or_lava(x, y) {
 /** C ref: trap.h undestroyable_trap — portal / vibrating square. */
 export function undestroyable_trap(ttyp) {
     return ttyp === MAGIC_PORTAL || ttyp === VIBRATING_SQUARE;
+}
+
+/**
+ * C ref: trap.c trap_ice_effects `:7175–7194` — melting ice frees a trapped
+ * mon and drops a landmine/bear trap to a floor object, else removes it.
+ */
+export async function trap_ice_effects(x, y, ice_is_melting) {
+    const ttmp = t_at(x, y);
+    if (ttmp && ice_is_melting) {
+        const mtmp = m_at(x, y);
+        if (mtmp && mtmp.mtrapped) mtmp.mtrapped = 0;
+        if (ttmp.ttyp === LANDMINE || ttmp.ttyp === BEAR_TRAP) {
+            /* landmine or bear trap set on top of the ice falls
+               into the water */
+            const otyp = (ttmp.ttyp === LANDMINE) ? LAND_MINE : BEARTRAP;
+            await cnv_trap_obj(otyp, 1, ttmp, true);
+        } else {
+            if (!undestroyable_trap(ttmp.ttyp)) deltrap(ttmp);
+        }
+    }
 }
 
 /**
@@ -1871,7 +1891,7 @@ async function steedintrap(trap, otmp) {
     case SLP_GAS_TRAP:
         if (!resists_sleep(steed) && !breathless(steed.data)
             && !helpless(steed)) {
-            if (sleep_monst(steed, rnd(25), -1)) {
+            if (await sleep_monst(steed, rnd(25), -1)) {
                 /* no in_sight check here; you can feel it even if blind */
                 await pline(`${Monnam(steed)} suddenly falls asleep!`);
             }
@@ -3394,13 +3414,26 @@ async function trapeffect_bear_trap(mtmp, trap, trflags) {
 }
 
 /**
- * C ref: dungeon.c ceiling — room/air/cavern labels for trap plines.
- * Named omissions: vault/temple/shop in_rooms; water/fire/quest/Underwater.
+ * C ref: dungeon.c ceiling — vault/temple/shop in_rooms, then water/air/
+ * fire/quest/Underwater, then room (non-earth)/wall/door/SDOOR, else cavern.
+ * Serves trap plines and (via import) potion.c peffect_levitation/gain_level.
  */
 export function ceiling(x, y) {
-    const typ = game.level?.at(x, y)?.typ ?? 0;
+    const typ = game.level?.at?.(x, y)?.typ ?? 0;
+    const uz = game.u?.uz;
+    /* other room types will no longer exist when we're interested --
+     * see check_special_room() */
+    if (in_rooms(x, y, VAULT)) return "vault's ceiling";
+    if (in_rooms(x, y, TEMPLE)) return "temple's ceiling";
+    if (in_rooms(x, y, SHOPBASE)) return "shop's ceiling";
+    if (Is_waterlevel(uz)) return 'water above';
     if (IS_AIR(typ)) return 'sky';
-    if (IS_ROOM(typ) || IS_WALL(typ) || IS_DOOR(typ) || typ === SDOOR)
+    if (Is_firelevel(uz)) return 'flames above';
+    if (In_quest(uz)) return 'expanse above';
+    /* C youprop.h Underwater ≡ u.uinwater (u.Underwater is never written) */
+    if ((game.u?.uinwater | 0)) return "water's surface";
+    if ((IS_ROOM(typ) && !Is_earthlevel(uz))
+        || IS_WALL(typ) || IS_DOOR(typ) || typ === SDOOR)
         return 'ceiling';
     return 'rock cavern';
 }
@@ -3961,16 +3994,18 @@ function helpless(mtmp) {
 }
 
 /**
- * C ref: mhitm.c sleep_monst — how < 0 skips mimic reveal / resist().
- * Envelope: resists_sleep shield; else if mcanmove freeze via mfrozen.
- * Named omissions: defended(AD_SLEE); how>=0 seemimic/resist; shieldeff;
+ * C ref: mhitm.c sleep_monst :1223-1246 — trap path (D-0256 callers pass
+ * how=-1, so C still checks resists_sleep/defended + shieldeff).
+ * C order: resists_sleep || defended(AD_SLEE) || (how>=0 && resist)
+ * → shieldeff + return 0; defended() is RNG-free, shieldeff display-only.
+ * Named omissions: how>=0 seemimic/resist (music path live D-2357);
  * full finish_meating mimic AP reset (inline meating=0 only).
  */
-function sleep_monst(mon, amt, how) {
+async function sleep_monst(mon, amt, how) {
     if (!mon) return 0;
-    // how >= 0 mimic reveal / resist(how) deferred
-    if (resists_sleep(mon) /* || defended(mon, AD_SLEE) */) {
-        // shieldeff deferred
+    // how >= 0 mimic reveal / resist(how) deferred (music path live D-2357)
+    if (resists_sleep(mon) || defended(mon, AD_SLEE)) {
+        await shieldeff(mon.mx, mon.my);
         return 0;
     }
     if (mon.mcanmove) {
@@ -4743,7 +4778,7 @@ async function trapeffect_slp_gas_trap(mtmp, trap, _trflags) {
     }
     const in_sight = canseemon(mtmp) || (mtmp === game.u?.usteed);
     if (!resists_sleep(mtmp) && !breathless(mtmp.data) && !helpless(mtmp)) {
-        if (sleep_monst(mtmp, rnd(25), -1) && in_sight) {
+        if (await sleep_monst(mtmp, rnd(25), -1) && in_sight) {
             await pline(`${Monnam(mtmp)} suddenly falls asleep!`);
             seetrap(trap);
         }
@@ -6461,10 +6496,95 @@ export async function cnv_trap_obj(otyp, cnt, ttmp, bury_it) {
 }
 
 /**
+ * C ref: trap.c move_into_trap `:5393–5437` — failed adjacent untrap stumbles
+ * hero onto the trap (`Whoops...` already printed by try_disarm).
+ * C order: `test_move(u.ux,u.uy,sgn(x-ux),sgn(y-uy),TEST_MOVE)` (here the
+ * doorway-diagonal subset `test_move_ok` — C hack.c `:1140–1147` into /
+ * `:1205–1213` out of an intact doorway over accessible_cell) &&
+ * (`!Punished` || `drag_ball(x,y,&bc,&bx,&by,&cx,&cy,&unused,TRUE)` whose JS
+ * shape is `{ok,bc_control,ballx,bally,chainx,chainy}`); then `ux0/uy0`,
+ * `u_on_newpos(x,y)` (thin mklev.js + steed share — C dungeon.c:1568),
+ * `umoved`, `newsym(old)`, `vision_recalc(1)`, `check_leash(old)`,
+ * `move_bc(0,bc,...)` when punished, `tseen=0` check_here hack,
+ * `failing_untrap++`, `spoteffects(TRUE)`, `failing_untrap--`, re-`tseen=1`,
+ * `exercise(WIS)`; else `Fortunately, you don't move into/onto it.`
+ * Named omissions: full `test_move` rock/closed-door/boulder/worm/travel arms
+ * (try_disarm already gates boulder/tight-diagonal/reach; trap cells are
+ * accessible so the doorway subset is the live arm — block_door/block_entry
+ * shopkeeper, may_passwall, underwater, tunnels, autodig ride along);
+ * `u_on_newpos` cliparound/uundetected/see_nearby/earth_sense; drag jerk
+ * hmon/miss damage (ball.js burns the rnd(20) roll).
+ */
+async function move_into_trap(ttmp) {
+    const u = game.u || {};
+    const x = ttmp.tx | 0, y = ttmp.ty | 0;
+    const dx = sgn(x - (u.ux | 0)), dy = sgn(y - (u.uy | 0));
+    // C hack.c:1000 test_move clears door_opened on entry (all modes).
+    if (game.context) game.context.door_opened = false;
+    // C youprop.h:77 Punished ≡ (u.uball != 0) — inline uball check per
+    // trap.js convention (D-1786); never sticky u.Punished.
+    const isPunished = !!(game.u?.uball);
+    let bc = 0, bx = 0, by = 0, cx = 0, cy = 0;
+    let canMove = false;
+    // C short-circuit: test_move first; drag_ball only when punished.
+    if (test_move_ok(u.ux | 0, u.uy | 0, dx, dy)) {
+        if (!isPunished) {
+            canMove = true;
+        } else {
+            const entryUx = u.ux | 0, entryUy = u.uy | 0;
+            const drag = await drag_ball(x, y, true);
+            if (drag.ok) {
+                canMove = true;
+                bc = drag.bc_control | 0;
+                bx = drag.ballx | 0; by = drag.bally | 0;
+                cx = drag.chainx | 0; cy = drag.chainy | 0;
+            } else {
+                // C ball.c jerk-back runs spoteffects(TRUE) inside drag_ball
+                // before returning FALSE; JS defers it to the caller
+                // (ball.js). Encumber (hero unmoved) has no spoteffects
+                // in C either.
+                if ((u.ux | 0) !== entryUx || (u.uy | 0) !== entryUy) {
+                    const { spoteffects: spotJerk } = await import('./pickup.js');
+                    await spotJerk(true);
+                }
+                canMove = false;
+            }
+        }
+    }
+    if (canMove) {
+        const ux0 = u.ux | 0, uy0 = u.uy | 0;
+        u.ux0 = ux0; u.uy0 = uy0;
+        // C dungeon.c:1568 u_on_newpos sets ux,uy (+ CLIPPING) and shares
+        // with steed; JS thin mklev.js sets ux,uy — sync steed here.
+        const { u_on_newpos } = await import('./mklev.js');
+        u_on_newpos(x, y);
+        if (u.usteed) {
+            u.usteed.mx = x;
+            u.usteed.my = y;
+        }
+        u.umoved = true;
+        newsym(ux0, uy0);
+        vision_recalc(1);
+        await check_leash(ux0, uy0);
+        if (isPunished) move_bc(0, bc, bx, by, cx, cy);
+        ttmp.tseen = 0; // hack for check_here()
+        if (!game.iflags) game.iflags = {};
+        game.iflags.failing_untrap = (game.iflags.failing_untrap | 0) + 1;
+        const { spoteffects } = await import('./pickup.js');
+        await spoteffects(true); // pickup() + dotrap()
+        game.iflags.failing_untrap -= 1;
+        const here = t_at(u.ux | 0, u.uy | 0);
+        if (here) here.tseen = 1;
+        exercise(A_WIS, false);
+    } else {
+        await pline(`Fortunately, you don't move ${into_vs_onto(ttmp.ttyp) ? 'into' : 'onto'} it.`);
+    }
+}
+
+/**
  * C ref: trap.c try_disarm `:5440–5527` — reach/occupancy then untrap_prob.
  * Returns 0 no-time, 1 spent-fail, 2 success (caller disarms).
- * Named omit: adjacent-Whoops `move_into_trap` (no `test_move` export;
- * drag_ball / u_on_newpos / failing_untrap spoteffects).
+ * Adjacent-Whoops arm calls `move_into_trap` above.
  */
 async function try_disarm(ttmp, force_failure) {
     const u = game.u || {};
@@ -6525,8 +6645,9 @@ async function try_disarm(ttmp, force_failure) {
                 }
             } else if (under_u) {
                 await dotrap(ttmp, FAILEDUNTRAP);
+            } else {
+                await move_into_trap(ttmp);
             }
-            // else: move_into_trap named omit
         } else {
             const whose = ttmp.madeby_u ? 'Your' : under_u ? 'This' : 'That';
             const verb = ttype === WEB ? 'remove' : 'disarm';
@@ -6768,8 +6889,7 @@ async function untrap_box(box, force, confused) {
  * C ref: trap.c untrap `:5847–6096` — #untrap / autounlock / #invoke.
  * Floor switch: holding / landmine / dart / arrow / pit help_monster_out
  * + boxcnt ynq / untrap_box / disarm_box. Door force luck-skip D-1495.
- * Named omissions: stumble_on_door_mimic;
- * try_disarm adjacent-Whoops move_into_trap.
+ * Named omissions: try_disarm adjacent-Whoops move_into_trap.
  * @param {boolean} [force=false]
  * @param {number} [rx=0]
  * @param {number} [ry=0]
@@ -6914,7 +7034,10 @@ export async function untrap(force = false, rx = 0, ry = 0, container = null) {
             }
             await pline('There are no other chests or boxes here.');
         }
-        // stumble_on_door_mimic named omit
+        // C trap.c untrap `:6026` — doorway door-mimic stumble (home lock.c;
+        // lazy import: lock.js statically imports b_trapped/t_at from here).
+        const { stumble_on_door_mimic } = await import('./lock.js');
+        if (await stumble_on_door_mimic(x, y)) return 1;
     }
     const loc = game.level?.at?.(x, y);
     if (!loc || !IS_DOOR(loc.typ | 0)) {

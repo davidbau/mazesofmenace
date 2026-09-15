@@ -8,7 +8,8 @@
 // Branch envelope: spl_book init; initialspell from ini_inv_use_obj;
 // study_book blank + known-refresh yn + delay/too_hard + cursed_book
 // (D-0681) + begin-memorize + set_occupation(learn) (D-0907); dovspell
-// VIEW menu; Wizard skill_based_spellbook_id; Z/#cast → getspell CAST →
+// VIEW swap/sort (spell_cmp + sortspells + spellsortmenu);
+// Wizard skill_based_spellbook_id; Z/#cast → getspell CAST →
 // spelleffects_check + SPE_HEALING self-zap; tport_spell hide/add for
 // dotelecmd m-prefix (D-1209); known_spell + SPE_TELEPORT_AWAY atme
 // zapyourself + check_capacity in spelleffects_check (D-1225);
@@ -357,6 +358,34 @@ function spellet(i) {
     return i < 26
         ? String.fromCharCode('a'.charCodeAt(0) + i)
         : String.fromCharCode('A'.charCodeAt(0) + i - 26);
+}
+
+/**
+ * C ref: spell.c force_learn_spell `:2391–2413` — divine direct learning
+ * (sole caller pray.c give_spell): blank/BotD or already-Fresh → '\0';
+ * first NO_SPELL/same-otyp slot else impossible; sp_id/sp_lev assign +
+ * incrnknow(i, 0) → spell letter.
+ * @param {number} otyp
+ * @returns {Promise<string>} spell letter or '\0'
+ */
+export async function force_learn_spell(otyp) {
+    if (otyp === SPE_BLANK_PAPER || otyp === SPE_BOOK_OF_THE_DEAD
+        || known_spell(otyp) === spe_Fresh)
+        return '\0';
+    let i;
+    for (i = 0; i < MAXSPELL; i++)
+        if (spellid(i) === NO_SPELL || spellid(i) === otyp)
+            break;
+    if (i === MAXSPELL) {
+        await impossible('Too many spells memorized');
+        return '\0';
+    }
+    // C: svs.spl_book — entries exist post-init (incrnknow guards the same way)
+    if (!game.spl_book) init_spl_book();
+    game.spl_book[i].sp_id = otyp;
+    game.spl_book[i].sp_lev = game.objects?.[otyp]?.oc_level ?? 0;
+    incrnknow(i, 0);
+    return spellet(i);
 }
 
 function P_SKILL(type) {
@@ -1134,10 +1163,170 @@ function use_skill(skill, degree) {
     ws.advance = (ws.advance || 0) + (degree | 0);
 }
 
+/** C ref: spell.c spl_sort_types enum `:1842–1852` */
+const SORTBY_LETTER = 0;
+const SORTBY_ALPHA = 1;
+const SORTBY_LVL_LO = 2;
+const SORTBY_LVL_HI = 3;
+const SORTBY_SKL_AL = 4;
+const SORTBY_SKL_LO = 5;
+const SORTBY_SKL_HI = 6;
+const SORTBY_CURRENT = 7;
+const SORTRETAINORDER = 8;
+const NUM_SPELL_SORTBY = 9;
+
+/** C ref: spell.c spl_sortchoices `:1855–1865` */
+const spl_sortchoices = [
+    'by casting letter',
+    'alphabetically',
+    'by level, low to high',
+    'by level, high to low',
+    'by skill group, alphabetized within each group',
+    'by skill group, low to high level within group',
+    'by skill group, high to low level within group',
+    'maintain current ordering',
+    /* a menu choice rather than a sort choice */
+    'reassign casting letters to retain current order',
+];
+
+/**
+ * C ref: hacklib.c strcmpi — case-insensitive 3-way string compare.
+ * (Existing vault.js/write.js clones are boolean equality only.)
+ */
+function strcmpi3(a, b) {
+    const x = String(a ?? '').toLowerCase();
+    const y = String(b ?? '').toLowerCase();
+    return x < y ? -1 : x > y ? 1 : 0;
+}
+
+/**
+ * C ref: spell.c spell_cmp `:1867–1921` — qsort callback over
+ * spl_orderindx[] (args are internal spl_book indices, not positions).
+ * Contest stable-sort patch → ties keep order (Constitution §4.5);
+ * SORTBY_CURRENT/default compares element addresses in C, i.e. keep.
+ */
+function spell_cmp(indx1, indx2) {
+    const otyp1 = spellid(indx1);
+    const otyp2 = spellid(indx2);
+    const levl1 = game.objects?.[otyp1]?.oc_level | 0;
+    const levl2 = game.objects?.[otyp2]?.oc_level | 0;
+    const skil1 = game.objects?.[otyp1]?.oc_skill | 0;
+    const skil2 = game.objects?.[otyp2]?.oc_skill | 0;
+    switch (game.spl_sortmode | 0) {
+    case SORTBY_LETTER:
+        return indx1 - indx2;
+    case SORTBY_ALPHA:
+        break;
+    case SORTBY_LVL_LO:
+        if (levl1 !== levl2) return levl1 - levl2;
+        break;
+    case SORTBY_LVL_HI:
+        if (levl1 !== levl2) return levl2 - levl1;
+        break;
+    case SORTBY_SKL_AL:
+        if (skil1 !== skil2) return skil1 - skil2;
+        break;
+    case SORTBY_SKL_LO:
+        if (skil1 !== skil2) return skil1 - skil2;
+        if (levl1 !== levl2) return levl1 - levl2;
+        break;
+    case SORTBY_SKL_HI:
+        if (skil1 !== skil2) return skil1 - skil2;
+        if (levl1 !== levl2) return levl2 - levl1;
+        break;
+    case SORTBY_CURRENT:
+    default:
+        return 0; // C address compare = keep current order; JS sort stable
+    }
+    // tie-breaker for most sorts — alphabetical by spell name
+    return strcmpi3(objectNameStrs[otyp1], objectNameStrs[otyp2]);
+}
+
+/**
+ * C ref: spell.c sortspells `:1926–1972` — sort the display index
+ * (SORTBY_xxx) or the spellbook itself (SORTRETAINORDER).
+ */
+function sortspells() {
+    if ((game.spl_sortmode | 0) === SORTBY_CURRENT) return;
+    let n = 0;
+    for (; n < MAXSPELL && spellid(n) !== NO_SPELL; ++n) continue;
+    if (n < 2) return; // not enough entries to need sorting
+    if (!game.spl_orderindx) {
+        // haven't done any sorting yet; list is in casting order
+        if (game.spl_sortmode === SORTBY_LETTER /* default */
+            || game.spl_sortmode === SORTRETAINORDER) return;
+        // allocate enough for full spellbook rather than just N spells
+        game.spl_orderindx = Array.from({ length: MAXSPELL }, (_, i) => i);
+    }
+    if (game.spl_sortmode === SORTRETAINORDER) {
+        // sort svs.spl_book[] rather than spl_orderindx[]; this also
+        // updates the index to reflect the new ordering
+        const tmp_book = game.spl_book.slice();
+        for (let i = 0; i < MAXSPELL; i++) {
+            tmp_book[i] = game.spl_book[game.spl_orderindx[i]];
+        }
+        for (let i = 0; i < MAXSPELL; i++) {
+            game.spl_book[i] = tmp_book[i];
+            game.spl_orderindx[i] = i;
+        }
+        game.spl_sortmode = SORTBY_LETTER; // reset
+        return;
+    }
+    // usual case, sort the index rather than the spells themselves
+    const head = game.spl_orderindx.slice(0, n).sort(spell_cmp);
+    for (let i = 0; i < n; i++) game.spl_orderindx[i] = head[i];
+}
+
+/**
+ * C ref: spell.c spellsortmenu `:1978–2017` — pick a sort order.
+ * Single-key menu: letter commits, Return/Space accepts the preselected
+ * (current sortmode → TRUE, re-sort is idempotent), Esc cancels (FALSE).
+ * The C `n > 1` second-pick arm needs multi-select; unreachable here.
+ */
+async function spellsortmenu() {
+    const sortmode = game.spl_sortmode | 0;
+    const entries = [
+        { text: 'View known spells list sorted', attr: ATR_INVERSE },
+        { text: '', attr: 0 },
+    ];
+    const choices = [];
+    for (let i = 0; i < NUM_SPELL_SORTBY; i++) {
+        let mlet; // C `char let`
+        if (i === SORTRETAINORDER) {
+            mlet = 'z'; // assumes fewer than 26 sort choices...
+            // separate final choice from others with a blank line
+            entries.push({ text: '', attr: 0 });
+        } else {
+            mlet = String.fromCharCode('a'.charCodeAt(0) + i);
+        }
+        entries.push({ text: `${mlet} - ${spl_sortchoices[i]}`, attr: 0 });
+        choices.push({ key: mlet, idx: i });
+    }
+    for (;;) {
+        await paint_corner_nhw_menu(entries, '(end) ');
+        await flush_screen(1);
+        const key = await nhgetch();
+        await dismiss_nhw_menu();
+        if (key === 27) return false;
+        if (key === 13 || key === 10 || key === 32) {
+            return true; // accept preselected = current sortmode
+        }
+        const hit = choices.find((c) => c.key === String.fromCharCode(key));
+        if (hit) {
+            game.spl_sortmode = hit.idx;
+            return true;
+        }
+        // invalid → re-prompt
+    }
+}
+
 /**
  * C ref: spell.c dospellmenu — VIEW / CAST (PICK_NONE / PICK_ONE + sort).
- * Returns { ok, splnum }; ok false = cancel.
- * VIEW: swap/sort deferred — letter/`+` treated as cancel.
+ * Returns { ok, splnum }; ok false = cancel / decline.
+ * VIEW first call: letter or `+` returns ok:true (dovspell dispatches
+ * SORT vs swap). Second (swap) call with splaction >= 0: the preselected
+ * letter declines (C `*spell_no == splaction` → FALSE → break);
+ * Return/Space accepts the preselected → likewise FALSE.
  * CAST: letter returns ok:true with splnum.
  */
 async function dospellmenu(prompt, splaction) {
@@ -1166,7 +1355,8 @@ async function dospellmenu(prompt, splaction) {
     const choices = [];
 
     for (let i = 0; i < MAXSPELL && spellid(i) !== NO_SPELL; i++) {
-        const splnum = i; // no spl_orderindx yet
+        // C `:2119`: splnum = !gs.spl_orderindx ? i : gs.spl_orderindx[i]
+        const splnum = game.spl_orderindx ? game.spl_orderindx[i] : i;
         const fail = 100 - percent_success(splnum);
         let line = `${padR(20, spellname(splnum))}  ${padL(2, spellev(splnum))}   `
             + `${padR(12, spelltypemnemonic(spell_skilltype(spellid(splnum))))} `
@@ -1217,18 +1407,25 @@ async function dospellmenu(prompt, splaction) {
             }
             continue;
         }
-        // PICK_ONE: space/return with nothing preselected → cancel
+        // PICK_ONE space/return: first call (nothing preselected) → n==0
+        // → FALSE; swap call accepts the preselected → likewise FALSE.
+        // Both break the dovspell loop.
         if (key === 13 || key === 10 || key === 32) {
             return { ok: false, splnum: -1 };
         }
         const ch = String.fromCharCode(key);
         const hit = choices.find((c) => c.key === ch);
         if (hit) {
-            if (splaction === SPELLMENU_CAST) {
+            if (splaction === SPELLMENU_CAST || splaction === SPELLMENU_VIEW) {
                 return { ok: true, splnum: hit.splnum };
             }
-            // VIEW swap/sort bodies deferred — treat as cancel (Esc path)
-            return { ok: false, splnum: hit.splnum };
+            // swap call (splaction >= 0): picking the preselected entry
+            // declines — C `*spell_no == splaction` → FALSE (no swap).
+            // (C `n > 1` second-pick needs multi-select; unreachable here.)
+            if (hit.splnum === splaction) {
+                return { ok: false, splnum: hit.splnum };
+            }
+            return { ok: true, splnum: hit.splnum };
         }
         // invalid → re-prompt
     }
@@ -1277,17 +1474,36 @@ export function age_spells() {
 }
 
 /**
- * C ref: spell.c dovspell — Currently known spells menu.
+ * C ref: spell.c dovspell `:2021–2053` — view/swap/sort known spells.
+ * Named: tty explicit-de-select self-swap no-op (C `:2159–2163`
+ * `splaction >= 0` arm; single-key menu has no deselect gesture).
  */
 export async function dovspell() {
     if (spellid(0) === NO_SPELL) {
         await pline("You don't know any spells right now.");
-        return;
+    } else {
+        for (;;) {
+            const first = await dospellmenu(
+                'Currently known spells', SPELLMENU_VIEW);
+            if (!first.ok) break;
+            if (first.splnum === SPELLMENU_SORT) {
+                if (await spellsortmenu()) sortspells();
+            } else {
+                const qbuf = 'Reordering spells; swap '
+                    + `'${spellet(first.splnum)}' with`;
+                const second = await dospellmenu(qbuf, first.splnum);
+                if (!second.ok) break;
+                const spl_tmp = game.spl_book[first.splnum];
+                game.spl_book[first.splnum] = game.spl_book[second.splnum];
+                game.spl_book[second.splnum] = spl_tmp;
+            }
+        }
     }
-    // VIEW loop; swap/sort deferred — first cancel exits
-    await dospellmenu('Currently known spells', SPELLMENU_VIEW);
-    game.spl_orderindx = null;
-    game.spl_sortmode = 0;
+    if (game.spl_orderindx) {
+        game.spl_orderindx = null; // C free()
+    }
+    game.spl_sortmode = SORTBY_LETTER; // 0
+    return ECMD_OK;
 }
 
 /**

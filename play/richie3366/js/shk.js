@@ -98,7 +98,7 @@ import {
 } from './mkobj.js';
 import { add_to_minv, mpickobj, makemon } from './makemon.js';
 import { acurr, acurrstr, A_CHA, A_WIS, adjalign, exercise, Fast } from './attrib.js';
-import { simpleonames, makeplural, xprname, set_shk_owns_prefix } from './objnam.js';
+import { simpleonames, makeplural, xprname, set_shk_owns_prefix, obj_typename } from './objnam.js';
 import {
     xname, doname, paydoname, set_doname_shop_suffix,
     ansimpleoname, thesimpleoname, append_wizweight_suffix,
@@ -851,8 +851,18 @@ function oid_price_adjustment(obj, oid) {
     return ((oid | 0) % 4) === 0 ? 1 : 0;
 }
 
-/** C shk.c get_pricing_units — quan; globby weight deferred → quan. */
+/**
+ * C shk.c get_pricing_units `:2846–2858` — quan; globs sell by weight:
+ * `(wt + unit_weight - 1) / unit_weight` with `wt = owt || weight(obj)`.
+ */
 function get_pricing_units(obj) {
+    if (obj?.globby) {
+        /* globs must be sold by weight not by volume */
+        const unit_weight = objects()?.[(obj.otyp | 0)]?.oc_weight | 0;
+        const wt = (obj.owt | 0) > 0 ? (obj.owt | 0) : (weight(obj) | 0);
+        if (unit_weight)
+            return Math.trunc((wt + unit_weight - 1) / unit_weight);
+    }
     return (obj?.quan | 0) || 1;
 }
 
@@ -3384,6 +3394,155 @@ export function billable(shkHolder, obj, roomno, reset_nocharge) {
         }
     }
     return !!shkp;
+}
+
+/**
+ * C ref: shk.c globby_bill_fixup `:5976–6097` — shop bill when globs merge.
+ * Sole C caller is mkobj.c obj_absorb (`:3713`); the mkobj.js no-op clone
+ * is retired by this export. Four scenarios in C order/conjuncts:
+ * shop-owned into shop-owned (drop the absorbed bill entry, fold its
+ * price into the absorber's), player-owned into shop-owned (debit/credit
+ * when no bill records exist, else fold into the absorber's bill price),
+ * shop-owned into player-owned (bill_dummy + verbalize), player-owned
+ * into player-owned (no-op). Async only because scenarios 2–3 reach
+ * pline/verbalize (--More--); scenario 1 runs fully synchronously, so
+ * sync callers fire-and-forget like pudding_merge_message (D-0993).
+ * Named: onbill impossible() arms (pre-existing clone behavior, own row).
+ */
+export async function globby_bill_fixup(obj_absorber, obj_absorbed) {
+    let x = 0, y = 0;
+    let bp = null, bp_absorber = null;
+    let shkp = null;
+    let amount = 0, per_unit_cost = 0;
+    const floor_absorber = ((obj_absorber?.where | 0) === OBJ_FLOOR);
+
+    if (!obj_absorber?.globby)
+        await impossible('globby_bill_fixup called for non-globby object');
+
+    if (floor_absorber) {
+        x = obj_absorber.ox | 0; y = obj_absorber.oy | 0;
+    }
+    if (obj_absorber?.unpaid) {
+        /* look for a shopkeeper who owns this object */
+        for (let walk = next_shkp(0, true); walk.shkp;
+             walk = next_shkp(walk.nextIdx, true))
+            if (onbill(obj_absorber, walk.shkp, true)) {
+                shkp = walk.shkp;
+                break;
+            }
+    } else if (obj_absorbed?.unpaid) {
+        if (((obj_absorbed?.where | 0) === OBJ_FREE)
+            && floor_absorber && costly_spot(x, y)) {
+            shkp = shop_keeper((in_rooms(x, y, SHOPBASE) || '').charCodeAt(0) || 0);
+        }
+    }
+    /* sanity check, in case obj is on bill but not marked 'unpaid' */
+    if (!shkp)
+        shkp = shop_keeper(game.u?.ushops);
+    if (!shkp)
+        return;
+    bp_absorber = onbill(obj_absorber, shkp, false);
+    bp = onbill(obj_absorbed, shkp, false);
+    const eshkp = ESHK(shkp);
+    per_unit_cost = set_cost(obj_absorbed, shkp);
+
+    /**************************************************************
+     * Scenario 1. Shop-owned glob absorbing into shop-owned glob
+     **************************************************************/
+    // C billable(&shkp, ...) refreshes shkp only when null on entry;
+    // shkp is non-null here, so the holder round-trips unchanged.
+    const holder = { shkp };
+    if (bp && (!obj_absorber.no_charge
+               || billable(holder, obj_absorber, eshkp.shoproom, false))) {
+        shkp = holder.shkp;
+        /* the glob being absorbed has a billing record */
+        amount = bp.price | 0;
+        eshkp.billct = (eshkp.billct | 0) - 1;
+        const bill = eshkp.bill_p || eshkp.bill;
+        if (bill) {
+            const i = bill.indexOf(bp);
+            if (i >= 0) bill[i] = bill[eshkp.billct | 0];
+        }
+        clear_unpaid_obj(shkp, obj_absorbed);
+
+        if (bp_absorber) {
+            /* the absorber has a billing record */
+            bp_absorber.price = (bp_absorber.price | 0) + amount;
+        } else {
+            /* the absorber has no billing record */
+            ;
+        }
+        return;
+    }
+    /**************************************************************
+     * Scenario 2. Player-owned glob absorbing into shop-owned glob
+     **************************************************************/
+    if (!bp_absorber && !bp && !obj_absorber.no_charge) {
+        /* there are no billing records */
+        amount = (get_pricing_units(obj_absorbed) | 0) * (per_unit_cost | 0);
+        if (saleable(shkp, obj_absorbed)) {
+            if ((eshkp.debit | 0) >= amount) {
+                if (eshkp.loan | 0) { /* you carry shop's gold */
+                   if ((eshkp.loan | 0) >= amount)
+                        eshkp.loan = (eshkp.loan | 0) - amount;
+                   else
+                        eshkp.loan = 0;
+                }
+                eshkp.debit = (eshkp.debit | 0) - amount;
+                await pline(
+                    `The donated ${obj_typename(obj_absorbed.otyp | 0)} ${
+                        eshkp.debit ? 'partially ' : ''}pays off your debt.`,
+                );
+            } else {
+                const delta = amount - (eshkp.debit | 0);
+
+                eshkp.credit = (eshkp.credit | 0) + delta;
+                if (eshkp.debit | 0) {
+                    eshkp.debit = 0;
+                    eshkp.loan = 0;
+                    await pline('Your debt is paid off.');
+                }
+                if ((eshkp.credit | 0) === delta)
+                    await pline(
+                        `The ${obj_typename(obj_absorbed.otyp | 0)} established ${
+                            delta} ${currency(delta)} credit.`,
+                    );
+                else
+                    await pline(
+                        `The ${obj_typename(obj_absorbed.otyp | 0)} added ${
+                            delta} ${currency(delta)} to your credit; total is now ${
+                            eshkp.credit} ${currency(eshkp.credit)}.`,
+                    );
+            }
+        }
+        return;
+    } else if (bp_absorber) {
+        /* absorber has a billing record */
+        bp_absorber.price = (bp_absorber.price | 0)
+            + (per_unit_cost | 0) * (get_pricing_units(obj_absorbed) | 0);
+        return;
+    }
+    /**************************************************************
+     * Scenario 3. shop_owned glob merging into player_owned glob
+     **************************************************************/
+    if (bp && (obj_absorber.no_charge
+               || (floor_absorber && !costly_spot(x, y)))) {
+        amount = bp.price | 0;
+        await bill_dummy_object(obj_absorbed);
+        SetVoice(shkp, 0, 80, 0);
+        await verbalize(
+            `You owe me ${amount} ${currency(amount)} for my ${
+                obj_typename(obj_absorbed.otyp | 0)} that you ${
+                ANGRY(shkp) ? 'had the audacity to mix' : 'just mixed'
+            } with your${ANGRY(shkp) ? ' stinking batch!' : 's.'}`,
+        );
+        return;
+    }
+    /**************************************************************
+     * Scenario 4. player_owned glob merging into player_owned glob
+     **************************************************************/
+
+    return;
 }
 
 /**

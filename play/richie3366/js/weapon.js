@@ -1100,7 +1100,8 @@ export function P_MAX_SKILL(type) {
 function P_ADVANCE(type) {
     return game.u?.weapon_skills?.[type]?.advance ?? 0;
 }
-function P_RESTRICTED(type) {
+/** C ref: skills.h P_RESTRICTED — skill == P_ISRESTRICTED. Exported for pray.c give_spell. */
+export function P_RESTRICTED(type) {
     return P_SKILL(type) === P_ISRESTRICTED;
 }
 function set_P_SKILL(type, v) {

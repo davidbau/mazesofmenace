@@ -59,7 +59,7 @@ import { ATR_INVERSE, NO_COLOR } from './terminal.js';
 import { shkname } from './shknam.js';
 import { monsterNames } from './generated/monsters_data.js';
 import {
-    M2_PNAME, MALE, FEMALE, NEUTRAL, pmnames, G_NOGEN, G_UNIQ, mons,
+    M2_PNAME, MALE, FEMALE, NEUTRAL, pmnames, G_NOGEN, G_UNIQ, mons, NUMMONS,
     LOW_PM, SPECIAL_PM, hides_under, is_rider, MS_ANIMAL,
     humanoid, is_animal, mindless, is_mplayer,
 } from './monsters.js';
@@ -93,6 +93,8 @@ const PM_SHOPKEEPER = monsterNames.indexOf('PM_SHOPKEEPER');
 const PM_HIGH_CLERIC = monsterNames.indexOf('PM_HIGH_CLERIC');
 const PM_ALIGNED_CLERIC = monsterNames.indexOf('PM_ALIGNED_CLERIC');
 const PM_JUIBLEX = monsterNames.indexOf('PM_JUIBLEX');
+const PM_LONG_WORM = monsterNames.indexOf('PM_LONG_WORM');
+const PM_LONG_WORM_TAIL = monsterNames.indexOf('PM_LONG_WORM_TAIL');
 const SPE_NOVEL = objectNames.indexOf('SPE_NOVEL');
 const STRANGE_OBJECT = objectNames.indexOf('STRANGE_OBJECT');
 const TOWEL = objectNames.indexOf('TOWEL');
@@ -634,6 +636,51 @@ export function mon_pmname(mtmp) {
     }
     const raw = mtmp?.data?.name || 'monster';
     return String(raw).replace(/^PM_/, '').replace(/_/g, ' ').toLowerCase();
+}
+
+/**
+ * C ref: do_name.c minimal_monnam `:1254–1285` — debug monster tag with map
+ * coordinates; hero knowledge ignored. C order: null mon, null data,
+ * wild-pointer range arms (`fmt_ptr` hex), long-worm `ckloc` tail arm
+ * (`svl.level.monsters[mx][my] != mon` → tail name), else tame/peaceful
+ * prefix + `mon_pmname` + `<mx,my>` with `{cham}` suffix. Consumes one
+ * `nextmbuf` slot like every `x_monnam` return.
+ * JS adaptations (C has real pointers, JS does not): the range arms key on
+ * the numeric `data.mndx` (`?? mon.mnum` fallback) — `< 0` for
+ * `ptr < &mons[0]`, `>= NUMMONS` for `ptr >= &mons[NUMMONS]` — with `0x`
+ * hex where C prints `fmt_ptr`, and the table ends named symbolically.
+ * A data object without any numeric index falls through to the normal arm
+ * (`mon_pmname` already handles that shape). Grid read is
+ * `game._level_monsters` (C `svl.level.monsters`).
+ * Callers: `m_detach` already-detached arm (FALSE), `place_monster`
+ * bounds/overlap arms (TRUE/FALSE/TRUE), wiz `migr` list (not ported).
+ */
+export function minimal_monnam(mon, ckloc) {
+    const idx = nextmbuf();
+    const ret = (s) => {
+        mbufs[idx] = s;
+        return mbufs[idx];
+    };
+    if (!mon) return ret('[Null monster]');
+    const ptr = mon.data;
+    if (ptr == null) return ret('[Null mon->data]');
+    const mndx = ptr.mndx ?? mon.mnum;
+    if (typeof mndx === 'number' && mndx < 0) {
+        return ret(`[Invalid mon->data 0x${(mndx >>> 0).toString(16)} < mons[0]]`);
+    }
+    if (typeof mndx === 'number' && mndx >= NUMMONS) {
+        return ret(`[Invalid mon->data 0x${(mndx >>> 0).toString(16)} >= mons[NUMMONS]]`);
+    }
+    const mx = mon.mx | 0, my = mon.my | 0;
+    if (ckloc && mndx === PM_LONG_WORM && mx !== 0
+        && (game._level_monsters?.get(`${mx},${my}`) ?? null) !== mon) {
+        return ret(`${pmname(PM_LONG_WORM_TAIL, Mgender(mon))} <${mx},${my}>`);
+    }
+    const prefix = mon.mtame ? 'tame ' : mon.mpeaceful ? 'peaceful ' : '';
+    let s = `${prefix}${mon_pmname(mon)} <${mx},${my}>`;
+    const cham = mon.cham ?? NON_PM;
+    if (cham !== NON_PM) s += `{${pmname(cham, Mgender(mon))}}`;
+    return ret(s);
 }
 
 function mon_plain_name(mtmp) {

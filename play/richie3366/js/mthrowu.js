@@ -10,7 +10,7 @@ import {
 } from './mon.js';
 import {
     COLNO, ROWNO, BOLT_LIM, PET_MISSILE_RANGE2, IS_OBSTRUCTED, IS_DOOR,
-    D_CLOSED, D_LOCKED,
+    D_CLOSED, D_LOCKED, IRONBARS, IS_SINK,
     NEED_WEAPON, NEED_RANGED_WEAPON, SLT_ENCUMBER, Is_rogue_level, W_WEP,
     POTHIT_MONST_THROW, POTHIT_OTHER_THROW, LAVAWALL, IS_WATERWALL, Upolyd, M_AP_TYPE,
     M_AP_NOTHING, M_AP_MONSTER, u_at, P_NONE,
@@ -50,7 +50,7 @@ import {
     is_unicorn, touch_petrifies, bigmonst, is_elf, poly_when_stoned,
     eyecount,
 } from './monsters.js';
-import { xname, singular, an, vtense, the, makeplural, mshot_xname, killer_xname, obj_is_pname } from './objnam.js';
+import { xname, singular, an, vtense, the, makeplural, mshot_xname, killer_xname, obj_is_pname, otense } from './objnam.js';
 import { mbodypart, body_part, polymon } from './polyself.js';
 import {
     VENOM_CLASS, POTION_CLASS, WEAPON_CLASS, GEM_CLASS, TOOL_CLASS,
@@ -983,8 +983,8 @@ export async function return_from_mtoss(magr, otmp, tethered_weapon) {
  * C ref: mthrowu.c m_throw — flight loop; hero hit / forcehit rn2(5).
  * Tethered AKLYS sets return_flightpath instead of drop_throw, then
  * return_from_mtoss (D-1334). shade_miss caller D-1382 (`:680–686`).
- * iron bars / sink / gem catch still named. thrwmu always_toss /
- * polearm still named.
+ * MT_FLIGHTCHECK IRONBARS via hits_bars + IS_SINK + sink/misses plines
+ * (`:552-569`, `:798-823`). thrwmu always_toss / polearm still named.
  */
 export async function m_throw(mon, x, y, dx, dy, range, obj) {
     // C :584–587 — arw / tethered before setmnotwielded
@@ -1019,12 +1019,28 @@ export async function m_throw(mon, x, y, dx, dy, range, obj) {
         }
     }
 
-    // Pre-flight wall check (no RNG)
-    if (!isok(x + dx, y + dy)
-        || IS_OBSTRUCTED(game.level?.at?.(x + dx, y + dy)?.typ ?? 0)
-        || closed_door(x + dx, y + dy)) {
-        await drop_throw(singleobj, false, x, y);
-        return;
+    // C mthrowu.c:552-569 MT_FLIGHTCHECK(TRUE, 0) — edge/wall/closed-door plus
+    // IRONBARS via hits_bars(always_hit 0, whodidit 0); sink arm is
+    // (!(pre) && ...) so it never fires pre-flight. hits_bars may destroy
+    // singleobj via hit_bars/breaks (box.obj null) — then drop nothing.
+    {
+        const nx0 = x + dx;
+        const ny0 = y + dy;
+        const t0 = game.level?.at?.(nx0, ny0)?.typ ?? 0;
+        let preBlocked = !isok(nx0, ny0)
+            || IS_OBSTRUCTED(t0)
+            || closed_door(nx0, ny0);
+        const preBox = { obj: singleobj };
+        if (!preBlocked && t0 === IRONBARS) {
+            preBlocked = await hits_bars(preBox, x, y, nx0, ny0, 0, 0);
+            singleobj = preBox.obj;
+            game._thrownobj = singleobj;
+        }
+        if (preBlocked) {
+            if (singleobj) await drop_throw(singleobj, false, x, y);
+            else game._thrownobj = null;
+            return;
+        }
     }
 
     let bx = x;
@@ -1187,16 +1203,48 @@ export async function m_throw(mon, x, y, dx, dy, range, obj) {
             }
         } // end else !mtmp (hero / empty cell)
 
+        // C mthrowu.c:798-823 — forcehit rn2(5) drawn before the !range
+        // short-circuit; MT_FLIGHTCHECK(FALSE, forcehit) is edge/wall/
+        // closed-door plus IRONBARS via hits_bars(forcehit, whodidit 0)
+        // plus IS_SINK on the CURRENT cell. hits_bars may destroy
+        // singleobj (box.obj null) — C guards with if (singleobj).
         const forcehit = !rn2(5);
-        void forcehit;
-        const nextBlocked = !isok(bx + dx, by + dy)
-            || IS_OBSTRUCTED(game.level?.at?.(bx + dx, by + dy)?.typ ?? 0)
-            || closed_door(bx + dx, by + dy);
-        if (!range || nextBlocked) {
-            if (!tethered_weapon) {
-                await drop_throw(singleobj, false, bx, by);
-            } else {
-                return_flightpath = true;
+        let flightBlocked = false;
+        if (!range) {
+            flightBlocked = true;
+        } else {
+            const nx = bx + dx;
+            const ny = by + dy;
+            const ntyp = game.level?.at?.(nx, ny)?.typ ?? 0;
+            const curtyp = game.level?.at?.(bx, by)?.typ ?? 0;
+            flightBlocked = !isok(nx, ny)
+                || IS_OBSTRUCTED(ntyp)
+                || closed_door(nx, ny)
+                || IS_SINK(curtyp);
+            if (!flightBlocked && ntyp === IRONBARS) {
+                const flightBox = { obj: singleobj };
+                flightBlocked = await hits_bars(flightBox, bx, by, nx, ny, forcehit, 0);
+                singleobj = flightBox.obj;
+                game._thrownobj = singleobj;
+            }
+        }
+        if (flightBlocked) {
+            // C :801 — hits_bars might have destroyed it: drop nothing.
+            if (singleobj) {
+                // C :804-813 — sink plop/drop else multishot "misses".
+                if (range && cansee(bx, by)
+                    && IS_SINK(game.level?.at?.(bx, by)?.typ ?? 0)) {
+                    await pline(`${The(mshot_xname(singleobj))} ${otense(singleobj, game.u?.Hallucination ? 'plop' : 'drop')} onto the sink.`);
+                } else if ((game.m_shot?.n | 0) > 1
+                    && (!(game._mesg_given | 0) || bx !== (game.u?.ux | 0) || by !== (game.u?.uy | 0))
+                    && (cansee(bx, by) || (game.marcher && canseemon(game.marcher)))) {
+                    await pline(`${The(mshot_xname(singleobj))} misses.`);
+                }
+                if (!tethered_weapon) {
+                    await drop_throw(singleobj, false, bx, by);
+                } else {
+                    return_flightpath = true;
+                }
             }
             break;
         }

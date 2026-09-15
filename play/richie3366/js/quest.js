@@ -1,5 +1,5 @@
 // quest.js — quest branch arrival hooks + leader talk.
-// C ref: quest.c onquest / on_start / on_locate / on_goal /
+// C ref: quest.c onquest / on_start / on_locate / on_goal / artitouch /
 //        quest_talk / leader_speaks / chat_with_leader / is_pure / expulsion.
 // Named omissions: locate_next beyond Bar/Arc/Pri/Wiz; chat_with_nemesis/guardian;
 // nemesis_speaks (quest_talk MS_NEMESIS arm); chat_with_leader got_thanks/questart/banished arms;
@@ -27,7 +27,7 @@ import { monsterNames } from './monsters.js';
 import { yn_function } from './getline.js';
 import { nomul } from './hack.js';
 import { exercise, adjalign, A_WIS } from './attrib.js';
-import { fully_identify_obj, update_inventory } from './invent.js';
+import { fully_identify_obj, update_inventory, observe_object } from './invent.js';
 import { the, xname } from './objnam.js';
 import { objectNames } from './objects.js';
 
@@ -275,6 +275,23 @@ async function expulsion(seal) {
 export function is_quest_artifact(obj) {
     const want = game.urole?.questarti | 0;
     return want !== 0 && (obj?.oartifact | 0) === want;
+}
+
+/**
+ * C ref: quest.c artitouch `:125–136` — first-touch quest-artifact rite.
+ * observe_object names it (covers the blind-pickup case), the flag is set
+ * before the pager (C `Qstat(touched_artifact) = TRUE` precedes qt_pager),
+ * then qt_pager "gotit" + WIS exercise. Once-only via quest_status.
+ * Async: qt_pager can reach nhgetch. C home: quest.c (Qstat = quest_status).
+ */
+export async function artitouch(obj) {
+    const qs = game.quest_status || (game.quest_status = {});
+    if (!qs.touched_artifact) {
+        observe_object(obj);
+        qs.touched_artifact = true;
+        await qt_pager('gotit');
+        exercise(A_WIS, true);
+    }
 }
 
 /** C youprop.h Deaf — HDeaf || EDeaf || uroleplay.deaf. */

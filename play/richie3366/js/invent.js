@@ -7354,9 +7354,12 @@ export async function hold_another_object(obj, drop_fmt, drop_arg, hold_msg) {
 
 /**
  * C ref: invent.c freeinv_core — figurine stop FIG_TRANSFORM; artifact
- * W_ART conferral off (D-1539). Named omit: amulet/candelabrum/bell/book
- * uhaves / questart; loadstone curse; confers_luck set_moreluck; tin
- * context; inv_prop arti_invoke on drop.
+ * W_ART conferral off (D-1539; resists + PROTECT D-2378). inv_prop
+ * arti_invoke on drop (`:880–885`) runs via async `revoke_invoked_property`
+ * (D-2378), awaited by async W_ART-off envelopes (`dropx`, zap poly);
+ * no-floor drops ride `finesse_ahriman` (own row). Named omit:
+ * amulet/candelabrum/bell/book uhaves / questart; loadstone curse;
+ * confers_luck set_moreluck; tin context.
  */
 export function freeinv_core(obj) {
     if (!obj) return;

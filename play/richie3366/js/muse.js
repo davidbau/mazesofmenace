@@ -331,20 +331,23 @@ function attacktype(ptr, aatyp) {
 }
 
 /**
- * C ref: muse.c searches_for_item — intelligent non-animals seek useful loot.
- * Named omissions: onscary underfoot floor gate; FOOD_CLASS corpse/tin/egg
- * Named omissions: floor onscary protect; FOOD corpse/tin/egg
- * bodies; can_blow polish on horns; touch_petrifies paths.
+ * C ref: muse.c searches_for_item `:2706-2792` — intelligent non-animals
+ * seek useful loot. C order/conjuncts: floor onscary protect; animal /
+ * mindless / ghost reject; invis / speed; WAND / POTION / SCROLL / AMULET /
+ * TOOL / FOOD arms incl. horn can_blow and corpse / tin / egg
+ * petrify-cure arms (file-local cures_stoning / mcould_eat_tin, same file
+ * as C). No named omissions in this body.
  */
 export function searches_for_item(mon, obj) {
     if (!mon || !obj) return false;
     const typ = obj.otyp;
     const ptr = mon.data;
 
-    // C: protected floor item onscary — deferred (onscary stub elsewhere)
+    // C: don't let monsters interact with protected items on the floor
     if (obj.where === OBJ_FLOOR
-        && obj.ox === mon.mx && obj.oy === mon.my) {
-        // onscary(obj.ox, obj.oy, mon) deferred → treat as not scary
+        && obj.ox === mon.mx && obj.oy === mon.my
+        && onscary(obj.ox, obj.oy, mon)) {
+        return false;
     }
 
     if (is_animal(ptr) || mindless(ptr)
@@ -402,12 +405,12 @@ export function searches_for_item(mon, obj) {
     case TOOL_CLASS:
         if (typ === PICK_AXE) return needspick(ptr);
         if (typ === UNICORN_HORN) {
-            return !obj.cursed && ptr?.mlet !== 'S_UNICORN'
+            // C: mondata.h is_unicorn(ptr) = mlet S_UNICORN && likes_gems
+            return !obj.cursed && !is_unicorn(ptr)
                 && (ptr?.mndx ?? -1) !== PM_KI_RIN;
         }
         if (typ === FROST_HORN || typ === FIRE_HORN) {
-            // can_blow deferred → allow when charged
-            return (obj.spe | 0) > 0;
+            return (obj.spe | 0) > 0 && can_blow(mon);
         }
         // C ref: muse.c searches_for_item TOOL — Is_container && !cursed-mbag && !olocked
         {

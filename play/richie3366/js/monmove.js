@@ -47,6 +47,7 @@ import {
     STAIRS, LADDER, IRONBARS, WEB, W_NONDIGGABLE, ARM, HEAD,
     M_ATTK_HIT, M_ATTK_DEF_DIED, M_ATTK_AGR_DIED,
     MON_FLOOR, NORMAL_SPEED, G_GENOD, RLOC_MSG, TRAPPED_DOOR,
+    EDOG, has_edog, ACCFOOD, MANFOOD,
 } from './const.js';
 import { is_pool, is_lava, in_town, stop_occupation, noattacks, disturb_buried_zombies, losehp, finish_maybe_wail, dissolve_bars, SURFACE_AT, in_rooms } from './hack.js';
 import {
@@ -79,7 +80,7 @@ import {
     newsym, pline, canseemon as display_canseemon, pline_mon, pline_xy,
     canspotmon as display_canspotmon, sensemon, Norep, verbalize, set_msg_xy,
 } from './display.js';
-import { dog_move, finish_meating, cursed_object_at } from './dogmove.js';
+import { dog_move, finish_meating, cursed_object_at, dogfood } from './dogmove.js';
 import { worm_move, worm_nomove, see_wsegs, worm_known, wormhitu } from './worm.js';
 import { shk_move, gd_move, pri_move, costly_spot, inhishop } from './shk.js';
 import { cuss, tactics } from './wizard.js';
@@ -352,8 +353,28 @@ export function mon_would_take_item(mtmp, otmp) {
     return false;
 }
 
-/** C ref: monmove.c mon_would_consume_item — corpse_eater / pet food deferred. */
-function mon_would_consume_item(_mtmp, _otmp) {
+/**
+ * C ref: monmove.c mon_would_consume_item `:1036–1050` — non-petrifying
+ * corpse for a corpse_eater, or pet food (dogfood < MANFOOD; ACCFOOD only
+ * when hungry, hungrytime <= moves). Sole C caller m_search_items `:1425`.
+ */
+function mon_would_consume_item(mtmp, otmp) {
+    if (otmp.otyp === CORPSE && !touch_petrifies(mons(otmp.corpsenm))
+        && corpse_eater(mtmp.data)) {
+        return true;
+    }
+
+    // C: mtame && has_edog (not guardian angel — has_edog, not mtame alone).
+    if (mtmp.mtame && has_edog(mtmp)) {
+        const ftyp = dogfood(mtmp, otmp);
+        if (ftyp < MANFOOD
+            && (ftyp < ACCFOOD
+                || (EDOG(mtmp)?.hungrytime || mtmp.edog?.hungrytime || 0)
+                    <= (game.moves || 1))) {
+            return true;
+        }
+    }
+
     return false;
 }
 
@@ -432,7 +453,7 @@ async function mpickstuff(mtmp) {
  * helpless, onscary, trap-known, m_cansee, costly_spot) → per-item (ROCK,
  * prizes, costly/no_charge, (take&&carry || consume)&&touch) → finish tail.
  * helpless(mtoo) = msleeping||!mcanmove (monst.h:251), expanded inline.
- * Named omissions: mon_would_consume_item body (stub false, own future row);
+ * Named omissions:
  * can_touch_safely silver/artifact/petrify arms (stub true); onscary
  * inhishop/inhistemple + lminion/unique arms (deferred in mon.js live arms).
  */
@@ -1389,7 +1410,7 @@ export async function m_postmove_effect(mtmp) {
  * (D-0496); maybe_spin_web (D-0595); door/flee/web/itsstuck pline_mon
  * D-1227; IRONBARS eat/Norep (D-1247).
  * Named omissions: vampshift fog; shop add_damage;
- * has_magic_key disarm; mon_would_consume_item;
+ * has_magic_key disarm;
  * hideunder You_see (ported); check_gear_next_turn; swallowed() display polish.
  * ALLOW_BARS is D-1258; dissolve_bars switch_terrain is D-1259;
  * mon_yells is D-1248; meatmetal is D-1271; meatobj is D-1284;

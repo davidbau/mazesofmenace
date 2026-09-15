@@ -7,13 +7,13 @@ import {
     flush_screen, flush_topl_more, pline, pline_mon, canseemon, canspotmon, newsym,
     map_invisible, unmap_invisible, glyph_is_invisible, You_feel, sensemon,
     verbalize, mon_visible, tp_sensemon, see_with_infrared, tmp_at,
-    set_msg_xy, bot,
+    set_msg_xy, bot, impossible,
 } from './display.js';
 import { cansee, couldsee, howmonseen } from './vision.js';
 import {
     TOOL_CLASS, WAND_CLASS, SPBOOK_CLASS, WEAPON_CLASS, POTION_CLASS,
     COIN_CLASS, GEM_CLASS, FOOD_CLASS, RING_CLASS, RANDOM_CLASS,
-    objectNames, objectNameStrs, objectDescrs, is_axe,
+    objectNames, objectNameStrs, objectDescrs, is_axe, objects,
 } from './objects.js';
 import {
     P_AXE, P_PICK_AXE, P_POLEARMS, P_LANCE, P_NONE, P_BASIC, P_SKILLED,
@@ -4709,11 +4709,16 @@ async function use_unpaid_trapobj(otmp, _x, _y) {
 }
 
 /**
- * C ref: apply.c use_lamp — light or snuff oil lamp / magic lamp / lantern
- * (candle arms included; doapply candles dispatch use_candle, D-1025).
+ * C ref: apply.c use_lamp `:1628-1700` — light or snuff oil lamp /
+ * magic lamp / lantern (candle arms included; doapply candles dispatch
+ * use_candle, D-1025). Lamp arm runs check_unpaid(obj) before the
+ * "is now on" pline (`:1683`); candle arm bills a fresh unpaid candle
+ * via SetVoice + verbalize + bill_dummy_object when unpaid, costly_spot
+ * and age == 20*oc_cost (`:1690-1698`).
  * Cursed spill: make_glib((Glib&TIMEOUT)+d(2,10)) — Glib is
  * (HGlib|EGlib) remaining timeout, not a flat `u.Glib` boolean (D-1052).
- * Named omit: shop check_unpaid; candle unpaid SetVoice / bill_dummy.
+ * Named omit: candle SetVoice (no-op without audio voice; use_candle
+ * attach arm omits it the same way, js/apply.js use_candle).
  */
 export async function use_lamp(obj) {
     if (!obj) return;
@@ -4762,13 +4767,23 @@ export async function use_lamp(obj) {
         return;
     }
     if (lamp) {
-        // check_unpaid deferred
+        // C apply.c:1683-1685 — check_unpaid before the "is now on" pline
+        await check_unpaid(obj);
         await pline(`${Shk_Your_apply(obj)}${lamp} is now on.`);
     } else {
         await pline(
             `${s_suffix_apply(Yname2_oil(obj))} flame${plur_quan(obj.quan)} ${otense(obj, 'burn')}${Blind() ? '.' : ' brightly!'}`,
         );
-        // candle unpaid verbalize / bill_dummy deferred
+        // C apply.c:1690-1698 — fresh unpaid candle burns into a sale
+        const u = game.u || {};
+        if (obj.unpaid && costly_spot(u.ux | 0, u.uy | 0)
+            && (obj.age | 0) === 20 * (objects()?.[obj.otyp | 0]?.oc_cost | 0)) {
+            const ithem = (obj.quan | 0) > 1 ? 'them' : 'it';
+            // C SetVoice(shop_keeper(*in_rooms(...)), 0, 80, 0) omitted
+            // (audio voice no-op; use_candle attach arm omits it too)
+            await verbalize(`You burn ${ithem}, you bought ${ithem}!`);
+            await bill_dummy_object(obj);
+        }
     }
     begin_burn(obj, false);
 }
@@ -4956,17 +4971,25 @@ export async function use_trap(otmp) {
 }
 
 /**
- * C ref: makemon.c bagotricks — apply / tip BAG_OF_TRICKS.
+ * C ref: makemon.c bagotricks `:2554-2601` — apply / tip BAG_OF_TRICKS.
+ * C order: bad-bag impossible; spe<1 empty (cknown + update_inventory);
+ * consume_obj_charge; rn2(23) extra rnd(7) makemon; seecount/makeknown.
  * Named omit: pickup invent getobj tip.
  * @returns {Promise<number>} monsters created
  */
 export async function bagotricks(bag, tipping = false, seencount = null) {
     let moncount = 0;
-    if (!bag || bag.otyp !== BAG_OF_TRICKS) return 0;
+    // C makemon.c:2562-2563 — bad bag is impossible, moncount stays 0.
+    if (!bag || bag.otyp !== BAG_OF_TRICKS) {
+        await impossible("bad bag o' tricks");
+        return 0;
+    }
     if ((bag.spe | 0) < 1) {
         await pline((tipping && bag.cknown) ? "It's empty." : nothing_happens);
+        // C `:2568-2571` — known-empty; update_inventory for perm_invent.
         if (bag.dknown && game.objects?.[bag.otyp]?.oc_name_known) {
             bag.cknown = 1;
+            update_inventory();
         }
         return 0;
     }
@@ -4989,7 +5012,11 @@ export async function bagotricks(bag, tipping = false, seencount = null) {
         if (seencount && typeof seencount === 'object') {
             seencount.n = (seencount.n | 0) + seecount;
         }
-        if (bag.dknown) makeknown(BAG_OF_TRICKS);
+        // C `:2591-2594` — seen monsters identify the bag; perm_invent refresh.
+        if (bag.dknown) {
+            makeknown(BAG_OF_TRICKS);
+            update_inventory();
+        }
     } else if (!tipping) {
         await pline(!moncount ? nothing_happens : nothing_seems_to_happen);
     }

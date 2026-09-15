@@ -50,6 +50,14 @@ import {
     HALF_SPDAM,
     HALF_PHDAM,
     BLND_RES,
+    FIRE_RES,
+    COLD_RES,
+    SHOCK_RES,
+    ANTIMAGIC,
+    DISINT_RES,
+    POISON_RES,
+    DRAIN_RES,
+    PROTECTION,
     ECMD_OK,
     ECMD_TIME,
     ECMD_CANCEL,
@@ -836,8 +844,12 @@ function warntype_info() {
  * `:812–817` ERegeneration (Trollsbane / Staff of Aesculapius wield);
  * SPFX_XRAY `:859–866` u.xray_range 3/-1 + vision_full_recalc (Eyes
  * W_TOOL via setworn). vision_recalc IN_SIGHT xray circle named.
- * Named omissions: defn/cary resist masks; SPFX_PROTECT; inv_prop
- * arti_invoke on W_ART drop; message paths.
+ * Defn/cary resist masks `:731–768` + SPFX_PROTECT `:873–878` live
+ * (D-2378). inv_prop `arti_invoke` on W_ART drop `:880–885` runs via the
+ * async `revoke_invoked_property` half (same file; sync `freeinv_core`
+ * cannot await — Constitution §2.6), awaited by async W_ART-off envelopes
+ * (`dropx`, zap poly `replace`); no-floor drops ride `finesse_ahriman`
+ * (own row). Named omissions: message paths.
  * SPFX_REFLECT && W_WEP is D-1342 (not other wp_mask).
  * C artifact.c:886–891 — wielded Sunsword sets EBlnd_resist (W_WEP
  * exact, not bit-test).
@@ -850,6 +862,38 @@ export function set_artifact_intrinsic(otmp, on, wp_mask) {
     const list = artilist();
     const oart = get_artifact(otmp);
     if (oart === list[0]) return;
+    // C artifact.c:731–743 — defn adtyp (wield/wear) vs cary adtyp (carry)
+    // selects the E* resist mask. Carry side: Orb of Detection / Magic
+    // Mirror / PYEC carry ANTIMAGIC (cary AD_MAGM), Mitre carries FIRE
+    // (cary AD_FIRE). Wield side: Fire/Frost Brands, Magicbane, Sceptre,
+    // Eyes, Eye (defn AD_MAGM/FIRE/COLD), Grimtooth (AD_DRST), Excalibur /
+    // Stormbringer / Staff of Aesculapius (AD_DRLI).
+    const dtyp = (wp_mask !== W_ART) ? (oart.defn.adtyp | 0) : (oart.cary.adtyp | 0);
+    let resProp = 0;
+    let resFlat = null;
+    if (dtyp === AD_FIRE) { resProp = FIRE_RES; resFlat = 'EFire_resistance'; }
+    else if (dtyp === AD_COLD) { resProp = COLD_RES; resFlat = 'ECold_resistance'; }
+    else if (dtyp === AD_ELEC) { resProp = SHOCK_RES; resFlat = 'EShock_resistance'; }
+    else if (dtyp === AD_MAGM) { resProp = ANTIMAGIC; resFlat = 'EAntimagic'; }
+    else if (dtyp === AD_DISN) { resProp = DISINT_RES; resFlat = 'EDisint_resistance'; }
+    else if (dtyp === AD_DRST) { resProp = POISON_RES; resFlat = 'EPoison_resistance'; }
+    else if (dtyp === AD_DRLI) { resProp = DRAIN_RES; resFlat = 'EDrain_resistance'; }
+    if (resProp && wp_mask === W_ART && !on) {
+        // C: another carried artifact conferring the same carry resist
+        // keeps the mask (`art->cary.adtyp == dtyp`, `:750–762`)
+        for (const obj of game.invent || []) {
+            if (!obj || obj === otmp || !obj.oartifact) continue;
+            const art = get_artifact(obj);
+            if (art !== list[0] && (art.cary.adtyp | 0) === dtyp) {
+                resProp = 0;
+                resFlat = null;
+                break;
+            }
+        }
+    }
+    if (resProp) {
+        set_spfx_extrinsic(resProp, resFlat, wp_mask, on);
+    }
     // C: spfx = (wp_mask != W_ART) ? oart->spfx : oart->cspfx
     let spfx = (wp_mask !== W_ART) ? (oart.spfx | 0) : (oart.cspfx | 0);
     if (spfx && wp_mask === W_ART && !on) {
@@ -922,11 +966,39 @@ export function set_artifact_intrinsic(otmp, on, wp_mask) {
     if ((spfx & SPFX_REFLECT) && (wp_mask & W_WEP)) {
         set_spfx_extrinsic(REFLECTING, 'EReflecting', wp_mask, on);
     }
+    // C artifact.c:873–878 — SPFX_PROTECT (Mitre / Tsurugi spfx)
+    if (spfx & SPFX_PROTECT) {
+        set_spfx_extrinsic(PROTECTION, 'EProtection', wp_mask, on);
+    }
     // C artifact.c:886–891 — wielded Sunsword sets EBlnd_resist; exact
     // W_WEP match (is_art: otmp->oartifact == ART_SUNSWORD).
     if (wp_mask === W_WEP && is_art(otmp, ART_SUNSWORD)) {
         set_spfx_extrinsic(BLND_RES, 'EBlnd_resist', wp_mask, on);
     }
+}
+
+/**
+ * C ref: artifact.c set_artifact_intrinsic `:880–885` — W_ART off while the
+ * artifact's invoked property toggle is still on re-invokes to turn it off.
+ * Async half of the arm: JS `arti_invoke` prints and can float_down, so it
+ * reaches nhgetch and sync `freeinv_core` cannot call it (Constitution
+ * §2.6). Async W_ART-off envelopes (`dropx`, zap poly replace) await this
+ * right after the sync `freeinv_core`, in C order. Guard mirrors C exactly:
+ * `inv_prop` set, `<= LAST_PROP`, `uprops[inv_prop].extrinsic & W_ARTI`.
+ * Only INVIS (Orb of Detection 40), CONFLICT (Sceptre of Might 44) and
+ * LEVITATION (Heart of Ahriman 48) are property invokes; special powers
+ * (> LAST_PROP) never take this arm in C either. No-floor drops keep the
+ * `finesse_ahriman` ordering (own row) and do not call this yet.
+ */
+export async function revoke_invoked_property(otmp) {
+    if (!otmp?.oartifact) return;
+    const oart = get_artifact(otmp);
+    if (!oart || oart === artilist()[0]) return;
+    const inv = oart.inv_prop | 0;
+    if (!inv || inv > LAST_PROP) return;
+    const u = game.u || {};
+    if (!((u.uprops?.[inv]?.extrinsic | 0) & W_ARTI)) return;
+    await arti_invoke(otmp);
 }
 
 /**

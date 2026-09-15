@@ -2200,8 +2200,7 @@ export async function meatobj(mtmp) {
  * (sobj_at skips globs). 0 nothing, 1 ate, 2 died (data became null after
  * consume). Caller: monmove.c postmov OBJ_AT when corpse_eater (D-1285).
  * Named omit: m_consume_obj meatbox/poly/uball/grow/stone/mon_givit;
- * rider off-level return 3 (C comments unimplemented);
- * mon_would_consume_item still stub.
+ * rider off-level return 3 (C comments unimplemented).
  */
 export async function meatcorpse(mtmp) {
     if (!mtmp || mtmp.mtame) return 0;

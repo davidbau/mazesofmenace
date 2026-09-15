@@ -145,7 +145,7 @@ import {
 import { Norep, newsym, impossible } from './display.js';
 import { block_point, unblock_point, does_block } from './vision.js';
 import { emits_light, new_light_source, del_light_source } from './light.js';
-import { monst_to_any } from './hack.js';
+import { monst_to_any, is_pool, is_lava } from './hack.js';
 import { begin_burn } from './timeout.js';
 import { nexttodoor } from './fountain.js';
 import { ndemon } from './minion.js';
@@ -18492,7 +18492,6 @@ function good_stair_loc(x, y) {
 
 /**
  * C ref: sp_lev.c pm_to_humidity — DRY plus WET/HOT/SOLID by mon traits.
- * Named omission: Is_waterlevel short-circuit in is_ok_location.
  */
 function pm_to_humidity(pm) {
     let loc = DRY;
@@ -18509,21 +18508,27 @@ function pm_to_humidity(pm) {
 }
 
 /**
- * C ref: sp_lev.c is_ok_location — humidity DRY|SPACELOC / WET / HOT / SOLID.
- * LAVAPOOL is not SPACE_POS (typ 20 < DOOR 23), so HOT is required for lava.
+ * C ref: sp_lev.c is_ok_location :1280-1308 — Is_waterlevel accept-any,
+ * ANY_LOC, SOLID IS_OBSTRUCTED, DRY|SPACELOC SPACE_POS with boulder
+ * (bould && SOLID), WET is_pool, HOT is_lava, in C order/conjuncts.
+ * isok guard is JS OOB safety (C callers guarantee in-bounds; is_pool /
+ * is_lava carry their own isok gates). is_ok_location_func stays emulated
+ * via the ok_fn params at get_location_random / get_location_in_room
+ * (sole C setter is l_create_stairway good_stair_loc).
  */
 function is_ok_location(x, y, humidity) {
+    if (Is_waterlevel(game.u?.uz)) return true; /* accept any spot */
     if (!isok(x, y)) return false;
     const typ = game.level.at(x, y)?.typ ?? STONE;
+    /* TODO: Should perhaps check if wall is diggable/passwall? */
     if (humidity & ANY_LOC) return true;
     if ((humidity & SOLID) && IS_OBSTRUCTED(typ)) return true;
     if ((humidity & (DRY | SPACELOC)) && SPACE_POS(typ)) {
-        const bould = sobj_at(BOULDER, x, y);
-        if (!bould || (humidity & SOLID)) return true;
+        const bould = sobj_at(BOULDER, x, y) != null;
+        if (!bould || (bould && (humidity & SOLID))) return true;
     }
-    if ((humidity & WET) && (typ === POOL || typ === MOAT || typ === WATER))
-        return true;
-    if ((humidity & HOT) && IS_LAVA(typ)) return true;
+    if ((humidity & WET) && is_pool(x, y)) return true;
+    if ((humidity & HOT) && is_lava(x, y)) return true;
     return false;
 }
 
