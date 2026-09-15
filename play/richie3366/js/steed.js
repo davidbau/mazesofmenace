@@ -11,7 +11,7 @@ import { mksobj, sobj_at } from './mkobj.js';
 import { makeknown, near_capacity, encumber_msg } from './invent.js';
 import {
     humanoid, noncorporeal, verysmall, bigmonst, nohands,
-    amorphous, is_whirly, unsolid, touch_petrifies,
+    amorphous, is_whirly, unsolid, touch_petrifies, poly_when_stoned,
     is_flyer, is_floater, throws_rocks, grounded, likes_lava, mons,
     M1_HUMANOID, MZ_MEDIUM,
 } from './monsters.js';
@@ -42,7 +42,7 @@ import { getdir } from './lock.js';
 import { y_n } from './getline.js';
 import { m_at, cant_drown } from './mon.js';
 import { isok, strsubst } from './hacklib.js';
-import { Monnam, mon_nam, monverbself, pmname, y_monnam, Hallucination, hliquid, x_monnam } from './do_name.js';
+import { Monnam, mon_nam, monverbself, pmname, Mgender, y_monnam, Hallucination, hliquid, x_monnam } from './do_name.js';
 import { losehp, maybe_half_phys, finish_maybe_wail, is_pool, is_lava } from './hack.js';
 import { set_wounded_legs, heal_legs, legs_in_no_shape, sokoban_guilt, mintrap } from './trap.js';
 import { finish_meating } from './dogmove.js';
@@ -64,6 +64,7 @@ import { mpickobj } from './makemon.js';
 const SADDLE = objectNames.indexOf('SADDLE');
 const BOULDER = objectNames.indexOf('BOULDER');
 const PM_AMOROUS_DEMON = monsterNames.indexOf('PM_AMOROUS_DEMON');
+const PM_STONE_GOLEM = monsterNames.indexOf('PM_STONE_GOLEM');
 const PM_BAT = monsterNames.indexOf('PM_BAT');
 const PM_GHOST = monsterNames.indexOf('PM_GHOST');
 
@@ -296,7 +297,8 @@ export function put_saddle_on_mon(saddle, mtmp) {
 
 /**
  * C ref: steed.c use_saddle — apply SADDLE onto adjacent monster.
- * Envelope: u_handsy; getdir; self/spot/wear/petrify/special/can_saddle;
+ * Envelope: u_handsy; getdir; self/spot/wear/petrify (outer
+ * poly_when_stoned && polymon(STONE_GOLEM) guard)/special/can_saddle;
  * chance from DEX/CHA/tame/level/Knight/riding skill/impair/gloves|boots/
  * cursed; maybewakesteed; rn2(100)<chance → freeinv+put_saddle_on_mon.
  * Named omit: update_mon_extrinsics; poly body_part(HAND) phrasing.
@@ -335,9 +337,19 @@ export async function use_saddle(otmp) {
         || u.EStone_resistance);
     if (touch_petrifies(ptr) && !u.uarmg && !Stone_resistance) {
         await pline(`You touch ${mon_nam(mtmp)}.`);
-        const g = mtmp.female ? FEMALE : MALE;
+        // C steed.c:63-69 — outer poly_when_stoned && polymon(STONE_GOLEM)
+        // guard before instapetrify (trap.c instapetrify re-checks
+        // internally; the outer call preserves C's double-attempt order
+        // and RNG: one polymon draw on the golem path either way).
+        const youData = game.youmonst?.data || null;
+        const { polymon } = await import('./polyself.js');
         const { instapetrify } = await import('./trap.js');
-        await instapetrify(`attempting to saddle ${an(pmname(ptr, g))}`);
+        if (!(poly_when_stoned(youData, game.mvitals)
+            && await polymon(PM_STONE_GOLEM))) {
+            await instapetrify(
+                `attempting to saddle ${an(pmname(ptr, Mgender(mtmp)))}`,
+            );
+        }
     }
     // C: ptr == &mons[PM_AMOROUS_DEMON]
     if (PM_AMOROUS_DEMON >= 0 && (ptr?.mndx ?? mtmp.mnum) === PM_AMOROUS_DEMON) {

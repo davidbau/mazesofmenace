@@ -22,7 +22,7 @@ import {
     DF_ALL, COLNO, ROWNO, ROOMOFFSET, IS_WALL,
     DISMOUNT_THROWN, DISMOUNT_GENERIC, NO_TRAP_FLAGS,
     ESHK, EPRI, EGD,
-    LS_MONSTER, OBJ_FREE,
+    LS_MONSTER, OBJ_FREE, MAX_NUM_WORMS,
 } from './const.js';
 import { SCROLL_CLASS, SPBOOK_CLASS } from './objects.js';
 import { is_pool, in_rooms } from './hack.js';
@@ -44,12 +44,12 @@ import { mon_offmap } from './monmove.js';
 import {
     enexto, rloc_to, rloc, rloc_to_flag, goodpos, migrate_to_level,
 } from './teleport.js';
-import { put_saddle_on_mon, dismount_steed } from './steed.js';
+import { put_saddle_on_mon, dismount_steed, place_monster } from './steed.js';
 import {
     newsym, pline, pline_mon, canspotmon, canseemon, Hallucination,
     impossible,
 } from './display.js';
-import { redraw_worm } from './worm.js';
+import { redraw_worm, count_wsegs, wormgone } from './worm.js';
 import { hero_conflict } from './mondata.js';
 import { cansee } from './vision.js';
 import { night } from './calendar.js';
@@ -385,6 +385,29 @@ function keep_mon_accessible(mon) {
 }
 
 /**
+ * C ref: dog.c mon_leave `:728–763` — bookkeeping when mtmp leaves the
+ * level; shared by keepdogs (follower arm) and migrate_to_level. Returns
+ * the worm-segment count the caller stores in wormno for the migration.
+ * Long-worm arm verbatim: count_wsegs, truncate to MAX_NUM_WORMS-1
+ * (wormno doubles as the count during migration), wormgone, then the
+ * head back via place_monster when mx (mtmp can be off-map on a failed
+ * migrate to this level). Sync like C (wormgone/place_monster are sync;
+ * impossible inside them is fire-and-forget).
+ * Named omissions: minvent no_charge / picked_container loop; isshk
+ * set_residency (set back by mon_arrive on return).
+ */
+export function mon_leave(mtmp) {
+    let numSegs = 0;
+    if (mtmp.wormno) {
+        const cnt = count_wsegs(mtmp), mx = mtmp.mx | 0, my = mtmp.my | 0;
+        numSegs = Math.min(cnt, MAX_NUM_WORMS - 1);
+        wormgone(mtmp);
+        if (mx) place_monster(mtmp, mx, my);
+    }
+    return numSegs;
+}
+
+/**
  * C ref: dog.c keepdogs `:786–884` — decide, for every monster on the
  * level the hero is leaving, whether it follows, is left behind, or is
  * kept reachable off-level.
@@ -406,12 +429,12 @@ function keep_mon_accessible(mon) {
  * `mtmp2` saved first: both departure arms unlink `mtmp` from `fmon`
  * while the walk is still running (D-1789).
  *
- * Named omissions: `mon_leave` `:725–763` — minvent `no_charge` /
- * `picked_container`, shk `set_residency`, and the worm-segment count
- * that C stores in `wormno` during migration; `relmon` `mon.c:2559`
- * itself, so the follower arm splices `fmon` inline and never runs
- * `mon_leaving_level`'s take-off-map (`remove_monster` / `seemimic` /
- * `fill_pit` / `newsym`).
+ * `mon_leave` (`:725–763`) is live above (worm-seg count rides in
+ * `wormno`; its minvent `no_charge` / `picked_container` loop and shk
+ * `set_residency` stay named there).
+ * Named omissions: `relmon` `mon.c:2559` itself, so the follower arm
+ * splices `fmon` inline and never runs `mon_leaving_level`'s
+ * take-off-map (`remove_monster` / `seemimic` / `fill_pit` / `newsym`).
  * @param {boolean} pets_only true for ascension or final escape
  */
 export async function keepdogs(pets_only = false) {
@@ -487,16 +510,18 @@ export async function keepdogs(pets_only = false) {
                 continue;
             }
 
-            // C `:862–863` relmon(mtmp, &gm.mydogs) — unlink from fmon,
+            // C `:861` mon_leave (seg count rides in wormno) then
+            // `:862–863` relmon(mtmp, &gm.mydogs) — unlink from fmon,
             // then prepend (LIFO, so the last kept arrives first).
             // Named omissions: relmon's mon_leaving_level take-off-map
-            // (remove_monster / seemimic / fill_pit / newsym) and
-            // mon_leave's wormno / no_charge / set_residency.
+            // (remove_monster / seemimic / fill_pit / newsym).
+            const numSegs = mon_leave(mtmp);
             const gone = (game.fmon || []).indexOf(mtmp);
             if (gone >= 0) game.fmon.splice(gone, 1);
             game.mydogs.unshift(mtmp);
             mtmp.mx = 0; /* mx==0 implies migrating */
             mtmp.my = 0;
+            mtmp.wormno = numSegs; /* C `:865` — seg count rides in wormno */
             mtmp.mlstmv = game.moves | 0;
         } else if (keep_mon_accessible(mtmp)) {
             migrate_to_level(mtmp, ledger_no(u.uz), MIGR_EXACT_XY, null);

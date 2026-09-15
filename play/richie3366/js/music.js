@@ -40,7 +40,7 @@ import {
 } from './monsters.js';
 import { dist2 } from './hacklib.js';
 import { Monnam, mon_nam, x_monnam } from './do_name.js';
-import { cansee, recalc_block_point } from './vision.js';
+import { cansee, recalc_block_point, unblock_point } from './vision.js';
 import { m_at, wakeup, seemimic } from './mon.js';
 import { maketrap, t_at, set_utrap, reset_utrap, deltrap, selftouch, mselftouch } from './trap.js';
 import {
@@ -64,7 +64,7 @@ import {
 import { record_achievement } from './insight.js';
 import { can_blow } from './mondata.js';
 import { Soundeffect } from './sndprocs.js';
-import { se_tumbler_click, se_gear_turn } from './generated/seffects_data.js';
+import { se_tumbler_click, se_gear_turn, se_thump, se_scream } from './generated/seffects_data.js';
 
 const WOODEN_FLUTE = objectNames.indexOf('WOODEN_FLUTE');
 const MAGIC_FLUTE = objectNames.indexOf('MAGIC_FLUTE');
@@ -547,6 +547,8 @@ async function do_pit(x, y, tu_pit) {
                 if (cansee(x, y)) {
                     await pline(`${Monnam(mtmp)} falls into a chasm!`);
                 } else if (humanoid(mtmp.data)) {
+                    // C music.c:277 — Soundeffect precedes You_hear (no-op in this build).
+                    Soundeffect(se_scream, 50);
                     await You_hear('a scream!');
                 }
             }
@@ -651,6 +653,8 @@ async function do_earthquake(force) {
                                 `${Amonnam(mtmp)} is shaken loose from the ceiling!`,
                             );
                         } else if (!is_flyer(mtmp.data)) {
+                            // C music.c:384 — Soundeffect precedes You_hear (no-op in this build).
+                            Soundeffect(se_thump, 50);
                             await You_hear('a thump.');
                         }
                     }
@@ -678,7 +682,9 @@ async function do_earthquake(force) {
                 await do_pit(x, y, tu_pit);
                 break;
             case ALTAR: {
-                const amsk = lev.altarmask | 0;
+                // C music.c:416 — altarmask_at covers the altar-mimic corpsenm edge, not just lev.altarmask.
+                const { altarmask_at } = await import('./pray.js');
+                const amsk = altarmask_at(x, y) | 0;
                 if ((amsk & AM_SANCTUM) !== 0) break;
                 const algn = Amask2align(amsk & AM_MASK);
                 if (cansee(x, y)) {
@@ -707,7 +713,8 @@ async function do_earthquake(force) {
                 break;
             case SCORR:
                 lev.typ = CORR;
-                recalc_block_point(x, y); // C unblock_point
+                // C music.c:430 — unblock_point (dig_point + full-recalc flag), not the recalc branch.
+                unblock_point(x, y);
                 if (cansee(x, y)) {
                     await pline('A secret corridor is revealed.');
                 }

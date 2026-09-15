@@ -11,15 +11,17 @@
 // :340–769; imports.mjs --can: monsters/rng/pickup/steed/trap/teleport/
 // end/mhitm/uhitm/hack/sndprocs/region/mondata/eat/attrib all SAFE —
 // same 89-module SCC, hoisted function declarations, no top-level TDZ).
-// Named omit: revive_nasty; scatter iron-chain debris rn2 loop;
-// flooreffects body (boulder → delobj in liquid); Blind/Unaware You_see
-// polish; debugpline D_DEBUG-only lines.
+// Named omit: Blind/Unaware You_see
+// polish; debugpline D_DEBUG-only lines; local wake_nearto STRAT_WAITMASK
+// + wake_msg/G_UNIQ (mon.c wake_nearto_core, review-28 residual).
 
 import { game } from './gstate.js';
 import { pline, newsym, canseemon, Hallucination, canspotmon } from './display.js';
-import { cansee, recalc_block_point, vision_recalc } from './vision.js';
-import { obj_extract_self, delobj, objects_at, sobj_at } from './mkobj.js';
-import { m_at } from './mon.js';
+import { cansee, recalc_block_point, vision_recalc, does_block, unblock_point } from './vision.js';
+import { obj_extract_self, delobj, objects_at, sobj_at, mksobj_at } from './mkobj.js';
+import { m_at, minliquid } from './mon.js';
+import { scatter } from './explode.js';
+import { flooreffects } from './do.js';
 import {
     mons, is_flyer, is_floater, is_swimmer, likes_lava, noncorporeal,
     passes_walls, amphibious, breathless,
@@ -31,10 +33,10 @@ import { mhe } from './mondata.js';
 import { vtense } from './objnam.js';
 import { objectNames } from './generated/objects_data.js';
 import { PM_LONG_WORM_TAIL } from './generated/monsters_data.js';
-import { se_crushing_sound, se_splash } from './generated/seffects_data.js';
+import { se_crushing_sound, se_splash, se_loud_splash, se_loud_crash, se_gears_turning_chains_rattling, se_chains_rattling_gears_turning, se_smashing_and_crushing } from './generated/seffects_data.js';
 import { Soundeffect } from './sndprocs.js';
-import { rnd } from './rng.js';
-import { is_pool, is_lava } from './hack.js';
+import { rn2, rnd } from './rng.js';
+import { is_pool, is_lava, revive_nasty } from './hack.js';
 import { spoteffects } from './pickup.js';
 import { remove_monster, place_monster } from './steed.js';
 import { update_monster_region } from './region.js';
@@ -56,10 +58,11 @@ import {
     CRUSHING, DROWNING, BURNING, NO_KILLER_PREFIX, KILLED_BY_AN,
     TELEDS_NO_FLAGS,
     LEVITATION, FLYING, WWALKING, SWIMMING, MAGICAL_BREATHING, PASSES_WALLS,
-    CONFUSION, STUNNED,
+    CONFUSION, STUNNED, MAY_HIT,
 } from './const.js';
 
 const BOULDER = objectNames.indexOf('BOULDER');
+const IRON_CHAIN = objectNames.indexOf('IRON_CHAIN');
 
 /** C ref: pline.c You_hear — acoustics/Deaf; Unaware/Underwater deferred. */
 async function You_hear(line) {
@@ -731,8 +734,8 @@ export function nokiller() {
 
 /**
  * C ref: dbridge.c close_drawbridge — raise bridge at (x,y).
- * Terrain + messages + delallobj + traps/engr + vision. Crush/entity
- * and revive_nasty deferred (named omit).
+ * Terrain + Soundeffect/messages + revive_nasty + delallobj +
+ * traps/engr + vision + nokiller. Crush/entity deferred (D-1967).
  */
 export async function close_drawbridge(x, y) {
     const lev1 = game.level?.at(x, y);
@@ -752,6 +755,7 @@ export async function close_drawbridge(x, y) {
             || distu(x2, y2) < distu(x, y);
         await You_see(`a drawbridge ${coming ? 'coming' : 'going'} up!`);
     } else {
+        Soundeffect(se_chains_rattling_gears_turning, 75);
         await You_hear('chains rattling and gears turning.');
     }
 
@@ -767,13 +771,15 @@ export async function close_drawbridge(x, y) {
         lev2.horizontal = false;
         break;
     }
-    lev2.wall_info = (lev2.wall_info | 0) | W_NONDIGGABLE;
+    lev2.wall_info = W_NONDIGGABLE;
     // set_entity / do_entity deferred
 
     if (objects_at(x, y) && !(u.Deaf || game.flags?.acoustics === false)) {
+        Soundeffect(se_smashing_and_crushing, 75);
         await You_hear('smashing and crushing.');
     }
-    // revive_nasty deferred
+    await revive_nasty(x, y, null);
+    await revive_nasty(x2, y2, null);
     delallobj(x, y);
     delallobj(x2, y2);
     {
@@ -790,13 +796,14 @@ export async function close_drawbridge(x, y) {
     newsym(x2, y2);
     recalc_block_point(x2, y2); // C block_point
     vision_recalc(0);
-    // nokiller deferred
+    nokiller();
 }
 
 /**
  * C ref: dbridge.c open_drawbridge — lower bridge at (x,y).
- * Terrain + messages + delallobj + traps/engr + vision + stronghold
- * uopened_dbridge. Crush/entity and revive_nasty deferred.
+ * Terrain + Soundeffect/messages + revive_nasty + delallobj +
+ * traps/engr + vision + stronghold uopened_dbridge + nokiller.
+ * Crush/entity deferred (D-1967).
  */
 export async function open_drawbridge(x, y) {
     const lev1 = game.level?.at(x, y);
@@ -813,6 +820,7 @@ export async function open_drawbridge(x, y) {
         const going = distu(x2, y2) < distu(x, y);
         await You_see(`a drawbridge ${going ? 'going' : 'coming'} down!`);
     } else {
+        Soundeffect(se_gears_turning_chains_rattling, 100);
         await You_hear('gears turning and chains rattling.');
     }
 
@@ -821,7 +829,7 @@ export async function open_drawbridge(x, y) {
     lev2.doormask = D_NODOOR;
     // set_entity / do_entity deferred
 
-    // revive_nasty deferred
+    await revive_nasty(x, y, null);
     delallobj(x, y);
     {
         const t = t_at(x, y);
@@ -842,13 +850,17 @@ export async function open_drawbridge(x, y) {
         if (!uu.uevent) uu.uevent = {};
         uu.uevent.uopened_dbridge = true;
     }
-    // nokiller deferred
+    nokiller();
 }
 
 /**
- * C ref: dbridge.c destroy_drawbridge — collapse bridge at (x,y).
- * Terrain + messages + wake + clear traps/engr + vision + stronghold
- * flags. Crush/entity and iron-chain scatter deferred (named omit).
+ * C ref: dbridge.c destroy_drawbridge `:888–1019` — collapse bridge at
+ * (x,y). Terrain + Soundeffect/messages + boulder flooreffects +
+ * wake + wall DOOR + traps/engr clear + iron-chain scatter + vision +
+ * stronghold flags + both-entity crush (portcullis debris / span
+ * shrapnel + MOAT do_entity) + nokiller. Short-circuit, RNG (rn2
+ * debris before newsym) and killer order preserved. C `pline_The`
+ * renders as `pline('The …')`; C `debugpline1` is D_DEBUG-only, omitted.
  */
 export async function destroy_drawbridge(x, y) {
     const lev1 = game.level?.at(x, y);
@@ -867,6 +879,7 @@ export async function destroy_drawbridge(x, y) {
 
     if (isMoatOrLava) {
         const lava = underBits === DB_LAVA;
+        Soundeffect(se_loud_splash, 100); // C: Deaf-aware, before messages
         if (lev1.typ === DRAWBRIDGE_UP) {
             if (cansee(x2, y2) || u_at(x2, y2)) {
                 await pline(
@@ -892,11 +905,12 @@ export async function destroy_drawbridge(x, y) {
         lev1.drawbridgemask = 0;
         const otmp2 = sobj_at(BOULDER, x, y);
         if (otmp2) {
-            // flooreffects deferred — dunk boulder into liquid
             obj_extract_self(otmp2);
-            delobj(otmp2);
+            await flooreffects(otmp2, x, y, 'fall');
         }
     } else {
+        /* no moat beneath */
+        Soundeffect(se_loud_crash, 100); // C: Deaf-aware, before messages
         if (cansee(x, y) || u_at(x, y)) {
             await pline('The drawbridge disintegrates!');
         } else {
@@ -921,18 +935,81 @@ export async function destroy_drawbridge(x, y) {
     }
     del_engr_at(x, y);
     del_engr_at(x2, y2);
-    // scatter IRON_CHAIN debris rn2(6) loop deferred (no partial RNG)
+    for (let i = rn2(6); i > 0; --i) { // C: scatter some debris
+        // C: diagonal pairings always match one of <x,y>/<x2,y2>
+        // since drawbridges are never placed diagonally.
+        const otmp = mksobj_at(IRON_CHAIN, rn2(2) ? x : x2, rn2(2) ? y : y2, true, false);
+        // C: force 5 would yield radius 2 for iron chain; 1 yields radius 1.
+        await scatter(otmp.ox, otmp.oy, 1, MAY_HIT, otmp);
+    }
 
     newsym(x, y);
     newsym(x2, y2);
-    recalc_block_point(x2, y2);
+    if (!does_block(x2, y2, lev2)) unblock_point(x2, y2); // C: vision
     vision_recalc(0);
 
     if (Is_stronghold(game.u?.uz)) {
         const u = game.u || {};
         if (!u.uevent) u.uevent = {};
         u.uevent.uopened_dbridge = true;
-        u.uevent.uheard_tune = 3;
     }
-    // set_entity / do_entity / e_died crush deferred
+
+    const occ = occupants();
+    const etmp2 = occ[1];
+    const etmp1 = occ[0];
+    set_entity(x2, y2, etmp2); // C: currently only automissers can be here
+    if (etmp2.edata) {
+        const e_inview = e_canseemon(etmp2);
+        if (!automiss(etmp2)) {
+            if (e_inview) {
+                await pline(`${E_phrase(etmp2, 'are')} blown apart by flying debris.`);
+            }
+            if (!game.killer) game.killer = { name: '', format: 0 };
+            game.killer.format = KILLED_BY_AN;
+            game.killer.name = 'exploding drawbridge';
+            await e_died(
+                etmp2,
+                XKILL_NOCORPSE | (e_inview ? XKILL_GIVEMSG : XKILL_NOMSG),
+                CRUSHING,
+            ); // C: no corpse
+        } // C: nothing which is vulnerable can survive this
+    }
+    set_entity(x, y, etmp1);
+    if (etmp1.edata) {
+        const e_inview = e_canseemon(etmp1);
+        if (e_missed(etmp1, true)) {
+            // C debugpline1 "%s spared!" is D_DEBUG-only, omitted.
+            // C: if there is water or lava here, fall in now.
+            if (is_u(etmp1)) await spoteffects(false);
+            else await minliquid(etmp1.emon);
+        } else {
+            if (e_inview) {
+                if (!is_u(etmp1) && Hallucination()) {
+                    await pline(`${E_phrase(etmp1, 'get')} into some heavy metal!`);
+                } else {
+                    await pline(`${E_phrase(etmp1, 'are')} hit by a huge chunk of metal!`);
+                }
+            } else if (!hero_Deaf() && !is_u(etmp1) && !is_pool(x, y)) {
+                Soundeffect(se_crushing_sound, 75);
+                await You_hear('a crushing sound.');
+            } // C else debugpline1 "%s from shrapnel" is D_DEBUG-only.
+            if (!game.killer) game.killer = { name: '', format: 0 };
+            game.killer.format = KILLED_BY_AN;
+            game.killer.name = 'collapsing drawbridge';
+            await e_died(
+                etmp1,
+                XKILL_NOCORPSE | (e_inview ? XKILL_GIVEMSG : XKILL_NOMSG),
+                CRUSHING,
+            ); // C: no corpse
+            if ((game.level?.at(etmp1.ex | 0, etmp1.ey | 0)?.typ | 0) === MOAT) {
+                await do_entity(etmp1);
+            }
+        }
+    }
+    nokiller();
+    if (Is_stronghold(game.u?.uz)) {
+        const u = game.u || {};
+        if (!u.uevent) u.uevent = {};
+        u.uevent.uheard_tune = 3; // C: bridge is gone so tune is now useless
+    }
 }

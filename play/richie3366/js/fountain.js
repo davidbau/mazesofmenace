@@ -56,7 +56,7 @@ import {
     obj_extract_self, objects_at, sobj_at, delobj, mkgold,
 } from './mkobj.js';
 import {
-    water_damage, water_damage_chain, t_at, deltrap, mintrap, NO_TRAP_FLAGS,
+    water_damage, water_damage_chain, t_at, deltrap, delfloortrap, mintrap, NO_TRAP_FLAGS,
 } from './trap.js';
 import {
     COIN_CLASS, RING_CLASS, POTION_CLASS, POT_WATER,
@@ -665,30 +665,11 @@ export function nexttodoor(sx, sy) {
 }
 
 /**
- * C ref: trap.c delfloortrap — destroy floor-emanating trap.
- * Named omission: hero reset_utrap (gush skips u_at cells).
- */
-function delfloortrap(ttmp) {
-    if (!ttmp) return false;
-    const ttyp = ttmp.ttyp | 0;
-    if (ttyp === SQKY_BOARD || ttyp === BEAR_TRAP || ttyp === LANDMINE
-        || ttyp === FIRE_TRAP || is_pit(ttyp) || is_hole(ttyp)
-        || ttyp === TELEP_TRAP || ttyp === LEVEL_TELEP
-        || ttyp === WEB || ttyp === MAGIC_TRAP || ttyp === ANTI_MAGIC) {
-        if (!u_at(ttmp.tx, ttmp.ty)) {
-            const mtmp = m_at(ttmp.tx, ttmp.ty);
-            if (mtmp) mtmp.mtrapped = 0;
-        }
-        deltrap(ttmp);
-        return true;
-    }
-    return false;
-}
-
-/**
  * C ref: fountain.c gush — pool along LOS from overflowing fountain.
  * D-1117: m_at → minliquid; else newsym (C 157–160).
  * D-1148: occupied minliquid survivor failed rloc → deal_with_overcrowding.
+ * delfloortrap is the canonical trap.js export (C trap.c); its hero
+ * reset_utrap arm is unreachable here — gush returns early on u_at cells.
  * Named omissions: full set_levltyp side effects (typ/flags only).
  */
 async function gush(x, y, poolcnt) {

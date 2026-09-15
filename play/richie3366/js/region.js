@@ -1,6 +1,7 @@
 // region.js — gas-cloud / NhRegion subset.
-// C ref: region.c create_gas_cloud / make_gas_cloud / visible_region_at /
-// any_visible_region / clear_regions / run_regions / expire_gas_cloud /
+// C ref: region.c create_region / add_rect_to_reg / create_gas_cloud /
+// make_gas_cloud / visible_region_at / any_visible_region /
+// clear_regions / run_regions / expire_gas_cloud /
 // in_out_region / m_in_out_region / update_monster_region /
 // inside_gas_cloud; region_danger / region_safety (pray);
 // read.c valid_cloud_pos.
@@ -179,17 +180,89 @@ export function inside_rect(r, x, y) {
  * C ref: nethack-c/upstream/src/region.c:62-73 inside_region —
  * null/bounding-box early-out (`reg == 0 ||
  * !inside_rect(&bounding_box)` short-circuit) then per-rect
- * inside_rect. JS regs carry `rects` without a separate nrects
- * (create_region not yet ported), so the loop runs over the array;
- * bounding_box is stored when present, else recomputed by
- * region_bounding_box (C stores it at create_region).
+ * inside_rect over nrects. bounding_box/nrects are stored by
+ * create_region; the recompute/length fallbacks cover regions
+ * restored from older saves that predate the stored fields.
  */
 export function inside_region(reg, x, y) {
     if (!reg || !inside_rect(reg.bounding_box ?? region_bounding_box(reg), x, y)) return false;
     const rects = reg.rects || [];
-    for (let i = 0; i < rects.length; i++)
+    const n = reg.nrects ?? rects.length;
+    for (let i = 0; i < n; i++)
         if (inside_rect(rects[i], x, y)) return true;
     return false;
+}
+
+/**
+ * C ref: nethack-c/upstream/src/region.c:79-127 create_region —
+ * alloc + zero, bounding box seeded from rects[0] then min/max
+ * expanded per rect (empty: lx=COLNO, ly=ROWNO, hx=hy=0), rects
+ * copied, nrects stored, then C defaults: ttl -1, NO_CALLBACK
+ * callbacks, clear_hero_inside + clear_heros_fault, zero monster
+ * list, arg zero (cg.zeroany). Live C callers pass (NULL, 0) and
+ * grow via add_rect_to_reg (create_gas_cloud :1297,
+ * create_gas_cloud_selection :1325); the clone_region/msg/force
+ * callers are #if 0. `| 0` int idiom.
+ */
+export function create_region(rects, nrect) {
+    const n = nrect | 0;
+    const src = (n > 0 && rects) ? rects : [];
+    const reg = {
+        bounding_box: (n > 0)
+            ? {
+                lx: src[0].lx | 0, ly: src[0].ly | 0,
+                hx: src[0].hx | 0, hy: src[0].hy | 0,
+            }
+            : { lx: COLNO, ly: ROWNO, hx: 0, hy: 0 },
+        rects: [],
+        nrects: n,
+        attach_2_u: false,
+        attach_2_m: 0,
+        enter_msg: null,
+        leave_msg: null,
+        ttl: -1,
+        expire_f: NO_CALLBACK,
+        can_enter_f: NO_CALLBACK,
+        enter_f: NO_CALLBACK,
+        can_leave_f: NO_CALLBACK,
+        leave_f: NO_CALLBACK,
+        inside_f: NO_CALLBACK,
+        player_flags: 0,
+        monsters: null,
+        n_monst: 0,
+        max_monst: 0,
+        visible: false,
+        glyph: null,
+        arg: 0,
+    };
+    for (let i = 0; i < n; i++) {
+        const r = src[i];
+        if ((r.lx | 0) < reg.bounding_box.lx) reg.bounding_box.lx = r.lx | 0;
+        if ((r.ly | 0) < reg.bounding_box.ly) reg.bounding_box.ly = r.ly | 0;
+        if ((r.hx | 0) > reg.bounding_box.hx) reg.bounding_box.hx = r.hx | 0;
+        if ((r.hy | 0) > reg.bounding_box.hy) reg.bounding_box.hy = r.hy | 0;
+        reg.rects.push({ lx: r.lx | 0, ly: r.ly | 0, hx: r.hx | 0, hy: r.hy | 0 });
+    }
+    clear_hero_inside(reg);
+    clear_heros_fault(reg);
+    return reg;
+}
+
+/**
+ * C ref: nethack-c/upstream/src/region.c:133-157 add_rect_to_reg —
+ * append a copy of the rect, nrects++, expand bounding_box if needed.
+ */
+export function add_rect_to_reg(reg, rect) {
+    reg.rects.push({
+        lx: rect.lx | 0, ly: rect.ly | 0,
+        hx: rect.hx | 0, hy: rect.hy | 0,
+    });
+    reg.nrects = (reg.nrects | 0) + 1;
+    const box = reg.bounding_box;
+    if ((rect.lx | 0) < box.lx) box.lx = rect.lx | 0;
+    if ((rect.ly | 0) < box.ly) box.ly = rect.ly | 0;
+    if ((rect.hx | 0) > box.hx) box.hx = rect.hx | 0;
+    if ((rect.hy | 0) > box.hy) box.hy = rect.hy | 0;
 }
 
 /** C region.h hero_inside / set_hero_inside / clear_hero_inside. */
@@ -923,13 +996,12 @@ export async function create_gas_cloud(x, y, cloudsize, damage) {
         }
     }
 
-    // C create_region: clear_heros_fault (REG_NOT_HEROS) before make_gas_cloud
-    const cloud = {
-        rects: [], ttl: -1, visible: false, inside_f: 0, arg: 0,
-        player_flags: REG_NOT_HEROS,
-    };
+    // C create_gas_cloud :1297: create_region(NULL, 0) (defaults +
+    // clear_heros_fault / REG_NOT_HEROS inside), then add_rect_to_reg
+    // per coord.
+    const cloud = create_region(null, 0);
     for (let i = 0; i < newidx; ++i) {
-        cloud.rects.push({
+        add_rect_to_reg(cloud, {
             lx: xcoords[i], hx: xcoords[i],
             ly: ycoords[i], hy: ycoords[i],
         });
@@ -973,15 +1045,14 @@ function selection_getpoint_sel(x, y, sel) {
 export async function create_gas_cloud_selection(sel, damage) {
     const inside_cloud = is_hero_inside_gas_cloud();
     const r = selection_getbounds(sel);
-    // C create_region: clear_heros_fault (REG_NOT_HEROS) before make_gas_cloud
-    const cloud = {
-        rects: [], ttl: -1, visible: false, inside_f: 0, arg: 0,
-        player_flags: REG_NOT_HEROS,
-    };
+    // C create_gas_cloud_selection :1325: create_region(NULL, 0)
+    // (defaults + clear_heros_fault / REG_NOT_HEROS inside), then
+    // add_rect_to_reg per selected point.
+    const cloud = create_region(null, 0);
     for (let x = r.lx; x <= r.hx; x++) {
         for (let y = r.ly; y <= r.hy; y++) {
             if (selection_getpoint_sel(x, y, sel)) {
-                cloud.rects.push({ lx: x, hx: x, ly: y, hy: y });
+                add_rect_to_reg(cloud, { lx: x, hx: x, ly: y, hy: y });
             }
         }
     }

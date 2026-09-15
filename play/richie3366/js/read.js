@@ -2402,7 +2402,7 @@ async function do_class_genocide() {
                 }
                 ensure_mvitals(i).mvflags =
                     (ensure_mvitals(i).mvflags | 0) | G_GENOD | G_NOCORPSE;
-                kill_genocided_monsters();
+                await kill_genocided_monsters();
                 update_inventory(); // C read.c:2750 — eggs & tins
                 await pline(`Wiped out all ${nam}.`);
                 // vampshifted POLY_REVERT deferred (JS polyself voids POLY_REVERT)
@@ -2596,7 +2596,7 @@ export async function do_genocide(how) {
             const { rehumanize } = await import('./polyself.js');
             await rehumanize();
         }
-        kill_genocided_monsters();
+        await kill_genocided_monsters();
         // update_inventory deferred
     } else {
         let cnt = 0;

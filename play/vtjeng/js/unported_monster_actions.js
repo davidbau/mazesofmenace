@@ -48,7 +48,7 @@ import { stop_occupation } from './allmain.js';
 import { bot, map_invisible, newsym, obj_to_glyph, tmp_at } from './display.js';
 import { mdig_tunnel } from './dig.js';
 import { flooreffects } from './do.js';
-import { should_mulch_missile, shipsAway } from './dothrow.js';
+import { should_mulch_missile } from './dothrow.js';
 import {
     best_target,
     dog_eat,
@@ -180,6 +180,7 @@ import {
     does_block,
     makeVisionBuffers,
     recalc_block_point,
+    unblock_point,
     vision_recalc,
 } from './vision.js';
 import {
@@ -427,12 +428,25 @@ function clonedRandom(state) {
 }
 
 function cloneMonster(monster) {
+    const sourceShop = monster.mextra?.eshk;
+    const bill = Array.isArray(sourceShop?.bill)
+        ? sourceShop.bill.map(entry => ({ ...entry })) : sourceShop?.bill;
+    const eshk = sourceShop ? {
+        ...sourceShop,
+        bill,
+        // bill_p normally aliases bill after entering a shop. Preserve that
+        // alias while isolating subfrombill/obfree's in-place entry updates.
+        bill_p: sourceShop.bill_p === sourceShop.bill ? bill
+            : Array.isArray(sourceShop.bill_p)
+                ? sourceShop.bill_p.map(entry => ({ ...entry })) : sourceShop.bill_p,
+    } : sourceShop;
     return {
         ...monster,
         mgoal: monster.mgoal ? { ...monster.mgoal } : monster.mgoal,
         mtrack: monster.mtrack?.map((position) => ({ ...position })),
         mextra: monster.mextra ? {
             ...monster.mextra,
+            eshk,
             edog: monster.mextra.edog ? {
                 ...monster.mextra.edog,
                 ogoal: { ...monster.mextra.edog.ogoal },
@@ -453,9 +467,9 @@ function cloneMonster(monster) {
     };
 }
 
-// Copy every object on this level's floor, in the hero's inventory, and in
-// every monster's pack. A monster picking an item up splits a stack, unlinks
-// it from the pile and the level list, and merges it into its own inventory;
+// Copy objects on the floor, buried on this level, on shop bills, in the hero's
+// inventory, and in resident or migrating monsters' packs. Pickup splits a
+// stack, unlinks it from the pile and level list, and merges it into inventory;
 // a newly created threat can also finish the hero's meal. Without these
 // copies the dry run would empty the live square or change a live carried
 // stack. C has no counterpart: the dry run is this port's own device for
@@ -466,8 +480,9 @@ function cloneMonster(monster) {
 // object writes objects[].oc_encountered, svd.disco[] and artiexist[].found,
 // which the spread would otherwise share.
 //
-// The buried list stays shared because no admitted action digs. Hero inventory
-// must be cloned too: a runtime-created threat can stop an eating occupation,
+// A revived shopkeeper can die during an admitted plan. shk.c shkgone/setpaid
+// then clear charges on buried objects and migrating monsters' inventories.
+// Hero inventory must be cloned too: a threat can stop an eating occupation,
 // and maybe_finished_meal(TRUE) can consume context.victual.piece. That pointer
 // and every top-level worn/inventory pointer must name this same copied graph.
 //
@@ -476,8 +491,8 @@ function cloneMonster(monster) {
 // through the monster map rather than the object map. The matching guard in
 // the walk keeps a carrier out of the object queue; it changes no result on
 // its own, since the remap already discriminates on `where`, and it exists so
-// that no `newObject({ ...monster })` is ever built. The three root families
-// are the level object list, hero inventory, and each monster's minvent. The
+// that no `newObject({ ...monster })` is ever built. Every object root below
+// shares one map, preserving aliases between bills and inventories. The
 // coordinate grid needs no separate floor-object root because obj.js keeps it
 // in step with the level list: place_object() writes both and remove_object()
 // refuses an object missing from either.
@@ -488,7 +503,9 @@ function cloneObjects(state, monsterMap) {
         if (obj && !objectMap.has(obj)) pending.push(obj);
     };
     enqueue(state.level?.objlist);
+    enqueue(state.level?.buriedobjlist);
     enqueue(state.invent);
+    enqueue(state.gb?.billobjs);
     for (const monster of monsterMap.keys()) enqueue(monster.minvent);
     while (pending.length) {
         const original = pending.pop();
@@ -512,10 +529,11 @@ function cloneObjects(state, monsterMap) {
 
 function planningState(state) {
     const monsterMap = new Map();
-    for (let monster = state.level?.monlist ?? null;
-        monster;
-        monster = monster.nmon) {
-        monsterMap.set(monster, cloneMonster(monster));
+    for (const head of [state.level?.monlist, state.gm?.migrating_mons]) {
+        for (let monster = head; monster && !monsterMap.has(monster);
+            monster = monster.nmon) {
+            monsterMap.set(monster, cloneMonster(monster));
+        }
     }
     const objectMap = cloneObjects(state, monsterMap);
     const context = structuredClone(state.context);
@@ -563,8 +581,13 @@ function planningState(state) {
                 (column) => column.map(clonedObject),
             ),
             objlist: clonedObject(state.level.objlist),
+            buriedobjlist: clonedObject(state.level.buriedobjlist),
             flags: { ...state.level.flags },
             monlist: monsterMap.get(state.level.monlist) ?? null,
+            rooms: state.level.rooms.map(room => ({
+                ...room,
+                resident: monsterMap.get(room.resident) ?? room.resident,
+            })),
             regions: state.level.regions.map((region) => ({
                 ...region,
                 monsters: [...(region.monsters ?? [])],
@@ -592,6 +615,8 @@ function planningState(state) {
     );
     const hero = {
         ...state.u,
+        // shkgone removes the dead resident's room from this array in place.
+        ushops: state.u?.ushops ? [...state.u.ushops] : state.u?.ushops,
         abon: [...(state.u?.abon ?? [])],
         acurr: state.u?.acurr
             ? { ...state.u.acurr, a: [...state.u.acurr.a] }
@@ -709,8 +734,13 @@ function planningState(state) {
         gb: state.gb ? {
             ...state.gb,
             bhitpos: { ...(state.gb.bhitpos ?? {}) },
+            billobjs: objectMap.get(state.gb.billobjs) ?? null,
         } : state.gb,
         gg: { ...state.gg },
+        gm: state.gm ? {
+            ...state.gm,
+            migrating_mons: monsterMap.get(state.gm.migrating_mons) ?? null,
+        } : state.gm,
         gn: { ...(state.gn ?? {}) },
         gl: state.gl ? {
             ...state.gl,
@@ -1270,6 +1300,11 @@ function monsterMissileEnv(monster, env) {
             : ttyPline,
         monsterAt: (x, y, state) => m_at(x, y, state),
         monsterName: (subject) => capitalizedMonsterName(subject, env.state),
+        newsym: env.planning ? () => {} : newsym,
+        unblockPoint: (x, y, state) => {
+            if (env.planning) admitPlannedVisionChange(x, y, state);
+            unblock_point(x, y, state);
+        },
         objectToGlyph: (obj, state) => obj_to_glyph(obj, state),
         observeObject: (obj, state) => observe_object(obj, state),
         passiveObject: (target, obj, attack, actionEnv) => passive_obj(
@@ -1287,7 +1322,6 @@ function monsterMissileEnv(monster, env) {
         ),
         setMonsterNotWielded: (subject, obj, actionEnv) =>
             setmnotwielded(subject, obj, actionEnv),
-        shipsAway: (x, y, state) => shipsAway(x, y, state),
         shouldMulch: (obj, actionEnv) => should_mulch_missile(
             obj,
             actionEnv.state,

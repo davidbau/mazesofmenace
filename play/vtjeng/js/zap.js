@@ -103,7 +103,18 @@ import {
     WEB,
     W_ACCESSORY,
     W_ART,
+    W_AMUL,
+    W_ARMC,
+    W_ARM,
+    W_ARMF,
+    W_ARMG,
+    W_ARMH,
     W_ARMOR,
+    W_ARMS,
+    W_ARMU,
+    W_RING,
+    W_RINGL,
+    W_TOOL,
     W_WEP,
     XKILL_GIVEMSG,
     XKILL_NOCORPSE,
@@ -141,7 +152,9 @@ import { game } from './gstate.js';
 import {
     check_capacity, losehp, nh_delay_output, nomul,
 } from './hack.js';
-import { lcase, mungspaces, upstart } from './hacklib.js';
+import {
+    lcase, mungspaces, truncateByteString, upstart,
+} from './hacklib.js';
 import {
     getobj,
     hold_another_object,
@@ -231,8 +244,16 @@ import {
     aobjnam,
     ansimpleoname,
     bare_artifactname,
+    boots_simple_name,
+    cloak_simple_name,
     donameFresh,
     corpse_xname,
+    gloves_simple_name,
+    helm_simple_name,
+    shield_simple_name,
+    shirt_simple_name,
+    simpleonames,
+    suit_simple_name,
     the_unique_pm,
     vtense,
     xnameFresh,
@@ -747,7 +768,7 @@ export async function zapyourself(obj, ordinary, state = game) {
     case SPE_HEALING:
     case SPE_EXTRA_HEALING:
         learn_it = true; /* (no effect for spells...) */
-        healup(d(6, obj.otyp === SPE_EXTRA_HEALING ? 8 : 4), 0, false,
+        await healup(d(6, obj.otyp === SPE_EXTRA_HEALING ? 8 : 4), 0, false,
                (obj.blessed || obj.otyp === SPE_EXTRA_HEALING), state);
         await ttyPline(
             `You feel ${obj.otyp === SPE_EXTRA_HEALING ? 'much ' : ''}better.`,
@@ -831,21 +852,23 @@ export async function hit(str, mtmp, force, state = game, rawEnv = {}) {
     const message = rawEnv.message ?? ttyPline;
     await message(
         `${The(str, state)} ${vtense(str, 'hit')} `
-        + `${verbosely ? monsterCommonName(mtmp, state) : 'it'}${force}`,
+        + `${verbosely ? monsterCommonName(mtmp, state, 0, rawEnv) : 'it'}${force}`,
         state,
         rawEnv,
     );
 }
 
 // C ref: zap.c miss() (3570-3576). Message when a zap or missile misses.
-export async function miss(str, mtmp, state = game) {
-    await ttyPline(
+export async function miss(str, mtmp, state = game, env = {}) {
+    const message = env.message ?? ttyPline;
+    await message(
         `${The(str, state)} ${vtense(str, 'miss')} `
         + `${((cansee(state.gb.bhitpos.x, state.gb.bhitpos.y, state)
                || canSpotMonster(mtmp, state))
               && state.flags?.verbose)
-            ? monsterCommonName(mtmp, state) : 'it'}.`,
+            ? monsterCommonName(mtmp, state, 0, env) : 'it'}.`,
         state,
+        env,
     );
 }
 
@@ -1561,6 +1584,42 @@ export function inventory_resistance_check(
     const prob = u_adtyp_resistance_obj(dmgtyp, state);
     if (!prob) return false;
     return random.rn2(100) < prob;
+}
+
+// C ref: zap.c item_what() (5722-5762).  This wizard-only formatter names the
+// equipment that protects inventory from an element.  The source deliberately
+// chooses category-specific simple names, reports both rings together, and
+// clips the final name to forty bytes before adding the possessive prefix.
+export function item_what(dmgtyp, state = game) {
+    if (!state.wizard) return '';
+    const prop = adtyp_to_prop(dmgtyp);
+    const extrinsic = Math.trunc(state.u?.uprops?.[prop]?.extrinsic ?? 0);
+    if (!prop || !extrinsic) return '';
+
+    let what;
+    if (extrinsic & W_ARMC) what = cloak_simple_name(state.uarmc, state);
+    else if (extrinsic & W_ARM) what = suit_simple_name(state.uarm, state);
+    else if (extrinsic & W_ARMU) what = shirt_simple_name(state.uarmu, state);
+    else if (extrinsic & W_ARMH) what = helm_simple_name(state.uarmh, state);
+    else if (extrinsic & W_ARMG) what = gloves_simple_name(state.uarmg, state);
+    else if (extrinsic & W_ARMF) what = boots_simple_name(state.uarmf, state);
+    else if (extrinsic & W_ARMS) what = shield_simple_name(state.uarms, state);
+    else if (extrinsic & (W_AMUL | W_TOOL)) {
+        what = simpleonames(
+            (extrinsic & W_AMUL) ? state.uamul : state.ublindf,
+            state,
+        );
+    } else if (extrinsic & W_RING) {
+        what = (extrinsic & W_RING) === W_RING
+            ? 'rings'
+            : simpleonames(
+                (extrinsic & W_RINGL) ? state.uleft : state.uright,
+                state,
+            );
+    } else if (extrinsic & W_WEP) {
+        what = simpleonames(state.uwep, state);
+    }
+    return what ? ` by your ${truncateByteString(what, 40)}` : '';
 }
 
 // C ref: zap.c bounce_dir() (4663-4701). "which direction a ray bounces.

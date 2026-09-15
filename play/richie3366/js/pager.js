@@ -20,14 +20,14 @@ import { nhgetch } from './input.js';
 import {
     flush_screen, flush_topl_more, pline, docrt, more,
     mon_glyph, obj_glyph, look_shown_at, terrain_glyph, Hallucination,
-    glyph_to_obj_at, glyph_at, glyph_is_trap, glyph_to_trap,
+    glyph_to_obj_at, glyph_at, glyph_is_trap, glyph_to_trap, trap_to_glyph,
     glyph_is_monster, glyph_is_object, glyph_is_statue, glyph_is_warning,
     glyph_is_invisible_id, glyph_is_nothing, glyph_is_unexplored,
     glyph_is_cmap, glyph_to_cmap, glyph_to_obj, glyph_to_warning,
     canspotself, mon_to_glyph, hero_Invisible, NO_GLYPH,
     set_bot_disabled, tty_nhbell,
 } from './display.js';
-import { howmonseen } from './vision.js';
+import { howmonseen, couldsee } from './vision.js';
 import { getlin, yn_function } from './getline.js';
 import {
     paint_corner_nhw_menu, dismiss_nhw_menu, dfeature_at, display_inventory,
@@ -59,7 +59,7 @@ import { visible_region_at } from './region.js';
 import { engr_at } from './engrave.js';
 import { option_help_lines } from './options.js';
 import { dokeylist_lines, domenucontrols_lines } from './dokeylist.js';
-import { trapname } from './trap.js';
+import { trapname, t_at } from './trap.js';
 import { trapped_chest_at, trapped_door_at } from './detect.js';
 import { costly_spot } from './shk.js';
 import { cmdq_pop, cmdq_clear, pmatch } from './cmd.js';
@@ -301,8 +301,8 @@ export async function show_text_pages(lines, { moreAtEnd = true } = {}) {
  * C order matters beyond wording: each gate draws `rn2(20)` while the
  * hero is hallucinating, and `trapped_door_at` can call
  * `trapped_chest_at` again — keep chest first, then door.
- * Callers (lookat `:718–721`) pass `glyph_to_trap(glyph_at(x, y))`,
- * not `t_at.ttyp`. `look_traps` / `doidtrap` still named.
+ * Callers (lookat `:718–721`, `look_traps` `:2093–2094`) pass
+ * `glyph_to_trap(glyph_at(x, y))`, not `t_at.ttyp`. `doidtrap` still named.
  */
 export function trap_description(tnum, x, y) {
     if (trapped_chest_at(tnum, x, y)) {
@@ -1761,42 +1761,82 @@ async function look_all(nearby, do_mons) {
     }
 }
 
+/**
+ * C ref: pager.c look_traps `:2077–2141` — `/t` (`nearby`) / `/T` (level)
+ * list of seen or remembered traps. The map glyph gets first refusal:
+ * `glyph_is_trap(glyph_at(x, y))` → `tnum = glyph_to_trap(glyph)` →
+ * `trap_description` — a detected trapped chest or door has a trap glyph
+ * but no `ftrap` entry, so only the glyph path names it (and only that
+ * path can burn the Hallucination `rn2(20)`). Otherwise a `tseen` `t_at`
+ * trap (skipped on water/air levels unless `couldsee`, for traps moved
+ * by bubbles or clouds) prints `trapname` + ", obscured by <covering
+ * glyph>", with the glyph re-pointed at `trap_to_glyph(t)`.
+ * `encglyph` has no JS table (glyphmap[] deferred), so the covering char
+ * follows `look_engrs`: hero/mon/obj char, else the cell's shown char;
+ * the trap char comes from `trap_to_glyph`, the same defsym table C's
+ * `encglyph` reads. `lookbuf` is capped so prefix + text fit BUFSZ (C
+ * `lookbuf[sizeof lookbuf - 1 - strlen(outbuf)] = '\0'`). Header is
+ * `upstart` (hacklib.c) + the `"    "` separator, like `look_all`.
+ * Named: `doidtrap` (the `^` single-cell command, C `:2335+`).
+ */
 async function look_traps(nearby) {
     const { lo_x, lo_y, hi_x, hi_y } = look_region(nearby);
+    const u = game.u || {};
+    const cmode = look_getpos_cmode();
+    const onWaterAir = Is_waterlevel(u.uz) || Is_airlevel(u.uz);
     let count = 0;
     const lines = [];
     for (let y = lo_y; y <= hi_y; y++) {
         for (let x = lo_x; x <= hi_x; x++) {
-            const t = game.level?.at?.(x, y)?.trap || game.ftrap?.find?.(
-                tr => tr.tx === x && tr.ty === y && tr.tseen,
-            );
-            if (t?.tseen || t?.ttyp != null) {
+            let lookbuf = '';
+            let glyphCh = '';
+            const glyph = glyph_at(x, y);
+            if (glyph_is_trap(glyph)) {
+                const tnum = glyph_to_trap(glyph);
+                lookbuf = trap_description(tnum, x, y);
+                glyphCh = trap_to_glyph({ ttyp: tnum }).ch || '^';
                 count++;
+            } else {
+                const t = t_at(x, y);
+                if (t && t.tseen && (!onWaterAir || couldsee(x, y))) {
+                    // C `", obscured by %s", encglyph(glyph)` — covering glyph
+                    const shown = look_shown_at(x, y);
+                    let coverCh = '';
+                    if (shown?.kind === 'hero') coverCh = '@';
+                    else if (shown?.kind === 'mon') {
+                        coverCh = mon_glyph(shown.mtmp).ch || '?';
+                    } else if (shown?.kind === 'obj') {
+                        coverCh = obj_glyph(shown.obj).ch || '?';
+                    } else {
+                        coverCh = game.level?.at?.(x, y)?.disp_ch || '?';
+                    }
+                    lookbuf = `${trapname(t.ttyp, false)}, obscured by ${coverCh}`;
+                    glyphCh = trap_to_glyph(t).ch || '^';
+                    count++;
+                }
+            }
+            if (lookbuf) {
                 if (count === 1) {
-                    lines.push(
+                    const title =
                         `${nearby ? 'nearby ' : ''}seen or remembered traps${
                             nearby ? '' : ' on this level'
-                        }:`.replace(/^./, c => c.toUpperCase()),
-                    );
+                        }:`;
+                    lines.push(title.replace(/^./, c => c.toUpperCase()));
                     lines.push('    ');
                 }
-                lines.push(`    trap at (${x},${y})`);
+                const prefix = look_coord_prefix(x, y, cmode);
+                const head = `${prefix}${glyphCh}  `;
+                // C BUFSZ guard: outbuf already holds prefix + glyph
+                const maxLook = BUFSZ - 1 - head.length;
+                if (lookbuf.length > maxLook) {
+                    lookbuf = lookbuf.slice(0, Math.max(maxLook, 0));
+                }
+                lines.push(`${head}${lookbuf}`);
             }
         }
     }
-    // Also scan game.ftrap / level traps list
-    const traps = game.level?.traps || game.ftrap || [];
-    if (Array.isArray(traps)) {
-        for (const t of traps) {
-            if (!t?.tseen) continue;
-            const x = t.tx ?? t.x;
-            const y = t.ty ?? t.y;
-            if (x < lo_x || x > hi_x || y < lo_y || y > hi_y) continue;
-            count++;
-        }
-    }
-    if (count && lines.length) {
-        await show_text_pages(lines);
+    if (count) {
+        await show_text_pages(lines, { moreAtEnd: true });
     } else {
         await pline(
             `No traps seen or remembered${nearby ? ' nearby' : ''}.`,

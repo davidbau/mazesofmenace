@@ -64,6 +64,7 @@ import {
     TELEPAT,
     TELEPORT,
     TELEPORT_CONTROL,
+    TIMEOUT,
     UNCHANGING,
     Upolyd,
     VOMITING,
@@ -355,6 +356,19 @@ function hungerProperty(state, index) {
 function propertyActive(state, index) {
     const property = hungerProperty(state, index);
     return Boolean(property.intrinsic || property.extrinsic);
+}
+
+// C ref: eat.c temp_resist() (453-470). The timeout portion is temporary
+// only when no other intrinsic source, worn source, or blocker contributes.
+export function temp_resist(prop, state = game) {
+    const property = hungerProperty(state, prop);
+    const intrinsic = Number(property.intrinsic ?? 0);
+    const timeout = intrinsic & TIMEOUT;
+    return timeout
+        && (intrinsic & ~TIMEOUT) === 0
+        && !property.extrinsic
+        && !property.blocked
+        ? timeout : 0;
 }
 
 // C ref: youprop.h Sick_resistance (67-70). In addition to the intrinsic and
@@ -1893,7 +1907,7 @@ async function eatcorpse(otmp, state) {
             if (carried(otmp))
                 useup(otmp, { state });
             else
-                useupf(otmp, 1, { state });
+                await useupf(otmp, 1, { state });
             retcode = 2;
         }
 
@@ -2244,7 +2258,7 @@ async function done_eating(message, state, env) {
         await fpostfx(piece, state, env);
 
     if (carried(piece)) useup(piece, env);
-    else useupf(piece, 1, env);
+    else await useupf(piece, 1, env);
 
     state.context.victual = zero_victual();
 }

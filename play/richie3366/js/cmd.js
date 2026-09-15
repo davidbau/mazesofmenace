@@ -2302,6 +2302,7 @@ function rhack_repeat_command(ch, key) {
     case 'g': return do_rush;
     case 'G': return do_run;
     case 'F': return do_fight;
+    case '-': return do_fight; // C cmd.c:2772 bind_key('-', "fight")
     case 'm': return do_reqmenu;
     case 'h': return do_move_west;
     case 'y': return do_move_northwest;
@@ -2346,7 +2347,7 @@ function rhack_repeat_txt(ch, key) {
         '*': 'seeall',
         '|': 'perminv',
         '\x7f': 'terrain',
-        g: 'rush', G: 'run', F: 'fight', m: 'reqmenu',
+        g: 'rush', G: 'run', F: 'fight', '-': 'fight', m: 'reqmenu',
         h: 'movewest', y: 'movenorthwest', k: 'movenorth', u: 'movenortheast',
         l: 'moveeast', n: 'movesoutheast', j: 'movesouth', b: 'movesouthwest',
     };
@@ -2523,7 +2524,7 @@ export async function rhack(key) {
     // Named omissions: nested g/G PREFIXCMD after F; full CMD_gGF table.
     // C: g/G are PREFIXCMD so they do not trip the F-prefix error.
     if (game.context?.forcefight
-        && ch !== 'F' && ch !== 'm' && ch !== 'g' && ch !== 'G'
+        && ch !== 'F' && ch !== '-' && ch !== 'm' && ch !== 'g' && ch !== 'G'
         && !isMovementKey(ch) && !isRunKey(ch) && !rushDir) {
         const upDown = (ch === '<' || ch === '>');
         await pline(
@@ -2549,7 +2550,7 @@ export async function rhack(key) {
         && (game.context?.run === 2 || game.context?.run === 3)
     );
     if (pendingRushPrefix
-        && ch !== 'g' && ch !== 'G' && ch !== 'F' && ch !== 'm'
+        && ch !== 'g' && ch !== 'G' && ch !== 'F' && ch !== '-' && ch !== 'm'
         && !isMovementKey(ch)) {
         const which = game.context.run === 3 ? 'G' : 'g';
         const upDown = (ch === '<' || ch === '>');
@@ -2584,7 +2585,7 @@ export async function rhack(key) {
         || key === 20 // C('t') dotelecmd CMD_M_PREFIX
         || ch === '#' // doextcmd CMD_M_PREFIX; resolved cmd checked in doextcmd
         || accept_menu_prefix_tab(bindTab);
-    if (ch !== 'm' && ch !== 'g' && ch !== 'G' && ch !== 'F'
+    if (ch !== 'm' && ch !== 'g' && ch !== 'G' && ch !== 'F' && ch !== '-'
         && !accepts_m_prefix && !isMovementKey(ch) && !isRunKey(ch)
         && !rushDir && game.iflags?.menu_requested) {
         game.iflags.menu_requested = false;
@@ -2675,8 +2676,10 @@ export async function rhack(key) {
             await domove(DIR_DX[low], DIR_DY[low]);
             if (game.context.move !== 0) game.context.move = 1;
         }
-    } else if (ch === 'F') {
-        // C cmd.c do_fight — PREFIXCMD; goto got_prefix_input unless CANCEL
+    } else if (ch === 'F' || ch === '-') {
+        // C cmd.c do_fight `:1621–1634` — 'F' PREFIXCMD, '-' via
+        // commands_init bind_key('-', "fight") `:2772`; goto got_prefix_input
+        // unless CANCEL
         const res = await do_fight();
         if (res & ECMD_CANCEL) {
             reset_cmd_vars(true);

@@ -952,7 +952,7 @@ export async function melt_ice(x, y, msg) {
     spot_stop_timers(x, y, MELT_ICE_AWAY);
     // trap_ice_effects deferred
     obj_ice_effects(x, y, false);
-    unearth_objs(x, y);
+    await unearth_objs(x, y);
     if (game.u?.Underwater) {
         // vision_recalc(1) deferred
     }

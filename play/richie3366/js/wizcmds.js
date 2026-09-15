@@ -174,12 +174,21 @@ function incr_prop_timeout(p, amt) {
  * its make_confused case is `#if 0`'d out, C `:1023–1028`) →
  * incr + `Timeout for %s …` pline; post-arm float_vs_flight /
  * rescham / pooleffects tail (C `:1080–1087`).
- * Named omissions: count-prefix menu digits; unavailcmd ecname wording;
- * make_blinded Blindfolded/Eyes talk variants.
+ * Count prefix (C `:1004–1008`): picks carry `select_menu_pick_any`
+ * `count` (-1 = none → DEFAULT_TIMEOUT_INCR; `amt <= 0` skipped).
+ * Non-wizard arm prints `Unavailable command 'wizintrinsic'.` (C `:1094`
+ * via `ecname_from_fn` → cmd.c:1965; house hardcodes like wizwhere).
+ * The BLINDED Blindfolded/Eyes talk variants live in shared
+ * `make_blinded` (D-1755 `make_blinded_notoggle_talk`); this arm just
+ * calls `make_blinded(newtimeout, TRUE)` per C `:1020–1021`.
+ * Named omissions: none.
  */
 export async function wiz_intrinsic() {
     if (!(game.flags?.debug || game.flags?.wizard)) {
-        await pline("You can't do that.");
+        // C wizcmds.c:1094 — pline(unavailcmd, ecname_from_fn(wiz_intrinsic));
+        // ecname is "wizintrinsic" (C cmd.c:1965); house idiom matches the
+        // wizwhere/wizidentify arms below.
+        await pline("Unavailable command 'wizintrinsic'.");
         return ECMD_OK;
     }
     const { select_menu_pick_any } = await import('./options.js');
@@ -216,8 +225,13 @@ export async function wiz_intrinsic() {
         const p = it.prop;
         const propname = it.propname;
         const oldtimeout = prop_old_timeout(p);
-        // Menu count prefix deferred — always DEFAULT_TIMEOUT_INCR
-        const amt = DEFAULT_TIMEOUT_INCR;
+        // C wizcmds.c:1004–1008 — menu count prefix; count -1 (no count)
+        // takes DEFAULT_TIMEOUT_INCR; amt <= 0 is paranoia-skipped.
+        const pickedCount = (it.count === undefined || (it.count | 0) === -1)
+            ? DEFAULT_TIMEOUT_INCR
+            : (it.count | 0);
+        const amt = pickedCount;
+        if (amt <= 0) continue;
         let newtimeout = oldtimeout + amt;
         if ((p === SICK || p === SLIMED || p === STONED)
             && oldtimeout > 0 && newtimeout > oldtimeout) {
@@ -578,7 +592,7 @@ export async function makemap_prepost(pre, wiztower) {
     const amulet = !!(u.uhave?.amulet || u.uhave_amulet);
     await u_on_rndspot((amulet ? 1 : 0) | (wiztower ? 2 : 0));
     await losedogs();
-    kill_genocided_monsters();
+    await kill_genocided_monsters();
     const mtmp = m_at(u.ux, u.uy);
     if (mtmp) await u_collide_m(mtmp);
     initrack();

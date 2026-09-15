@@ -33,8 +33,8 @@
 // resists_magm worn/artifact ANTIMAGIC scan;
 // explode_show_visible already owns explosion_to_glyph;
 // scatter shop bill live via shk.js credit_report (D-2282);
-// VIS_EFFECTS/boulder-restack named (VIS_EFFECTS commented out in C;
-// sobj_at residual row).
+// scatter boulder restack live via canonical mkobj.js sobj_at (this D);
+// VIS_EFFECTS named (commented out in C).
 
 import { game } from './gstate.js';
 import { d, rn2, rnd } from './rng.js';
@@ -79,7 +79,7 @@ import {
 } from './generated/monsters_data.js';
 import { WAND_CLASS, TOOL_CLASS, WEAPON_CLASS, SCROLL_CLASS, POTION_CLASS, RING_CLASS, objectNames, RAY } from './objects.js';
 import {
-    objects_at, obj_extract_self, splitobj, place_object, stackobj,
+    objects_at, obj_extract_self, splitobj, place_object, stackobj, sobj_at,
 } from './mkobj.js';
 import { ohitmon, thitu } from './mthrowu.js';
 import { dmgval } from './weapon.js';
@@ -868,9 +868,10 @@ function closed_door(x, y) {
  * blow_up_landmine (trap.c:3178) with C flags.
  * Shop arms live (D-2282): shop_origin baseline + gold addtobill/lostgoods
  * via the canonical shk.js credit_report.
- * Named omit: boulder restack sobj_at (residual exact-name clones dbridge/
- * music/steed + 7 renamed variants, own Open row); VIS_EFFECTS (commented
- * out in C too).
+ * Boulder restack live (this D): C explode.c:776-790 fracture_rock +
+ * place_object + sobj_at(BOULDER) extract+place via the canonical
+ * mkobj.js sobj_at (D-2281/D-2285, zero clones remain).
+ * Named omit: VIS_EFFECTS (commented out in C too).
  * @returns {number} total quantity that left the origin square
  */
 export async function scatter(sx, sy, blastforce, scflags, obj = null) {
@@ -931,7 +932,14 @@ export async function scatter(sx, sy, blastforce, scflags, obj = null) {
                 }
                 fracture_rock(otmp);
                 place_object(otmp, sx, sy);
-                // C restack of a second boulder via sobj_at omitted.
+                // C explode.c:776-790 — another boulder here, restack it
+                // to the top (sobj_at finds the pre-existing boulder under
+                // the fresh ROCK pile; extract+place moves it on top).
+                otmp = sobj_at(BOULDER, sx, sy);
+                if (otmp) {
+                    obj_extract_self(otmp);
+                    place_object(otmp, sx, sy);
+                }
             } else {
                 const statueTrap = t_at(sx, sy);
                 if (statueTrap && (statueTrap.ttyp | 0) === STATUE_TRAP) {

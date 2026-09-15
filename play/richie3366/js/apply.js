@@ -1275,7 +1275,7 @@ async function do_break_wand(obj) {
                 }
             }
             fill_pit(x, y);
-            maybe_dunk_boulders(x, y);
+            await maybe_dunk_boulders(x, y);
             recalc_block_point(x, y);
             continue;
         }

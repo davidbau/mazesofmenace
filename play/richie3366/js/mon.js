@@ -24,7 +24,7 @@ import {
     has_emin, has_epri, has_eshk, has_mcorpsenm, MCORPSENM,
     Has_contents, RLOC_MSG, RLOC_NOMSG, XKILL_NOMSG,
     NO_MM_FLAGS, NATTK, PROT_FROM_SHAPE_CHANGERS, NO_WEAPON_WANTED, engulfing_u,
-    W_SADDLE,
+    W_SADDLE, OBJ_MINVENT,
 } from './const.js';
 import { t_at, m_harmless_trap, water_damage_chain, fire_damage_chain, fixed_tele_trap } from './trap.js';
 import {
@@ -56,13 +56,13 @@ import {
 import { PM_GRID_BUG, PM_TOURIST } from './generated/monsters_data.js';
 import { enexto, rloc_to, rloc, tele_restrict, noteleport_level, rloc_to_flag, migrate_to_level, rloco, control_mon_tele, goodpos } from './teleport.js';
 import { may_dig, fill_pit } from './dig.js';
-import { newsym, pline, pline_mon, verbalize, You_feel, sensemon, canseemon, canspotmon } from './display.js';
+import { newsym, pline, pline_mon, verbalize, You_feel, sensemon, canseemon, canspotmon, impossible } from './display.js';
 import { online2, level_difficulty } from './hacklib.js';
-import { worm_cross, level_mon_at, remove_worm } from './worm.js';
+import { worm_cross, level_mon_at, remove_worm, place_wsegs } from './worm.js';
 import { Monnam, mon_nam, hliquid } from './do_name.js';
 import { cansee, couldsee, does_block, is_lightblocker_mappear, unblock_point, vision_recalc } from './vision.js';
 import { fightm, mondead, mondied } from './mhitm.js';
-import { remove_monster } from './steed.js';
+import { remove_monster, place_monster } from './steed.js';
 import { engr_at } from './engrave.js';
 import { visible_region_at, is_poisoncloud_region } from './region.js';
 import { were_change } from './were.js';
@@ -2952,24 +2952,46 @@ export async function mongone(mtmp) {
 }
 
 /**
- * C ref: mon.c replmon — swap map mon for larger/traits replacement.
- * Named omit: polearm.hitmon; worm segs; light sources; full replshk bill.
+ * C ref: mon.c replmon `:2515–2563` — swap map mon for larger/traits
+ * replacement. relmon off-map + fmon removal, then place_monster the
+ * replacement (unless it is the steed), worm segs via place_wsegs,
+ * light-source swap, fmon prepend, ustuck/usteed, replshk, dealloc.
+ * place_wsegs live (D-2300); light sources + full replshk bill +
+ * set_ustuck botl stay named.
+ * `impossible()` stays fire-and-forget so this stays sync like C.
  */
 export function replmon(mtmp, mtmp2) {
     if (!mtmp || !mtmp2) return;
+    // C :2520–2524 — transfer replacement inventory, flag inconsistency.
     for (let otmp = mtmp2.minvent; otmp; otmp = otmp.nobj) {
+        if ((otmp.where | 0) !== OBJ_MINVENT || otmp.ocarry !== mtmp)
+            void impossible('replmon: minvent inconsistency');
         otmp.ocarry = mtmp2;
     }
     mtmp.minvent = null;
 
+    // C :2525–2527 — before relmon, which could clear polearm.hitmon.
     if (game.context?.polearm?.hitmon === mtmp) {
         game.context.polearm.hitmon = mtmp2;
         game.context.polearm.m_id = mtmp2.m_id | 0;
     }
 
+    // C :2530 relmon(mtmp, NULL) — off the map and out of fmon.
+    // Grid: worm heads clear segs, else clear the head cell when it
+    // still holds the old mon (C mon_leaving_level :2696–2720).
+    const omx = mtmp.mx | 0, omy = mtmp.my | 0;
+    if ((mtmp.wormno | 0)) remove_worm(mtmp);
+    else if (game._level_monsters?.get(`${omx},${omy}`) === mtmp)
+        game._level_monsters.delete(`${omx},${omy}`);
     const list = game.fmon || [];
     const i = list.indexOf(mtmp);
     if (i >= 0) list.splice(i, 1);
+
+    // C :2533–2535 — finish adding the replacement (steed stays off-map).
+    if (mtmp !== game.u?.usteed)
+        place_monster(mtmp2, mtmp2.mx, mtmp2.my);
+    // C :2536–2537 — the replacement takes over every body seg cell.
+    if ((mtmp2.wormno | 0)) place_wsegs(mtmp2, mtmp);
     if (!list.includes(mtmp2)) list.unshift(mtmp2);
     game.fmon = list;
 
@@ -3162,7 +3184,7 @@ export function hide_monst(mon) {
  * (dead_species(..., TRUE) also checks baby form). JS invent is an
  * array; other lists are nobj chains. TIN/CORPSE arms are #if 0 in C.
  */
-function kill_eggs(obj_list) {
+export function kill_eggs(obj_list) {
     if (!obj_list) return;
     if (Array.isArray(obj_list)) {
         for (const otmp of obj_list) kill_eggs_one(otmp);
@@ -3183,12 +3205,18 @@ function kill_eggs_one(otmp) {
 }
 
 /**
- * C ref: mon.c kill_genocided_monsters — wipe live mons of G_GENOD species
- * then kill_eggs on minvent / invent / fobj / migrating_objs / buried.
- * Named omissions: chameleon `newcham` when imitating a genocided form.
- * Callers: do.c goto_level (D-1190); cmd.c makemap_prepost post (D-1288).
+ * C ref: mon.c kill_genocided_monsters `:5639–5677` — wipe live mons of
+ * G_GENOD species then kill_eggs on minvent / invent / fobj /
+ * migrating_objs / buried. A cham imitating a genocided form takes a new
+ * shape via `newcham(mtmp, NULL, NC_SHOW_MSG)` (C `:5665`, `(void)`
+ * return); the await only completes C's inline message before the loop
+ * continues — scored runs stay sync (D-1648). mondead stays
+ * fire-and-forget per the review-1197 debt (amulet+More corner suspends
+ * detach past later loop iterations — display-order only).
+ * Callers: do.c goto_level (D-1190); cmd.c makemap_prepost post (D-1288);
+ * read.c do_class_genocide / do_genocide — all await.
  */
-export function kill_genocided_monsters() {
+export async function kill_genocided_monsters() {
     const mv = game.mvitals || [];
     for (const mtmp of [...(game.fmon || [])]) {
         if (!mtmp || (mtmp.mhp | 0) < 1) continue;
@@ -3197,7 +3225,7 @@ export function kill_genocided_monsters() {
         const kill_cham = ismnum(cham) && (((mv[cham]?.mvflags ?? 0) & G_GENOD) !== 0);
         if ((((mv[mndx]?.mvflags ?? 0) & G_GENOD) !== 0) || kill_cham) {
             if (ismnum(cham) && !kill_cham) {
-                // newcham(mtmp, NULL, NC_SHOW_MSG) deferred
+                await newcham(mtmp, null, NC_SHOW_MSG);
             } else {
                 // Sync by design: genocided mons cannot lifesave (amulet
                 // still dies) or vamprise (G_GENOD gate); the async detach

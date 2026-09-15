@@ -69,6 +69,9 @@ import {
     S_dnstair,
     MM_ASLEEP, MM_NOCOUNTBIRTH, MM_NOMSG, IS_TREE, G_GENOD,
     G_EXTINCT, MAXMONNO,
+    MKTRAP_NOFLAGS,
+    MKTRAP_SEEN,
+    MKTRAP_MAZEFLAG,
     MKTRAP_NOSPIDERONWEB,
     MKTRAP_NOVICTIM,
     Is_firelevel,
@@ -18183,10 +18186,8 @@ function create_maze(corrwid, wallthick, rmdeadends) {
 /**
  * C ref: mkmaze.c populate_maze `:1097-1124` — stock a mazified level:
  * gems/objects, boulders, minotaur + random monsters, gold, then traps.
- * Named omit: the trap loop — C `mktrap(0, MKTRAP_MAZEFLAG, NULL, NULL)`
- * picks a random type and maze-aware spot internally, but JS has no `mktrap`
- * (only `maketrap(x, y, type)` with an explicit type); faking one would
- * invent RNG draws C never makes.
+ * The trap loop runs live `mktrap` (mklev.c `:2036-2150`), which picks a
+ * random type and maze-aware spot internally.
  */
 function populate_maze() {
     const mm = { x: 0, y: 0 };
@@ -18210,6 +18211,8 @@ function populate_maze() {
         mazexy(mm);
         mkgold(0, mm.x, mm.y);
     }
+    for (let i = rn1(6, 7); i; i--)
+        mktrap(0, MKTRAP_MAZEFLAG, null, null);
 }
 
 /** C ref: sp_lev.c maze1xy — odd cell outside SpLev_Map matching humidity. */
@@ -28260,6 +28263,35 @@ function traptype_rnd(mktrapflags = 0) {
     return kind;
 }
 
+// C ref: mklev.c traptype_roguelvl — random trap type for the Rogue level.
+function traptype_roguelvl() {
+    let kind;
+    switch (rn2(7)) {
+    default:
+        kind = BEAR_TRAP;
+        break; /* 0 */
+    case 1:
+        kind = ARROW_TRAP;
+        break;
+    case 2:
+        kind = DART_TRAP;
+        break;
+    case 3:
+        kind = TRAPDOOR;
+        break;
+    case 4:
+        kind = PIT;
+        break;
+    case 5:
+        kind = SLP_GAS_TRAP;
+        break;
+    case 6:
+        kind = RUST_TRAP;
+        break;
+    }
+    return kind;
+}
+
 function find_okay_roompos(croom, crd) {
     let tryct = 0;
     do {
@@ -28354,6 +28386,74 @@ function mktrap_victim(trap) {
         victim_mnum = rn1(PM_WIZARD - PM_ARCHEOLOGIST, PM_ARCHEOLOGIST);
     otmp = mkcorpstat(CORPSE, null, victim_mnum, x, y, 8);
     if (otmp) otmp.age -= (TAINT_AGE + 1); // died too long ago to safely eat
+}
+
+// C: mklev.c mktrap() `static int mktrap_err` — once-only invalid-args log.
+let mktrap_err = 0;
+
+/**
+ * C ref: mklev.c mktrap `:2036-2150` — select trap type and location, then
+ * use maketrap() to create it. `tm` set → that spot (pool/lava aborts);
+ * else MAZEFLAG → mazexy loop, else croom → somexyspace loop; both loops
+ * retry while occupied (pits/holes also avoid boulders), giving up after
+ * 200 tries. Post-maketrap tail (WEB spider, SEEN, MAGIC_PORTAL dst,
+ * victim gate) is the shared `mktrap_seen_victim` in C order.
+ * The invalid-args `paniclog` has no scored-JS equivalent (Contest Rule #2:
+ * no filesystem in `js/`); the observable behavior — no trap — is kept.
+ */
+function mktrap(num, mktrapflags, croom, tm) {
+    if (!tm && !croom && !(mktrapflags & MKTRAP_MAZEFLAG)) {
+        // C: complain once via paniclog, then return with no trap.
+        if (!mktrap_err++) {
+            // (log write omitted — see doc comment above)
+        }
+        return;
+    }
+    const m = { x: 0, y: 0 };
+
+    // C: no traps in pools (lava included — IS_POOL/IS_LAVA module idiom).
+    if (tm) {
+        const tmtyp = game.level?.at(tm.x, tm.y)?.typ;
+        if (tmtyp != null && (IS_POOL(tmtyp) || IS_LAVA(tmtyp))) return;
+    }
+
+    let kind;
+    if ((num | 0) > NO_TRAP && (num | 0) < TRAPNUM) {
+        kind = num | 0;
+    } else if (Is_rogue_level(game.u?.uz)) {
+        kind = traptype_roguelvl();
+    } else if ((game.dungeons?.[game.u?.uz?.dnum | 0]?.flags?.hellish) && !rn2(5)) {
+        // C: bias the frequency of fire traps in Gehennom.
+        kind = FIRE_TRAP;
+    } else {
+        do {
+            kind = traptype_rnd(mktrapflags);
+        } while (kind === NO_TRAP);
+    }
+
+    if (is_hole(kind) && !Can_fall_thru(game.u?.uz)) kind = ROCKTRAP;
+
+    if (tm) {
+        m.x = tm.x;
+        m.y = tm.y;
+    } else {
+        let tryct = 0;
+        const avoid_boulder = is_pit(kind) || is_hole(kind);
+        do {
+            if (++tryct > 200) return;
+            if ((mktrapflags & MKTRAP_MAZEFLAG) !== 0) mazexy(m);
+            else if (croom && !somexyspace(croom, m)) return;
+        } while (occupied(m.x, m.y)
+                 || (avoid_boulder && sobj_at(BOULDER, m.x, m.y)));
+    }
+
+    const t = maketrap(m.x, m.y, kind);
+    // C re-reads kind after maketrap (`t ? t->ttyp : NO_TRAP`); the shared
+    // tail re-derives it from the trap (null → early return ≡ NO_TRAP skip).
+    mktrap_seen_victim(t, {
+        mktrapflags,
+        seen: (mktrapflags & MKTRAP_SEEN) !== 0,
+    });
 }
 
 async function mktrap_room(croom) {

@@ -30,14 +30,14 @@
 // other livelog paths; poly silent/headless can_chant; Fixed_abil/Dunce
 // adjattrib; Unaware You_feel dream prefix; music.c do_earthquake altar
 // desecrate_altar; SetVoice pitch; ureflects W_AMUL/W_ARM/dragon D-1353;
-// mcastu ureflects named; shieldeff;
+// mcastu ureflects named; god_zaps_you shieldeff wired, SetVoice C-no-op;
 // poly mlet "creature" vs mortal; BlindedTimeout==1 region polish;
 // stuck_in_wall blocked_boulder Sokoban diagonal polish; update_inventory
 // redraw; Blindfolded cream/itch; attacktype_fordmg swallow Blind gate.
 
 import { game } from './gstate.js';
 import { rn2, rn1, rnl, rnz, rnd, d, rn2_on_display_rng } from './rng.js';
-import { pline, verbalize, You_feel, newsym, impossible, see_monsters } from './display.js';
+import { pline, verbalize, You_feel, newsym, impossible, see_monsters, shieldeff } from './display.js';
 import { nomul, carrying, losehp, finish_maybe_wail } from './hack.js';
 import { upstart } from './hacklib.js';
 import { weapon_type, unrestrict_weapon_skill, add_weapon_skill } from './weapon.js';
@@ -1093,7 +1093,12 @@ async function fry_by_god(resp_god, via_disintegration) {
  * Branch envelope: swallow elec/disint on ustuck; Reflecting / Shock /
  * fry; armor strip via disintegrate_arm; Disint bask + godvoice; astral/
  * sanctum 3× summon_minion.
- * Named omissions: shieldeff flash; SetVoice; mcastu ureflects;
+ * C pray.c:609-644 has no return after either fry_by_god: done(DIED)
+ * returns on lifesave/wizard-decline and C falls through into the beam.
+ * JS really_done returns after setting program_state.gameover, so each
+ * fry arm gates continuation on that flag (mattacku `:938-950` idiom).
+ * Named omissions: SetVoice (C sndprocs.h no-op without SND_LIB);
+ * mcastu ureflects;
  * @param {number} resp_god
  */
 export async function god_zaps_you(resp_god) {
@@ -1113,7 +1118,7 @@ export async function god_zaps_you(resp_god) {
     } else {
         await pline('Suddenly, a bolt of lightning strikes you!');
         if (Reflecting()) {
-            // shieldeff deferred
+            await shieldeff(u.ux, u.uy);
             if (Blind()) {
                 await pline("For some reason you're unaffected.");
             } else {
@@ -1121,14 +1126,14 @@ export async function god_zaps_you(resp_god) {
             }
             monstseesu(M_SEEN_REFL);
         } else if (Shock_resistance()) {
-            // shieldeff deferred
+            await shieldeff(u.ux, u.uy);
             await pline('It seems not to affect you.');
             monstseesu(M_SEEN_ELEC);
             monstunseesu(M_SEEN_REFL);
         } else {
             await fry_by_god(resp_god, false);
             monstunseesu(M_SEEN_REFL | M_SEEN_ELEC);
-            return;
+            if (game.program_state?.gameover) return;
         }
     }
 
@@ -1169,17 +1174,18 @@ export async function god_zaps_you(resp_god) {
         if (!Disint_resistance()) {
             await fry_by_god(resp_god, true);
             monstunseesu(M_SEEN_DISINT);
-            return;
+        } else {
+            await pline('You bask in its black glow for a minute...');
+            await godvoice(resp_god, 'I believe it not!');
+            monstseesu(M_SEEN_DISINT);
         }
-        await pline('You bask in its black glow for a minute...');
-        await godvoice(resp_god, 'I believe it not!');
-        monstseesu(M_SEEN_DISINT);
         if (Is_astralevel(u.uz) || Is_sanctum(u.uz)) {
-            // SetVoice deferred
+            // SetVoice deferred (C sndprocs.h no-op without SND_LIB)
             await verbalize('Thou cannot escape my wrath, mortal!');
             await summon_minion(resp_god, false);
             await summon_minion(resp_god, false);
             await summon_minion(resp_god, false);
+            // SetVoice deferred (ditto)
             await verbalize(`Destroy ${uhim()}, my servants!`);
         }
     }

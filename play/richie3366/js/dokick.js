@@ -58,13 +58,13 @@ import {
     maybe_mnexto,
 } from './mon.js';
 import { abuse_dog } from './dog.js';
-import { monflee, set_apparxy } from './monmove.js';
+import { monflee, set_apparxy, maybe_unhide_at } from './monmove.js';
 import { m_in_out_region } from './region.js';
 import { mon_nam, Monnam, christen_orc, free_oname } from './do_name.js';
 import { martial_bonus, use_skill, special_dmgval } from './weapon.js';
 import {
     verysmall, bigmonst, thick_skinned, nohands, haseyes, nolimbs, slithy,
-    is_flyer, is_floater, can_teleport, is_watch, mons,
+    is_flyer, is_floater, can_teleport, is_watch, is_giant, mons,
     likes_gold, is_mercenary, touch_petrifies, poly_when_stoned,
     M2_UNDEAD, M2_WERE, M2_HUMAN, M2_ELF, M2_DWARF, M2_GNOME, M2_ORC,
     M2_DEMON, M2_GIANT,
@@ -77,7 +77,6 @@ import {
     xname, The, cxname, An, doname, singular, distant_name, the, makeplural,
     killer_xname, is_plural, otense,
 } from './objnam.js';
-import { setuwep, setuqwep, setuswapwep } from './wield.js';
 import {
     COLNO, ROWNO,
     SDOOR, SCORR, STAIRS, LADDER, IRONBARS, LAVAWALL, CORR, ROOM, ICE,
@@ -116,12 +115,15 @@ import { del_engr_at, disturb_grave, u_wipe_engr } from './engrave.js';
 import { sink_backs_up, mhis } from './fountain.js';
 import { hidden_gold } from './vault.js';
 import { miss } from './mthrowu.js';
-import { SetVoice } from './sndprocs.js';
+import { SetVoice, Soundeffect } from './sndprocs.js';
 import { makemon, mpickobj, add_to_minv } from './makemon.js';
 import { scatter } from './explode.js';
 import { enexto, rloco, noteleport_level, goodpos } from './teleport.js';
 import { is_art } from './artifact.js';
 import { ART_MJOLLNIR } from './generated/artifacts_data.js';
+import {
+    se_kick_door_it_shatters, se_kick_door_it_crashes_open,
+} from './generated/seffects_data.js';
 import { hero_breaks, thitmonst, breaks, breaktest, hurtle } from './dothrow.js';
 import { finish_meating, obj_resists } from './dogmove.js';
 import { polymon, body_part } from './polyself.js';
@@ -435,7 +437,9 @@ async function watchman_door_damage(mtmp, x, y) {
  * CLOSED/LOCKED bust attempt (exercise DEX, rnl(35) vs avrg_attrib).
  * Shop in_rooms + add_damage/pay_for_damage + town watch wired (D-0947).
  * Blind feel_location / feel_newsym wired (D-0997).
- * Named omit: giant doorbuster poly completeness. mon_yells is D-1248.
+ * doorbuster = Upolyd && is_giant(youmonst.data) via the mondata.h M2_GIANT
+ * predicate; Soundeffect shatter/crash arms in C order (no-op without
+ * SND_LIB_INTEGRATED, trap.js launch_obj convention). mon_yells is D-1248.
  */
 async function kick_door(x, y, avrg_attrib) {
     const loc = game.level?.at(x, y);
@@ -456,8 +460,9 @@ async function kick_door(x, y, avrg_attrib) {
     }
 
     exercise(A_DEX, true);
-    // C: doorbuster = Upolyd && is_giant(youmonst.data) — giant poly deferred
-    const doorbuster = Upolyd(game.u) && !!game.youmonst?.data?.is_giant;
+    // C: doorbuster = Upolyd && is_giant(gy.youmonst.data) — mondata.h:107
+    // M2_GIANT predicate, not a data flag.
+    const doorbuster = Upolyd(game.u) && is_giant(game.youmonst?.data);
     // C: rnl(35) < avrg_attrib + (!martial() ? 0 : ACURR(A_DEX))
     const chance = avrg_attrib + (!martial() ? 0 : acurr(A_DEX));
     if (doorbuster || rnl(35) < chance) {
@@ -475,6 +480,8 @@ async function kick_door(x, y, avrg_attrib) {
             recalc_block_point(x, y);
             vision_recalc(1);
         } else if (acurr(A_STR) > 18 && !rn2(5) && !shopdoor) {
+            // C: Soundeffect before the message (draw-free no-op here).
+            Soundeffect(se_kick_door_it_shatters, 50);
             await pline('As you kick the door, it shatters to pieces!');
             exercise(A_STR, true);
             loc.doormask = D_NODOOR;
@@ -483,6 +490,8 @@ async function kick_door(x, y, avrg_attrib) {
             recalc_block_point(x, y);
             vision_recalc(1);
         } else {
+            // C: Soundeffect before the message (draw-free no-op here).
+            Soundeffect(se_kick_door_it_crashes_open, 50);
             await pline('As you kick the door, it crashes open!');
             exercise(A_STR, true);
             loc.doormask = D_BROKEN;
@@ -1814,28 +1823,17 @@ async function otransit_msg(otmp, nodrop, chainthere, num) {
 }
 
 /**
- * C ref: worn.c remove_worn_item thin — clear weapon slots before ship.
- * Full accessory/armor prop polish deferred.
- */
-function remove_worn_item_ship(obj) {
-    if (!obj || !(obj.owornmask | 0)) return;
-    const u = game.u || {};
-    if (obj === u.uwep) setuwep(null);
-    if (obj === u.uquiver) setuqwep(null);
-    if (obj === u.uswapwep) setuswapwep(null);
-    obj.owornmask = 0;
-}
-
-/**
  * C ref: dokick.c ship_object — single kicked/dropped/thrown obj falls
  * through hole/stairs/ladder; shop unpaid / shop_floor_obj billing.
  * Branch envelope: down_gate/drop_to; uball/uchain/rn2 nodrop;
  * boulder plugs hole after optional impact_drop; otransit_msg;
  * stolen_value + picked_container; breaktest muffled crash/splat;
- * add_to_migration + impact_drop of pile.
- * Named omit: maybe_unhide_at; Soundeffect; shop_floor_obj polish.
- * shop_floor_obj=TRUE via kick_object bhit (D-0988); flooreffects
- * callers beyond dropz/throwit/drop_throw/kick (D-0987 core done).
+ * add_to_migration + impact_drop of pile. Worn-item removal via live
+ * steal.js remove_worn_item (D-2318); nodrop impact maybe_unhide_at wired.
+ * Named omit: Soundeffect; shop_floor_obj polish.
+ * shop_floor_obj=TRUE via kick_object bhit (D-0988); launch_obj ROLL
+ * gate-drop wired (D-2318); other flooreffects callers beyond
+ * dropz/throwit/drop_throw/kick (D-0987 core done).
  * NOTE: assumes otmp already freed from fobj/invent (C comment).
  * @returns {Promise<boolean>} true if shipped/broken (caller must not place)
  */
@@ -1886,7 +1884,8 @@ export async function ship_object(otmp, x, y, shop_floor_obj) {
     if (nodrop) {
         if (impact) {
             await impact_drop(otmp, x, y, 0);
-            // maybe_unhide_at deferred
+            // C ship_object nodrop arm — a mimic at the drop spot pops out.
+            await maybe_unhide_at(x, y);
         }
         return false;
     }
@@ -1906,7 +1905,12 @@ export async function ship_object(otmp, x, y, shop_floor_obj) {
         if ((otmp.oclass | 0) !== COIN_CLASS) otmp.no_charge = 0;
     }
 
-    if (otmp.owornmask) remove_worn_item_ship(otmp);
+    // C `dokick.c:1715` — full worn-item removal (armor *_off,
+    // ring/amulet/tool setworn, ball-and-chain unpunish).
+    if (otmp.owornmask) {
+        const { remove_worn_item } = await import('./steal.js');
+        await remove_worn_item(otmp, true);
+    }
 
     // some things break rather than ship — dothrow.c breaktest
     const { breaktest } = await import('./dothrow.js');

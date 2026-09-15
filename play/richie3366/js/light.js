@@ -28,6 +28,10 @@ function pm(name) {
 
 const COULD_SEE = 0x1; // vision.js — avoid circular const export
 
+// C ref: light.c:41 — file-local like COULD_SEE above. LSF_SHOW is
+// per-recalc state, cleared up front in do_light_sources each call.
+const LSF_SHOW = 0x1;
+
 // C ref: mondata.h emits_light — range 1 for all current emitters.
 export function emits_light(ptr) {
     if (!ptr) return 0;
@@ -175,41 +179,85 @@ export function relight_monsters() {
  * Camera flash: range 0 + Null obj, caller already set ls.{x,y} (D-1597).
  * Exact circle ring via circle_ptr (light.c:213-226); a range-3 lamp no
  * longer lights the dy=±2 corner columns (D-2157).
- * Named omissions: LSF_NEEDS_FIXUP; hero at_hero_range dedup (OR-idempotent).
+ * Per-recalc SHOW skeleton + at_hero_range duplicate-source trim
+ * (light.c:177/:204–211, D-2302; paint is OR-idempotent so the trim only
+ * skips redundant repaints). FALSE location arms reset ls.{x,y} to 0
+ * (zap.c:685/:705).
+ * Named omissions: LSF_NEEDS_FIXUP; get_*_location refinement arms
+ * (youmonst/usteed identity, mburied gate, OBJ_BURIED/OBJ_CONTAINED —
+ * JS refreshes ls.{x,y} inline, D-2157).
  */
 export function do_light_sources(cs_rows) {
     const list = game.light_base;
     if (!list?.length || !cs_rows) return;
 
+    // C light.c:174 — dedup duplicate sources at hero: only a strictly
+    // larger range repaints (paint is OR-idempotent, so this is perf).
+    let at_hero_range = 0;
+    const ux = game.u?.ux | 0;
+    const uy = game.u?.uy | 0;
+
     for (const ls of list) {
+        // C light.c:177 — SHOW is per-recalc state, cleared up front.
+        ls.flags = (ls.flags | 0) & ~LSF_SHOW;
         if (ls.type === LS_MONSTER) {
+            // C get_mon_location (zap.c:691–709): migrating/buried reads
+            // x,y = 0 with no SHOW. youmonst/usteed identity + mburied
+            // gate stay named (JS refreshes inline, D-2157).
             const m = ls.id;
-            if (!m || m.mx <= 0) continue;
-            ls.x = m.mx | 0;
-            ls.y = m.my | 0;
+            if (!m || (m.mx | 0) <= 0) {
+                ls.x = 0;
+                ls.y = 0;
+            } else {
+                ls.x = m.mx | 0;
+                ls.y = m.my | 0;
+                ls.flags |= LSF_SHOW;
+            }
         } else if (ls.type === LS_OBJECT) {
             // C: range==0 camera flash short-circuits get_obj_location
-            // (Null a_obj). Thrown lamp is placed on the floor first.
-            if ((ls.range | 0) !== 0) {
+            // (Null a_obj) with SHOW set; x,y are caller-set (D-1597).
+            // Thrown lamp is placed on the floor first.
+            if ((ls.range | 0) === 0) {
+                ls.flags |= LSF_SHOW;
+            } else {
+                // C get_obj_location (zap.c:653–689) with locflags 0:
+                // INVENT reads hero pos; FLOOR reads ox,oy; MINVENT reads
+                // a local carrier. FALSE arms reset x,y to 0 (zap.c:685).
                 const obj = ls.id;
-                if (!obj?.lamplit) continue;
-                if (obj.where === OBJ_INVENT
+                if (!obj?.lamplit) {
+                    ls.x = 0;
+                    ls.y = 0;
+                } else if (obj.where === OBJ_INVENT
                     || (game.invent || []).includes(obj)) {
-                    ls.x = game.u?.ux | 0;
-                    ls.y = game.u?.uy | 0;
+                    ls.x = ux;
+                    ls.y = uy;
+                    ls.flags |= LSF_SHOW;
                 } else if (obj.where === OBJ_FLOOR) {
                     ls.x = obj.ox | 0;
                     ls.y = obj.oy | 0;
+                    ls.flags |= LSF_SHOW;
                 } else if (obj.where === OBJ_MINVENT && obj.ocarry) {
                     ls.x = obj.ocarry.mx | 0;
                     ls.y = obj.ocarry.my | 0;
+                    ls.flags |= LSF_SHOW;
                 } else {
-                    continue;
+                    ls.x = 0;
+                    ls.y = 0;
                 }
             }
-        } else {
-            continue;
         }
+        // else: unknown type — SHOW stays cleared, x,y untouched (C).
+
+        // C light.c:204–211 — minor optimization: don't bother with
+        // duplicate light sources at hero. Runs even when SHOW was
+        // cleared above (stale x,y still feed the trim in C); a range-0
+        // flash at hero paints nothing (0 >= 0 clears SHOW).
+        if (ls.x === ux && ls.y === uy) {
+            if (at_hero_range >= (ls.range | 0)) ls.flags &= ~LSF_SHOW;
+            else at_hero_range = ls.range | 0;
+        }
+
+        if (!(ls.flags & LSF_SHOW)) continue;
         const range = ls.range | 0;
         if (range < 0) continue;
 
@@ -227,8 +275,6 @@ export function do_light_sources(cs_rows) {
             if (min_x < 1) min_x = 1;
             let max_x = ls.x + offset;
             if (max_x >= COLNO) max_x = COLNO - 1;
-            const ux = game.u?.ux | 0;
-            const uy = game.u?.uy | 0;
             const at_hero = ls.x === ux && ls.y === uy;
             for (let x = min_x; x <= max_x; x++) {
                 if (at_hero) {

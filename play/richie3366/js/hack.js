@@ -40,10 +40,10 @@ import {
     nh_delay_output,
 } from './display.js';
 import { gethungry, morehungry, is_fainted } from './eat.js';
-import { unconscious } from './teleport.js';
+import { unconscious, enexto, goodpos, rloc_to } from './teleport.js';
 import { m_at, hideunder, seemimic, bad_rock } from './mon.js';
 import { recalc_block_point } from './vision.js';
-import { is_hider, hides_under, throws_rocks, noncorporeal, metallivorous, mons, is_flyer, is_swimmer, verysmall, bigmonst, passes_bars, dmgtype } from './monsters.js';
+import { is_hider, hides_under, throws_rocks, noncorporeal, metallivorous, mons, is_flyer, is_swimmer, verysmall, bigmonst, passes_bars, dmgtype, is_rider } from './monsters.js';
 import {
     objects_at, sobj_at, obj_extract_self, place_object, delobj,
     peek_timer, stop_timer, start_timer, splitobj,
@@ -79,6 +79,7 @@ import { Hello } from './roles.js';
 import { SetVoice } from './sndprocs.js';
 import { set_ustuck, Conflict } from './mhitu.js';
 import { sticks } from './engrave.js';
+import { revive_corpse } from './do.js';
 
 export { set_msg_xy };
 
@@ -92,6 +93,7 @@ const PM_ORACLE = monsterNames.indexOf('PM_ORACLE');
 /** C hack.h invlet_basic — a-zA-Z slots; overflow '#' is extra. */
 const INVLET_BASIC = 52;
 const CORPSE = objectNames.indexOf('CORPSE');
+const PM_WIZARD_OF_YENDOR = monsterNames.indexOf('PM_WIZARD_OF_YENDOR');
 const HEAVY_IRON_BALL = objectNames.indexOf('HEAVY_IRON_BALL');
 const RUBBER_HOSE = objectNames.indexOf('RUBBER_HOSE');
 /** C materials.h LEATHER — is_flimsy ceiling (obj.h). */
@@ -410,6 +412,47 @@ function moverock_done(sx, sy) {
     for (let otmp = objects_at(sx, sy); otmp; otmp = otmp.nexthere) {
         if ((otmp.otyp | 0) === BOULDER) otmp.next_boulder = 0;
     }
+}
+
+/**
+ * C ref: hack.c revive_nasty `:104-137` — revive Rider/Wizard-of-Yendor
+ * corpses at (x,y), shoving any living occupant aside first via
+ * enexto/rloc_to, then re-seating an unsafe revival the same way.
+ * Drawbridge open/close callers wired (dbridge.c:820-821/:868);
+ * moverock_core :450 stays deferred (D-1859 row).
+ */
+export async function revive_nasty(x, y, msg) {
+    let revived = false;
+    let otmp = objects_at(x, y);
+    while (otmp) {
+        const otmp2 = otmp.nexthere;
+        if ((otmp.otyp | 0) === CORPSE
+            && (is_rider(mons(otmp.corpsenm | 0))
+                || (otmp.corpsenm | 0) === PM_WIZARD_OF_YENDOR)) {
+            /* move any living monster already at that location */
+            const mtmp = m_at(x, y);
+            const cc = { x: 0, y: 0 };
+            if (mtmp && enexto(cc, x, y, mtmp.data))
+                await rloc_to(mtmp, cc.x, cc.y);
+            if (msg)
+                await Norep(msg);
+            revived = await revive_corpse(otmp);
+        }
+        otmp = otmp2;
+    }
+
+    /* this location might not be safe, if not, move revived monster */
+    if (revived) {
+        const mtmp = m_at(x, y);
+        const cc = { x: 0, y: 0 };
+        if (mtmp && !goodpos(x, y, mtmp, 0)
+            && enexto(cc, x, y, mtmp.data)) {
+            await rloc_to(mtmp, cc.x, cc.y);
+        }
+        /* else impossible? */
+    }
+
+    return revived;
 }
 
 /**

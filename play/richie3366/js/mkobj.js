@@ -41,13 +41,13 @@ import {
     undead_to_corpse, can_be_hatched, dead_species, copy_mextra,
     zombie_form,
 } from './mon.js';
-import { oname } from './do_name.js';
+import { oname, safe_oname } from './do_name.js';
 import { confers_luck, nartifact_exist, mk_artifact, permapoisoned } from './artifact.js';
 import {
     mons, is_male, is_female, is_neuter, is_human, verysmall, PM_LICHEN, monsterNames,
     G_NOCORPSE, NON_PM as MON_NON_PM,
 } from './monsters.js';
-import { PM_SAMURAI } from './generated/monsters_data.js';
+import { PM_CLERIC, PM_SAMURAI } from './generated/monsters_data.js';
 import { update_inventory, Blind } from './invent.js';
 import { distant_name, doname, cxname, The, vtense, corpse_xname, Yname2, otense } from './objnam.js';
 import {
@@ -60,7 +60,7 @@ import {
     OBJ_FREE, OBJ_FLOOR, OBJ_INVENT, OBJ_BURIED, OBJ_MINVENT, OBJ_CONTAINED,
     OBJ_MIGRATING, OBJ_ONBILL, OBJ_LUAFREE, OBJ_DELETED, MIGR_TO_SPECIES, W_WEP,
     G_GONE,
-    LOST_NONE, LOST_EXPLODING,
+    LOST_NONE, LOST_EXPLODING, LOW_PM,
     CORPSTAT_NEUTER, CORPSTAT_FEMALE, CORPSTAT_MALE,
     CXN_NO_PFX,
     Is_rogue_level, isok, ICE, DRAWBRIDGE_UP, DB_UNDER, DB_ICE,
@@ -74,11 +74,11 @@ import { set_tin_variety } from './eat.js';
 import { set_moreluck } from './attrib.js';
 import { recalc_block_point, cansee } from './vision.js';
 import { del_light_source, discard_flashes, obj_sheds_light, obj_adjust_light_radius } from './light.js';
-import { arti_light_radius, get_obj_location, obj_split_light_source } from './timeout.js';
-import { obfree, splitbill } from './shk.js';
+import { arti_light_radius, get_obj_location, obj_split_light_source, Is_candle } from './timeout.js';
+import { obfree, splitbill, same_price } from './shk.js';
 import { hands_obj } from './weapon.js';
 import { obj_resists } from './dogmove.js';
-import { newsym, pline } from './display.js';
+import { newsym, pline, Hallucination } from './display.js';
 import { maybe_unhide_at } from './monmove.js';
 
 const GOLD_PIECE = objectNames.indexOf('GOLD_PIECE');
@@ -97,6 +97,8 @@ const STATUE = objectNames.indexOf('STATUE');
 const FIGURINE = objectNames.indexOf('FIGURINE');
 const BOOMERANG = objectNames.indexOf('BOOMERANG');
 const CORPSE = objectNames.indexOf('CORPSE');
+const EGG = objectNames.indexOf('EGG');
+const TIN = objectNames.indexOf('TIN');
 const GLOB_OF_GRAY_OOZE = objectNames.indexOf('GLOB_OF_GRAY_OOZE');
 const GLOB_OF_BROWN_PUDDING = objectNames.indexOf('GLOB_OF_BROWN_PUDDING');
 const GLOB_OF_GREEN_SLIME = objectNames.indexOf('GLOB_OF_GREEN_SLIME');
@@ -2089,45 +2091,114 @@ export function oc_merge_of(otyp) {
     return !!(game.objects?.[otyp]?.oc_merge);
 }
 
+/** C ref: mondata.h is_reviver `:170` — rider or troll (a macro). */
+function is_reviver(ptr) {
+    return is_rider(ptr) || ptr?.mlet === 'S_TROLL';
+}
+
 /**
- * C ref: invent.c mergable() — floor-stack subset + globby early TRUE.
- * Mail-command gate is live (invent.c:4477–4481). Named omit: shop/unpaid
- * + candle polish beyond current checks.
+ * C ref: invent.c mergable() `:4379–4499` — full port in C order.
+ * `obj` is the 'combine' (incoming) stack, `otmp` the 'into' stack.
+ * C `#if 0`s the bypass gate (floor drops must stack with floor piles).
+ * The only JS-side extra is the owornmask guard at the end (C has none):
+ * absorbing a worn combine stack needs merged()'s setworn/setnotworn
+ * slot fixup (`:877–913`), still unported (map: turns wield
+ * `finish_splitting`, D-2207).
  */
 export function mergable(otmp, obj) {
+    /* fail if already the same object, if different types, if either is
+       explicitly marked to prevent merge, or if not mergable in general */
     if (!obj || !otmp || obj === otmp || obj.otyp !== otmp.otyp) return false;
     if (obj.nomerge || otmp.nomerge || !oc_merge_of(obj.otyp)) return false;
+    /* coins of the same kind will always merge */
     if (obj.oclass === COIN_CLASS) return true;
-    // C: globby skip remaining attribute checks
-    if (obj.globby) return true;
     if (!!obj.cursed !== !!otmp.cursed || !!obj.blessed !== !!otmp.blessed)
         return false;
     const hl = obj.how_lost ?? LOST_NONE;
     const ohl = otmp.how_lost ?? LOST_NONE;
     if (hl === LOST_EXPLODING || ohl === LOST_EXPLODING) return false;
     if (ohl !== LOST_NONE && hl !== ohl) return false;
-    if ((obj.spe | 0) !== (otmp.spe | 0)) return false;
-    if ((obj.corpsenm ?? -1) !== (otmp.corpsenm ?? -1)) return false;
-    // C invent.c mergable — FOOD oeaten/orotten must match (partly eaten)
+    /* globby: checks beyond this point don't inhibit merger */
+    if (obj.globby) return true;
+    if ((obj.unpaid | 0) !== (otmp.unpaid | 0) || (obj.spe | 0) !== (otmp.spe | 0)
+        || (obj.no_charge | 0) !== (otmp.no_charge | 0)
+        || (obj.obroken | 0) !== (otmp.obroken | 0)
+        || (obj.otrapped | 0) !== (otmp.otrapped | 0)
+        || (obj.lamplit | 0) !== (otmp.lamplit | 0))
+        return false;
+    /* C obj.h:130 `#define orotten oeroded`: food rot shares erosion
+       storage; JS tracks `orotten` separately (eat.c touchfood), so the
+       FOOD arm compares the JS rot flag (D-0923) while the erosion arm
+       below compares oeroded/oeroded2/greased. */
     if (obj.oclass === FOOD_CLASS
         && ((obj.oeaten | 0) !== (otmp.oeaten | 0)
             || !!obj.orotten !== !!otmp.orotten)) {
         return false;
     }
-    // C: dknown must match; known may differ and is reconciled in merged()
-    if (!!obj.dknown !== !!otmp.dknown) return false;
-    // C invent.c mergable: one-sided mail command must match exactly.
+    /* C Role_if(PM_CLERIC) ≡ urole.mnum == PM_CLERIC (invent.js:1167). */
+    const roleIsCleric = (game.urole?.mnum | 0) === PM_CLERIC;
+    if (!!obj.dknown !== !!otmp.dknown
+        || (!!obj.bknown !== !!otmp.bknown && !roleIsCleric
+            && (Blind() || Hallucination()))
+        || (obj.oeroded | 0) !== (otmp.oeroded | 0)
+        || (obj.oeroded2 | 0) !== (otmp.oeroded2 | 0)
+        || !!obj.greased !== !!otmp.greased)
+        return false;
+    if (erosion_matters(obj)
+        && (!!obj.oerodeproof !== !!otmp.oerodeproof
+            || (!!obj.rknown !== !!otmp.rknown && (Blind() || Hallucination()))))
+        return false;
+    if ((obj.otyp === CORPSE || obj.otyp === EGG || obj.otyp === TIN)
+        && (obj.corpsenm ?? NON_PM) !== (otmp.corpsenm ?? NON_PM))
+        return false;
+    /* hatching eggs don't merge; ditto for revivable corpses
+       (C obj->timed ≡ JS obj.timed fuse count, start/stop_timer). */
+    if ((obj.otyp === EGG && ((obj.timed | 0) || (otmp.timed | 0)))
+        || (obj.otyp === CORPSE && (otmp.corpsenm | 0) >= LOW_PM
+            && is_reviver(mons(otmp.corpsenm))))
+        return false;
+    /* allow candle merging only if their ages are close (see begin_burn "25") */
+    if (Is_candle(obj) && (((obj.age | 0) / 25) | 0) !== (((otmp.age | 0) / 25) | 0))
+        return false;
+    /* burning potions of oil never merge */
+    if (obj.otyp === POT_OIL && (obj.lamplit | 0)) return false;
+    /* don't merge surcharged item with base-cost item */
+    if ((obj.unpaid | 0) && !same_price(obj, otmp)) return false;
+    /* some additional information is always incompatible */
+    if (has_omonst(obj) || has_omid(obj) || has_omonst(otmp) || has_omid(otmp))
+        return false;
+    /* if they have names, make sure they're the same */
+    const objnamelth = safe_oname(obj).length;
+    const otmpnamelth = safe_oname(otmp).length;
+    if ((objnamelth !== otmpnamelth
+         && ((objnamelth && otmpnamelth) || obj.otyp === CORPSE))
+        || (objnamelth && otmpnamelth
+            /* verify pointers before deref for static analyzer */
+            && has_oname(obj) && has_oname(otmp)
+            && ONAME(obj) !== ONAME(otmp)))
+        return false;
+    /* if one has an attached mail command, other must have same command */
     if (!has_omailcmd(obj) ? has_omailcmd(otmp)
         : (!has_omailcmd(otmp) || OMAILCMD(obj) !== OMAILCMD(otmp))) {
         return false;
     }
-    // C invent.c mergable `:4379–4499` (whole body) has NO owornmask check:
-    // floor pickups merge into quivered/wielded stacks, and addinv_core0
-    // tries the quiver first (`:1098–1106`). Reject only a worn combine
-    // stack (`obj`): absorbing one needs C merged()'s setworn/setnotworn
-    // slot fixup (`:877–913`, #adjust wielded darts) with no JS port yet
-    // (map: turns wield `finish_splitting`). An unworn `obj` into a worn
-    // `otmp` needs no fixup on either side (fixup fires only on obj worn).
+    /* MAIL_STRUCTURES (global.h:430): wished/bones mail and hand-written
+       stamped scrolls each have two flavors; spe keeps them separate from
+       each other but flavors stay separate too */
+    if (obj.otyp === SCR_MAIL && (obj.spe | 0) > 0
+        && ((obj.o_id | 0) % 2) !== ((otmp.o_id | 0) % 2))
+        return false;
+    /* should be moot since matching artifacts wouldn't be unique */
+    if ((obj.oartifact | 0) !== (otmp.oartifact | 0)) return false;
+    /* known may differ sight unseen (reconciled in merged()); else match */
+    if (!!obj.known !== !!otmp.known && (Blind() || Hallucination()))
+        return false;
+    // JS-only (D-2207): floor pickups merge into quivered/wielded stacks and
+    // addinv_core0 tries the quiver first (`:1098–1106`). Reject only a worn
+    // combine stack (`obj`): absorbing one needs merged()'s setworn/setnotworn
+    // slot fixup (`:877–913`) with no JS port yet (map: turns wield
+    // `finish_splitting`). An unworn `obj` into a worn `otmp` needs no fixup
+    // on either side (fixup fires only on obj worn).
     if ((obj.owornmask | 0)) return false;
     return true;
 }

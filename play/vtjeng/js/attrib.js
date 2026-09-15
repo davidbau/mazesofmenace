@@ -85,6 +85,7 @@ import {
     ART_EYES_OF_THE_OVERWORLD,
     ART_OGRESMASHER,
     SPFX_LUCK,
+    what_gives,
 } from './artifacts.js';
 // js/display.js imports acurr() from this file; both sides use the other's
 // exports only inside function bodies, so the cycle resolves.
@@ -126,7 +127,7 @@ import { objectType } from './obj.js';
 import {
     DUNCE_CAP, GAUNTLETS_OF_POWER, HELM_OF_OPPOSITE_ALIGNMENT, LUCKSTONE,
 } from './objects.js';
-import { the, ysimple_name } from './objnam.js';
+import { bare_artifactname, the, ysimple_name } from './objnam.js';
 // js/polyself.js imports exercise() from this file; both sides use the
 // other's exports only inside function bodies, so the cycle resolves.
 import { body_part } from './polyself.js';
@@ -448,13 +449,19 @@ export function from_what(propidx, state = game) {
             return from_what_trim(` because of ${source}`, propidx);
         }
 
-        // C ref: what_gives(&u.uprops[propidx].extrinsic) identifies the worn
-        // or carried object providing the property. Not yet ported.
+        // C ref: artifact.c what_gives() identifies the worn or carried object
+        // providing an extrinsic property. C uses ysimple_name() for ordinary
+        // objects and objnam.c bare_artifactname() for artifacts.
         if (state.wizard && (u.uprops?.[propidx]?.extrinsic ?? 0) !== 0) {
-            note_unported('artifact.c what_gives');
-            // Skip the branch that calls what_gives and bare_artifactname;
-            // the result would name the equipment source, but what_gives and
-            // bare_artifactname are not ported yet.
+            const sourceObject = what_gives(propidx, state);
+            if (sourceObject) {
+                return from_what_trim(
+                    ` because of ${sourceObject.oartifact
+                        ? bare_artifactname(sourceObject, state)
+                        : ysimple_name(sourceObject, state)}`,
+                    propidx,
+                );
+            }
         }
 
         // C ref: youprop.h:96 Blindfolded = EBlinded (W_TOOL)
@@ -485,10 +492,7 @@ export function from_what(propidx, state = game) {
             const BBlinded = propBlind.blocked ?? 0;
             if (BBlinded && state.ublindf
                 && state.ublindf.oartifact === ART_EYES_OF_THE_OVERWORLD) {
-                // bare_artifactname for an artifact: lowercased artiname
-                note_unported('objnam.c bare_artifactname');
-                // The C would return ` because of ${bare_artifactname(ublindf)}`
-                // but bare_artifactname is not ported; fall through to empty.
+                return ` because of ${bare_artifactname(state.ublindf, state)}`;
             }
             break;
         }

@@ -3280,6 +3280,36 @@ function onbill(obj, shkp, _silent) {
 }
 
 /**
+ * C ref: shk.c same_price `:954–981` — both objects on bills with the same
+ * shk and the same bill price. Walks next_shkp(fmon, TRUE) via the
+ * file-local helpers; impossible() when either object is on no bill.
+ */
+export function same_price(obj1, obj2) {
+    let shkp1 = null, shkp2 = null, bp1 = null, bp2 = null;
+    let are_mergable = false;
+
+    /* look up the first object by finding shk whose bill it's on */
+    for (let walk = next_shkp(0, true); walk.shkp; walk = next_shkp(walk.nextIdx, true)) {
+        bp1 = onbill(obj1, walk.shkp, true);
+        if (bp1 !== null) { shkp1 = walk.shkp; break; }
+    }
+    /* second object is probably owned by same shk; if not, look harder */
+    bp2 = shkp1 ? onbill(obj2, shkp1, true) : null;
+    if (bp2 !== null) {
+        shkp2 = shkp1;
+    } else {
+        for (let walk = next_shkp(0, true); walk.shkp; walk = next_shkp(walk.nextIdx, true)) {
+            bp2 = onbill(obj2, walk.shkp, true);
+            if (bp2 !== null) { shkp2 = walk.shkp; break; }
+        }
+    }
+
+    if (!bp1 || !bp2) impossible("same_price: object wasn't on any bill!");
+    else are_mergable = (shkp1 === shkp2 && (bp1.price | 0) === (bp2.price | 0));
+    return are_mergable;
+}
+
+/**
  * C ref: shk.c clear_unpaid_obj `:308–315` — recurse contents; unpaid=0
  * when on this shk's bill. silent TRUE (no impossible).
  */
@@ -4081,14 +4111,20 @@ export function setpaid(shkp) {
     }
 }
 
-/** C ref: shk.c rile_shk — angry + surcharge on bill (bill walk deferred). */
+/** C ref: shk.c rile_shk `:1362–1377` — angry + 1/3 surcharge on every bill line. */
 function rile_shk(shkp) {
     if (!shkp) return;
     shkp.mpeaceful = 0;
     const eshk = ESHK(shkp);
     if (eshk && !eshk.surcharge) {
         eshk.surcharge = true;
-        // bill_p price bump deferred when billct==0 (common for angry combat)
+        const bp = eshk.bill_p || eshk.bill;
+        let ct = eshk.billct | 0;
+        for (let i = 0; ct-- > 0; i++) {
+            const e = bp?.[i];
+            if (!e) continue;
+            e.price = (e.price | 0) + ((((e.price | 0) + 2) / 3) | 0);
+        }
     }
 }
 

@@ -1,5 +1,5 @@
-// Shop admission and entry/departure transitions, generated-shop pricing,
-// live price-quote writes, remembered-price queries, and shopkeeper movement.
+// Shop admission, entry/departure, pricing, pickup billing, itemized payment,
+// bill-object lifecycle, remembered-price queries, and shopkeeper movement.
 // C refs: shk.c inhishop(), inside_shop(), shop_keeper(), u_entered_shop(),
 // u_left_shop(), getprice(), get_cost(), get_cost_of_shop_item(),
 // append_price_quote(), contained_gold(), check_unpaid(), costly_spot(),
@@ -10,6 +10,8 @@
 
 import {
     A_CHA,
+    ARTICLE_THE,
+    BILLSZ,
     ANY_SHOP,
     ACH_SHOP,
     BUFSZ,
@@ -18,6 +20,9 @@ import {
     CONFLICT,
     DETECT_MONSTERS,
     DEAF,
+    ECMD_CANCEL,
+    ECMD_OK,
+    ECMD_TIME,
     D_BROKEN,
     EYE,
     FAST,
@@ -28,6 +33,8 @@ import {
     IS_DOOR,
     isok,
     LOW_PM,
+    MAXULEV,
+    MENU_TRADITIONAL,
     M_AP_MONSTER,
     M_AP_NOTHING,
     M_AP_TYPE,
@@ -35,8 +42,10 @@ import {
     OBJ_BURIED,
     OBJ_CONTAINED,
     OBJ_FLOOR,
+    OBJ_FREE,
     OBJ_MINVENT,
     OBJ_ONBILL,
+    PICK_ANY,
     PLINE_SPEECH,
     PLINE_VERBALIZE,
     PL_NSIZ,
@@ -45,12 +54,16 @@ import {
     ROOMOFFSET,
     SHOPBASE,
     TELEPAT,
+    Upolyd,
     plur,
     u_at,
 } from './const.js';
 import { acurr, adjalign } from './attrib.js';
+import { yn_function } from './cmd.js';
+import { bot } from './display.js';
 import { assign_level, on_level } from './dungeon.js';
 import { game } from './gstate.js';
+import { getpos } from './getpos.js';
 import { dist2, online2, sgn, s_suffix, strncmpi } from './hacklib.js';
 import { inv_cnt } from './hack.js';
 import {
@@ -64,6 +77,8 @@ import {
     INVLET_BASIC,
     merge_choice,
     obj_extract_self,
+    o_on,
+    update_inventory,
 } from './invent.js';
 import { record_achievement } from './insight.js';
 import { get_obj_location } from './light.js';
@@ -71,11 +86,12 @@ import { mongone } from './makemon_create.js';
 import { angry_guards, wake_nearto } from './mon.js';
 import { search_special } from './mkroom.js';
 import {
-    carried, hasContents, isCandle, isContainer, is_pick, objectType,
-    sobj_at, splitobj,
+    carried, dealloc_obj, hasContents, isCandle, isContainer, is_pick,
+    newObject, next_ident, newomid, objectType, sobj_at, splitobj,
 } from './obj.js';
 import {
     ARMOR_CLASS,
+    BALL_CLASS,
     COIN_CLASS,
     CORPSE,
     DUNCE_CAP,
@@ -83,10 +99,16 @@ import {
     EGG,
     FOOD_CLASS,
     GEM_CLASS,
+    GEMSTONE,
     GLASS,
+    FIRST_REAL_GEM,
+    LARGE_BOX,
+    MIRROR,
     POTION_CLASS,
     POT_WATER,
     PICK_AXE,
+    SCROLL_CLASS,
+    SPBOOK_CLASS,
     TIN,
     TOOL_CLASS,
     WAND_CLASS,
@@ -94,6 +116,7 @@ import {
 } from './objects.js';
 import {
     PM_KEYSTONE_KOP,
+    PM_ELF,
     PM_KOP_KAPTAIN,
     PM_KOP_LIEUTENANT,
     PM_KOP_SERGEANT,
@@ -104,6 +127,10 @@ import {
 import {
     haseyes,
     is_demon,
+    is_elf,
+    is_human,
+    is_vampire,
+    nolimbs,
     mhim,
     pronoun_gender,
     resist_conflict,
@@ -114,21 +141,29 @@ import { in_rooms } from './rooms.js';
 import { move_special } from './priest.js';
 import { SHTYPES } from './shtypes_data.js';
 import { m_at } from './monst.js';
+import { m_next2u } from './mhitu.js';
 import { mbodypart, poly_gender } from './polyself.js';
 import { verbalize } from './pline.js';
 import {
     canSeeMonster,
+    canSpotMonster,
     heroIsBlind,
     sensesMonster,
 } from './startup_a11y.js';
 import { set_voice } from './sounds.js';
-import { shkname, Shknam } from './shknam.js';
+import { saleable, shkname, Shknam } from './shknam.js';
 import { ttyPline } from './tty_message.js';
 import { note_unported } from './unported.js';
 import { findgold, remove_worn_item } from './steal.js';
-import { discover_object } from './o_init.js';
-import { y_monnam } from './do_name.js';
+import { discover_object, observe_object } from './o_init.js';
+import { Monnam, x_monnam, y_monnam } from './do_name.js';
 import { rn2 } from './rng.js';
+import { obj_stop_timers } from './timeout.js';
+import { ansimpleoname, Doname2, donameFresh, paydoname, safe_qbuf,
+    simpleonames, thesimpleoname, The, the, xnameFresh } from './objnam.js';
+import { hidden_gold } from './vault.js';
+import { cansee } from './vision.js';
+import { add_menu_heading, select_menu } from './windows.js';
 
 // C ref: shk.c:u_entered_shop()'s static `empty_shops[5]`. It survives calls
 // in one C process but is not saved; each recorder segment starts a new
@@ -728,7 +763,7 @@ export async function remote_burglary(
         await call_kops(shopkeeper, false, state, { message });
 }
 
-// C ref: shk.c rob_shop() (684-719).  rouse_shk(), hot_pursuit(), and the
+// C ref: shk.c rob_shop() (684-719). hot_pursuit() and the
 // livelog_printf() result are discarded here because those C helpers are not
 // ported; preserve their reached gaps without inventing state or output.
 async function rob_shop(
@@ -737,7 +772,7 @@ async function rob_shop(
     { message = ttyPline } = {},
 ) {
     const eshk = shopkeeper.mextra.eshk;
-    note_unported('shk.c rouse_shk');
+    await rouse_shk(shopkeeper, true, state, { message });
     let total = addupbill(shopkeeper) + eshk.debit;
     if (eshk.credit >= total) {
         await message(
@@ -1080,6 +1115,896 @@ export function contained_gold(obj, even_if_unknown) {
             value += contained_gold(otmp, even_if_unknown);
     }
     return value;
+}
+
+// C ref: shk.c contained_cost() (2995-3047).
+export function contained_cost(obj, shkp, price, usell, unpaid_only, state = game) {
+    let top = obj;
+    while (top.where === OBJ_CONTAINED) top = top.ocontainer;
+    const onFloor = top.where === OBJ_FLOOR || top.where === OBJ_FREE;
+    const location = top.where === OBJ_FREE ? null : get_obj_location(top, 0, state);
+    const x = location?.x ?? state.u.ux;
+    const y = location?.y ?? state.u.uy;
+    const freespot = onFloor && x === shkp.mextra.eshk.shk.x
+        && y === shkp.mextra.eshk.shk.y;
+    for (let item = obj.cobj; item; item = item.nobj) {
+        if (item.oclass === COIN_CLASS) continue;
+        if (usell) {
+            if (saleable(shkp, item, state) && !item.unpaid
+                && item.oclass !== BALL_CLASS
+                && !(item.oclass === FOOD_CLASS && item.oeaten)
+                && !(isCandle(item)
+                    && item.age < 20 * objectType(item, state).oc_cost)) {
+                price += set_cost(item, shkp, state);
+            }
+        } else if (onFloor ? !item.no_charge && !freespot
+            : item.unpaid || !unpaid_only) {
+            price += get_cost(item, shkp, state) * get_pricing_units(item);
+        }
+        if (hasContents(item))
+            price = contained_cost(item, shkp, price, usell, unpaid_only, state);
+    }
+    return price;
+}
+
+// C ref: shk.c picked_container() (3085-3100). Coins keep their own flag.
+export function picked_container(obj) {
+    for (let item = obj.cobj; item; item = item.nobj) {
+        if (item.oclass === COIN_CLASS) continue;
+        if (item.no_charge) item.no_charge = 0;
+        if (hasContents(item)) picked_container(item);
+    }
+}
+
+// C ref: shk.c set_cost() (3148-3193). Shopkeeper's buying price.
+export function set_cost(obj, shkp, state = game) {
+    let price = get_pricing_units(obj) * getprice(obj, true, state);
+    let multiplier = 1;
+    let divisor = 1;
+    if (state.uarmh?.otyp === DUNCE_CAP
+        || (state.urole?.mnum === PM_TOURIST && state.u.ulevel < MAXULEV / 2)
+        || (state.uarmu && !state.uarm && !state.uarmc)) {
+        divisor *= 3;
+    } else {
+        divisor *= 2;
+    }
+    const type = objectType(obj, state);
+    if (!obj.dknown || !type.oc_name_known) {
+        if (obj.oclass === GEM_CLASS) {
+            if (type.oc_material === GEMSTONE || type.oc_material === GLASS) {
+                price = (obj.otyp - FIRST_REAL_GEM) % (6 - shkp.m_id % 3);
+                price = (price + 3) * obj.quan;
+                divisor = 1;
+            }
+        } else if (price > 1 && !(shkp.m_id % 4)) {
+            multiplier *= 3;
+            divisor *= 4;
+        }
+    }
+    if (price >= 1) {
+        price *= multiplier;
+        if (divisor > 1) {
+            price = Math.trunc(price * 10 / divisor);
+            price = Math.trunc((price + 5) / 10);
+        }
+        if (price < 1) price = 1;
+    }
+    return price;
+}
+
+// C ref: shk.c add_one_tobill() (3309-3367).
+async function add_one_tobill(obj, dummy, shkp, state, env) {
+    const eshk = shkp.mextra.eshk;
+    if (!eshk.bill_p) eshk.bill_p = eshk.bill;
+    const owner = { value: shkp };
+    let unbilled = !billable(owner, obj, firstRoom(state.u.ushops), true, state);
+    if (!unbilled && eshk.billct === BILLSZ) {
+        await (env.message ?? ttyPline)('You got that for free!', state);
+        unbilled = true;
+    }
+    if (unbilled) {
+        if (obj.where === OBJ_FREE) dealloc_obj(obj, { ...env, state });
+        return;
+    }
+    const bill = { bo_id: obj.o_id, bquan: obj.quan, useup: Boolean(dummy) };
+    eshk.bill_p[eshk.billct] = bill;
+    if (dummy) add_to_billobjs(obj, state, env);
+    bill.price = get_cost(obj, shkp, state);
+    if (obj.globby) {
+        bill.price *= get_pricing_units(obj);
+        newomid(obj);
+        obj.oextra.omid = obj.owt;
+    }
+    eshk.billct++;
+    obj.unpaid = 1;
+    record_price_quote(obj.otyp, bill.price, true, state);
+}
+
+// C ref: shk.c add_to_billobjs() (3370-3388). gb.billobjs owns used objects
+// until setpaid frees the chain; the active bill still references their IDs.
+function add_to_billobjs(obj, state = game, env = {}) {
+    if (obj.where !== OBJ_FREE) throw new Error('add_to_billobjs: obj not free');
+    if (obj.timed) obj_stop_timers(obj, state, env);
+    state.gb ??= {};
+    obj.nobj = state.gb.billobjs ?? null;
+    state.gb.billobjs = obj;
+    obj.where = OBJ_ONBILL;
+    obj.in_use = 0;
+    obj.bypass = 0;
+}
+
+// C ref: shk.c bill_box_content() (3392-3414).
+async function bill_box_content(obj, ininv, dummy, shkp, state, env) {
+    if (obj.otyp === LARGE_BOX && obj.spe === 1) return;
+    for (let item = obj.cobj; item; item = item.nobj) {
+        if (item.oclass === COIN_CLASS) continue;
+        if (!item.no_charge) await add_one_tobill(item, dummy, shkp, state, env);
+        if (hasContents(item))
+            await bill_box_content(item, ininv, dummy, shkp, state, env);
+    }
+}
+
+// C ref: shk.c billable() (3451-3487). owner.value represents struct monst **.
+export function billable(owner, obj, roomno, reset_nocharge, state = game) {
+    let shkp = owner.value;
+    if (!shkp) {
+        if (!roomno) return false;
+        shkp = shop_keeper(roomno, state);
+        if (!shkp || !inhishop(shkp, state)) return false;
+        owner.value = shkp;
+    }
+    if (onbill(obj, shkp, false) || (obj.oclass === FOOD_CLASS && obj.oeaten))
+        return false;
+    if (obj.no_charge) {
+        if (!hasContents(obj) || (contained_gold(obj, true) === 0
+            && contained_cost(obj, shkp, 0, false, !reset_nocharge, state) === 0)) {
+            shkp = null;
+        }
+        if (reset_nocharge && !shkp && obj.oclass !== COIN_CLASS) {
+            obj.no_charge = 0;
+            if (hasContents(obj)) picked_container(obj);
+        }
+    }
+    return Boolean(shkp);
+}
+
+// C ref: shk.c addtobill() (3490-3601). Bill before addinv so unpaid objects
+// merge only with objects on the same-priced bill; callers await all output.
+export async function addtobill(obj, ininv, dummy, silent, state = game, env = {}) {
+    const owner = { value: null };
+    if (!billable(owner, obj, firstRoom(state.u.ushops), true, state)) return;
+    const shkp = owner.value;
+    const message = env.message ?? ttyPline;
+    if (obj.oclass === COIN_CLASS) {
+        await costly_gold(obj.ox, obj.oy, obj.quan, silent, state, env);
+        return;
+    } else if (shkp.mextra.eshk.billct === BILLSZ) {
+        if (!silent) await message('You got that for free!', state);
+        return;
+    }
+    let price = 0;
+    let contentsPrice = 0;
+    let gold = 0;
+    let contentsCount;
+    const container = hasContents(obj);
+    if (!obj.no_charge) {
+        price = get_cost(obj, shkp, state);
+        if (obj.globby) price *= get_pricing_units(obj);
+    }
+    if (obj.no_charge && !container) {
+        obj.no_charge = 0;
+        return;
+    }
+    if (container) {
+        contentsPrice = contained_cost(obj, shkp, contentsPrice, false, false, state);
+        gold = contained_gold(obj, true);
+        if (price) await add_one_tobill(obj, dummy, shkp, state, env);
+        if (contentsPrice) await bill_box_content(obj, ininv, dummy, shkp, state, env);
+        picked_container(obj);
+        price += contentsPrice;
+        if (gold) {
+            await costly_gold(obj.ox, obj.oy, gold, silent, state, env);
+            if (!price) return;
+        }
+        if (obj.no_charge) obj.no_charge = 0;
+        contentsCount = count_unpaid(obj.cobj);
+    } else {
+        await add_one_tobill(obj, dummy, shkp, state, env);
+        contentsCount = 0;
+    }
+    if (!heroIsDeaf(state) && !muteshk(shkp) && !silent) {
+        if (!price) {
+            await message(`${Shknam(shkp, state)} has no interest in ${
+                the(xnameFresh(obj, state), state)}.`, state);
+            return;
+        }
+        if (!ininv) {
+            await message(`${The(xnameFresh(obj, state), state)} will cost you ${
+                price} ${currency(price, state)}${obj.quan > 1 ? ' each' : ''}.`, state);
+        } else {
+            const quantity = obj.quan;
+            let prefix = '"For you,';
+            if (!NOTANGRY(shkp)) prefix += ' scum;';
+            else if (!shkp.mextra.eshk.surcharge)
+                prefix += ` ${append_honorific(state, env)}; only`;
+            obj.quan = 1;
+            try {
+                set_voice(shkp, 0, 80, 0, state);
+                await message(`${prefix} ${price} ${currency(price, state)} ${
+                    quantity > 1 ? 'per' : contentsCount && !obj.unpaid
+                        ? 'for the contents of this' : 'for this'} ${
+                    xnameFresh(obj, state)}${
+                    contentsCount && obj.unpaid ? ' and its contents' : ''}."`, state);
+            } finally {
+                obj.quan = quantity;
+            }
+        }
+    } else if (!silent) {
+        if (price) {
+            set_voice(shkp, 0, 80, 0, state);
+            await message(`The list price of ${
+                contentsCount && !obj.unpaid ? 'the contents of ' : ''}${
+                the(xnameFresh(obj, state), state)}${
+                contentsCount && obj.unpaid ? ' and its contents' : ''} is ${
+                price} ${currency(price, state)}${obj.quan > 1 ? ' each' : ''}.`, state);
+        } else {
+            await message(`${Shknam(shkp, state)} does not notice.`, state);
+        }
+    }
+}
+
+// C ref: shk.c append_honorific() (3604-3625).
+function append_honorific(state, env) {
+    const honored = ['good', 'honored', 'most gracious', 'esteemed',
+        'most renowned and sacred'];
+    let result = honored[(env.random?.rn2 ?? rn2)(honored.length - 1)
+        + Number(Boolean(state.u.uevent.udemigod))];
+    const species = state.youmonst.data;
+    if (is_vampire(species)) result += state.flags.female ? ' dark lady' : ' dark lord';
+    else if (Upolyd(state.u) ? is_elf(species) : state.urace.mnum === PM_ELF)
+        result += state.flags.female ? ' hiril' : ' hir';
+    else result += !is_human(species) ? ' creature' : state.flags.female ? ' lady' : ' sir';
+    return result;
+}
+
+// C ref: shk.c costly_gold() (5745-5787).
+export async function costly_gold(x, y, amount, silent, state = game, env = {}) {
+    if (!costly_spot(x, y, state)) return;
+    const shkp = shop_keeper(firstRoom(in_rooms(x, y, SHOPBASE, state)), state);
+    if (!shkp) return;
+    const eshk = shkp.mextra.eshk;
+    const message = env.message ?? ttyPline;
+    if (eshk.credit >= amount) {
+        if (!silent) await message(eshk.credit > amount
+            ? `Your credit is reduced by ${amount} ${currency(amount, state)}.`
+            : 'Your credit is erased.', state);
+        eshk.credit -= amount;
+    } else {
+        const delta = amount - eshk.credit;
+        if (!silent) {
+            if (eshk.credit) await message('Your credit is erased.', state);
+            await message(eshk.debit
+                ? `Your debt increases by ${delta} ${currency(delta, state)}.`
+                : `You owe ${shkname(shkp, state)} ${delta} ${currency(delta, state)}.`, state);
+        }
+        eshk.debit += delta;
+        eshk.loan += delta;
+        eshk.credit = 0;
+    }
+}
+
+// C ref: shk.c billitem_status and PAY_* definitions (17-29). Each partly
+// used stack has two itemized rows pointing at one shop bill entry.
+export const FullyUsedUp = 1, PartlyUsedUp = 2, PartlyIntact = 3,
+    FullyIntact = 4, KnownContainer = 5, UndisclosedContainer = 6;
+const PAY_BUY = 1, PAY_CANT = 0, PAY_SKIP = -1, PAY_BROKE = -2;
+
+// C ref: shk.c bp_to_obj() (2759-2769), find_oid() (2777-2804).
+export function bp_to_obj(bp, state = game) {
+    return bp.useup ? o_on(bp.bo_id, state.gb?.billobjs)
+        : find_oid(bp.bo_id, state);
+}
+
+export function find_oid(id, state = game) {
+    for (const root of [state.invent, state.level.objlist,
+        state.level.buriedobjlist, state.gm?.migrating_objs]) {
+        const obj = o_on(id, root);
+        if (obj) return obj;
+    }
+    for (const root of [state.level.monlist, state.gm?.migrating_mons,
+        state.gm?.mydogs]) {
+        for (let mon = root; mon; mon = mon.nmon) {
+            const obj = o_on(id, mon.minvent);
+            if (obj) return obj;
+        }
+    }
+    return null;
+}
+
+// C ref: shk.c sortbill_cmp() (1499-1518), cheapest_item() (1522-1539).
+export function sortbill_cmp(left, right) {
+    const used1 = Number(left.usedup <= PartlyUsedUp);
+    const used2 = Number(right.usedup <= PartlyUsedUp);
+    if (used1 !== used2) return used2 - used1;
+    if (left.cost !== right.cost) return (right.cost - left.cost) | 0;
+    return left.bidx - right.bidx;
+}
+
+export function cheapest_item(ibillct, ibill) {
+    let price = ibill[0].cost;
+    for (let i = 1; i < ibillct; ++i)
+        if (ibill[i].cost < price) price = ibill[i].cost;
+    return price;
+}
+
+// C ref: shk.c make_itemized_bill() (1545-1663). Return the C count and
+// output-pointer array together; the final zero row is the source sentinel.
+export function make_itemized_bill(shkp, state = game) {
+    const eshk = shkp.mextra.eshk;
+    const ibill = [];
+    for (let i = 0; i < eshk.billct; ++i) {
+        const bp = eshk.bill_p[i];
+        let obj = bp_to_obj(bp, state);
+        if (!obj) {
+            note_unported('pline.c impossible');
+            continue;
+        }
+        let bidx = i;
+        if (obj.quan === 0 || obj.where === OBJ_ONBILL) {
+            obj.quan = bp.bquan;
+            bp.useup = true;
+        } else if (obj.quan < bp.bquan) {
+            const quan = bp.bquan - obj.quan;
+            ibill.push({ obj, quan, cost: bp.price * quan, bidx,
+                usedup: PartlyUsedUp, queuedpay: false });
+        }
+        let quan, cost, usedup;
+        if (obj.where === OBJ_ONBILL) {
+            quan = bp.bquan;
+            cost = bp.price * quan;
+            usedup = FullyUsedUp;
+        } else if (obj.where === OBJ_CONTAINED || hasContents(obj)) {
+            const item = obj;
+            let known = true;
+            while (obj.where === OBJ_CONTAINED) {
+                obj = obj.ocontainer;
+                if (!obj.cknown) known = false;
+            }
+            const previous = ibill.find(row => row.obj === obj);
+            if (previous) {
+                if (previous.usedup === FullyIntact)
+                    previous.usedup = known ? KnownContainer : UndisclosedContainer;
+                continue;
+            }
+            quan = 1;
+            cost = unpaid_cost(obj, COST_CONTENTS, state);
+            if (!obj.unpaid) bidx = -1;
+            usedup = obj === item ? FullyIntact
+                : known ? KnownContainer : UndisclosedContainer;
+        } else {
+            quan = obj.quan;
+            cost = bp.price * quan;
+            usedup = quan < bp.bquan ? PartlyIntact : FullyIntact;
+        }
+        ibill.push({ obj, quan, cost, bidx, usedup, queuedpay: false });
+    }
+    if (ibill.length > 1) ibill.sort(sortbill_cmp);
+    const ibillct = ibill.length;
+    ibill.push({ obj: null, quan: 0, cost: 0, bidx: -1, usedup: 0,
+        queuedpay: false });
+    return { ibillct, ibill };
+}
+
+// C ref: shk.c menu_pick_pay_items() (1668-1739).
+async function menu_pick_pay_items(ibillct, ibill, state, env) {
+    let largest = 0;
+    for (let i = 0; i < ibillct; ++i)
+        if (ibill[i].cost > largest) largest = ibill[i].cost;
+    const width = String(largest).length;
+    const items = [];
+    if (ibill[0].usedup <= PartlyUsedUp)
+        items.push(add_menu_heading(`Used up item${ibillct > 1
+            && ibill[1].usedup <= PartlyUsedUp ? 's' : ''}:`, state));
+    for (let i = 0; i < ibillct; ++i) {
+        if (i > 0 && ibill[i - 1].usedup <= PartlyUsedUp
+            && ibill[i].usedup >= PartlyIntact) {
+            items.push(add_menu_heading(`Unpaid item${i < ibillct - 1 ? 's' : ''}:`, state));
+        }
+        const obj = ibill[i].obj;
+        const quantity = obj.quan;
+        obj.quan = ibill[i].quan;
+        let name;
+        try { name = paydoname(obj, state); }
+        finally { obj.quan = quantity; }
+        items.push({ label: `${String(ibill[i].cost).padStart(width)} Zm, ${name}`,
+            value: i + 1 });
+    }
+    const selected = await (env.selectMenu ?? select_menu)(state, {
+        title: 'Pay for which items?', items, how: PICK_ANY, cancelValue: null,
+        overlay: state.iflags.menu_overlay !== false,
+    });
+    for (const choice of selected ?? []) ibill[choice.value - 1].queuedpay = true;
+    return selected?.length ?? 0;
+}
+
+// C ref: shk.c check_credit() (1278-1294), pay() (1297-1313).
+async function check_credit(amount, shkp, state, env) {
+    const credit = shkp.mextra.eshk.credit;
+    const message = env.message ?? ttyPline;
+    if (credit === 0) return amount;
+    if (credit >= amount) {
+        await message('The price is deducted from your credit.', state);
+        shkp.mextra.eshk.credit -= amount;
+        return 0;
+    }
+    await message('The price is partially covered by your credit.', state);
+    shkp.mextra.eshk.credit = 0;
+    return amount - credit;
+}
+
+async function pay(amount, shkp, state, env) {
+    let robbed = shkp.mextra.eshk.robbed;
+    const balance = amount <= 0 ? amount : await check_credit(amount, shkp, state, env);
+    if (balance > 0) money2mon(shkp, balance, state);
+    else if (balance < 0) await money2u(shkp, -balance, state);
+    state.disp.botl = true;
+    if (robbed) {
+        robbed -= amount;
+        if (robbed < 0) robbed = 0;
+        shkp.mextra.eshk.robbed = robbed;
+    }
+}
+
+// C ref: shk.c shk_names_obj() (3413-3445). All source callers supply the
+// same four conversions: object name, amount, plural suffix, extra text.
+async function shk_names_obj(shkp, obj, fmt, amount, arg, state, env) {
+    let unknown = !obj.dknown;
+    observe_object(obj, state);
+    const type = objectType(obj, state);
+    if (!type.oc_magic && saleable(shkp, obj, state)
+        && ([WEAPON_CLASS, ARMOR_CLASS, SCROLL_CLASS, SPBOOK_CLASS].includes(obj.oclass)
+            || obj.otyp === MIRROR)) {
+        unknown ||= !type.oc_name_known;
+        discover_object(obj.otyp, true, true, true, state);
+    }
+    const name = paydoname(obj, state);
+    const subject = unknown ? `${name[0].toUpperCase()}${name.slice(1)}; you` : 'You';
+    const args = [unknown ? obj.quan > 1 ? 'them' : 'it' : name,
+        amount, plur(amount), arg];
+    const text = fmt.replace(/%ld|%s/gu, () => String(args.shift()));
+    await (env.message ?? ttyPline)(`${subject} ${text}`, state);
+}
+
+// C ref: shk.c reject_purchase() (2419-2451).
+async function reject_purchase(shkp, obj, billedQuantity, state, env) {
+    const intact = obj.quan;
+    obj.quan = billedQuantity - intact;
+    try {
+        if (!heroIsDeaf(state) && !muteshk(shkp)) {
+            const which = obj.where === OBJ_CONTAINED
+                ? `the one${plur(intact)} in ${thesimpleoname(obj.ocontainer, state)}`
+                : intact > 1 ? 'these' : 'this one';
+            set_voice(shkp, 0, 80, 0, state);
+            await verbalize(`${NOTANGRY(shkp) ? 'Please pay' : 'Pay'} for the other ${
+                simpleonames(obj, state)} before buying ${which}.`, state, env);
+        } else {
+            await (env.message ?? ttyPline)(`${Shknam(shkp, state)} ${NOTANGRY(shkp)
+                ? '' : 'angrily '}${nolimbs(shkp.data) ? 'motions to' : 'points out'} your bill for the other ${
+                simpleonames(obj, state)} first.`, state);
+        }
+    } finally { obj.quan = intact; }
+}
+
+// C ref: shk.c insufficient_funds() (2455-2481).
+async function insufficient_funds(shkp, item, cost, state, env) {
+    const money = money_cnt(state.invent), credit = shkp.mextra.eshk.credit;
+    const message = env.message ?? ttyPline;
+    if (!cost && money + credit === 0) {
+        await message(`You ${hidden_gold(true, state) > 0 ? 'seem to ' : ''}have no gold or credit left.`, state);
+        return true;
+    }
+    if (cost && money + credit < cost) {
+        const stashed = hidden_gold(true, state);
+        await message(`You don't${stashed > 0 ? ' seem to' : ''} have gold${credit > 0
+            ? ' or credit' : ''} enough to pay for ${paydoname(item, state)}.`, state);
+        return true;
+    }
+    return false;
+}
+
+// C ref: shk.c dopayobj() (2220-2302).
+export async function dopayobj(shkp, bp, obj, which, itemize, unseen,
+    state = game, env = {}) {
+    const consumed = which === 0;
+    if (!obj.unpaid && !bp.useup
+        && !(hasContents(obj) && unpaid_cost(obj, COST_CONTENTS, state))) {
+        note_unported('pline.c impossible');
+        return PAY_BUY;
+    }
+    if (itemize && await insufficient_funds(shkp, obj, 0, state, env)) return PAY_BROKE;
+    const savedQuantity = obj.quan;
+    let quantity;
+    if (consumed) {
+        quantity = bp.bquan;
+        if (quantity > obj.quan) quantity -= obj.quan;
+    } else quantity = obj.quan;
+    const cost = bp.price * quantity;
+    obj.quan = quantity;
+    state.iflags.suppress_price = (state.iflags.suppress_price ?? 0) + 1;
+    let buy = PAY_BUY;
+    try {
+        if (itemize) {
+            const suffix = ` for ${cost} ${currency(cost, state)}.  Pay?`;
+            const query = safe_qbuf(null, suffix, obj,
+                quantity === 1 ? Doname2 : donameFresh, ansimpleoname,
+                quantity === 1 ? 'that' : 'those', state);
+            if (await (env.yn ?? yn_function)(query, 'yn', 'n', true, state) === 'n')
+                buy = PAY_SKIP;
+        }
+        if (quantity < bp.bquan && !consumed) {
+            await reject_purchase(shkp, obj, bp.bquan, state, env);
+            buy = PAY_SKIP;
+        }
+        if (buy === PAY_BUY && await insufficient_funds(shkp, obj, cost, state, env))
+            buy = itemize ? PAY_SKIP : PAY_CANT;
+        if (buy === PAY_BUY) {
+            await pay(cost, shkp, state, env);
+            if (!unseen) await shk_names_obj(shkp, obj,
+                consumed ? 'paid for %s at a cost of %ld gold piece%s.%s'
+                    : 'bought %s for %ld gold piece%s.%s', cost, '', state, env);
+        }
+    } finally {
+        obj.quan = savedQuantity;
+        --state.iflags.suppress_price;
+    }
+    return buy;
+}
+
+// C ref: shk.c update_bill() (2171-2211).
+export function update_bill(indx, ibillct, ibill, eshk, bp, paiditem, state = game) {
+    if (indx >= 0 && ibill[indx].usedup === PartlyUsedUp) {
+        bp.bquan = paiditem.quan;
+        for (let j = 0; j < ibillct; ++j) {
+            if (ibill[j].obj === paiditem && ibill[j].usedup === PartlyIntact) {
+                ibill[j].usedup = FullyIntact;
+                break;
+            }
+        }
+    } else {
+        paiditem.unpaid = 0;
+        if (paiditem.where === OBJ_ONBILL) {
+            obj_extract_self(paiditem, { state });
+            dealloc_obj(paiditem, { state });
+        }
+        const last = eshk.billct - 1;
+        const index = eshk.bill_p.indexOf(bp);
+        Object.assign(bp, eshk.bill_p[last]);
+        for (let j = 0; j < ibillct; ++j)
+            if (ibill[j].bidx === last) ibill[j].bidx = index;
+        eshk.billct = last;
+    }
+}
+
+// C ref: shk.c buy_container() (2309-2411).
+async function buy_container(shkp, indx, ibillct, ibill, state, env) {
+    const eshk = shkp.mextra.eshk;
+    const ebillct = eshk.billct;
+    const container = ibill[indx].obj;
+    const unpaid = container.unpaid;
+    const total = ibill[indx].cost;
+    const unseen = ibill[indx].usedup === UndisclosedContainer
+        || ibill[indx].usedup === KnownContainer;
+    if (await insufficient_funds(shkp, container, 0, state, env)
+        || await insufficient_funds(shkp, container, total, state, env)) return 1;
+    const ids = [];
+    for (let i = 0; i < ebillct; ++i) {
+        const bp = eshk.bill_p[i];
+        const obj = bp_to_obj(bp, state);
+        if (!obj) { note_unported('pline.c impossible'); return 2; }
+        if (obj.where !== OBJ_CONTAINED && !hasContents(obj)) continue;
+        let top = obj;
+        while (top.where === OBJ_CONTAINED) top = top.ocontainer;
+        if (top !== container) continue;
+        if (obj.quan < bp.bquan) {
+            await reject_purchase(shkp, obj, bp.bquan, state, env);
+            return 1;
+        }
+        if (bp.bo_id !== container.o_id) ids.push(bp.bo_id);
+    }
+    if (unpaid) ids.push(container.o_id);
+    let bought = 0;
+    for (const id of ids) {
+        let index = 0;
+        for (; index < ebillct; ++index)
+            if (eshk.bill_p[index].bo_id === id) break;
+        if (index === ebillct) { note_unported('pline.c impossible'); return 2; }
+        const bp = eshk.bill_p[index];
+        const obj = bp_to_obj(bp, state);
+        const buy = await dopayobj(shkp, bp, obj, 1, false, unseen, state, env);
+        if (buy !== PAY_BUY) { note_unported('pline.c impossible'); continue; }
+        ibill[indx].cost -= bp.price * bp.bquan;
+        update_bill(id === container.o_id ? indx : -1,
+            ibillct, ibill, eshk, bp, obj, state);
+        ++bought;
+    }
+    if (bought && unseen) {
+        if (unpaid) container.unpaid = container.no_charge = 1;
+        await shk_names_obj(shkp, container, 'bought %s for %ld gold piece%s.%s',
+            total, '', state, env);
+        container.unpaid = container.no_charge = 0;
+    }
+    return bought ? 0 : 2;
+}
+
+// C ref: shk.c pay_billed_items() (2045-2167).
+async function pay_billed_items(shkp, ibillct, ibill, stashed, paid, state, env) {
+    const eshk = shkp.mextra.eshk;
+    const money = money_cnt(state.invent);
+    const message = env.message ?? ttyPline;
+    if (!money && !eshk.credit) {
+        await message(`You ${stashed ? 'seem to ' : ''}have no gold or credit${paid.value
+            ? ' left' : ''}.`, state);
+        return true;
+    }
+    const bp = eshk.bill_p[0];
+    const obj = bp_to_obj(bp, state);
+    const ebillct = eshk.billct;
+    const multiple = ebillct > 1 || obj.quan < bp.bquan
+        || ibill[0].usedup === UndisclosedContainer;
+    if (money + eshk.credit < cheapest_item(ibillct, ibill)) {
+        await message(`You don't have enough gold to buy${multiple ? ' any of' : ''} the item${
+            plur(multiple ? 2 : 1)} ${ebillct > 1 ? "you've picked" : 'on your bill'}.`, state);
+        if (stashed) await message('Maybe you have some gold stashed away?', state);
+        return true;
+    }
+    let viaMenu = state.flags.menu_style !== MENU_TRADITIONAL;
+    if (state.iflags.menu_requested) viaMenu = !viaMenu;
+    let queued = false, itemize;
+    do {
+        if (viaMenu) {
+            if (!await menu_pick_pay_items(ibillct, ibill, state, env)) return true;
+            queued = true;
+            itemize = false;
+            viaMenu = false;
+        } else {
+            const answer = !multiple ? 'y'
+                : await (env.yn ?? yn_function)('Itemized billing?', 'ynq m', 'q', true, state);
+            if (answer === 'q') return true;
+            itemize = answer === 'y';
+            viaMenu = answer === 'm';
+        }
+    } while (viaMenu);
+    for (let i = 0; i < ibillct; ++i) {
+        if (queued && !ibill[i].queuedpay) continue;
+        const item = ibill[i].obj;
+        let buy;
+        if (ibill[i].usedup >= KnownContainer) {
+            const result = await buy_container(shkp, i, ibillct, ibill, state, env);
+            if (result === 0) buy = PAY_BUY;
+            else {
+                if (result === 2)
+                    await verbalize(`You need to remove any unpaid items from that ${
+                        simpleonames(item, state)} and buy them separately.`, state, env);
+                buy = PAY_CANT;
+            }
+        } else {
+            const bill = eshk.bill_p[ibill[i].bidx];
+            const pass = ibill[i].usedup <= PartlyUsedUp ? 0 : 1;
+            buy = await dopayobj(shkp, bill, item, pass, itemize, false, state, env);
+            if (buy === PAY_BUY) update_bill(i, ibillct, ibill, eshk, bill, item, state);
+        }
+        if (buy === PAY_CANT) return false;
+        if (buy === PAY_BROKE) { paid.value = true; return true; }
+        if (buy === PAY_SKIP) continue;
+        if (buy === PAY_BUY) {
+            paid.value = true;
+            if (itemize || queued) {
+                update_inventory({ ...env, state });
+                await (env.bot ?? bot)();
+            }
+        }
+    }
+    return true;
+}
+
+// C ref: shk.c dopay() (1743-2035). Payment is a live hero command: object
+// quantities and billing flags stay changed across the source's prompts.
+export async function dopay(state = game, env = {}) {
+    const message = env.message ?? ttyPline;
+    const random = env.random ?? { rn2 };
+    const pronoun = (mon, key) => genders[pronoun_gender(mon,
+        PRONOUN_NO_IT | PRONOUN_HALLU, { state, random })][key];
+    const paid = { value: false };
+    const stashed = hidden_gold(true, state) > 0;
+    state.multi = 0;
+    let count = 0, seen = 0, nearby = 0, next = null, resident = null;
+    for (let mon = next_shkp(state.level.monlist, false, state);
+        mon; mon = next_shkp(mon.nmon, false, state)) {
+        ++count;
+        if (m_next2u(mon, state)) {
+            if (next && !NOTANGRY(next)) continue;
+            ++nearby;
+            next = mon;
+        }
+        if (canSpotMonster(mon, state)) ++seen;
+        if (inhishop(mon, state) && state.u.ushops[0] === mon.mextra.eshk.shoproom)
+            resident = mon;
+    }
+    let shkp;
+    if (next && nearby === 1) shkp = next;
+    else {
+        const blind = heroIsBlind(state);
+        const telepathy = state.u.uprops[TELEPAT];
+        if ((!count && (!blind || telepathy.intrinsic || telepathy.extrinsic))
+            || (!blind && !seen)) {
+            await message('There appears to be no shopkeeper here to receive your payment.', state);
+            return ECMD_OK;
+        }
+        if (!seen) { await message("You can't see...", state); return ECMD_OK; }
+        if (count === 1 && resident) shkp = resident;
+        else if (seen === 1) {
+            for (shkp = next_shkp(state.level.monlist, false, state);
+                shkp; shkp = next_shkp(shkp.nmon, false, state))
+                if (canSpotMonster(shkp, state)) break;
+            if (shkp !== resident && !m_next2u(shkp, state)) {
+                await message(`${Shknam(shkp, state)} is not near enough to receive your payment.`, state);
+                return ECMD_OK;
+            }
+        } else {
+            await message('Pay whom?', state);
+            const cc = { x: state.u.ux, y: state.u.uy };
+            if (await (env.getpos ?? getpos)(cc, true, 'the creature you want to pay', state) < 0)
+                return ECMD_CANCEL;
+            if (cc.x < 0) { await message('Try again...', state); return ECMD_OK; }
+            if (u_at(cc.x, cc.y, state)) {
+                await message('You are generous to yourself.', state);
+                return ECMD_OK;
+            }
+            const mon = m_at(cc.x, cc.y, state);
+            if (!cansee(cc.x, cc.y, state) && (!mon || !canSpotMonster(mon, state))) {
+                await message(`You can't ${blind ? 'sense' : 'see'} anyone there.`, state);
+                return ECMD_OK;
+            }
+            if (!mon) {
+                await message('There is no one there to receive your payment.', state);
+                return ECMD_OK;
+            }
+            if (!mon.isshk) {
+                await message(`${Monnam(mon, state)} is not interested in your payment.`, state);
+                return ECMD_OK;
+            }
+            if (mon !== resident && !m_next2u(mon, state)) {
+                await message(`${Shknam(mon, state)} is too far to receive your payment.`, state);
+                return ECMD_OK;
+            }
+            shkp = mon;
+        }
+        if (!shkp) { note_unported('pline.c debugpline'); return ECMD_OK; }
+    }
+    const eshk = shkp.mextra.eshk;
+    const robbed = eshk.robbed;
+    if (robbed || eshk.billct || eshk.debit) await rouse_shk(shkp, true, state, env);
+    if (helpless(shkp)) {
+        await message(`${Shknam(shkp, state)} ${random.rn2(2)
+            ? 'seems to be napping' : "doesn't respond"}.`, state);
+        return ECMD_OK;
+    }
+    if (shkp !== resident && NOTANGRY(shkp)) {
+        const money = money_cnt(state.invent);
+        if (!robbed) await message(`You do not owe ${shkname(shkp, state)} anything.`, state);
+        else if (!money) {
+            await message(`You ${stashed ? 'seem to ' : ''}have no gold.`, state);
+            if (stashed) await message('But you have some gold stashed away.', state);
+        } else {
+            if (money > robbed) {
+                await message(`You give ${shkname(shkp, state)} the ${robbed} gold piece${plur(robbed)} ${
+                    pronoun(shkp, 'he')} asked for.`, state);
+                await pay(robbed, shkp, state, env);
+            } else {
+                await message(`You give ${shkname(shkp, state)} all your${stashed ? ' openly kept' : ''} gold.`, state);
+                await pay(money, shkp, state, env);
+                if (stashed) await message('But you have hidden gold!', state);
+            }
+            if (money < Math.trunc(robbed / 2) || (money < robbed && stashed))
+                await message(`Unfortunately, ${pronoun(shkp, 'he')} doesn't look satisfied.`, state);
+            else note_unported('shk.c make_happy_shk');
+        }
+        return ECMD_TIME;
+    }
+    if (!eshk.billct && !eshk.debit) {
+        const money = money_cnt(state.invent);
+        const noMoney = `Moreover, you${stashed ? ' seem to' : ''} have no gold.`;
+        if (!robbed && NOTANGRY(shkp)) {
+            await message(`You do not owe ${shkname(shkp, state)} anything.`, state);
+            if (!money) await message(noMoney, state);
+        } else if (robbed) {
+            await message(`${shkname(shkp, state)} is after blood, not gold!`, state);
+            if (money < Math.trunc(robbed / 2) || (money < robbed && stashed)) {
+                if (!money) await message(noMoney, state);
+                else await message(`Besides, you don't have enough to interest ${pronoun(shkp, 'him')}.`, state);
+                return ECMD_TIME;
+            }
+            await message(`But since ${pronoun(shkp, 'his')} shop has been robbed recently,`, state);
+            await message(`you ${money < robbed ? 'partially ' : ''}compensate ${shkname(shkp, state)} for ${
+                pronoun(shkp, 'his')} losses.`, state);
+            await pay(money < robbed ? money : robbed, shkp, state, env);
+            note_unported('shk.c make_happy_shk');
+        } else {
+            await message(`${Shknam(shkp, state)} is after your hide, not your gold!`, state);
+            if (money < 1000) {
+                if (!money) await message(noMoney, state);
+                else await message(`Besides, you don't have enough to interest ${pronoun(shkp, 'him')}.`, state);
+                return ECMD_TIME;
+            }
+            await message(`You try to appease ${canSpotMonster(shkp, state)
+                ? x_monnam(shkp, ARTICLE_THE, 'angry', 0, false, state) : shkname(shkp, state)} by giving ${
+                pronoun(shkp, 'him')} 1000 gold pieces.`, state);
+            await pay(1000, shkp, state, env);
+            if (String(eshk.customer ?? '').slice(0, PL_NSIZ)
+                !== String(state.plname ?? '').slice(0, PL_NSIZ) || random.rn2(3))
+                note_unported('shk.c make_happy_shk');
+            else await message(`But ${shkname(shkp, state)} is as angry as ever.`, state);
+        }
+        return ECMD_TIME;
+    }
+    if (shkp !== resident) {
+        note_unported('pline.c impossible');
+        if (resident) setpaid(resident, state);
+        return ECMD_OK;
+    }
+    if (eshk.debit) {
+        let debt = eshk.debit;
+        const loan = eshk.loan;
+        const money = money_cnt(state.invent);
+        await message(`You owe ${shkname(shkp, state)} ${debt} ${currency(debt, state)} ${loan
+            ? loan === debt ? 'you picked up in the store.'
+                : 'for gold picked up and the use of merchandise.'
+            : 'for the use of merchandise.'}`, state);
+        if (money + eshk.credit < debt) {
+            await message(`But you don't${stashed ? ' seem to' : ''} have enough gold${
+                eshk.credit ? ' or credit' : ''}.`, state);
+            return ECMD_TIME;
+        }
+        if (eshk.credit >= debt) {
+            eshk.credit -= debt;
+            eshk.debit = eshk.loan = 0;
+            await message('Your debt is covered by your credit.', state);
+        } else if (!eshk.credit) {
+            money2mon(shkp, debt, state);
+            eshk.debit = eshk.loan = 0;
+            await message('You pay that debt.', state);
+            state.disp.botl = true;
+        } else {
+            debt -= eshk.credit;
+            eshk.credit = 0;
+            money2mon(shkp, debt, state);
+            eshk.debit = eshk.loan = 0;
+            await message('That debt is partially offset by your credit.', state);
+            await message('You pay the remainder.', state);
+            state.disp.botl = true;
+        }
+        paid.value = true;
+    }
+    let done = true;
+    if (eshk.billct) {
+        const { ibillct, ibill } = make_itemized_bill(shkp, state);
+        if (!await pay_billed_items(shkp, ibillct, ibill, stashed, paid, state, env)) done = false;
+    }
+    if (done && NOTANGRY(shkp) && paid.value) {
+        const shop = SHTYPES[eshk.shoptype - SHOPBASE].name;
+        const punctuation = eshk.surcharge ? '.' : '!';
+        if (!heroIsDeaf(state) && !muteshk(shkp)) {
+            set_voice(shkp, 0, 80, 0, state);
+            await verbalize(`Thank you for shopping in ${s_suffix(shkname(shkp, state))} ${shop}${punctuation}`,
+                state, env);
+        } else {
+            await message(`${Shknam(shkp, state)} nods${eshk.surcharge ? '' : ' appreciatively'} at you for shopping in ${
+                pronoun(shkp, 'his')} ${shop}${punctuation}`, state);
+        }
+    }
+    if (paid.value) update_inventory({ ...env, state });
+    state.iflags.menu_requested = false;
+    return paid.value ? ECMD_TIME : ECMD_OK;
 }
 
 // C ref: shk.c check_unpaid() (5737-5742), the "used in the normal manner"
@@ -1721,30 +2646,44 @@ export function onbill(obj, shopkeeper, silent) {
     return null;
 }
 
+// C ref: shk.c obfree() (1207-1258), the billing branch of the lifecycle
+// function in invent.js. The result selects its existing deletion tail.
+export function obfree_shop_bill(obj, merge, env = {}) {
+    const state = env.state ?? game;
+    let shkp = null;
+    if (obj.unpaid) {
+        for (shkp = next_shkp(state.level?.monlist ?? null, true, state);
+            shkp; shkp = next_shkp(shkp.nmon, true, state)) {
+            if (onbill(obj, shkp, true)) break;
+        }
+    }
+    if (!shkp) shkp = shop_keeper(firstRoom(state.u.ushops), state);
+    const bill = onbill(obj, shkp, false);
+    if (!bill) return 'unbilled';
+    if (!merge) {
+        bill.useup = true;
+        obj.unpaid = 0;
+        if (obj.globby && !obj.owt && obj.oextra?.omid)
+            obj.owt = obj.oextra.omid;
+        add_to_billobjs(obj, state, env);
+        return 'retained';
+    }
+    const targetBill = onbill(merge, shkp, false);
+    if (!targetBill) {
+        note_unported('pline.c impossible');
+        return 'preserved'; // C returns before deallocating either object.
+    }
+    targetBill.bquan += bill.bquan;
+    const eshk = shkp.mextra.eshk;
+    --eshk.billct;
+    Object.assign(bill, eshk.bill_p[eshk.billct]);
+    return 'billed';
+}
+
 // C ref: shk.c unpaid_cost() (3260-3305). Bill entries store a per-unit
 // price and a billed quantity; the inventory display asks for either one
 // object or the complete stack. The caller supplies the object known to be
 // unpaid, so a missing bill remains an explicit source diagnostic.
-function containedUnpaidCost(obj, shopkeeper) {
-    let amount = 0;
-    let found = false;
-    for (let child = obj.cobj; child; child = child.nobj) {
-        if (child.oclass === COIN_CLASS) continue;
-        const bill = onbill(child, shopkeeper, true);
-        if (bill) {
-            found = true;
-            amount += Math.trunc(bill.price ?? 0)
-                * Math.trunc(child.quan ?? 1);
-        }
-        if (hasContents(child)) {
-            const nested = containedUnpaidCost(child, shopkeeper);
-            amount += nested.amount;
-            found ||= nested.found;
-        }
-    }
-    return { amount, found };
-}
-
 export function unpaid_cost(obj, costType = 0, state = game) {
     let amount = 0;
     let found = null;
@@ -1760,17 +2699,67 @@ export function unpaid_cost(obj, costType = 0, state = game) {
                 amount *= Math.trunc(obj.quan ?? 1);
         }
         if (costType === COST_CONTENTS && hasContents(obj)) {
-            // contained_cost() stays with the current shopkeeper; recurse on
-            // that keeper instead of restarting the u.ushops scan per child.
-            const nested = containedUnpaidCost(obj, shopkeeper);
-            amount = (found ? amount : 0) + nested.amount;
-            found ||= nested.found ? bill : null;
+            amount = contained_cost(obj, shopkeeper, amount, false, true, state);
         }
         if (found || (!obj.unpaid && amount)) break;
     }
     if (obj.unpaid && !found)
         note_unported('shk.c unpaid_cost: object was not on a bill');
     return amount;
+}
+
+// C ref: shk.c alter_cost() (3237-3256). A negative amount forces the saved
+// original price when bill_dummy_object replaces an altered object.
+export function alter_cost(obj, amount, state = game, env = {}) {
+    for (let shkp = next_shkp(state.level.monlist, true, state);
+        shkp; shkp = next_shkp(shkp, true, state)) {
+        const bill = onbill(obj, shkp, true);
+        if (bill) {
+            const price = !amount ? get_cost(obj, shkp, state)
+                : amount < 0 ? -amount : amount;
+            if (price > bill.price || amount < 0) {
+                bill.price = price;
+                update_inventory({ ...env, state });
+            }
+            break;
+        }
+    }
+}
+
+// C ref: shk.c sub_one_frombill() (3661-3690).
+function sub_one_frombill(obj, shkp, state, env) {
+    const bill = onbill(obj, shkp, false);
+    if (bill) {
+        obj.unpaid = 0;
+        if (bill.bquan > obj.quan) {
+            const used = newObject();
+            Object.assign(used, obj);
+            used.oextra = null;
+            bill.bo_id = used.o_id = next_ident({ ...env, state });
+            used.where = OBJ_FREE;
+            used.quan = (bill.bquan -= obj.quan);
+            used.owt = 0;
+            bill.useup = true;
+            add_to_billobjs(used, state, env);
+            return;
+        }
+        const eshk = shkp.mextra.eshk;
+        --eshk.billct;
+        Object.assign(bill, eshk.bill_p[eshk.billct]);
+    } else if (obj.unpaid) {
+        note_unported('pline.c impossible');
+        obj.unpaid = 0;
+    }
+}
+
+// C ref: shk.c subfrombill() (3694-3710).
+export function subfrombill(obj, shkp, state = game, env = {}) {
+    sub_one_frombill(obj, shkp, state, env);
+    for (let item = obj.cobj; item; item = item.nobj) {
+        if (item.oclass === COIN_CLASS) continue;
+        if (hasContents(item)) subfrombill(item, shkp, state, env);
+        else sub_one_frombill(item, shkp, state, env);
+    }
 }
 
 // C ref: shk.c onshopbill() (1160-1163). Expose only the boolean answer; the
@@ -1851,9 +2840,8 @@ export function clear_no_charge_pets(shopkeeper, state = game) {
 // C ref: shk.c setpaid() (397-433). Clears one shopkeeper's claim on every
 // object list the game holds, then discards the bill itself.
 //
-// gb.billobjs holds objects the hero used up while unpaid. Nothing in the port
-// bills the hero, so that chain is never created and the drain loop at 423-427
-// has nothing to free; it is therefore not modelled here.
+// gb.billobjs holds objects the hero used up while unpaid. C drains the
+// entire chain here, including when one shopkeeper's bill is being cleared.
 export function setpaid(shopkeeper, state = game) {
     clear_unpaid(shopkeeper, state.invent);
     clear_unpaid(shopkeeper, state.level?.objlist ?? null);
@@ -1869,6 +2857,12 @@ export function setpaid(shopkeeper, state = game) {
     /* clear obj->no_charge for all obj in shkp's shop */
     clear_no_charge(shopkeeper, state.level?.objlist ?? null, state);
     clear_no_charge(shopkeeper, state.level?.buriedobjlist ?? null, state);
+
+    while (state.gb?.billobjs) {
+        const obj = state.gb.billobjs;
+        obj_extract_self(obj, { state });
+        dealloc_obj(obj, { state });
+    }
 
     if (shopkeeper) {
         const eshkp = shopkeeper.mextra.eshk;
@@ -1903,10 +2897,13 @@ function set_repo_loc(shopkeeper, state) {
     state.gr.repo.shopkeeper = shopkeeper;
 }
 
-// C ref: shk.c rouse_shk() (1381-1401). The verbose wake-up message is not
-// reached by inherits(), which uses FALSE; preserve the state transition.
-function rouse_shk(shopkeeper) {
+// C ref: shk.c rouse_shk() (1381-1392). inherits() uses FALSE, so its
+// synchronous cleanup still receives these mutations without an await.
+async function rouse_shk(shopkeeper, verbosely = false, state = game, env = {}) {
     if (helpless(shopkeeper)) {
+        if (verbosely && canSpotMonster(shopkeeper, state))
+            await (env.message ?? ttyPline)(`${Shknam(shopkeeper, state)} ${
+                shopkeeper.msleeping ? 'wakes up' : 'can move again'}.`, state);
         shopkeeper.msleeping = 0;
         shopkeeper.mfrozen = 0;
         shopkeeper.mcanmove = 1;

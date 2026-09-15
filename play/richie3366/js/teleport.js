@@ -75,6 +75,8 @@ import { uhis } from './roles.js';
 import { seetrap, clamp_hole_destination } from './trap.js';
 import { mon_has_amulet } from './apply.js';
 import { is_home_elemental } from './makemon.js';
+/* dog.js back-edge (same SCC; hoisted function, call-time use only). */
+import { mon_leave } from './dog.js';
 const AMULET_OF_YENDOR = objectNames.indexOf('AMULET_OF_YENDOR');
 const WAN_TELEPORTATION = objectNames.indexOf('WAN_TELEPORTATION');
 const SPE_TELEPORT_AWAY = objectNames.indexOf('SPE_TELEPORT_AWAY');
@@ -2751,12 +2753,17 @@ function ledger_to_dlev(tolev) {
  * Envelope: remove from fmon, encode destination, mx=my=0.
  * D-1198: xyflags bit 2 when In_W_tower(mx,my,&u.uz) using pre-relmon
  * coords (C dog.c:913–915). Arrival copies flags into my (D-1199).
- * Named omissions: mon_leave worm/isshk residency; leash; light sources.
+ * Named omissions: leash (`:898–901` mtame--/m_unleash); light sources
+ * (`:928–931` vision_recalc); mon_leave's no_charge/residency (named on
+ * mon_leave). Worm-seg wormno arm live via mon_leave (D-2296).
  */
 export function migrate_to_level(mtmp, tolev, xyloc, cc) {
     if (!mtmp) return;
     const mx = mtmp.mx | 0;
     const my = mtmp.my | 0;
+
+    // C dog.c:904 — mon_leave before relmon; seg count rides in wormno.
+    const numSegs = mon_leave(mtmp);
 
     const list = game.fmon || [];
     const idx = list.indexOf(mtmp);
@@ -2794,6 +2801,7 @@ export function migrate_to_level(mtmp, tolev, xyloc, cc) {
     mtmp.mtrack[0] = { x: xyloc | 0, y: xyflags };
     mtmp.mux = new_lev.dnum;
     mtmp.muy = new_lev.dlevel;
+    mtmp.wormno = numSegs; /* C dog.c:916 — seg count rides in wormno */
     mtmp.mlstmv = game.moves | 0;
     mtmp.mx = 0;
     mtmp.my = 0;

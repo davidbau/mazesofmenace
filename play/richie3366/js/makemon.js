@@ -9,6 +9,7 @@ import { depth as depth_of_level, level_difficulty as level_difficulty_of, upsta
 import { put_saddle_on_mon, can_saddle, place_monster, poly_steed } from './steed.js';
 import {
     m_dowear, which_armor, check_gear_next_turn, bypass_obj, mon_break_armor,
+    mon_set_minvis,
 } from './worn.js';
 import { possibly_unwield } from './weapon.js';
 import {
@@ -92,8 +93,8 @@ import { big_to_little, set_mon_data, name_to_mon, name_to_monclass } from './mo
 import {
     NO_MINVENT, NO_MM_FLAGS, MM_NOGRP, MM_ASLEEP, MM_NONAME, MM_ESHK, MM_EGD,
     MM_EMIN, MM_EPRI, MM_EDOG, MM_ANGRY, MM_ADJACENTOK, MM_NOTAIL, MM_NOWAIT,
-    MM_MALE, MM_FEMALE,
-    MM_NOMSG, MM_NOEXCLAM, MM_IGNOREWATER,
+    MM_MALE, MM_FEMALE, MM_MINVIS,
+    MM_NOMSG, MM_NOEXCLAM, MM_IGNOREWATER, M_SEEN_NOTHING,
     GP_CHECKSCARY, GP_AVOID_MONPOS, Is_rogue_level, Is_earthlevel,
     Is_firelevel, Is_airlevel, Is_astralevel,
     In_mines, In_sokoban, In_endgame, Is_stronghold, Is_knox, In_V_tower,
@@ -3118,6 +3119,7 @@ export function makemon(mdat, x, y, mmflags = 0) {
         msleeping: (mmflags & MM_ASLEEP) ? 1 : 0,
         mcanmove: 1,
         mcansee: 1,
+        mgenmklev: 0, // C makemon.c:1297 gi.in_mklev — set at place time
         movement: 0,
         mspeed: 0,
         permspeed: 0,
@@ -3127,6 +3129,7 @@ export function makemon(mdat, x, y, mmflags = 0) {
         mstun: 0,
         minvis: 0,
         mtame: 0,
+        mwandexp: false, // C monst.h — wand experience (birth init + muse.c buzz; whole-struct save)
         m_id: 0,
         mavenge: 0,
         malign: 0, // set_malign after mpeaceful
@@ -3204,7 +3207,24 @@ export function makemon(mdat, x, y, mmflags = 0) {
         || In_V_tower(game.u?.uz) || In_quest(game.u?.uz))
         mtmp.mwandexp = true;
 
-    mtmp.mpeaceful = peace_minded(ptr) ? 1 : 0;
+    // C: makemon.c:1295–1301 — grid place deferred (see map): writing
+    // the 2D occupancy here regresses the fortress (dismount More +
+    // missing death draws) because normal movement leaves stale grid
+    // heads (mx/my-only; level readers ignore them but the extra birth
+    // cells shift later dismount/enexto behaviour). m_at falls back to
+    // fmon so the fortress holds without the grid write; a
+    // movement-parity iteration (remove+place on every move) lands first.
+    // place_monster(mtmp, x, y) — re-queue as its own Open row.
+    mtmp.mcansee = 1;
+    mtmp.mcanmove = 1;
+    mtmp.mgenmklev = game.in_mklev ? 1 : 0;
+    mtmp.seen_resistance = M_SEEN_NOTHING;
+
+    // C: makemon.c:1297 — MM_ANGRY births are created angry, skipping
+    // peace_minded (which can draw rn2 on its tail) entirely.
+    mtmp.mpeaceful = (mmflags & MM_ANGRY) ? 0 : (peace_minded(ptr) ? 1 : 0);
+    // C: makemon.c:1300–1301 — MM_MINVIS (^G) after place_monster.
+    if ((mmflags & MM_MINVIS) !== 0) mon_set_minvis(mtmp, false);
 
     // C: ptr->mflags3 && !(mmflags & MM_NOWAIT) → STRAT_WAITFORU / STRAT_CLOSE
     // / STRAT_APPEARMSG (makemon.c; D-0928 #1128 — appear pline forces

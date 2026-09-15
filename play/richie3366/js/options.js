@@ -88,7 +88,7 @@ import { str_end_is, str_start_is, highc, strstri, strsubst } from './hacklib.js
 import { name_to_mon } from './mondata.js';
 import { nhgetch } from './input.js';
 import { flush_screen, pline, docrt, check_gold_symbol, clear_committed_status, set_bot_disabled } from './display.js';
-import { paint_corner_nhw_menu, dismiss_nhw_menu, collect_menu_gacc, process_menu_search, reassign, update_inventory, invlet_constant, perm_invent_toggled } from './invent.js';
+import { paint_corner_nhw_menu, dismiss_nhw_menu, collect_menu_gacc, process_menu_search, toggle_menu_curr, menu_digit_is_gacc, reassign, update_inventory, invlet_constant, perm_invent_toggled } from './invent.js';
 import { ATR_INVERSE } from './terminal.js';
 import {
     WEAPON_CLASS, ARMOR_CLASS, RING_CLASS, AMULET_CLASS, TOOL_CLASS,
@@ -1817,7 +1817,7 @@ export function menuitem_invert_test(mode, itemflags, is_selected) {
 }
 
 /** C wintty.c invert_all — acc 0 = bulk invert; else group gselector. */
-function invert_pick_any_matching(items, acc) {
+function invert_pick_any_matching(items, acc, count = -1) {
     for (const it of items) {
         if (!it.selectable) continue;
         if (acc) {
@@ -1825,7 +1825,15 @@ function invert_pick_any_matching(items, acc) {
         } else if (!menuitem_invert_test(0, it.itemflags | 0, !!it.selected)) {
             continue;
         }
-        it.selected = !it.selected;
+        // C wintty.c invert_all_on_page/invert_all — deselect clears the
+        // count; selecting stamps the pending group count when positive.
+        if (it.selected) {
+            it.selected = false;
+            it.count = -1;
+        } else {
+            it.selected = true;
+            if (count > 0) it.count = count;
+        }
     }
 }
 
@@ -1834,14 +1842,19 @@ function invert_pick_any_matching(items, acc) {
  * the menu; space → next page or finish on last; Enter/CR finish; ESC cancel;
  * MENU_SELECT_ALL/PAGE / UNSELECT_* / INVERT_* (D-0928). Group accelerators
  * invert matching gselector (invent.c wizid `'_'`/`^I` / class sym).
- * SKIPINVERT via menuitem_invert_test. Named omissions: count-prefix
- * digits. MENU_SEARCH is D-1646.
+ * SKIPINVERT via menuitem_invert_test. Digit count prefix (wintty.c
+ * `:1564–1602` + toggle_menu_curr `:1112–1151` + set_item_state `#`
+ * `:1182`): digits accumulate a pending count for the next selection
+ * (group-accel digits win while no count is pending); each pick records
+ * it on the item (`count`, -1 when none — C `add_menu` `:2611`).
+ * MENU_SEARCH is D-1646.
  * Returns selected selectable items (may be empty).
  */
 export async function select_menu_pick_any(rawItems) {
     const rows = 24;
     const lmax = Math.min(52, rows - 1);
-    const items = rawItems.map((it) => ({ ...it, selected: !!it.selected }));
+    // C wintty.c:2611 — every menu item starts with count -1 (no count).
+    const items = rawItems.map((it) => ({ ...it, selected: !!it.selected, count: -1 }));
     let menuCh = 'a';
     for (let n = 0; n < items.length; n++) {
         if (n % lmax === 0) menuCh = 'a';
@@ -1861,6 +1874,10 @@ export async function select_menu_pick_any(rawItems) {
     );
     const npages = Math.max(1, Math.floor((items.length + lmax - 1) / lmax));
     let currPage = 0;
+    // C wintty.c:1332–1345 — pending digit count; reset_count starts TRUE.
+    let counting = false;
+    let count = 0;
+    let resetCount = true;
     const prevOverlay = game.flags?.menu_overlay;
     const _botPrev = set_bot_disabled(true);
     if (npages > 1) {
@@ -1873,7 +1890,10 @@ export async function select_menu_pick_any(rawItems) {
             const page = items.slice(start, start + lmax);
             const entries = page.map((it) => {
                 if (it.selectable) {
-                    const mark = it.selected ? '+' : '-';
+                    // C wintty.c set_item_state `:1182` — count picks show '#'.
+                    const mark = it.selected
+                        ? ((it.count | 0) === -1 ? '+' : '#')
+                        : '-';
                     return {
                         text: `${it.selector} ${mark} ${it.text}`,
                         attr: it.attr || 0,
@@ -1887,7 +1907,19 @@ export async function select_menu_pick_any(rawItems) {
             await paint_corner_nhw_menu(entries, morestr);
             await flush_screen(1);
             const key = await nhgetch();
+            // C wintty.c:1395–1399 — the pending count lives for exactly
+            // one key: apply the reset queued by the previous key first.
+            if (resetCount) {
+                counting = false;
+                count = 0;
+            } else {
+                resetCount = true;
+            }
             if (key === 27) {
+                // C wintty.c:1604–1615 — ESC during a count only stops the
+                // count (the reset above fires on the next key); ESC with
+                // no count deselects all then cancels.
+                if (counting) continue;
                 // C: ESC deselects all then cancel
                 for (const it of items) {
                     if (it.selectable) it.selected = false;
@@ -1946,6 +1978,7 @@ export async function select_menu_pick_any(rawItems) {
                     if (!it.selectable || !it.selected) continue;
                     if (!menuitem_invert_test(2, it.itemflags | 0, true)) continue;
                     it.selected = false;
+                    it.count = -1;
                 }
                 continue;
             }
@@ -1963,10 +1996,13 @@ export async function select_menu_pick_any(rawItems) {
                 continue;
             }
             if (ch === MENU_UNSELECT_ALL) {
+                // C wintty.c unset_all_on_page + MENU_UNSELECT_ALL — a
+                // deselect clears the item count too.
                 for (const it of items) {
                     if (!it.selectable || !it.selected) continue;
                     if (!menuitem_invert_test(2, it.itemflags | 0, true)) continue;
                     it.selected = false;
+                    it.count = -1;
                 }
                 continue;
             }
@@ -1974,19 +2010,49 @@ export async function select_menu_pick_any(rawItems) {
                 invert_pick_any_matching(items, 0);
                 continue;
             }
+            // C wintty.c:1564–1602 — digit count prefix: a digit that is
+            // a group accelerator while no count is pending stays one
+            // (C `'0'` BALL_CLASS note via menu_digit_is_gacc); otherwise
+            // it starts (nonzero) or extends the pending count. Leading
+            // zeros don't start counting.
+            if (ch >= '0' && ch <= '9'
+                && !menu_digit_is_gacc(counting, gacc, ch)) {
+                count = count * 10 + (key - 48);
+                if (!Number.isSafeInteger(count)) {
+                    // C integer.h:120 AppendLongDigit — overflow yields -1,
+                    // which C drops via `continue` with the reset still
+                    // queued; same here (counting/count already clear).
+                    counting = false;
+                    count = 0;
+                    continue;
+                }
+                if (count !== 0) {
+                    counting = true;
+                    resetCount = false;
+                }
+                continue;
+            }
             // C: page selector (resp) before MENU_SEARCH (not mapped when
             // ':' is an explicit choice). SEARCH before gacc.
             const hit = page.find((it) => it.selectable && it.selector === ch);
             if (ch === MENU_SEARCH && !hit) {
-                await process_menu_search(items, PICK_ANY);
+                // C wintty.c:1698–1731 — search toggles carry the count.
+                await process_menu_search(items, PICK_ANY, counting, count);
                 continue;
             }
             if (hit) {
-                hit.selected = !hit.selected;
+                // C wintty.c toggle_menu_curr `:1112–1151` — a pending
+                // count sticks to an already-selected entry; a plain
+                // toggle clears it.
+                toggle_menu_curr(hit, counting, count);
                 continue;
             }
             if (gacc && gacc.includes(ch)) {
-                invert_pick_any_matching(items, ch);
+                // C wintty.c group_accel — group picks stamp the pending
+                // count (`counting ? count : -1`).
+                invert_pick_any_matching(
+                    items, ch, (counting && count > 0) ? count : -1,
+                );
                 continue;
             }
         }

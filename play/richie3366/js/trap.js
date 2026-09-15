@@ -37,9 +37,10 @@ import { doname, an, the, The, xname, yname, cxname, makeplural, vtense, otense,
 import {
     Amonnam, Monnam, mon_nam, x_monnam, y_monnam, noit_Monnam, pmname,
     christen_monst, rndmonnam, hliquid, rndcolor, mon_pmname, YMonnam,
+    s_suffix,
 } from './do_name.js';
 import { dist2, distmin, m_at, wakeup, seemimic, m_carrying, LEVEL_SPECIFIC_NOCORPSE, bad_rock, setmangry } from './mon.js';
-import { cansee, couldsee, m_cansee, recalc_block_point, vision_recalc } from './vision.js';
+import { cansee, couldsee, m_cansee, recalc_block_point, unblock_point, vision_recalc } from './vision.js';
 import { del_engr_at, can_reach_floor } from './engrave.js';
 import {
     G_FREQ, G_UNIQ, verysmall, grounded, passes_walls,
@@ -94,7 +95,7 @@ import {
     MM_FEMALE, NO_MINVENT, M_AP_TYPE, ismnum, ANIMATE_NORMAL,
     ANIMATE_SHATTER, ANIMATE_SPELL, AS_OK, AS_NO_MON, AS_MON_IS_UNIQUE,
     OBJ_INVENT, OBJ_MINVENT, has_oname, has_omonst, ONAME, OMONST,
-    ROLL, LAUNCH_KNOWN, LAUNCH_UNSEEN, u_at, MIGR_RANDOM,
+    ROLL, LAUNCH_KNOWN, LAUNCH_UNSEEN, u_at, MIGR_RANDOM, MIGR_NOWHERE,
     DISP_FLASH, DISP_END,
     MAY_DESTROY, MAY_HIT, MAY_FRACTURE, VIS_EFFECTS,
     IS_OBSTRUCTED, IS_STWALL, IS_TREE, IRONBARS,
@@ -104,8 +105,10 @@ import {
     Is_container, Waterproof_container, Is_box,
     xytodir, DIR_180, DIR_ERR,
     OBJ_FLOOR, OBJ_FREE, SHOPBASE, ESHK, M_SEEN_ELEC, CONTAINED_TOO, BURIED_TOO,
+    GETOBJ_PROMPT, GETOBJ_SUGGEST, GETOBJ_EXCLUDE, GETOBJ_DOWNPLAY,
     P_RIDING, P_BASIC, M_AP_FURNITURE, M_AP_OBJECT,
     A_LAWFUL, XKILL_NOMSG, SHOP_HOLE_COST,
+    COST_BURN, COST_RUST, COST_ROT, COST_CORRODE, COST_CRACK,
 } from './const.js';
 import {
     is_pool, is_lava, waterbody_name, crawl_destination,
@@ -121,7 +124,7 @@ import {
 import { monsterNames, PM_ROGUE } from './generated/monsters_data.js';
 import { thitu, ohitmon, hits_bars } from './mthrowu.js';
 import { dmgval, MON_WEP, mwepgone, wet_a_towel, dry_a_towel, is_wet_towel, P_SKILL } from './weapon.js';
-import { observe_object, encumber_msg, near_capacity, makeknown, update_inventory, currency, calc_capacity, inv_weight, weight_cap, prinv } from './invent.js';
+import { observe_object, encumber_msg, near_capacity, makeknown, update_inventory, currency, calc_capacity, inv_weight, weight_cap, prinv, getobj, useup, consume_obj_charge, inventory_resistance_check } from './invent.js';
 import { makemon, rndmonnum_adj, mpickobj, set_malign, newcham } from './makemon.js';
 import {
     A_CHA, A_STR, A_DEX, A_CON, A_WIS, adjattrib, exercise, adjalign,
@@ -134,12 +137,14 @@ import { level_difficulty, depth } from './hacklib.js';
 import { make_stunned, make_hallucinated } from './potion.js';
 import { monstseesu, monstunseesu, defended, resists_magm } from './mondata.js';
 import { get_obj_location } from './timeout.js';
-import { costly_spot, shop_keeper, stolen_value, make_angry_shk, add_damage, sellobj } from './shk.js';
+import { costly_spot, shop_keeper, stolen_value, make_angry_shk, add_damage, sellobj, costly_alteration } from './shk.js';
 import { unpunish, seffects } from './read.js';
 import { create_gas_cloud } from './region.js';
 import { polymon, body_part, mbodypart, float_vs_flight, Unchanging, polyself } from './polyself.js';
 import { done } from './end.js';
 import { make_blinded, dropx, setnotworn } from './do.js';
+import { Soundeffect } from './sndprocs.js';
+import { se_loud_crash } from './generated/seffects_data.js';
 import { mon_adjust_speed } from './muse.js';
 import { m_dowear, extract_from_minvent, update_mon_extrinsics } from './worn.js';
 import { m_unleash, number_leashed, unleash_all } from './apply.js';
@@ -512,6 +517,7 @@ const AD_RBRE = 242; /* monattk.h */
 const AD_MAGM = 1; /* monattk.h */
 const AD_FIRE = 2; /* monattk.h */
 const AD_SLEE = 4; /* monattk.h */
+const AD_ACID = 8; /* monattk.h */
 const TOWER_OF_FLAME = 'tower of flame';
 const VISION_CLEARS = 'vision clears.'; /* C c_vision_clears */
 // C ref: hack.h xdir/ydir — 8 dirs W,NW,N,NE,E,SE,S,SW
@@ -1269,10 +1275,34 @@ export function seetrap(trap) {
     }
 }
 
+/**
+ * C ref: trap.c clear_conjoined_pits (staticfn :6579–6601) — drop the
+ * conjoined links between a deleted pit and its pit neighbours.
+ * Called first from deltrap (C :6535).
+ */
+function clear_conjoined_pits(trap) {
+    if (trap && is_pit(trap.ttyp)) {
+        for (let diridx = 0; diridx < N_DIRS; ++diridx) {
+            if ((trap.conjoined | 0) & (1 << diridx)) {
+                const x = (trap.tx | 0) + xdir[diridx];
+                const y = (trap.ty | 0) + ydir[diridx];
+                if (isok(x, y)) {
+                    const t = t_at(x, y);
+                    if (t && is_pit(t.ttyp)) {
+                        t.conjoined = (t.conjoined | 0) & ~(1 << DIR_180(diridx));
+                    }
+                }
+                trap.conjoined = (trap.conjoined | 0) & ~(1 << diridx);
+            }
+        }
+    }
+}
+
 // C ref: trap.c deltrap — remove from ftrap list (shop/region cleanup deferred)
 export function deltrap(trap) {
     const traps = game.level?.traps;
     if (!traps || !trap) return;
+    clear_conjoined_pits(trap);
     const i = traps.indexOf(trap);
     if (i >= 0) traps.splice(i, 1);
 }
@@ -2324,10 +2354,12 @@ export function force_launch_placement() {
  * Mid-roll TELEP_TRAP / LEVEL_TELEP: cansee pline_xy else !Deaf You_hear,
  * then rloco or add_to_migration (D-1237). Mid-roll LANDMINE rn2(10)>2
  * KAABLAMM / fracture_rock / scatter + PIT/SPIKED_PIT/HOLE/TRAPDOOR
- * flooreffects + dist=-1 (D-1256). Named omissions: LAUNCH_UNSEEN
- * bowling msgs; dig context clear; down_gate /
- * ship_object; post-switch flooreffects; boulder-on-boulder chain;
- * scatter MAY_FRACTURE/MAY_DESTROY/VIS_EFFECTS (explode.js); curs_on_u.
+ * flooreffects + dist=-1 (D-1256). ROLL gate-drop via down_gate +
+ * ship_object `:3424–3430`, post-switch flooreffects `:3509`, and
+ * boulder-on-boulder chain `:3514–3529` (D-2318). Named omissions:
+ * LAUNCH_UNSEEN bowling msgs; dig context clear; closed_door crash
+ * (`pline_The` has no JS counterpart); STWALL `Thump!`; scatter
+ * MAY_FRACTURE/MAY_DESTROY/VIS_EFFECTS (explode.js); curs_on_u.
  * @returns {Promise<number>} 0 none, 1 placed, 2 used up
  */
 async function launch_obj(otyp, x1, y1, x2, y2, style) {
@@ -2444,9 +2476,19 @@ async function launch_obj(otyp, x1, y1, x2, y2, style) {
              * TELEP_TRAP / LEVEL_TELEP pline_xy then rloco or migrate
              * (D-1237). LANDMINE rn2(10)>2 KAABLAMM/fracture_rock/scatter
              * + PIT/SPIKED_PIT/HOLE/TRAPDOOR flooreffects+dist=-1 (D-1256).
-             * down_gate / ship_object / post-switch flooreffects /
-             * boulder-on-boulder still named. launch_drop_spot is live. */
+             * down_gate/ship_object gate-drop, post-switch flooreffects
+             * + boulder-on-boulder chain (D-2318). launch_drop_spot live. */
             if (style === ROLL) {
+                // C `:3424–3430` — rolling over stairs/ladder/open hole:
+                // the boulder ships down via ship_object (D-0984).
+                const { down_gate, ship_object } = await import('./dokick.js');
+                if (down_gate(x, y) !== MIGR_NOWHERE) {
+                    if (await ship_object(singleobj, x, y, false)) {
+                        used_up = true;
+                        launch_drop_spot(null, 0, 0);
+                        break;
+                    }
+                }
                 const t = t_at(x, y);
                 if (t && otyp === BOULDER) {
                     let newlev = 0;
@@ -2523,6 +2565,40 @@ async function launch_obj(otyp, x1, y1, x2, y2, style) {
                         }
                     }
                     if (used_up || dist === -1) break;
+                }
+                // C `:3509–3513` — the roll cell itself may swallow the
+                // boulder (pit/hole/trapdoor flooreffects).
+                const { flooreffects } = await import('./do.js');
+                if (await flooreffects(singleobj, x, y, 'fall')) {
+                    used_up = true;
+                    launch_drop_spot(null, 0, 0);
+                    break;
+                }
+                // C `:3514–3529` — boulder meets boulder: crash message,
+                // swap in the resting boulder, wake nearby monsters.
+                // Soundeffect is draw-free (C `:3522`).
+                const otmp2 = otyp === BOULDER
+                    ? sobj_at(BOULDER, x, y)
+                    : null;
+                if (otmp2) {
+                    let bmsg = ' as one boulder sets another in motion';
+                    const fx = x + dx, fy = y + dy;
+                    const ftyp = game.level?.at?.(fx, fy)?.typ ?? 0;
+                    if (!isok(fx, fy) || !dist
+                        || IS_OBSTRUCTED(ftyp)) {
+                        bmsg = ' as one boulder hits another';
+                    }
+                    Soundeffect(se_loud_crash, 80);
+                    await You_hear(
+                        `a loud crash${cansee(x, y) ? bmsg : ''}!`,
+                    );
+                    obj_extract_self(otmp2);
+                    // pass off the otrapped flag to the next boulder
+                    otmp2.otrapped = singleobj.otrapped;
+                    singleobj.otrapped = 0;
+                    place_object(singleobj, x, y);
+                    singleobj = otmp2;
+                    wake_nearto(x, y, 10 * 10);
                 }
             }
 
@@ -2624,17 +2700,7 @@ async function trapeffect_rolling_boulder_trap(mtmp, trap, _trflags) {
     return Trap_Effect_Finished;
 }
 
-/** C hacklib.c s_suffix — steed foot msg in trapeffect_bear_trap. */
-function s_suffix(s) {
-    if (!s) return 'the';
-    if (s === 'it') return 'its';
-    if (s === 'you') return 'your';
-    if (s.endsWith('s') || s.endsWith('z') || s.endsWith('x')
-        || s.endsWith('sh') || s.endsWith('ch')) {
-        return `${s}'`;
-    }
-    return `${s}'s`;
-}
+/* s_suffix: canonical do_name.js import (C hacklib.c keys on trailing 's' only). */
 
 /**
  * C ref: trap.c:1029-1042 set_utrap — botl when armed↔clear (!u.utrap ^ !tim),
@@ -3914,107 +3980,160 @@ function sleep_monst(mon, amt, how) {
 }
 
 /**
- * C ref: trap.c erode_obj — generic erode / destroy worn or free objects.
- * Envelope for destroy_arm / burn paths: grease short-circuit, erosion_matters,
- * vulnerable by type, oerodeproof/blessed rnl(4), oeroded++ to MAX_ERODE, then
- * EF_DESTROY delobj. Named omissions: inventory_resistance_check AD_FIRE/ACID;
- * grease_protect body; costly_alteration EF_PAY; monster/floor visobj arms;
- * remove_worn_item before delobj (caller destroy_arm stops on ER_DESTROYED);
- * Blind feel-completely messages.
+ * C ref: trap.c erode_obj `:170–354` — generic erosion for hero-carried,
+ * monster-carried and floor objects. C order: victim (hero / ocarry /
+ * null) + uvictim/vismon/visobj (bhitpos cansee, pool/Underwater);
+ * type switch (BURN+fire ward, RUST, ROT, CORRODE+acid ward, CRACK,
+ * default impossible) + cost_type; erosion slot; ostr cxname default +
+ * visobj "the " strip; grease_protect / erosion_matters /
+ * !vulnerable||(oerodeproof&&rknown) verbose / oerodeproof||blessed-rnl(4)
+ * arms; damage arm (adverb, Your/The/s_suffix(Monnam) pline, EF_PAY
+ * costly_alteration, oeroded++, hero update_inventory); EF_DESTROY arm
+ * (crackers shatters vs "<action> away", EF_PAY, remove_worn_item /
+ * extract_from_minvent / impossible strangely-worn, delobj); max-eroded
+ * verbose completely arm (Blind feel/look, msg[]). Named: none — every
+ * arm is live. Clone retire: the file-local s_suffix (z/x/sh/ch `'`;
+ * C hacklib.c keys on trailing 's' only) is deleted; all sites use the
+ * canonical do_name.js import. inventory_resistance_check lives in
+ * invent.js beside u_adtyp_resistance_obj (C zap.c:5710).
  *
- * @returns {Promise<number>} ER_* 
+ * @returns {Promise<number>} ER_*
  */
 export async function erode_obj(otmp, ostr, type, ef_flags) {
     const action = ['smoulder', 'rust', 'rot', 'corrode', 'crack'];
+    const msg = ['burnt', 'rusted', 'rotten', 'corroded', 'cracked'];
+    const bythe = ['heat', 'oxidation', 'decay', 'corrosion', 'impact'];
     if (!otmp) return ER_NOTHING;
 
-    const carried = Array.isArray(game.invent) && game.invent.includes(otmp);
-    const uvictim = carried; // hero invent only for this envelope
-    const check_grease = !!(ef_flags & EF_GREASE);
-    const print = !!(ef_flags & EF_VERBOSE);
+    const youmonst = game.youmonst;
+    const victim = carried_obj(otmp)
+        ? youmonst
+        : (((otmp.where | 0) === OBJ_MINVENT) ? (otmp.ocarry || null) : null);
+    const uvictim = is_youmonst(victim);
+    const vismon = !!(victim && !is_youmonst(victim) && canseemon(victim));
+    const u = game.u || {};
+    const bhit = game.bhitpos || {};
+    /* C: Is gb.bhitpos correct here? Ugh. */
+    const visobj = !victim && cansee(bhit.x, bhit.y)
+        && (!is_pool(bhit.x, bhit.y)
+            || (dist2(u.ux, u.uy, bhit.x, bhit.y) <= 2 && u.uinwater));
 
     let vulnerable = false;
     let is_primary = true;
-    let checkGrease = check_grease;
+    let check_grease = (ef_flags & EF_GREASE) ? true : false;
+    const print = (ef_flags & EF_VERBOSE) ? true : false;
+    let crackers = false;
+    let cost_type = 0;
     switch (type) {
     case ERODE_BURN:
-        // inventory_resistance_check(AD_FIRE) deferred
+        if (uvictim && inventory_resistance_check(AD_FIRE)) return ER_NOTHING;
         vulnerable = is_flammable(otmp);
-        checkGrease = false;
+        check_grease = false;
+        cost_type = COST_BURN;
         break;
     case ERODE_RUST:
         vulnerable = is_rustprone(otmp);
+        cost_type = COST_RUST;
         break;
     case ERODE_ROT:
         vulnerable = is_rottable(otmp);
-        checkGrease = false;
+        check_grease = false;
         is_primary = false;
+        cost_type = COST_ROT;
         break;
     case ERODE_CORRODE:
-        // inventory_resistance_check(AD_ACID) deferred
+        if (uvictim && inventory_resistance_check(AD_ACID)) return ER_NOTHING;
         vulnerable = is_corrodeable(otmp);
         is_primary = false;
+        cost_type = COST_CORRODE;
         break;
     case ERODE_CRACK:
         vulnerable = is_crackable(otmp);
         is_primary = true;
+        crackers = true;
+        cost_type = COST_CRACK;
         break;
     default:
+        await impossible('Invalid erosion type in erode_obj');
         return ER_NOTHING;
     }
-
     const erosion = is_primary ? (otmp.oeroded | 0) : (otmp.oeroded2 | 0);
-    if (!ostr) ostr = xname(otmp);
 
-    if (checkGrease && otmp.greased) {
-        // grease_protect deferred — treat as greased resist without wear-off RNG
+    if (!ostr) ostr = cxname(otmp);
+    /* C: 'visobj' messages insert "the"; probably ought to switch to the() */
+    if (visobj && !(uvictim || vismon) && ostr.slice(0, 4).toLowerCase() === 'the ') {
+        ostr = ostr.slice(4);
+    }
+
+    const verbose = game.flags?.verbose !== false;
+    if (check_grease && otmp.greased) {
+        await grease_protect(otmp, ostr, victim);
         return ER_GREASED;
-    }
-    if (!erosion_matters(otmp)) return ER_NOTHING;
-    if (!vulnerable || (otmp.oerodeproof && otmp.rknown)) {
-        void print;
+    } else if (!erosion_matters(otmp)) {
         return ER_NOTHING;
-    }
-    // C: oerodeproof || (blessed && !rnl(4))
-    if (otmp.oerodeproof || (otmp.blessed && !rnl(4))) {
-        if (otmp.oerodeproof) otmp.rknown = true;
+    } else if (!vulnerable || (otmp.oerodeproof && otmp.rknown)) {
+        if (verbose && print && (uvictim || vismon)) {
+            await pline(`${uvictim ? 'Your' : s_suffix(Monnam(victim))} ${ostr} ${vtense(ostr, 'are')} not affected by ${bythe[type]}.`);
+        }
         return ER_NOTHING;
-    }
-    if (erosion < MAX_ERODE) {
+    } else if (otmp.oerodeproof || (otmp.blessed && !rnl(4))) {
+        if (verbose && (print || otmp.oerodeproof) && (uvictim || vismon || visobj)) {
+            await pline(`Somehow, ${uvictim ? 'your' : (!vismon ? 'the' : s_suffix(mon_nam(victim)))} ${ostr} ${vtense(ostr, 'are')} not affected by the ${bythe[type]}.`);
+        }
+        /* C: a blessed save still shows minor wear, unlike proof, so only
+         * proof sets rknown (the hero can tell the difference). */
+        if (otmp.oerodeproof) {
+            otmp.rknown = true;
+            if (is_youmonst(victim)) update_inventory();
+        }
+        return ER_NOTHING;
+    } else if (erosion < MAX_ERODE) {
         const adverb = (erosion + 1 === MAX_ERODE) ? ' completely'
             : erosion ? ' further' : '';
-        if (uvictim) {
-            await pline(
-                `Your ${ostr} ${vtense(ostr, action[type])}${adverb}!`,
-            );
+        if (uvictim || vismon || visobj) {
+            await pline(`${uvictim ? 'Your' : (!vismon ? 'The' : s_suffix(Monnam(victim)))} ${ostr} ${vtense(ostr, action[type])}${adverb}!`);
         }
-        // costly_alteration EF_PAY deferred
-        void (ef_flags & EF_PAY);
+        if (ef_flags & EF_PAY) await costly_alteration(otmp, cost_type);
         if (is_primary) otmp.oeroded = (otmp.oeroded | 0) + 1;
         else otmp.oeroded2 = (otmp.oeroded2 | 0) + 1;
+        if (is_youmonst(victim)) update_inventory();
         return ER_DAMAGED;
-    }
-    if (ef_flags & EF_DESTROY) {
-        otmp.in_use = 1;
-        if (uvictim) {
-            await pline(
-                `Your ${ostr} ${vtense(ostr, action[type])} away!`,
-            );
+    } else if (ef_flags & EF_DESTROY) {
+        otmp.in_use = 1; /* C: in case of hangup during message w/ --More-- */
+        if (uvictim || vismon || visobj) {
+            const actbuf = !crackers ? `${vtense(ostr, action[type])} away` : 'shatters';
+            await pline(`${uvictim ? 'Your' : (!vismon ? 'The' : s_suffix(Monnam(victim)))} ${ostr} ${actbuf}!`);
         }
-        // remove_worn_item deferred — delobj clears worn slot via owornmask
+        if (ef_flags & EF_PAY) await costly_alteration(otmp, cost_type);
         if (otmp.owornmask) {
-            const u = game.u || {};
-            for (const slot of [
-                'uarm', 'uarmc', 'uarmh', 'uarms', 'uarmg', 'uarmf', 'uarmu',
-            ]) {
-                if (u[slot] === otmp) u[slot] = null;
+            /* C: unwear otmp before deleting it */
+            if (carried_obj(otmp)) {
+                /* C: stays in hero invent; lava-burned levitation boots
+                 * can't re-trigger float_down (worn levitation would have
+                 * kept them out of the lava). remove_worn_item calls
+                 * Cloak_off() &c. */
+                await remove_worn_item(otmp, true);
+            } else if ((otmp.where | 0) === OBJ_MINVENT) {
+                /* C: results in otmp->where==OBJ_FREE; delobj doesn't care */
+                extract_from_minvent(otmp.ocarry, otmp, true, false);
+            } else {
+                /* C: worn but not in hero invent or monster minvent? */
+                await impossible(`erode_obj(${type | 0}): destroying strangely worn item [${otmp.where | 0}, 0x${(otmp.owornmask >>> 0).toString(16).padStart(8, '0')}: ${simpleonames(otmp)}]`);
+                otmp.owornmask = 0; /* C: else delobj complains about worn item too */
             }
-            otmp.owornmask = 0;
         }
         delobj(otmp);
         return ER_DESTROYED;
+    } else {
+        if (verbose && print) {
+            if (uvictim) {
+                await pline(`Your ${ostr} ${vtense(ostr, Blind() ? 'feel' : 'look')} completely ${msg[type]}.`);
+            } else if (vismon || visobj) {
+                await pline(`${!vismon ? 'The' : s_suffix(Monnam(victim))} ${ostr} ${vtense(ostr, 'look')} completely ${msg[type]}.`);
+            }
+        }
+        return ER_NOTHING;
     }
-    return ER_NOTHING;
 }
 
 /**
@@ -4058,9 +4177,9 @@ export async function grease_protect(otmp, ostr, victim) {
  * grease_protect body; scroll (not blank) → fade message (blank paper and,
  * under MAIL_STRUCTURES, mail give none) then blank to SCR_BLANK_PAPER with
  * spe/dknown cleared; else erode_obj ERODE_CORRODE EF_GREASE|EF_VERBOSE.
- * Named omissions: inventory_resistance_check AD_ACID (same class as the
- * AD_FIRE/AD_ACID deferrals in erode_obj — C draws rn2(100) only when an
- * extrinsic acid ward is worn); erode_armor picker lives in mhitm.js.
+ * Hero acid ward via live inventory_resistance_check (invent.js — C draws
+ * rn2(100) only when an extrinsic ward is worn); erode_armor picker lives
+ * in mhitm.js.
  */
 export async function acid_damage(obj) {
     if (!obj) return;
@@ -4069,9 +4188,7 @@ export async function acid_damage(obj) {
         ? youmonst
         : ((obj.where | 0) === OBJ_MINVENT ? obj.ocarry || null : null);
     const vismon = !!(victim && !is_youmonst(victim) && canseemon(victim));
-    if (is_youmonst(victim)) {
-        // inventory_resistance_check(AD_ACID) deferred — see header
-    }
+    if (is_youmonst(victim) && inventory_resistance_check(AD_ACID)) return;
     if (obj.greased) {
         await grease_protect(obj, null, victim);
     } else if (obj.oclass === SCROLL_CLASS && obj.otyp !== SCR_BLANK_PAPER) {
@@ -4096,10 +4213,25 @@ export async function acid_damage(obj) {
 }
 
 /**
+ * C ref: decl.c:90-94 materialnm[] — index by oc_material in objclass.h
+ * enum order (NO_MATERIAL=0 … MINERAL=21). Scored user: burnarmor case 0
+ * helm buf (C nhlobj.c:222 Lua "material" table entry is out of scope).
+ */
+const materialnm = [
+    'mysterious', 'liquid', 'wax', 'organic',
+    'flesh', 'paper', 'cloth', 'leather',
+    'wooden', 'bone', 'dragonhide', 'iron',
+    'metal', 'copper', 'silver', 'gold',
+    'platinum', 'mithril', 'plastic', 'glass',
+    'gemstone', 'stone',
+];
+
+/**
  * C ref: trap.c burnarmor — armor-slot burn picker.
- * Envelope: wet-towel dry (D-1009); rn2(5) slot loop; case 1 cloak/suit/
- * shirt always returns TRUE after erode attempt; other cases erode then
- * continue on ER_NOTHING. Named: grease_protect polish; materialnm helm.
+ * Envelope: wet-towel dry (D-1009); rn2(5) slot loop; case 0 helm buf
+ * (D-2301); case 1 cloak/suit/shirt always returns TRUE after erode
+ * attempt; other cases erode then continue on ER_NOTHING.
+ * Named: grease_protect polish.
  */
 export async function burnarmor(victim) {
     if (!victim) return false;
@@ -4130,8 +4262,14 @@ export async function burnarmor(victim) {
         switch (rn2(5)) {
         case 0: {
             const item = hitting_u ? u.uarmh : which_armor(victim, W_ARMH);
+            // C trap.c:116-123: Sprintf(buf, "%s %s", materialnm[mat_idx],
+            // helm_simple_name(item)); bare slot passes literal "helmet"
+            const mat = game.objects?.[item?.otyp]?.oc_material ?? 0;
+            const descr = item
+                ? `${materialnm[mat] ?? 'mysterious'} ${helm_simple_name(item)}`
+                : 'helmet';
             if ((await erode_obj(
-                item, item ? helm_simple_name(item) : 'helmet',
+                item, descr,
                 ERODE_BURN, EF_GREASE,
             )) === ER_NOTHING) continue;
             break;
@@ -5175,6 +5313,7 @@ const SPE_BLANK_PAPER = objectNames.indexOf('SPE_BLANK_PAPER');
 const SPE_BOOK_OF_THE_DEAD = objectNames.indexOf('SPE_BOOK_OF_THE_DEAD');
 const SPE_NOVEL = objectNames.indexOf('SPE_NOVEL');
 const CAN_OF_GREASE = objectNames.indexOf('CAN_OF_GREASE');
+const POT_OIL = objectNames.indexOf('POT_OIL');
 const TOWEL = objectNames.indexOf('TOWEL');
 // C MAIL_STRUCTURES is on (global.h:430): mail resists water-fade.
 const SCR_MAIL = objectNames.indexOf('SCR_MAIL');
@@ -6073,7 +6212,8 @@ export async function openholdingtrap(mon) {
     } else {
         if (!(mon.mtrapped | 0)) return { happened: false, noticed: false };
         mon.mtrapped = 0;
-        if (canseemon(mon)) {
+        // C trap.c:6185 `if (canspotmon(mon))` — telepathy-sensed counts.
+        if (canspotmon(mon)) {
             noticed = true;
             await pline(
                 `${Monnam(mon)} is released from ${whichSpaced}${trapdescr}.`,
@@ -6165,7 +6305,8 @@ export async function openfallingtrap(mon, trapdoor_only) {
         return { happened: !!(u.utrap | 0), noticed: true };
     }
     if (mon.mtrapped | 0) return { happened: false, noticed: false };
-    const noticed = cansee(t.tx | 0, t.ty | 0) || canseemon(mon);
+    // C trap.c:6279 `cansee(t->tx, t->ty) || canspotmon(mon)` — sensed counts.
+    const noticed = cansee(t.tx | 0, t.ty | 0) || canspotmon(mon);
     await wakeup(mon, true);
     const res = await mintrap(mon, FORCETRAP);
     return {
@@ -6293,15 +6434,8 @@ async function try_disarm(ttmp, force_failure) {
         await pline(`${Monnam(mtmp)} is in the way.`);
         return 0;
     }
-    let boulder_here = false;
-    for (let o = objects_at(ttmp.tx, ttmp.ty); o; o = o.nexthere) {
-        if ((o.otyp | 0) === BOULDER) {
-            boulder_here = true;
-            break;
-        }
-    }
     const Passes_walls = !!(u.Passes_walls || u.HPasses_walls || u.EPasses_walls);
-    if (boulder_here && !Passes_walls && !under_u) {
+    if (sobj_at(BOULDER, ttmp.tx, ttmp.ty) && !Passes_walls && !under_u) {
         await pline('There is a boulder in your way.');
         return 0;
     }
@@ -6420,6 +6554,48 @@ async function disarm_landmine(ttmp) {
     if (fails < 2) return fails;
     await pline(`You disarm ${the_your[ttmp.madeby_u ? 1 : 0]} land mine.`);
     await cnv_trap_obj(LAND_MINE, 1, ttmp, false);
+    return 1;
+}
+
+/**
+ * C ref: trap.c unsqueak_ok `:5606–5626` — getobj callback for the
+ * squeaky-board tool: grease or known oil suggested, other potions
+ * downplayed, everything else excluded.
+ */
+function unsqueak_ok(obj) {
+    if (!obj) return GETOBJ_EXCLUDE;
+    if ((obj.otyp | 0) === CAN_OF_GREASE) return GETOBJ_SUGGEST;
+    if ((obj.otyp | 0) === POT_OIL && obj.dknown
+        && game.objects?.[POT_OIL]?.oc_name_known) return GETOBJ_SUGGEST;
+    if ((obj.oclass | 0) === POTION_CLASS) return GETOBJ_DOWNPLAY;
+    return GETOBJ_EXCLUDE;
+}
+
+/**
+ * C ref: trap.c disarm_squeaky_board `:5630–5660` — oil or grease quiets
+ * the squeaky board. A cursed tool, lit oil, or an empty grease can
+ * forces the try_disarm failure path (bad_tool).
+ */
+async function disarm_squeaky_board(ttmp) {
+    const obj = await getobj('untrap with', unsqueak_ok, GETOBJ_PROMPT);
+    if (!obj) return 0;
+    const bad_tool = obj.cursed
+        || (((obj.otyp | 0) !== POT_OIL || obj.lamplit)
+            && ((obj.otyp | 0) !== CAN_OF_GREASE || !(obj.spe | 0)));
+    const fails = await try_disarm(ttmp, bad_tool);
+    if (fails < 2) return fails;
+    if ((obj.otyp | 0) === CAN_OF_GREASE) {
+        await consume_obj_charge(obj, true);
+    } else {
+        useup(obj);
+        makeknown(POT_OIL);
+    }
+    await pline('You repair the squeaky board.');
+    deltrap(ttmp);
+    const u = game.u || {};
+    newsym((u.ux | 0) + (u.dx | 0), (u.uy | 0) + (u.dy | 0));
+    more_experienced(1, 5);
+    await newexplevel();
     return 1;
 }
 
@@ -6550,8 +6726,8 @@ async function untrap_box(box, force, confused) {
  * C ref: trap.c untrap `:5847–6096` — #untrap / autounlock / #invoke.
  * Floor switch: holding / landmine / dart / arrow / pit help_monster_out
  * + boxcnt ynq / untrap_box / disarm_box. Door force luck-skip D-1495.
- * Named omissions: disarm_squeaky_board (SQKY_BOARD → cannot-disable);
- * stumble_on_door_mimic; try_disarm adjacent-Whoops move_into_trap.
+ * Named omissions: stumble_on_door_mimic;
+ * try_disarm adjacent-Whoops move_into_trap.
  * @param {boolean} [force=false]
  * @param {number} [rx=0]
  * @param {number} [ry=0]
@@ -6651,6 +6827,8 @@ export async function untrap(force = false, rx = 0, ry = 0, container = null) {
                     return disarm_holdingtrap(ttmp);
                 case LANDMINE:
                     return disarm_landmine(ttmp);
+                case SQKY_BOARD:
+                    return disarm_squeaky_board(ttmp);
                 case DART_TRAP:
                     return disarm_shooting_trap(ttmp, DART);
                 case ARROW_TRAP:
@@ -6667,7 +6845,6 @@ export async function untrap(force = false, rx = 0, ry = 0, container = null) {
                     }
                     return help_monster_out(mtmp, ttmp);
                 default:
-                    // SQKY_BOARD disarm_squeaky_board named omit
                     await pline(`You cannot disable ${!here ? 'that' : 'this'} trap.`);
                     return 0;
                 }
@@ -6731,7 +6908,7 @@ export async function untrap(force = false, rx = 0, ry = 0, container = null) {
                 await pline('You set it off!');
                 await b_trapped('door', FINGER);
                 loc.doormask = D_NODOOR;
-                recalc_block_point(x, y);
+                unblock_point(x, y);
                 newsym(x, y);
                 if (in_rooms(x, y, SHOPBASE)) add_damage(x, y, 0);
             } else {

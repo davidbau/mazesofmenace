@@ -6,9 +6,9 @@
 //   (D-1570), redraw_worm (D-1577), wormhitu (D-1798),
 //   flip_worm_segs_vertical / flip_worm_segs_horizontal (D-2222;
 //   caller sp_lev.c flip_level wormno arm in js/mklev.js).
-// Named omissions: save/rest wsegs; mondead/dog wormgone callers;
-//   replmon/restore place_wsegs callers; muse.c / mhitu.c worm_move
-//   callers.
+// Named omissions: save/rest wsegs (rest_worm/save_worm chain)
+//   callers; muse.c / mhitu.c worm_move callers. Wormgone callers all
+//   live: newcham head-back (D-1573), m_detach (D-2231), mon_leave (D-2296).
 
 import { game } from './gstate.js';
 import { rn2, rnd, rn1, d, rn2_on_display_rng } from './rng.js';
@@ -167,7 +167,8 @@ const PM_LONG_WORM = monsterNames.indexOf('PM_LONG_WORM');
 /**
  * C ref: worm.c wormgone `:307–332` — drop the wseg chain, take the
  * head off the map, clear wormno. Caller newcham place_monster's the
- * head back. mondead / dog.c callers still named.
+ * head back (D-1573); m_detach `:2787` arm live in mhitm.js (D-2231);
+ * dog.c mon_leave `:755` arm live in dog.js (D-2296).
  */
 export function wormgone(worm) {
     if (!worm) return;
