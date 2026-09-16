@@ -2266,6 +2266,9 @@ async function eatcorpse(otmp) {
         if (game.u) {
             const dmg = rnd(15);
             game.u.uhp = (game.u.uhp | 0) - dmg;
+            // C hack.c losehp `:4268` disp.botl = TRUE (u.uhp changing).
+            if (!game.flags) game.flags = {};
+            game.flags.botl = true;
         }
     } else if (poisonous(ptr) && rn2(5)) {
         tp++;
@@ -2288,6 +2291,9 @@ async function eatcorpse(otmp) {
         if (game.u) {
             const dmg = rnd(8);
             game.u.uhp = (game.u.uhp | 0) - dmg;
+            // C hack.c losehp `:4268` disp.botl = TRUE (u.uhp changing).
+            if (!game.flags) game.flags = {};
+            game.flags.botl = true;
         }
     }
 

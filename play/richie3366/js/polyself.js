@@ -996,7 +996,8 @@ async function drop_weapon(alone) {
  * gate, whirly cloak/shirt), horns helm pierce/drop, nohands gloves /
  * shield / helm, boots, ublindf eyewear. dropx is the dropp equivalent;
  * the one raw setworn keeps {skip_find_ac} (C worn.c has no find_ac;
- * polymon calls find_ac after encumber_msg so --More-- keeps cached AC).
+ * polymon's own find_ac pair runs in C order: after drop_weapon (:890)
+ * and before encumber_msg (:967), arming botl for the post-strip paints).
  * Named omissions: donning/cancel_don (do_wear locals, unwired).
  */
 async function break_armor() {
@@ -1099,7 +1100,7 @@ async function break_armor() {
             // C: Drop weapon along with gloves
             await pline(`You drop your gloves${u.uwep ? ' and weapon' : ''}!`);
             await drop_weapon(0);
-            Gloves_off();
+            await Gloves_off();
             await dropx(gloves);
         }
         const shield = u.uarms;
@@ -1260,6 +1261,12 @@ export async function polymon(mntmp) {
     await break_armor();
     // C: drop_weapon(1) — cantwield (dragon/nohands) must drop uwep
     await drop_weapon(1);
+    // C polyself.c:890 — first find_ac (repeated below at :967): recompute
+    // uac + arm botl BEFORE the post-strip paints, so a --More-- flush that
+    // lands here (Tourist-92095 step 46) shows the post-strip AC like C.
+    // RNG-free; the D-0722 gnome AC:9 capture precedes this in code order
+    // on both sides, so it stays stale there as C shows it.
+    find_ac();
     // hideunder / egg / swallow / steed arms deferred
     // C polyself.c:899-902 — previous form was eyeless and the new form
     // sees: set HBlinded timeout then make_blinded(0,TRUE) "can see again"
@@ -1289,11 +1296,6 @@ export async function polymon(mntmp) {
         learn_egg_type(egg_type_from_parent(u.umonnum | 0, true));
     }
     // spoteffects / Passes_walls / amorphous / webmaker deferred
-    // C: find_ac() before encumber_msg; tty more() paints *cached* botl
-    // from the prior bot() (AC still stale at 9 after Cloak_off/setworn).
-    // JS flush before encumber more would bot post-find_ac AC:10 and
-    // poison that cache — defer find_ac until after encumber_msg so the
-    // More capture matches C (AC:9) then next screen gets AC:10.
     flags.botl = true;
     if (game.disp) game.disp.botl = true;
     // C: gv.vision_full_recalc = 1 before see_monsters — eyeless
@@ -1301,9 +1303,10 @@ export async function polymon(mntmp) {
     // on the next allmain/pline vision_recalc (D-0928).
     game.vision_full_recalc = 1;
     see_monsters();
-    await encumber_msg();
+    // C polyself.c:967 — second find_ac ("repeated"), still before
+    // encumber_msg (:1019). First call sits after drop_weapon above (:890).
     find_ac();
-    find_ac(); /* C repeats */
+    await encumber_msg();
     // retouch_equipment / selftouch deferred
     // C: polyself.c:1030–1070 — flags.verbose ability tips after encumber
     // (breath tip forces --More-- on the encumber pline; D-0725).

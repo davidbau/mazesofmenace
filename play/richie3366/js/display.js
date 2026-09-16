@@ -5406,8 +5406,12 @@ export async function docrt() {
         vision_recalc(0);
         // C docrt also see_monsters() after vision — floating warns / sensed mons
         see_monsters();
+        // C display.c `:1766–1769` post_map (non-maponly): update_inventory()
+        // then disp.botlx = TRUE ("caller needs to call bot() to actually
+        // redraw status") — the moveloop gate repaints on the next tick.
+        if (game.flags) game.flags.botlx = true;
         // Named omission:
-        // docrt_flags maponly/redrawonly/nocls; disp.botlx + update_inventory.
+        // docrt_flags maponly/redrawonly/nocls params; update_inventory().
     } finally {
         game.program_state.in_docrt = false;
     }

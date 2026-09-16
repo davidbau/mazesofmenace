@@ -95,6 +95,7 @@ import { is_ice } from './terrain.js';
 // js/trap.js imports on_level() from this file. Both sides use the other's
 // exports only inside function bodies, so the cycle resolves.
 import { is_lava, is_pool } from './trap.js';
+import { ttyPline } from './tty_message.js';
 // js/windows.js does not import from this file, so there is no cycle.
 import { add_menu_heading, getlin, select_menu } from './windows.js';
 
@@ -2176,6 +2177,53 @@ export async function donamelevel(state = game) {
 export function find_mapseen(lev, state = game) {
     return state.svm?.mapseenchn?.find((entry) => on_level(entry.lev, lev))
         ?? null;
+}
+
+// C ref: dungeon.c recbranch_mapseen() (2446-2473). A staircase, portal, or
+// fall can cross a dungeon boundary without proving that the transition used
+// the branch recorded in the source topology. Remember only a matching
+// forward branch on the level being left; reverse travel and non-branch
+// transitions leave the overview unchanged.
+export function recbranch_mapseen(source, dest, state = game) {
+    if (!source || !dest || source.dnum === dest.dnum) return;
+
+    let branch = state.svb?.branches ?? null;
+    for (; branch; branch = branch.next) {
+        if (on_level(source, branch.end1)
+            && on_level(dest, branch.end2)) {
+            break;
+        }
+        if (on_level(source, branch.end2)
+            && on_level(dest, branch.end1)) {
+            return;
+        }
+    }
+
+    // No matching branch means this was not a real dungeon branch. C's
+    // impossible() diagnostics here have no gameplay-visible effect.
+    if (!branch) return;
+
+    const mapseen = find_mapseen(source, state);
+    if (!mapseen) return;
+    // C reports an impossible diagnostic when a different branch was already
+    // remembered, then assigns the newly observed forward branch anyway.
+    mapseen.br = branch;
+}
+
+// C ref: dungeon.c get_annotation() (2478-2485). Return the custom name for
+// a remembered level without creating a mapseen record when none exists.
+export function get_annotation(lev, state = game) {
+    const mptr = find_mapseen(lev, state);
+    return mptr ? mptr.custom : null;
+}
+
+// C ref: dungeon.c print_level_annotation() (2488-2495). This is called from
+// do.c goto_level() after the destination level has been assigned and its
+// monsters noticed, but before special-room arrival messages.
+export async function print_level_annotation(state = game) {
+    const annotation = get_annotation(state.u.uz, state);
+    if (annotation !== null && annotation !== undefined)
+        await ttyPline(`You remember this level as ${annotation}.`, state);
 }
 
 // C ref: dungeon.c find_mapseen_by_str() (2651-2663).

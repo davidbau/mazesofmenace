@@ -50,7 +50,7 @@ import {
     is_unicorn, touch_petrifies, bigmonst, is_elf, poly_when_stoned,
     eyecount,
 } from './monsters.js';
-import { xname, singular, an, vtense, the, makeplural, mshot_xname, killer_xname, obj_is_pname, otense } from './objnam.js';
+import { xname, singular, an, vtense, the, makeplural, mshot_xname, killer_xname, obj_is_pname, otense, simpleonames } from './objnam.js';
 import { mbodypart, body_part, polymon } from './polyself.js';
 import {
     VENOM_CLASS, POTION_CLASS, WEAPON_CLASS, GEM_CLASS, TOOL_CLASS,
@@ -593,19 +593,26 @@ export async function thitu(tlev, dam, objp, name) {
 }
 
 /**
- * C ref: mthrowu.c u_catch_thrown_obj.
+ * C ref: mthrowu.c u_catch_thrown_obj `:532–550` — hero may catch a thrown
+ * missile; on success it goes through hold_another_object (held with
+ * «You catch the %s!» via prinv, or dropped at the hero's feet with
+ * «You catch, but drop, the %s.») and the flight ends. C tests the live
+ * form (`!nohands(gy.youmonst.data)`), not the base race.
  */
-function u_catch_thrown_obj(otmp) {
+async function u_catch_thrown_obj(otmp) {
     let catch_chance = 100 - acurr(A_DEX);
     if (Role_if(PM_MONK) || Role_if(PM_ROGUE)) catch_chance -= 20;
     const u = game.u || {};
     if (!u.Blind && !u.Confusion && !u.Stunned && !u.Fumbling
         && otmp.oclass !== VENOM_CLASS
-        && !nohands(mons(PM_HUMAN))
+        && !nohands(game.youmonst?.data)
         && freehand()
         && calc_capacity(otmp.owt || 0) <= SLT_ENCUMBER
         && !rn2(catch_chance)) {
-        // hold_another_object deferred — object leaves flight path
+        // C :544–547 — Snprintf buf + hold_another_object before TRUE
+        const onames = simpleonames(otmp);
+        await hold_another_object(otmp, 'You catch, but drop, the %s.',
+                                  onames, `You catch the ${onames}!`);
         return true;
     }
     return false;
@@ -1083,10 +1090,11 @@ export async function m_throw(mon, x, y, dx, dy, range, obj) {
                 // before the generic catch; C breaks (not returns).
                 if (singleobj.oclass === GEM_CLASS && await ucatchgem(singleobj, mon))
                     break;
-                // C :695 — tethered cannot be caught
-                if (!tethered_weapon && u_catch_thrown_obj(singleobj)) {
-                    if (sym) tmp_at(DISP_END, 0);
-                    return;
+                // C :695 — tethered cannot be caught; success breaks the
+                // flight (loop tail paints bhitpos + DISP_END, resets
+                // mesg_given, runs the blindinc tail, clears thrownobj).
+                if (!tethered_weapon && await u_catch_thrown_obj(singleobj)) {
+                    break;
                 }
                 // C: POTION_CLASS → potionhit (before thitu / egg / pie)
                 if (singleobj.oclass === POTION_CLASS) {

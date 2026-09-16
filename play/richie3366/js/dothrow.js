@@ -867,12 +867,6 @@ export async function throw_gold(obj) {
             return ECMD_TIME;
         }
     }
-    {
-        // C dothrow.c:1808 — crysknife reverts when no longer held, before
-        // the shk pick-snatch (named omit) and snuff/ship arms.
-        const { obj_no_longer_held } = await import('./do.js');
-        await obj_no_longer_held(obj);
-    }
     if ((u.dz | 0) > 0) {
         // C surface() — room → floor; full dungeon.c surface named
         const loc = game.level?.at?.(bhitpos.x | 0, bhitpos.y | 0);
@@ -2318,6 +2312,12 @@ export async function throwit(obj, wep_mask = 0, twoweap = false, oldslot = null
             throwit_return(true);
             return;
         }
+    }
+    // C dothrow.c throwit :1808 — obj no longer held between flooreffects
+    // and the shk pick-snatch (named omit, is_pick/mpickobj) / snuff arm.
+    {
+        const { obj_no_longer_held } = await import('./do.js');
+        await obj_no_longer_held(obj);
     }
     // C dothrow.c throwit :1818 — land snuff after flooreffects (and
     // pick-snatch, named) before ship_object. Candles / candelabrum

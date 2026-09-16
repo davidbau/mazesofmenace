@@ -110,6 +110,8 @@ import {
     level_info,
     next_level,
     on_level,
+    print_level_annotation,
+    recbranch_mapseen,
     prev_level,
     recalc_mapseen,
     set_dunlev_reached,
@@ -1415,6 +1417,14 @@ export async function goto_level(
     }
     check_gold_symbol(state);
 
+    // do.c:1669-1673. Record a genuine forward dungeon branch before
+    // assign_level() changes u.uz; level teleport does not pass any of these
+    // arrival flags and therefore cannot mark a branch as seen.
+    if ((at_stairs || falling || portal)
+        && u.uz.dnum !== newlevel.dnum) {
+        recbranch_mapseen(u.uz, newlevel, state);
+    }
+
     // dungeon.c assign_level() copies the two fields into the destination
     // struct rather than replacing it, so anything holding a reference to
     // u.uz, u.uz0 or u.utolev keeps seeing the live value.
@@ -1745,8 +1755,7 @@ export async function goto_level(
     await notice_all_mons(true, state);
 
     // do.c:1974 print_level_annotation() prints the hero's own #annotate note.
-    // The canonical mapseen chain exists, but annotation input and rendering
-    // remain outside this ordinary descent slice.
+    await print_level_annotation(state);
     await check_special_room(false, state); /* give room entrance message */
     obj_delivery(true, state); /* deliver objects traveling with player */
 

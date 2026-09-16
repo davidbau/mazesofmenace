@@ -2562,6 +2562,10 @@ export async function dismiss_nhw_menu(opts = null) {
         // display_pickinv select_menu does not blank: bot_disabled wraps
         // then the next bot() paints (death disclose D-1850).
         if (!opts?.keep_status) clear_committed_status();
+        // C display.c `:1769` — docrt set disp.botlx; the JS-only wipe above
+        // must not eat it: the moveloop gate repaints (bot() clears the
+        // suppression) on the next tick.
+        if (!opts?.keep_status && game.flags) game.flags.botlx = true;
         await flush_screen(1);
         return;
     }

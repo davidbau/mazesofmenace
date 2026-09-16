@@ -25,15 +25,18 @@ import {
     M_ATTK_HIT, M_ATTK_DEF_DIED, M_ATTK_AGR_DIED,
     IS_OBSTRUCTED, IS_DOOR, D_CLOSED, D_LOCKED, ALLOW_MDISP,
     MAGIC_PORTAL,
-    DISMOUNT_THROWN,
+    DISMOUNT_THROWN, W_ARMS,
 } from './const.js';
-import { FOOD_CLASS, BALL_CLASS, CHAIN_CLASS, ROCK_CLASS, COIN_CLASS, objectNames } from './objects.js';
+import { FOOD_CLASS, BALL_CLASS, CHAIN_CLASS, ROCK_CLASS, COIN_CLASS, objectNames, is_pick } from './objects.js';
 import {
     monsterNames, mons, carnivorous, herbivorous, vegan, acidic, poisonous,
     is_swimmer, likes_lava, throws_rocks, is_rider,
     unsolid, nolimbs, has_head, LOW_PM, NUMMONS,
     PM_LICHEN, MZ_TINY, MZ_SMALL, MZ_MEDIUM, MZ_LARGE, MZ_HUGE,
+    is_animal, mindless, tunnels, needspick, nohands, verysmall,
 } from './monsters.js';
+import { MON_WEP } from './weapon.js';
+import { which_armor } from './worn.js';
 import { m_cansee, couldsee, cansee, do_clear_area } from './vision.js';
 import { Monnam, noit_Monnam } from './do_name.js';
 import { gettrack } from './track.js';
@@ -68,6 +71,14 @@ const EGG = objectNames.indexOf('EGG');
 const CORPSE = objectNames.indexOf('CORPSE');
 const TIN = objectNames.indexOf('TIN');
 const SLIME_MOLD = objectNames.indexOf('SLIME_MOLD');
+// C ref: dogmove.c droppables tool-keeping otyps
+const DWARVISH_MATTOCK = objectNames.indexOf('DWARVISH_MATTOCK');
+const PICK_AXE = objectNames.indexOf('PICK_AXE');
+const UNICORN_HORN = objectNames.indexOf('UNICORN_HORN');
+const SKELETON_KEY = objectNames.indexOf('SKELETON_KEY');
+const LOCK_PICK = objectNames.indexOf('LOCK_PICK');
+const CREDIT_CARD = objectNames.indexOf('CREDIT_CARD');
+const GOLD_PIECE = objectNames.indexOf('GOLD_PIECE');
 
 function mon_track_add(mtmp, x, y) {
     if (!mtmp.mtrack) {
@@ -544,15 +555,98 @@ async function dog_goal(mtmp, edog, after, udist, whappr) {
     return appr;
 }
 
-// C ref: dogmove.c droppables — animal/mindless keep no tools; first free obj
+/**
+ * C ref: dogmove.c droppables `:27–136` — pick a carried item for pet to drop.
+ * 'key|pickaxe|&c = &dummy' lets creatures that can't use a tool behave as
+ * if already holding one, so duplicates fall to the default drop candidate.
+ * C static dummy (GOLD_PIECE, oartifact=1) is never returned — only its
+ * truthiness/otyp steer the keep-branches. MON_WEP canonical (mon.mw),
+ * not mon.mwep. No RNG. Callers: dogmove.c:416 dog_invent apport check,
+ * dogmove.c:502 dog_has_minvent, steal.c:892 relobj is_pet arm.
+ */
 function droppables(mon) {
-    const wep = mon.mwep || null;
-    for (let obj = mon.minvent; obj; obj = obj.nobj) {
-        // Tool-keeping branches omitted for animal pets (kitten/dog):
-        // is_animal → pick/horn/key treated as already held → fall to default.
+    // C: dummy = cg.zeroobj; dummy.otyp = GOLD_PIECE; dummy.oartifact = 1.
+    // JS null idiom: fresh sentinel per call, never returned.
+    const dummy = { otyp: GOLD_PIECE, oartifact: 1 };
+    let pickaxe = null, unihorn = null, key = null;
+    // C: wep = MON_WEP(mon).
+    const wep = MON_WEP(mon);
+    const mdat = mon?.data;
+
+    if (is_animal(mdat) || mindless(mdat)) {
+        // C: won't hang on to any objects of these types.
+        pickaxe = unihorn = key = dummy;
+    } else {
+        // C: don't hang on to pick-axe if can't use one or don't need one.
+        if (!tunnels(mdat) || !needspick(mdat)) pickaxe = dummy;
+        // C: don't hang on to key if can't open doors.
+        if (nohands(mdat) || verysmall(mdat)) key = dummy;
+    }
+    if (wep) {
+        if (is_pick(wep)) pickaxe = wep;
+        if (wep.otyp === UNICORN_HORN) unihorn = wep;
+        // C: don't need any wielded check for keys...
+    }
+
+    for (let obj = mon?.minvent; obj; obj = obj.nobj) {
+        switch (obj.otyp) {
+        case DWARVISH_MATTOCK:
+            // C: reject mattock if couldn't wield it.
+            if (which_armor(mon, W_ARMS)) break;
+            // C: keep mattock in preference to pick unless pick is already
+            // wielded or is an artifact and mattock isn't.
+            if (pickaxe && pickaxe.otyp === PICK_AXE && pickaxe !== wep
+                && (!(pickaxe.oartifact | 0) || (obj.oartifact | 0)))
+                return pickaxe; // drop the one we earlier decided to keep
+            // FALLTHROUGH to PICK_AXE
+        case PICK_AXE:
+            if (!pickaxe || ((obj.oartifact | 0) && !(pickaxe.oartifact | 0))) {
+                if (pickaxe) return pickaxe;
+                pickaxe = obj; // keep this digging tool
+                continue;
+            }
+            break;
+
+        case UNICORN_HORN:
+            // C: reject cursed unicorn horns.
+            if (obj.cursed) break;
+            // C: keep artifact unihorn in preference to ordinary one.
+            if (!unihorn || ((obj.oartifact | 0) && !(unihorn.oartifact | 0))) {
+                if (unihorn) return unihorn;
+                unihorn = obj; // keep this unicorn horn
+                continue;
+            }
+            break;
+
+        case SKELETON_KEY:
+            // C: keep key in preference to lock-pick.
+            if (key && key.otyp === LOCK_PICK
+                && (!(key.oartifact | 0) || (obj.oartifact | 0)))
+                return key; // drop the one we earlier decided to keep
+            // FALLTHROUGH to LOCK_PICK
+        case LOCK_PICK:
+            // C: keep lock-pick in preference to credit card.
+            if (key && key.otyp === CREDIT_CARD
+                && (!(key.oartifact | 0) || (obj.oartifact | 0)))
+                return key;
+            // FALLTHROUGH to CREDIT_CARD
+        case CREDIT_CARD:
+            if (!key || ((obj.oartifact | 0) && !(key.oartifact | 0))) {
+                if (key) return key;
+                key = obj; // keep this unlocking tool
+                continue;
+            }
+            break;
+
+        default:
+            break;
+        }
+
+        // C: first non-worn, non-wielded object past the keep-branches.
         if (!obj.owornmask && obj !== wep) return obj;
     }
-    return null;
+
+    return null; // C: (struct obj *) 0 — don't drop anything
 }
 
 // C ref: steal.c mdrop_obj — pet drop subset (worn/saddle/shop/extrinsics omitted)

@@ -788,8 +788,46 @@ export function Shield_off() {
     clear_worn(W_ARMS);
     return 0;
 }
-export function Gloves_off() {
+/**
+ * C ref: do_wear.c Gloves_off `:646–702` — gloves doff: capture `gloves` +
+ * `on_purpose` pre-clear (`:647–651`), takeoff.mask clear, setworn(NULL,
+ * W_ARMG), then the CORPSE-gated `wielding_corpse` pair (`:687/696`) with
+ * the captured gloves. Other switch arms (Fumbling/Power/Dexterity, Glib,
+ * encumber) stay deferred (pre-existing).
+ * @returns {Promise<number>} 0
+ */
+export async function Gloves_off() {
+    const u = game.u || {};
+    const gloves = u.uarmg || null;
+    if (!gloves) {
+        if (game.context?.takeoff) {
+            game.context.takeoff.mask =
+                (game.context.takeoff.mask | 0) & ~W_ARMG;
+        }
+        clear_worn(W_ARMG);
+        return 0;
+    }
+    // C `:647–651` — captured before uarmg is cleared below.
+    const on_purpose = !game.context?.mon_moving && !gloves.in_use;
+    if (game.context?.takeoff) {
+        game.context.takeoff.mask =
+            (game.context.takeoff.mask | 0) & ~W_ARMG;
+    }
     clear_worn(W_ARMG);
+    /* C `:687` — prevent wielding cockatrice when not wearing gloves. */
+    if (u.uwep && (u.uwep.otyp | 0) === CORPSE) {
+        await wielding_corpse(u.uwep, gloves, on_purpose);
+    }
+    /* KMH -- ...or your secondary weapon when you're wielding it
+       [This case can't actually happen; twoweapon mode won't engage
+       if a corpse has been set up as either the primary or alternate
+       weapon.  If it could happen and /both/ uwep and uswapwep could
+       be cockatrice corpses, life-saving for the first would need to
+       prevent the second from being fatal since conceptually they'd
+       be being touched simultaneously.] */
+    if (u.twoweap && u.uswapwep && (u.uswapwep.otyp | 0) === CORPSE) {
+        await wielding_corpse(u.uswapwep, gloves, on_purpose);
+    }
     return 0;
 }
 /**
@@ -1388,7 +1426,7 @@ async function armoroff(otmp) {
     else if (otmp === u.uarmc) await Cloak_off();
     else if (otmp === u.uarmh) Helmet_off();
     else if (otmp === u.uarms) Shield_off();
-    else if (otmp === u.uarmg) Gloves_off();
+    else if (otmp === u.uarmg) await Gloves_off();
     else if (otmp === u.uarmf) await Boots_off();
     else if (otmp === u.uarmu) Shirt_off();
     else {
@@ -1865,7 +1903,7 @@ async function do_takeoff() {
         if (!(await cursed_blocks(otmp))) await Boots_off();
     } else if (doff.what === WORN_GLOVES) {
         otmp = u.uarmg;
-        if (!(await cursed_blocks(otmp))) Gloves_off();
+        if (!(await cursed_blocks(otmp))) await Gloves_off();
     } else if (doff.what === WORN_HELMET) {
         otmp = u.uarmh;
         if (!(await cursed_blocks(otmp))) Helmet_off();
@@ -3327,7 +3365,7 @@ async function wornarm_destroyed(wornarm) {
     else if (wornarm === u.uarm) await Armor_off();
     else if (wornarm === u.uarmu) Shirt_off();
     else if (wornarm === u.uarmh) Helmet_off();
-    else if (wornarm === u.uarmg) Gloves_off();
+    else if (wornarm === u.uarmg) await Gloves_off();
     else if (wornarm === u.uarmf) await Boots_off();
     else if (wornarm === u.uarms) Shield_off();
 
