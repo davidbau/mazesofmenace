@@ -68,6 +68,7 @@ import {
     m_seenres, cvt_adtyp_to_mseenres, get_atkdam_type, mhim,
 } from './mondata.js';
 import { extract_from_minvent } from './worn.js';
+import { freehand } from './engrave.js';
 
 const BOULDER = objectNames.indexOf('BOULDER');
 const HEAVY_IRON_BALL = objectNames.indexOf('HEAVY_IRON_BALL');
@@ -286,15 +287,6 @@ function exclam(force) {
 function upstart(str) {
     if (!str) return str;
     return str.charAt(0).toUpperCase() + str.slice(1);
-}
-
-/** C invent.c freehand — either hand free (uwep not bimanual / uswap empty). */
-function freehand() {
-    const u = game.u || {};
-    if (!u.uwep) return true;
-    const big = !!(game.objects?.[u.uwep.otyp]?.oc_big);
-    if (!big) return true;
-    return !u.uswapwep;
 }
 
 function Role_if(pm) {
@@ -597,7 +589,8 @@ export async function thitu(tlev, dam, objp, name) {
  * missile; on success it goes through hold_another_object (held with
  * «You catch the %s!» via prinv, or dropped at the hero's feet with
  * «You catch, but drop, the %s.») and the flight ends. C tests the live
- * form (`!nohands(gy.youmonst.data)`), not the base race.
+ * form (`!nohands(gy.youmonst.data)`), not the base race. `freehand()`
+ * is the canonical C `engrave.c:472–477` (`!uwep || !welded || ...`).
  */
 async function u_catch_thrown_obj(otmp) {
     let catch_chance = 100 - acurr(A_DEX);

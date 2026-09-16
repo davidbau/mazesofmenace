@@ -55,6 +55,7 @@ import {
     STRAT_WAITFORU,
     STRAT_WAITMASK,
     STUNNED,
+    TIMEOUT,
     TEST_MOVE,
     W_ARMG,
     W_RINGL,
@@ -75,6 +76,7 @@ import {
     capitalizedAlwaysVisibleMonsterName,
     capitalizedMonsterName,
     l_monnam,
+    mon_nam,
     Monnam,
     monsterCommonName,
     monsterPossessive,
@@ -97,7 +99,7 @@ import {
 import { u_wipe_engr } from './engrave.js';
 import { game } from './gstate.js';
 import { doorless_door, test_move } from './hack.js';
-import { ing_suffix, sgn } from './hacklib.js';
+import { ing_suffix, s_suffix, sgn } from './hacklib.js';
 // js/mhitu.js imports mhitm_adtyping() and mhitm_knockback() from this file,
 // so this edge closes an import cycle, exactly as mhitu.c and uhitm.c call
 // into each other. Both bindings are hoisted function declarations, which an
@@ -203,6 +205,7 @@ import {
     PM_KNIGHT,
     PM_MONK,
     PM_AMOROUS_DEMON,
+    PM_ARCHON,
     PM_BALROG,
     PM_FLOATING_EYE,
     PM_PURPLE_WORM,
@@ -255,6 +258,7 @@ import {
     WEAPON_CLASS,
 } from './objects.js';
 import { encumber_msg } from './pickup.js';
+import { make_blinded } from './potion.js';
 import { d, rn1, rn2, rnd } from './rng.js';
 import {
     canSeeMonster,
@@ -288,7 +292,7 @@ import {
     which_armor,
 } from './worn.js';
 import { steal } from './steal.js';
-import { noteleport_level, rloc } from './teleport.js';
+import { rloc, tele_restrict } from './teleport.js';
 import { is_pool } from './trap.js';
 import { mintrap } from './trap_effects.js';
 import { mselftouch } from './trap_effects.js';
@@ -1838,7 +1842,7 @@ async function mhitm_ad_sedu(magr, mattk, mdef, mhm, state = game, env = {}) {
             await message(
                 `${capitalizedMonsterName(magr, state)} ${bragMsg}.`, state,
             );
-            if (!noteleport_level(magr, state))
+            if (!(await tele_restrict(magr, state, { ...env, message })))
                 await rloc(magr, RLOC_MSG, rlocEnv);
             mhm.hitflags = M_ATTK_AGR_DONE;
             mhm.done = true;
@@ -1858,7 +1862,7 @@ async function mhitm_ad_sedu(magr, mattk, mdef, mhm, state = game, env = {}) {
                 );
             }
             if (random.rn2(3)) {
-                if (!noteleport_level(magr, state))
+                if (!(await tele_restrict(magr, state, { ...env, message })))
                     await rloc(magr, RLOC_MSG, rlocEnv);
                 mhm.hitflags = M_ATTK_AGR_DONE;
                 mhm.done = true;
@@ -1876,7 +1880,8 @@ async function mhitm_ad_sedu(magr, mattk, mdef, mhm, state = game, env = {}) {
         case 0:
             return;
         default:
-            if (!is_anml && !noteleport_level(magr, state))
+            if (!is_anml
+                && !(await tele_restrict(magr, state, { ...env, message })))
                 await rloc(magr, RLOC_MSG, rlocEnv);
             if (is_anml) {
                 // Animal tried to run off with item; message handled
@@ -1969,7 +1974,7 @@ async function mhitm_ad_sedu(magr, mattk, mdef, mhm, state = game, env = {}) {
             return;
         }
         if (magr.data.mlet === S_NYMPH
-            && !noteleport_level(magr, state)) {
+            && !(await tele_restrict(magr, state, { ...env, message }))) {
             const couldspot = canSpotMonster(magr, state);
             mhm.hitflags = M_ATTK_AGR_DONE;
             const rlocEnv = {
@@ -2346,6 +2351,69 @@ export function shade_miss(
     return true;
 }
 
+// C ref: uhitm.c mhitm_ad_blnd() (2958-3008). Apply one landed blinding
+// attack in source order: hero versus monster, monster versus hero, then
+// monster versus monster. `make_blinded()` remains the sole owner of the
+// hero's timed blindness transition; passing the attack environment through
+// it keeps the planning clone's status and vision state separate from the
+// live game.
+export async function mhitm_ad_blnd(
+    magr,
+    mattk,
+    mdef,
+    mhm,
+    state = game,
+    env = {},
+) {
+    const message = requireAttackOperation(env, 'message');
+    const random = env.random ?? { d, rn1, rn2, rnd };
+
+    if (magr === state.youmonst) {
+        /* uhitm */
+        if (can_blnd(magr, mdef, mattk.aatyp, null, state)) {
+            if (!heroIsBlind(state) && mdef.mcansee)
+                await message(`${Monnam(mdef, state, env)} is blinded.`, state);
+            mdef.mcansee = 0;
+            mhm.damage += mdef.mblinded;
+            if (mhm.damage > 127) mhm.damage = 127;
+            mdef.mblinded = mhm.damage;
+        }
+        mhm.damage = 0;
+    } else if (mdef === state.youmonst) {
+        /* mhitu */
+        if (can_blnd(magr, mdef, mattk.aatyp, null, state)) {
+            if (!heroIsBlind(state))
+                await message(`${Monnam(magr, state, env)} blinds you!`, state);
+            const blindedTimeout = (state.u.uprops?.[BLINDED]?.intrinsic ?? 0)
+                & TIMEOUT;
+            await make_blinded(blindedTimeout + mhm.damage, false, state, env);
+            // The source immediately checks Blind again. Eyes of the
+            // Overworld may preserve sight while the property still changes.
+            if (!heroIsBlind(state)) {
+                await message('Your vision quickly clears.', state);
+            }
+        }
+        mhm.damage = 0;
+    } else {
+        /* mhitm */
+        if (can_blnd(magr, mdef, mattk.aatyp, null, state)) {
+            if (state.gv?.vis && mdef.mcansee && canSpotMonster(mdef, state)) {
+                let text = `${Monnam(mdef, state, env)} is blinded`;
+                if (mdef.data?.pmidx === PM_ARCHON
+                    && canSeeMonster(mdef, state)) {
+                    text += ` by ${s_suffix(mon_nam(magr, state, env))} radiance`;
+                }
+                await message(`${text}.`, state);
+            }
+            const blinded = random.d(mattk.damn, mattk.damd) + mdef.mblinded;
+            mdef.mblinded = blinded > 127 ? 127 : blinded;
+            mdef.mcansee = 0;
+            mdef.mstrategy &= ~STRAT_WAITFORU;
+        }
+        if (mhm) mhm.damage = 0;
+    }
+}
+
 // C ref: uhitm.c mhitm_adtyping() (4781-4832). One landed blow's damage type
 // selects the function that applies it. C's switch is written out in full so
 // that the arms this port has not reached name the uhitm.c function a later
@@ -2390,7 +2458,9 @@ export async function mhitm_adtyping(
         break;
     case AD_SGLD: unported('mhitm_ad_sgld'); break;
     case AD_TLPT: unported('mhitm_ad_tlpt'); break;
-    case AD_BLND: unported('mhitm_ad_blnd'); break;
+    case AD_BLND:
+        await mhitm_ad_blnd(magr, mattk, mdef, mhm, state, env);
+        break;
     case AD_CURS: unported('mhitm_ad_curs'); break;
     case AD_DRLI: unported('mhitm_ad_drli'); break;
     case AD_RUST: unported('mhitm_ad_rust'); break;

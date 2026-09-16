@@ -7,7 +7,8 @@ import { mklev, l_nhcore_init, u_on_upstairs, fumaroles, movebubbles } from './m
 import { dobjsfree, clear_splitobjs } from './mkobj.js';
 import { rhack, continue_run, run_active, continue_search, search_repeat_active, dolookaround, end_of_input } from './cmd.js';
 import {
-    docrt, cls, bot, flush_screen, pline, Norep, flush_topl_more, see_monsters,
+    docrt, cls, bot, timebot, curs_on_u, flush_screen, pline, Norep,
+    flush_topl_more, see_monsters,
     see_objects, see_traps, swallowed, Hallucination, Warn_of_mon,
     clear_glyph_buffer,
 } from './display.js';
@@ -1200,7 +1201,23 @@ export async function moveloop_core() {
         vision_recalc(0);
         g.vision_full_recalc = 0;
     }
-    await bot();
+    // C allmain.c:473–479 — paint status only on request: full bot() when
+    // disp.botl|botlx, time-only timebot() when disp.time_botl; either arm
+    // then parks the cursor (curs_on_u ≡ flush_screen(1) in JS). game.flags
+    // is the live store bot()/flush_screen gate on; game.disp mirrors it.
+    // The unconditional flush_screen(1) below still runs (C flush_screen
+    // carries the same gate at display.c:2237–2240, a no-op here since the
+    // arm above just consumed the flags).
+    {
+        const _fl = g.flags || {};
+        if (_fl.botl || _fl.botlx) {
+            await bot();
+            await curs_on_u();
+        } else if (_fl.time_botl) {
+            await timebot();
+            await curs_on_u();
+        }
+    }
     await flush_screen(1);
 
     // C allmain.c:481 — once-per-player-input m_everyturn_effect(&youmonst)

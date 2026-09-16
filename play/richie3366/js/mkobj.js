@@ -2302,16 +2302,21 @@ export function place_object(otmp, x, y) {
 
 /**
  * C ref: steal.c relobj(mtmp, show, FALSE) via mon.c m_detach(due_to_death)
- * → mdrop_obj per minvent head. Vault-guard gold and flooreffects omitted;
- * caller issues newsym.
+ * → mdrop_obj per minvent head. Vault-guard gold omitted (grddead issues
+ * the isgd arm inline); caller issues newsym.
  *
  * C mdrop_obj calls distant_name(obj, doname) *before* extract for observe
- * side-effects (disco order = minvent order, not reverse pile order).
+ * side-effects (disco order = minvent order, not reverse pile order), then
+ * routes the freed obj through flooreffects(obj, omx, omy, "fall")
+ * (`steal.c:840–843`) before place_object + stackobj.
  */
-export function relobj_on_death(mtmp) {
+export async function relobj_on_death(mtmp) {
     if (!mtmp) return;
     const omx = mtmp.mx | 0;
     const omy = mtmp.my | 0;
+    // Dynamic import like mon.js mdrop_obj / dothrow.js: do.js already
+    // imports mkobj.js, so this adds no new static edge into the SCC.
+    const { flooreffects } = await import('./do.js');
     while (mtmp.minvent) {
         const otmp = mtmp.minvent;
         // C: distant_name even when !verbosely — observe while still MINVENT
@@ -2319,8 +2324,11 @@ export function relobj_on_death(mtmp) {
         obj_extract_self(otmp);
         if (otmp.owornmask) otmp.owornmask = 0;
         if (mtmp.mw === otmp) mtmp.mw = null;
-        place_object(otmp, omx, omy);
-        stackobj(otmp);
+        // C steal.c:840–843 — flooreffects "fall" gate before place+stack.
+        if (!(await flooreffects(otmp, omx, omy, 'fall'))) {
+            place_object(otmp, omx, omy);
+            stackobj(otmp);
+        }
     }
 }
 

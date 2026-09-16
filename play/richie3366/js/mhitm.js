@@ -2978,7 +2978,7 @@ export async function vamprises(mtmp) {
  * cleared for dmonsfree only when the corridor is fully disposed.
  * clear_fcorr/parkguard join the vault.js edge (same SCC, hoisted).
  * The isgd-gold-vanish arm is steal.c relobj's (`:874–898`); the drop-rest
- * half is relobj_on_death (mkobj.js:1922, mdrop_obj per head).
+ * half is relobj_on_death (mkobj.js, mdrop_obj per head).
  */
 export async function grddead(grd) {
     let dispose = await clear_fcorr(grd, true);
@@ -2993,7 +2993,7 @@ export async function grddead(grd) {
             obj_extract_self(gold);
             obfree(gold, null);
         }
-        relobj_on_death(grd);
+        await relobj_on_death(grd);
         grd.mhp = 0;
         parkguard(grd);
         dispose = await clear_fcorr(grd, true);
@@ -3137,7 +3137,7 @@ export async function m_detach(mtmp, mptr, due_to_death) {
             if (await stinky_nemesis(mtmp)) await nemesis_stinks(mx, my);
         }
         if ((mtmp.data?.msound | 0) === MS_LEADER) leaddead();
-        relobj_on_death(mtmp);
+        await relobj_on_death(mtmp);
         // C relobj show=1: drop, then newsym if hero can see the spot.
         if (mx > 0 && cansee(mx, my)) newsym(mx, my);
     }

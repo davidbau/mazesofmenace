@@ -5366,22 +5366,28 @@ export async function docrt() {
         // mid-redraw floor. No-op when nothing pends; burns no RNG
         // (scen-intrinsic-Caveman-92052 step 17).
         await flush_topl_more();
-        // C docrt_flags: if uswallow → swallowed(1); skip map vision path
+        // C docrt_flags `:1726–1728` → post_map: the uswallow arm still
+        // sets botlx on every non-maponly call (plain docrt() never maponly).
         if (game.u.uswallow) {
             await cls();
             swallowed(1);
+            if (game.flags) game.flags.botlx = true;
             return;
         }
         // C docrt_flags `:1730–1732` — engulfed-water map arm (Underwater
         // ≡ u.uinwater, youprop.h:279; the water level has its own routines).
         if ((game.u.uinwater | 0) && !Is_waterlevel(game.u.uz)) {
             await under_water(1);
+            // C `:1730–1732` → post_map: underwater arm sets botlx too.
+            if (game.flags) game.flags.botlx = true;
             return;
         }
         // C docrt_flags `:1734–1736` — buried map arm (C's own
         // `/* [not implemented] */` marker notwithstanding, it calls through).
         if (game.u.uburied) {
             await under_ground(1);
+            // C `:1734–1736` → post_map: buried arm sets botlx too.
+            if (game.flags) game.flags.botlx = true;
             return;
         }
         // C vision_recalc(2) update loop newsyms prior sight while !cansee
@@ -5411,7 +5417,8 @@ export async function docrt() {
         // redraw status") — the moveloop gate repaints on the next tick.
         if (game.flags) game.flags.botlx = true;
         // Named omission:
-        // docrt_flags maponly/redrawonly/nocls params; update_inventory().
+        // docrt_flags maponly/redrawonly/nocls params (the unported
+        // redrawonly arm's post_map botlx goes with it); update_inventory().
     } finally {
         game.program_state.in_docrt = false;
     }

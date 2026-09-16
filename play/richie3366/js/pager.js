@@ -31,7 +31,7 @@ import { howmonseen, couldsee } from './vision.js';
 import { getlin, yn_function } from './getline.js';
 import {
     paint_corner_nhw_menu, dismiss_nhw_menu, dfeature_at, display_inventory,
-    observe_object, process_menu_search,
+    observe_object, process_menu_search, trap_predicament,
 } from './invent.js';
 import { stairway_at, known_branch_stairs } from './mklev.js';
 import {
@@ -369,8 +369,9 @@ function youmonst_for_hidden() {
 
 /**
  * C ref: pager.c self_lookat — race adj + pmname(umonnum,Ugender) + called
- * plname + mhidden_description (D-1554) + Punished ", chained to %s".
- * Steed / utrap deferred.
+ * plname + mhidden_description (D-1554) + Punished ", chained to %s" +
+ * utrap ", <trap_predicament>" (pager.c:131).
+ * Steed (y_monnam) deferred, own row on a falsifier.
  */
 function self_lookat() {
     const u = game.u || {};
@@ -398,7 +399,10 @@ function self_lookat() {
     if (u.uball) {
         buf += `, chained to ${ansimpleoname(u.uball)}`;
     }
-    // Steed / utrap arms deferred
+    // C pager.c:131 — bear trap, pit, web, in-floor, in-lava, tethered.
+    // final=0, no wizard suffix (self_lookat is never a final disclosure).
+    if ((u.utrap | 0)) buf += `, ${trap_predicament(0, false)}`;
+    // Steed arm (y_monnam) deferred, own row on a falsifier.
     return buf;
 }
 

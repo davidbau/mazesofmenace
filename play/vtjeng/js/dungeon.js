@@ -1588,7 +1588,7 @@ function db_under_typ(mask) {
 
 // C ref: rm.h SURFACE_AT() (146-149). DRAWBRIDGE_UP is the square in front of a
 // closed drawbridge rather than a surface, so it reports what lies beneath.
-function surface_typ(location) {
+export function surface_typ(location) {
     if (location?.typ !== DRAWBRIDGE_UP) return location?.typ;
     return db_under_typ(location.flags || location.drawbridgemask || 0);
 }
@@ -2325,7 +2325,7 @@ function count_feat_lastseentyp(mapseen, x, y, state) {
 // JS keeps subrooms under their persisted parent room, but retains C's
 // roomnoidx values. Resolve that conceptual index through the parent graph so
 // mapseen's equally source-sized msrooms[] array reads either half correctly.
-function mapseen_room(roomIndex, state) {
+export function mapseen_room(roomIndex, state) {
     const rooms = state.level?.rooms ?? [];
     const direct = rooms[roomIndex];
     if (direct && (direct.roomnoidx ?? roomIndex) === roomIndex)

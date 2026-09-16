@@ -53,16 +53,16 @@ import {
     putmsghistory, impossible, tty_nhbell, tty_wait_synch,
     clear_nhwindow_message, Hallucination, set_bot_disabled,
     clear_committed_status,
-    docorner,
+    docorner, dxdy_to_dist_descr,
 } from './display.js';
-import { xprname, an, just_an, vtense, doname, distant_name, Japanese_item_name, xname, cxname_singular, set_xname_observe, set_distant_cansee, ansimpleoname, simpleonames, set_not_fully_identified, makeplural, makesingular, body_part_latebound, corpse_xname, killer_xname } from './objnam.js';
+import { xprname, an, the, just_an, vtense, doname, distant_name, Japanese_item_name, xname, cxname_singular, set_xname_observe, set_distant_cansee, ansimpleoname, simpleonames, set_not_fully_identified, makeplural, makesingular, body_part_latebound, corpse_xname, killer_xname } from './objnam.js';
 import { yn_function, getlin, mungspaces } from './getline.js';
 import { get_count, pmatchi, cmdq_pop, cmdq_clear } from './cmd.js';
 import { mergable, is_damageable, stop_timer, splitobj, unsplitobj, clear_splitobjs, unknwn_contnr_contents, weight, delobj } from './mkobj.js';
 import { unpaid_cost, doinvbill, gem_learned, obfree, shopper_financial_report } from './shk.js';
 import { hidden_gold } from './vault.js';
 import { setnotworn, dropy } from './do.js';
-import { s_suffix, a_monnam, pmname } from './do_name.js';
+import { s_suffix, a_monnam, pmname, x_monnam, hliquid } from './do_name.js';
 import { inv_cnt } from './steal.js';
 import { assigninvlet } from './u_init.js';
 import { cansee } from './vision.js';
@@ -240,7 +240,7 @@ import {
     from_what, stone_luck,
     A_STR, A_INT, A_WIS, A_DEX, A_CON, A_CHA,
 } from './attrib.js';
-import { depth, ing_suffix, strstri, ordin } from './hacklib.js';
+import { depth, ing_suffix, strstri, ordin, highc } from './hacklib.js';
 import { visctrl } from './dokeylist.js';
 import { select_menu_pick_any, hide_unhide_msgtypes } from './options.js';
 import { rn2 } from './rng.js';
@@ -272,6 +272,14 @@ import {
     Upolyd,
     BASICENLIGHTENMENT,
     MAGICENLIGHTENMENT,
+    ENL_GAMEOVERDEAD,
+    TT_BURIEDBALL,
+    TT_LAVA,
+    TT_INFLOOR,
+    ARTICLE_YOUR,
+    ARTICLE_THE,
+    SUPPRESS_SADDLE,
+    SUPPRESS_HALLUCINATION,
     Is_airlevel,
     Is_waterlevel,
     LEFT_SIDE,
@@ -303,6 +311,8 @@ import { stairway_at, stairs_description } from './mklev.js';
 import { objects_at } from './mkobj.js';
 import { magic_negation_you } from './mhitm.js';
 import { t_at, trapname } from './trap.js';
+import { sticks } from './engrave.js';
+import { surface } from './sit.js';
 import { visible_region_at, reg_damg } from './region.js';
 import { PM_SAMURAI, PM_MONK, PM_CLERIC, monsterNames } from './generated/monsters_data.js';
 import { humanoid, strongmonst, mons, touch_petrifies, poly_when_stoned, hides_under, haseyes, dmgtype, hates_silver, is_male, is_female, is_neuter, vampshifted, nonliving, weirdnonliving } from './monsters.js';
@@ -4955,8 +4965,58 @@ function item_resistance_message_lines(adtyp, prot_message, final, o = (t) => t)
 }
 
 /**
+ * C ref: insight.c trap_predicament `:232–261` — describe u.utraptype;
+ * caller has verified u.utrap. Callers wired: status_enlightenment
+ * (`insight.c:1090`) below, self_lookat (`pager.c:131`) in js/pager.js.
+ * C writes into the caller's buffer and returns it; JS returns the string.
+ * @param {number} final
+ * @param {boolean} wizxtra wizard-mode ` {<utrap>}` counter suffix
+ */
+/**
+ * C ref: insight.c status_enlightenment `:1094–1096` — the steed-trap
+ * enl_msg verb: plural when the ball-and-chain anchors hero and steed
+ * together (`anchored`, TT_BURIEDBALL), singular for the steed alone.
+ * @param {number} final
+ * @param {boolean} anchored
+ */
+export function utrap_steed_verb(final, anchored) {
+    return final ? (anchored ? 'were ' : 'was ') : (anchored ? 'are ' : 'is ');
+}
+
+export function trap_predicament(final, wizxtra) {
+    const u = game.u || {};
+    const ux = u.ux | 0, uy = u.uy | 0;
+    let out = '';
+    switch (u.utraptype | 0) {
+    case TT_BURIEDBALL:
+        out = 'tethered to something buried';
+        break;
+    case TT_LAVA:
+        out = `sinking into ${final ? 'lava' : hliquid('lava')}`;
+        break;
+    case TT_INFLOOR:
+        out = `stuck in ${the(surface(ux, uy))}`;
+        break;
+    default: /* TT_BEARTRAP, TT_PIT, or TT_WEB */
+        out = 'trapped';
+        {
+            const t = t_at(ux, uy); /* should never be null */
+            if (t) out += ` in ${an(trapname(t.ttyp, false))}`;
+        }
+        break;
+    }
+    if (wizxtra) {
+        /* curly braces: u.utrap is an escape-attempt counter rather than
+           a turn timer, so different ornamentation than parentheses */
+        out += ` {${u.utrap | 0}}`;
+    }
+    return out;
+}
+
+/**
  * C ref: insight.c status_enlightenment — Hallucination + Deaf + Punished +
- * Wounded_legs + Sleepy + hunger + encumbrance subset (poly/ride/utrap/
+ * utrap (trap_predicament, steed/anchored) + held-by/holding + uswallow +
+ * Wounded_legs + Sleepy + hunger + encumbrance subset (poly/ride/
  * Glib/Fumbling deferred).
  * Overlay (^X) lines need one extra leading space vs enlght_line.
  * @param {number} final
@@ -5074,27 +5134,67 @@ function status_core_lines(final = 0, opts = {}) {
     if (u.uball) {
         out.push(wrap(`chained to ${ansimpleoname(u.uball)}`));
     }
-    // C insight.c:1099-1123 — held/swallowed (utrap trap_predicament and
-    // non-swallow held-by arms deferred). digests ≡ AD_DGST engulf attack
-    // (mondata.h); swallower form is ustuck's own data.
-    if (u.ustuck) {
-        let heldmon = a_monnam(u.ustuck);
+    // C insight.c:1086-1098 — utrap: trap_predicament + steed/anchored
+    // enl_msg vs you_are. The steed branch tests u.usteed, not Riding.
+    if ((u.utrap | 0)) {
+        const anchored = ((u.utraptype | 0) === TT_BURIEDBALL);
+        const predicament = trap_predicament(final, wizard);
+        // C insight.c:946-956 — steedname only when Riding (a hero dying
+        // while dismounting keeps u.usteed set with a null name);
+        // game.killer.name ≡ C svk.killer.name.
+        const Riding = !!(u.usteed
+            && !(final === ENL_GAMEOVERDEAD
+                && (game.killer?.name || '') === 'riding accident'));
+        const steedname = !Riding ? null : x_monnam(
+            u.usteed,
+            u.usteed.mtame ? ARTICLE_YOUR : ARTICLE_THE,
+            null,
+            (SUPPRESS_SADDLE | SUPPRESS_HALLUCINATION),
+            false);
+        if (u.usteed && steedname) {
+            // C: Sprintf(buf, "%s%s ", anchored ? "you and " : "",
+            // steedname); *buf = highc(*buf); enl_msg(buf,
+            // anchored ? "are " : "is ", anchored ? "were " : "was ",
+            // predicament, "") — enl_msg lines take the overlay prefix
+            // like you_are lines.
+            const rawstart = `${anchored ? 'you and ' : ''}${steedname} `;
+            const start = `${highc(rawstart)}${rawstart.slice(1)}`;
+            const line = enlght_line_txt(
+                start, utrap_steed_verb(final, anchored), predicament, '');
+            out.push(overlay ? ` ${line}` : line);
+        } else {
+            out.push(wrap(predicament));
+        }
+    } /* (u.utrap) */
+    // C insight.c:1099-1123 — held/swallowed. digests ≡ AD_DGST engulf
+    // attack (mondata.h); swallower form is ustuck's own data.
+    let heldmon = '';
+    if (u.ustuck) { /* includes u.uswallow */
+        heldmon = a_monnam(u.ustuck);
         if (heldmon === 'it'
             && (!has_mgivenname(u.ustuck)
                 || MGIVENNAME(u.ustuck) !== 'it')) {
             heldmon = 'an unseen creature';
         }
-        if (u.uswallow) {
-            const udat = u.ustuck.data
-                || (u.ustuck.mnum != null ? mons(u.ustuck.mnum) : null);
-            let buf = `${udat && dmgtype(udat, AD_DGST) ? 'swallowed' : 'engulfed'} by ${heldmon}`;
-            if (udat && dmgtype(udat, AD_DGST)) {
-                if (final && !(u.uswldtim | 0)) buf += ' and got totally digested';
-                else buf += ` and ${final ? 'were' : 'are'} being digested`;
-            }
-            if (wizard) buf += ` (${u.uswldtim | 0})`;
-            out.push(wrap(buf));
+    }
+    if (u.uswallow) {
+        /* C asserts u.ustuck != NULL (implied by u.uswallow) */
+        const udat = u.ustuck.data
+            || (u.ustuck.mnum != null ? mons(u.ustuck.mnum) : null);
+        let buf = `${udat && dmgtype(udat, AD_DGST) ? 'swallowed' : 'engulfed'} by ${heldmon}`;
+        if (udat && dmgtype(udat, AD_DGST)) {
+            if (final && !(u.uswldtim | 0)) buf += ' and got totally digested';
+            else buf += ` and ${final ? 'were' : 'are'} being digested`;
         }
+        if (wizard) buf += ` (${u.uswldtim | 0})`;
+        out.push(wrap(buf));
+    } else if (u.ustuck) {
+        // C insight.c:1124-1131 — ustick = Upolyd && sticks(youmonst.data);
+        // "%s %s (%s)" holding/held-by + heldmon + dxdy_to_dist_descr TRUE.
+        const ustick = !!(Upolyd(u) && sticks(game.youmonst?.data));
+        const dx = (u.ustuck.mx | 0) - (u.ux | 0);
+        const dy = (u.ustuck.my | 0) - (u.uy | 0);
+        out.push(wrap(`${ustick ? 'holding' : 'held by'} ${heldmon} (${dxdy_to_dist_descr(dx, dy, true)})`));
     }
     // C: if (Wounded_legs) you_have("%swounded %s%s", …) when !usteed
     // (steed report wizard-only deferred)

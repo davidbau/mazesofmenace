@@ -9,6 +9,7 @@ import { dochugw, m_everyturn_effect, monflee, can_hide_under_obj } from './monm
 import {
     COLNO, ROWNO, IS_OBSTRUCTED, IS_DOOR, IS_TREE, D_CLOSED, D_LOCKED, D_BROKEN,
     ALLOW_ROCK, ALLOW_DIG, Is_rogue_level, NOTONL, ALLOW_ALL, ALLOW_BARS,
+    ALLOW_MDISP, Is_stronghold,
     NOGARLIC, IRONBARS, IS_ALTAR, DISPLACED, W_NONDIGGABLE,
     IS_WATERWALL, LAVAWALL, Is_waterlevel,
     M_AP_NOTHING, M_AP_OBJECT, M_AP_FURNITURE, M_AP_MONSTER, M_AP_TYPE,
@@ -35,7 +36,7 @@ import {
     bigmonst, amorphous, is_whirly, noncorporeal, M1_SLITHY, unsolid,
     dmgtype, passes_bars,
     is_vampshifter, is_male, is_female, is_neuter, likes_gems,
-    is_rider, nonliving, breathless, is_giant, is_minion, is_human,
+    is_rider, is_displacer, nonliving, breathless, is_giant, is_minion, is_human,
     is_elf, is_dwarf, is_gnome, is_orc, is_undead, amphibious, can_teleport, MR_FIRE,
     MR_POISON, mindless, G_UNIQ, is_watch,
     touch_petrifies, flesh_petrifies, slimeproof, resists_ston, vegan,
@@ -58,7 +59,8 @@ import { enexto, rloc_to, rloc, tele_restrict, noteleport_level, rloc_to_flag, m
 import { may_dig, fill_pit } from './dig.js';
 import { newsym, pline, pline_mon, verbalize, You_feel, sensemon, canseemon, canspotmon, impossible } from './display.js';
 import { online2, level_difficulty } from './hacklib.js';
-import { worm_cross, level_mon_at, remove_worm, place_wsegs } from './worm.js';
+import { worm_cross, level_mon_at, remove_worm, place_wsegs, count_wsegs } from './worm.js';
+import { On_W_tower_level, In_W_tower } from './dungeon.js';
 import { Monnam, mon_nam, hliquid } from './do_name.js';
 import { cansee, couldsee, does_block, is_lightblocker_mappear, unblock_point, vision_recalc } from './vision.js';
 import { fightm, mondead, mondied } from './mhitm.js';
@@ -96,6 +98,7 @@ const PM_MEDUSA = monsterNames.indexOf('PM_MEDUSA');
 const PM_ERINYS = monsterNames.indexOf('PM_ERINYS');
 const PM_PURPLE_WORM = monsterNames.indexOf('PM_PURPLE_WORM');
 const PM_BABY_PURPLE_WORM = monsterNames.indexOf('PM_BABY_PURPLE_WORM');
+const PM_SHRIEKER = monsterNames.indexOf('PM_SHRIEKER');
 /** C monflag.h MS_SHRIEK — wakes up others. */
 const MS_SHRIEK = 18;
 /** C monattk.h AT_GAZE. */
@@ -2501,8 +2504,76 @@ async function minliquid_core(mtmp) {
     return 0;
 }
 
+// C ref: mondata.h unique_corpstat — G_UNIQ. Local (same shape as the
+// teleport.js/trap.js/music.js locals; mondata.js monsndx stays unexported).
+function unique_corpstat(ptr) {
+    return !!((ptr?.geno | 0) & G_UNIQ);
+}
+
+// C ref: mon.c mm_2way_aggression `:2387–2420` — the two-way half of
+// mm_aggression (W tower inside/outside gate + zombie-maker vs zombifiable).
+// C is staticfn; JS keeps it file-local like NODIAG/may_passwall.
+function mm_2way_aggression(magr, mdef) {
+    if (On_W_tower_level(game.u?.uz)) {
+        // C: In_W_tower(u.ux,u.uy) ? (either mon outside) : (either mon inside)
+        if (In_W_tower(game.u?.ux, game.u?.uy, game.u?.uz)
+            ? (!In_W_tower(magr?.mx, magr?.my, game.u?.uz)
+                || !In_W_tower(mdef?.mx, mdef?.my, game.u?.uz))
+            : (In_W_tower(magr?.mx, magr?.my, game.u?.uz)
+                || In_W_tower(mdef?.mx, mdef?.my, game.u?.uz)))
+            return 0;
+    }
+    // C: liches/zombies vs things that can be zombified (Castle + unique
+    // + both-mgenmklev gates; balance/flavor comment in C).
+    if (zombie_maker(magr) && zombie_form(mdef?.data) !== NON_PM) {
+        if (magr?.mgenmklev && mdef?.mgenmklev)
+            return 0;
+        if (!Is_stronghold(game.u?.uz)
+            && !unique_corpstat(magr?.data) && !unique_corpstat(mdef?.data))
+            return (ALLOW_M | ALLOW_TM);
+    }
+    return 0;
+}
+
+// C ref: mon.c mm_aggression `:2428–2447` — monster-vs-monster attack grant.
+// C is staticfn; JS keeps it file-local. monsndx ≡ data.mndx (mons()
+// allocates, so pointer equality is mndx equality).
+function mm_aggression(magr, mdef) {
+    const mndx = ((magr?.data?.mndx ?? magr?.mnum ?? NON_PM) | 0);
+
+    // C: don't allow pets to fight each other
+    if (magr?.mtame && mdef?.mtame)
+        return 0;
+
+    // C: purple worms are attracted to shrieking (eat shriekers)
+    if ((mndx === PM_PURPLE_WORM || mndx === PM_BABY_PURPLE_WORM)
+        && ((mdef?.data?.mndx ?? mdef?.mnum ?? NON_PM) | 0) === PM_SHRIEKER)
+        return ALLOW_M | ALLOW_TM;
+    return (mm_2way_aggression(magr, mdef) | mm_2way_aggression(mdef, magr));
+}
+
+// C ref: mon.c mm_displacement `:2451–2472` — barging (displacer) grant.
+// C is staticfn; JS keeps it file-local.
+function mm_displacement(magr, mdef) {
+    const pa = magr?.data, pd = mdef?.data;
+
+    // C comment verbatim: if attacker can't barge through there's nothing
+    // to do; or if defender can barge too and is at least as high level,
+    // don't let attacker do so (else they just swap places again).
+    if (is_displacer(pa) && (!is_displacer(pd) || (magr?.m_lev | 0) > (mdef?.m_lev | 0))
+        // C: no displacing grid bugs diagonally
+        && !(magr?.mx !== mdef?.mx && magr?.my !== mdef?.my
+            && NODIAG((pd?.mndx ?? NON_PM) | 0))
+        // C: no displacing trapped monsters or multi-location longworms
+        && !mdef?.mtrapped && (!mdef?.wormno || !count_wsegs(mdef))
+        // C: riders can move anything; others, same size or smaller only
+        && (is_rider(pa) || (pa?.msize ?? 0) >= (pd?.msize ?? 0)))
+        return ALLOW_MDISP;
+    return 0;
+}
+
 // C ref: mon.c mfndpos() — neighbour scan; ALLOW_DIG rock/tree + thrudoor
-// Named omissions still: mm_aggression/MDISP;
+// Named omissions still:
 // can_fog in cant_squeeze_thru;
 // Inhell Elbereth; m_can_break_boulder.
 // passes_bars / ALLOW_BARS rust/corr/metallivore is D-1258.
@@ -2677,12 +2748,26 @@ export function mfndpos(mon, data, flag) {
                     }
                     if (!(flag & ALLOW_U)) continue;
                     info |= ALLOW_U;
-                } else if (m_at(nx, ny)) {
-                    // hostiles lack ALLOW_M — cannot displace/attack other mons
-                    // mm_aggression / ALLOW_MDISP deferred
-                    if (!(flag & ALLOW_M)) continue;
-                    info |= ALLOW_M;
                 } else {
+                    const mtmp2 = m_at(nx, ny);
+                    if (mtmp2) {
+                        // C ref: mon.c mfndpos `:2299–2317` — MON_AT arm:
+                        // mmflag = flag | mm_aggression(mon, mtmp2); ALLOW_M
+                        // (+ALLOW_TM for tame defender) else MDISP fallback.
+                        let mmflag = (flag | mm_aggression(mon, mtmp2)) | 0;
+                        if (mmflag & ALLOW_M) {
+                            info |= ALLOW_M;
+                            if (mtmp2.mtame) {
+                                if (!(mmflag & ALLOW_TM)) continue;
+                                info |= ALLOW_TM;
+                            }
+                        } else {
+                            flag &= ~ALLOW_MDISP; // C: depends upon defender
+                            mmflag = (flag | mm_displacement(mon, mtmp2)) | 0;
+                            if (!(mmflag & ALLOW_MDISP)) continue;
+                            info |= ALLOW_MDISP;
+                        }
+                    } else {
                     // C: ALLOW_SANCT only prevents movement (not attack) into temple
                     if (game.level?.flags?.has_temple
                         && in_rooms(nx, ny, TEMPLE)
@@ -2690,6 +2775,7 @@ export function mfndpos(mon, data, flag) {
                         && in_your_sanctuary(null, nx, ny)) {
                         if (!(flag & ALLOW_SANCT)) continue;
                         info |= ALLOW_SANCT;
+                    }
                     }
                 }
 

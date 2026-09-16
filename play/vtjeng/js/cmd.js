@@ -286,7 +286,13 @@ import {
     show_menu_controls,
     UnsupportedOptionMenuError,
 } from './options.js';
-import { dopray, doturn, UnsupportedPrayerError } from './pray.js';
+import {
+    dosacrifice,
+    dopray,
+    doturn,
+    UnsupportedPrayerError,
+} from './pray.js';
+import { doextversion } from './version.js';
 import { UnsupportedHideError } from './mon.js';
 import { dosave, dosave0, savelev } from './save.js';
 import {
@@ -5093,6 +5099,16 @@ async function doextcmd(key, state) {
     case 'dopray':
         // C ref: pray.c dopray(), which returns its own ECMD_* result.
         return await dopray(state);
+    case 'dosacrifice':
+        // C ref: pray.c dosacrifice(), which returns ECMD_OK for its refusal
+        // guards and ECMD_TIME after a selected offering.
+        return await dosacrifice(state);
+    case 'doextversion':
+        // C ref: version.c doextversion(), reached from cmd.c's #version row.
+        return await doextversion(state, {
+            displayTextWindow: displayTtyTextWindow,
+            random: rn2,
+        });
     case 'doturn':
         // C ref: pray.c doturn(), which returns its own ECMD_* result.
         return await doturn(state);

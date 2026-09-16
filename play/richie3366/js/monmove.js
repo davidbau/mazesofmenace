@@ -98,6 +98,7 @@ import {
     m_at,
     m_avoid_kicked_loc,
     mnexto,
+    mongone,
     wakeup,
     wake_msg,
     wake_nearto,
@@ -121,6 +122,7 @@ const BELL_OF_OPENING = objectNames.indexOf('BELL_OF_OPENING');
 const AKLYS = objectNames.indexOf('AKLYS');
 const PM_STALKER = monsterNames.indexOf('PM_STALKER');
 const PM_TENGU = monsterNames.indexOf('PM_TENGU');
+const PM_MAIL_DAEMON = monsterNames.indexOf('PM_MAIL_DAEMON');
 const PM_LEPRECHAUN = monsterNames.indexOf('PM_LEPRECHAUN');
 const PM_ETTIN = monsterNames.indexOf('PM_ETTIN');
 const PM_JABBERWOCK = monsterNames.indexOf('PM_JABBERWOCK');
@@ -1780,6 +1782,18 @@ export async function m_move(mtmp, after) {
             );
         }
         // xm === -1: fall through to normal AI (follow outside shop)
+    }
+
+    // C ref: monmove.c:1829–1838 m_move — MAIL_STRUCTURES mail daemon
+    // departs ("I'm late!") via mongone, never the normal AI path.
+    // MAIL_STRUCTURES is unconditionally #defined (global.h:430).
+    if ((ptr?.mndx ?? -1) === PM_MAIL_DAEMON) {
+        if (!hero_Deaf() && canseemon(mtmp)) {
+            SetVoice(mtmp, 0, 80, 0);
+            await verbalize("I'm late!");
+        }
+        await mongone(mtmp);
+        return MMOVE_DIED;
     }
 
     // C ref: monmove.c m_move — Tengu nature teleport before not_special.

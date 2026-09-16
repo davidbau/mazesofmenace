@@ -103,8 +103,8 @@ import {
     A_STR, A_DEX, A_CHA, A_WIS, A_INT, A_CON,
 } from './attrib.js';
 import {
-    nomul, unmul, losehp, still_chewing, is_pool, is_lava, stop_occupation,
-    end_running,
+    nomul, unmul, losehp, finish_maybe_wail, still_chewing, is_pool, is_lava,
+    stop_occupation, end_running,
 } from './hack.js';
 import { near_capacity, observe_object, makeknown, getobj, freeinv,
     encumber_msg, update_inventory, useupall, useup, useupf } from './invent.js';
@@ -2214,9 +2214,10 @@ async function rottenfood(obj) {
 
 /**
  * C ref: eat.c eatcorpse — rotting / acid / poison / taste; sets reqtime.
+ * Acid/cadaver damage routes through canonical losehp (hack.c:4256).
  * @returns {number} 0 ok, 1 dont_start, 2 used up
  */
-async function eatcorpse(otmp) {
+export async function eatcorpse(otmp) {
     let retcode = 0;
     let tp = 0;
     const mnum = otmp.corpsenm | 0;
@@ -2261,15 +2262,18 @@ async function eatcorpse(otmp) {
         || game.u?.Acid_resistance)) {
         tp++;
         await pline('You have a very bad case of stomach acid.');
-        // C: losehp(rnd(15), ...) — inline to avoid eat↔hack import cycle
+        // C eat.c:1926 losehp(rnd(15), !glob ? "acidic corpse"
+        // : "acidic glob", KILLED_BY_AN) — canonical: Upolyd/mh,
+        // end_running, killer attribution, death path (D-2402 was inline).
         // Must call rnd() (logs rnd(N)=…) not 1+rn2 (logs rn2(N)=…).
-        if (game.u) {
-            const dmg = rnd(15);
-            game.u.uhp = (game.u.uhp | 0) - dmg;
-            // C hack.c losehp `:4268` disp.botl = TRUE (u.uhp changing).
-            if (!game.flags) game.flags = {};
-            game.flags.botl = true;
+        losehp(rnd(15), !glob ? 'acidic corpse' : 'acidic glob', KILLED_BY_AN);
+        if (game._losehp_needs_done || game.program_state?.gameover) {
+            // C losehp → done(DIED) is noreturn; do not start eating.
+            const { finish_losehp_done } = await import('./end.js');
+            await finish_losehp_done();
+            return 1;
         }
+        await finish_maybe_wail();
     } else if (poisonous(ptr) && rn2(5)) {
         tp++;
         await pline('Ecch - that must have been poisonous!');
@@ -2287,14 +2291,17 @@ async function eatcorpse(otmp) {
         && !(game.u?.HSick_resistance || game.u?.ESick_resistance)) {
         tp++;
         await pline(`You feel ${game.u?.Sick ? 'very ' : ''}sick.`);
-        // C: losehp(rnd(8), !glob ? "cadaver" : "rotted glob", KILLED_BY_AN)
-        if (game.u) {
-            const dmg = rnd(8);
-            game.u.uhp = (game.u.uhp | 0) - dmg;
-            // C hack.c losehp `:4268` disp.botl = TRUE (u.uhp changing).
-            if (!game.flags) game.flags = {};
-            game.flags.botl = true;
+        // C eat.c:1942 losehp(rnd(8), !glob ? "cadaver" : "rotted glob",
+        // KILLED_BY_AN) — canonical: Upolyd/mh, end_running, killer
+        // attribution, death path (D-2402 was inline).
+        losehp(rnd(8), !glob ? 'cadaver' : 'rotted glob', KILLED_BY_AN);
+        if (game._losehp_needs_done || game.program_state?.gameover) {
+            // C losehp → done(DIED) is noreturn; do not start eating.
+            const { finish_losehp_done } = await import('./end.js');
+            await finish_losehp_done();
+            return 1;
         }
+        await finish_maybe_wail();
     }
 
     // delay is weight dependent

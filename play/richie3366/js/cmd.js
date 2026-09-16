@@ -2691,11 +2691,16 @@ export async function rhack(key) {
     if (isMovementKey(ch)) {
         // C ref: cmd.c set_move_cmd(dir, 0) — clear stale travel; DOMOVE_WALK
         // unless a g/G PREFIXCMD already set DOMOVE_RUSH (keeps context.run).
+        // C `:1396–1399`: `if (!domove_attempting && !u.dz) run = 0` — a
+        // plain walk ends any run (e.g. travel's run=8); without this the
+        // EOT time_botl stays suppressed and T: goes stale after travel.
         if (!game.context) game.context = {};
         game.context.travel = 0;
         game.context.travel1 = 0;
         const attempting = game.domove_attempting || 0;
         if (!attempting) {
+            // C set_move_cmd `:1396–1399` guards on `!u.dz` (walks only).
+            if (!(game.u?.dz | 0)) game.context.run = 0;
             game.domove_attempting = DOMOVE_WALK;
         } else if ((attempting & DOMOVE_WALK) === 0
                    && (attempting & DOMOVE_RUSH) !== 0
