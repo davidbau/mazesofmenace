@@ -344,7 +344,8 @@ function apply_ok(obj) {
  * C ref: apply.c use_stethoscope — one free use per hero_seq; '.' → ustatusline.
  * Adjacent: isok / m_at (mundetected + mappearance seemimic + mstatusline) /
  * empty → "hear nothing special", return res (D-0735 / D-0738).
- * Deferred: swallow/steed/dz/cursed heartbeat rn2(2), confdir,
+ * Deferred: swallow/steed/dz/cursed heartbeat rn2(2), confdir `:379`
+ * self-call (getdir `:4115–4116` tail now live via getdir, D-2430),
  * Deaf/nohands/freehand gates, SDOOR/SCORR hollow reveal, its_dead,
  * slime-mold fruit names, full defsyms furniture explanations,
  * mstatusline ailment/wizard-tame arms.
@@ -361,7 +362,8 @@ async function use_stethoscope(_obj) {
     const res = seq === (game.context.stethoscope_seq ?? 0) ? ECMD_TIME : ECMD_OK;
     game.context.stethoscope_seq = seq;
 
-    // confdir deferred (not Confused at starter)
+    // C apply.c:379 self-call deferred (not Confused at starter); the
+    // getdir `:4115–4116` tail above already drew (D-2430).
     const dx = game.u.dx | 0;
     const dy = game.u.dy | 0;
     if (!dx && !dy) {
@@ -3138,6 +3140,8 @@ export async function use_whip(obj) {
         rx = mtmp?.mx | 0;
         ry = mtmp?.my | 0;
     } else {
+        // C apply.c:2980 self-call — getdir already drew its `:4115–4116`
+        // tail, so a confused lash draws twice like C (D-2430).
         confdir(false);
         rx = (u.ux | 0) + (u.dx | 0);
         ry = (u.uy | 0) + (u.dy | 0);

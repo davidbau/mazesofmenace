@@ -14,6 +14,7 @@
 // do_name.c safe_oname().
 
 import {
+    ACH_MEDU,
     A_CHAOTIC,
     ALLOW_BARS,
     ALLOW_DIG,
@@ -47,6 +48,7 @@ import {
     D_LOCKED,
     D_NODOOR,
     D_TRAPPED,
+    EXACT_NAME,
     engulfing_u,
     FIRE_RES,
     COLD_RES,
@@ -64,7 +66,9 @@ import {
     HALLUC_RES,
     HALF_PHDAM,
     KILLED_BY_AN,
+    LL_KILLEDPET,
     MAGICAL_BREATHING,
+    MGIVENNAME,
     has_mcorpsenm,
     has_egd,
     has_edog,
@@ -80,6 +84,9 @@ import {
     is_pit,
     isok,
     ismnum,
+    LL_CONDUCT,
+    LL_ACHIEVE,
+    LL_UMONST,
     LS_MONSTER,
     MAX_CARR_CAP,
     M_AP_FURNITURE,
@@ -118,6 +125,7 @@ import {
     RLOC_MSG,
     RLOC_NOMSG,
     ROOM,
+    SHOPBASE,
     STRAT_WAITFORU,
     STRAT_WAITMASK,
     PLNMSG_GROWL,
@@ -188,6 +196,7 @@ import {
 } from './dungeon.js';
 import { del_engr_at, sengr_at } from './engrave.js';
 import { p_coaligned } from './priest.js';
+import { record_achievement } from './insight.js';
 import { quest_info } from './questpgr.js';
 import { in_rooms } from './rooms.js';
 import { adjalign, ALIGNLIM } from './attrib.js';
@@ -200,7 +209,7 @@ import {
     NODIAG,
     u_locomotion,
 } from './hack.js';
-import { dist2, online2, s_suffix, upstart } from './hacklib.js';
+import { dist2, online2, ordin, s_suffix, upstart } from './hacklib.js';
 import {
     add_to_container,
     add_to_minv,
@@ -519,6 +528,8 @@ import {
     place_monster,
     remove_monster,
 } from './monst.js';
+import { livelog_printf } from './pline.js';
+import { SHTYPES } from './shtypes_data.js';
 import {
     clear_dknown,
     clear_splitobjs,
@@ -1339,7 +1350,8 @@ export async function meatbox(mon, obj, rawEnv = {}) {
 // corpse.  dogmove.c dog_eat() is its live caller.  The uball/uchain and
 // Has_contents arms are gated before entry.  After delobj, corpses that
 // trigger polyfood, mlevelgain, mhealup, mstoning, sliming, or pyrolisk
-// explosion remain explicit fail-closed gaps; mon_givit is ported below.
+// explosion remain explicit fail-closed gaps; mon_givit is ported below. The
+// source's pre-consumption healing is shared by every non-pet object eater.
 export async function m_consume_obj(mtmp, otmp, rawEnv = {}) {
     const state = rawEnv.state ?? game;
     const unsupported = rawEnv.unsupported;
@@ -1347,6 +1359,14 @@ export async function m_consume_obj(mtmp, otmp, rawEnv = {}) {
         if (typeof unsupported === 'function') unsupported(reason);
         throw new TypeError(`m_consume_obj requires ${reason}`);
     };
+
+    // mon.c:1396-1399. A non-pet heals by the consumed object's weight before
+    // any special corpse or container effect. healmon()'s return is discarded
+    // by C, so the source owner is called directly and no result is inferred.
+    if (!mtmp.mtame && mtmp.mhp < mtmp.mhpmax) {
+        const weight = state.objects?.[otmp.otyp]?.oc_weight ?? 0;
+        healmon(mtmp, weight, 0);
+    }
 
     if (otmp === state.uball || otmp === state.uchain)
         stop('an unpunished object');
@@ -4047,25 +4067,56 @@ export async function vamprises(mtmp, state = game, env = {}) {
 }
 
 // C ref: mon.c logdeadmon() (2996-3076). "when a mon has died, maybe record an
-// achievement or issue livelog message". Every branch writes only to the live
-// log or the achievement list. pline.c livelog_printf() appends to a file this
-// port cannot write, the treatment js/exper.js records at its pluslvl() head,
-// and record_achievement() is reached only for the first Medusa.
-//
-// Both of C's guards are still evaluated, so a kill that would have been
-// logged stops rather than silently skipping the record; an ordinary monster
-// fails both and returns having done nothing.
+// achievement or issue livelog message". The source intentionally uses the
+// exact killed monster name even when an unseen or hallucinated display would
+// have shown another form; x_monnam's EXACT_NAME combination owns that rule.
 function logdeadmon(mtmp, mndx, state, env) {
     const howmany = state.svm.mvitals[mndx].died;
 
     if (mndx === PM_MEDUSA && howmany === 1) {
-        requiredKillOperation(env, 'unsupported')('the Medusa achievement');
+        // record_achievement() also appends the LL_UMONST/LL_ACHIEVE event.
+        record_achievement(ACH_MEDU, state);
     } else if ((unique_corpstat(mtmp.data)
                 && (mndx !== PM_HIGH_CLERIC || !mtmp.mrevived))
                || (mtmp.isshk && !mtmp.mrevived)) {
-        requiredKillOperation(env, 'unsupported')(
-            'the live-log line for a unique or shopkeeper kill',
-        );
+        let shopDetail = '';
+        let eventCount = howmany;
+        const herodidit = !state.context?.mon_moving;
+        if (mtmp.isshk) {
+            // A shopkeeper's shared species death count cannot distinguish
+            // shopkeepers, so C treats this as the first death of this one.
+            eventCount = 1;
+            const shop = SHTYPES[mtmp.mextra?.eshk?.shoptype - SHOPBASE]?.name
+                ?? '';
+            shopDetail = `, the ${shop} ${mtmp.female ? 'proprietrix' : 'proprietor'}`
+                + (herodidit ? '' : ',');
+        } else if (mndx === PM_HIGH_CLERIC) {
+            // The high priest is not unique; !mrevived above guarantees that
+            // this is the first death for this individual.
+            eventCount = 1;
+        }
+        if (eventCount <= 3 || eventCount === 5 || eventCount === 10
+            || eventCount === 25 || eventCount % 50 === 0) {
+            let flags = LL_UMONST;
+            if (eventCount === 1 || mtmp.iswiz || is_rider(mtmp.data))
+                flags |= LL_ACHIEVE;
+            const ordinal = eventCount > 1
+                ? ` (${eventCount}${ordin(eventCount)} time)` : '';
+            const killed = nonliving(mtmp.data) ? 'destroyed' : 'killed';
+            const name = x_monnam(
+                mtmp,
+                ARTICLE_THE,
+                null,
+                EXACT_NAME,
+                false,
+                state,
+                env,
+            );
+            const text = herodidit
+                ? `${killed} ${name}${shopDetail}${ordinal}`
+                : `${name}${shopDetail} has been ${killed}${ordinal}`;
+            livelog_printf(flags, text, state);
+        }
     }
 }
 
@@ -4082,7 +4133,7 @@ export async function anger_quest_guardians(mtmp, state = game, env = {}) {
 // species-gated, the rn2(10) at 3104 to a steam vortex and the rnd(5) at 3149
 // to a Keystone Kop.
 //
-// Six arms stop:
+// Five arms stop:
 //
 //   3096-3097  vamprises(), when a shape-shifted vampire reverts rather than
 //              dying. The guard is is_vampshifter() alone, which is the outer
@@ -4094,8 +4145,10 @@ export async function anger_quest_guardians(mtmp, state = game, env = {}) {
 //   3108-3109  grddead(), which parks a dead vault guard at <0,0>.
 //   3147-3166  the Kop resurrection, whose rnd(5) needs makemon() at a
 //              staircase and again at a random spot.
-//   3170-3171  unmap_object(), for a monster on a remembered invisible glyph;
-//              js/display.js records that function as unported.
+//   3170-3171  unmap_object(), for a monster on a remembered invisible glyph.
+//              The JavaScript planning clone owns its level map-memory cells,
+//              so this source write runs in both planning and live passes;
+//              display.c's engraving refusal remains its own boundary.
 //
 // gd.disintegested and gv.vamp_rise_msg, which xkilled() sets around this
 // call, are read by vamprises() and by the life-saved return at 3558.
@@ -4167,27 +4220,22 @@ export async function mondead(mtmp, state = game, env = {}) {
     if (glyph_is_invisible(
         state.level.at(mtmp.mx, mtmp.my).remembered_glyph?.glyph,
     )) {
-        /* unmap_object() rewrites this square's map memory, and the
-           once-per-turn planning clone shares the live game's cells, so a dry
-           run reaching this line would forget the marker in the running game.
-           killRedraw() above answers the same question by skipping, which
-           works for a repaint because a repaint cannot refuse; this one
-           refuses instead, because unmap_object() refuses an engraved square
-           and skipping would hide that refusal from the pass that exists to
-           find it.
-
-           The plan cannot reach this line for a marker it wrote itself:
-           js/mhitm.js pre_mm_attack() marks through a seam the plan binds to a
-           no-op. What is left is a marker an earlier live turn left behind,
-           which no recorded case produces. */
-        if (env.planning)
-            unsupported('forgetting a remembered invisible monster on a plan');
+        /* The JavaScript dry-run state owns a map-memory copy; C has one
+           `levl` state and performs this write directly. planningState()
+           eagerly clones level.locations because this write does not pass
+           through a vision rebuild, so the source operation is safe during
+           preflight and the live marker remains available for replay. */
         unmap_object(mtmp.mx, mtmp.my, state);
     }
 
     /* "remove 'mtmp' from play; it will stay on the fmon list until end of
-       current move, then dmonsfree() will get rid of it" */
-    await m_detach(mtmp, mptr, true, state, env);
+       current move, then dmonsfree() will get rid of it". relobj() redraws
+       after dropping a carried object; a planning clone must keep that
+       display operation on its own side just as unmap_object() above does. */
+    const detachEnv = env.planning
+        ? { ...env, redraw: () => {} }
+        : env;
+    await m_detach(mtmp, mptr, true, state, detachEnv);
 }
 
 // C ref: mon.c LEVEL_SPECIFIC_NOCORPSE() (44-47), the macro xkilled() tests at
@@ -4763,8 +4811,8 @@ export async function xkilled(mtmp, xkill_flags, state = game, env = {}) {
 
     mtmp.mhp = 0; /* "caller will usually have already done this" */
     if (!noconduct) { /* "KMH, conduct" */
-        /* C's livelog_printf() for the first kill writes a file this port
-           cannot write; js/eat.js:1479 records the same treatment. */
+        if (!state.u.uconduct.killer)
+            livelog_printf(LL_CONDUCT, 'killed for the first time', state);
         state.u.uconduct.killer++;
     }
     if (!nomsg) {
@@ -4956,10 +5004,8 @@ export async function xkilled(mtmp, xkill_flags, state = game, env = {}) {
     else if (mtmp.mtame) {
         adjalign(-15, state); /* "bad!!" */
         /* "your god is mighty displeased..." C's Soundeffect() is a no-op in
-           this port, as js/sounds.js yelp() records, and its LL_KILLEDPET
-           livelog_printf() at 3714-3719 writes a file this port does not
-           write; js/mon.js:2140 and js/eat.js:2260-2261 record the same
-           treatment. Neither draws, so only the You_hear() line survives. */
+           this port, as js/sounds.js yelp() records. The LL_KILLEDPET event
+           remains in the canonical in-memory chronicle. */
         const heard = youHear(
             heroHallucinating(state)
                 ? 'the studio audience applaud!'
@@ -4967,6 +5013,20 @@ export async function xkilled(mtmp, xkill_flags, state = game, env = {}) {
             state,
         );
         if (heard) await message(heard, state);
+        if (!unique_corpstat(mdat)) {
+            const named = has_mgivenname(mtmp);
+            const given = named ? MGIVENNAME(mtmp) : '';
+            const comma = named ? ', ' : '';
+            const heroHis = state.flags?.female ? 'her' : 'his';
+            livelog_printf(
+                LL_KILLEDPET,
+                `murdered ${given}${comma}${heroHis} faithful ${pmname(
+                    mdat,
+                    gender(mtmp),
+                )}`,
+                state,
+            );
+        }
     } else if (mtmp.mpeaceful) unsupported('killing a peaceful monster');
 
     /* "malign was already adjusted for u.ualign.type and randomization" */

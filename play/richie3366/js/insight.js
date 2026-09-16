@@ -20,8 +20,13 @@
 //               Deferred: set_vanq_order / 'm #vanquished' force_sort;
 //               disclose yn ask; class-header modes; dumplog 'd';
 //               Hallucination footer.
-//   genocided: in-progress empty → pline "No creatures have been
-//              genocided."; ngone>0 NHW_MENU / extinctions deferred.
+//   genocided: full list_genocided (ngone>0 yn + NHW_MENU with
+//              extinctions when gameover/wizard/discover, vanq sort with
+//              COUNT→ALPHA_MIX fallback, class headers, extinct suffix,
+//              genocided/extinct tallies) + num_extinct/num_gone +
+//              set_vanq_order pick-one menu. Named: DUMPLOG file arm;
+//              single-entry yn ESC-pad ('ynq', cf. list_vanquished);
+//              sort-menu n>1 preselect-skip branch (primitive is pick-one).
 
 import { game } from './gstate.js';
 import { yn_function } from './getline.js';
@@ -55,6 +60,8 @@ import {
     ECMD_OK,
     ENL_GAMEINPROGRESS,
     G_GENOD,
+    G_GONE,
+    G_EXTINCT,
     LL_ACHIEVE,
     LL_UMONST,
     LL_MINORAC,
@@ -80,6 +87,7 @@ import {
     MZ_TINY, MZ_SMALL, MZ_MEDIUM, MZ_LARGE, MZ_HUGE,
 } from './monsters.js';
 import { an, makeplural } from './objnam.js';
+import { upstart } from './hacklib.js';
 import { align_str, rank_of, rank_to_xlev } from './roles.js';
 import { x_monnam_tame, a_monnam } from './do_name.js';
 import { find_mac } from './mhitm.js';
@@ -192,6 +200,41 @@ export function num_genocides() {
         if (((mv[i]?.mvflags ?? 0) & G_GENOD) !== 0) n++;
     }
     return n;
+}
+
+/**
+ * C ref: insight.c num_extinct `:2969–2981` (C `staticfn`, exported for
+ * the maintained `scripts/list-genocided.test.mjs` pin).
+ * Counts non-unique species whose G_GONE bits are exactly G_EXTINCT
+ * (extinct but not genocided).
+ */
+export function num_extinct() {
+    const mv = game.mvitals || [];
+    let n = 0;
+    for (let i = LOW_PM; i < NUMMONS; i++) {
+        if (UniqCritterIndx(i)) continue;
+        if (((mv[i]?.mvflags ?? 0) & G_GONE) === G_EXTINCT) n++;
+    }
+    return n;
+}
+
+/**
+ * C ref: insight.c num_gone `:2984–3002` (C `staticfn`, exported for the
+ * maintained test pin). C fills the caller's `mindx` buffer and returns
+ * the count; JS returns the collected index array (LOW_PM..NUMMONS order,
+ * uniques skipped, `(mvflags & mvitals[i].mvflags) != 0`).
+ */
+export function num_gone(mvflags) {
+    const mflg = mvflags | 0;
+    const mv = game.mvitals || [];
+    const mindx = [];
+    for (let i = LOW_PM; i < NUMMONS; i++) {
+        /* uniques can't be genocided but can become extinct;
+           however, they're never reported as extinct, so skip them */
+        if (UniqCritterIndx(i)) continue;
+        if ((((mv[i]?.mvflags ?? 0) & mflg) | 0) !== 0) mindx.push(i);
+    }
+    return mindx;
 }
 
 /** Ensure u.uachieved is a 0-terminated sparse list (C N_ACH slots). */
@@ -733,6 +776,149 @@ function vanqsort_cmp(indx1, indx2) {
 }
 
 /**
+ * C ref: insight.c vanqorders `:2601–2618` — [key, short, menu-desc].
+ * Index is the VANQ_* mode (0..7); the menu shows the long desc.
+ */
+const VANQORDERS = [
+    ['t', 'traditional: by monster level',
+        'traditional: by monster level, by internal monster index'],
+    ['d', 'by monster difficulty rating',
+        'by monster difficulty rating, by internal monster index'],
+    ['a', 'alphabetically, unique monsters separate',
+        'alphabetically, first unique monsters, then others'],
+    ['A', 'alphabetically, unique monsters intermixed',
+        'alphabetically, unique monsters and others intermixed'],
+    ['C', 'by monster class, high to low level in class',
+        'by monster class, high to low level within class'],
+    ['c', 'by monster class, low to high level in class',
+        'by monster class, low to high level within class'],
+    ['n', 'by count, high to low',
+        'by count, high to low, by internal index within tied count'],
+    ['z', 'by count, low to high',
+        'by count, low to high, by internal index within tied count'],
+];
+
+/**
+ * C ref: insight.c set_vanq_order `:2717–2765` — #vanquished/#genocided
+ * sort-order menu (PICK_ONE over vanqorders; ALPHA_MIX + MCLS_HTOL
+ * suppressed, COUNT_* suppressed for genocided, ALPHA_SEP relabelled
+ * for genocided; current mode preselected — `selected` paints '*' via
+ * the pick-one primitive, wintty.c `:1467–1473`). C can return 2 picks
+ * (preselected + choice); the primitive returns one, so that branch is
+ * a named omission — behaviour (cancel → -1, mode unchanged;
+ * pick → mode set) matches.
+ * Dynamic options.js import: same shape as artifact.js invoke menus.
+ */
+export async function set_vanq_order(for_vanq) {
+    const { select_menu_pick_one } = await import('./options.js');
+    const { ATR_INVERSE } = await import('./terminal.js');
+    // C: MENU_ITEMFLAGS_SELECTED on the current mode (paints '*' via wintty).
+    const cur = game.flags?.vanq_sortmode ?? VANQ_MLVL_MNDX;
+    const items = [
+        {
+            text: `Sort order for ${
+                for_vanq ? 'vanquished monster counts (also genocided types)'
+                    : 'genocided monster types (also vanquished counts)'}`,
+            attr: ATR_INVERSE,
+            selectable: false,
+        },
+        { text: '', attr: 0, selectable: false },
+    ];
+    for (let i = 0; i < VANQORDERS.length; i++) {
+        if (i === VANQ_ALPHA_MIX || i === VANQ_MCLS_HTOL) continue;
+        /* suppress some orderings if this menu is for '#genocided' */
+        if (!for_vanq && (i === VANQ_COUNT_H_L || i === VANQ_COUNT_L_H)) continue;
+        let desc = VANQORDERS[i][2];
+        /* unique monsters can't be genocided so "alpha, unique separate"
+           and "alpha, unique intermixed" are confusing descriptions when
+           this menu is for #genocided rather than for #vanquished */
+        if (!for_vanq && i === VANQ_ALPHA_SEP) desc = 'alphabetically';
+        items.push({
+            text: desc,
+            attr: 0,
+            selectable: true,
+            selector: VANQORDERS[i][0],
+            a_int: i + 1,
+            selected: i === cur,
+        });
+    }
+    const n = await select_menu_pick_one(items);
+    if (n?.kind !== 'pick' || !n.item) return -1;
+    const choice = ((n.item.a_int | 0) - 1) | 0;
+    if (!game.flags) game.flags = {};
+    game.flags.vanq_sortmode = choice;
+    return choice;
+}
+
+/**
+ * C ref: defsym.h MONSYM descs (`def_monsyms[].explain`, via drawing.c)
+ * keyed by the JS S_* mlet string. Only read for the class-header arm
+ * (by-class sort modes); S_invisible has no live member (absent from
+ * generated mlets) but is kept for table completeness.
+ */
+const MLET_EXPLAIN = {
+    S_ANT: 'ant or other insect',
+    S_BLOB: 'blob',
+    S_COCKATRICE: 'cockatrice',
+    S_DOG: 'dog or other canine',
+    S_EYE: 'eye or sphere',
+    S_FELINE: 'cat or other feline',
+    S_GREMLIN: 'gremlin',
+    S_HUMANOID: 'humanoid',
+    S_IMP: 'imp or minor demon',
+    S_JELLY: 'jelly',
+    S_KOBOLD: 'kobold',
+    S_LEPRECHAUN: 'leprechaun',
+    S_MIMIC: 'mimic',
+    S_NYMPH: 'nymph',
+    S_ORC: 'orc',
+    S_PIERCER: 'piercer',
+    S_QUADRUPED: 'quadruped',
+    S_RODENT: 'rodent',
+    S_SPIDER: 'arachnid or centipede',
+    S_TRAPPER: 'trapper or lurker above',
+    S_UNICORN: 'unicorn or horse',
+    S_VORTEX: 'vortex',
+    S_WORM: 'worm',
+    S_XAN: 'xan or other mythical/fantastic insect',
+    S_LIGHT: 'light',
+    S_ZRUTY: 'zruty',
+    S_ANGEL: 'angelic being',
+    S_BAT: 'bat or bird',
+    S_CENTAUR: 'centaur',
+    S_DRAGON: 'dragon',
+    S_ELEMENTAL: 'elemental',
+    S_FUNGUS: 'fungus or mold',
+    S_GNOME: 'gnome',
+    S_GIANT: 'giant humanoid',
+    S_invisible: 'invisible monster',
+    S_JABBERWOCK: 'jabberwock',
+    S_KOP: 'Keystone Kop',
+    S_LICH: 'lich',
+    S_MUMMY: 'mummy',
+    S_NAGA: 'naga',
+    S_OGRE: 'ogre',
+    S_PUDDING: 'pudding or ooze',
+    S_QUANTMECH: 'quantum mechanic',
+    S_RUSTMONST: 'rust monster or disenchanter',
+    S_SNAKE: 'snake',
+    S_TROLL: 'troll',
+    S_UMBER: 'umber hulk',
+    S_VAMPIRE: 'vampire',
+    S_WRAITH: 'wraith',
+    S_XORN: 'xorn',
+    S_YETI: 'apelike creature',
+    S_ZOMBIE: 'zombie',
+    S_HUMAN: 'human or elf',
+    S_GHOST: 'ghost',
+    S_GOLEM: 'golem',
+    S_DEMON: 'major demon',
+    S_EEL: 'sea monster',
+    S_LIZARD: 'lizard',
+    S_WORM_TAIL: 'long worm tail',
+};
+
+/**
  * C ref: insight.c list_vanquished — #vanquished / disclosure / dumplog.
  * @param {string} defquery 'y'|'a'|'A'|'d'|...
  * @param {boolean} ask end-of-game disclose yn (deferred body for ask)
@@ -840,26 +1026,142 @@ export async function dovanquished() {
 }
 
 /**
- * C ref: insight.c list_genocided — in-progress empty path.
- * Full genocided/extinct NHW_MENU body deferred (ngone > 0).
+ * C ref: insight.c list_genocided `:3043–3048` prompt assembly
+ * (`"Do you want a list of %sspecies%s%s?"`). Pure for the maintained
+ * test pin.
  */
-export async function list_genocided(defquery, _ask) {
+export function genocided_prompt(nextinct, ngenocided) {
+    return 'Do you want a list of ' +
+        ((nextinct && !ngenocided) ? 'extinct ' : '') +
+        'species' +
+        (ngenocided ? ' genocided' : '') +
+        ((nextinct && ngenocided) ? ' and extinct' : '') +
+        '?';
+}
+
+/**
+ * C ref: insight.c list_genocided `:3072–3074` menu title
+ * (`"%s%s species:"`). Pure for the maintained test pin.
+ */
+export function genocided_title(ngenocided, nextinct) {
+    return (ngenocided ? 'Genocided' : 'Extinct') +
+        ((nextinct && ngenocided) ? ' or extinct' : '') +
+        ' species:';
+}
+
+/**
+ * C ref: insight.c list_genocided `:3092–3103` per-species line
+ * (`" %s"` + `" (extinct)"` when G_GONE bits are exactly G_EXTINCT).
+ */
+export function genocided_line(mndx) {
+    let buf = ` ${makeplural(pmname_neutral(mndx))}`;
+    /* "Extinct" is unfortunate terminology ... we only append
+       "(extinct)" if the G_GENOD bit is clear. */
+    if ((((game.mvitals?.[mndx]?.mvflags ?? 0) & G_GONE) | 0) === G_EXTINCT)
+        buf += ' (extinct)';
+    return buf;
+}
+
+/**
+ * C ref: insight.c list_genocided `:3007–3131` — #genocided / disclosure /
+ * dumplog ('d' => 'y', 'g' => 'y' genocides-only). Extinctions join the
+ * census only at gameover/wizard/discover. ngone>1 asks ynaq (single:
+ * ynq — C `"ynq\\033a"` ESC-pad simplified, same as list_vanquished);
+ * 'q' bumps done_stopprint; 'a' with ngone>1 goes through
+ * set_vanq_order(FALSE); COUNT_* sort falls back to VANQ_ALPHA_MIX;
+ * class-header modes head each mlet run with the upstart'ed
+ * def_monsyms explain (ATR_NONE at final disclosure, else
+ * iflags.menu_headings — the text-menu primitive carries no per-line
+ * attr, so headings ride as plain lines, named in the envelope).
+ * DUMPLOG-only `putstr(0, ...)` "No species..." arm stays named
+ * (DUMPLOG retired, D-1776).
+ */
+export async function list_genocided(defquery, ask) {
     const dumping = defquery === 'd';
     const genoing = defquery === 'g';
     if (dumping || genoing) defquery = 'y';
-    void defquery;
+    let both = !!(
+        game.program_state?.gameover || wizardMode() ||
+        game.flags?.explore || game.flags?.discover
+    );
+    if (genoing) both = false; /* genocides only, not extinctions */
 
-    // both (extinctions) only at gameover/wizard/discover — deferred
+    /* this goes through the whole monster list up to three times but will
+       happen rarely and is simpler than a more general single pass check;
+       extinctions are only revealed during end of game disclosure or when
+       running in wizard or explore mode */
     const ngenocided = num_genocides();
-    const nextinct = 0;
-    const ngone = ngenocided + nextinct;
-    if (ngone === 0) {
-        if (!game.program_state?.gameover) {
-            await pline(`No creatures have been genocided${genoing ? ' yet' : ''}.`);
+    const nextinct = both ? num_extinct() : 0;
+    const mvflags = G_GENOD | (both ? G_EXTINCT : 0);
+    const mindx = num_gone(mvflags);
+    const ngone = mindx.length;
+
+    /* genocided or extinct species list */
+    if (ngone > 0) {
+        const c = ask
+            ? await yn_function(
+                genocided_prompt(nextinct, ngenocided),
+                ngone > 1 ? 'ynaq' : 'ynq',
+                defquery,
+            )
+            : defquery;
+        if (c === 'q') {
+            if (!game.program_state) game.program_state = {};
+            game.program_state.done_stopprint =
+                (game.program_state.done_stopprint | 0) + 1;
         }
-        return;
+        if (c === 'y' || c === 'a') {
+            let class_header = false;
+            if (ngone > 1) {
+                if (c === 'a') { /* ask player to choose sort order */
+                    /* #genocided shares #vanquished's sort order */
+                    if ((await set_vanq_order(false)) < 0) return;
+                }
+                /* sort orderings count-high-to-low or count-low-to-high
+                   don't make sense for genocides; if the preferred order
+                   to set to either of those, use alphabetical instead;
+                   note: the tie breaker for by-class is level-high-to-low
+                   or level-low-to-high rather than count so is ok as-is */
+                if (!game.flags) game.flags = {};
+                const save_sortmode = game.flags.vanq_sortmode;
+                if (save_sortmode === VANQ_COUNT_H_L
+                    || save_sortmode === VANQ_COUNT_L_H)
+                    game.flags.vanq_sortmode = VANQ_ALPHA_MIX;
+                mindx.sort(vanqsort_cmp);
+                class_header = game.flags.vanq_sortmode === VANQ_MCLS_LTOH
+                    || game.flags.vanq_sortmode === VANQ_MCLS_HTOL;
+                game.flags.vanq_sortmode = save_sortmode;
+            }
+
+            const lines = [];
+            lines.push(genocided_title(ngenocided, nextinct));
+            if (!dumping) lines.push('');
+
+            let prev_mlet = 0;
+            for (let i = 0; i < ngone; i++) {
+                const mndx = mindx[i];
+                const mlet = mons(mndx)?.mlet;
+                if (class_header && mlet !== prev_mlet) {
+                    /* 'ask' implies final disclosure, where highlighting
+                       of various header lines is suppressed */
+                    lines.push(upstart(MLET_EXPLAIN[mlet] ?? mlet));
+                    prev_mlet = mlet;
+                }
+                lines.push(genocided_line(mndx));
+            }
+            if (!dumping) lines.push('');
+            if (ngenocided > 0) lines.push(`${ngenocided} species genocided.`);
+            if (nextinct > 0) lines.push(`${nextinct} species extinct.`);
+
+            await show_nhw_menu_text(lines);
+        }
+
+    /* See the comment for similar code near the end of list_vanquished(). */
+    } else if (!game.program_state?.gameover) {
+        /* #genocided rather than final disclosure, so pline() is ok and
+           extinction has been ignored */
+        await pline(`No creatures have been genocided${genoing ? ' yet' : ''}.`);
     }
-    // ngone > 0 NHW_MENU body deferred (named omission in C-JS-MAP)
 }
 
 /**

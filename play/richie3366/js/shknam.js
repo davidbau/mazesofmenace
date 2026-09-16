@@ -29,7 +29,7 @@ import {
     D_NODOOR, D_ISOPEN, D_LOCKED, D_TRAPPED, DUST,
     IS_ROOM, isok, ESHK,
     HEALTHY_TIN, ROTTEN_TIN, HOMEMADE_TIN, SPINACH_TIN,
-    NON_PM, ismnum, In_mines,
+    NON_PM, ismnum, In_mines, RLOC_NOMSG,
 } from './const.js';
 import { makemon, mkmonmoney, mongets, mkclass, neweshk } from './makemon.js';
 import { mksobj_at, mkobj_at, obj_extract_self } from './mkobj.js';
@@ -44,6 +44,7 @@ import { Is_special } from './dungeon.js';
 import { newsym, Hallucination } from './display.js';
 import { obj_resists } from './dogmove.js';
 import { in_town } from './hack.js';
+import { rloc } from './teleport.js';
 
 const VEGETARIAN_CLASS = MAXOCLASSES + 1;
 const VEGGY = 3; // objclass.h
@@ -631,8 +632,11 @@ function stock_room_goodpos(sroom, rmno, sh, sx, sy) {
     return !!(loc && IS_ROOM(loc.typ));
 }
 
-/** C ref: shknam.c shkinit */
-function shkinit(shp, sroom) {
+/**
+ * C ref: shknam.c shkinit — :658-660 insurance rlocs the shk-spot
+ * squatter (RLOC_NOMSG) before makemon.
+ */
+async function shkinit(shp, sroom) {
     const pos = { x: 0, y: 0 };
     const sh = good_shopdoor(sroom, pos);
     if (sh < 0) return -1;
@@ -640,10 +644,7 @@ function shkinit(shp, sroom) {
     const sy = pos.y;
 
     const blocker = m_at(sx, sy);
-    if (blocker) {
-        blocker.mx = 0;
-        blocker.my = 0;
-    }
+    if (blocker) await rloc(blocker, RLOC_NOMSG);
 
     const shk = makemon(mons(PM_SHOPKEEPER), sx, sy, MM_ESHK);
     if (!shk) return -1;
@@ -684,11 +685,11 @@ function shkinit(shp, sroom) {
 /**
  * C ref: shknam.c stock_room — shkinit, door cleanup, tribute spot, stock.
  */
-export function stock_room(shp_indx, sroom) {
+export async function stock_room(shp_indx, sroom) {
     const shp = shtypes[shp_indx];
     if (!shp) return;
 
-    const sh = shkinit(shp, sroom);
+    const sh = await shkinit(shp, sroom);
     if (sh < 0) return;
 
     const rmno = game.level.rooms.indexOf(sroom) + ROOMOFFSET;

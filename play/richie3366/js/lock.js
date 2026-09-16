@@ -72,8 +72,7 @@ const NUMPAD_DIR = {
 
 /**
  * C ref: cmd.c movecmd(sym, MV_ANY) + GETDIR_SELF/SELF2 + <> + optional numpad.
- * Named omit: mouse `_` getpos; trailing confdir (callers that need it,
- * e.g. use_whip / getdir_zap, already call confdir).
+ * Named omit: mouse `_` getpos. Trailing confdir lives in getdir (D-2430).
  */
 function apply_dirsym(ch, key) {
     const u = game.u || (game.u = {});
@@ -537,9 +536,10 @@ export async function getdir_read_dirsym(prompt) {
  * (NEED_MORE via NHW_TEXT xwaitforspace). cmdassist is iflags
  * (optlist default On; Options `O` writes game.iflags). Horizontal
  * move then dxdy_moveok (grid-bug diagonal You_cant).
- * Named omit: mouse `_` getpos; trailing confdir(FALSE) (use_whip /
- * getdir_zap already confdir; adding it here would double);
- * fuzzer; yn_function_menu.
+ * Trailing `:4115–4116` if (!u.dz) confdir(FALSE) lives here (D-2430:
+ * use_whip `:3141` / pick-axe keep their own `:2980`/`:1193` self-calls,
+ * so confused zaps draw twice like C; getdir_zap/doclose compensations
+ * removed). Named omit: mouse `_` getpos; fuzzer; yn_function_menu.
  */
 export async function getdir(prompt) {
     for (;;) {
@@ -550,9 +550,11 @@ export async function getdir(prompt) {
         const u = game.u;
         const numPad = !!(game.iflags?.num_pad || game.Cmd?.num_pad);
 
-        // C `:4023–4025` — NHKF_GETDIR_SELF / SELF2
+        // C `:4023–4025` — NHKF_GETDIR_SELF / SELF2; self falls through
+        // to the `:4115–4116` tail below (dz==0 → confdir still runs).
         if (ch === '.' || ch === 's' || (numPad && ch === '5')) {
             u.dx = u.dy = u.dz = 0;
+            if (!(u.dz | 0)) confdir(false);
             return true;
         }
 
@@ -593,7 +595,9 @@ export async function getdir(prompt) {
             await pline("You can't orient yourself that direction.");
             return false;
         }
-        // C `:4115–4116` if (!u.dz) confdir(FALSE) — caller-local
+        // C `:4115–4116` if (!u.dz) confdir(FALSE) — in getdir itself,
+        // so every direction prompt draws the Confusion !rn2(5) (D-2430).
+        if (!(u.dz | 0)) confdir(false);
         return true;
     }
 }
@@ -847,7 +851,7 @@ async function obstructed_close(x, y) {
 
 /**
  * C ref: lock.c doclose — #close / `c` command.
- * Envelope: nohands/pit gates, getdir (cmdassist) + getdir-tail confdir(FALSE),
+ * Envelope: nohands/pit gates, getdir (cmdassist; tail confdir inside it),
  * impaired-direction TIME, door mask arms, close roll.
  * Named omissions: portcullis/drawbridge; steed close path;
  * feel_newsym mapseen gating; Some_Monnam obstructed polish.
@@ -864,13 +868,10 @@ export async function doclose() {
         return false;
     }
 
-    // C: getdir(NULL) — cmdassist NHW_TEXT on invalid key, then cancel
+    // C: getdir(NULL) — cmdassist NHW_TEXT on invalid key, then cancel;
+    // the `:4115–4116` tail confdir(FALSE) already ran inside getdir (D-2430;
+    // C lock.c has no self-call, so one draw per prompt like C).
     if (!(await getdir(null))) return false;
-    // C cmd.c getdir `:4116–4117` — if (!u.dz) confdir(FALSE). getdir omits
-    // the tail by design (use_whip/getdir_zap already confdir), so callers
-    // that need it run it here. Draws the Confusion !rn2(5) direction check
-    // even when no door ends up closed.
-    if (!(u.dz | 0)) confdir(false);
 
     const x = (u.ux | 0) + (u.dx | 0);
     const y = (u.uy | 0) + (u.dy | 0);

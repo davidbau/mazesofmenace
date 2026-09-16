@@ -4,7 +4,7 @@
 //         nasty / pick_nasty (pick_nasty lives in makemon.js for newcham).
 
 import { game } from './gstate.js';
-import { makemon, set_malign, pick_nasty, mpickobj } from './makemon.js';
+import { makemon, makemon_appear_msg, set_malign, pick_nasty, mpickobj } from './makemon.js';
 import {
     mons, is_covetous, is_minion, M3_WANTSAMUL, M3_WANTSBELL, M3_WANTSBOOK,
     M3_WANTSCAND, M3_WANTSARTI,
@@ -122,6 +122,13 @@ export async function nasty(summoner) {
 
                 let mtmp = makemon(mons(makeindex), bypos.x, bypos.y, mmflags);
                 if (mtmp) {
+                    // C: makemon in-body appear + dochugw (makemon.c:1476–
+                    // 1504) run before nasty zeroes mpeaceful — the threat
+                    // check sees birth values. Under MM_NOMSG the Norep is
+                    // skipped but the occupation check still fires.
+                    await makemon_appear_msg(
+                        mtmp, mtmp.mx | 0, mtmp.my | 0, mmflags,
+                    );
                     mtmp.msleeping = 0;
                     mtmp.mpeaceful = 0;
                     mtmp.mtame = 0;
@@ -130,6 +137,9 @@ export async function nasty(summoner) {
                     // Random substitute for geno'd selection
                     mtmp = makemon(null, bypos.x, bypos.y, mmflags);
                     if (mtmp) {
+                        await makemon_appear_msg(
+                            mtmp, mtmp.mx | 0, mtmp.my | 0, mmflags,
+                        );
                         m_cls = mtmp.data?.mlet;
                         if ((difcap > 0
                                 && (mtmp.data?.difficulty | 0) >= difcap

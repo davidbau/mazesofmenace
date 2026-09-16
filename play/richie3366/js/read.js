@@ -113,7 +113,7 @@ import { study_book, can_chant, losespells } from './spell.js';
 import { scrolltele, level_tele } from './teleport.js';
 import { trycall, hcolor, Monnam, mon_nam, s_suffix, hliquid } from './do_name.js';
 import { chwepon, is_weptool } from './wield.js';
-import { destroy_arm, some_armor, setworn, hard_helmet } from './do_wear.js';
+import { destroy_arm, disintegrate_arm, some_armor, setworn, hard_helmet } from './do_wear.js';
 import { dropy, flooreffects } from './do.js';
 import { placebc, set_bc, move_bc } from './ball.js';
 import { rn2, rnd, rn1, d } from './rng.js';
@@ -1169,13 +1169,15 @@ async function strange_feeling_scroll(obj, txt) {
 
 /**
  * C ref: read.c seffect_destroy_armor
- * Envelope: some_armor always; uncursed non-confused → destroy_arm (or
- * strange_feeling + STR/CON exercise on fail). Named omissions: confused
- * p_glow2 polish; cursed vibrate adj_abon + make_stunned body;
- * disintegrate_arm; blessed getobj choice + disintegrate_cursed_armor.
+ * Envelope: some_armor always; cursed → vibrate or disintegrate_arm;
+ * uncursed non-confused → destroy_arm (or strange_feeling + STR/CON
+ * exercise on fail). Named omissions: confused p_glow2 polish; cursed
+ * vibrate adj_abon + make_stunned body; blessed getobj choice +
+ * disintegrate_cursed_armor.
  * @returns {Promise<object|null>} sobj or null if strange_feeling used it up
  */
-async function seffect_destroy_armor(sobj) {
+// C staticfn, exported for the test pin (cf. D-2412 num_extinct/num_gone).
+export async function seffect_destroy_armor(sobj) {
     // C: always picks some_armor first (may rn2(4) per extra worn slot)
     const otmp = some_armor(null);
     const scursed = !!sobj.cursed;
@@ -1202,7 +1204,6 @@ async function seffect_destroy_armor(sobj) {
     }
 
     if (scursed) {
-        // vibrate / disintegrate_arm deferred — seed path is uncursed
         if (otmp && otmp.cursed) {
             await pline(`Your ${xname(otmp)} vibrates.`);
             if ((otmp.spe | 0) >= -6) {
@@ -1210,8 +1211,10 @@ async function seffect_destroy_armor(sobj) {
                 // adj_abon deferred
             }
             // make_stunned((HStun & TIMEOUT) + rn1(10,10)) deferred
+        } else if (await disintegrate_arm(otmp)) {
+            // C read.c:1380–1383: gk.known = TRUE; return (scroll survives)
+            known = true;
         }
-        // else disintegrate_arm deferred
         return sobj;
     }
 

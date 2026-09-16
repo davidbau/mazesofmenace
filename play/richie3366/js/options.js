@@ -1639,8 +1639,11 @@ export async function select_menu_pick_one(rawItems) {
         const page = items.slice(start, start + lmax);
         const entries = page.map((it) => {
             if (it.selectable) {
+                // C ref: wintty.c process_menu_window `:1467–1473` — the
+                // '-' of "k - text" paints '*' when the item is preselected
+                // (MENU_ITEMFLAGS_SELECTED, count -1).
                 return {
-                    text: `${it.selector} - ${it.text}`,
+                    text: `${it.selector} ${it.selected ? '*' : '-'} ${it.text}`,
                     attr: it.attr || 0,
                 };
             }
@@ -1684,7 +1687,18 @@ export async function select_menu_pick_one(rawItems) {
             clear_committed_status();
         }
 
+        // C wintty.c `:1622–1638`: ESC deselects all + WIN_CANCELLED;
+        // `\n`/`\r` and last-page space finish with the current
+        // selection — a preselected entry (MENU_ITEMFLAGS_SELECTED)
+        // is returned, not cancelled.
+        const finishPick = (key === 13 || key === 10 || key === 32)
+            ? items.find((it) => it.selectable && it.selected)
+            : null;
         if (key === 27 || key === 13 || key === 10) {
+            if (finishPick) {
+                if (wasFullscreen) clear_committed_status();
+                return { kind: 'pick', item: finishPick };
+            }
             return { kind: 'cancel' };
         }
         // C: ' ' / MENU_NEXT_PAGE ('>') — advance; space on last finishes
@@ -1694,6 +1708,10 @@ export async function select_menu_pick_one(rawItems) {
                 continue;
             }
             if (key === 32) {
+                if (finishPick) {
+                    if (wasFullscreen) clear_committed_status();
+                    return { kind: 'pick', item: finishPick };
+                }
                 // space on last page cancels PICK_ONE (no pick)
                 return { kind: 'cancel' };
             }

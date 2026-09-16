@@ -72,6 +72,7 @@ import {
     INVIS,
     LAVAWALL,
     LAVAPOOL,
+    LL_CONDUCT,
     LEFT_SIDE,
     LEVITATION,
     MAX_CARR_CAP,
@@ -174,6 +175,8 @@ import {
     glyph_at,
     glyph_is_cmap,
     glyph_is_invisible,
+    glyph_is_monster,
+    glyph_is_statue,
     glyph_is_warning,
     glyph_to_cmap,
     glyph_to_obj,
@@ -287,6 +290,7 @@ import {
     The,
     the,
     just_an,
+    ansimpleoname,
     donameFresh,
     UnsupportedObjectNameError,
     xnameFresh,
@@ -419,6 +423,7 @@ import {
 import { tty_raw_print } from './tty_rawprint.js';
 import { init_objects } from './o_init.js';
 import { note_unported } from './unported.js';
+import { livelog_printf } from './pline.js';
 import { select_menu } from './windows.js';
 import { do_attack, is_safemon, stumble_onto_mimic } from './uhitm.js';
 import {
@@ -1970,8 +1975,17 @@ export async function still_chewing(x, y, state = game) {
     }
 
     state.u.uconduct ??= {};
-    if (!(state.u.uconduct.food ?? 0))
-        note_unported('pline.c livelog_printf');
+    if (!(state.u.uconduct.food ?? 0)) {
+        const target = boulder ? 'a boulder'
+            : IS_TREE(lev.typ) ? 'a tree'
+                : IS_OBSTRUCTED(lev.typ) ? 'rock'
+                    : lev.typ === IRONBARS ? 'iron bars' : 'a door';
+        livelog_printf(
+            LL_CONDUCT,
+            `ate for the first time, by chewing through ${target}`,
+            state,
+        );
+    }
     state.u.uconduct.food = Math.trunc(state.u.uconduct.food ?? 0) + 1;
     state.u.uhunger += rnd(20);
 
@@ -2195,11 +2209,10 @@ async function dopush(sx, sy, rx, ry, otmp, state, env) {
     movobj(otmp, rx, ry, state); /* does newsym(rx,ry) */
     // 210-215.
     if (heroIsBlind(state)) {
-        // The local display port currently exposes feel_location() only for
-        // adjacent squares; C also asks it to feel the boulder's two-step
-        // destination here. Keep the source call's gap explicit while still
-        // preserving the adjacent-square memory update.
-        note_unported('display.c feel_location boulder destination');
+        // hack.c:211-212 feels both the boulder's destination and the square
+        // it left.  The destination may be two cells away, so feel_location()
+        // must use display.c's sign-clamped seenv indexing.
+        feel_location(rx, ry, state);
         feel_location(sx, sy, state);
     } else {
         newsym(sx, sy);
@@ -3614,9 +3627,10 @@ function domove_fight_web(x, y, state) {
 // and nothing else writes either. show_glyph_cell() keeps no glyph number on
 // the drawn cell, which is why the memory is the one that can be read.
 //
-// Three message arms are live. The off-edge arm at 2252-2256 answers the one
+// Four message cases are live. The off-edge arm at 2252-2256 answers the one
 // caller that is not domove_core(): move_out_of_bounds() hands a force-fight
-// aimed off the map straight here. The solid arm at 2298-2313 names terrain
+// aimed off the map straight here. The object arm at 2254-2260 names a
+// glyph-selected boulder or statue, the solid arm at 2298-2313 names terrain
 // with a remembered appearance, and the thin-air arm at 2314-2316 names
 // nothing. Every other arm stops, each named below.
 async function domove_fight_empty(x, y, state) {
@@ -3654,6 +3668,9 @@ async function domove_fight_empty(x, y, state) {
     }
 
     const location = state.level.at(x, y);
+    // hack.c:2232 reads the drawn glyph before selecting the floor object.
+    // It is deliberately separate from the glyph read after newsym().
+    const glyph = glyph_at(x, y, state);
     // 2253 and 2306-2312. Underwater skips the boulder and digging tests and
     // then takes a message arm of its own, which names an air bubble or
     // nothing at all rather than the terrain.
@@ -3662,17 +3679,16 @@ async function domove_fight_empty(x, y, state) {
             'force-fight while underwater',
         );
     }
-    // 2254-2260. A boulder on the square, or a statue the map is showing, is
-    // what the hero attacks instead, and 2314 names it with objnam.c
-    // ansimpleoname(), which has no port. C finds the statue through
-    // glyph_is_statue(), a question about the glyph number in map memory that
-    // this port's presentation records cannot answer; asking sobj_at() instead
-    // refuses a statue C would have ignored because something else covers it.
-    // Both are stops.
-    if (sobj_at(BOULDER, x, y, state) || sobj_at(STATUE, x, y, state)) {
-        throw new UnsupportedHeroMoveBoundaryError(
-            'force-fight against a boulder or statue',
-        );
+    // 2254-2260. C starts with a boulder, then replaces that selection with a
+    // statue only when the drawn glyph shows a statue (or hallucination makes
+    // a monster glyph look like one). A statue hidden under a remembered
+    // invisible-monster marker therefore remains out of the message, even
+    // though it is still on the floor; reading sobj_at(STATUE) unconditionally
+    // would answer a different question and refuse a C thin-air swing.
+    let boulder = sobj_at(BOULDER, x, y, state);
+    if (glyph_is_statue(glyph)
+        || (heroHallucinating(state) && glyph_is_monster(glyph))) {
+        boulder = sobj_at(STATUE, x, y, state);
     }
     // 2267-2276. A hero who force-fights while wielding a digging tool starts
     // digging instead, through dig.c use_pick_axe2(), but only when dig_typ()
@@ -3715,7 +3731,7 @@ async function domove_fight_empty(x, y, state) {
     // screen the port has already diverged from. It is hoisted instead, which
     // is the one place the port deliberately departs from C's order, and only
     // on the arm it refuses.
-    if (solid
+    if (!boulder && solid
         && !(location.seenv || IS_STWALL(location.typ)
              || location.typ === SDOOR || location.typ === SCORR)) {
         throw new UnsupportedHeroMoveBoundaryError(
@@ -3725,11 +3741,14 @@ async function domove_fight_empty(x, y, state) {
 
     /* about to become known empty -- remove 'I' if present */
     unmap_object(x, y, state);
+    if (boulder) map_object(boulder, true, state);
     newsym(x, y);
     // C re-reads glyph_at() here and marks it nhUse(); nothing reads it back.
 
     let buf;
-    if (solid) {
+    if (boulder) {
+        buf = ansimpleoname(boulder, state);
+    } else if (solid) {
         buf = the(CMAP_EXPLANATIONS[
             glyph_to_cmap(back_to_glyph(x, y, state))
         ], state);
@@ -3743,9 +3762,10 @@ async function domove_fight_empty(x, y, state) {
     // 2318-2321, C's `futile` label, which the off-edge arm above jumps to and
     // this arm falls into. C's adverb is
     //     !(boulder || solid) ? "" : !explo ? "harmlessly " : "futilely "
-    // `boulder` and `explo` are refused above, so `solid` alone chooses
-    // between the first two and no case can reach "futilely ".
-    await ttyPline(`You ${solid ? 'harmlessly ' : ''}attack ${buf}.`, state);
+    // The exploding-form arm was handled above, so an admitted boulder or
+    // solid square takes the harmless branch while ordinary floor is bare.
+    const adverb = boulder || solid ? 'harmlessly ' : '';
+    await ttyPline(`You ${adverb}attack ${buf}.`, state);
 
     nomul(0, state);
     return true;
@@ -4723,7 +4743,7 @@ export async function domove_swap_with_pet(
         const hadNoKillers = !state.u.uconduct.killer;
         state.u.uconduct.killer = Math.trunc(state.u.uconduct.killer ?? 0) + 1;
         if (hadNoKillers)
-            note_unported('hack.c domove_swap_with_pet() livelog_printf');
+            livelog_printf(LL_CONDUCT, 'killed for the first time', state);
         const mndx = monsndx(monster.data);
         const deaths = state.svm?.mvitals?.[mndx]?.died ?? 0;
         const gained = experience(monster, deaths, state);

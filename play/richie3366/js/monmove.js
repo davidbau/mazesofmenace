@@ -758,7 +758,7 @@ function Protection_from_shape_changers() {
  * Named omission: stuff_prevents_passage invent scan (empty invent ⇒ ok,
  * same deferral as can_ooze).
  */
-function can_fog(mtmp) {
+export function can_fog(mtmp) {
     const fogGone = !!((game.mvitals?.[PM_FOG_CLOUD]?.mvflags ?? 0) & G_GENOD);
     if (fogGone || !is_vampshifter(mtmp) || Protection_from_shape_changers()) {
         return false;

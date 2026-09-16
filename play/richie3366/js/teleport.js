@@ -2732,12 +2732,16 @@ function ledger_no(lev) {
 
 function ledger_to_dnum(tolev) {
     const duns = game.dungeons || [];
+    const want = tolev | 0;
     for (let i = 0; i < duns.length; i++) {
         const d = duns[i];
         if (!d) continue;
         const start = d.ledger_start | 0;
         const n = d.num_dunlevs | 0;
-        if (tolev >= start && tolev < start + n) return i;
+        // C dungeon.c:1408–1411 — ledger numbers run
+        // ledger_start+1 .. ledger_start+num_dunlevs (cf. ledger_no), so
+        // the last level belongs to its own dungeon, not the next one.
+        if (start < want && want <= start + n) return i;
     }
     return 0;
 }

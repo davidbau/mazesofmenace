@@ -2508,6 +2508,8 @@ export async function use_pick_axe2(obj) {
         if (game.flags) game.flags.botl = true;
         return ECMD_TIME;
     } else if ((u.dz | 0) === 0) {
+        // C dig.c:1193 self-call — getdir already drew its `:4115–4116`
+        // tail, so confused digging draws twice like C (D-2430).
         confdir(false);
         const rx = (u.ux | 0) + (u.dx | 0);
         const ry = (u.uy | 0) + (u.dy | 0);

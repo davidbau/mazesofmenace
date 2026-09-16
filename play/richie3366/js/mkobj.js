@@ -103,6 +103,7 @@ const CANDELABRUM_OF_INVOCATION =
 const TALLOW_CANDLE = objectNames.indexOf('TALLOW_CANDLE');
 const BOULDER = objectNames.indexOf('BOULDER');
 const STATUE = objectNames.indexOf('STATUE');
+const BAG_OF_HOLDING = objectNames.indexOf('BAG_OF_HOLDING');
 const FIGURINE = objectNames.indexOf('FIGURINE');
 const BOOMERANG = objectNames.indexOf('BOOMERANG');
 const CORPSE = objectNames.indexOf('CORPSE');
@@ -263,7 +264,8 @@ export function add_to_minv(mon, obj) {
 }
 
 /**
- * C ref: mkobj.c weight() — subset; containers sum cobj; BoH factor deferred.
+ * C ref: mkobj.c weight() `:1914–1939` — containers sum cobj; BAG_OF_HOLDING
+ * applies the bless/curse factor in C ternary order (D-2422).
  */
 export function weight(obj) {
     if (!obj) return 0;
@@ -273,11 +275,17 @@ export function weight(obj) {
     if (quan < 1) return 0;
     // C: globby — owt managed by mksobj/obj_absorb/shrink_glob; return as-is
     if (obj.globby) return obj.owt | 0;
-    // C: Is_container || STATUE — contents weight (BoH cursed/blessed factor deferred)
+    // C: Is_container || STATUE — contents weight, then the BoH factor
+    // (mkobj.c:1932–1934, cursed first like the C ternary chain)
     if (Is_container(obj) || obj.otyp === STATUE) {
         let cwt = 0;
         for (let contents = obj.cobj; contents; contents = contents.nobj) {
             cwt += weight(contents);
+        }
+        if ((obj.otyp | 0) === BAG_OF_HOLDING) {
+            cwt = obj.cursed ? cwt * 2
+                : obj.blessed ? Math.trunc((cwt + 3) / 4)
+                : Math.trunc((cwt + 1) / 2); /* uncursed */
         }
         return wt + cwt;
     }

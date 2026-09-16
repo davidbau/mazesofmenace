@@ -246,7 +246,7 @@ import {
 } from './attrib.js';
 import { findit, cvt_sdoor_to_door, show_map_spot } from './detect.js';
 import {
-    confdir, fall_asleep, losehp, maybe_half_phys, nomul, is_pool,
+    fall_asleep, losehp, maybe_half_phys, nomul, is_pool,
     is_lava, is_moat, waterbody_name, in_rooms, dissolve_bars, stop_occupation,
     SURFACE_AT,
 } from './hack.js';
@@ -2411,16 +2411,12 @@ function zap_ok(obj) {
 
 /**
  * C ref: cmd.c getdir — direction for zap; '.' / 's' = self.
- * Shared lock.js getdir owns cmdq_pop / CQ_REPEAT / yn_function.
- * After a successful horizontal dir (including self dz==0), C always
- * calls confdir(FALSE) which may roll u_maybe_impaired — stay local;
- * do not add trailing confdir to shared lock.js getdir.
+ * Shared lock.js getdir owns cmdq_pop / CQ_REPEAT / yn_function plus the
+ * `:4115–4116` trailing confdir(FALSE) (D-2430; C zap.c has no self-call,
+ * so one draw per prompt like C).
  */
 async function getdir_zap(prompt) {
-    const ok = await getdir(prompt);
-    // C getdir: if (!u.dz) confdir(FALSE);
-    if (ok && !(game.u?.dz | 0)) confdir(false);
-    return ok;
+    return getdir(prompt);
 }
 
 /**

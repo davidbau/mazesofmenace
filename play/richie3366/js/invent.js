@@ -226,6 +226,9 @@ import {
     STEALTH,
     INVULNERABLE,
     FAST,
+    UNCHANGING,
+    POLYMORPH,
+    PROT_FROM_SHAPE_CHANGERS,
     SEE_INVIS,
     MGIVENNAME,
     has_mgivenname,
@@ -5261,7 +5264,7 @@ function status_core_lines(final = 0, opts = {}) {
  * from_what suffixes; blocked-Stealth / other appearance props
  * (Displaced + Polymorph_control live, D-2025);
  * Teleportation/Aggravate/Conflict/Jumping-Teleport arms; Regen/digestion/
- * combat-inc/defense/half-damage; shape-changers/Hate_silver/Free/Fixed_abil;
+ * combat-inc/defense/half-damage; Hate_silver/Free/Fixed_abil;
  * Sick `defended(AD_DISE)` form arm.
  * @param {number} mode BASICENLIGHTENMENT | MAGICENLIGHTENMENT
  * @param {number} final ENL_GAMEINPROGRESS / GAMEOVERALIVE / GAMEOVERDEAD
@@ -5792,9 +5795,57 @@ export async function enlightenment(mode, final = 0) {
                 }
             }
         }
+        // C insight.c:1834-1836 — Protection_from_shape_changers heads
+        // the shape-change arms, before Unchanging.
+        {
+            const { Protection_from_shape_changers } = await import('./were.js');
+            if (Protection_from_shape_changers()) {
+                lines.push(you_are(
+                    'protected from shape changers',
+                    from_what(PROT_FROM_SHAPE_CHANGERS),
+                ));
+            }
+        }
+        // C insight.c:1837-1856 — Unchanging (!Upolyd arm, then the
+        // blocked-shape "would … periodically" line, else-if Polymorph).
+        // Polymorph has no canonical JS export: flat H/E + uprops inline,
+        // same predicate as allmain.js Polymorph.
+        {
+            const { Unchanging: isUnchanging } = await import('./polyself.js');
+            const isPoly = !!((u.Polymorph || u.HPolymorph || u.EPolymorph)
+                || (u.uprops?.[POLYMORPH]?.intrinsic | 0)
+                || (u.uprops?.[POLYMORPH]?.extrinsic | 0));
+            if (isUnchanging(u)) {
+                // C: !Upolyd handled below after current form.
+                if (!Upolyd(u)) {
+                    lines.push(enlght_line_txt(
+                        You_, final ? 'could ' : 'can ',
+                        'not change from your current form',
+                        from_what(UNCHANGING),
+                    ));
+                }
+                // C: blocked shape changes; omit from_what(UNCHANGING).
+                let what = null;
+                if (isPoly) {
+                    what = !final ? 'polymorph' : 'have polymorphed';
+                } else if (ismnum((u.ulycn ?? NON_PM) | 0)) {
+                    what = !final ? 'change shape' : 'have changed shape';
+                }
+                if (what) {
+                    // C enl_msg(You_, buf, buf, …): same wording live or dead.
+                    lines.push(enlght_line_txt(
+                        You_, `would ${what} periodically`,
+                        ' if not locked into your current form', '',
+                    ));
+                }
+            } else if (isPoly) {
+                lines.push(you_are(
+                    'polymorphing periodically', from_what(POLYMORPH),
+                ));
+            }
+        }
         // C insight.c:1857-1858 — Polymorph_control after the shape-change
-        // arms (Unchanging / Polymorph deferred; Upolyd foreign-shape below),
-        // before Fast.
+        // arms (Upolyd foreign-shape below), before Fast.
         if (hero_Polymorph_control(u)) {
             lines.push(you_have('polymorph control', from_what(POLYMORPH_CONTROL)));
         }
@@ -5825,16 +5876,26 @@ export async function enlightenment(mode, final = 0) {
             }
             lines.push(you_are(werebuf));
         }
-        // C insight.c:1895-1896 — Hate_silver after the shape-change arms
-        // (Unchanging-while-poly deferred above).
+        // C insight.c:1892-1893 — Unchanging while poly (!Upolyd handled
+        // above), after were-form, before Hate_silver.
+        {
+            const { Unchanging: isUnchangingPoly } = await import('./polyself.js');
+            if (isUnchangingPoly(u) && Upolyd(u)) {
+                lines.push(enlght_line_txt(
+                    You_, final ? 'could ' : 'can ',
+                    'not change from your current form',
+                    from_what(UNCHANGING),
+                ));
+            }
+        }
+        // C insight.c:1895-1896 — Hate_silver after the shape-change arms.
         // C: Hate_silver (u.ulycn >= LOW_PM || hates_silver(youmonst.data))
         if (ismnum((u.ulycn ?? NON_PM) | 0)
             || hates_silver(game.youmonst?.data)) {
             lines.push(you_are('harmed by silver'));
         }
         // C insight.c:1897-1906 — Fast / Reflecting / Lifesaved
-        // (Upolyd foreign-shape / lays_eggs / Unchanging / Free_action /
-        // Fixed_abil still deferred).
+        // (lays_eggs / Free_action / Fixed_abil still deferred).
         if (Fast()) {
             const fastAttr = Very_fast() ? 'very fast' : 'fast';
             lines.push(you_are(fastAttr, from_what(FAST)));
@@ -6611,9 +6672,58 @@ export async function doattributes(enl_mode = null) {
                 }
             }
         }
+        // C insight.c:1834-1836 — Protection_from_shape_changers heads
+        // the shape-change arms, before Unchanging.
+        {
+            const { Protection_from_shape_changers } = await import('./were.js');
+            if (Protection_from_shape_changers()) {
+                lines.push(o(enlght_line_txt(
+                    'You ', 'are ', 'protected from shape changers',
+                    from_what(PROT_FROM_SHAPE_CHANGERS),
+                )));
+            }
+        }
+        // C insight.c:1837-1856 — Unchanging (!Upolyd arm, then the
+        // blocked-shape "would … periodically" line, else-if Polymorph).
+        // Polymorph has no canonical JS export: flat H/E + uprops inline,
+        // same predicate as allmain.js Polymorph. ^X is final == 0, so the
+        // C !final arms read "polymorph" / "change shape".
+        {
+            const { Unchanging: isUnchanging } = await import('./polyself.js');
+            const isPoly = !!((u.Polymorph || u.HPolymorph || u.EPolymorph)
+                || (u.uprops?.[POLYMORPH]?.intrinsic | 0)
+                || (u.uprops?.[POLYMORPH]?.extrinsic | 0));
+            if (isUnchanging(u)) {
+                // C: !Upolyd handled below after current form.
+                if (!Upolyd(u)) {
+                    lines.push(o(enlght_line_txt(
+                        'You ', 'can ', 'not change from your current form',
+                        from_what(UNCHANGING),
+                    )));
+                }
+                // C: blocked shape changes; omit from_what(UNCHANGING).
+                let what = null;
+                if (isPoly) {
+                    what = 'polymorph';
+                } else if (ismnum((u.ulycn ?? NON_PM) | 0)) {
+                    what = 'change shape';
+                }
+                if (what) {
+                    // C enl_msg(You_, buf, buf, …): same wording live or dead.
+                    lines.push(o(enlght_line_txt(
+                        'You ', `would ${what} periodically`,
+                        ' if not locked into your current form', '',
+                    )));
+                }
+            } else if (isPoly) {
+                lines.push(o(enlght_line_txt(
+                    'You ', 'are ', 'polymorphing periodically',
+                    from_what(POLYMORPH),
+                )));
+            }
+        }
         // C insight.c:1857-1858 — Polymorph_control after the shape-change
-        // arms (Unchanging / Polymorph deferred; Upolyd foreign-shape below),
-        // before Fast.
+        // arms (Upolyd foreign-shape below), before Fast.
         if (hero_Polymorph_control(u)) {
             lines.push(o(enlght_line_txt(
                 'You ', 'have ', 'polymorph control',
@@ -6633,6 +6743,18 @@ export async function doattributes(enl_mode = null) {
             }
             if (wizard) polybuf += ` (${u.mtimedone | 0})`;
             lines.push(o(enlght_line_txt('You ', 'are ', polybuf, '')));
+        }
+        // C insight.c:1892-1893 — Unchanging while poly (!Upolyd handled
+        // above). Were-form is deferred on this path, so this sits after
+        // foreign-shape, before Fast (C order among live arms).
+        {
+            const { Unchanging: isUnchangingPoly } = await import('./polyself.js');
+            if (isUnchangingPoly(u) && Upolyd(u)) {
+                lines.push(o(enlght_line_txt(
+                    'You ', 'can ', 'not change from your current form',
+                    from_what(UNCHANGING),
+                )));
+            }
         }
         if (Fast()) {
             const fastAttr = Very_fast() ? 'very fast' : 'fast';

@@ -178,7 +178,7 @@ import { deliver_obj_to_mon } from './dokick.js';
 import { can_be_hatched, m_at, seemimic, hideunder, onscary, monnear } from './mon.js';
 import { m_unleash, leashable } from './apply.js';
 import { update_inventory } from './invent.js';
-import { set_apparxy, monflee, can_hide_under_obj } from './monmove.js';
+import { set_apparxy, monflee, can_hide_under_obj, dochugw } from './monmove.js';
 import { cursed_object_at } from './dogmove.js';
 import { roles } from './roles.js';
 
@@ -3483,10 +3483,10 @@ export function makemon(mdat, x, y, mmflags = 0) {
     }
 
     // C: !in_mklev → newsym so the mon shows up (even with MM_NOMSG)
-    // Appear Norep is async (pline→more); callers await makemon_appear_msg
-    // after sync makemon (D-0559 / D-0928 #1164). Mimic furniture/object
-    // appear uses mhidden_description (D-1554). set_msg_xy + dochugw
-    // occupation still deferred.
+    // Appear Norep + occupation dochugw are async (pline→more); callers
+    // await makemon_appear_msg after sync makemon (D-0559 / D-0928 #1164).
+    // Mimic furniture/object appear uses mhidden_description (D-1554).
+    // set_msg_xy stays deferred.
     if (!game.in_mklev) {
         newsym(mtmp.mx, mtmp.my);
     }
@@ -3495,42 +3495,53 @@ export function makemon(mdat, x, y, mmflags = 0) {
 }
 
 /**
- * C ref: makemon.c makemon post-place appear Norep (!in_mklev, !MM_NOMSG).
+ * C ref: makemon.c makemon post-place appear Norep (!in_mklev, !MM_NOMSG,
+ * :1476–1500) + occupation threat check (:1502–1504, outside the MM_NOMSG
+ * guard — a summoned nasty still stops a searching hero).
  * Callers pass the FINAL placement (mtmp.mx,mtmp.my) for next2u/distu —
  * C computes the message from post-enexto x,y (makemon.c:1491-1499), so
  * requested u.ux,u.uy would wrongly force " next to you" (D-2096).
  * Mimic furniture/object: mhidden_description + upstart (D-1554).
- * Named omit: set_msg_xy; occupation dochugw.
+ * Named omit: set_msg_xy.
  */
 export async function makemon_appear_msg(mtmp, x, y, mmflags = 0) {
     if (!mtmp || game.in_mklev) return;
-    if ((mmflags & MM_NOMSG) !== 0) return;
 
-    let exclaim = (mmflags & MM_NOEXCLAM) === 0;
-    let what = null;
-    const ap = M_AP_TYPE(mtmp);
-    if ((canseemon(mtmp) && (ap === M_AP_NOTHING || ap === M_AP_MONSTER))
-        || sensemon(mtmp)) {
-        const s = x_monnam(mtmp, ARTICLE_A, null, 0, false);
-        what = s ? s.charAt(0).toUpperCase() + s.slice(1) : null;
-        if (ap === M_AP_MONSTER) exclaim = true;
-    } else if (canseemon(mtmp)) {
-        // C: mimic masquerading as furniture or object and not sensed
-        const mbuf = mhidden_description(mtmp, MHID_ARTICLE | MHID_ALTMON);
-        what = mbuf ? mbuf.charAt(0).toUpperCase() + mbuf.slice(1) : null;
+    // C makemon.c:1476–1500 — appear Norep only when !MM_NOMSG and seen.
+    if ((mmflags & MM_NOMSG) === 0) {
+        let exclaim = (mmflags & MM_NOEXCLAM) === 0;
+        let what = null;
+        const ap = M_AP_TYPE(mtmp);
+        if ((canseemon(mtmp) && (ap === M_AP_NOTHING || ap === M_AP_MONSTER))
+            || sensemon(mtmp)) {
+            const s = x_monnam(mtmp, ARTICLE_A, null, 0, false);
+            what = s ? s.charAt(0).toUpperCase() + s.slice(1) : null;
+            if (ap === M_AP_MONSTER) exclaim = true;
+        } else if (canseemon(mtmp)) {
+            // C: mimic masquerading as furniture or object and not sensed
+            const mbuf = mhidden_description(mtmp, MHID_ARTICLE | MHID_ALTMON);
+            what = mbuf ? mbuf.charAt(0).toUpperCase() + mbuf.slice(1) : null;
+        }
+        if (what) {
+            const u = game.u || {};
+            const dx = (x | 0) - (u.ux | 0);
+            const dy = (y | 0) - (u.uy | 0);
+            const du = dx * dx + dy * dy;
+            const near = du <= 2
+                ? ' next to you'
+                : (du <= BOLT_LIM * BOLT_LIM) ? ' close by' : '';
+            await Norep(
+                `${what}${exclaim ? ' suddenly' : ''} ${vtense(what, 'appear')}${near}${exclaim ? '!' : '.'}`,
+            );
+        }
     }
-    if (!what) return;
 
-    const u = game.u || {};
-    const dx = (x | 0) - (u.ux | 0);
-    const dy = (y | 0) - (u.uy | 0);
-    const du = dx * dx + dy * dy;
-    const near = du <= 2
-        ? ' next to you'
-        : (du <= BOLT_LIM * BOLT_LIM) ? ' close by' : '';
-    await Norep(
-        `${what}${exclaim ? ' suddenly' : ''} ${vtense(what, 'appear')}${near}${exclaim ? '!' : '.'}`,
-    );
+    // C makemon.c:1502–1504 — if discernable and a threat, stop fiddling
+    // while Rome burns. chug FALSE: no move, only the newly-spotted
+    // threat check (monmove.c dochugw; same shape as rloc_maybe_occupation).
+    if (typeof game.occupation === 'function') {
+        await dochugw(mtmp, false);
+    }
 }
 
 /**

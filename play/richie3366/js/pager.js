@@ -535,6 +535,16 @@ export async function show_nhw_menu_text(lines, opts = {}) {
         const n0 = String(line || '').length + 1; // tty_putstr
         if (n0 > maxcol) maxcol = n0;
     }
+    // C wintty.c tty_putstr NHW_MENU: compress_str + word-wrap run at
+    // storage time, so the wrapped fragments are the data rows the menu
+    // pages and paints (maxcol above still tracks the raw lines, as in C).
+    // Same shape as show_text_pages' NHW_TEXT expansion (D-1892).
+    const stored = [];
+    for (const line of lines) {
+        for (const text of wrap_text_window_line(String(line ?? ''), cols))
+            stored.push(text);
+    }
+    lines = stored;
     let offx = Math.min(Math.min(82, Math.floor(cols / 2)), cols - maxcol - 1);
     if (offx < 0) offx = 0;
     const maxrow = lines.length;

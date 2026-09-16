@@ -46,10 +46,9 @@ import {
     DISCLOSE_SPECIAL_WITHOUT_PROMPT,
     DISCLOSE_YES_WITHOUT_PROMPT,
     ESCAPED,
+    ENL_GAMEOVERALIVE,
     ENL_GAMEOVERDEAD,
-    G_EXTINCT,
     G_GENOD,
-    G_GONE,
     GENOCIDED,
     isok,
     IS_GRAVE,
@@ -85,6 +84,7 @@ import {
     MGIVENNAME,
     NON_PM,
     In_tutorial,
+    LL_DUMP,
 } from './const.js';
 import { mk_named_object } from './corpstat.js';
 import { bot } from './display.js';
@@ -126,7 +126,13 @@ import {
     an, doname_with_price, the, thesimpleoname, the_unique_pm,
     xnameFresh,
 } from './objnam.js';
-import { enlightenment } from './insight.js';
+import {
+    enlightenment,
+    list_genocided,
+    list_vanquished,
+    show_conduct,
+} from './insight.js';
+import { livelog_printf } from './pline.js';
 import { select_menu } from './windows.js';
 import {
     displayTtyMenuTextWindow, displayTtyTextWindow,
@@ -138,7 +144,6 @@ import {
     depth, dunlev, show_overview,
     single_level_branch,
 } from './dungeon.js';
-import { makeplural } from './fruit.js';
 import { Goodbye } from './role_init.js';
 import { reset_utrap } from './trap.js';
 import {
@@ -738,199 +743,6 @@ function discloseStop(state) {
     state.program_state.stopprint = (state.program_state.stopprint ?? 0) + 1;
 }
 
-function menuLines(texts) {
-    return texts.map((text) => ({ text }));
-}
-
-function monsterVitals(state) {
-    return state.svm?.mvitals ?? state.mvitals ?? [];
-}
-
-function ordinaryMonsterEntries(state, flags = 0) {
-    return monsterVitals(state).flatMap((vital, index) => {
-        const monster = state.mons?.[index];
-        if (!monster || (flags && (vital.mvflags & flags) === 0)) return [];
-        return [{ index, monster, vital }];
-    });
-}
-
-function isUniqueMonster(index, monster) {
-    return (monster.geno & G_UNIQ) !== 0 && index !== PM_HIGH_CLERIC;
-}
-
-function vanquishedName(entry) {
-    return entry.monster.pmnames?.[2]
-        ?? entry.monster.pmnames?.find(Boolean) ?? 'monster';
-}
-
-function vanquishedPrefix(text) {
-    const lower = text.toLowerCase();
-    if (lower.startsWith('the ')) return 0;
-    if (lower.startsWith('an ')) return 1;
-    if (lower.startsWith('a ')) return 2;
-    return /\d/u.test(text[2] ?? '') ? 0 : 4;
-}
-
-// C ref: insight.c list_vanquished(). The ordinary final disclosure uses the
-// default traditional order: monster level descending, then internal index.
-async function list_vanquished(defquery, ask, state) {
-    const entries = ordinaryMonsterEntries(state).filter((entry) => (
-        Number(entry.vital.died) > 0
-    ));
-    if (!entries.length) return;
-
-    const answer = ask ? await yn_function(
-            'Do you want an account of creatures vanquished?',
-            entries.length > 1 ? 'ynaq' : 'ynq',
-            defquery,
-            true,
-            state,
-        ) : defquery.charCodeAt(0);
-    if (answer === KEY_Q) {
-        discloseStop(state);
-        return;
-    }
-    if (answer === KEY_A) {
-        throw new UnsupportedEndOfGameError(
-            'list_vanquished() sort-order selection',
-        );
-    }
-    if (answer !== KEY_Y) return;
-
-    entries.sort((left, right) => (
-        (right.monster.mlevel ?? 0) - (left.monster.mlevel ?? 0)
-        || left.index - right.index
-    ));
-    const lines = ['Vanquished creatures:', ''];
-    let total = 0;
-    for (const entry of entries) {
-        const count = Math.trunc(entry.vital.died);
-        total += count;
-        const name = vanquishedName(entry);
-        let text;
-        if (isUniqueMonster(entry.index, entry.monster)) {
-            text = `${type_is_pname(entry.monster) ? '' : 'the '}${name}`;
-            if (count > 1) text += ` (${count} times)`;
-        } else if (count === 1) {
-            text = an(name);
-        } else {
-            // insight.c list_vanquished() uses Sprintf("%3d %s", ...).
-            // Keep the three-column count before applying the article prefix
-            // used to align singular and unique names.
-            text = `${String(count).padStart(3, ' ')} ${makeplural(name)}`;
-        }
-        lines.push(`${' '.repeat(vanquishedPrefix(text))}${text}`);
-    }
-    if (entries.length > 1) {
-        lines.push('');
-        lines.push(`${total} creatures vanquished.`);
-    }
-    await displayTtyMenuTextWindow(state, menuLines(lines));
-}
-
-// C ref: insight.c list_genocided(). No menu or prompt is produced when the
-// ordinary final state has no genocided or extinct species; that is the only
-// common branch in this slice. The positive list is kept source-shaped for a
-// fresh case that happens to cross it, while its alternate sort choice stays
-// outside the bounded default-order path.
-async function list_genocided(defquery, ask, state) {
-    const entries = ordinaryMonsterEntries(state, G_GENOD | G_EXTINCT)
-        .filter((entry) => !isUniqueMonster(entry.index, entry.monster));
-    if (!entries.length) return;
-
-    const answer = ask ? await yn_function(
-            'Do you want a list of genocided species?',
-            entries.length > 1 ? 'ynaq' : 'ynq',
-            defquery,
-            true,
-            state,
-        ) : defquery.charCodeAt(0);
-    if (answer === KEY_Q) {
-        discloseStop(state);
-        return;
-    }
-    if (answer === KEY_A) {
-        throw new UnsupportedEndOfGameError(
-            'list_genocided() sort-order selection',
-        );
-    }
-    if (answer !== KEY_Y) return;
-
-    entries.sort((left, right) => (
-        vanquishedName(left).localeCompare(vanquishedName(right), 'en', {
-            sensitivity: 'base',
-        }) || left.index - right.index
-    ));
-    const genocided = entries.filter((entry) => (
-        (entry.vital.mvflags & G_GENOD) !== 0
-    )).length;
-    const extinct = entries.filter((entry) => (
-        (entry.vital.mvflags & G_EXTINCT) !== 0
-        && (entry.vital.mvflags & G_GENOD) === 0
-    )).length;
-    const title = `${genocided ? 'Genocided' : 'Extinct'} species:`;
-    const lines = [title, ''];
-    for (const entry of entries) {
-        let text = ` ${makeplural(vanquishedName(entry))}`;
-        if ((entry.vital.mvflags & G_GONE) === G_EXTINCT)
-            text += ' (extinct)';
-        lines.push(text);
-    }
-    lines.push('');
-    if (genocided) lines.push(`${genocided} species genocided.`);
-    if (extinct) lines.push(`${extinct} species extinct.`);
-    await displayTtyMenuTextWindow(state, menuLines(lines));
-}
-
-function conductValue(state, key) {
-    return Math.trunc(state.u.uconduct?.[key] ?? 0);
-}
-
-// C ref: insight.c show_conduct(). The normal, non-wizard final path includes
-// the challenge lines whose counters are zero and omits the wizard-only
-// positive counters. Achievements and Sokoban are deliberately left at the
-// boundary because this slice covers an ordinary early death.
-async function show_conduct(final, state) {
-    if (state.wizard || state.discover)
-        throw new UnsupportedEndOfGameError('show_conduct() alternate mode');
-    if (state.u.uachieved?.some(Boolean))
-        throw new UnsupportedEndOfGameError('show_conduct() achievements');
-
-    const lines = ['Voluntary challenges:'];
-    const roleplay = state.u.uroleplay ?? {};
-    if (!roleplay.reroll) lines.push(' Character rerolling was not enabled.');
-    else if (!roleplay.numrerolls) lines.push(' Your character was not rerolled.');
-    else {
-        throw new UnsupportedEndOfGameError(
-            'show_conduct() character-reroll count',
-        );
-    }
-    if (roleplay.blind || roleplay.deaf || roleplay.pauper || roleplay.nudist)
-        throw new UnsupportedEndOfGameError('show_conduct() roleplay challenge');
-
-    if (!conductValue(state, 'food')) lines.push(' You went without food.');
-    else if (!conductValue(state, 'unvegan'))
-        lines.push(' You followed a strict vegan diet.');
-    else if (!conductValue(state, 'unvegetarian'))
-        lines.push(' You were vegetarian.');
-    if (!conductValue(state, 'gnostic')) lines.push(' You were an atheist.');
-    if (!conductValue(state, 'weaphit'))
-        lines.push(' You never hit with a wielded weapon.');
-    if (!conductValue(state, 'killer')) lines.push(' You were a pacifist.');
-    if (!conductValue(state, 'literate')) lines.push(' You were illiterate.');
-    if (!conductValue(state, 'pets')) lines.push(' You never had a pet.');
-
-    const genocided = ordinaryMonsterEntries(state, G_GENOD).length;
-    if (!genocided) lines.push(' You never genocided any monsters.');
-    else throw new UnsupportedEndOfGameError('show_conduct() genocide count');
-    if (!conductValue(state, 'polypiles'))
-        lines.push(' You never polymorphed an object.');
-    if (!conductValue(state, 'polyselfs')) lines.push(' You never changed form.');
-    if (!conductValue(state, 'wishes')) lines.push(' You used no wishes.');
-
-    await displayTtyMenuTextWindow(state, menuLines(lines));
-}
-
 // C ref: end.c disclose() (619-699). Walks each disclosure category in order.
 async function disclose(how, taken, state) {
     if (state.invent && !disclosureStopprint(state)) {
@@ -986,7 +798,9 @@ async function disclose(how, taken, state) {
     }
     if (!disclosureStopprint(state)) {
         const { ask, defquery } = should_query_disclose_option('g', state);
-        await list_genocided(defquery, ask, state);
+        await list_genocided(defquery, ask, state, {
+            queryFunction: yn_function,
+        });
     }
     if (!disclosureStopprint(state)) {
         const { ask, defquery } = should_query_disclose_option('c', state);
@@ -997,7 +811,12 @@ async function disclose(how, taken, state) {
             true,
             state,
         ) : defquery;
-        if (c === KEY_Y) await show_conduct(2, state);
+        if (c === KEY_Y) {
+            await show_conduct(
+                how >= PANICKED ? ENL_GAMEOVERALIVE : ENL_GAMEOVERDEAD,
+                state,
+            );
+        }
         if (c === KEY_Q) discloseStop(state);
     }
     if (!disclosureStopprint(state)) {
@@ -1197,8 +1016,11 @@ async function really_done(how, state) {
     // parser above never stores it; the test therefore always passes.
     await disclose(how, taken, state);
 
-    // C ref: end.c:1285-1290 livelog_printf + dump_everything.  Neither is
-    // ported; they produce no RNG draws or game-state mutations.
+    // C ref: end.c:1285-1290. formatkiller() builds the same death text that
+    // the final dump records, and livelog_printf() keeps the LL_DUMP event in
+    // the in-memory Chronicle even though the external dump file is absent.
+    const deathBuf = formatkiller(how, true, state);
+    livelog_printf(LL_DUMP, deathBuf || deaths[how] || '', state);
 
     // C ref: end.c:1297-1298 keepdogs for ESCAPED/ASCENDED.
     // Not applicable: how === DIED.

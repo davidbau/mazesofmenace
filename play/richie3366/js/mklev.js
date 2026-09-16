@@ -1479,8 +1479,8 @@ function sp_level_coder_init_statics() {
  * Mon-strt, Mon-loca, Mon-goal, Mon-fila, Mon-filb,
  * Cav-strt, Cav-loca, Cav-goal, Cav-fila, Cav-filb, knox.
  * Named omissions:
- * hellfill rnd_hell_prefab; dmonsfree on the load_special path;
- * populate_maze trap loop (no JS mktrap).
+ * hellfill rnd_hell_prefab; dmonsfree on the load_special path.
+ * (populate_maze trap loop is live via mktrap below.)
  */
 async function makemaz(s) {
     const g = game;
@@ -14645,15 +14645,20 @@ function load_minend_3() {
     for (let i = 0; i < 7; i++) splev_create_trap();
 
     // des.trap("level teleport", place[2]) / place[1] — packed coord
+    // C: sp_lev.c create_trap → mktrap(tm) (mklev.c:2036-2150); the victim
+    // gate burns rnd(4) (mklev.c:2137) even though LEVEL_TELEP fails the
+    // later (kind < HOLE) tail check — C && order draws before skipping.
     {
         const p2 = place[1];
         const pos = get_location_coord(DRY, null, p2[0], p2[1]);
-        maketrap(pos.x, pos.y, LEVEL_TELEP);
+        const ttmp = maketrap(pos.x, pos.y, LEVEL_TELEP);
+        mktrap_seen_victim(ttmp, {});
     }
     {
         const p1 = place[0];
         const pos = get_location_coord(DRY, null, p1[0], p1[1]);
-        maketrap(pos.x, pos.y, LEVEL_TELEP);
+        const ttmp = maketrap(pos.x, pos.y, LEVEL_TELEP);
+        mktrap_seen_victim(ttmp, {});
     }
 
     for (let i = 0; i < 5; i++) splev_create_monster('M');
@@ -15993,7 +15998,7 @@ function setup_waterlevel() {
     }
 }
 
-/** C ref: mkmaze.c mk_bubble + mv_bubble(ini) cloud/air paint RNG. */
+/** C ref: mkmaze.c mk_bubble + mv_bubble(b,0,0,TRUE) ini boing colli flips + cloud/air paint RNG. */
 function mk_bubble(x, y, n, gbxmin, gbymin, gbxmax, gbymax) {
     const BM = [
         [2, 1, 0x3],
@@ -16011,13 +16016,32 @@ function mk_bubble(x, y, n, gbxmin, gbymin, gbxmax, gbymax) {
     let by = y;
     if ((bx + bm[0] - 1) > gbxmax) bx = gbxmax - bm[0] + 1;
     if ((by + bm[1] - 1) > gbymax) by = gbymax - bm[1] + 1;
-    const dx = 1 - rn2(3);
-    const dy = 1 - rn2(3);
-    // C: mv_bubble(b, 0, 0, TRUE) — air clouds skip move unless !rn2(6)
+    let dx = 1 - rn2(3);
+    let dy = 1 - rn2(3);
+    // C mkmaze.c:1924 mv_bubble(b, 0, 0, TRUE): the :1959 move block runs with
+    // dx=dy=0 (no position change; air clouds still burn rn2(6)), then the
+    // :2087-2106 boing switch flips direction on border collision even at ini
+    // (only the default-branch redirect is ini-gated). Bounce arms are
+    // no-ops with dx=dy=0.
     if (!Is_airlevel(game.u?.uz) || !rn2(6)) {
-        // ini move with dx=dy=0 — no position change; still burns air rn2(6)
-        void dx;
-        void dy;
+        let colli = 0;
+        if (bx <= gbxmin) colli |= 2;
+        if (by <= gbymin) colli |= 1;
+        if ((bx + bm[0] - 1) >= gbxmax) colli |= 2;
+        if ((by + bm[1] - 1) >= gbymax) colli |= 1;
+        switch (colli) {
+        case 1:
+            dy = -dy;
+            break;
+        case 3:
+            dy = -dy;
+            /* FALLTHROUGH */
+        case 2:
+            dx = -dx;
+            break;
+        default:
+            break; // C :2099-2105 redirect runs only when !ini
+        }
     }
     // paint bubble cells: water→AIR, air→CLOUD
     const paint = Is_waterlevel(game.u?.uz) ? AIR : CLOUD;
@@ -23898,7 +23922,7 @@ async function makelevel() {
 
     // C ref: mklev.c:1416-1420 — common tail after makemaz
     for (let i = 0; i < (g.level?.nroom | 0); i++)
-        fill_special_room(g.level.rooms[i]);
+        await fill_special_room(g.level.rooms[i]);
     run_themerms_post_level_generate();
     wallification(1, 0, COLNO - 1, ROWNO - 1);
 }
@@ -23961,7 +23985,7 @@ async function makelevel_ordinary() {
                 g.level.flags.has_vault = true;
                 const vaultRoom = g.level.rooms[g.level.nroom - 1];
                 if (vaultRoom) vaultRoom.needfill = FILL_NORMAL;
-                fill_special_room(vaultRoom);
+                await fill_special_room(vaultRoom);
                 mk_knox_portal(vx.v + vw.v, vy.v + vh.v);
                 // C: if (!noteleport && !rn2(3)) makevtele();
                 if (!g.level.flags.noteleport && !rn2(3))
@@ -24052,7 +24076,7 @@ async function makelevel_ordinary() {
 
     // C ref: mklev.c:1416-1418 — fill all special rooms
     for (let i = 0; i < g.level.nroom; i++)
-        fill_special_room(g.level.rooms[i]);
+        await fill_special_room(g.level.rooms[i]);
 
     // C ref: mklev.c themerooms_post_level_generate() — after fill, Lua
     // post_level_generate then full-map wallification.
@@ -24445,10 +24469,10 @@ function ROOM_IS_FILLABLE(croom) {
 /**
  * C ref: sp_lev.c fill_special_room() — vault gold; shop stock_room; fill_zoo.
  */
-function fill_special_room(croom) {
+async function fill_special_room(croom) {
     if (!croom) return;
     for (let i = 0; i < (croom.nsubrooms || 0); i++)
-        fill_special_room(croom.sbrooms[i]);
+        await fill_special_room(croom.sbrooms[i]);
 
     if (croom.rtype === OROOM || croom.rtype === THEMEROOM
         || croom.needfill === 0 /* FILL_NONE */)
@@ -24457,7 +24481,7 @@ function fill_special_room(croom) {
     if (croom.needfill === FILL_NORMAL) {
         // C: rtype >= SHOPBASE → stock_room(...); has_shop
         if (croom.rtype >= SHOPBASE) {
-            stock_room(croom.rtype - SHOPBASE, croom);
+            await stock_room(croom.rtype - SHOPBASE, croom);
             if (game.level?.flags) game.level.flags.has_shop = true;
             return;
         }

@@ -5,7 +5,7 @@
 
 import { game } from './gstate.js';
 import { rn2, rnd, d } from './rng.js';
-import { dochugw, m_everyturn_effect, monflee, can_hide_under_obj } from './monmove.js';
+import { dochugw, m_everyturn_effect, monflee, can_hide_under_obj, can_fog } from './monmove.js';
 import {
     COLNO, ROWNO, IS_OBSTRUCTED, IS_DOOR, IS_TREE, D_CLOSED, D_LOCKED, D_BROKEN,
     ALLOW_ROCK, ALLOW_DIG, Is_rogue_level, NOTONL, ALLOW_ALL, ALLOW_BARS,
@@ -80,7 +80,7 @@ import { adjalign } from './attrib.js';
 import { SetVoice } from './sndprocs.js';
 import { maybe_gasp, growl } from './sounds.js';
 import { vtense, doname, distant_name } from './objnam.js';
-import { obj_resists, cursed_object_at } from './dogmove.js';
+import { obj_resists, cursed_object_at, finish_meating } from './dogmove.js';
 import { touch_artifact } from './artifact.js';
 import { experience, more_experienced, newexplevel } from './exper.js';
 import { hastrack } from './track.js';
@@ -1294,7 +1294,10 @@ export async function wake_msg(mtmp, interesting) {
 
 /**
  * C ref: mon.c wakeup — clear sleep / non-monster disguise; via_attack → setmangry.
- * Named omissions: finish_meating; ghod_hitsu.
+ * C `finish_meating(mtmp)` runs unconditionally after the mimic/undetected
+ * block (D-2417: hero missing the mid-meal Knight pony ends the meal via
+ * missum → wakeup, so dog_invent rates the apple next turn).
+ * Named omissions: ghod_hitsu.
  */
 export async function wakeup(mtmp, via_attack) {
     if (!mtmp) return;
@@ -1309,7 +1312,8 @@ export async function wakeup(mtmp, via_attack) {
         mtmp.mundetected = 0;
         if (mtmp.mx > 0) newsym(mtmp.mx, mtmp.my);
     }
-    // finish_meating deferred
+    // C: unconditional finish_meating (ends quickmimic meals too)
+    finish_meating(mtmp);
     if (via_attack) {
         const was_peaceful = !!mtmp.mpeaceful;
         // C: was_sleeping → growl → wake_nearto (D-0922/#1161)
@@ -2682,11 +2686,10 @@ export function mfndpos(mon, data, flag) {
                                 || dmgtype(mdat, AD_CORR))))) {
                     continue;
                 }
-                // C mon.c mfndpos — amorphous (or fog-form) monsters slip
-                // under/through closed doors unless engulfing the hero.
-                // can_fog still deferred — named in C-JS-MAP.
+                // C mon.c:2232-2238 mfndpos — amorphous or fog-form monsters
+                // slip under/through closed doors unless engulfing the hero.
                 if (IS_DOOR(ntyp)
-                    && !((amorphous(mdat) /* || can_fog(mon) */) && !engulfing_u(mon))) {
+                    && !((amorphous(mdat) || can_fog(mon)) && !engulfing_u(mon))) {
                     const dm = loc.doormask || 0;
                     if ((((dm & D_CLOSED) && !(flag & OPENDOOR))
                         || ((dm & D_LOCKED) && !(flag & UNLOCKDOOR)))
