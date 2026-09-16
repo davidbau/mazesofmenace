@@ -4496,7 +4496,7 @@ export async function ignite_items(objchn) {
  * golem alt HP; burnarmor || rn2(3) → destroy_items(AD_FIRE) + ignite + HP.
  * Named omissions: surface(); shieldeff.
  */
-async function trapeffect_fire_trap(mtmp, trap, _trflags) {
+export async function trapeffect_fire_trap(mtmp, trap, _trflags) {
     if (is_youmonst(mtmp)) {
         await dofiretrap(null);
         return Trap_Effect_Finished;
@@ -4554,12 +4554,16 @@ async function trapeffect_fire_trap(mtmp, trap, _trflags) {
         const { destroy_items } = await import('./zap.js');
         const xtradmg = await destroy_items(mtmp, AD_FIRE, orig_dmg);
         await ignite_items(mtmp.minvent);
+        // C trap.c:1800-1806 — xtradmg and the AD_FIRE monkilled run only
+        // when thitm left mtmp alive (!DEADMONSTER). Re-killing an
+        // already-detached corpse double-detaches (mon.c:2792 impossible)
+        // and draws a second corpse_chance + make_corpse creation.
         if ((mtmp.mhp | 0) > 0) {
             mtmp.mhp = (mtmp.mhp | 0) - (xtradmg | 0);
-        }
-        if ((mtmp.mhp | 0) <= 0) {
-            await monkilled(mtmp, '', AD_FIRE);
-            trapkilled = true;
+            if ((mtmp.mhp | 0) <= 0) {
+                await monkilled(mtmp, '', AD_FIRE);
+                trapkilled = true;
+            }
         }
     }
     // C: burn_floor_objects(tx,ty,see_it,FALSE); smell if !see_it && near
