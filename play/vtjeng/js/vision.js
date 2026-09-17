@@ -5,6 +5,7 @@
 import { game } from './gstate.js';
 import { on_level } from './dungeon.js';
 import { do_light_sources } from './light.js';
+import { worm_known } from './worm.js';
 import { BOULDER } from './objects.js';
 import { visible_region_at } from './region.js';
 import { m_at } from './monst.js';
@@ -16,10 +17,14 @@ import {
     D_CLOSED, D_LOCKED, D_TRAPPED,
     MAX_RADIUS,
     M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPMASK, SEE_INVIS,
+    TELEPAT, DETECT_MONSTERS, WARN_OF_MON,
+    MONSEEN_NORMAL, MONSEEN_SEEINVIS, MONSEEN_INFRAVIS,
+    MONSEEN_TELEPAT, MONSEEN_XRAYVIS, MONSEEN_DETECT, MONSEEN_WARNMON,
     SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7, SVALL,
     IS_WALL, TEMP_LIT,
 } from './const.js';
 import { newsym } from './display.js';
+import { M1_MINDLESS } from './monsters.js';
 import {
     S_hcdoor,
     S_ndoor,
@@ -629,6 +634,56 @@ export function do_clear_area(
     }
 }
 
+// C ref: vision.c do_clear_area().  This async adapter keeps the same
+// row-major callback order for callers whose callback has source-visible
+// asynchronous work.  In particular, a callback can finish changing one
+// square (and consuming its RNG) before the next square is considered.
+// The ordinary synchronous API above remains unchanged for its existing
+// callers.  Fountain gushes are centered on the hero in C; the off-center
+// path below preserves view_from()'s coordinate selection before awaiting
+// each selected callback.
+export async function do_clear_area_async(
+    scol,
+    srow,
+    range,
+    callback,
+    argument = null,
+    state = game,
+) {
+    if (typeof callback !== 'function')
+        throw new TypeError('do_clear_area_async requires a callback');
+    if (range > MAX_RADIUS || range < 1)
+        throw new RangeError(`do_clear_area: illegal range ${range}`);
+
+    if (scol !== state.u.ux || srow !== state.u.uy) {
+        const coordinates = [];
+        do_clear_area(
+            scol,
+            srow,
+            range,
+            (x, y) => coordinates.push([x, y]),
+            null,
+            state,
+        );
+        for (const [x, y] of coordinates)
+            await callback(x, y, argument);
+        return;
+    }
+
+    if (state === game && game.vision_full_recalc) vision_recalc(0);
+    const minY = Math.max(0, srow - range);
+    const maxY = Math.min(ROWNO - 1, srow + range);
+    for (let y = minY; y <= maxY; ++y) {
+        const offset = circle_offset(range, Math.abs(y - srow));
+        const minX = Math.max(1, scol - offset);
+        const maxX = Math.min(COLNO - 1, scol + offset);
+        for (let x = minX; x <= maxX; ++x) {
+            if (couldsee(x, y, state))
+                await callback(x, y, argument);
+        }
+    }
+}
+
 // C ref: vision_recalc(control).  `env` names three of the things C reaches
 // through globals: the game state, its pair of COULD_SEE buffers, and
 // display.c's redraw.  js/unported_monster_actions.js supplies all three so
@@ -863,14 +918,14 @@ export function m_canseeu(mon, state = game) {
 
 // C ref: display.h _mon_visible(mon). True when the monster is not invisible
 // (or the hero has See_invisible) and not an undetected hider.
-function mon_visible(mon, state = game) {
+export function mon_visible(mon, state = game) {
     const seeInvis = state.u?.uprops?.[SEE_INVIS];
     const hasSeeInvis = Boolean(seeInvis?.intrinsic || seeInvis?.extrinsic);
     return (!mon.minvis || hasSeeInvis) && !mon.mundetected;
 }
 
 // C ref: display.h _see_with_infrared(mon).
-function see_with_infrared(mon, state = game) {
+export function see_with_infrared(mon, state = game) {
     if (heroIsBlind(state.u)) return false;
     const infra = state.u?.uprops?.[INFRAVISION];
     if (!Boolean(infra?.intrinsic || infra?.extrinsic)) return false;
@@ -880,13 +935,83 @@ function see_with_infrared(mon, state = game) {
 
 // C ref: display.h _canseemon(mon) / display.c canseemon().
 // True when the hero can see the monster at its position.
-// Worms use worm_known() instead of cansee/infrared; that function is
-// unported, so worms fall back to the head-segment cansee check.
+// Worms use worm_known() instead of cansee/infrared, as in the C macro.
 export function canseemon(mon, state = game) {
     const locationVisible = mon.wormno
-        ? cansee(mon.mx, mon.my, state)
+        ? worm_known(mon, state)
         : (cansee(mon.mx, mon.my, state) || see_with_infrared(mon, state));
     return locationVisible && mon_visible(mon, state);
+}
+
+// C ref: vision.c howmonseen() (2152-2186), with display.h's
+// _tp_sensemon() and MATCH_WARN_OF_MON() predicates kept in this source
+// owner. The bitmask is consumed by pager.c:look_at_monster() to explain why
+// a displayed monster is known.
+function warningMatches(mon, state) {
+    const hero = state.u ?? {};
+    const warning = hero.uprops?.[WARN_OF_MON];
+    if (!Boolean(warning?.intrinsic || warning?.extrinsic)
+        || mon?.data == null) return false;
+    const warned = state.context?.warntype ?? {};
+    const flags = mon.data.mflags2 ?? 0;
+    return Boolean((warned.obj & flags) || (warned.polyd & flags)
+        || (warned.species && warned.species === mon.data)
+        || (warned.speciesidx != null
+            && state.mons?.[warned.speciesidx] === mon.data));
+}
+
+function telepathicSense(mon, state) {
+    const hero = state.u ?? {};
+    const data = mon?.data;
+    if (!data || (data.mflags1 & M1_MINDLESS)) return false;
+    const telepathy = hero.uprops?.[TELEPAT] ?? {};
+    const blind = heroIsBlind(hero);
+    const intrinsic = Boolean(telepathy.intrinsic);
+    const extrinsic = Boolean(telepathy.extrinsic);
+    if (blind && (intrinsic || extrinsic)) return true;
+    if (!extrinsic) return false;
+    const dx = (mon.mx ?? 0) - (hero.ux ?? 0);
+    const dy = (mon.my ?? 0) - (hero.uy ?? 0);
+    return dx * dx + dy * dy
+        <= Math.trunc(hero.unblind_telepat_range ?? 0);
+}
+
+// C ref: vision.c howmonseen(). The state argument preserves the focused
+// clone contract used by the display/pager callers; no live singleton is
+// consulted while inspecting a planning state.
+export function howmonseen(mon, state = game) {
+    if (!mon) return 0;
+    const useemon = canseemon(mon, state);
+    const xrayRange = Number.isFinite(state.u?.xray_range)
+        && state.u.xray_range >= 0
+        ? Math.trunc(state.u.xray_range) ** 2 : -1;
+    let seen = 0;
+    const normal = mon.wormno
+        ? worm_known(mon, state)
+        : cansee(mon.mx, mon.my, state) && couldsee(mon.mx, mon.my, state);
+    if (normal && mon_visible(mon, state) && !mon.minvis)
+        seen |= MONSEEN_NORMAL;
+    if (useemon && mon.minvis)
+        seen |= MONSEEN_SEEINVIS;
+    const seeInvisible = state.u?.uprops?.[SEE_INVIS];
+    if ((!mon.minvis
+        || Boolean(seeInvisible?.intrinsic || seeInvisible?.extrinsic))
+        && see_with_infrared(mon, state)) {
+        seen |= MONSEEN_INFRAVIS;
+    }
+    if (telepathicSense(mon, state))
+        seen |= MONSEEN_TELEPAT;
+    const hero = state.u ?? {};
+    const dx = (mon.mx ?? 0) - (hero.ux ?? 0);
+    const dy = (mon.my ?? 0) - (hero.uy ?? 0);
+    if (useemon && xrayRange > 0 && dx * dx + dy * dy <= xrayRange)
+        seen |= MONSEEN_XRAYVIS;
+    const detect = hero.uprops?.[DETECT_MONSTERS];
+    if (Boolean(detect?.intrinsic || detect?.extrinsic))
+        seen |= MONSEEN_DETECT;
+    if (warningMatches(mon, state))
+        seen |= MONSEEN_WARNMON;
+    return seen;
 }
 
 export function init_vision_globals() {

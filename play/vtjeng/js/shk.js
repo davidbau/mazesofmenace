@@ -17,6 +17,7 @@ import {
     BUFSZ,
     COST_CONTENTS,
     COST_SINGLEOBJ,
+    CONTAINED_TOO,
     CONFLICT,
     DETECT_MONSTERS,
     DEAF,
@@ -42,6 +43,7 @@ import {
     OBJ_BURIED,
     OBJ_CONTAINED,
     OBJ_FLOOR,
+    OBJ_INVENT,
     OBJ_FREE,
     OBJ_MINVENT,
     OBJ_ONBILL,
@@ -51,6 +53,7 @@ import {
     PL_NSIZ,
     PRONOUN_HALLU,
     PRONOUN_NO_IT,
+    RLOC_NOMSG,
     ROOMOFFSET,
     SHOPBASE,
     TELEPAT,
@@ -60,12 +63,12 @@ import {
 } from './const.js';
 import { acurr, adjalign } from './attrib.js';
 import { yn_function } from './cmd.js';
-import { bot } from './display.js';
+import { bot, map_invisible } from './display.js';
 import { assign_level, on_level } from './dungeon.js';
 import { game } from './gstate.js';
 import { getpos } from './getpos.js';
 import { dist2, online2, sgn, s_suffix, strncmpi } from './hacklib.js';
-import { inv_cnt } from './hack.js';
+import { inv_cnt, nh_delay_output } from './hack.js';
 import {
     add_to_minv,
     addinv,
@@ -83,10 +86,10 @@ import {
 import { record_achievement } from './insight.js';
 import { get_obj_location } from './light.js';
 import { mongone } from './makemon_create.js';
-import { angry_guards, wake_nearto } from './mon.js';
+import { angry_guards, mnearto, wake_nearto } from './mon.js';
 import { search_special } from './mkroom.js';
 import {
-    carried, dealloc_obj, hasContents, isCandle, isContainer, is_pick,
+    carried, dealloc_obj, hasContents, isCandle, is_pick,
     newObject, next_ident, newomid, objectType, sobj_at, splitobj,
 } from './obj.js';
 import {
@@ -154,7 +157,7 @@ import { set_voice } from './sounds.js';
 import { saleable, shkname, Shknam } from './shknam.js';
 import { ttyPline } from './tty_message.js';
 import { note_unported } from './unported.js';
-import { findgold, remove_worn_item } from './steal.js';
+import { findgold, mpickobj, remove_worn_item } from './steal.js';
 import { discover_object, observe_object } from './o_init.js';
 import { Monnam, x_monnam, y_monnam } from './do_name.js';
 import { rn2 } from './rng.js';
@@ -432,6 +435,47 @@ export function shop_keeper(roomno, state = game) {
             rile_shk(resident);
     }
     return resident ?? null;
+}
+
+// C ref: shk.c shkcatch() (4362-4401).  A thrown pick can be intercepted
+// before bhit() reaches the square's ordinary terrain handling.  The C
+// return is the keeper that caught the object, so this owner performs the
+// movement, billing, pickup, and visible catch message before returning it.
+export async function shkcatch(obj, x, y, state = game, rawEnv = {}) {
+    const message = rawEnv.message ?? ttyPline;
+    const shkp = shop_keeper(inside_shop(x, y, state), state);
+    if (!shkp || !inhishop(shkp, state)) return null;
+
+    const eshk = shkp.mextra.eshk;
+    if (helpless(shkp)
+        || (eshk.shoproom === (state.u?.ushops?.[0] ?? 0)
+            && inside_shop(state.u.ux, state.u.uy, state))
+        || dist2(shkp.mx, shkp.my, x, y) >= 3
+        || (shkp.mx === x && shkp.my === y)) {
+        return null;
+    }
+
+    if (mnearto(shkp, x, y, true, RLOC_NOMSG, state) === 2
+        && !heroIsDeaf(state) && !muteshk(shkp)) {
+        set_voice(shkp, 0, 80, 0, state);
+        await verbalize('Out of my way, scum!', state);
+    }
+    if (cansee(x, y, state)) {
+        await message(
+            `${Shknam(shkp, state)} nimbly`
+                + `${x === shkp.mx && y === shkp.my ? '' : ' reaches over and'}`
+                + ` catches ${the(xnameFresh(obj, state), state)}.`,
+            state,
+            rawEnv,
+        );
+        if (!canSpotMonster(shkp, state)) map_invisible(x, y, state);
+        await nh_delay_output(state);
+        // mark_synch() only flushes the C terminal stream and has no state;
+        // the async message/flush above preserves the observable order.
+    }
+    subfrombill(obj, shkp, state, rawEnv);
+    mpickobj(shkp, obj, { ...rawEnv, state });
+    return shkp;
 }
 
 // C ref: shk.c find_objowner() (1084-1114). The caller supplies the object's
@@ -1039,6 +1083,23 @@ function firstRoom(buffer) {
     return Math.trunc(buffer?.[0] ?? 0);
 }
 
+// C get_cost_of_shop_item() leaves `nochrg` at -1 when the object is not
+// applicable to the hero's current shop.  Keep that no-live-price result
+// distinct from an actually applicable item whose price is zero or no-charge;
+// callers must not turn an unrelated shop pricing refusal into an ordinary
+// name.
+function noShopPrice(noCharge = false) {
+    return {
+        applicable: false,
+        cost: 0,
+        contentsCost: 0,
+        objectCost: 0,
+        noCharge,
+        pricingUnitCost: 0,
+        shopkeeper: null,
+    };
+}
+
 // C ref: shk.c get_cost_of_shop_item(), for the selected common generated-
 // shop floor branch. Every refused condition is checked before naming or
 // movement mutates the object, quote catalog, hero, or display state.
@@ -1050,61 +1111,90 @@ export function get_cost_of_shop_item(
     const observed = Boolean(options.observed);
     if (state.iflags?.suppress_price || state.program_state?.restoring)
         throw new UnsupportedShopError('suppressed or restoring price');
-    if (!obj || obj.where !== OBJ_FLOOR)
-        throw new UnsupportedShopError('non-floor shop object');
-    if (obj.oclass === COIN_CLASS)
-        throw new UnsupportedShopError('coin pricing');
-    if (obj === state.uball || obj === state.uchain)
-        throw new UnsupportedShopError('punishment-object pricing');
-    if (obj.unpaid || obj.no_charge)
-        throw new UnsupportedShopError('unpaid or no-charge floor object');
-    if (obj.globby)
-        throw new UnsupportedShopError('globby pricing units');
-    if (isContainer(obj) || hasContents(obj))
-        throw new UnsupportedShopError('container pricing');
-    if (obj.oartifact)
-        throw new UnsupportedShopError('artifact pricing');
-    if (obj.otyp === CORPSE || obj.otyp === TIN || obj.otyp === EGG)
-        throw new UnsupportedShopError('corpse, tin, or egg pricing adjustment');
 
-    const position = get_obj_location(obj, 0, state);
-    if (!position)
-        throw new UnsupportedShopError('shop object without a location');
-    const rooms = in_rooms(position.x, position.y, SHOPBASE, state);
+    // C's entire shop applicability predicate precedes get_cost() and all of
+    // its object-specific pricing branches.  In particular, an artifact,
+    // container, glob, or unsupported adjustment outside an applicable shop
+    // simply has no live price; only once this predicate succeeds may those
+    // still-unported pricing arms fail closed.
+    if (!obj) return noShopPrice();
+    const position = get_obj_location(obj, CONTAINED_TOO, state);
     const currentShop = firstRoom(state.u?.ushops);
-    if (rooms.length !== 1 || rooms[0] !== currentShop)
-        throw new UnsupportedShopError('other or shared shop ownership');
-    const roomno = inside_shop(position.x, position.y, state);
-    if (roomno !== currentShop)
-        throw new UnsupportedShopError('shop boundary ownership');
-    const shopkeeper = shop_keeper(roomno, state);
-    if (!shopkeeper || !inhishop(shopkeeper, state))
-        throw new UnsupportedShopError('absent or displaced shopkeeper');
-    if (!shopkeeper.mpeaceful)
-        throw new UnsupportedShopError('angry shopkeeper pricing');
-    if (shopkeeper.mextra.eshk.surcharge)
-        throw new UnsupportedShopError('shopkeeper surcharge');
-    const keeperSquare = shopkeeper.mextra.eshk.shk;
-    if (position.x === keeperSquare.x && position.y === keeperSquare.y)
-        throw new UnsupportedShopError('shopkeeper freespot pricing');
-
-    const type = objectType(obj, state);
-    if (!type.oc_name_known && obj.oclass === GEM_CLASS
-        && type.oc_material === GLASS) {
-        throw new UnsupportedShopError('unidentified glass-gem pricing');
+    if (!currentShop || obj.oclass === COIN_CLASS
+        || obj === state.uball || obj === state.uchain || !position) {
+        return noShopPrice();
     }
-    const units = get_pricing_units(obj);
-    if (!Number.isInteger(units) || units < 1)
-        throw new UnsupportedShopError('invalid pricing quantity');
-    // xname() observes a nearby object before doname_base() appends its price.
-    // Movement admission cannot mutate discovery state, so project that one
-    // source-ordered write for its arithmetic preflight.
-    const pricedObject = observed && !obj.dknown
-        ? { ...obj, dknown: true }
+    const rooms = in_rooms(position.x, position.y, SHOPBASE, state);
+    if (rooms[0] !== currentShop) return noShopPrice();
+    const roomno = inside_shop(position.x, position.y, state);
+    const shopkeeper = shop_keeper(roomno, state);
+    if (!shopkeeper || !inhishop(shopkeeper, state)) return noShopPrice();
+
+    const keeperSquare = shopkeeper.mextra.eshk.shk;
+    const top = obj.where === OBJ_CONTAINED
+        ? (() => {
+            let current = obj;
+            while (current.where === OBJ_CONTAINED && current.ocontainer)
+                current = current.ocontainer;
+            return current;
+        })()
         : obj;
-    const pricingUnitCost = get_cost(pricedObject, shopkeeper, state);
+    const freespot = top.where === OBJ_FLOOR
+        && position.x === keeperSquare.x && position.y === keeperSquare.y;
+    // C computes nochrg before deciding whether get_cost() is needed.  A
+    // floor object on the keeper's square, or one marked no_charge, therefore
+    // bypasses all object-specific pricing guards; a carried object is priced
+    // only when its own unpaid bit is set.
+    const noCharge = top.where === OBJ_FLOOR && (obj.no_charge || freespot);
+    const needsPrice = top.where === OBJ_INVENT ? Boolean(obj.unpaid) : !noCharge;
+    let objectCost = 0;
+    let pricingUnitCost = 0;
+    if (needsPrice) {
+        // The remaining guards describe an applicable item whose C path reaches
+        // get_cost() or its pricing-unit helper.  Keep these source-attributed
+        // refusals visible until their complete helpers land; callers must not
+        // turn them into an ordinary no-live-price result.
+        if (obj.globby)
+            throw new UnsupportedShopError('globby pricing units');
+        if (obj.oartifact)
+            throw new UnsupportedShopError('artifact pricing');
+        if (obj.otyp === CORPSE || obj.otyp === TIN || obj.otyp === EGG)
+            throw new UnsupportedShopError('corpse, tin, or egg pricing adjustment');
+        if (!shopkeeper.mpeaceful)
+            throw new UnsupportedShopError('angry shopkeeper pricing');
+        if (shopkeeper.mextra.eshk.surcharge)
+            throw new UnsupportedShopError('shopkeeper surcharge');
+
+        const type = objectType(obj, state);
+        if (!type.oc_name_known && obj.oclass === GEM_CLASS
+            && type.oc_material === GLASS) {
+            throw new UnsupportedShopError('unidentified glass-gem pricing');
+        }
+        const units = get_pricing_units(obj);
+        if (!Number.isInteger(units) || units < 1)
+            throw new UnsupportedShopError('invalid pricing quantity');
+        // xname() observes a nearby object before doname_base() appends its price.
+        // Movement admission cannot mutate discovery state, so project that one
+        // source-ordered write for its arithmetic preflight.
+        const pricedObject = observed && !obj.dknown
+            ? { ...obj, dknown: true }
+            : obj;
+        pricingUnitCost = get_cost(pricedObject, shopkeeper, state);
+        objectCost = units * pricingUnitCost;
+    }
+    // C adds contained_cost() after the outer-object price predicate, even when
+    // the outer floor container is free.  A free container with chargeable
+    // contents must therefore remain applicable and expose that live contents
+    // price (or the contained-cost branch's own source gap).
+    const contentsCost = hasContents(obj) && !freespot
+        ? contained_cost(obj, shopkeeper, 0, false, true, state)
+        : 0;
     return {
-        cost: units * pricingUnitCost,
+        applicable: true,
+        cost: objectCost + contentsCost,
+        contentsCost,
+        objectCost,
+        noCharge,
         pricingUnitCost,
         shopkeeper,
     };
