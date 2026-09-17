@@ -503,55 +503,60 @@ export function montraits(obj, cc, adjacentok = false, rawEnv = {}) {
         NO_MINVENT | MM_NOWAIT | MM_NOCOUNTBIRTH | MM_NOTAIL | MM_NOMSG,
         env,
     );
-    if (!dummy) return null;
+    const finish = (resolvedDummy) => {
+        if (!resolvedDummy) return null;
 
-    if (dummy.m_lev < dummy.data.mlevel) {
-        const targetLevel = random.rnd(dummy.data.mlevel + 1);
-        if (targetLevel > dummy.m_lev) {
-            while (dummy.m_lev < targetLevel) {
-                ++dummy.m_lev;
-                dummy.mhpmax += monhp_per_lvl(dummy, env);
+        if (resolvedDummy.m_lev < resolvedDummy.data.mlevel) {
+            const targetLevel = random.rnd(resolvedDummy.data.mlevel + 1);
+            if (targetLevel > resolvedDummy.m_lev) {
+                while (resolvedDummy.m_lev < targetLevel) {
+                    ++resolvedDummy.m_lev;
+                    resolvedDummy.mhpmax += monhp_per_lvl(resolvedDummy, env);
+                }
+                saved.m_lev = resolvedDummy.m_lev;
             }
-            saved.m_lev = dummy.m_lev;
         }
-    }
-    if (dummy.mhpmax > saved.mhpmax) saved.mhpmax = dummy.mhpmax;
-    saved.mhp = saved.mhpmax;
+        if (resolvedDummy.mhpmax > saved.mhpmax)
+            saved.mhpmax = resolvedDummy.mhpmax;
+        saved.mhp = saved.mhpmax;
 
-    saved.minvent = dummy.minvent;
-    if (dummy.m_id) {
-        saved.m_id = dummy.m_id;
-        const quest = state.svq?.quest_status;
-        if (quest?.leader_is_dead && saved.m_id === quest.leader_m_id)
-            quest.leader_is_dead = false;
-    }
-    for (const field of [
-        'mx', 'my', 'mux', 'muy', 'mw', 'wormno', 'misc_worn_check',
-        'weapon_check', 'mtrapseen', 'mflee', 'mburied', 'mundetected',
-        'mfleetim', 'mlstmv', 'm_ap_type',
-    ]) {
-        saved[field] = dummy[field];
-    }
-    saved.mrevived = true;
-    saved.mavenge = false;
-    saved.meating = 0;
-    saved.mleashed = false;
-    saved.mtrapped = false;
-    saved.msleeping = false;
-    saved.mfrozen = 0;
-    saved.mcanmove = true;
-    saved.mcan = false;
-    saved.mcansee = true;
-    saved.mblinded = 0;
-    saved.mstun = false;
-    saved.mconf = false;
-    saved.mstate = dummy.mstate;
+        saved.minvent = resolvedDummy.minvent;
+        if (resolvedDummy.m_id) {
+            saved.m_id = resolvedDummy.m_id;
+            const quest = state.svq?.quest_status;
+            if (quest?.leader_is_dead && saved.m_id === quest.leader_m_id)
+                quest.leader_is_dead = false;
+        }
+        for (const field of [
+            'mx', 'my', 'mux', 'muy', 'mw', 'wormno', 'misc_worn_check',
+            'weapon_check', 'mtrapseen', 'mflee', 'mburied', 'mundetected',
+            'mfleetim', 'mlstmv', 'm_ap_type',
+        ]) {
+            saved[field] = resolvedDummy[field];
+        }
+        saved.mrevived = true;
+        saved.mavenge = false;
+        saved.meating = 0;
+        saved.mleashed = false;
+        saved.mtrapped = false;
+        saved.msleeping = false;
+        saved.mfrozen = 0;
+        saved.mcanmove = true;
+        saved.mcan = false;
+        saved.mcansee = true;
+        saved.mblinded = 0;
+        saved.mstun = false;
+        saved.mconf = false;
+        saved.mstate = resolvedDummy.mstate;
 
-    replmon(dummy, saved, state);
-    newsym(saved.mx, saved.my, state);
-    if (saved.cham === NON_PM)
-        saved.cham = pm_to_cham(saved.mnum, state);
-    return saved;
+        replmon(resolvedDummy, saved, state);
+        newsym(saved.mx, saved.my, state);
+        if (saved.cham === NON_PM)
+            saved.cham = pm_to_cham(saved.mnum, state);
+        return saved;
+    };
+    return dummy && typeof dummy.then === 'function'
+        ? dummy.then(finish) : finish(dummy);
 }
 
 // C ref: zap.c revive() (884-1100), for a floor corpse and a non-hero cause.
@@ -617,22 +622,22 @@ export async function revive(corpse, byHero = false, rawEnv = {}) {
     );
     let monster = null;
     if (substitution.changed) {
-        monster = makemon_revival(
+        monster = await makemon_revival(
             state.mons[substitution.mtype], x, y, mmflags, env,
         );
         if (monster) {
             if (corpse.oextra?.omid) free_omid(corpse);
             if (corpse.oextra?.omonst) free_omonst(corpse);
             if (monster.cham === PM_DOPPELGANGER) {
-                newcham_revival(monster, originalSpecies, env);
+                await newcham_revival(monster, originalSpecies, env);
             }
         }
     } else if (corpse.oextra?.omonst) {
-        monster = montraits(corpse, { x, y }, false, env);
+        monster = await montraits(corpse, { x, y }, false, env);
         if (monster?.mtame && !monster.isminion)
             note_unported('dog.c wary_dog');
     } else {
-        monster = makemon_revival(
+        monster = await makemon_revival(
             originalSpecies,
             x,
             y,
@@ -1432,28 +1437,25 @@ export async function makewish(state = game) {
 // and mon.c's writers use the same name. Every caller reads it after the call
 // rather than the return value, which is the monster hit.
 //
-// Only THROWN_WEAPON is ported, because dothrow.c throwit() is bhit()'s only
-// ported caller. Everything the other five call types reach -- zap_map(),
+// Only THROWN_WEAPON is ported here, because dothrow.c throwit() is bhit()'s
+// caller in this port. Everything the other five call types reach -- zap_map(),
 // bhitpile(), flash_hits_mon(), hits_bars(), doorlock() -- belongs to the
 // commands that use them.
 //
-// Ten branches inside the thrown-weapon walk stop, each at its own condition:
-// a shopkeeper catching a pick-axe, a lit object lighting the squares it
-// passes, iron bars, a rock skipping over water, a mimic disguised as an
-// object, a heavy iron ball's four range limits, and a shade the missile
-// passes through.
-//
-// Nine of the ten stop before changing anything. The shade does not: C's
-// shade_miss() at uhitm.c:1575 reads dmgval() for zero or not-zero, and
-// dmgval() rolls the damage dice, so the draw is spent before the refusal is
-// raised. It is raised through an injected callback rather than a visible
-// throw here, which is why it is easy to miss in this list.
+// The thrown-weapon walk has several early-stop branches: a shopkeeper
+// catching a pick-axe, a lit object lighting the squares it passes, iron bars,
+// a rock skipping over water, a mimic disguised as an object, and a heavy iron
+// ball's four range limits. The shade branch is different: C's shade_miss()
+// at uhitm.c:2013 reads dmgval() for zero or not-zero, and dmgval() rolls the
+// damage dice, so the draw is spent before harmless feedback is emitted. The
+// async message is awaited before the missile target is cleared, preserving
+// the source's output and continuation order.
 //
 // A monster in the path is not one of them. C's THROWN_WEAPON arm at 4021-4029
 // ends the flight, maps an unseen monster and returns it, leaving the caller
-// to decide what hits it: dothrow.c throwit() reaches thitmonst() through
-// throwit_mon_hit():1492, and dothrow.c throw_gold():2712 reaches dokick.c
-// ghitm(). Neither is ported, and each caller refuses under its own name.
+// to decide what hits it: dothrow.c throwit() reaches the ported thitmonst()
+// through throwit_mon_hit():1492, while dothrow.c throw_gold():2712 reaches
+// dokick.c ghitm(), which remains outside this call type.
 export class UnsupportedBhitError extends Error {
     constructor(branch) {
         super(`zap.c bhit() reached ${branch}`);
@@ -1544,7 +1546,7 @@ export async function bhit(
             break;
         }
 
-        const mtmp = m_at(x, y, state);
+        let mtmp = m_at(x, y, state);
         const ttmp = t_at(x, y, state);
         if (!mtmp && ttmp && ttmp.ttyp === WEB && random.rn2(3) === 0) {
             if (cansee(x, y, state)) {
@@ -1590,19 +1592,17 @@ export async function bhit(
         // belongs to a call type the head of this function refuses, so only
         // the THROWN_WEAPON half is here.
         //
-        // shade_miss() answers false for every defender that is not a shade,
-        // and js/uhitm.js refuses rather than answering true for one, so the
-        // `mtmp = 0` C writes on a true answer has no reachable site to be
-        // written at. Its false answer still costs a dmgval() roll for a shade
+        // shade_miss() answers false for every defender that is not a shade.
+        // C assigns mtmp = 0 when a shade cannot be hurt, letting the missile
+        // continue; its false answer still costs a dmgval() roll for a shade
         // that the missile can hurt, which is why it is called rather than
         // skipped.
         if (mtmp) {
-            shade_miss(state.youmonst, mtmp, obj, true, true, state, {
-                unsupported: (what) => {
-                    throw new UnsupportedBhitError(what);
-                },
-            });
-            if (M_AP_TYPE(mtmp) === M_AP_OBJECT) {
+            const passedShade = await shade_miss(
+                state.youmonst, mtmp, obj, true, true, state,
+            );
+            if (passedShade) mtmp = null;
+            if (mtmp && M_AP_TYPE(mtmp) === M_AP_OBJECT) {
                 // The three glyph tests at 3987-3989 ask what the hero sees
                 // drawn on the square, which display.c glyph_at() reads out of
                 // gg.gbuf as a glyph number. This port's glyph buffer stores
@@ -3497,7 +3497,7 @@ export async function cancel_monst(
     } else {
         mdef.mcan = 1;
         /* force shapeshifter into its base form or mimic to unhide */
-        normal_shape(mdef, state);
+        await normal_shape(mdef, state);
 
         if (mdef.data === state.mons[PM_CLAY_GOLEM]) {
             // Display message for clay golem (allow_cancel_kill controls

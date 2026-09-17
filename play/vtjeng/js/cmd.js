@@ -2547,14 +2547,14 @@ export async function makemap_prepost(pre, wiztower = false, state = game) {
         (state.u?.uhave?.amulet ? 1 : 0) | (wiztower ? 2 : 0),
         state,
     );
-    losedogs({ state });
+    await losedogs({ state });
     note_unported('mon.c kill_genocided_monsters');
     if (m_at(state.u.ux, state.u.uy, state))
         note_unported('do.c u_collide_m');
     initrack(state);
     if (Punished(state)) {
         unplacebc(state);
-        placebc(state);
+        await placebc(state);
     }
     await docrt();
     await flush_screen(1);
