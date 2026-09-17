@@ -251,7 +251,7 @@ import { adj_pit_checks, fillholetyp, is_moat, watch_dig } from './dig.js';
 import { dropx, preflight_dropx } from './do.js';
 import { ceiling } from './dungeon.js';
 import { done } from './end.js';
-import { more_experienced } from './exper.js';
+import { losexp, more_experienced } from './exper.js';
 import { getlin } from './windows.js';
 import { game } from './gstate.js';
 import {
@@ -1397,7 +1397,7 @@ export async function zapyourself(obj, ordinary, state = game) {
     case SPE_DRAIN_LIFE:
         if (!heroHasProperty(state, DRAIN_RES)) {
             learn_it = true;
-            note_unported('exper.c losexp');
+            await losexp('life drainage', state);
         }
         break;
 
@@ -1848,15 +1848,15 @@ export async function zhitm(
         } else if (mon.misc_worn_check & W_ARM) {
             otmp = which_armor(mon, W_ARM, state);
             const cloak = which_armor(mon, W_ARMC, state);
-            if (cloak) m_useup(mon, cloak, { ...env });
+            if (cloak) await m_useup(mon, cloak, { ...env });
         } else {
             // MAGIC_COOKIE is the sentinel used by dobuzz() to call
             // disintegrate_mon(), rather than ordinary damage handling.
             tmp = 1000;
             const cloak = which_armor(mon, W_ARMC, state);
-            if (cloak) m_useup(mon, cloak, { ...env });
+            if (cloak) await m_useup(mon, cloak, { ...env });
             const shirt = which_armor(mon, W_ARMU, state);
-            if (shirt) m_useup(mon, shirt, { ...env });
+            if (shirt) await m_useup(mon, shirt, { ...env });
         }
         type = -1;
         break;
@@ -4034,7 +4034,7 @@ export async function zap_over_floor(
                 }
                 if (u_at(x, y, state)) {
                     if (state.u.uinwater) {
-                        set_uinwater(false, state);
+                        await set_uinwater(false, state);
                         state.u.uundetected = 0;
                         if (typeof env.docrt === 'function') env.docrt(state);
                         else note_unported('display.c docrt');
@@ -4112,7 +4112,7 @@ export async function zap_over_floor(
                         `The iron bars ${damgtype === ZT_ACID ? 'corrode away' : 'melt'}.`,
                         state, env,
                     );
-                dissolve_bars(x, y, state);
+                await dissolve_bars(x, y, state);
                 if (in_rooms(x, y, SHOPBASE, state).length) {
                     if (typeof env.addDamage === 'function')
                         await env.addDamage(
@@ -4283,7 +4283,7 @@ async function disintegrate_mon(mon, type, fltxt, state, random, env) {
             && (obj.owornmask ?? 0);
         if (!protectedByProperty && !protectedByResist
             && !protectedByQuest && !lifesaver)
-            m_useupall(mon, obj, { state, random });
+            await m_useupall(mon, obj, { state, random });
         obj = next;
     }
     const killEnv = {
@@ -4354,14 +4354,14 @@ async function buzzmonst(
         return { hit: false, reflected: false, clearGas: false, stop: false };
     }
 
-    if (await mon_reflects(mon, null, state)) {
+    if (await mon_reflects(mon, null, state, env)) {
         const seen = cansee(mon.mx, mon.my, state);
         if (seen) {
             await hit(flash_str(fltyp, false, state, random), mon,
                 exclam(0), state, env);
             // shieldeff(mon.mx, mon.my) is a visual animation with no game
             // state or RNG effect, so the shared owner has no call here.
-            await mon_reflects(mon, 'But it reflects from %s %s!', state);
+            await mon_reflects(mon, 'But it reflects from %s %s!', state, env);
         }
         return { hit: true, reflected: true, clearGas: seen, stop: false };
     }
@@ -4439,7 +4439,7 @@ async function buzzmonst(
                     state, env,
                 );
             }
-            m_useup(mon, otmp, { state, random });
+            await m_useup(mon, otmp, { state, random });
         }
         if (monCouldMove && !mon.mcanmove) { /* ZT_SLEEP */
             // slept_monst() releases a sleeping grabber.
@@ -4612,7 +4612,7 @@ export async function dobuzz(
             } else if (u_at(sx, sy, state) && range >= 0) {
                 nomul(0, state);
                 if (state.u.usteed && !random.rn2(3)
-                    && !(await mon_reflects(state.u.usteed, null, state))) {
+                    && !(await mon_reflects(state.u.usteed, null, state, env))) {
                     // C jumps to buzzmonst for the steed. The helper preserves
                     // the exact shared reflection, death, and wakeup path.
                     const steed = state.u.usteed;

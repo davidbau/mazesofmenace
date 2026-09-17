@@ -137,6 +137,7 @@ import { dist2, distmin, sgn, strsubst } from './hacklib.js';
 import { makemon, mongone } from './makemon_create.js';
 import { grow_up, rndmonst, set_malign } from './makemon.js';
 import { m_next2u } from './mhitu.js';
+import { paralyze_monst } from './mhitm.js';
 import {
     healmon, m_carrying, maybe_unhide_at, mon_offmap, mondead, monkilled,
     seemimic, wakeup, xkilled, is_Vlad, flash_mon,
@@ -199,6 +200,7 @@ import { ttyNorep, ttyPline } from './tty_message.js';
 import { note_unported } from './unported.js';
 import { cansee, canseemon, couldsee, recalc_block_point, unblock_point } from './vision.js';
 import { body_part } from './polyself.js';
+import { arti_reflects } from './artifacts.js';
 import {
     extract_from_minvent, bimanual, find_mac, mon_adjust_speed,
     mon_set_minvis,
@@ -275,18 +277,19 @@ function activeHeroProperty(state, property) {
 // nothing happened, 1 if the monster died, 2 if it was incapacitated.
 async function precheck(mon, obj, state, env = {}) {
     if (!obj) return 0;
+    const random = env.random ?? { rn2 };
     const vis = cansee(mon.mx, mon.my, state);
 
     if (obj.oclass === O.POTION_CLASS) {
         if (objdescr_is(obj, 'milky', state)) {
             if (!(state.mvitals[M.PM_GHOST].mvflags & G_GONE)
-                && !rn2(POTION_OCCUPANT_CHANCE(
+                && !random.rn2(POTION_OCCUPANT_CHANCE(
                     state.mvitals[M.PM_GHOST].born))) {
                 const cc = enexto(mon.mx, mon.my,
-                    state.mons[M.PM_GHOST], { state });
+                    state.mons[M.PM_GHOST], { state, random });
                 if (!cc) return 0;
                 await mquaffmsg(mon, obj, state);
-                m_useup(mon, obj, { state });
+                await m_useup(mon, obj, { state });
                 const mtmp = makemon(
                     state.mons[M.PM_GHOST], cc.x, cc.y, MM_NOMSG,
                     { state },
@@ -301,27 +304,32 @@ async function precheck(mon, obj, state, env = {}) {
                         await pline_mon(mon,
                             `As ${monsterCommonName(mon, state)} opens `
                             + `the bottle, an enormous `
-                            + `${Hallucination(state) ? rndmonnam({ state }) : 'ghost'}`
+                            + `${Hallucination(state)
+                                ? rndmonnam({
+                                    state,
+                                    displayRandom: env.displayRandom,
+                                })
+                                : 'ghost'}`
                             + ` emerges!`, state);
                         await ttyPline(
                             `${capitalizedMonsterName(mon, state)} `
                             + `is frightened to death, `
                             + `and unable to move.`, state);
                     }
-                    note_unported('mhitm.c paralyze_monst');
+                    paralyze_monst(mon, 3);
                 }
                 return 2;
             }
         }
         if (objdescr_is(obj, 'smoky', state)
             && !(state.mvitals[M.PM_DJINNI].mvflags & G_GONE)
-            && !rn2(POTION_OCCUPANT_CHANCE(
+            && !random.rn2(POTION_OCCUPANT_CHANCE(
                 state.mvitals[M.PM_DJINNI].born))) {
             const cc = enexto(mon.mx, mon.my,
-                state.mons[M.PM_DJINNI], { state });
+                state.mons[M.PM_DJINNI], { state, random });
             if (!cc) return 0;
             await mquaffmsg(mon, obj, state);
-            m_useup(mon, obj, { state });
+            await m_useup(mon, obj, { state });
             const mtmp = makemon(
                 state.mons[M.PM_DJINNI], cc.x, cc.y, MM_NOMSG,
                 { state },
@@ -341,7 +349,7 @@ async function precheck(mon, obj, state, env = {}) {
                     `${vis ? capitalizedMonsterName(mtmp, state) : 'Something'} speaks.`,
                     state);
                 // SetVoice() is a no-op in the tty build.
-                if (rn2(2)) {
+                if (random.rn2(2)) {
                     // verbalize("You freed me!") is You_hear('"...')
                     const freed = youHear('"You freed me!"', state);
                     if (freed) await ttyPline(freed, state);
@@ -363,8 +371,9 @@ async function precheck(mon, obj, state, env = {}) {
         }
     }
     if (obj.oclass === O.WAND_CLASS && obj.cursed
-        && !rn2(100 /* WAND_BACKFIRE_CHANCE */)) {
-        const dam = d(obj.spe + 2, 6);
+        && !random.rn2(100 /* WAND_BACKFIRE_CHANCE */)) {
+        const dam = random.d ? random.d(obj.spe + 2, 6)
+            : d(obj.spe + 2, 6);
 
         if (vis) {
             await pline_mon(mon,
@@ -381,7 +390,7 @@ async function precheck(mon, obj, state, env = {}) {
                     ? 'nearby' : 'in the distance'}.`, state);
             if (heardZap) await ttyPline(heardZap, state);
         }
-        m_useup(mon, obj, { state });
+        await m_useup(mon, obj, { state });
         mon.mhp -= dam;
         if (mon.mhp < 1 /* DEADMONSTER() */) {
             await monkilled(mon, '', M.AD_RBRE, state, env);
@@ -782,7 +791,7 @@ export async function use_defensive(mtmp, selection, state, env = {}) {
         let scrollObj = otmp;
         if (scrollObj.quan > 1)
             scrollObj = splitobj(scrollObj, 1, { state });
-        extract_from_minvent(mtmp, scrollObj, false, false, { state });
+        await extract_from_minvent(mtmp, scrollObj, false, false, { state });
         await mreadmsg(mtmp, scrollObj, state);
         if (obj_is_cursed || mtmp.mconf) {
             const nlev = random_teleport_level(state);
@@ -930,7 +939,7 @@ export async function use_defensive(mtmp, selection, state, env = {}) {
             discover_object(O.SCR_CREATE_MONSTER, true, true, true, state);
         else
             await trycall(otmp, state);
-        m_useup(mtmp, otmp, { state });
+        await m_useup(mtmp, otmp, { state });
         return 2;
     }
     case 'trapdoor': {
@@ -1090,7 +1099,7 @@ export async function use_defensive(mtmp, selection, state, env = {}) {
                 state);
         if (oseen)
             discover_object(O.POT_HEALING, true, true, true, state);
-        m_useup(mtmp, otmp, { state });
+        await m_useup(mtmp, otmp, { state });
         return 2;
     }
     case 'extra healing': {
@@ -1106,7 +1115,7 @@ export async function use_defensive(mtmp, selection, state, env = {}) {
                 state);
         if (oseen)
             discover_object(O.POT_EXTRA_HEALING, true, true, true, state);
-        m_useup(mtmp, otmp, { state });
+        await m_useup(mtmp, otmp, { state });
         return 2;
     }
     case 'full healing':
@@ -1124,7 +1133,7 @@ export async function use_defensive(mtmp, selection, state, env = {}) {
                 state);
         if (oseen)
             discover_object(otmp.otyp, true, true, true, state);
-        m_useup(mtmp, otmp, { state });
+        await m_useup(mtmp, otmp, { state });
         return 2;
     }
     case 'lizard corpse': {
@@ -1443,7 +1452,7 @@ export async function use_misc(mtmp, selection, state, env = {}) {
                             state);
                         await trycall(otmp, state);
                     }
-                    m_useup(mtmp, otmp, { state });
+                    await m_useup(mtmp, otmp, { state });
                     migrate_to_level(mtmp, ledger_no(tolevel, state),
                         MIGR_RANDOM, null, { state });
                     return 2;
@@ -1456,7 +1465,7 @@ export async function use_misc(mtmp, selection, state, env = {}) {
                     state);
                 await trycall(otmp, state);
             }
-            m_useup(mtmp, otmp, { state });
+            await m_useup(mtmp, otmp, { state });
             return 2;
         }
         if (vismon)
@@ -1465,7 +1474,7 @@ export async function use_misc(mtmp, selection, state, env = {}) {
                 state);
         if (oseen)
             discover_object(O.POT_GAIN_LEVEL, true, true, true, state);
-        m_useup(mtmp, otmp, { state });
+        await m_useup(mtmp, otmp, { state });
         if (!grow_up(mtmp, null, { state, ...env }))
             return 1; /* grew into genocided monster */
         return 2;
@@ -1511,7 +1520,7 @@ export async function use_misc(mtmp, selection, state, env = {}) {
         if (otmp.otyp === O.POT_INVISIBILITY) {
             if (otmp.cursed)
                 await you_aggravate(mtmp, state);
-            m_useup(mtmp, otmp, { state });
+            await m_useup(mtmp, otmp, { state });
         }
         return 2;
     }
@@ -1527,7 +1536,7 @@ export async function use_misc(mtmp, selection, state, env = {}) {
         if (!otmp) throw new Error('use_misc: no potion of speed');
         await mquaffmsg(mtmp, otmp, state);
         await mon_adjust_speed(mtmp, 1, otmp, state, env);
-        m_useup(mtmp, otmp, { state });
+        await m_useup(mtmp, otmp, { state });
         return 2;
     }
     case 'polymorph wand': {
@@ -1543,7 +1552,7 @@ export async function use_misc(mtmp, selection, state, env = {}) {
         // MUSE_POT_POLYMORPH
         if (!otmp) throw new Error('use_misc: no potion of polymorph');
         await mquaffmsg(mtmp, otmp, state);
-        m_useup(mtmp, otmp, { state });
+        await m_useup(mtmp, otmp, { state });
         if (vismon)
             await pline_mon(mtmp,
                 `${capitalizedMonsterName(mtmp, state)} suddenly mutates!`,
@@ -2778,15 +2787,20 @@ export function searches_for_item(monster, obj, state = game) {
 // where applicable. When `str` is null, just returns the boolean.
 //
 // arti_reflects(MON_WEP(mon)) checks whether a wielded artifact weapon
-// reflects. No ported monster wields such an artifact, so the arm is a throw.
-export async function mon_reflects(mon, str, state = game) {
+// reflects. Its boolean return is used here exactly as in C; callers may pass
+// a planning message/display environment so naming stays on the clone.
+export async function mon_reflects(mon, str, state = game, rawEnv = {}) {
+    const message = rawEnv.message
+        ?? (rawEnv.planning ? async () => {} : ttyPline);
     let orefl = which_armor(mon, W_ARMS, state);
 
     if (orefl && orefl.otyp === O.SHIELD_OF_REFLECTION) {
         if (str) {
-            const msg = str.replace('%s', s_suffix(monsterCommonName(mon, state)))
+            const msg = str.replace('%s', s_suffix(monsterCommonName(
+                mon, state, 0, rawEnv,
+            )))
                 .replace('%s', 'shield');
-            await ttyPline(msg, state);
+            await message(msg, state, rawEnv);
             // makeknown(SHIELD_OF_REFLECTION)
             discover_object(O.SHIELD_OF_REFLECTION, true, true, true, state);
         }
@@ -2794,18 +2808,23 @@ export async function mon_reflects(mon, str, state = game) {
     }
     // arti_reflects(MON_WEP(mon)) -- wielded artifact reflection
     const monwep = mon.mw; /* MON_WEP() */
-    if (monwep && monwep.oartifact) {
-        // No ported monster wields an artifact that reflects.
-        throw new Error(
-            'mon_reflects() reached arti_reflects() for a wielded artifact',
-        );
+    if (monwep && arti_reflects(monwep, state)) {
+        if (str) {
+            const msg = str.replace('%s', s_suffix(monsterCommonName(
+                mon, state, 0, rawEnv,
+            ))).replace('%s', 'weapon');
+            await message(msg, state, rawEnv);
+        }
+        return true;
     }
     orefl = which_armor(mon, W_AMUL, state);
     if (orefl && orefl.otyp === O.AMULET_OF_REFLECTION) {
         if (str) {
-            const msg = str.replace('%s', s_suffix(monsterCommonName(mon, state)))
+            const msg = str.replace('%s', s_suffix(monsterCommonName(
+                mon, state, 0, rawEnv,
+            )))
                 .replace('%s', 'amulet');
-            await ttyPline(msg, state);
+            await message(msg, state, rawEnv);
             discover_object(O.AMULET_OF_REFLECTION, true, true, true, state);
         }
         return true;
@@ -2814,9 +2833,11 @@ export async function mon_reflects(mon, str, state = game) {
     if (orefl && (orefl.otyp === O.SILVER_DRAGON_SCALES
                   || orefl.otyp === O.SILVER_DRAGON_SCALE_MAIL)) {
         if (str) {
-            const msg = str.replace('%s', s_suffix(monsterCommonName(mon, state)))
+            const msg = str.replace('%s', s_suffix(monsterCommonName(
+                mon, state, 0, rawEnv,
+            )))
                 .replace('%s', 'armor');
-            await ttyPline(msg, state);
+            await message(msg, state, rawEnv);
         }
         return true;
     }
@@ -2824,9 +2845,11 @@ export async function mon_reflects(mon, str, state = game) {
         || mon.data === state.mons?.[M.PM_CHROMATIC_DRAGON]) {
         /* Silver dragons only reflect when mature; babies do not */
         if (str) {
-            const msg = str.replace('%s', s_suffix(monsterCommonName(mon, state)))
+            const msg = str.replace('%s', s_suffix(monsterCommonName(
+                mon, state, 0, rawEnv,
+            )))
                 .replace('%s', 'scales');
-            await ttyPline(msg, state);
+            await message(msg, state, rawEnv);
         }
         return true;
     }
@@ -2929,7 +2952,7 @@ async function mon_consume_unstone(
         if (heard) await ttyPline(heard, state);
     }
 
-    m_useup(mon, obj, { state });
+    await m_useup(mon, obj, { state });
     /* obj is now gone */
 
     if (acid && !tinned && !monster_resists_element(mon, ACID_RES, state)) {
@@ -3100,12 +3123,12 @@ async function muse_unslime(mon, obj, trap, by_you, state = game, env = {}) {
                 await pline_mon(mon, 'Oh, what a pretty fire!', state);
             if (vis)
                 await trycall(obj, state);
-            m_useup(mon, obj, { state });
+            await m_useup(mon, obj, { state });
             vis = false;    /* skip makeknown() below */
             res = false;    /* failed to cure sliming */
         } else {
             dmg = Math.trunc((2 * (random.rn1(3, 3) + 2 * bcsign(obj)) + 1) / 3);
-            m_useup(mon, obj, { state });
+            await m_useup(mon, obj, { state });
             /* -11 => monster's fireball */
             note_unported('explode.c explode');
             dmg = 0; /* damage has been applied by explode() */
@@ -3133,7 +3156,7 @@ async function muse_unslime(mon, obj, trap, by_you, state = game, env = {}) {
             discover_object(O.POT_OIL, true, true, true, state); /* makeknown */
         }
         dmg = random.d(3, 4); /* [**TEMP** (different from hero)] */
-        m_useup(mon, obj, { state });
+        await m_useup(mon, obj, { state });
     } else { /* wand/horn of fire w/ positive charge count */
         if (obj.otyp === O.FIRE_HORN)
             await mplayhorn(mon, obj, true, state);

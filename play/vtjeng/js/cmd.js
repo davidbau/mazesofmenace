@@ -2570,7 +2570,7 @@ export async function makemap_prepost(pre, wiztower = false, state = game) {
         state.u.ustuck = null;
         state.u.uswallow = false;
         state.u.uswldtim = 0;
-        set_uinwater(0, state);
+        await set_uinwater(0, state);
         state.u.uundetected = false;
         dmonsfree(state);
         dobjsfree(state);
@@ -2583,7 +2583,7 @@ export async function makemap_prepost(pre, wiztower = false, state = game) {
     vision_reset(state);
     state.vision_full_recalc = 1;
     await cls();
-    u_on_rndspot(
+    await u_on_rndspot(
         (state.u?.uhave?.amulet ? 1 : 0) | (wiztower ? 2 : 0),
         state,
     );
@@ -2910,11 +2910,8 @@ export function failClosedCommandRefusals() {
         UnsupportedArtifactDisplayError,
         UnsupportedDropError,
         UnsupportedLevelChangeError,
-        // wizcmds.c wiz_level_change() reaches the first when asked to lower
-        // a level, which exper.c losexp() owns. attrib.c adjabil() throws the
-        // second only while losing an ability or a weapon-skill slot, which
-        // no ported command reaches; it is listed so that a future lowering
-        // path ends the segment instead of failing the run.
+        // Remaining experience/attribute refusals include polymorphed
+        // pluslvl() and setuhpmax(); ordinary level loss is implemented.
         UnsupportedExperienceChangeError,
         UnsupportedAbilityChangeError,
         // do.c goto_level()'s tail reaches all four from inside the `>`

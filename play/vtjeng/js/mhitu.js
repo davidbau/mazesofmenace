@@ -6,11 +6,15 @@
 
 import {
     A_DEX,
+    ACID_RES,
     AC_VALUE,
     BLINDED,
+    COLD_RES,
     CONFLICT,
     DISPLACED,
     DIED,
+    FIRE_RES,
+    FEMALE,
     HALF_PHDAM,
     INVIS,
     M_AP_NOTHING,
@@ -20,6 +24,7 @@ import {
     M_ATTK_AGR_DONE,
     M_ATTK_HIT,
     M_ATTK_MISS,
+    MALE,
     M_SEEN_COLD,
     NATTK,
     NEED_HTH_WEAPON,
@@ -28,12 +33,16 @@ import {
     P_WHIP,
     RLOC_NOMSG,
     SEE_INVIS,
+    SHOCK_RES,
+    STONE_RES,
     IS_WATERWALL,
     TT_PIT,
     FAST,
     W_AMUL,
     W_ACCESSORY,
     W_ARMOR,
+    W_ARMG,
+    XKILL_NOMSG,
     W_WEP,
     Upolyd,
     is_pit,
@@ -55,19 +64,37 @@ import {
     swallowed,
 } from './display.js';
 import { reset_occupations } from './cmd.js';
-import { capitalizedMonsterName, monsterPossessive } from './do_name.js';
+import {
+    Monnam,
+    capitalizedMonsterName,
+    hliquid,
+    monsterPossessive,
+    pmname,
+} from './do_name.js';
 import { In_hell, on_level } from './dungeon.js';
 import { done_in_by } from './end.js';
 import { game } from './gstate.js';
 import { nomul, showdamage, spoteffects } from './hack.js';
 import { dist2, distmin } from './hacklib.js';
 import { is_home_elemental } from './makemon.js';
-import { engulf_target, failed_grab } from './mhitm.js';
-import { set_ustuck, unstuck } from './mon.js';
+import {
+    attk_protection,
+    engulf_target,
+    failed_grab,
+    paralyze_monst,
+} from './mhitm.js';
+import {
+    golemeffects,
+    mon_to_stone,
+    set_ustuck,
+    unstuck,
+    xkilled,
+} from './mon.js';
 import {
     DISTANCE_ATTK_TYPE,
     cvt_adtyp_to_mseenres,
     get_atkdam_type,
+    haseyes,
     hides_under,
     is_animal,
     is_demon,
@@ -83,6 +110,9 @@ import {
     monstunseesu,
     mon_hates_blessings,
     perceives,
+    poly_when_stoned,
+    monster_resists_element,
+    stagger,
     thick_skinned,
     touch_petrifies,
     unsolid,
@@ -90,6 +120,8 @@ import {
 import { monnear } from './monmove.js';
 import * as M from './monsters.js';
 import { find_offensive } from './muse.js';
+import { mon_reflects } from './muse.js';
+import { makeplural } from './fruit.js';
 import { is_weptool, is_wet_towel, objectType, sobj_at } from './obj.js';
 import { place_monster, remove_monster } from './monst.js';
 import {
@@ -101,7 +133,7 @@ import {
 } from './objects.js';
 import { xnameFresh } from './objnam.js';
 import { is_quest_artifact } from './questpgr.js';
-import { rn2 } from './rng.js';
+import { d, rn2, rn2_on_display_rng } from './rng.js';
 import {
     canSeeMonster,
     canSpotMonster,
@@ -121,7 +153,8 @@ import { hitval } from './weapon.js';
 import { is_pole } from './worn.js';
 import { breamu, spitmu } from './mthrowu.js';
 import { mnexto } from './teleport.js';
-import { poly_gender } from './polyself.js';
+import { poly_gender, rehumanize } from './polyself.js';
+import { note_unported } from './unported.js';
 
 // C ref: mhitu.c u_slow_down() (163-171).  The self-zap and monster-action
 // callers share this owner: HFast is cleared in one operation, leaving any
@@ -739,9 +772,17 @@ export async function mattacku(monster, rawEnv = {}) {
     const markInvisible = rawEnv.planning
         ? () => {}
         : (rawEnv.markInvisible ?? map_invisible);
+    // C keeps cosmetic choices on the display stream.  Planning owns a
+    // cloned display context; live callers use the game's display context.
+    // Supplying this explicitly prevents hliquid() in passiveum() from
+    // falling back to the attacker's gameplay random source.
+    const displayRandom = rawEnv.displayRandom
+        ?? (state.displayCtx
+            ? (bound) => rn2_on_display_rng(bound, state)
+            : () => 0);
     const env = {
         ...rawEnv, state, message, urgentMessage, redraw, statusRefresh,
-        markInvisible,
+        markInvisible, displayRandom,
         planningDeath: (subject) => new MonsterDeathPlanningError(subject),
     };
     const mdat = monster.data;
@@ -851,6 +892,10 @@ export async function mattacku(monster, rawEnv = {}) {
     const firstfoundyou = foundyou;
     let skipnonmagc = false;
     const sum = new Array(NATTK).fill(M_ATTK_MISS);
+    // mhitu.c's static mon_currwep is the weapon used by the current attack
+    // slot. It is cleared before getmattk() for every slot, then assigned only
+    // by AT_WEAP; passiveum() reads it for AD_ENCH.
+    let mon_currwep = null;
 
     for (let i = 0; i < NATTK; i++) {
         sum[i] = M_ATTK_MISS;
@@ -867,6 +912,8 @@ export async function mattacku(monster, rawEnv = {}) {
             // calc_mattacku_vars() has just written the hero's own square into
             // bhitpos, so that test is always false and is left out.
         }
+        mon_currwep = null;
+        env.mon_currwep = mon_currwep;
         const mattk = getmattk(monster, state.youmonst, i, sum, env);
         // C skips swallowed non-engulfing attacks, all non-magical attacks
         // after wildmiss(), and a second drain-inventory tentacle when the
@@ -1002,7 +1049,8 @@ export async function mattacku(monster, rawEnv = {}) {
                         break;
                 }
                 if (foundyou) {
-                    const mon_currwep = monster.mw; /* MON_WEP() */
+                    mon_currwep = monster.mw; /* MON_WEP() */
+                    env.mon_currwep = mon_currwep;
                     if (mon_currwep) {
                         const bash = is_pole(mon_currwep, state)
                             && mon_currwep.oartifact !== ART_SNICKERSNEE
@@ -1130,7 +1178,10 @@ export async function expels(mtmp, rawEnv = {}) {
             'Brrooaa...  You land hard at some distance.', state,
         );
     }
-    await spoteffects(true, state);
+    // Keep the planning clone's display seam attached through the terrain
+    // transition.  switch_terrain() is reached through spoteffects(), and a
+    // missing environment here would let a clone write live TTY output.
+    await spoteffects(true, state, rawEnv);
 }
 
 // C ref: mhitu.c gulpmu() (1287-1577). This slice covers an ordinary human
@@ -1349,10 +1400,9 @@ function Half_physical_damage(state) {
 
 // C ref: mhitu.c hitmu() (1143-1267). "monster hits you; returns MM_ flags".
 //
-// Every reachable surviving exit answers M_ATTK_HIT. A lethal unpolymorphed
-// planning exit raises MonsterDeathPlanningError so the cloned turn can stop
-// at the same point that the live exit calls done_in_by(); the live end-game
-// boundary then unwinds the monster pass after the real death entry.
+// Every reachable surviving exit answers M_ATTK_HIT. Lethal planning damage
+// raises MonsterDeathPlanningError before live rehumanize() or done_in_by().
+// A completed live end-game boundary unwinds the monster pass.
 //
 // Ported: the base damage roll, mhitm_adtyping(), mhitm_knockback(), the
 // negative-armor-class reduction, mdamageu() and passiveum().
@@ -1360,8 +1410,7 @@ function Half_physical_damage(state) {
 // Ported: the marker for an unspottable attacker in hitmu() and missmu().
 //
 // Refused where C acts: the block that reveals an attacker hidden under an
-// object, which needs doname(), Amonnam() and tp_sensemon();
-// and the alternate mdamageu() death branches.
+// object, which needs doname(), Amonnam() and tp_sensemon().
 //
 // One piece of C is absent rather than refused: mhm.permdmg's whole block
 // (1229-1259), which drains permanent hit points. Death's life-force drain is
@@ -1462,32 +1511,39 @@ async function hitmu(mtmp, mattk, env) {
     return res;
 }
 
-// C ref: mhitu.c mdamageu() (1901-1927). "mtmp hits you for n points damage".
-//
-// C ref: mhitu.c mdamageu() (1901-1927). "mtmp hits you for n points damage".
-//
-// done_in_by() is ported in js/end.js and wired below. The live pass calls it
-// when uhp drops below 1; the normal planning pass raises the internal signal
-// above because done() calls bot() on the module-level game and
-// paranoid_query() reads input.
-export async function mdamageu(mtmp, n, state, env) {
-    const unsupported = requireMattackuOperation(env, 'unsupported');
-    const message = requireMattackuOperation(env, 'message');
+// C ref: mhitu.c mdamageu() (1902-1927). "mtmp hits you for n points damage".
+// The two hit-point pools are separate C fields: Upolyd selects u.mh/mhmax and
+// rehumanize(), while an ordinary hero uses u.uhp/uhpmax and done_in_by().
+// showdamage() runs before the matching cap, exactly as in C.
+export async function mdamageu(mtmp, n, state, env = {}) {
+    const message = env.message ?? (env.planning ? async () => {} : ttyPline);
 
     if (n < 0) {
-        // C calls impossible() and continues with n = 0. No ported caller can
-        // reach it: hitmu() calls this with 1 or with a damage it has already
-        // clamped above zero.
-        unsupported('mdamageu() for negative damage');
+        // C discards the diagnostic's result and continues with zero damage.
+        note_unported('pline.c impossible');
+        n = 0;
     }
 
     state.disp ??= {};
     state.disp.botl = true;
     if (Upolyd(state.u)) {
-        // u.mh, u.mhmax and rehumanize() belong to polyself.c, which is not
-        // ported; js/regen.js:52 records that Upolyd() is constantly false.
-        unsupported('damage to a polymorphed hero');
+        state.u.mh -= n;
+        await showdamage(n, state, { message });
+        /* caller might have reduced mhmax before calling mdamageu() */
+        if (state.u.mh > state.u.mhmax)
+            state.u.mh = state.u.mhmax;
+        if (state.u.mh < 1) {
+            // rehumanize() owns the live polyself.c transition. A planning
+            // clone cannot run it: polyman/newsym and a possible done() would
+            // write the live terminal or consume input. Hand the exact C
+            // lethal boundary back to the live replay instead.
+            if (env.planning)
+                throw new MonsterDeathPlanningError(mtmp);
+            await rehumanize(state, env);
+        }
+        return;
     }
+
     state.u.uhp -= n;
     await showdamage(n, state, { message });
     /* caller might have reduced uhpmax before calling mdamageu() */
@@ -1495,20 +1551,11 @@ export async function mdamageu(mtmp, n, state, env) {
         state.u.uhp = state.u.uhpmax;
     if (state.u.uhp < 1) {
         // C ref: mhitu.c:1924-1925. done_in_by() prints "You die...", builds
-        // the killer string, and calls done(). done() calls bot() on the
-        // module-level game and paranoid_query() reads input, so it cannot
-        // run on the planning pass's clone.
+        // the killer string, and calls done(). The planning clone cannot run
+        // that input-bearing NORETURN path, so it stops at this boundary.
         if (env.planning) {
-            // C's lethal mdamageu() enters done_in_by(), whose live path owns
-            // the amulet/query ordering, CON adjustment, and any resulting
-            // RNG. A planning clone cannot consume that input or safely replay
-            // those effects: doing so would model savelife twice and could
-            // leave the live pass with a different amulet/state. Hand the
-            // exact lethal boundary back to the live replay instead.
             throw new MonsterDeathPlanningError(mtmp);
         } else {
-            // Live pass: done_in_by() calls done(), which in wizard/discover
-            // mode asks "Die?"; savelife() runs on the real game state.
             await done_in_by(mtmp, DIED, state);
         }
     }
@@ -1547,8 +1594,10 @@ export function ranged_attk_available(mtmp, rawEnv = {}) {
     }));
 }
 
-// C ref: mhitu.c passiveum() (2434-2615), as far as `if (!Upolyd)` at 2519.
-// The hero's own passive counter-attack against the monster that just hit.
+// C ref: mhitu.c passiveum() (2434-2615). The hero's own passive
+// counter-attack against the monster that just hit.  The helper below is
+// kept beside it because C's assess_dmg() return value decides whether the
+// monster attack loop continues.
 //
 // An unpolymorphed hero costs nothing here. olduasmon is the role's permonst,
 // whose mattk[1] is NO_ATTK: aatyp AT_NONE ends the search, damn and damd are
@@ -1556,17 +1605,39 @@ export function ranged_attk_available(mtmp, rawEnv = {}) {
 // switch's default arm. The absence of any passiveum() site in seed0004's
 // step-91 and step-92 random-number log is that path, observed.
 //
-// The three arms below therefore need a polymorphed hero, and so does
-// everything after the `!Upolyd` return: the second switch, its rn2(3) guard
-// and uhitm.c-style assess_dmg().
+// `mattk` is the blow that landed. C reads it in the AD_STON arm's
+// attk_protection(mattk->aatyp), which decides whether the attacker's gloves
+// saved it from a cockatrice.
 //
-// `mattk` is the blow that landed, and C reads it in one place: the AD_STON
-// arm's attk_protection(mattk->aatyp), which decides whether the attacker's
-// gloves saved it from a cockatrice. That arm refuses, so the parameter is
-// carried for the signature rather than read.
+// The source calls whose results are discarded but whose full owners
+// are outside this span remain named at their call sites: erode_armor,
+// acid_damage, drain_item, shieldeff, and split_mon.  Their surrounding
+// source branches still consume the conditional draws before recording the
+// discarded call.
+async function assess_dmg(mtmp, tmp, state, env) {
+    const message = env.message
+        ?? (env.planning ? async () => {} : ttyPline);
+    mtmp.mhp -= tmp;
+    if (mtmp.mhp <= 0) {
+        await message(
+            messageAt(`${Monnam(mtmp, state, env)} dies!`,
+                mtmp.mx, mtmp.my, state),
+            state,
+            env,
+        );
+        // xkilled()'s result is discarded by C; a life-saving owner may
+        // restore the monster, which is why the post-call hp test is needed.
+        await xkilled(mtmp, XKILL_NOMSG, state, env);
+        if (mtmp.mhp >= 1) return M_ATTK_HIT;
+        return M_ATTK_AGR_DIED;
+    }
+    return M_ATTK_HIT;
+}
+
 async function passiveum(olduasmon, mtmp, mattk, state, env) {
-    const random = env.random;
-    const unsupported = requireMattackuOperation(env, 'unsupported');
+    const random = env.random ?? { d, rn2 };
+    const message = env.message
+        ?? (env.planning ? async () => {} : ttyPline);
     let i;
     let oldu_mattk = null;
 
@@ -1582,26 +1653,76 @@ async function passiveum(olduasmon, mtmp, mattk, state, env) {
             || olduasmon.mattk[i].aatyp === M.AT_BOOM)
             oldu_mattk = olduasmon.mattk[i];
     }
-    /* Note: C's `tmp` is not always used. Its value feeds only the arms below
-       and the polymorphed tail, all of which stop, but the draw is C's and has
-       to happen where C makes it -- the same treatment js/uhitm.js passive()
-       gives the mirror-image function. */
+    let tmp = 0;
     if (oldu_mattk.damn)
-        random.d(oldu_mattk.damn, oldu_mattk.damd);
+        tmp = random.d(oldu_mattk.damn, oldu_mattk.damd);
     else if (oldu_mattk.damd)
-        random.d(olduasmon.mlevel + 1, oldu_mattk.damd);
+        tmp = random.d(olduasmon.mlevel + 1, oldu_mattk.damd);
 
     /* These affect the enemy even if you were "killed" (rehumanized) */
     switch (oldu_mattk.adtyp) {
     case M.AD_ACID: /* acid blob */
-        unsupported("a hero form's passive acid");
-        break;
+        if (!random.rn2(2)) {
+            await message(
+                messageAt(
+                    `${Monnam(mtmp, state, env)} is splashed by `
+                    + `${Upolyd(state.u) ? 'your ' : ''}${hliquid('acid', {
+                        ...env,
+                        state,
+                    })}!`,
+                    mtmp.mx,
+                    mtmp.my,
+                    state,
+                ),
+                state,
+                env,
+            );
+            if (monster_resists_element(mtmp, ACID_RES, state)) {
+                await message(
+                    messageAt(`${Monnam(mtmp, state, env)} is not affected.`,
+                        mtmp.mx, mtmp.my, state),
+                    state,
+                    env,
+                );
+                tmp = 0;
+            }
+        } else {
+            tmp = 0;
+        }
+        if (!random.rn2(30)) note_unported('uhitm.c erode_armor');
+        if (!random.rn2(6)) note_unported('trap.c acid_damage');
+        return assess_dmg(mtmp, tmp, state, env);
     case M.AD_STON: /* cockatrice */
-        unsupported("a hero form's passive petrification");
-        break;
+    {
+        const protector = attk_protection(mattk.aatyp);
+        let wornitems = mtmp.misc_worn_check ?? 0;
+        // MON_WEP(mtmp) supplies glove protection for a wielded weapon.
+        if (mtmp.mw) wornitems |= W_ARMG;
+        if (!monster_resists_element(mtmp, STONE_RES, state)
+            && (protector === 0
+                || (protector !== ~0
+                    && (wornitems & protector) !== protector))) {
+            if (poly_when_stoned(mtmp.data, state)) {
+                await mon_to_stone(mtmp, state, env);
+                return M_ATTK_HIT;
+            }
+            await message(
+                messageAt(`${Monnam(mtmp, state, env)} turns to stone!`,
+                    mtmp.mx, mtmp.my, state),
+                state,
+                env,
+            );
+            state.gs ??= {};
+            state.gs.stoned = 1;
+            await xkilled(mtmp, XKILL_NOMSG, state, env);
+            if (mtmp.mhp >= 1) return M_ATTK_HIT;
+            return M_ATTK_AGR_DIED;
+        }
+        return M_ATTK_HIT;
+    }
     case M.AD_ENCH: /* KMH -- remove enchantment (disenchanter) */
-        unsupported("a hero form's passive disenchantment");
-        break;
+        if (env.mon_currwep) note_unported('zap.c drain_item');
+        return M_ATTK_HIT;
     default:
         break;
     }
@@ -1609,7 +1730,167 @@ async function passiveum(olduasmon, mtmp, mattk, state, env) {
         return M_ATTK_HIT;
 
     /* These affect the enemy only if you are still a monster */
-    return unsupported("a polymorphed hero's passive counter-attack");
+    if (random.rn2(3)) {
+        switch (oldu_mattk.adtyp) {
+        case M.AD_PHYS:
+            if (oldu_mattk.aatyp === M.AT_BOOM) {
+                await message('You explode!', state, env);
+                await rehumanize(state, env);
+                return assess_dmg(mtmp, tmp, state, env);
+            }
+            break;
+        case M.AD_PLYS: /* Floating eye */
+            tmp = Math.min(tmp, 127);
+            if (state.u.umonnum === M.PM_FLOATING_EYE) {
+                if (!random.rn2(4)) tmp = 127;
+                if (mtmp.mcansee && haseyes(mtmp.data) && random.rn2(3)
+                    && (perceives(mtmp.data)
+                        || !activeHeroProperty(state, INVIS))) {
+                    if (activeHeroProperty(state, BLINDED)) {
+                        await message(
+                            `As a blind ${pmname(
+                                state.youmonst.data,
+                                state.flags?.female ? FEMALE : MALE,
+                            )}, you cannot defend yourself.`,
+                            state,
+                            env,
+                        );
+                    } else if (await mon_reflects(
+                        mtmp,
+                        'Your gaze is reflected by %s %s.',
+                        state,
+                        env,
+                    )) {
+                        return 1;
+                    } else {
+                        await message(
+                            messageAt(
+                                `${Monnam(mtmp, state, env)} is frozen by your gaze!`,
+                                mtmp.mx,
+                                mtmp.my,
+                                state,
+                            ),
+                            state,
+                            env,
+                        );
+                        paralyze_monst(mtmp, tmp);
+                        return M_ATTK_AGR_DONE;
+                    }
+                }
+            } else {
+                await message(
+                    messageAt(`${Monnam(mtmp, state, env)} is frozen by you.`,
+                        mtmp.mx, mtmp.my, state),
+                    state,
+                    env,
+                );
+                paralyze_monst(mtmp, tmp);
+                return M_ATTK_AGR_DONE;
+            }
+            return M_ATTK_HIT;
+        case M.AD_COLD:
+            if (monster_resists_element(mtmp, COLD_RES, state)) {
+                note_unported('display.c shieldeff');
+                await message(
+                    messageAt(`${Monnam(mtmp, state, env)} is mildly chilly.`,
+                        mtmp.mx, mtmp.my, state),
+                    state,
+                    env,
+                );
+                await golemeffects(mtmp, M.AD_COLD, tmp, { ...env, state });
+                tmp = 0;
+                break;
+            }
+            await message(
+                messageAt(`${Monnam(mtmp, state, env)} is suddenly very cold!`,
+                    mtmp.mx, mtmp.my, state),
+                state,
+                env,
+            );
+            state.u.mh += Math.trunc((tmp + random.rn2(2)) / 2);
+            if (state.u.mhmax < state.u.mh)
+                state.u.mhmax = state.u.mh;
+            if (state.u.mhmax > ((state.youmonst.data.mlevel + 1) * 8))
+                note_unported('mon.c split_mon');
+            break;
+        case M.AD_STUN:
+            if (!mtmp.mstun) {
+                mtmp.mstun = 1;
+                await message(
+                    messageAt(
+                        `${Monnam(mtmp, state, env)} ${makeplural(
+                            stagger(mtmp.data, 'stagger'),
+                        )}.`,
+                        mtmp.mx,
+                        mtmp.my,
+                        state,
+                    ),
+                    state,
+                    env,
+                );
+            }
+            tmp = 0;
+            break;
+        case M.AD_FIRE:
+            if (monster_resists_element(mtmp, FIRE_RES, state)) {
+                note_unported('display.c shieldeff');
+                await message(
+                    messageAt(`${Monnam(mtmp, state, env)} is mildly warm.`,
+                        mtmp.mx, mtmp.my, state),
+                    state,
+                    env,
+                );
+                await golemeffects(mtmp, M.AD_FIRE, tmp, { ...env, state });
+                tmp = 0;
+                break;
+            }
+            await message(
+                messageAt(
+                    `${Monnam(mtmp, state, env)} is suddenly very hot!`,
+                    mtmp.mx,
+                    mtmp.my,
+                    state,
+                ),
+                state,
+                env,
+            );
+            break;
+        case M.AD_ELEC:
+            if (monster_resists_element(mtmp, SHOCK_RES, state)) {
+                note_unported('display.c shieldeff');
+                await message(
+                    messageAt(
+                        `${Monnam(mtmp, state, env)} is slightly tingled.`,
+                        mtmp.mx,
+                        mtmp.my,
+                        state,
+                    ),
+                    state,
+                    env,
+                );
+                await golemeffects(mtmp, M.AD_ELEC, tmp, { ...env, state });
+                tmp = 0;
+                break;
+            }
+            await message(
+                messageAt(
+                    `${Monnam(mtmp, state, env)} is jolted with your electricity!`,
+                    mtmp.mx,
+                    mtmp.my,
+                    state,
+                ),
+                state,
+                env,
+            );
+            break;
+        default:
+            tmp = 0;
+            break;
+        }
+    } else {
+        tmp = 0;
+    }
+    return assess_dmg(mtmp, tmp, state, env);
 }
 
 // C ref: mhitu.c gulp_blnd_check() (1273-1285). Called when removing

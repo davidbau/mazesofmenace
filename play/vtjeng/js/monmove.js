@@ -440,7 +440,12 @@ import {
     recalc_block_point,
     vision_recalc,
 } from './vision.js';
-import { autoreturn_weapon, can_touch_safely, mon_wield_item } from './weapon.js';
+import {
+    autoreturn_weapon,
+    can_touch_safely,
+    mon_wield_item,
+    mwepgone,
+} from './weapon.js';
 import { mwelded } from './wield.js';
 import { extract_from_minvent, is_pole, which_armor } from './worn.js';
 import * as M from './monsters.js';
@@ -1964,7 +1969,14 @@ async function gelcube_digests(mtmp, env = {}) {
     if (!otmp) return -1;
 
     mtmp.meating = eaten_stat(mtmp.meating, otmp, env);
-    extract_from_minvent(mtmp, otmp, true, true, state, env);
+    await extract_from_minvent(mtmp, otmp, true, true, {
+        ...env,
+        hooks: {
+            ...(env.hooks ?? {}),
+            mwepgone: env.hooks?.mwepgone
+                ?? ((target, actionEnv) => mwepgone(target, actionEnv)),
+        },
+    });
     await m_consume_obj(mtmp, otmp, env);
     return 0;
 }
@@ -3357,7 +3369,7 @@ export async function postmov(
                         env,
                     );
                 }
-                dissolve_bars(monster.mx, monster.my, state);
+                await dissolve_bars(monster.mx, monster.my, state);
                 return MMOVE_DONE;
             } else if (state.flags?.verbose && canseemon(monster, state)) {
                 // C uses makeplural() to conjugate the movement verb and
@@ -4036,7 +4048,7 @@ export function can_hide_under_obj(headObject, state = game) {
 
 // C ref: monmove.c dissolve_bars() (2170-2180). Remove iron bars at (x,y),
 // replacing with the appropriate terrain type and redrawing.
-export function dissolve_bars(x, y, state = game) {
+export async function dissolve_bars(x, y, state = game) {
     const loc = state.level.at(x, y);
     const edge = loc.edge;
     loc.typ = edge === 1 ? DOOR
@@ -4047,5 +4059,5 @@ export function dissolve_bars(x, y, state = game) {
     loc.doormask = 0;
     newsym(x, y);
     if (x === state.u.ux && y === state.u.uy) /* u_at(x, y) */
-        switch_terrain(state);
+        await switch_terrain(state);
 }
