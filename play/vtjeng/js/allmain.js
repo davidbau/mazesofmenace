@@ -638,12 +638,24 @@ export async function interrupt_multi(message, state, env = {}) {
     if (printing) await env.norepMessage(message, state);
 }
 
-function regionEffectEnv(state, random) {
+function regionEffectEnv(state, random, { planning = false } = {}) {
+    // C's run_regions() mutates the active level even while the elapsed-turn
+    // preflight is running.  A planned turn owns a cloned level, so preserve
+    // those mutations there while suppressing only the terminal operations;
+    // drawing or printing from the clone would consume live output/input
+    // before the real pass replays the same callbacks.
+    const silentDisplay = async () => {};
     return {
         state,
         random,
-        blockPoint: (x, y) => block_point(x, y, state),
-        unblockPoint: (x, y) => unblock_point(x, y, state),
+        blockPoint: (x, y) => {
+            if (planning) admitPlannedVisionChange(x, y, state);
+            return block_point(x, y, state);
+        },
+        unblockPoint: (x, y) => {
+            if (planning) admitPlannedVisionChange(x, y, state);
+            return unblock_point(x, y, state);
+        },
         doesBlock: (x, y, location) => does_block(
             x,
             y,
@@ -651,13 +663,15 @@ function regionEffectEnv(state, random) {
             state,
         ),
         canSee: (x, y) => cansee(x, y, state),
-        newsym: (x, y) => newsym(x, y),
-        message: (message) => ttyPline(message, state),
+        newsym: planning ? () => {} : (x, y) => newsym(x, y),
+        message: planning ? silentDisplay : (message) => ttyPline(message, state),
     };
 }
 
 async function runEveryTurnEffectWithRegionHooks(monster, env) {
-    const regionEnv = regionEffectEnv(env.state, env.random);
+    const regionEnv = regionEffectEnv(env.state, env.random, {
+        planning: env.planning,
+    });
     await m_everyturn_effect(monster, {
         ...env,
         createGasCloud: (x, y, size, damage, effectEnv) =>
@@ -893,12 +907,12 @@ async function finishElapsedTurnAfterTimeout(
     const turnMessage = planning ? silentDisplay : ttyPline;
     const turnNorep = planning ? silentDisplay : ttyNorep;
     const turnStatusRefresh = planning ? silentDisplay : () => bot();
-    const regionEnv = planning ? null : regionEffectEnv(state, random);
-    // Full tail planning also follows a live-only timeout for an unburdened
-    // hero. The existing region guard applies at this source position too.
-    if (planning && state.level.regions.length)
-        elapsedTurnBoundary('burdened multi-cycle region upkeep');
-    if (!planning) await run_regions(regionEnv);
+    // C allmain.c calls run_regions() immediately after nh_timeout() on every
+    // turn. Planned elapsed turns use the same source-ordered callbacks on
+    // their cloned level; regionEffectEnv silences only the clone's drawing
+    // and messages so the live pass remains the first terminal write.
+    const regionEnv = regionEffectEnv(state, random, { planning });
+    await run_regions(regionEnv);
 
     if (state.u.ublesscnt) state.u.ublesscnt--;
     // Both regenerators reach allmain.c interrupt_multi() on the turn they top
@@ -1166,12 +1180,16 @@ async function moveElapsedTurnMonster(monster, env) {
 
 // Validate a movement prefix without running a due unmul callback. Resuming
 // after that callback must not debit another hero ration.
-async function planElapsedTurn(state, { consumeHeroRation = true } = {}) {
+async function planElapsedTurn(state, {
+    consumeHeroRation = true,
+    afterMonsterScan = false,
+} = {}) {
     const initialCapacity = projected_capacity(state);
     let preflight;
     try {
         preflight = await preflightSimpleMonsterActions(state, {
             consumeHeroRation,
+            afterMonsterScan,
             advanceRound: (planned, planningRandom) => finishElapsedTurn(
                 planned,
                 planningRandom,
@@ -1265,10 +1283,11 @@ async function advanceElapsedTurn(state) {
     // preflight's false gate is only the result of the early planning exit.
     let pendingDeathReplan = Boolean(preflight.heroDeath);
     let upkeepCount = 0;
-    const replanAfterDeath = async () => {
+    const replanContinuation = async ({ afterMonsterScan = false } = {}) => {
         const completedUpkeeps = upkeepCount;
         const resumed = await planElapsedTurn(state, {
             consumeHeroRation: false,
+            afterMonsterScan,
         });
         preflight = {
             ...resumed,
@@ -1294,6 +1313,7 @@ async function advanceElapsedTurn(state) {
         let monstersCanMove;
         try {
             do {
+                let completedDeferredGoto = false;
                 monstersCanMove = await movemon({
                     state,
                     random,
@@ -1307,8 +1327,10 @@ async function advanceElapsedTurn(state) {
                     // the live transition and answer nothing the live pass
                     // does not, so this transition is the one part of the
                     // turn whose refusals surface live.
-                    deferredGoto: (env) =>
-                        runDeferredGotoAtTurnBoundary(env.state),
+                    deferredGoto: async (env) => {
+                        await runDeferredGotoAtTurnBoundary(env.state);
+                        completedDeferredGoto = true;
+                    },
                 });
                 // C's terminal death path eventually longjmps out through
                 // really_done(), but done_in_by() itself returns after a
@@ -1316,15 +1338,22 @@ async function advanceElapsedTurn(state) {
                 // the terminal end-game display so replay can capture its
                 // final window; stop only after that completed gameover path.
                 if (state.program_state?.gameover) return;
-                // A planned death is the one intentional exception to the
-                // ordinary movement comparison below. The live scan has now
-                // replayed the lethal action and completed its canonical
-                // recovery; if another monster scan is due, its source gate
-                // starts at this post-scan state.
-                if (pendingDeathReplan
+                if (completedDeferredGoto || preflight.deferredGoto) {
+                    // Resume at the live scan's source gate. A transition can
+                    // be scheduled by its last actor; a wizard's answer to the
+                    // quest alignment prompt can also avert the transition
+                    // projected by the silent plan. In either case, use the
+                    // live result to decide whether another scan is due.
+                    await replanContinuation({
+                        afterMonsterScan: !monstersCanMove
+                            || state.u.umovement >= NORMAL_SPEED,
+                    });
+                } else if (pendingDeathReplan
                     && monstersCanMove
                     && state.u.umovement < NORMAL_SPEED) {
-                    await replanAfterDeath();
+                    // The live scan replayed the lethal action and completed
+                    // any recovery. Plan the next scan from that state.
+                    await replanContinuation();
                 }
                 if (state.u.umovement >= NORMAL_SPEED) break;
             } while (monstersCanMove);
@@ -1414,7 +1443,7 @@ async function advanceElapsedTurn(state) {
                 upkeepCount = 0;
             }
             if (pendingDeathReplan && state.u.umovement < NORMAL_SPEED) {
-                await replanAfterDeath();
+                await replanContinuation();
             }
         }
     } while (state.u.umovement < NORMAL_SPEED);

@@ -72,9 +72,7 @@ import {
     nomul,
 } from './hack.js';
 import { hands_obj, obj_extract_self, stackobj } from './invent.js';
-import { any_light_source } from './light.js';
 import {
-    dmonsfree,
     m_dowear,
     set_mimic_sym,
 } from './makemon_create.js';
@@ -93,6 +91,7 @@ import { whimper } from './sounds.js';
 import {
     adaptMonsterActionToDochugwSignature,
     hideunder,
+    movemon,
     minliquid,
     movemon_singlemon,
     restrap,
@@ -126,7 +125,6 @@ import {
     PM_LEPRECHAUN,
     PM_LITTLE_DOG,
     PM_PONY,
-    PM_TENGU,
     S_EEL,
 } from './monsters.js';
 import {
@@ -180,7 +178,7 @@ import {
 } from './startup_a11y.js';
 import { is_ice } from './terrain.js';
 import { is_lava, is_pool, t_at } from './trap.js';
-import { noteleport_level, rloc } from './teleport.js';
+import { rloc } from './teleport.js';
 import { ttyPline, ttyPlineWillWait } from './tty_message.js';
 import { note_unported } from './unported.js';
 import { passive_obj } from './uhitm.js';
@@ -326,15 +324,10 @@ function assertSimpleActionState(monster, state) {
     const waitingCovetous = covetous
         && (!monster.mcanmove || (monster.mstrategy & STRAT_WAITMASK));
     // C ref: monmove.c dochug() checks msleeping before m_move()'s wormno
-    // branch. A long worm outside couldsee() therefore takes the ordinary
-    // disturb() no-op; awake or visible worms still reach unported m_move()
-    // behavior and remain fail-closed.
-    const sleepingOutOfSightWorm = monster.wormno > 0
-        && monster.msleeping
-        && !couldsee(monster.mx, monster.my, state);
-    if ((monster.wormno > 0 && !sleepingOutOfSightWorm) || (covetous
-        && !sleepingOutOfSightCovetous
-        && !waitingCovetous)) {
+    // branch. A long worm outside couldsee() takes the ordinary disturb()
+    // no-op; awake or visible worms now continue through m_move(), whose
+    // wormno path is the same not_special movement path as C.
+    if (covetous && !sleepingOutOfSightCovetous && !waitingCovetous) {
         unsupported('special monster movement');
     }
     // isgd is admitted: m_move() dispatches to gd_move() which handles the
@@ -377,11 +370,10 @@ function assertSimpleActionState(monster, state) {
         monster.data?.pmidx === PM_GELATINOUS_CUBE
         && gelcubeHasDigestibleObject(monster, state);
     // monmove.c m_move() consumes Tengu's natural-teleport roll before
-    // tele_restrict() rejects it on a no-teleport level. A permitted level
-    // reaches rloc()/mnexto(), whose complete action path remains gated.
-    if ((monster.data?.pmidx === PM_TENGU
-        && !noteleport_level(monster, state))
-        || (monster.data?.pmidx === PM_LEPRECHAUN
+    // tele_restrict() rejects it on a no-teleport level. m_move now admits
+    // the permitted relocation path through rloc()/mnexto(); leprechaun,
+    // killer-bee, and digesting-cube actions remain separate boundaries.
+    if ((monster.data?.pmidx === PM_LEPRECHAUN
             && !sleepingOutOfSightLeprechaun)
         || (monster.data?.pmidx === PM_KILLER_BEE
             && !sleepingOutOfWakeRangeKillerBee)
@@ -586,6 +578,20 @@ export function planningState(state) {
                 ...region,
                 monsters: [...(region.monsters ?? [])],
             })),
+            // worm.c keeps tail coordinates in level-owned slots. A planned
+            // displacement may remove and place those segments, so the slot
+            // records must be cloned with the rest of the level map rather
+            // than letting place_worm_tail_randomly mutate the live tail.
+            worms: Array.isArray(state.level.worms)
+                ? state.level.worms.map((record) => record
+                    ? {
+                        ...record,
+                        segments: record.segments?.map((segment) => ({
+                            ...segment,
+                        })),
+                    }
+                    : record)
+                : state.level.worms,
             // trap.c seetrap() sets trap->tseen and then repaints the square,
             // and its `if (!trap->tseen)` guard makes the repaint happen once.
             // Sharing the live trap would let the dry run consume that first
@@ -1130,6 +1136,7 @@ async function moveSimpleOrdinary(monster, env) {
         ...doorVisionOperations(env),
         ...monsterWieldOperations(env),
         migrateToLevel: monsterMigrationOperation(env),
+        admitPlannedVisionChange,
         setApparxy: (subject, operationEnv) =>
             set_apparxy(subject, operationEnv),
         mdigTunnel: mdig_tunnel,
@@ -1153,6 +1160,7 @@ async function moveSimplePet(monster, after, env) {
     return dog_move(monster, after, {
         ...env,
         migrateToLevel: monsterMigrationOperation(env),
+        admitPlannedVisionChange,
         setApparxy: (subject, operationEnv) =>
             set_apparxy(subject, operationEnv),
         // dogmove.c:1280-1287 hands an ALLOW_U landing directly to
@@ -1904,18 +1912,20 @@ async function planSimpleMonsterScan(monster, env) {
 // remain unchanged and retryable.
 export async function preflightSimpleMonsterActions(
     state = game,
-    { advanceRound = null, consumeHeroRation = true } = {},
+    {
+        advanceRound = null,
+        consumeHeroRation = true,
+        afterMonsterScan = false,
+    } = {},
 ) {
-    // The two terms are allmain.c moveloop_core()'s own preamble:
-    // `if (svc.context.bypasses) clear_bypasses();` at 193 and the deferred
-    // level transition u.utotype records. A third term named an occupation,
+    // allmain.c moveloop_core()'s own preamble:
+    // `if (svc.context.bypasses) clear_bypasses();` at 193. A deferred level
+    // transition is returned as a planning marker below. A third term named an occupation,
     // which C gates nothing on here -- allmain.c mentions go.occupation only
     // at 332, 485-506 and 684-689, all after this point in the turn -- and it
     // read a field nothing assigns, so it stopped nothing. monmove.c
     // dochugw() carries the per-monster occupation test, and stopOccupation
     // refuses there for the one monster that C would stop the meal for.
-    if (state.u?.utotype)
-        unsupported('deferred monster cleanup or level transition');
     const planned = planningState(state);
     // C's moveloop_core() clears object bypass marks before scanning monsters.
     // The clone owns every object list, so perform that same cleanup here and
@@ -1928,12 +1938,13 @@ export async function preflightSimpleMonsterActions(
     // not at the initial u.umovement -= NORMAL_SPEED statement.
     if (consumeHeroRation) planned.u.umovement -= NORMAL_SPEED;
     let upkeepCount = 0;
+    let deferredGoto = false;
     let heroDeath = null;
     let beforeUnmul = false;
     let beforeTimeout = false;
     try {
         try {
-            upkeepCount = await planSimpleMonsterTurn(
+            const scan = await planSimpleMonsterTurn(
                 planned,
                 random,
                 advanceRound ? async (subject, planningRandom) => {
@@ -1942,7 +1953,10 @@ export async function preflightSimpleMonsterActions(
                     beforeTimeout = Boolean(result?.beforeTimeout);
                     return result;
                 } : null,
+                afterMonsterScan,
             );
+            upkeepCount = scan.upkeepCount;
+            deferredGoto = scan.deferredGoto;
         } catch (error) {
             if (!(error instanceof MonsterDeathPlanningError)) throw error;
             // The live pass must replay the same monster turn against the real
@@ -1978,6 +1992,7 @@ export async function preflightSimpleMonsterActions(
         runsOncePerTurnUpkeep: upkeepCount > 0,
         upkeepCount,
         heroDeath,
+        deferredGoto,
         beforeUnmul,
         beforeTimeout,
     };
@@ -2003,7 +2018,9 @@ export async function preflightElapsedTurnTail(state, advanceTail) {
 
 // The body of preflightSimpleMonsterActions()'s scan, split out so that its
 // caller can restore the shared vision buffers on every exit.
-async function planSimpleMonsterTurn(planned, random, advanceRound) {
+async function planSimpleMonsterTurn(
+    planned, random, advanceRound, afterMonsterScan,
+) {
     // The preflight scan executes the same naming branches as the live scan.
     // Hallucinated names draw from rnd.c's display context, so point them at
     // the copy planningState() owns instead of advancing the live stream.
@@ -2016,44 +2033,43 @@ async function planSimpleMonsterTurn(planned, random, advanceRound) {
         };
     let somebodyCanMove;
     let upkeepCount = 0;
+    let deferredGoto = false;
     do {
         // C brackets only the monster scan with context.mon_moving, so the
         // once-per-turn upkeep below sees it clear just as the live loop does.
-        planned.context.mon_moving = true;
-        do {
-            planned.somebody_can_move = false;
-            for (let monster = planned.level.monlist;
-                monster;
-                monster = monster.nmon) {
-                if (!assertSimpleScanState(monster, planned)) continue;
-                await planSimpleMonsterScan(monster, {
+        if (afterMonsterScan) {
+            // The live inner movement loop has ended. C next tests upkeep;
+            // in particular, destination monsters after deferred_goto() do
+            // not get another scan before that gate.
+            somebodyCanMove = false;
+            afterMonsterScan = false;
+        } else {
+            planned.context.mon_moving = true;
+            do {
+                // Reuse C's safe iterator and ordered cleanup tail. Only
+                // level generation stays live; report that boundary before
+                // planning any upkeep against the old level.
+                somebodyCanMove = await movemon({
                     state: planned,
-                    random,
-                    displayRandom,
-                    planning: true,
+                    moveSingleMonster: (monster) => {
+                        if (!assertSimpleScanState(monster, planned))
+                            return false;
+                        return planSimpleMonsterScan(monster, {
+                            state: planned,
+                            random,
+                            displayRandom,
+                            planning: true,
+                        });
+                    },
+                    clearBypasses: () => clear_bypasses(planned),
+                    deferredGoto: () => { deferredGoto = true; },
                 });
-            }
-            // C mon.c movemon() calls dmonsfree() after its monster scan.
-            // The live pass must remove a monster killed by a passive
-            // retaliation before allmain.c mcalcmove() allocates the next
-            // round; do the same on the planning clone so a dead attacker
-            // cannot remain in the next scan and change its RNG/allocation
-            // count.  The clone owns the list and purge counter, so this does
-            // not touch the retryable live state.
-            dmonsfree(planned);
-            somebodyCanMove = Boolean(planned.somebody_can_move);
-            // C ref: mon.c movemon()'s tail. Keeping the flag here rather than
-            // testing the light source at each place a further scan can follow
-            // means planSimpleMonsterScan()'s refusing visionRecalc fires
-            // exactly where movemon_singlemon() would rebuild viz_array,
-            // whether the next scan comes from this inner loop or from the
-            // allocation after advanceRound.
-            // clear_bypasses() has already run on the clone before this scan;
-            // clear_splitobjs() touches only discarded state.
-            if (any_light_source(planned)) planned.vision_full_recalc = 1;
-            if (planned.u.umovement >= NORMAL_SPEED) break;
-        } while (somebodyCanMove);
+                if (deferredGoto || planned.program_state?.gameover
+                    || planned.u.umovement >= NORMAL_SPEED) break;
+            } while (somebodyCanMove);
+        }
         planned.context.mon_moving = false;
+        if (deferredGoto || planned.program_state?.gameover) break;
 
         const runsUpkeep =
             !somebodyCanMove && planned.u.umovement < NORMAL_SPEED;
@@ -2065,5 +2081,5 @@ async function planSimpleMonsterTurn(planned, random, advanceRound) {
         // round to stop after a single allocation.
         if (await advanceRound(planned, random)) break;
     } while (planned.u.umovement < NORMAL_SPEED);
-    return upkeepCount;
+    return { upkeepCount, deferredGoto };
 }
