@@ -104,7 +104,7 @@ import { addinv } from './u_init.js';
 import { dropy, flooreffects } from './do.js';
 import { munslime, mon_adjust_speed } from './muse.js';
 import { night } from './calendar.js';
-import { p_coaligned } from './priest.js';
+import { p_coaligned, ghod_hitsu } from './priest.js';
 import { Soundeffect } from './sndprocs.js';
 import { uhis } from './roles.js';
 import { se_distant_thunder, se_applause } from './generated/seffects_data.js';
@@ -1101,14 +1101,15 @@ async function hmon_hitmon_weapon_melee(mon, obj, ctx) {
 }
 
 /**
- * C ref: uhitm.c hmon → hmon_hitmon.
+ * C ref: uhitm.c hmon_hitmon — inner damage routine (D-0693/D-1232/D-1384).
  * Thrown cream pie / blinding venom misc_obj arm (D-0693); melee weapon path.
  * troll_baned around killed (D-1232): set TRUE only, always reset after.
  * shade_miss melee/applied D-1384 (`:1812–1822`); thrown/kicked are D-1383.
  * Poison / joust / hurtle / pudding split / poiskilled skip still named.
  * Unarmed special_dmgval gloves/rings + non-shade get_dmg_bonus min-1 named.
+ * Called via the hmon wrapper below (C uhitm.c:819–836).
  */
-async function hmon(mon, obj, thrown, _dieroll) {
+async function hmon_hitmon(mon, obj, thrown, _dieroll) {
     // C hmon_hitmon_misc_obj CREAM_PIE / BLINDING_VENOM before weapon dmg
     if (obj && (obj.otyp === CREAM_PIE || obj.otyp === BLINDING_VENOM)) {
         mon.msleeping = 0;
@@ -1375,7 +1376,21 @@ async function hmon(mon, obj, thrown, _dieroll) {
     return !destroyed;
 }
 
-export { hmon, passive_obj };
+/**
+ * C ref: uhitm.c hmon `:819–836` — wrapper: hmon_hitmon, then the priest-
+ * struck god smite (`:829–830`; runs even when the priest died, and the
+ * rn2(2) always burns when ispriest). D-2474 wires ghod_hitsu here and in
+ * mon.c wakeup.
+ * Named: anger_guards tail (`:826–827` + `:831–833`; mon.js angry_guards
+ * live, unwired on this path — pre-existing).
+ */
+async function hmon(mon, obj, thrown, dieroll) {
+    const result = await hmon_hitmon(mon, obj, thrown, dieroll);
+    if (mon.ispriest && !rn2(2)) await ghod_hitsu(mon);
+    return result;
+}
+
+export { hmon, hmon_hitmon, passive_obj };
 
 /**
  * C ref: uhitm.c missum — near-miss armor pline, seduce pretend, miss/wakeup.

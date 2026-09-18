@@ -136,7 +136,10 @@ export async function outrumor(truth, mechanism) {
         await pline('This cookie has a scrap of paper inside.');
     if (mechanism === BY_COOKIE || mechanism === BY_PAPER)
         await pline('It reads:');
-    await pline(line);
+    // C rumors.c:573 pline1(line) = pline("%s", line) verbatim (hack.h:1026):
+    // route through the "%s" arm so rumor text containing '%' is never
+    // re-scanned (vpline no-'%' vs vsnprintf arms, pline.c:192-212).
+    await pline('%s', line);
 }
 
 /** C rumors.c init_oracles `:576–595`. Index 0 is special_oracle. */

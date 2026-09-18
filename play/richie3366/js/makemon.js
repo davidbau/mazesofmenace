@@ -163,7 +163,7 @@ import {
 } from './objects.js';
 import { ART_EXCALIBUR, ART_DEMONBANE } from './generated/artifacts_data.js';
 import { cansee, does_block, block_point } from './vision.js';
-import { newsym, Norep, canseemon, sensemon, canspotmon, pline, pline_mon, impossible, coord_desc, swallowed } from './display.js';
+import { newsym, Norep, canseemon, sensemon, canspotmon, pline, You, pline_mon, impossible, coord_desc, swallowed } from './display.js';
 import { mhidden_description } from './pager.js';
 import { emits_light, new_light_source, del_light_source } from './light.js';
 import { begin_burn } from './timeout.js';
@@ -179,7 +179,6 @@ import { can_be_hatched, m_at, seemimic, hideunder, onscary, monnear } from './m
 /* C mon.c newcham arms — all SAFE per imports.mjs (hoisted declarations). */
 import { expels, unstuck, digests } from './mhitu.js';
 import { mselftouch } from './trap.js';
-import { You } from './zap.js';
 import { sticks } from './engrave.js';
 import { m_unleash, leashable } from './apply.js';
 import { update_inventory } from './invent.js';
@@ -1773,8 +1772,9 @@ function newcham_ustuck(mtmp, olddata, mdat, l_oldname) {
                     } else if (digests(mdat)) {
                         msgtrail = `'s stomach`;
                     }
-                    /* C: shown even if msg is FALSE; consumes the pline */
-                    await You(`${(amorphous(olddata) || is_whirly(olddata)) ? 'emerge from' : 'break out of'} ${l_oldname}${msgtrail}!`);
+                    /* C mon.c:5429 You("%s %s%s!", emerge/break, l_oldname,
+                       msgtrail) — shown even if msg is FALSE. */
+                    await You('%s %s%s!', (amorphous(olddata) || is_whirly(olddata)) ? 'emerge from' : 'break out of', l_oldname, msgtrail);
                     mtmp.mhp = 1; /* almost dead */
                     await expels(mtmp, olddata, false);
                     return { consumed: true };

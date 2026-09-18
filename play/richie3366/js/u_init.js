@@ -30,7 +30,7 @@ import { init_attr, vary_init_attr, adjabil, A_STR, A_CON, newhp } from './attri
 import { newpw } from './exper.js';
 import { getnow } from './calendar.js';
 import {
-    roles, races, aligns, findRole, findRace, findAlign, align_gtitle,
+    roles, races, aligns, findRole, findRace, findAlign,
 } from './roles.js';
 import { discover_object, Blind, makeknown, observe_object } from './invent.js';
 import { setworn } from './do_wear.js';
@@ -71,11 +71,7 @@ import {
     PM_HUMAN, PM_ELF, PM_DWARF, PM_ORC, PM_GNOME,
     NON_PM,
 } from './generated/monsters_data.js';
-import {
-    mons, is_male, is_female, is_neuter, commit_pm_fixup,
-    M2_PEACEFUL, M2_NASTY, M2_STALK, M2_HOSTILE,
-    M3_CLOSE, M3_WANTSARTI, M3_WAITFORU,
-} from './monsters.js';
+import { mons } from './monsters.js';
 import { skill_init } from './weapon.js';
 import { set_artifact_intrinsic } from './artifact.js';
 import { record_achievement } from './insight.js';
@@ -1722,6 +1718,9 @@ export function setup_role_race_from_rc(opts = {}) {
         const alignName = typeof opts.align === 'string' ? opts.align : 'neutral';
         align = findAlign(alignName) || aligns.find(a => a.name === 'neutral');
     }
+    // role_init() (already run) may have filled god names onto game.urole
+    // for godless roles (Priest); captured here, restored after shaping.
+    const _prevUrole = game.urole;
     game.urole = {
         name: role.name,
         // C gu.urole.rank[9]; botl rank_of indexes by xlev_to_rank(ulevel).
@@ -1768,6 +1767,13 @@ export function setup_role_race_from_rc(opts = {}) {
             : (role.spelspec ?? 0),
         spelsbon: role.spelsbon ?? 0,
     };
+    // C role.c role_init() (already run) filled god names onto the previous
+    // game.urole for godless roles (Priest, whose roles[] lgod is null);
+    // the shaped rebuild above must keep that fill, not re-null it.
+    for (const _gk of ['lgod', 'ngod', 'cgod']) {
+        if (game.urole[_gk] == null && _prevUrole?.[_gk] != null)
+            game.urole[_gk] = _prevUrole[_gk];
+    }
     game.urace = {
         name: race.name,
         adj: race.adj,
@@ -1802,131 +1808,20 @@ export function setup_role_race_from_rc(opts = {}) {
     // C: setup does not rewrite plname — unixmain set_playmode / askname
     // already applied OPTIONS=name (and debug → "wizard").
 
-    // C ref: role.c role_init() — pantheon, quest pm fixup, nemesis gender
+    // C ref: role.c role_init() (js/roles.js) already resolved flags.init*
+    // before this setup runs; sync the shaped-object indexes back here.
     const initrole = roles.indexOf(role);
     game.flags.initrole = initrole >= 0 ? initrole : 0;
     if (fr.initrace >= 0) game.flags.initrace = fr.initrace;
     if (fr.initgend >= 0) game.flags.initgend = fr.initgend;
-    // setup_role_race_from_rc is newgame-only; pantheon always starts unset
-    game.flags.pantheon = -1;
-    role_init_pantheon();
-    role_init_godgend();
-    role_init_cleric_spe_light();
-    role_init_quest_pm_fixup();
-    role_init_nemesis_gender();
+    // C role.c role_init() owns pantheon/godgend/SPE_LIGHT/quest-pm/nemgend
+    // (js/roles.js, called from allmain.js newgame before this setup) —
+    // this function only shapes urole/urace from the resolved flags.
 }
 
-// C ref: role.c role_init() pantheon selection (role.c:2064-2083)
-function role_init_pantheon() {
-    // C: if (flags.pantheon == -1) { new game }
-    if (game.flags.pantheon != null && game.flags.pantheon !== -1) {
-        // restore path already chose pantheon; still copy gods if missing
-    } else {
-        let pantheon = game.flags.initrole ?? 0;
-        let trycnt = 0;
-        // C: while (!roles[flags.pantheon].lgod && ++trycnt < 100)
-        while (!roles[pantheon]?.lgod && ++trycnt < 100) {
-            // C: randrole(FALSE) → rn2(SIZE(roles)-1); JS has no terminator
-            pantheon = rn2(roles.length);
-        }
-        if (!roles[pantheon]?.lgod) {
-            for (let i = 0; i < roles.length; i++) {
-                if (roles[i].lgod) {
-                    pantheon = i;
-                    break;
-                }
-            }
-        }
-        game.flags.pantheon = pantheon;
-    }
-    if (!game.urole.lgod) {
-        const src = roles[game.flags.pantheon] || {};
-        game.urole.lgod = src.lgod;
-        game.urole.ngod = src.ngod;
-        game.urole.cgod = src.cgod;
-    }
-}
-
-// C ref: role.c role_init() — SPE_LIGHT becomes P_CLERIC_SPELL for priests
-function role_init_cleric_spe_light() {
-    if (game.urole?.mnum !== PM_CLERIC) return;
-    const otyp = otypByName('SPE_LIGHT');
-    if (otyp && game.objects?.[otyp]) {
-        game.objects[otyp].oc_skill = P_CLERIC_SPELL;
-    }
-}
-
-// C ref: monflag.h — role_init writes these onto mons[ldr/nem].
-const MS_LEADER = 36;
-const MS_NEMESIS = 37;
-
-/**
- * C ref: role.c role_init — Fix up quest leader / guardian / nemesis
- * permonst (role.c:2027–2061). Mutates live mons[] in C; JS overlay
- * via commit_pm_fixup (resetGame clears it). ldrgend is set here
- * (C leader block `:2036–2041`; may rn2(100) when the PM is not
- * male/female/neuter). nemgend stays in role_init_nemesis_gender.
- */
-function role_init_quest_pm_fixup() {
-    const alignmnt = (aligns[game.flags.initalign] || aligns[1])?.value ?? 0;
-
-    const ldr = game.urole?.ldrnum ?? NON_PM;
-    if (ldr !== NON_PM && ldr != null) {
-        const pm = mons(ldr);
-        commit_pm_fixup(ldr, {
-            msound: MS_LEADER,
-            mflags2: pm.mflags2 | M2_PEACEFUL,
-            mflags3: pm.mflags3 | M3_CLOSE,
-            maligntyp: alignmnt * 3,
-        });
-        if (!game.quest_status) game.quest_status = {};
-        // C: is_neuter ? 2 : is_female ? 1 : is_male ? 0 : (rn2(100) < 50)
-        game.quest_status.ldrgend = is_neuter(pm) ? 2
-            : is_female(pm) ? 1
-                : is_male(pm) ? 0
-                    : (rn2(100) < 50 ? 1 : 0);
-    }
-    const guard = game.urole?.guardnum ?? NON_PM;
-    if (guard !== NON_PM && guard != null) {
-        const pm = mons(guard);
-        commit_pm_fixup(guard, {
-            mflags2: pm.mflags2 | M2_PEACEFUL,
-            maligntyp: alignmnt * 3,
-        });
-    }
-    const nem = game.urole?.neminum ?? NON_PM;
-    if (nem !== NON_PM && nem != null) {
-        const pm = mons(nem);
-        commit_pm_fixup(nem, {
-            msound: MS_NEMESIS,
-            mflags2: (pm.mflags2 & ~M2_PEACEFUL) | M2_NASTY | M2_STALK | M2_HOSTILE,
-            mflags3: (pm.mflags3 & ~M3_CLOSE) | M3_WANTSARTI | M3_WAITFORU,
-        });
-    }
-}
-
-// C ref: role.c role_init `:2084–2085` — after pantheon fills lgod.
-// 0 or 1; no gods are neuter, nor is gender randomized.
-function role_init_godgend() {
-    if (!game.quest_status) game.quest_status = {};
-    const alignmnt = (aligns[game.flags.initalign] || aligns[1])?.value ?? 0;
-    game.quest_status.godgend =
-        align_gtitle(game.urole, alignmnt) === 'goddess' ? 1 : 0;
-}
-
-// C ref: role.c role_init() nemesis gender pick (role.c:2050-2060)
-function role_init_nemesis_gender() {
-    const neminum = game.urole?.neminum ?? NON_PM;
-    if (neminum === NON_PM || neminum == null) return;
-    const pm = mons(neminum);
-    if (!pm) return;
-    if (!game.quest_status) game.quest_status = {};
-    // C: is_neuter ? 2 : is_female ? 1 : is_male ? 0 : (rn2(100) < 50)
-    game.quest_status.nemgend = is_neuter(pm) ? 2
-        : is_female(pm) ? 1
-            : is_male(pm) ? 0
-                : (rn2(100) < 50 ? 1 : 0);
-}
+// C role.c role_init() tail arms (pantheon, godgend, SPE_LIGHT, quest pm
+// fixup, nemesis gender) now live whole-body in js/roles.js role_init()
+// (D-2481); the split helpers were deleted, not stubbed.
 
 // C ref: u_init.c u_init_misc() — pre-mklev; newhp/newpw at ulevel==0.
 export async function u_init_misc() {

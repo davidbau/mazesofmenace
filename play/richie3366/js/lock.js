@@ -4,7 +4,7 @@
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
-import { pline, newsym, canseemon, clear_nhwindow_message, verbalize, feel_location, impossible, flush_screen } from './display.js';
+import { pline, newsym, canseemon, clear_nhwindow_message, verbalize, feel_location, impossible, flush_screen, docrt_flags, docrtRefresh } from './display.js';
 import { yn_function } from './getline.js';
 import { vision_recalc, recalc_block_point, cansee } from './vision.js';
 import { stop_occupation, in_rooms, closed_door, confdir } from './hack.js';
@@ -583,9 +583,9 @@ export async function getdir_read_dirsym(prompt) {
         clear_nhwindow_message();
         const key = (dirsym && dirsym.charCodeAt) ? dirsym.charCodeAt(0) : 0;
         // C `:4014–4017` — redraw_cmd → docrt_flags(docrtRefresh) + retry,
-        // no REPEAT record. flush_screen(1) is the live redraw_map path.
+        // no REPEAT record (redraw_map gbuf resend + post_map botlx).
         if (getdir_is_redraw(key)) {
-            await flush_screen(1);
+            await docrt_flags(docrtRefresh);
             continue;
         }
         if (!game.in_doagain) cmdq_add_key(CQ_REPEAT, dirsym);

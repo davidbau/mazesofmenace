@@ -5,13 +5,13 @@
 
 import { game } from './gstate.js';
 import { rn2, rnd, d } from './rng.js';
-import { dochugw, m_everyturn_effect, monflee, can_hide_under_obj, can_fog, mon_offmap } from './monmove.js';
+import { dochugw, m_everyturn_effect, monflee, can_hide_under_obj, can_fog, mon_offmap, accessible } from './monmove.js';
 import {
     COLNO, ROWNO, IS_OBSTRUCTED, IS_DOOR, IS_TREE, D_CLOSED, D_LOCKED, D_BROKEN,
     ALLOW_ROCK, ALLOW_DIG, Is_rogue_level, NOTONL, ALLOW_ALL, ALLOW_BARS,
     ALLOW_MDISP, Is_stronghold,
     NOGARLIC, IRONBARS, IS_ALTAR, DISPLACED, W_NONDIGGABLE,
-    IS_WATERWALL, LAVAWALL, Is_waterlevel,
+    IS_WATERWALL, LAVAWALL, Is_waterlevel, POOL, MOAT, WATER, LAVAPOOL,
     M_AP_NOTHING, M_AP_OBJECT, M_AP_FURNITURE, M_AP_MONSTER, M_AP_TYPE,
     MSLOW, MFAST, STRAT_WAITMASK, STRAT_WAITFORU, G_GENOD, PLNMSG_GROWL,
     BOLT_LIM, WT_TOOMUCH_DIAGONAL, IS_STWALL, W_NONPASSWALL,
@@ -22,7 +22,7 @@ import {
     FIRE_RES, COLD_RES, SLEEP_RES, DISINT_RES, SHOCK_RES, STONE_RES,
     u_at, isok, TEMPLE, SHOPBASE, MON_FLOOR, MON_OFFMAP, MON_MIGRATING, MON_DETACH,
     MON_LIMBO, MON_OBLITERATE, MON_ENDGAME_MIGR, MIGR_APPROX_XY, MIGR_RANDOM,
-    has_emin, has_epri, has_eshk, has_mcorpsenm, MCORPSENM,
+    has_emin, has_epri, has_eshk, has_edog, EDOG, has_mcorpsenm, MCORPSENM, OBJ_AT,
     Has_contents, RLOC_MSG, RLOC_NOMSG, XKILL_NOMSG,
     NO_MM_FLAGS, NATTK, PROT_FROM_SHAPE_CHANGERS, NO_WEAPON_WANTED, engulfing_u,
     W_SADDLE, OBJ_MINVENT,
@@ -30,7 +30,8 @@ import {
 import { t_at, m_harmless_trap, water_damage_chain, fire_damage_chain, fixed_tele_trap } from './trap.js';
 import {
     nohands, verysmall, throws_rocks, passes_walls, lays_eggs, mons,
-    monsterNames, NON_PM, LOW_PM, mon_knows_traps, tunnels, needspick,
+    monsterNames, NON_PM, LOW_PM, NUMMONS, NEUTRAL, pmnames,
+    mon_knows_traps, tunnels, needspick,
     is_hider, hides_under, M1_SEE_INVIS, humanoid, regenerates,
     is_flyer, is_floater, is_clinger, is_swimmer, likes_lava,
     bigmonst, amorphous, is_whirly, noncorporeal, M1_SLITHY, unsolid,
@@ -44,7 +45,7 @@ import {
 } from './monsters.js';
 import {
     little_to_big, big_to_little, big_little_match, hero_conflict,
-    resist_conflict, m_canseeu, on_fire,
+    resist_conflict, m_canseeu, on_fire, monsndx,
 } from './mondata.js';
 import {
     objects_at, sobj_at, kill_egg, place_object, stackobj, delobj, is_metallic,
@@ -62,7 +63,7 @@ import { newsym, pline, pline_mon, verbalize, You_feel, sensemon, canseemon, can
 import { online2, level_difficulty } from './hacklib.js';
 import { worm_cross, level_mon_at, remove_worm, place_wsegs, count_wsegs } from './worm.js';
 import { On_W_tower_level, In_W_tower } from './dungeon.js';
-import { Monnam, mon_nam, hliquid } from './do_name.js';
+import { Monnam, mon_nam, hliquid, pmname, mon_pmname, Mgender } from './do_name.js';
 import { cansee, couldsee, does_block, is_lightblocker_mappear, unblock_point, vision_recalc } from './vision.js';
 import { fightm, mondead, mondied } from './mhitm.js';
 import { remove_monster, place_monster } from './steed.js';
@@ -73,10 +74,10 @@ import {
     set_mimic_sym, newcham, pickvampshape, pm_to_cham, neweshk, newegd,
     newemin, newepri, newedog, freemcorpsenm, mpickobj, makemon, makemon_appear_msg,
 } from './makemon.js';
-import { in_your_sanctuary, p_coaligned } from './priest.js';
+import { in_your_sanctuary, p_coaligned, ghod_hitsu } from './priest.js';
 import { in_rooms, is_pool, is_lava, disturb_buried_zombies, stop_occupation } from './hack.js';
 import { inv_weight, weight_cap } from './invent.js';
-import { maybe_m_dowear_special, extract_from_minvent, update_mon_extrinsics, mon_set_minvis } from './worn.js';
+import { maybe_m_dowear_special, extract_from_minvent, update_mon_extrinsics, mon_set_minvis, which_armor } from './worn.js';
 import { adjalign } from './attrib.js';
 import { SetVoice } from './sndprocs.js';
 import { maybe_gasp, growl } from './sounds.js';
@@ -87,6 +88,7 @@ import { experience, more_experienced, newexplevel } from './exper.js';
 import { hastrack } from './track.js';
 import { MON_WEP } from './weapon.js';
 import { is_axe, is_pick, GOLD } from './objects.js';
+import { get_mleash } from './apply.js';
 
 const PM_FLOATING_EYE = monsterNames.indexOf('PM_FLOATING_EYE');
 const PM_GREMLIN = monsterNames.indexOf('PM_GREMLIN');
@@ -125,6 +127,7 @@ const TIN = objectNames.indexOf('TIN');
 const CORPSE = objectNames.indexOf('CORPSE');
 const GLOB_OF_GREEN_SLIME = objectNames.indexOf('GLOB_OF_GREEN_SLIME');
 const AMULET_OF_YENDOR = objectNames.indexOf('AMULET_OF_YENDOR');
+const SADDLE = objectNames.indexOf('SADDLE');
 const NC_SHOW_MSG = 1;
 
 /** C ref: monmove.c closed_door — IS_DOOR && (CLOSED|LOCKED). */
@@ -217,7 +220,7 @@ export function cant_squeeze_thru(mon) {
 }
 
 /** C ref: mondata.h perceives — M1_SEE_INVIS. */
-function perceives(ptr) {
+export function perceives(ptr) {
     return !!((ptr?.mflags1 ?? 0) & M1_SEE_INVIS);
 }
 
@@ -377,6 +380,213 @@ export function m_carrying(mon, otyp) {
         if (o.otyp === otyp) return o;
     }
     return null;
+}
+
+/**
+ * C ref: mon.c pet_sanity_check `:56–70` (static) — edog droptime sanity
+ * for one pet. C order: has_edog gate, then droptime-in-the-future arm;
+ * the `TODO: verify some of the other edog fields` stays a comment like C.
+ * C `svm.moves` is `game.moves` (dogmove.js:423 idiom).
+ */
+async function pet_sanity_check(mtmp, msgarg) {
+    if (has_edog(mtmp)) {
+        const edog = EDOG(mtmp);
+
+        if ((edog?.droptime | 0) > (game.moves | 0))
+            await impossible('insane pet #%d has droptime (%d)'
+                             + ' in the future (%d) (%s)',
+                             mtmp?.m_id | 0, edog.droptime | 0,
+                             game.moves | 0, msgarg);
+        /* TODO: verify some of the other edog fields */
+    }
+}
+
+/**
+ * C ref: mon.c sanity_check_single_mon `:72–255` (static) — wizard
+ * `#sanity` validation of one monster, in C order: data-pointer range,
+ * mnum fixup, HP bounds, dead-monster early return, genocided/tame arms,
+ * quest-leader extras, pet/steed/trapped/frozen/hiding/mimic/leash arms.
+ * JS adaptations: no real pointers, so the range arm keys on the numeric
+ * `data.mndx` (`< LOW_PM`, `> NUMMONS - 1` for `&mons[HIGH_PM]` — HIGH_PM
+ * is NUMMONS-1 per dogmove.js:1414) with `0x` hex where C prints `fmt_ptr`
+ * (alloc.c:125; D-2375 precedent); `DEADMONSTER` is `(mhp|0) < 1` (do.js
+ * idiom); `Protection_from_shape_changers` is the youprop.h:359 macro
+ * (`uprops[PROT_FROM_SHAPE_CHANGERS]` intrinsic||extrinsic); `%u`/`%ld`
+ * print as `%d` (JS `impossible` formats `%s`/`%d`); `levl[mx][my].typ`
+ * is `game.level?.at(mx, my)?.typ` (ball.js idiom). C `panic` (illegal
+ * mon data) is a loud throw (lev_json.js precedent: throw ≡ C panic;
+ * `panic` itself is an unported own-row callee, end.js:978). The three
+ * `#if 0` arms (dead-mon fmon/guard check; mimic inaccessible-location
+ * check naming `levltyp_to_name`; leash `distu > 90` check) stay omitted
+ * like C. `impossible` is awaited (display.js async). Callers live in
+ * unported `mon_sanity_check` (mon.c:258–324, fmon `:265` + migr `:313`
+ * sites) — wire when that ships.
+ */
+async function sanity_check_single_mon(mtmp, chk_geno, msg) {
+    const u = game.u || {};
+    const mptr = mtmp?.data ?? null;
+    let mx = mtmp?.mx | 0, my = mtmp?.my | 0;
+    /* C fmt_ptr (alloc.c:125) » 0x hex; JS has no pointer to print. */
+    const hex = (n) => '0x' + ((n >>> 0).toString(16));
+
+    if (!mptr || ((mptr.mndx ?? -1) < LOW_PM)
+        || ((mptr.mndx ?? NUMMONS) > NUMMONS - 1)) {
+        /* most sanity checks issue warnings if they detect a problem,
+           but this would be too extreme to keep going */
+        throw new Error(`illegal mon data ${hex(mptr?.mndx ?? 0)};`
+                        + ` mnum=${mtmp?.mnum | 0} (${msg})`);
+        /*NOTREACHED*/
+    }
+    const mndx = monsndx(mptr);
+
+    if ((mtmp.mnum | 0) !== (mndx | 0)) {
+        await impossible('monster mnum=%d, monsndx=%d (%s)',
+                         mtmp.mnum | 0, mndx | 0, msg);
+        mtmp.mnum = mndx | 0;
+    }
+    /* check before DEADMONSTER() because dead monsters should still
+       have sane mhpmax */
+    if ((mtmp.mhpmax | 0) < 1
+        /* Gremlins don't obey the (mhpmax >= m_lev) rule so disable
+         * this check, at least for the time being.  We could skip it
+         * when the cloned flag is set, but the original gremlin would
+         * still be an issue.
+        || mtmp->mhpmax < (int) mtmp->m_lev
+         */
+        || (mtmp.mhp | 0) > (mtmp.mhpmax | 0))
+        await impossible('%s: level %d %s #%d [%s] has %d cur HP, %d max HP',
+                         msg, mtmp.m_lev | 0, pmnames[mndx]?.[NEUTRAL] ?? 'monster',
+                         mtmp.m_id | 0, hex(mtmp.m_id), mtmp.mhp | 0, mtmp.mhpmax | 0);
+    if ((mtmp.mhp | 0) < 1) {
+        /* #if 0 in C: bad if not fmon list or if not vault guard
+        if (strcmp(msg, "fmon") || !mtmp->isgd)
+            impossible("dead monster on %s; %s at <%d,%d>",
+                       msg, mptr->pmnames[NEUTRAL], mx, my); */
+        return;
+    }
+    if (chk_geno && (((game.mvitals?.[mndx]?.mvflags | 0) & G_GENOD) !== 0))
+        await impossible('genocided %s in play (%s)',
+                         pmname(mptr, Mgender(mtmp)), msg);
+    if (mtmp.mtame && !mtmp.mpeaceful)
+        await impossible('tame %s is not peaceful (%s)',
+                         pmname(mptr, Mgender(mtmp)), msg);
+    if (mtmp.isshk && !has_eshk(mtmp))
+        await impossible('shk without eshk (%s)', msg);
+    if (mtmp.ispriest && !has_epri(mtmp))
+        await impossible('priest without epri (%s)', msg);
+    if (mtmp.isgd && !has_egd(mtmp))
+        await impossible('guard without egd (%s)', msg);
+    if (mtmp.isminion && !has_emin(mtmp))
+        await impossible('minion without emin (%s)', msg);
+    /* guardian angel on astral level is tame but has emin rather than edog */
+    if (mtmp.mtame) {
+        if (!has_edog(mtmp) && !mtmp.isminion)
+            await impossible('pet without edog (%s)', msg);
+        else
+            await pet_sanity_check(mtmp, msg);
+    }
+    /* steed should be tame and saddled */
+    if (mtmp === u.usteed) {
+        const nt = !mtmp.mtame ? 'not tame' : 0;
+
+        const ns = !m_carrying(mtmp, SADDLE) ? 'no saddle'
+             : !which_armor(mtmp, W_SADDLE) ? 'saddle not worn'
+               : 0;
+        if (ns || nt)
+            await impossible('steed: %s%s%s (%s)',
+                             ns ? ns : '', (ns && nt) ? ', ' : '', nt ? nt : '',
+                             msg);
+    }
+
+    if (mtmp.mtrapped) {
+        if (mtmp.wormno) {
+            ; /* TODO: how to check worm in trap? */
+        } else if (!t_at(mx, my))
+            await impossible('trapped without a trap (%s)', msg);
+    }
+    /* monst->mfrozen is difficult to deal with--it's used for paralysis,
+       for temporary sleep, and for being busy (usually donning armor);
+       code that sets mfrozen needs to also clear mcanmove, otherwise the
+       helpless() test will be unreliable */
+    if (mtmp.mfrozen && mtmp.mcanmove)
+        await impossible('frozen monster [%s%s] is able to move (%s)',
+                         mtmp.mtame ? 'tame ' : mtmp.mpeaceful ? 'peaceful ' : '',
+                         pmname(mptr, Mgender(mtmp)), msg);
+
+    /* monster is hiding? */
+    if (mtmp.mundetected) {
+        let t;
+
+        if (!isok(mx, my)) /* caller will have checked this but not fixed it */
+            mx = my = 0;
+        if (mtmp === u.ustuck)
+            await impossible('hiding monster stuck to you (%s)', msg);
+        if (m_at(mx, my) === mtmp && hides_under(mptr) && !OBJ_AT(mx, my))
+            await impossible('mon hiding under nonexistent obj (%s)', msg);
+        if (mptr.mlet === 'S_EEL'
+            && !(is_pool(mx, my) && !Is_waterlevel(u.uz)))
+            await impossible('eel hiding %s (%s)',
+                             !Is_waterlevel(u.uz) ? 'out of water'
+                                                  : 'on Plane of Water', msg);
+        if (ceiling_hider(mptr)
+            /* normally !accessible would be overridable with passes_walls,
+               but not for hiding on the ceiling */
+            && (!has_ceiling(u.uz)
+                || !([POOL, MOAT, WATER, LAVAPOOL, LAVAWALL].includes(game.level?.at(mx, my)?.typ)
+                     || accessible(mx, my))))
+            await impossible('ceiling hider hiding %s (%s)',
+                             !has_ceiling(u.uz) ? 'without ceiling'
+                                                : 'in solid stone',
+                             msg);
+        if (mtmp.mtrapped && (t = t_at(mx, my)) != null && !is_pit(t.ttyp))
+            await impossible('hiding while trapped in a non-pit (%s)', msg);
+    } else if (M_AP_TYPE(mtmp) !== M_AP_NOTHING) {
+        const mapType = M_AP_TYPE(mtmp);
+        const is_mimic = (mptr.mlet === 'S_MIMIC');
+        const what = (mapType === M_AP_FURNITURE) ? 'furniture'
+                           : (mapType === M_AP_MONSTER) ? 'a monster'
+                             : (mapType === M_AP_OBJECT) ? 'an object'
+                               : 'something strange';
+
+        if (msg === 'migr') {
+            if (mapType !== M_AP_MONSTER)
+                await impossible('migrating %s mimicking %s %s',
+                                 is_mimic ? 'mimic' : 'monster', what, msg);
+        } else {
+            const uprot = u.uprops?.[PROT_FROM_SHAPE_CHANGERS];
+            if ((uprot?.intrinsic | 0) || (uprot?.extrinsic | 0))
+                await impossible(
+                    'mimic%s concealed as %s despite Prot-from-shape-changers %s',
+                    is_mimic ? '' : 'ker', what, msg);
+        }
+        /* the Wizard's clone after "double trouble" starts out mimicking
+           some other monster; pet's quickmimic effect can temporarily take
+           on furniture, object, or monster shape, but only until the pet
+           finishes eating a mimic corpse */
+        if (!(is_mimic || mtmp.meating
+              || (mtmp.iswiz && mapType === M_AP_MONSTER)))
+            await impossible('non-mimic (%s) posing as %s (%s)',
+                             pmnames[mndx]?.[NEUTRAL] ?? 'monster', what, msg);
+        /* mimics who end up in strange locations do still hide while there:
+        if (!(accessible(mx, my) || passes_walls(mptr))) {
+            ... levltyp_to_name(levl[mx][my].typ) ...
+            impossible("mimic%s concealed in inaccessible location: %s (%s)",
+                       is_mimic ? "" : "ker", typnam, msg);
+        } */
+    }
+    if (mtmp.mleashed) {
+        if (!get_mleash(mtmp))
+            await impossible('monst %d: leashed but no leash for %s',
+                             mtmp.m_id | 0, mon_pmname(mtmp));
+        else if (!mtmp.mtame)
+            await impossible('monst %d: leashed but not tame %s',
+                             mtmp.m_id | 0, mon_pmname(mtmp));
+        /* after hero moves, leashed mon won't necessarily pass 'm_next2u()'
+           test; 90 is farthest observed distance ...
+        else if (distu(mtmp->mx, mtmp->my) > 90)
+            impossible("monst %u: leashed but not next to you (%d)",
+                       mtmp->m_id, distu(mtmp->mx, mtmp->my)); */
+    }
 }
 
 /** C ref: mon.c genus `:469–531`. mode 1 → role; 0 → race prototype. */
@@ -551,7 +761,7 @@ export async function see_nearby_monsters() {
 }
 
 // C ref: hack.h NODIAG — only grid bugs
-function NODIAG(monnum) {
+export function NODIAG(monnum) {
     return monnum === PM_GRID_BUG;
 }
 
@@ -1299,7 +1509,7 @@ export async function wake_msg(mtmp, interesting) {
  * C `finish_meating(mtmp)` runs unconditionally after the mimic/undetected
  * block (D-2417: hero missing the mid-meal Knight pony ends the meal via
  * missum → wakeup, so dog_invent rates the apple next turn).
- * Named omissions: ghod_hitsu.
+ * Named omissions: none on this path (ghod_hitsu live, D-2474).
  */
 export async function wakeup(mtmp, via_attack) {
     if (!mtmp) return;
@@ -1324,7 +1534,9 @@ export async function wakeup(mtmp, via_attack) {
         }
         await setmangry(mtmp, true);
         if (was_peaceful) {
-            // ghod_hitsu deferred (priest in temple)
+            // C mon.c:4357 — priest in temple: god smites (before shk arm)
+            if (mtmp.ispriest && in_rooms(mtmp.mx, mtmp.my, TEMPLE))
+                await ghod_hitsu(mtmp);
             if (mtmp.isshk && !(game.u?.ushops && String(game.u.ushops).length)) {
                 const { hot_pursuit } = await import('./shk.js');
                 hot_pursuit(mtmp);
@@ -1557,7 +1769,7 @@ export async function mdrop_special_objs(mon) {
                 unlink_minvent(mon, obj);
                 obj.nobj = null;
                 obj.nexthere = null;
-                rloco(obj);
+                await rloco(obj);
             }
         }
         obj = next;

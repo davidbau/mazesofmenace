@@ -336,6 +336,7 @@ const AD_FAMN = 39; /* Famine only — monattk.h */
 const AD_SGLD = 20; /* steals gold (leprechaun) — monattk.h */
 const AD_TLPT = 23; /* teleports victim (quantum mechanic) — monattk.h */
 const AD_WERE = 29; /* confers lycanthropy — monattk.h */
+const AD_HEAL = 27; /* heals opponent's wounds (nurse) — monattk.h */
 const AD_SLIM = 40; /* turns victim into green slime — monattk.h */
 const AD_SAMU = 252; /* steals quest artifact/Amulet (Wizard/nemesis) — monattk.h */
 const AD_DCAY = 34; /* decays organics (brown pudding) — monattk.h */
@@ -1305,6 +1306,19 @@ export async function mhitm_ad_slim(magr, mattk, mdef, mhm) {
  * mhitm_ad_were_u in mhitu.js (hitmsg + rn2(4) lycanthropy envelope).
  */
 export async function mhitm_ad_were(magr, mattk, mdef, mhm) {
+    if (is_youmonst(mdef)) return;
+    await mhitm_ad_phys(magr, mattk, mdef, mhm);
+}
+
+/**
+ * C ref: uhitm.c mhitm_ad_heal `:4379–4384` — mhitm (mon→mon) arm.
+ * Delegates to mhitm_ad_phys; done propagates via mhm (caller checks).
+ * uhitm you-as-agr (`:4300–4304`) shares this shape (phys + done check).
+ * mhitu you-as-def (`:4305–4378`) is mhitm_ad_heal_u in mhitu.js (naked-
+ * nurse heal envelope: rnd(7) HP, rn2(7) max bump, STR/CON, Sick cure,
+ * botl, rn2(13) mongone else rn2(33) rloc+monflee else damage 0).
+ */
+export async function mhitm_ad_heal(magr, mattk, mdef, mhm) {
     if (is_youmonst(mdef)) return;
     await mhitm_ad_phys(magr, mattk, mdef, mhm);
 }
@@ -4121,6 +4135,42 @@ async function mdamagem(magr, mdef, mattk, mwep, dieroll) {
             dieroll: dieroll | 0,
         };
         await mhitm_ad_were(magr, mattk, mdef, mhm);
+        // C mhitm.c:1061-1065 — knockback preempts damage on HIT/DEF_DIED/offmap
+        if (await mhitm_knockback(magr, mdef, mattk, mhm, !!mwep)
+            && (((mhm.hitflags & (M_ATTK_DEF_DIED | M_ATTK_HIT)) !== 0) || mon_offmap(mdef))) {
+            return mhm.hitflags;
+        }
+        if (mhm.done) return mhm.hitflags;
+        damage = mhm.damage | 0;
+        hitflags = mhm.hitflags | 0;
+        if (!damage) return hitflags;
+        mdef.mhp -= damage;
+        if (mdef.mhp < 1) {
+            mdef.mhp = 0;
+            await mdamagem_monkilled(magr, mdef, mattk, mwep);
+            if ((mdef.mhp | 0) > 0) return hitflags; /* lifesaved */
+            if (hitflags === M_ATTK_AGR_DIED) {
+                return M_ATTK_DEF_DIED | M_ATTK_AGR_DIED;
+            }
+            const grew = await grow_up(magr, mdef);
+            return M_ATTK_DEF_DIED | (grew ? 0 : M_ATTK_AGR_DIED);
+        }
+        return (hitflags === M_ATTK_AGR_DIED) ? M_ATTK_AGR_DIED : M_ATTK_HIT;
+    }
+
+    // C: mhitm_adtyping → mhitm_ad_heal for AD_HEAL (uhitm.c:4296–4385
+    // mhitm arm :4379–4384). Delegates to mhitm_ad_phys (dieroll carried
+    // for artifact_hit, like AD_WERE); done propagates via mhm.
+    // mhitu nurse-heal arm is mhitm_ad_heal_u (mhitu.js); the uhitm arm
+    // shares the phys shape (named in the callee).
+    if ((mattk.adtyp | 0) === AD_HEAL) {
+        const mhm = {
+            damage,
+            hitflags: M_ATTK_MISS,
+            done: false,
+            dieroll: dieroll | 0,
+        };
+        await mhitm_ad_heal(magr, mattk, mdef, mhm);
         // C mhitm.c:1061-1065 — knockback preempts damage on HIT/DEF_DIED/offmap
         if (await mhitm_knockback(magr, mdef, mattk, mhm, !!mwep)
             && (((mhm.hitflags & (M_ATTK_DEF_DIED | M_ATTK_HIT)) !== 0) || mon_offmap(mdef))) {

@@ -92,7 +92,8 @@ import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import {
     flush_screen, flush_topl_more, pline, You_feel, verbalize, canspotmon,
-    canseemon, see_monsters, unmap_object, glyph_is_invisible, newsym,
+    canseemon, see_monsters, see_objects, see_traps, swallowed,
+    unmap_object, glyph_is_invisible, newsym,
     map_invisible, impossible,
 } from './display.js';
 import {
@@ -191,6 +192,7 @@ import { obj_resists } from './dogmove.js';
 import { livelog_printf } from './pline.js';
 import { uhis } from './roles.js';
 import { hard_helmet } from './do_wear.js';
+import { strange_feeling } from './detect.js';
 
 const POT_OIL = objectNames.indexOf('POT_OIL');
 const OIL_LAMP = objectNames.indexOf('OIL_LAMP');
@@ -432,8 +434,8 @@ function Role_if_healer() {
  * C ref: potion.c peffect_sickness :964–1011
  * Blessed: stale-fruit pline + losehp(1) (non-healer). Uncursed/cursed:
  * attr drain + HP. Does not set potion_unkn → dopotion makeknown may
- * exercise(A_WIS) via discover_object. Named omissions: full
- * make_hallucinated body (flag clear only).
+ * exercise(A_WIS) via discover_object. Hallu-clear calls live
+ * make_hallucinated(0, FALSE, 0) (C :1007–1010).
  */
 async function peffect_sickness(otmp) {
     await pline('Yecch!  This stuff tastes like poison.');
@@ -484,11 +486,9 @@ async function peffect_sickness(otmp) {
         }
     }
     const u = game.u || {};
-    if (u.Hallucination || (u.HHallucination | 0)) {
+    if (Hallucination()) { // C :1007-1008 if (Hallucination) You("are shocked ...")
         await pline('You are shocked back to your senses!');
-        // make_hallucinated(0L, FALSE, 0L) body deferred — clear flags
-        u.Hallucination = false;
-        u.HHallucination = 0;
+        await make_hallucinated(0, false, 0); // C :1009 (void) make_hallucinated(0L, FALSE, 0L)
     }
 }
 
@@ -1010,58 +1010,98 @@ export async function make_sick(xtime, cause, talk, type) {
 }
 
 /**
- * C ref: potion.c make_hallucinated(xtime, talk, mask)
- * Envelope: timed HHallucination set/clear + cosmic/boring pline.
- * Named omissions: EHalluc_resistance mask polish beyond |= / &=~;
- * Unaware talk suppress; eatmupdate; update_inventory;
- * itch/flatten clear msgs.
+ * C ref: youprop.h Halluc_resistance — H || E, flats + uprops mirror
+ * (invent.js hero_Halluc_resistance + do_name.js Hallucination() union).
+ */
+function hallucResisted(u) {
+    const e = u.uprops?.[HALLUC_RES];
+    return !!((e?.intrinsic | 0) || (e?.extrinsic | 0)
+        || (u.Halluc_resistance | 0)
+        || (u.HHalluc_resistance | 0)
+        || (u.EHalluc_resistance | 0));
+}
+
+/**
+ * C ref: potion.c make_hallucinated :369–438, in C order — Unaware talk
+ * suppress; mask arm (HHallucination gate, EHalluc_resistance |= / &=~
+ * + uprops extrinsic mirror, Hallucination re-mirror); else arm
+ * (changed gated on EXTRINSIC resistance only, set_itimeout TIMEOUT bits,
+ * clear-without-toggle talk); changed arm (eatmupdate gate,
+ * uswallow/swallowed else see_* before the pline, update_inventory,
+ * disp.botl, talk pline).
+ * Named omissions: eatmupdate (eat.c:180–213, no JS export — gate live,
+ * call deferred; map turns.md); artifact.c:794 SPFX_HALRES confer/remove
+ * keeps its sync set_spfx_extrinsic inline (set_artifact_intrinsic is sync;
+ * display-refresh delta named in map).
  */
 export async function make_hallucinated(xtime, talk, mask = 0) {
     const u = game.u || (game.u = {});
     const old = u.HHallucination | 0;
     let changed = false;
-    if (u.Unaware) talk = false;
+    if (u.Unaware || Unaware()) talk = false; // C :377-378 if (Unaware)
 
     const message = !xtime
         ? 'Everything %s SO boring now.'
         : 'Oh wow!  Everything %s so cosmic!';
-    const verb = (u.Blind || (u.HBlinded | 0)) ? 'feels' : 'looks';
+    const verb = !Blind() ? 'looks' : 'feels'; // C :382
 
     if (mask) {
+        // C :384-391 mask arm
         if (old) changed = true;
         if (!u.EHalluc_resistance) u.EHalluc_resistance = 0;
         if (!xtime) u.EHalluc_resistance |= mask;
         else u.EHalluc_resistance &= ~mask;
+        // C EHalluc_resistance IS uprops[HALLUC_RES].extrinsic
+        // (youprop.h:118) — keep the uprops mirror in step (make_slimed shape)
+        if (!u.uprops) u.uprops = {};
+        if (!u.uprops[HALLUC_RES]) {
+            u.uprops[HALLUC_RES] = { intrinsic: 0, extrinsic: 0, blocked: 0 };
+        }
+        if (!xtime) u.uprops[HALLUC_RES].extrinsic |= mask;
+        else u.uprops[HALLUC_RES].extrinsic &= ~mask;
+        // Hallucination is a computed macro in C — re-mirror the stored flat
+        u.Hallucination = !!((u.HHallucination | 0) & TIMEOUT) && !hallucResisted(u);
     } else {
-        const resist = !!(
-            (u.Halluc_resistance | 0)
-            || (u.HHalluc_resistance | 0)
-            || (u.EHalluc_resistance | 0)
-            || (u.uprops?.[HALLUC_RES]?.intrinsic | 0)
-            || (u.uprops?.[HALLUC_RES]?.extrinsic | 0)
-        );
-        if (!resist && (!!old !== !!xtime)) changed = true;
-        u.HHallucination = ((u.HHallucination | 0) & ~TIMEOUT) | itimeout(xtime);
-        // Mirror boolean gate used across the port
-        u.Hallucination = !!(u.HHallucination & TIMEOUT) && !resist;
+        // C :393-394 — changed gated on EXTRINSIC resistance only
+        if (!(u.EHalluc_resistance | 0) && (!!old !== !!xtime)) changed = true;
+        // C :395 set_itimeout(&HHallucination, xtime) — TIMEOUT bits only
+        u.HHallucination = (old & ~TIMEOUT) | itimeout(xtime);
+        u.Hallucination = !!((u.HHallucination | 0) & TIMEOUT) && !hallucResisted(u);
+
+        // C :398-411 clearing temporary hallucination without toggling vision
+        if (!changed && !(u.HHallucination | 0) && old && talk) {
+            const youdata = game.youmonst?.data;
+            if (!haseyes(youdata)) {
+                await strange_feeling(null, null);
+            } else if (Blind()) {
+                // C :405-407 Your(eyemsg, eyes, vtense(eyes, "itch")); :258
+                let eyes = body_part(EYE);
+                if (eyecount(youdata) !== 1) eyes = makeplural(eyes);
+                await pline(`Your ${eyes} momentarily ${vtense(eyes, 'itch')}.`);
+            } else {
+                // C :409 Your(vismsg, "flatten", "normal"); vismsg :257
+                await pline(
+                    'Your vision seems to flatten for a moment but is normal now.',
+                );
+            }
+        }
     }
 
     if (changed) {
-        if (game.flags) game.flags.botl = true;
-        // C: if uswallow → swallowed(0); else see_* *before* cosmic pline
-        const {
-            see_monsters, see_objects, see_traps, swallowed,
-        } = await import('./display.js');
+        // C :416-418 mimicking-orange message — eatmupdate deferred (map)
+        if (!u.Hallucination) { /* eatmupdate (eat.c:180-213): named omission */ }
         if (u.uswallow) {
-            swallowed(0);
+            swallowed(0); // C :421 redraw swallow display
         } else {
+            // C :425-427 see_* BEFORE the pline
             see_monsters();
             see_objects();
             see_traps();
         }
-        if (talk) {
-            await pline(message.replace('%s', verb));
-        }
+        update_inventory(); // C :432
+        if (game.disp) game.disp.botl = true; // C :434 disp.botl
+        if (game.flags) game.flags.botl = true; // JS status mirror (apply/artifact shape)
+        if (talk) await pline(message.replace('%s', verb)); // C :436
     }
     return changed;
 }

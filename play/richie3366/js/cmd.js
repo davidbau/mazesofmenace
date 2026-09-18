@@ -7,9 +7,9 @@
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
-import { rn2 } from './rng.js';
+import { rn2, rn1, rnd } from './rng.js';
 import {
-    newsym, flush_screen, pline, pline_dir, pline_xy, set_msg_xy,
+    newsym, flush_screen, pline, You, pline_dir, pline_xy, set_msg_xy,
     see_nearby_objects,
     clear_nhwindow_message,
     mon_visible, sensemon, canspotmon, glyph_at, glyph_is_invisible_id,
@@ -30,6 +30,7 @@ import { COLNO, ROWNO, STONE, DOOR, CORR, ROOM, IRONBARS, TREE, SDOOR,
          CMD_M_PREFIX, CMD_gGF_PREFIX, CMD_INSANE, QBUFSZ,
          xdir, ydir, zdir, xytodir, N_DIRS, DIR_W, DIR_N, DIR_E, DIR_S,
          DIR_NW, DIR_NE, DIR_SE, DIR_SW,
+         MV_WALK, MV_RUN, MV_RUSH, commandInp,
          GFILTER_VIEW, GLOC_INTERESTING,
          M_AP_TYPE, M_AP_FURNITURE, M_AP_OBJECT, VIBRATING_SQUARE,
          PARANOID_TRAP, GP_ALLOW_U, NO_TRAP_FLAGS, FOOT, Something,
@@ -58,7 +59,7 @@ import {
 import { dovspell, docast, num_spells } from './spell.js';
 import { doeat } from './eat.js';
 import { dodrink } from './potion.js';
-import { dozap, You } from './zap.js';
+import { dozap } from './zap.js';
 import { doread } from './read.js';
 import { doengrave, maybe_smudge_engr, set_occupation, can_reach_floor, engr_at } from './engrave.js';
 import { dothrow, dofire } from './dothrow.js';
@@ -82,7 +83,7 @@ import { wiz_wish, wiz_genesis, wiz_level_tele, wiz_map } from './wizcmds.js';
 import { dotelecmd, goodpos } from './teleport.js';
 import { dowield, dowieldquiver, doswapweapon } from './wield.js';
 import { dowhatis, doquickwhatis, dohelp, dowhatdoes, doversion } from './pager.js';
-import { visctrl, key2txt, cmdbind_get } from './dokeylist.js';
+import { visctrl, key2txt, cmdbind_get, cmd_from_dir } from './dokeylist.js';
 import { an, doname, makeplural } from './objnam.js';
 import { m_monnam, mon_nam, YMonnam, Hallucination } from './do_name.js';
 import { spoteffects, dopickup, doloot, dotip } from './pickup.js';
@@ -466,6 +467,132 @@ function doc_extcmd_flagstr(efp) {
         flagstr += ']';
     }
     return { flagstr };
+}
+
+/**
+ * C ref: cmd.c pgetchar `:445–453` ("courtesy of aeb@cwi.nl") — fuzzer arm
+ * returns randomkey, else a blocking nhgetch. Async only because JS
+ * nhgetch awaits input (Constitution §2); C callers treat it as a plain
+ * key read. C initializes ch to '\0' then overwrites both arms.
+ * @returns {Promise<number>} key code
+ */
+export async function pgetchar() {
+    if (game.iflags?.debug_fuzzer)
+        return randomkey();
+    return await nhgetch();
+}
+
+/* C ref: cmd.c randomkey `:3521–3522` — static fuzz-cycle state. */
+let _randomkey_i = 0;
+let _randomkey_last_c = 0;
+
+/**
+ * Reset randomkey fuzz-cycle state (debug-fuzzer test support;
+ * cf. input.js resetInputState).
+ */
+export function reset_randomkey() {
+    _randomkey_i = 0;
+    _randomkey_last_c = 0;
+}
+
+/**
+ * C ref: cmd.c randomkey `:3515–3578` — random keystroke biased toward
+ * movement commands, debug-fuzzer only (callers: pgetchar `:450`,
+ * random_response `:3587`, readchar_core `:5218`, wintty.c `:4068`).
+ * Returns a key-code number (C char). C order preserved arm by arm:
+ * ^A/^P repeat gate, rn2(16) switch (default ESC … case 14), last_c latch.
+ * Case 8 cycles `i++ % SIZE(extcmdlist)` — SIZE counts the donull
+ * sentinel (cmd.c:2068), which the generated EXTCMDLIST omits, so index
+ * == length yields key 0. Case 10–12 draws d = rn2(N_DIRS) then
+ * m = rn2(7) ? MV_WALK : (!rn2(3) ? MV_RUSH : MV_RUN) in that order.
+ * rnd() never yields 0, so case 14 avoids '\0' (mouse click) by
+ * construction. C('a') = 1, C('p') = 16 (global.h:487).
+ * @returns {number} key code
+ */
+export function randomkey() {
+    /* give ^A and ^P a high probability of being repeated */
+    if ((_randomkey_last_c === 1 || _randomkey_last_c === 16)
+        && game.program_state?.input_state === commandInp && rn2(5))
+        return _randomkey_last_c;
+
+    let c;
+    switch (rn2(16)) {
+    default:
+        c = 27; /* '\033' */
+        break;
+    case 0:
+        c = 10; /* '\n' */
+        break;
+    case 1:
+    case 2:
+    case 3:
+    case 4:
+        c = rn1(126 - 32 + 1, 32); /* rn1('~' - ' ' + 1, ' ') */
+        break;
+    case 5:
+        c = rn2(2) ? 9 : 32; /* '\t' : ' ' */
+        break;
+    case 6:
+        c = rn1(122 - 97 + 1, 97); /* rn1('z' - 'a' + 1, 'a') */
+        break;
+    case 7:
+        c = rn1(90 - 65 + 1, 65); /* rn1('Z' - 'A' + 1, 'A') */
+        break;
+    case 8:
+        c = (() => {
+            const n = EXTCMDLIST.length + 1; /* C SIZE(extcmdlist) */
+            const idx = _randomkey_i++ % n;
+            return idx < EXTCMDLIST.length ? EXTCMDLIST[idx].key : 0;
+        })();
+        break;
+    case 9:
+        c = 35; /* '#' */
+        break;
+    case 10:
+    case 11:
+    case 12:
+        {
+            const d = rn2(N_DIRS);
+            const m = rn2(7) ? MV_WALK : (!rn2(3) ? MV_RUSH : MV_RUN);
+
+            c = cmd_from_dir(d, m);
+        }
+        break;
+    case 13:
+        c = rn1(57 - 48 + 1, 48); /* rn1('9' - '0' + 1, '0') */
+        break;
+    case 14:
+        /* any char, but avoid '\0' because it's used for mouse click */
+        c = rnd(game.iflags?.wc_eight_bit_input ? 255 : 127);
+        break;
+    }
+
+    if (game.program_state?.input_state === commandInp)
+        _randomkey_last_c = c;
+    return c;
+}
+
+/**
+ * C ref: cmd.c random_response `:3580–3597` — accumulate randomkey()
+ * keystrokes until '\n' (accept) or ESC (discard + stop), keeping at most
+ * sz-1 chars. Returns the JS string (C writes buf + NUL).
+ * @param {number} sz C buffer size including NUL
+ * @returns {string}
+ */
+export function random_response(sz) {
+    let out = '';
+    for (;;) {
+        const c = randomkey();
+        if (c === 10) /* '\n' */
+            break;
+        if (c === 27) { /* '\033' */
+            out = '';
+            break;
+        }
+        if (out.length < sz - 1)
+            out += String.fromCharCode(c & 0xff);
+    }
+    return out;
 }
 
 const DOEXTLIST_HEADINGS = [

@@ -83,6 +83,7 @@ import {
     Can_fall_thru, Can_dig_down, G_GONE,
     CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_FEMALE, CORPSTAT_NONE,
     NUM_NHCORE_CALLS,
+    TT_BURIEDBALL, IN_SIGHT, COULD_SEE, NO_TRAP_FLAGS,
 } from './const.js';
 import {
     RANDOM_CLASS, WEAPON_CLASS, ARMOR_CLASS, RING_CLASS,
@@ -94,7 +95,7 @@ import {
 } from './objects.js';
 import { shtypes, stock_room } from './shknam.js';
 import { setgemprobs } from './o_init.js';
-import { maketrap, t_at, undestroyable_trap, deltrap } from './trap.js';
+import { maketrap, t_at, undestroyable_trap, deltrap, reset_utrap, mintrap } from './trap.js';
 import {
     mkobj, mksobj, mksobj_at, mksobj_migr_to_species, mkobj_at, mkgold,
     mkcorpstat, next_ident,
@@ -110,7 +111,7 @@ import {
 } from './makemon.js';
 import { mk_mplayer } from './mplayer.js';
 import { can_saddle, put_saddle_on_mon } from './steed.js';
-import { m_at, mnearto, mnexto, elemental_clog } from './mon.js';
+import { m_at, mnearto, mnexto, elemental_clog, seemimic, minliquid } from './mon.js';
 import { enexto, rloc, goodpos, migrate_to_level } from './teleport.js';
 import { clear_wormdata, flip_worm_segs_horizontal, flip_worm_segs_vertical, remove_worm } from './worm.js';
 import { obj_resists } from './dogmove.js';
@@ -142,7 +143,9 @@ import {
     create_gas_cloud, create_gas_cloud_selection, clear_regions,
     clear_heros_fault,
 } from './region.js';
-import { Norep, newsym, impossible } from './display.js';
+import { Norep, newsym, impossible, pline, You, flush_screen, nh_delay_output } from './display.js';
+import { buried_ball_to_punishment, fracture_rock } from './dig.js';
+import { obfree } from './shk.js';
 import { block_point, unblock_point, does_block } from './vision.js';
 import { emits_light, new_light_source, del_light_source } from './light.js';
 import { monst_to_any, is_pool, is_lava } from './hack.js';
@@ -15998,7 +16001,12 @@ function setup_waterlevel() {
     }
 }
 
-/** C ref: mkmaze.c mk_bubble + mv_bubble(b,0,0,TRUE) ini boing colli flips + cloud/air paint RNG. */
+/** C ref: mkmaze.c mk_bubble (:1873–1925) + the :1924 mv_bubble(b,0,0,TRUE)
+ * ini path replicated inline (sync load path): air-gated rn2(6), border
+ * colli + boing flips, default redirect ini-gated, AIR/CLOUD paint with
+ * C unblock/block_point. sgn-clamp/bounce/out-of-bounds pline+clamp are
+ * provably no-ops here (bx,by pre-clamped in-bounds above, dx=dy=0) and
+ * cons is null, so the deposit is a no-op like C. */
 function mk_bubble(x, y, n, gbxmin, gbymin, gbxmax, gbymax) {
     const BM = [
         [2, 1, 0x3],
@@ -16043,8 +16051,11 @@ function mk_bubble(x, y, n, gbxmin, gbymin, gbxmax, gbymax) {
             break; // C :2099-2105 redirect runs only when !ini
         }
     }
-    // paint bubble cells: water→AIR, air→CLOUD
-    const paint = Is_waterlevel(game.u?.uz) ? AIR : CLOUD;
+    // C mv_bubble :2010-2025 ini paint (dx=dy=0): water→AIR+unblock,
+    // air→CLOUD+block, lit in both.
+    const isWater = Is_waterlevel(game.u?.uz);
+    const isAir = Is_airlevel(game.u?.uz);
+    const paint = isWater ? AIR : CLOUD;
     for (let i = 0; i < bm[0]; i++) {
         for (let j = 0; j < bm[1]; j++) {
             if (bm[j + 2] & (1 << i)) {
@@ -16052,6 +16063,8 @@ function mk_bubble(x, y, n, gbxmin, gbymin, gbxmax, gbymax) {
                 if (loc) {
                     loc.typ = paint;
                     loc.lit = true;
+                    if (isWater) unblock_point(bx + i, by + j);
+                    else if (isAir) block_point(bx + i, by + j);
                 }
             }
         }
@@ -16074,7 +16087,7 @@ function mk_bubble(x, y, n, gbxmin, gbymin, gbxmax, gbymax) {
 /**
  * C ref: mkmaze.c movebubbles — water cons pickup + air edge clouds +
  * bubble drift (goto_level / moveloop). Async: bubble deposit reaches
- * mnearto/mnexto (pline-capable). Deposit runs inside mv_bubble_move
+ * mnearto/mnexto (pline-capable). Deposit runs inside mv_bubble
  * between paint and boing, matching C mv_bubble order.
  * Named omissions: Punished ball carry (unplacebc/lift_covet not live);
  * vision_recalc(2) (display-only).
@@ -16188,17 +16201,21 @@ export async function movebubbles() {
         const ry = rn2(3);
         const mdx = b.dx + 1 - (!b.dx ? rx : (rx ? 1 : 0));
         const mdy = b.dy + 1 - (!b.dy ? ry : (ry ? 1 : 0));
-        await mv_bubble_move(b, mdx, mdy, gbxmin, gbymin, gbxmax, gbymax, false);
+        await mv_bubble(b, mdx, mdy, gbxmin, gbymin, gbxmax, gbymax, false);
     }
     /* C: put attached ball&chain back — Punished arm named omission. */
     g.vision_full_recalc = 1;
 }
 
-/** C ref: mkmaze.c mv_bubble — move + AIR/CLOUD paint + water cons
- * deposit + boing (exact C order; deposit draws RNG via mnearto/mnexto).
- * Async: deposit reaches pline-capable callees. ini path (mk_bubble /
- * restore) carries no cons, so deposit is a no-op there like C. */
-async function mv_bubble_move(b, dx, dy, gbxmin, gbymin, gbxmax, gbymax, ini) {
+/** C ref: mkmaze.c:1952–2107 mv_bubble (staticfn) — move (sgn clamp,
+ * border colli, out-of-bounds pline+clamp, bounce) + AIR/CLOUD paint +
+ * water cons deposit + boing, in exact C order; deposit draws RNG via
+ * mnearto/mnexto. Async: clamp plines, cons-default impossible and the
+ * deposit callees are pline-capable. Bounds ride as params (C uses the
+ * file-scope gbxmin/gbymax statics). Callers: movebubbles (mkmaze.c:1677),
+ * restore_waterlevel (:1777); mk_bubble (:1924) replicates the ini path
+ * inline (sync load path; clamp/bounce provably no-ops there). */
+async function mv_bubble(b, dx, dy, gbxmin, gbymin, gbxmax, gbymax, ini) {
     const uz = game.u?.uz;
     const isWater = Is_waterlevel(uz);
     const isAir = Is_airlevel(uz);
@@ -16215,6 +16232,23 @@ async function mv_bubble_move(b, dx, dy, gbxmin, gbymin, gbxmax, gbymax, ini) {
         if (b.y <= gbymin) colli |= 1;
         if ((b.x + b.bm[0] - 1) >= gbxmax) colli |= 2;
         if ((b.y + b.bm[1] - 1) >= gbymax) colli |= 1;
+        /* C :1981-1999: out-of-bounds bubbles pline, then clamp back. */
+        if (b.x < gbxmin) {
+            await pline(`bubble xmin: x = ${b.x}, xmin = ${gbxmin}`);
+            b.x = gbxmin;
+        }
+        if (b.y < gbymin) {
+            await pline(`bubble ymin: y = ${b.y}, ymin = ${gbymin}`);
+            b.y = gbymin;
+        }
+        if ((b.x + b.bm[0] - 1) > gbxmax) {
+            await pline(`bubble xmax: x = ${b.x + b.bm[0] - 1}, xmax = ${gbxmax}`);
+            b.x = gbxmax - b.bm[0] + 1;
+        }
+        if ((b.y + b.bm[1] - 1) > gbymax) {
+            await pline(`bubble ymax: y = ${b.y + b.bm[1] - 1}, ymax = ${gbymax}`);
+            b.y = gbymax - b.bm[1] + 1;
+        }
         if (b.x === gbxmin && adx < 0) adx = -adx;
         if (b.x + b.bm[0] - 1 === gbxmax && adx > 0) adx = -adx;
         if (b.y === gbymin && ady < 0) ady = -ady;
@@ -16241,8 +16275,8 @@ async function mv_bubble_move(b, dx, dy, gbxmin, gbymin, gbxmax, gbymax, ini) {
     /* C mv_bubble: replace contents of bubble (water only). Each cons
      * cell rides the applied displacement (cons->x += dx). Cons list
      * order matches C's prepend-built chain. */
-    if (isWater && b.cons && b.cons.length) {
-        for (const cons of b.cons) {
+    if (isWater) {
+        for (const cons of b.cons || []) {
             const cx = (cons.x | 0) + adx, cy = (cons.y | 0) + ady;
             if (cons.what === CONS_OBJ) {
                 for (let olist = cons.list, otmp; olist; olist = otmp) {
@@ -16274,6 +16308,8 @@ async function mv_bubble_move(b, dx, dy, gbxmin, gbymin, gbxmax, gbymax, ini) {
                 const btrap = cons.list;
                 btrap.tx = cx;
                 btrap.ty = cy;
+            } else {
+                await impossible('mv_bubble: unknown bubble contents');
             }
         }
         b.cons = null;
@@ -16420,7 +16456,7 @@ export async function restore_waterlevel(blob) {
             g.bbubbles = b;
             b.prev = null;
         }
-        await mv_bubble_move(b, 0, 0, gbxmin, gbymin, gbxmax, gbymax, true);
+        await mv_bubble(b, 0, 0, gbxmin, gbymin, gbxmax, gbymax, true);
     }
     g.ebubbles = b;
     if (b) b.next = null;
@@ -18094,6 +18130,225 @@ export function pick_vibrasquare_location() {
                  || occupied(x, y)));
     ip.x = x;
     ip.y = y;
+}
+
+/**
+ * C ref: mklev.c mkinvokearea `:2410–2497` — reshape the vibrating-square
+ * area on successful invocation (Book of the Dead): shake message, wall
+ * check for the crumble message, mkinvpos rings dist 0..6, down stair on
+ * the hero. C order: wall-check block, display_nhwindow, utrap release,
+ * center + dist loop with flush/delay, stair + newsym + vision recalc.
+ * C `pline_The` renders as plain pline with the The-phrase (file idiom);
+ * `display_nhwindow(WIN_MESSAGE, TRUE)` has no JS export — pline already
+ * flushes, named omit. Sole C caller `deadbook` (spell.c:290) is deferred
+ * in js/spell.js — it wires here when it ships.
+ */
+export async function mkinvokearea() {
+    const g = game;
+    const u = g.u || {};
+    let dist, wallct;
+    let xmin, xmax, ymin, ymax;
+    let i;
+
+    /* slightly odd if levitating, but not wrong */
+    await pline('The floor shakes violently under you!');
+    /* decide whether to issue the crumbling walls message */
+    {
+        const ip = svi_inv_pos();
+        xmin = xmax = ip.x;
+        ymin = ymax = ip.y;
+        wallct = mkinvk_check_wall(xmin, ymin);
+        /* this replicates the somewhat convoluted loop below, working
+           out from the stair position, except for stopping early when
+           walls are found */
+        for (dist = 1; !wallct && dist < 7; ++dist) {
+            xmin--, xmax++;
+            /* top and bottom */
+            if (dist !== 3) { /* the area is wider that it is high */
+                ymin--, ymax++;
+                for (i = xmin + 1; i < xmax; i++) {
+                    if (mkinvk_check_wall(i, ymin))
+                        ++wallct; /* we could break after finding first wall
+                                   * but it isn't a significant optimization
+                                   * for code which only executes once */
+                    if (mkinvk_check_wall(i, ymax))
+                        ++wallct;
+                }
+            }
+            /* left and right */
+            if (!wallct) { /* skip y loop if x loop found any walls */
+                for (i = ymin; i <= ymax; i++) {
+                    if (mkinvk_check_wall(xmin, i))
+                        ++wallct;
+                    if (mkinvk_check_wall(xmax, i))
+                        ++wallct;
+                }
+            }
+        }
+        /* message won't appear if the maze 'walls' on this level are lava
+           or if all the walls within range have been dug away; when it does
+           appear, it will describe iron bars as "walls" (which is ok) */
+        if (wallct)
+            await pline('The walls around you begin to bend and crumble!');
+    }
+    /* C: display_nhwindow(WIN_MESSAGE, TRUE) — no JS export; pline flushes. */
+
+    /* any trap hero is stuck in will be going away now */
+    if ((u.utrap | 0)) {
+        if ((u.utraptype | 0) === TT_BURIEDBALL)
+            await buried_ball_to_punishment();
+        reset_utrap(false);
+    }
+
+    { /* reset after the check for walls */
+        const ip = svi_inv_pos();
+        xmin = xmax = ip.x;
+        ymin = ymax = ip.y;
+    }
+    await mkinvpos(xmin, ymin, 0); /* middle, before placing stairs */
+
+    for (dist = 1; dist < 7; dist++) {
+        xmin--;
+        xmax++;
+
+        /* top and bottom */
+        if (dist !== 3) { /* the area is wider that it is high */
+            ymin--;
+            ymax++;
+            for (i = xmin + 1; i < xmax; i++) {
+                await mkinvpos(i, ymin, dist);
+                await mkinvpos(i, ymax, dist);
+            }
+        }
+
+        /* left and right */
+        for (i = ymin; i <= ymax; i++) {
+            await mkinvpos(xmin, i, dist);
+            await mkinvpos(xmax, i, dist);
+        }
+
+        await flush_screen(1); /* make sure the new glyphs shows up */
+        await nh_delay_output();
+    }
+
+    await You('are standing at the top of a stairwell leading down!');
+    mkstairs(u.ux, u.uy, 0, null, false); /* down */
+    newsym(u.ux, u.uy);
+    g.vision_full_recalc = 1; /* everything changed */
+}
+
+/**
+ * C ref: mklev.c mkinvpos `:2503–2598` (staticfn) — convert one cell of the
+ * invocation area: clip at maze borders, clear traps, fracture-or-drop
+ * boulders, fake saved state + short-circuit viz, dist switch (fire-trap
+ * ring 1, ROOM 0/2/3/6, MOAT 4/5), monster trap/liquid, unblock, newsym.
+ * C order throughout. `gx.x_maze_max/gy.y_maze_max` read the file's
+ * maze_x_max()/maze_y_max(); C `panic` is a loud throw (house idiom).
+ */
+async function mkinvpos(x, y, dist) {
+    const X_MAZE_MIN = 2;
+    const Y_MAZE_MIN = 2;
+
+    /* clip at existing map borders if necessary */
+    if (!within_bounded_area(x, y, X_MAZE_MIN, Y_MAZE_MIN,
+                             maze_x_max(), maze_y_max())) {
+        /* outermost 2 columns and/or rows may be truncated due to edge */
+        if (dist < (7 - 2)) { /* panic() or impossible() */
+            if (!isok(x, y))
+                throw new Error(`mkinvpos: <${x},${y}> (${dist}) off map edge!`);
+            await impossible('mkinvpos: <%d,%d> (%d) off map edge!', x, y, dist);
+        }
+        return;
+    }
+
+    const lev = game.level?.at?.(x, y);
+    if (!lev) return;
+
+    /* clear traps */
+    let ttmp = t_at(x, y);
+    if (ttmp)
+        deltrap(ttmp);
+
+    /* clear boulders; leave some rocks for non-{moat|trap} locations */
+    let make_rocks = (dist !== 1 && dist !== 4 && dist !== 5) ? true : false;
+    let otmp;
+    while ((otmp = sobj_at(BOULDER, x, y)) != null) {
+        if (make_rocks) {
+            fracture_rock(otmp);
+            make_rocks = false; /* don't bother with more rocks */
+        } else {
+            obj_extract_self(otmp);
+            obfree(otmp, null);
+        }
+    }
+
+    /* fake out saved state */
+    lev.seenv = 0;
+    lev.doormask = 0;
+    if (dist < 6)
+        lev.lit = true;
+    lev.waslit = true;
+    lev.horizontal = false;
+    /* short-circuit vision recalc */
+    if (game.viz_array?.[y])
+        game.viz_array[y][x] = (dist < 6) ? (IN_SIGHT | COULD_SEE) : COULD_SEE;
+
+    switch (dist) {
+    case 1: /* fire traps */
+        if (is_pool(x, y))
+            break;
+        lev.typ = ROOM;
+        ttmp = maketrap(x, y, FIRE_TRAP);
+        if (ttmp)
+            ttmp.tseen = true;
+        break;
+    case 0: /* lit room locations */
+    case 2:
+    case 3:
+    case 6: /* unlit room locations */
+        lev.typ = ROOM;
+        break;
+    case 4: /* pools (aka a wide moat) */
+    case 5:
+        lev.typ = MOAT;
+        /* No kelp! */
+        break;
+    default:
+        await impossible('mkinvpos called with dist %d', dist);
+        break;
+    }
+
+    let mon;
+    if ((mon = m_at(x, y)) != null) {
+        /* wake up mimics, don't want to deal with them blocking vision */
+        if (mon.m_ap_type)
+            seemimic(mon);
+
+        if ((ttmp = t_at(x, y)) != null)
+            await mintrap(mon, NO_TRAP_FLAGS);
+        else
+            await minliquid(mon);
+    }
+
+    if (!does_block(x, y, lev))
+        unblock_point(x, y); /* make sure vision knows location is open */
+
+    /* display new value of position; could have a monster/object on it */
+    newsym(x, y);
+}
+
+/**
+ * C ref: mklev.c mkinvk_check_wall `:2603–2613` (staticfn) — 1 when (x,y)
+ * is a stone wall or iron bars, else 0; off-map (!isok) is 0. C asserts
+ * are covered by the isok guard (house idiom).
+ */
+function mkinvk_check_wall(x, y) {
+    if (!isok(x, y))
+        return 0;
+    const lev = game.level?.at?.(x, y);
+    if (!lev) return 0;
+    const ltyp = lev.typ | 0;
+    return (IS_STWALL(ltyp) || ltyp === IRONBARS) ? 1 : 0;
 }
 
 function maze_okay(x, y, dir) {
@@ -28584,19 +28839,6 @@ function mktrap(num, mktrapflags, croom, tm) {
     });
 }
 
-async function mktrap_room(croom) {
-    let kind;
-    do { kind = traptype_rnd(); } while (kind === NO_TRAP);
-    const dungeon = game.dungeons?.[game.u?.uz?.dnum ?? 0];
-    const canFallThru = (game.u?.uz?.dlevel ?? 1) < (dungeon?.num_dunlevs ?? 1);
-    if (is_hole(kind) && !canFallThru) kind = ROCKTRAP;
-    const pos = { x: 0, y: 0 };
-    if (!somexyspace(croom, pos)) return;
-    const trap = await maketrap(pos.x, pos.y, kind);
-    // C mktrap: WEB spider before victim gate; level_difficulty not dlevel
-    mktrap_seen_victim(trap, {});
-}
-
 function mkfount(croom) {
     const pos = { x: 0, y: 0 };
     if (!find_okay_roompos(croom, pos)) return;
@@ -28619,13 +28861,30 @@ function mkaltar(croom) {
     loc.flags = Align2amask(al);
 }
 
-// C ref: mklev.c mkgrave — grave + optional buried gold/loot + bell
-function mkgrave_room(croom) {
-    if (croom.rtype !== OROOM) return;
+// C ref: mklev.c mksink :2316-2329 — find_okay_roompos, set_levltyp(SINK),
+// nsinks++. set_levltyp's FALSE arm (mkmaze.c:77-121) cannot fire here:
+// somexyspace only yields ROOM/CORR/ICE while CAN_OVERWRITE_TERRAIN
+// (rm.h:320) refuses only LADDER/STAIRS. Named omit: C recounts via
+// count_level_features (mkmaze.c:106-108) before the ++ (cf the named
+// recount omit on trap.js set_levltyp); js/ keeps the incremental count.
+function mksink(croom) {
+    const m = { x: 0, y: 0 };
+    if (!find_okay_roompos(croom, m)) return;
+    const loc = game.level?.at(m.x, m.y);
+    if (!loc) return;
+    loc.typ = SINK;
+    game.level.flags.nsinks = (game.level.flags.nsinks || 0) + 1;
+}
+
+// C ref: mklev.c mkgrave :2353-2397 — whole body in C order. The dobell
+// rn2(10) is drawn before the rtype gate (so THEMEROOM callers consume it).
+async function mkgrave(croom) {
     const dobell = !rn2(10);
+    if (!croom || croom.rtype !== OROOM) return;
     const pos = { x: 0, y: 0 };
     if (!find_okay_roompos(croom, pos)) return;
     make_grave(pos.x, pos.y, dobell ? 'Saved by the bell!' : null);
+    // C: loose buriable stack on purpose — not mkgold's level formula.
     if (!rn2(3)) {
         const gold = mksobj(GOLD_PIECE, true, false);
         if (gold) {
@@ -28639,161 +28898,176 @@ function mkgrave_room(croom) {
     for (let tryct = rn2(5); tryct > 0; tryct--) {
         const otmp = mkobj(RANDOM_CLASS, true);
         if (!otmp) return;
-        curse(otmp);
+        await curse(otmp);
         otmp.ox = pos.x;
         otmp.oy = pos.y;
         add_to_buried(otmp);
     }
+    // C: leave a bell in case someone was buried alive.
     if (dobell) mksobj_at(BELL, pos.x, pos.y, true, false);
 }
 
+/**
+ * C ref: mklev.c fill_ordinary_room :939-1171 — whole body in C order:
+ * rtype gate; subrooms before needfill; amulet-or-rn2(3) sleeper with the
+ * spider-WEB arm; trap loop via live mktrap(); gold; rogue skip of the
+ * dressing block; fountain/sink/altar/grave/statue; bonus items; chest;
+ * graffiti; skip_nonrogue random-object tail.
+ */
 async function fill_ordinary_room(croom, bonus_items) {
     const g = game;
-    // C ref: mklev.c fill_ordinary_room — rtype gate, then subrooms before
-    // needfill (outer unfilled must not block filled nested rooms).
     if (!croom || (croom.rtype !== OROOM && croom.rtype !== THEMEROOM)) return;
     for (let xi = 0; xi < (croom.nsubrooms | 0); ++xi) {
         const subroom = croom.sbrooms?.[xi];
-        if (!subroom) return; // C: impossible("…Null subroom")
+        if (!subroom) {
+            await impossible('fill_ordinary_room: Null subroom');
+            return;
+        }
         await fill_ordinary_room(subroom, false);
     }
     if (croom.needfill !== FILL_NORMAL) return;
 
     const pos = { x: 0, y: 0 };
-    // Sleeping monster (33%) — C: u.uhave.amulet || !rn2(3)
-    if (!rn2(3) && somexyspace(croom, pos)) {
-        makemon(null, pos.x, pos.y, MM_NOGRP);
+    // C: (u.uhave.amulet || !rn2(3)) — amulet short-circuits past the draw.
+    if ((g.u?.uhave?.amulet || !rn2(3)) && somexyspace(croom, pos)) {
+        const tmonst = makemon(null, pos.x, pos.y, MM_NOGRP);
+        // C: always put a web with a spider.
+        if (tmonst && tmonst.data?.mndx === PM_GIANT_SPIDER
+            && !occupied(pos.x, pos.y)) {
+            maketrap(pos.x, pos.y, WEB);
+        }
     }
-    // Traps — C: x = 8 - (level_difficulty() / 6)
+    // C: x = 8 - (level_difficulty() / 6); mktrap(0, MKTRAP_NOFLAGS, croom, 0).
     let x = 8 - Math.trunc(level_difficulty() / 6);
     if (x <= 1) x = 2;
     let trycnt = 0;
     while (!rn2(x) && ++trycnt < 1000) {
-        await mktrap_room(croom);
+        mktrap(0, MKTRAP_NOFLAGS, croom, null);
     }
-    // Gold
     if (!rn2(3) && somexyspace(croom, pos)) {
         mkgold(0, pos.x, pos.y);
     }
-    // Fountain
-    if (!rn2(10)) mkfount(croom);
-    // Sink
-    if (!rn2(60)) {
-        if (find_okay_roompos(croom, pos)) {
-            const loc = g.level?.at(pos.x, pos.y);
-            if (loc) { loc.typ = SINK; g.level.flags.nsinks = (g.level.flags.nsinks || 0) + 1; }
+    // C: rogue levels skip to skip_nonrogue (no dressing, no bonus/chest).
+    if (!Is_rogue_level(g.u?.uz)) {
+        if (!rn2(10)) mkfount(croom);
+        if (!rn2(60)) mksink(croom);
+        if (!rn2(60)) mkaltar(croom);
+        x = 80 - (depth_of_level(g.u?.uz) * 2);
+        if (x < 2) x = 2;
+        if (!rn2(x)) await mkgrave(croom);
+        // C: mkcorpstat(STATUE, 0, 0, pos, CORPSTAT_INIT); CORPSTAT_INIT is 8.
+        if (!rn2(20) && somexyspace(croom, pos)) {
+            mkcorpstat(STATUE, null, null, pos.x, pos.y, 8);
         }
-    }
-    // Altar
-    if (!rn2(60)) mkaltar(croom);
-    // Grave
-    x = 80 - (depth_of_level(g.u?.uz) * 2);
-    if (x < 2) x = 2;
-    if (!rn2(x)) mkgrave_room(croom);
-    // Statue
-    if (!rn2(20) && somexyspace(croom, pos)) {
-        mkcorpstat(STATUE, null, null, pos.x, pos.y, 8);
-    }
-    // Bonus items — C ref: mklev.c fill_ordinary_room bonus_items block
-    let skip_chests = false;
-    if (bonus_items && somexyspace(croom, pos)) {
-        const branchp = is_branchlev();
-        const mines_dnum = g.mines_dnum ?? 2;
-        const oracle_dnum = g.oracle_level?.dnum ?? 0;
-        const oracle_dlevel = g.oracle_level?.dlevel ?? 5;
-        if (branchp && (g.u?.uz?.dnum ?? 0) !== mines_dnum
-            && (branchp.end1?.dnum === mines_dnum || branchp.end2?.dnum === mines_dnum)) {
-            // Mines entrance bonus food
-            mksobj_at((rn2(5) < 3) ? FOOD_RATION : rn2(2) ? CRAM_RATION : LEMBAS_WAFER,
-                pos.x, pos.y, true, false);
-        } else if ((g.u?.uz?.dnum ?? 0) === oracle_dnum
-            && (g.u?.uz?.dlevel ?? 1) < oracle_dlevel && rn2(3)) {
-            // C ref: mklev.c make_niche / fill_room — supply chest before Oracle
-            // mksobj_at(..., FALSE, FALSE) skips mkbox_cnts; fill via add_to_container.
-            const supply_chest = mksobj_at(
-                rn2(3) ? CHEST : LARGE_BOX, pos.x, pos.y, false, false,
-            );
-            if (supply_chest) {
-                supply_chest.olocked = !!rn2(6);
-                let tryct2 = 0;
-                let cursed_item;
-                do {
-                    const supply_items = [
-                        POT_EXTRA_HEALING, POT_SPEED, POT_GAIN_ENERGY,
-                        SCR_ENCHANT_WEAPON, SCR_ENCHANT_ARMOR, SCR_CONFUSE_MONSTER,
-                        SCR_SCARE_MONSTER, WAN_DIGGING, SPE_HEALING,
-                    ];
-                    // C: rn2(2) ? POT_HEALING : ROLL_FROM(supply_items)
-                    const otyp = rn2(2)
-                        ? POT_HEALING
-                        : supply_items[rn2(supply_items.length)];
-                    const otmp = mksobj(otyp, true, false);
-                    if (otmp && otyp === POT_HEALING && rn2(2)) {
-                        otmp.quan = 2;
-                        otmp.owt = weight(otmp);
-                    }
-                    cursed_item = otmp?.cursed ?? false;
-                    if (otmp) add_to_container(supply_chest, otmp);
-                    if (++tryct2 >= 50) break;
-                } while (cursed_item || !rn2(5));
-                if (rn2(3)) {
-                    const extra_classes = [
-                        FOOD_CLASS, WEAPON_CLASS, ARMOR_CLASS, GEM_CLASS,
-                        SCROLL_CLASS, POTION_CLASS, RING_CLASS,
-                        SPBOOK_no_NOVEL, SPBOOK_no_NOVEL, SPBOOK_no_NOVEL,
-                    ];
-                    const oclass = extra_classes[rn2(extra_classes.length)];
-                    let otmp = mkobj(oclass, false);
-                    if (oclass === SPBOOK_no_NOVEL && otmp) {
-                        const depth = depth_of_level(g.u?.uz);
-                        const maxpass = (depth > 2) ? 2 : 3;
-                        for (let pass = 1; pass <= maxpass; pass++) {
-                            const otmp2 = mkobj(oclass, false);
-                            if (!otmp2) continue;
-                            const lv1 = (g.objects?.[otmp.otyp]?.oc_level) | 0;
-                            const lv2 = (g.objects?.[otmp2.otyp]?.oc_level) | 0;
-                            // C: keep lower-level book; dealloc the other
-                            if (lv1 <= lv2) {
-                                dealloc_obj(otmp2);
-                            } else {
-                                dealloc_obj(otmp);
-                                otmp = otmp2;
+        // Bonus items: Mines-entrance food, or the pre-Oracle supply chest.
+        let skip_chests = false;
+        if (bonus_items && somexyspace(croom, pos)) {
+            const branchp = is_branchlev();
+            const mines_dnum = g.mines_dnum ?? 2;
+            const oracle_dnum = g.oracle_level?.dnum ?? 0;
+            const oracle_dlevel = g.oracle_level?.dlevel ?? 5;
+            if (branchp && (g.u?.uz?.dnum ?? 0) !== mines_dnum
+                && (branchp.end1?.dnum === mines_dnum || branchp.end2?.dnum === mines_dnum)) {
+                // Mines entrance bonus food
+                mksobj_at((rn2(5) < 3) ? FOOD_RATION : rn2(2) ? CRAM_RATION : LEMBAS_WAFER,
+                    pos.x, pos.y, true, false);
+            } else if ((g.u?.uz?.dnum ?? 0) === oracle_dnum
+                && (g.u?.uz?.dlevel ?? 1) < oracle_dlevel && rn2(3)) {
+                // C: supply chest above the Oracle; chest twice as likely
+                // as large box (reverse of ordinary chest odds).
+                // mksobj_at(..., FALSE, FALSE) skips mkbox_cnts; fill below.
+                const supply_chest = mksobj_at(
+                    rn2(3) ? CHEST : LARGE_BOX, pos.x, pos.y, false, false,
+                );
+                if (supply_chest) {
+                    supply_chest.olocked = !!rn2(6);
+                    let tryct2 = 0;
+                    let cursed_item;
+                    do {
+                        const supply_items = [
+                            POT_EXTRA_HEALING, POT_SPEED, POT_GAIN_ENERGY,
+                            SCR_ENCHANT_WEAPON, SCR_ENCHANT_ARMOR, SCR_CONFUSE_MONSTER,
+                            SCR_SCARE_MONSTER, WAN_DIGGING, SPE_HEALING,
+                        ];
+                        // C: rn2(2) ? POT_HEALING : ROLL_FROM(supply_items)
+                        const otyp = rn2(2)
+                            ? POT_HEALING
+                            : supply_items[rn2(supply_items.length)];
+                        const otmp = mksobj(otyp, true, false);
+                        if (otmp && otyp === POT_HEALING && rn2(2)) {
+                            otmp.quan = 2;
+                            otmp.owt = weight(otmp);
+                        }
+                        cursed_item = otmp?.cursed ?? false;
+                        if (otmp) add_to_container(supply_chest, otmp);
+                        // C: guarantee a noncursed item; impossible at 50.
+                        if (++tryct2 >= 50) {
+                            await impossible("couldn't generate supply chest item");
+                            break;
+                        }
+                    } while (cursed_item || !rn2(5));
+                    if (rn2(3)) {
+                        const extra_classes = [
+                            FOOD_CLASS, WEAPON_CLASS, ARMOR_CLASS, GEM_CLASS,
+                            SCROLL_CLASS, POTION_CLASS, RING_CLASS,
+                            SPBOOK_no_NOVEL, SPBOOK_no_NOVEL, SPBOOK_no_NOVEL,
+                        ];
+                        const oclass = extra_classes[rn2(extra_classes.length)];
+                        let otmp = mkobj(oclass, false);
+                        if (oclass === SPBOOK_no_NOVEL && otmp) {
+                            const depth = depth_of_level(g.u?.uz);
+                            const maxpass = (depth > 2) ? 2 : 3;
+                            for (let pass = 1; pass <= maxpass; pass++) {
+                                const otmp2 = mkobj(oclass, false);
+                                if (!otmp2) continue;
+                                const lv1 = (g.objects?.[otmp.otyp]?.oc_level) | 0;
+                                const lv2 = (g.objects?.[otmp2.otyp]?.oc_level) | 0;
+                                // C: keep lower-level book; dealloc the other
+                                if (lv1 <= lv2) {
+                                    dealloc_obj(otmp2);
+                                } else {
+                                    dealloc_obj(otmp);
+                                    otmp = otmp2;
+                                }
                             }
                         }
+                        if (otmp && (otmp.quan | 0) > 0) {
+                            add_to_container(supply_chest, otmp);
+                        }
                     }
-                    if (otmp && (otmp.quan | 0) > 0) {
-                        add_to_container(supply_chest, otmp);
-                    }
+                    supply_chest.owt = weight(supply_chest);
                 }
-                supply_chest.owt = weight(supply_chest);
-            }
-            skip_chests = true;
-        }
-    }
-    // Box/chest check
-    if (!skip_chests && !rn2(Math.trunc(g.level.nroom * 5 / 2)) && somexyspace(croom, pos)) {
-        mksobj_at(rn2(3) ? LARGE_BOX : CHEST, pos.x, pos.y, true, false);
-    }
-    // Graffiti
-    const depth = depth_of_level(g.u?.uz);
-    if (!rn2(27 + 3 * Math.abs(depth))) {
-        const { text: engrText, pristine } = random_engraving();
-        if (engrText) {
-            do {
-                somexyspace(croom, pos);
-                if (g.level?.at(pos.x, pos.y)?.typ === ROOM) break;
-            } while (!rn2(40));
-            if (g.level?.at(pos.x, pos.y)?.typ === ROOM) {
-                make_engr_at(pos.x, pos.y, engrText, pristine, 0, ENGRAVE_MARK);
+                skip_chests = true;
             }
         }
-    }
-    // Random objects
+        // C: 40% for at least one box (svn.nroom is the room count).
+        if (!skip_chests && !rn2(Math.trunc(g.level.nroom * 5 / 2)) && somexyspace(croom, pos)) {
+            mksobj_at(rn2(3) ? LARGE_BOX : CHEST, pos.x, pos.y, true, false);
+        }
+        // C: maybe graffiti — random engraving on a ROOM square.
+        const depth = depth_of_level(g.u?.uz);
+        if (!rn2(27 + 3 * Math.abs(depth))) {
+            const { text: engrText, pristine } = random_engraving();
+            if (engrText) {
+                do {
+                    somexyspace(croom, pos);
+                    if (g.level?.at(pos.x, pos.y)?.typ === ROOM) break;
+                } while (!rn2(40));
+                if (g.level?.at(pos.x, pos.y)?.typ === ROOM) {
+                    make_engr_at(pos.x, pos.y, engrText, pristine, 0, ENGRAVE_MARK);
+                }
+            }
+        }
+    } // end rogue skip (skip_nonrogue)
+    // C skip_nonrogue: one random object, then more while !rn2(5).
     if (!rn2(3) && somexyspace(croom, pos)) {
         mkobj_at(RANDOM_CLASS, pos.x, pos.y, true);
         let objTrycnt = 0;
         while (!rn2(5)) {
-            if (++objTrycnt > 100) break;
+            if (++objTrycnt > 100) {
+                await impossible('trycnt overflow4');
+                break;
+            }
             if (somexyspace(croom, pos)) mkobj_at(RANDOM_CLASS, pos.x, pos.y, true);
         }
     }

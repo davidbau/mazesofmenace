@@ -48,7 +48,7 @@ import { near_capacity, paint_corner_nhw_menu, encumber_msg, update_inventory, p
 import { sanity_check } from './wizcmds.js';
 import { com_pager_legacy } from './questpgr.js';
 import { snapshot_status_lines } from './display.js';
-import { Hello, align_str } from './roles.js';
+import { Hello, align_str, role_init } from './roles.js';
 import { livelog_printf } from './pline.js';
 import { phase_of_the_moon, friday_13th, night, getnow, FULL_MOON, NEW_MOON } from './calendar.js';
 import { ATR_INVERSE } from './terminal.js';
@@ -60,6 +60,7 @@ import { amulet, intervene } from './wizard.js';
 import { run_regions, any_visible_region } from './region.js';
 import { m_everyturn_effect } from './monmove.js';
 import { tele } from './teleport.js';
+import { sink_into_lava } from './trap.js';
 import { polyself, set_uasmon } from './polyself.js';
 import { you_were } from './were.js';
 import {
@@ -69,6 +70,7 @@ import {
     UTOTYPE_NONE, TIMEOUT, REGENERATION, CLAIRVOYANT,
     MAXULEV, ENERGY_REGENERATION, MAGICAL_BREATHING, GLIB,
     TELEPORT, TELEPAT, POLYMORPH, UNCHANGING, NON_PM, POLY_NOFLAGS, ismnum,
+    TT_LAVA,
     WARNING, HALF_PHDAM, Is_waterlevel, Is_airlevel, In_endgame,
     WIN_ERR, MENU_BEHAVE_STANDARD, MENU_BEHAVE_PERMINV,
     WC2_HILITE_STATUS, WC2_FLUSH_STATUS,
@@ -735,6 +737,14 @@ export async function newgame() {
     // C ref: allmain.c → init_objects() (o_init.c)
     init_objects();
 
+    // C ref: allmain.c:785-786 — pantheon reset + role_init() before
+    // init_dungeons(), u_init() and init_artifacts(). role_init resolves
+    // role/race/gender/align into flags.init* (random fallback per C),
+    // copies urole/urace, and runs the quest-pm/pantheon/godgend/Cleric
+    // arms; setup_role_race_from_rc then shapes the JS role objects.
+    g.flags = g.flags || {};
+    g.flags.pantheon = -1; // role_init() will reset this
+    await role_init(); // must be before init_dungeons(), u_init(), init_artifacts()
     // Role/race before init_dungeons (quest filecode in fixup_level_locations)
     const rc = g._parsed_rc || {};
     setup_role_race_from_rc({
@@ -1147,7 +1157,12 @@ export async function moveloop_core() {
             }
             g.context.seer_turn = g.moves + rn1(31, 15);
         }
-        // C: sink_into_lava / pooleffects / under_water|ground deferred;
+        // C allmain.c:424-428 — [fast hero sinks multiple times per turn];
+        // lava-trapped hero sinks, else a stationary hero feels pool
+        // effects (pooleffects(FALSE) stays deferred with under_water /
+        // under_ground, D-1000).
+        if ((g.u.utrap | 0) && (g.u.utraptype | 0) === TT_LAVA)
+            await sink_into_lava();
         // see_nearby_monsters at end of actual-time-passed (D-1000).
         await see_nearby_monsters();
     }

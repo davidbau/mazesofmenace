@@ -160,7 +160,7 @@ import {
 } from './ball.js';
 import { obj_resists } from './dogmove.js';
 import { Soundeffect, se_scratching, se_alarm } from './sndprocs.js';
-import { delete_levelfile } from './files.js';
+import { delete_levelfile, open_levelfile } from './files.js';
 import { strange_feeling } from './detect.js';
 
 const PM_DEATH = monsterNames.indexOf('PM_DEATH');
@@ -1718,6 +1718,13 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         // C: familiar = bones_include_name(plname) after first-time mklev
         familiar = bones_include_name(game.plname || '');
     } else {
+        // C do.c:1704 — nhfp = open_levelfile(new_ledger, whynot): the
+        // LFILE_EXISTS gate above is the open() probe (stash ⟺ flag, so
+        // the handle is non-null here); getlev reads the stash below.
+        // C's tricked_fileremoved arm (pline1/error/done-TRICKED on a
+        // vanished file) is named in c-js-map/data.md — unreachable while
+        // the flag implies openable, and JS has no pline1/error().
+        open_levelfile(new_ledger, null);
         // C: getlev — restore in-memory stash + place/catchup/restore_cham/hide_monst + rest_track
         // C restore.c Sfi_dest_area updest/dndest after rest_stairs.
         game.level = info.level;

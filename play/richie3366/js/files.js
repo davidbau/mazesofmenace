@@ -3,6 +3,8 @@
 // read_wizkit; choose_passage / read_tribute / Death_quote;
 // delete_levelfile (JSON analogue; no fs unlink);
 // clearlocks (JSON analogue; no POSIX signal).
+// fqname / init_nhfile / new_nhfile / free_nhfile / set_levelfile_name /
+// open_levelfile (JSON analogue; VFS stash probe, no POSIX open).
 // Callers: allmain.c newgame after u_init_skills_discoveries (D-1192);
 // spell.c study_book SPE_NOVEL; sounds.c Death_quote live (D-1653).
 // Rule #2: VFS only — no fs / getenv / HOME fopen. Tribute text is
@@ -20,11 +22,12 @@ import { COIN_CLASS, objectNames } from './objects.js';
 import { PM_CLERIC } from './generated/monsters_data.js';
 import {
     BUFSZ, MIGR_NOBREAK, MIGR_NOSCATTER, MIGR_WITH_HERO, WIZKIT_MAX,
-    LFILE_EXISTS,
+    LFILE_EXISTS, NHF_LEVELFILE, READING, COUNTING, LEVELPREFIX,
+    PREFIX_COUNT, FQN_MAX_FILENAME,
 } from './const.js';
 import { rn2 } from './rng.js';
 import { mungspaces } from './getline.js';
-import { pline, putmsghistory, You_feel } from './display.js';
+import { pline, putmsghistory, You_feel, impossible } from './display.js';
 import { show_nhw_menu_text } from './pager.js';
 import { TRIBUTE_TEXT } from './generated/tribute_data.js';
 import { maxledgerno } from './dungeon.js';
@@ -458,6 +461,265 @@ export function clearlocks() {
     for (let x = (n ? maxledgerno() : 0); x >= 0; x--) {
         delete_levelfile(x);
     }
+}
+
+/* ---------- BEGIN LEVEL FILE HANDLING ----------- */
+/* C ref: files.c fqname `:354–393` / init_nhfile / new_nhfile `:496–504` /
+ * free_nhfile / viable_nhfile `:549–581` / set_levelfile_name `:606–618` /
+ * open_levelfile `:673–716`. Rule #2 throughout: no POSIX open/unlink —
+ * the "file" is the `game.level_info[lev]` stash slot, openable exactly
+ * when `LFILE_EXISTS` is set. D-2472. */
+
+/** C files.c:91 — file-static `FQN_NUMBUF 8`, so module-local here. */
+const FQN_NUMBUF = 8;
+/** C files.c:92 — `static char fqn_filename_buffer[FQN_NUMBUF][FQN_MAX_FILENAME]`. */
+const fqn_filename_buffer = new Array(FQN_NUMBUF).fill('');
+/** C `hack.h:975–977` `enum saveformats` — whole-struct binary, as-is. */
+const FNIDX_HISTORICAL = 1;
+/** C POSIX ENOENT for the VFS-miss message (`fopen_wizkit_file`
+ * precedent above: VFS miss ≡ C ENOENT → NULL). */
+const ENOENT = 2;
+/** C files.c `static const int bei = 1` + `IS_BIGENDIAN()` — typed-array
+ * probe, safe in Node and Chrome. */
+const NH_IS_BIGENDIAN = (() => new Uint8Array(new Uint16Array([1]).buffer)[0] === 0)();
+
+/**
+ * C ref: files.c fqname `:354–393` — fully-qualified name for a prefix.
+ * The contest build defines PREFIXES_IN_USE (`hack.h:1059`), so the
+ * prefix branch is live: a bad base/prefix returns basenam, an
+ * unconfigured prefix returns basenam, otherwise the prefix is
+ * prepended into the per-buffnum slot. Prefix table is C
+ * `gf.fqn_prefix[]` — JS reads `game.gf?.fqn_prefix` (no SYSCONF/HACKDIR
+ * config support in this port, so every call takes the unconfigured
+ * early return, exactly like C with empty prefixes).
+ * Named omit: WIN32 `translate_path_variables` (platform).
+ * @param {string} basenam
+ * @param {number} whichprefix
+ * @param {number} buffnum
+ * @returns {string}
+ */
+export function fqname(basenam, whichprefix, buffnum) {
+    const wp = whichprefix | 0;
+    if (!basenam || wp < 0 || wp >= PREFIX_COUNT) return basenam;
+    const prefixes = game.gf?.fqn_prefix;
+    if (!prefixes || !prefixes[wp]) return basenam;
+    let buf = buffnum | 0;
+    if (buf < 0 || buf >= FQN_NUMBUF) {
+        impossible('Invalid fqn_filename_buffer specified: %d', buffnum);
+        buf = 0;
+    }
+    const bufptr = prefixes[wp];
+    /* C WIN32 translate_path_variables — named omit (platform). */
+    if (String(bufptr).length + String(basenam).length >= FQN_MAX_FILENAME) {
+        impossible('fqname too long: %s + %s', bufptr, basenam);
+        return basenam; /* XXX */
+    }
+    fqn_filename_buffer[buf] = String(bufptr) + String(basenam);
+    return fqn_filename_buffer[buf];
+}
+
+/**
+ * C ref: files.c init_nhfile — reset a handle to COUNTING/structlevel
+ * defaults. The unclosed-file arms keep C order: impossible() warning,
+ * then the descriptor is dropped (C `nhclose`/`fclose` have no VFS
+ * analogue — pseudo-fds reference stash slots, Rule #2).
+ * @param {object} nhfp
+ */
+export function init_nhfile(nhfp) {
+    if (nhfp.structlevel) {
+        if (nhfp.fd !== -1) {
+            impossible('Warning - Unclosed structlevel file being reinitialized');
+            /* C nhclose(nhfp->fd) — named omit: pseudo-fd, nothing to close. */
+        }
+    } else if (nhfp.fpdef) {
+        if (nhfp.fpdef) {
+            impossible('Warning - Unclosed fieldlevel file being reinitialized');
+            /* C fclose(nhfp->fpdef) — named omit: no stdio in JS. */
+        }
+    }
+    nhfp.fd = -1;
+    nhfp.fpdef = null;
+
+    nhfp.mode = COUNTING;
+    nhfp.structlevel = true;
+    nhfp.fieldlevel = false;
+    nhfp.addinfo = false;
+    nhfp.bendian = NH_IS_BIGENDIAN;
+    nhfp.fplog = null;
+    nhfp.fpdebug = null;
+    nhfp.rcount = 0;
+    nhfp.wcount = 0;
+    nhfp.eof = false;
+    nhfp.fnidx = 0;
+    if (!nhfp.style) nhfp.style = {};
+    nhfp.style.deflt = false;
+    nhfp.style.binary = true;
+    nhfp.nhfpconvert = 0;
+}
+
+/**
+ * C ref: files.c new_nhfile `:496–504` — alloc + zero + init. JS has no
+ * malloc/memset: the literal below is the zeroed struct, then
+ * init_nhfile fills the same defaults.
+ * @returns {object}
+ */
+export function new_nhfile() {
+    const nhfp = {
+        mode: 0,
+        structlevel: false,
+        fieldlevel: false,
+        addinfo: false,
+        bendian: false,
+        fplog: null,
+        fpdebug: null,
+        fpdef: null,
+        rcount: 0,
+        wcount: 0,
+        eof: false,
+        fnidx: 0,
+        style: { deflt: false, binary: false },
+        nhfpconvert: 0,
+        ftype: 0,
+        fd: -1,
+    };
+    init_nhfile(nhfp);
+    return nhfp;
+}
+
+/**
+ * C ref: files.c free_nhfile — re-init then free. JS has no free:
+ * re-init drops the pseudo-fd/stdio refs so the handle is inert and GC
+ * reclaims it.
+ * @param {object|null} nhfp
+ */
+export function free_nhfile(nhfp) {
+    if (nhfp) {
+        init_nhfile(nhfp);
+        /* C free(nhfp) — GC owns it here. */
+    }
+}
+
+/**
+ * C ref: files.c viable_nhfile `:549–581` (staticfn → module-local) —
+ * sanity gate before handing the handle back: no open file at all, a
+ * structlevel handle with no fd, or a fieldlevel handle with no FILE
+ * frees the handle and yields NULL. The fplog fprintf arms are present
+ * in C order; the log write itself is a named omit (Rule #2, no fs log).
+ * @param {object|null} nhfp
+ * @returns {object|null}
+ */
+function viable_nhfile(nhfp) {
+    /* perform some sanity checks before returning
+       the pointer to the nethack file descriptor */
+    if (nhfp) {
+        /* check for no open file at all,
+         * not a structlevel legacy file,
+         * nor a fieldlevel file.
+         */
+        if (((nhfp.fd === -1) && !nhfp.fpdef)
+            || (nhfp.structlevel && nhfp.fd < 0)
+            || (nhfp.fieldlevel && !nhfp.fpdef)) {
+            /* not viable, start the cleanup */
+            if (nhfp.fieldlevel) {
+                if (nhfp.fpdef) {
+                    /* C fclose(nhfp->fpdef) — named omit: no stdio. */
+                    nhfp.fpdef = null;
+                }
+                if (nhfp.fplog) {
+                    /* C fprintf(fplog, "# closing, not viable") + fclose —
+                       named omit (Rule #2, no fs log). */
+                    nhfp.fplog = null;
+                }
+                if (nhfp.fpdebug) {
+                    /* C fclose(nhfp->fpdebug) — named omit: no stdio. */
+                    nhfp.fpdebug = null;
+                }
+            }
+            free_nhfile(nhfp);
+            nhfp = null;
+        }
+    }
+    return nhfp;
+}
+
+/**
+ * C ref: files.c set_levelfile_name `:606–618` — rewrite `file` in place
+ * as `<base>.<lev>`, stripping any old level suffix at the last '.'.
+ * C mutates the caller's buffer (always `gl.lock`, `decl.h:533`); JS
+ * strings are immutable, so the rewritten name is returned and the
+ * caller stores it back (`open_levelfile` writes `game.lock`, the
+ * `gl.lock` analogue).
+ * Named omit: VMS `;1` (platform).
+ * @param {string} file
+ * @param {number} lev
+ * @returns {string}
+ */
+export function set_levelfile_name(file, lev) {
+    let base = String(file ?? '');
+    const dot = base.lastIndexOf('.');
+    if (dot < 0) {
+        /* C eos(file) — append at the end; slice below is a no-op. */
+    } else {
+        base = base.slice(0, dot);
+    }
+    /* C VMS Strcat(tf, ";1") — named omit (platform). */
+    return `${base}.${lev | 0}`;
+}
+
+/**
+ * C ref: files.c open_levelfile `:673–716` — open the level file for
+ * reading into an NHFILE handle, or NULL with `errbuf` set.
+ * JSON analogue (Contest Rule #2 — no POSIX open): the "file" is the
+ * `game.level_info[lev]` stash slot, openable exactly when C's
+ * `LFILE_EXISTS` is set (set on create/savelev leave, cleared by
+ * `delete_levelfile` above — nothing else deletes). The handle keeps
+ * C's field values in C order; `fd` carries the level number as an
+ * opaque success token (C callers only lseek/copy it in the unported
+ * `recover_savefile` path — named in the map).
+ * `errbuf` is the C `char errbuf[]`: a `{ s }` holder or null
+ * (`read_tribute` nowin_buf convention; files.c:3035 passes NULL).
+ * @param {number} lev
+ * @param {{ s: string }|null} [errbuf]
+ * @returns {object|null}
+ */
+export function open_levelfile(lev, errbuf) {
+    const lv = lev | 0;
+    if (errbuf) errbuf.s = '';
+    /* C set_levelfile_name(gl.lock, lev) — mutates gl.lock; JS stores back. */
+    game.lock = set_levelfile_name(game.lock ?? '', lv);
+    /* C fq_lock = fqname(gl.lock, LEVELPREFIX, 0) — kept in C order for
+       the prefix/impossible arms; the VFS probe below is positional
+       (stash slot), so fq_lock feeds no JS branch. */
+    const fq_lock = fqname(game.lock, LEVELPREFIX, 0);
+    void fq_lock;
+    let nhfp = new_nhfile();
+    if (nhfp) {
+        nhfp.mode = READING;
+        nhfp.structlevel = true; /* do set this TRUE for levelfiles */
+        nhfp.fieldlevel = false; /* do not set this TRUE for levelfiles */
+        nhfp.addinfo = false;
+        nhfp.style.deflt = false;
+        nhfp.style.binary = true;
+        nhfp.ftype = NHF_LEVELFILE;
+        nhfp.fnidx = FNIDX_HISTORICAL;
+        nhfp.fd = -1;
+        nhfp.fpdef = null;
+    }
+    if (nhfp && nhfp.structlevel) {
+        /* C MACOS9 macopen / POSIX open(fq_lock, O_RDONLY|O_BINARY) —
+           Rule #2 stash-slot probe instead. */
+        const info = game.level_info?.[lv];
+        nhfp.fd = (info && ((info.flags | 0) & LFILE_EXISTS)) ? lv : -1;
+
+        /* for failure, return an explanation that our caller can use;
+           settle for `lock' instead of `fq_lock' because the latter
+           might end up being too big for nethack's BUFSZ */
+        if (nhfp.fd < 0 && errbuf)
+            errbuf.s = `Cannot open file "${game.lock}" for level ${lv} (errno ${ENOENT}).`;
+        /* C MSDOS/WIN32 setmode(fd, O_BINARY) — named omit (platform). */
+    }
+    nhfp = viable_nhfile(nhfp);
+    return nhfp;
 }
 
 /**

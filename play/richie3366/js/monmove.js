@@ -570,7 +570,7 @@ function mwelded(obj) {
  * C ref: monmove.c m_digweapon_check — spend turn wielding dig tool if needed.
  * Returns true when the monster used this move to wield (no place/dig yet).
  */
-async function m_digweapon_check(mtmp, nix, niy) {
+export async function m_digweapon_check(mtmp, nix, niy) {
     let can_tunnel = false;
     if (!Is_rogue_level(game.u?.uz)) can_tunnel = tunnels(mtmp.data);
     const mw_tmp = MON_WEP(mtmp);
@@ -768,6 +768,70 @@ export function can_fog(mtmp) {
 }
 
 /**
+ * C ref: monmove.c undesirable_disp `:2277–2312` — barging creature avoids
+ * swapping onto seen-trap squares (pets: tseen 1/40; others: known-type
+ * 1/40), cursed piles (pets), and non-accessible spots (pool-for-pool
+ * excepted). mstun/mconf deliberately ignored (C comment).
+ */
+export function undesirable_disp(mtmp, x, y) {
+    const is_pet = !!(mtmp?.mtame && !mtmp?.isminion);
+    const trap = t_at(x, y);
+    if (is_pet) {
+        // C: pets avoid a trap they've seen, usually (1/40 steps on anyway)
+        if (trap && trap.tseen && rn2(40)) return true;
+        // C: pets avoid cursed locations
+        if (cursed_object_at(x, y)) return true;
+    } else if (trap && rn2(40) && mon_knows_traps(mtmp, trap.ttyp)) {
+        return true;
+    }
+    // C: no swap onto rock/closed-door/water (mondied leaves no corpse);
+    // is_pool target is allowed only when already in water.
+    if (!accessible(x, y)
+        && !(is_pool(x, y) && is_pool(mtmp?.mx, mtmp?.my))) {
+        return true;
+    }
+    return false;
+}
+
+/**
+ * C ref: monmove.c should_displace `:1070–1104` — displacing is a last
+ * resort on approach: true when a displace-only square beats every plain
+ * square, or when no plain square exists. Called with the pet goal
+ * (gg.gx/ggy) from dog_move.
+ */
+export function should_displace(mtmp, data, ggx, ggy) {
+    let shortest_with_displacing = -1;
+    let shortest_without_displacing = -1;
+    let count_without_displacing = 0;
+    const cnt = data?.cnt | 0;
+    for (let i = 0; i < cnt; i++) {
+        const nx = data.poss[i].x;
+        const ny = data.poss[i].y;
+        const ndist = dist2(nx, ny, ggx, ggy);
+        if (m_at(nx, ny) && (data.info[i] & ALLOW_MDISP)
+            && !(data.info[i] & ALLOW_M)
+            && !undesirable_disp(mtmp, nx, ny)) {
+            if (shortest_with_displacing === -1
+                || ndist < shortest_with_displacing) {
+                shortest_with_displacing = ndist;
+            }
+        } else {
+            if (shortest_without_displacing === -1
+                || ndist < shortest_without_displacing) {
+                shortest_without_displacing = ndist;
+            }
+            count_without_displacing++;
+        }
+    }
+    if (shortest_with_displacing > -1
+        && (shortest_with_displacing < shortest_without_displacing
+            || !count_without_displacing)) {
+        return true;
+    }
+    return false;
+}
+
+/**
  * C ref: monmove.c set_apparxy — decide where monster thinks hero stands.
  * Covers Displaced / Invis / Underwater / already-know early exits.
  * Also rloc_to_core after dest newsym (teleport.c:1702, D-1160).
@@ -937,7 +1001,7 @@ export function distfleeck(mtmp) {
 }
 
 /** C youprop.h Deaf ≡ HDeaf || EDeaf || uroleplay.deaf (plus u.Deaf flag). */
-function hero_Deaf() {
+export function hero_Deaf() {
     const u = game.u || {};
     return !!((u.HDeaf | 0) || (u.EDeaf | 0)
         || u.uroleplay?.deaf || u.Deaf);

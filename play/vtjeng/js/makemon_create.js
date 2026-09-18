@@ -253,6 +253,7 @@ import {
     PM_GHOST,
     PM_GNOME_RULER,
     PM_GIANT,
+    PM_GRAND_MASTER,
     PM_GIANT_MUMMY,
     PM_GIANT_MIMIC,
     PM_GIANT_SPIDER,
@@ -1321,6 +1322,11 @@ function assertSupportedSpecies(species, env = {}) {
             // has no creation-only helper or inventory branch, so the C
             // makemon() body reaches the already-portable generic lifecycle.
             && species.pmidx !== PM_RED_DRAGON
+            // read.c wiz_genesis() also reaches the generic runtime lifecycle
+            // for a force-confirmed Grand Master. Its clerical attack is
+            // exercised by mcastu.c; it does not take the aligned/high-cleric
+            // priest-minion initialization arm below.
+            && (species.pmidx !== PM_GRAND_MASTER || !createParticular)
             // makemon.c:1147-1509 has no species admission gate. The
             // minotaur's explicit m_initinv() arm is complete, so read.c's
             // create_particular_creation() and sp_lev.c's fill_empty_maze()
@@ -1459,11 +1465,30 @@ function preflightCreation(ptr, x, y, mmflags, normalized) {
         && x === state.u?.ux
         && y === state.u?.uy
         && mmflags === (NO_MINVENT | MM_EDOG | MM_NOMSG);
+    // minion.c msummon() creates an aligned minion at the hero square during
+    // ordinary monster turns.  It uses MM_EMIN|MM_NOMSG and the async runtime
+    // tail just like the other explicit runtime callers; the marker keeps this
+    // admission tied to that source call instead of widening all MM_EMIN use.
+    const minionSummonCall = !state.in_mklev
+        && normalized._msummon === true
+        && Boolean(ptr)
+        && x === state.u?.ux
+        && y === state.u?.uy
+        && mmflags === (MM_EMIN | MM_NOMSG);
+    // wizard.c nasty() is called both by mcastu.c with a non-null summoner
+    // (MM_NOMSG at enexto(summoner->mux, summoner->muy)) and by the late-game
+    // harassment caller with NULL (NO_MM_FLAGS at the hero square). Keep its
+    // explicit marker separate from the minion MM_EMIN contract.
+    const nastyCall = !state.in_mklev
+        && normalized._nasty === true
+        && !randomCoordinates
+        && (mmflags === MM_NOMSG || mmflags === NO_MM_FLAGS);
     const runtimeCall = startingPetCall || confusedLightCall || djinniBottleCall
         || fountainCreatureCall
         || runtimeRandomCall || runtimeGroupCall || createParticularCall
         || vaultGuardCall || revivalCall || statueAnimationCall
-        || figurineAnimationCall || cloneuCall;
+        || figurineAnimationCall || cloneuCall || minionSummonCall
+        || nastyCall;
     if (runtimeCall
         && (!normalized.runtimeContinuation
             || typeof normalized.runtimeContinuation !== 'object')) {
@@ -1562,11 +1587,14 @@ function preflightCreation(ptr, x, y, mmflags, normalized) {
         // dungeon never sees.  On the main dungeon during mklev, keep the
         // allowlist for explicitly placed species but bypass it for
         // rndmonst selections (the _rndmonMklev flag, set in the rndmonst
-        // loop).  Outside mklev the allowlist always applies.
+        // loop).  Outside mklev, ordinary runtime callers keep the allowlist;
+        // The explicit exceptions below bypass it only after their creation
+        // shape has been validated above.
         if (!revivalCall
             && !statueInventoryCall
             && !specialRoomCall
             && !cloneuCall
+            && !nastyCall
             && (!state.in_mklev || (isMainDungeonLevel(state)
                 && !normalized._rndmonMklev))) {
             assertSupportedSpecies(ptr, normalized);

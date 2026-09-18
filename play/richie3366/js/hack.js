@@ -37,7 +37,7 @@ import {
     DO_MOVE, TEST_MOVE, TEST_TRAV, TEST_TRAP, S_stone,
 } from './const.js';
 import {
-    pline, Norep, newsym, canspotmon, canseemon, map_invisible, You_feel,
+    pline, You, Norep, newsym, canspotmon, canseemon, map_invisible, You_feel,
     set_msg_xy, feel_location, map_object, verbalize, curs_on_u,
     nh_delay_output, back_to_glyph, glyph_to_cmap, glyph_is_cmap, pline_dir,
 } from './display.js';
@@ -86,7 +86,7 @@ import { revive_corpse, l_nhcore_call } from './do.js';
 import { is_db_wall } from './dbridge.js';
 import { doopen_indir } from './lock.js';
 import { use_pick_axe2 } from './dig.js';
-import { You, is_ice, resists_cold, Cold_resistance } from './zap.js';
+import { is_ice, resists_cold, Cold_resistance } from './zap.js';
 import { can_ooze } from './monmove.js';
 import { worm_cross } from './worm.js';
 

@@ -2,7 +2,7 @@
 // C ref: hacklib.c, dungeon.c helpers
 
 import { game } from './gstate.js';
-import { In_endgame } from './const.js';
+import { BUFSZ, In_endgame } from './const.js';
 
 export function isok(x, y) {
     const { COLNO, ROWNO } = await_const();
@@ -285,6 +285,78 @@ export function strsubst(bp, orig, replacement) {
 }
 
 // C ref: rn2(x) already in rng.js — re-export not needed
+
+/**
+ * C ref: hacklib.c strNsubst `:555–597` — substitute the Nth occurrence of
+ * `orig` within the string (in place in C); `n == 0` substitutes all
+ * occurrences. Returns the resulting string (C returns the substitution
+ * count and only writes back when nonzero; the sole JS call site casts it
+ * to void like C's `(void) strNsubst`, so the count is unobservable there).
+ * Output is capped at BUFSZ-1 chars like C's `workbuf`.
+ */
+export function strNsubst(inoutbuf, orig, replacement, n) {
+    const s = String(inoutbuf ?? '');
+    const o = String(orig ?? '');
+    const r = String(replacement ?? '');
+    const len = o.length;
+    let ocount = 0; // number of times 'orig' has been matched
+    let rcount = 0; // number of substitutions made
+    let out = '';
+    let bp = 0;
+    while (bp < s.length && out.length < BUFSZ - 1) {
+        if ((!len || s.startsWith(o, bp)) && (++ocount === n || n === 0)) {
+            // Nth match found
+            for (const ch of r) {
+                if (out.length >= BUFSZ - 1) break;
+                out += ch;
+            }
+            ++rcount;
+            if (len) {
+                bp += len; // skip 'orig'
+                continue;
+            }
+        }
+        // no match (or len==0) so retain current character
+        out += s[bp++];
+    }
+    if (!len && n === ocount + 1) {
+        // C special case: orig=="" and n==strlen+1, insert before terminator
+        for (const ch of r) {
+            if (out.length >= BUFSZ - 1) break;
+            out += ch;
+        }
+        ++rcount;
+    }
+    return rcount ? out : s;
+}
+
+/**
+ * C ref: hacklib.c findword `:600–621` — search for a word in a
+ * space-separated list. Returns the matched word, or null when absent
+ * (C returns a pointer / NULL; only truthiness is observed).
+ */
+export function findword(list, word, wordlen, ignorecase) {
+    const s = String(list ?? '');
+    const w = String(word ?? '').slice(0, wordlen);
+    let p = 0;
+    for (;;) {
+        while (s[p] === ' ') ++p;
+        if (p >= s.length) break;
+        const seg = s.slice(p, p + wordlen);
+        const eq = ignorecase
+            ? seg.toLowerCase() === w.toLowerCase()
+            : seg === w;
+        const term = s[p + wordlen];
+        if (eq && (term === undefined || term === ' ')) {
+            const end = s.indexOf(' ', p);
+            return end < 0 ? s.slice(p) : s.slice(p, end);
+        }
+        const nx = s.indexOf(' ', p + 1); // C: strchr(p + 1, ' ')
+        if (nx < 0) break;
+        p = nx;
+    }
+    return null;
+}
 
 /**
  * C ref: hacklib.c ordin — 1st/2nd/3rd/11th (teen exception).

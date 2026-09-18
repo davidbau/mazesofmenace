@@ -8,7 +8,7 @@ import {
     NROFARTIFACTS,
     artilistRaw,
 } from './generated/artifacts_data.js';
-import { objectNames, NUM_OBJECTS, objectDescrs, objects, WEAPON_CLASS } from './objects.js';
+import { objectNames, NUM_OBJECTS, objectDescrs, objects, WEAPON_CLASS, RING_CLASS, WAND_CLASS } from './objects.js';
 import { obj_shuffle_range } from './o_init.js';
 import { monsterNames, NON_PM, M2_UNDEAD, M2_WERE, is_demon, is_dprince, is_dlord, resists_ston, hates_silver, bigmonst, has_head, noncorporeal, amorphous, is_covetous, is_mplayer, nonliving, mons } from './monsters.js';
 import { Fire_resistance, Cold_resistance, Shock_resistance, Drain_resistance, resists_fire, resists_cold, resists_elec, resists_poison, resists_drli, cancel_monst, resist, probe_monster, destroy_items } from './zap.js';
@@ -89,6 +89,7 @@ import {
     MIGR_RANDOM,
     isok,
     IS_DOOR,
+    IS_ALTAR,
     D_TRAPPED,
     Is_container,
     OBJ_FLOOR,
@@ -103,20 +104,20 @@ import {
 import { rn2, rnd, d, rnz } from './rng.js';
 import { nhgetch } from './input.js';
 import {
-    flush_screen, flush_topl_more, pline, impossible, You_feel, newsym, see_monsters,
+    flush_screen, flush_topl_more, pline, impossible, You_feel, You_cant, newsym, see_monsters,
     set_sting_effects, glyph_at, glyph_is_trap, canspotmon, map_invisible, shieldeff,
 } from './display.js';
 import { cansee } from './vision.js';
 import { mon_nam, s_suffix, Monnam, mon_aligntyp_nam, hcolor, oname } from './do_name.js';
 import { wake_nearto, healmon } from './mon.js';
 import { burn_away_slime } from './timeout.js';
-import { compactify_invlets, update_inventory, getobj_take_count, getobj_apply_count, getobj_from_cmdq, getobj_display_pickinv, getobj, observe_object } from './invent.js';
-import { xname, the, The, vtense, cxname, otense, set_undiscovered_artifact, set_find_artifact, simple_typename, Tobjnam, distant_name } from './objnam.js';
+import { compactify_invlets, update_inventory, getobj_take_count, getobj_apply_count, getobj_from_cmdq, getobj_display_pickinv, getobj, observe_object, freeinv } from './invent.js';
+import { xname, the, The, vtense, cxname, otense, set_undiscovered_artifact, set_find_artifact, simple_typename, Tobjnam, distant_name, yname, killer_xname } from './objnam.js';
 import { recalc_telepat_range } from './do_wear.js';
 import { t_at, ignite_items } from './trap.js';
 import { livelog_printf } from './pline.js';
 import { inside_shop, obfree } from './shk.js';
-import { losehp, maybe_half_phys, finish_maybe_wail, nomul } from './hack.js';
+import { losehp, maybe_half_phys, finish_maybe_wail, nomul, invocation_pos, On_stairs } from './hack.js';
 import { sticks } from './engrave.js';
 import { set_ustuck } from './mhitu.js';
 import { monflee } from './monmove.js';
@@ -124,7 +125,7 @@ import { make_stunned, make_confused, healup } from './potion.js';
 import { losexp } from './exper.js';
 import { monhp_per_lvl, race_hostile } from './makemon.js';
 import { upstart } from './hacklib.js';
-import { exercise, A_WIS } from './attrib.js';
+import { exercise, A_WIS, A_CON } from './attrib.js';
 // C mk_artifact by_align — mksobj/obj_extract_self are hoisted fns, cycle-safe
 // (mkobj.js already imports artifact.js; runtime-only calls, no top-level
 // reads either way; `imports.mjs --can artifact.js mkobj.js mksobj`: SAFE).
@@ -135,6 +136,15 @@ import { P_MAX_SKILL } from './weapon.js';
 // C mondata.c defended — hoisted fn, cycle-safe (mondata.js already imports
 // artifact.js; runtime-only calls, no top-level reads either way).
 import { defended } from './mondata.js';
+// C retouch_object unwear arm — hoisted fn, cycle-safe (`imports.mjs --can
+// artifact.js steal.js remove_worn_item`: SAFE, same shape as the file's
+// existing do_wear.js/mkobj.js/mondata.js cycle edges; runtime-only call).
+import { remove_worn_item } from './steal.js';
+// C retouch_object loseit arm — hoisted fns, cycle-safe (`imports.mjs --can
+// artifact.js dothrow.js hitfloor / do.js dropx / sit.js surface`: SAFE).
+import { hitfloor } from './dothrow.js';
+import { dropx } from './do.js';
+import { surface } from './sit.js';
 
 const CRYSTAL_BALL = objectNames.indexOf('CRYSTAL_BALL');
 const FAKE_AMULET_OF_YENDOR = objectNames.indexOf('FAKE_AMULET_OF_YENDOR');
@@ -144,6 +154,8 @@ const ACID_VENOM = objectNames.indexOf('ACID_VENOM');
 const SPE_FIREBALL = objectNames.indexOf('SPE_FIREBALL');
 const SPE_CONE_OF_COLD = objectNames.indexOf('SPE_CONE_OF_COLD');
 const SCR_TAMING = objectNames.indexOf('SCR_TAMING');
+/** C artifact.c:2516 — Bell of Opening invocation-square pass-through. */
+const BELL_OF_OPENING = objectNames.indexOf('BELL_OF_OPENING');
 /** C monflag.h MS_NEMESIS */
 const MS_NEMESIS = 37;
 /** C monsters.h PM_WATER_ELEMENTAL — mdef->data identity for the FIRE vaporize arm. */
@@ -363,6 +375,15 @@ function Hate_silver_hero() {
     const u = game.u || {};
     return ((u.ulycn ?? NON_PM) | 0) >= (LOW_PM | 0)
         || hates_silver(game.youmonst?.data);
+}
+
+/** C ref: youprop.h Levitation — (HLevitation||ELevitation) && !BLevitation
+ * (do.js/dig.js file-local idiom; no shared export to import). */
+function Levitation() {
+    const u = game.u || {};
+    if (u.Levitation) return true;
+    return !!(((u.HLevitation | 0) || (u.ELevitation | 0))
+        && !(u.BLevitation | 0));
 }
 
 /** C ref: youprop.h Antimagic — HAntimagic || EAntimagic (flat + H/E). */
@@ -1407,18 +1428,92 @@ export async function touch_artifact(obj, mon) {
 }
 
 /**
- * C ref: artifact.c retouch_object — hero wield/wear touch gate.
- * touch_artifact blast now live (above); silver-hate / bane damage and
- * drop paths deferred (named below).
- * @returns {number} 1 ok, 0 refused
+ * C ref: artifact.c retouch_object `:2508–2591` — re-touch gate after a
+ * transformation (alignment change, lycanthropy, polymorph) and before
+ * wield/wear/apply/eat/invoke use. Whole body in C order: Bell-of-Opening
+ * invocation-square pass-through; touch_artifact + silver-hate (ag) / bane
+ * damage arms (`You_cant`, `touch_blasted` skip, silver ring/wand killer
+ * label, `rnd(10)` halves, `losehp` + `exercise(A_CON)` with the fatal
+ * drain idiom from touch_artifact above); worn-item removal with invent
+ * rescan (C `*objp = 0` when the removal destroyed it); `loseit` drop
+ * (`Levitation` → freeinv/hitfloor, else altar-gated pline + dropx).
+ * Callers: doapply/apply.c:4230, doinvoke/:1756, untouchable/:2624 (named:
+ * staticfn unported, caller-to-be), dowear/do_wear.c:2355,
+ * doeat/eat.c:2872, dowield/wield.c:191.
+ * Named omissions: `*objp` nulling is reference-local (every live caller
+ * returns on 0 without touching obj); untouchable/retouch_equipment.
+ * (C contract is NONNULLARG1; the null guard below keeps pre-port
+ * behavior and never throws.)
+ * @param {object} obj hero's object (C `*objp`)
+ * @param {boolean} loseit drop it when it can no longer be touched
+ * @returns {number} 1 may keep/handle, 0 refused (blasted/unworn/dropped)
  */
-export async function retouch_object(obj, _loseit) {
+export async function retouch_object(obj, loseit) {
     if (!obj) return 1;
-    if (await touch_artifact(obj, youmonst)) {
-        // ag (Hate_silver) / bane_applies damage deferred → allow when clear
+    const u = game.u || {};
+    /* C :2516–2520 — silver-hating hero may still try the invocation rite */
+    if ((obj.otyp | 0) === BELL_OF_OPENING
+        && invocation_pos(u.ux | 0, u.uy | 0)
+        && !On_stairs(u.ux | 0, u.uy | 0)) {
         return 1;
     }
-    // remove_worn_item / dropx deferred
+    /* C :2522 — touch_artifact() nonzero keeps going (blast held or clean) */
+    if (await touch_artifact(obj, youmonst)) {
+        let dmg = 0;
+        /* C :2524–2526 — ag/bane evaluated together, before the early out */
+        const ag = (objects()?.[obj.otyp | 0]?.oc_material | 0) === SILVER
+            && Hate_silver_hero();
+        const bane = bane_applies(get_artifact(obj), youmonst);
+        /* C :2528–2530 — nothing else to do when hero handles it cleanly */
+        if (!ag && !bane) return 1;
+        /* C :2532–2535 — alternate message when touch_artifact gave no
+           "<obj> evades your grasp|beyond your control" of its own */
+        await You_cant('handle %s%s!', yname(obj), obj.owornmask ? ' anymore' : '');
+        /* C :2537 — no double damage when touch_artifact already blasted */
+        if (!touch_blasted) {
+            let what = killer_xname(obj);
+            /* C :2540–2548 — randomized silver ring/wand killer label */
+            if (ag && !obj.oartifact && !bane) {
+                if (obj.oclass === RING_CLASS) what = 'a silver ring';
+                else if (obj.oclass === WAND_CLASS) what = 'a silver wand';
+            }
+            /* C :2550–2554 — half the usual 1d20 physical for silver,
+               1d10 magical for bane, potentially both */
+            if (ag) dmg += maybe_half_phys(rnd(10));
+            if (bane) dmg += rnd(10);
+            losehp(dmg, `handling ${what}`, KILLED_BY);
+            /* C losehp is noreturn when fatal — drain the deferred death
+               (touch_artifact idiom above) so exercise/unwear/drop never
+               run dead; lifesave-decline falls through per C order. */
+            await finish_maybe_wail();
+            if (game._losehp_needs_done) {
+                const { finish_losehp_done } = await import('./end.js');
+                await finish_losehp_done();
+                if (game.program_state?.gameover) return 0;
+            }
+            exercise(A_CON, false);
+        }
+    }
+    /* C :2561–2571 — removing a worn item might destroy it (levitation loss
+       over water/lava); rescan invent, C `*objp = 0` when it is gone */
+    if (obj && obj.owornmask) {
+        await remove_worn_item(obj, false);
+        if (!(game.invent || []).includes(obj)) obj = null;
+    }
+    /* C :2574–2588 — caller asked to drop what can no longer be touched */
+    if (loseit && obj) {
+        if (Levitation()) {
+            freeinv(obj);
+            await hitfloor(obj, true);
+        } else {
+            /* C :2581–2584 — dropx messages altar landings itself; elsewhere */
+            if (!IS_ALTAR(game.level?.at?.(u.ux | 0, u.uy | 0)?.typ)) {
+                await pline(`${Tobjnam(obj, 'fall')} to the ${surface(u.ux | 0, u.uy | 0)}.`);
+            }
+            await dropx(obj);
+        }
+        obj = null; /* C: *objp = 0 — no longer in inventory */
+    }
     return 0;
 }
 

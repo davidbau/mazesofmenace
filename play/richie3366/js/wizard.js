@@ -32,6 +32,7 @@ import { inhishop } from './shk.js';
 import { inhistemple } from './priest.js';
 import { In_W_tower } from './dungeon.js';
 import { mon_has_amulet } from './apply.js';
+import { mon_arrive, mon_catchup_elapsed_time } from './dog.js';
 import { expels } from './mhitu.js';
 import { cansee } from './vision.js';
 import { msummon, monster_census, Inhell } from './minion.js';
@@ -43,6 +44,8 @@ const BELL_OF_OPENING = objectNames.indexOf('BELL_OF_OPENING');
 const CANDELABRUM_OF_INVOCATION = objectNames.indexOf('CANDELABRUM_OF_INVOCATION');
 const SPE_BOOK_OF_THE_DEAD = objectNames.indexOf('SPE_BOOK_OF_THE_DEAD');
 const PM_WIZARD_OF_YENDOR = monsterNames.indexOf('PM_WIZARD_OF_YENDOR');
+/* C limits.h INT_MAX — dog.js mirrors this too; elapsed-time clamp. */
+const LARGEST_INT = 2147483647;
 const PM_ARCH_LICH = monsterNames.indexOf('PM_ARCH_LICH');
 const PM_ARCHON = monsterNames.indexOf('PM_ARCHON');
 // C ref: wizard.c wizapp[] — clonewiz disguise pool
@@ -618,8 +621,7 @@ export async function tactics(mtmp) {
  * C ref: wizard.c resurrect — confront hero with Wizard on endgame entry.
  * Envelope: no_of_wizards==0 → makemon(PM_WIZARD, ux,uy, MM_NOWAIT) +
  * mrevived; clear WAITMASK; hostile + set_malign; voice pline.
- * Named omissions: migrating-Wizard mon_arrive(Wiz_arrive) path when
- * no_of_wizards>0; SetVoice; Deaf-aware acoustics polish.
+ * Named omissions: SetVoice; Deaf-aware acoustics polish.
  */
 export async function resurrect() {
     const u = game.u;
@@ -640,9 +642,33 @@ export async function resurrect() {
         );
         if (mtmp) mtmp.mrevived = 1;
     } else {
-        // Migrating-Wizard search / mon_arrive(Wiz_arrive) deferred
+        /* C wizard.c:730–756 — an existing migrating Wizard without the
+           Amulet catches up elapsed time, then mon_arrive(Wiz_arrive).
+           mx: arrival may send him back to limbo (mtmp nulled). */
         verb = 'elude';
-        return;
+        const mig = game.migrating_mons || [];
+        for (let i = 0; i < mig.length; i++) {
+            const cand = mig[i];
+            if (!cand.iswiz || mon_has_amulet(cand)) continue;
+            let elapsed = (game.moves | 0) - (cand.mlstmv | 0);
+            if (!(elapsed > 0)) continue;
+            mon_catchup_elapsed_time(cand, elapsed);
+            if (elapsed >= LARGEST_INT) elapsed = LARGEST_INT - 1;
+            elapsed = Math.trunc(elapsed / 50);
+            if (cand.msleeping && rn2(elapsed + 1)) cand.msleeping = 0;
+            if ((cand.mfrozen | 0) === 1) {
+                cand.mfrozen = 0;
+                cand.mcanmove = 1;
+            }
+            /* C monst.h:251 helpless(mon) — msleeping || !mcanmove */
+            if (cand.msleeping || !cand.mcanmove) continue;
+            mig.splice(i, 1);
+            mtmp = cand;
+            await mon_arrive(mtmp, -1); /* -1: Wiz_arrive (dog.c) */
+            /* mx: mon_arrive() might have sent mtmp into limbo */
+            if (!mtmp.mx) mtmp = null;
+            break;
+        }
     }
 
     if (mtmp) {

@@ -30,17 +30,21 @@ import {
     TIMER_GLOBAL, TIMER_MONSTER, BURN_OBJECT, LS_OBJECT, LS_MONSTER,
     MAX_RADIUS, W_ARM,
     G_GENOD, G_EXTINCT, NO_MINVENT, MM_NOMSG, NON_PM, LOW_PM,
-    MV_KNOWS_EGG, ARTICLE_NONE, ARTICLE_A, EXACT_NAME,
+    MV_KNOWS_EGG, ARTICLE_NONE, ARTICLE_A, ARTICLE_THE, EXACT_NAME,
     REVIVE_MON, ROT_CORPSE, ZOMBIFY_MON, RLOC_NOMSG,
-    has_omid, has_omonst, Upolyd, PLNMSG_OK_DONT_DIE,
+    has_omid, has_omonst, Upolyd, PLNMSG_OK_DONT_DIE, PLNMSG_ONE_ITEM_HERE,
+    DISMOUNT_FELL, W_SADDLE, SUPPRESS_SADDLE, NEUTRAL,
 } from './const.js';
-import { heal_legs, float_down } from './trap.js';
-import { stop_occupation, nomul, is_pool, is_lava, carrying, You_hear, monst_to_any } from './hack.js';
+import { heal_legs, float_down, instapetrify } from './trap.js';
+import { stop_occupation, nomul, is_pool, is_lava, carrying, You_hear, monst_to_any, confdir } from './hack.js';
 import { run_timers, start_timer, stop_timer, weight,
     obj_extract_self, delobj, objects_at, attach_egg_hatch_timeout,
     obj_has_timer, rider_revival_time, rot_corpse, set_corpsenm,
-    free_omid, free_omonst,
+    free_omid, free_omonst, sobj_at,
 } from './mkobj.js';
+import { which_armor } from './worn.js';
+import { dismount_steed } from './steed.js';
+import { hurtle } from './dothrow.js';
 import { make_confused, make_deaf, make_hallucinated, make_sick, make_slimed, make_stoned, make_stunned, make_vomiting, set_itimeout } from './potion.js';
 import { make_blinded } from './do.js';
 import { Fumbling, Fast, Very_fast, acurr, adjattrib, exercise, stone_luck, A_STR, A_DEX, A_CON } from './attrib.js';
@@ -52,13 +56,13 @@ import { objectNames } from './objects.js';
 import {
     G_UNIQ, is_were, mons, is_floater, is_flyer, amorphous, nolimbs,
     M1_SLITHY, MZ_SMALL, is_rider, is_displacer,
-    breathless, monsterNames,
+    breathless, monsterNames, touch_petrifies,
 } from './monsters.js';
 import { little_to_big, big_to_little, mhe, cantvomit, name_to_mon } from './mondata.js';
-import { dist2, ing_suffix, strsubst, strstri, upstart } from './hacklib.js';
+import { dist2, ing_suffix, strsubst, strstri, upstart, highc } from './hacklib.js';
 import { Popeye, morehungry, vomit, Unaware, eating_dangerous_corpse } from './eat.js';
 import { phase_of_the_moon, friday_13th } from './calendar.js';
-import { zombie_form } from './mon.js';
+import { zombie_form, NODIAG } from './mon.js';
 import { cry_sound } from './sounds.js';
 import { Soundeffect } from './sndprocs.js';
 import { se_kaboom_boom_boom } from './generated/seffects_data.js';
@@ -68,7 +72,7 @@ import { new_light_source, del_light_source, emits_light } from './light.js';
 import { cansee } from './vision.js';
 import { is_art } from './artifact.js';
 import { ART_SUNSWORD } from './generated/artifacts_data.js';
-import { Monnam, x_monnam, hcolor, rndmonnam, hliquid, type_is_pname } from './do_name.js';
+import { Monnam, x_monnam, hcolor, rndmonnam, hliquid, type_is_pname, pmname } from './do_name.js';
 import { find_ac } from './u_init.js';
 import { any_visible_region, visible_region_summary } from './region.js';
 import { done, find_delayed_killer, dealloc_killer } from './end.js';
@@ -122,6 +126,7 @@ const TIMEOUT_FLAT = {
 /** C ref: weight.h WT_NOISY_INV — inv_weight() threshold for noisy fumbling. */
 const WT_NOISY_INV = 500;
 const ROCK = objectNames.indexOf('ROCK');
+const CORPSE = objectNames.indexOf('CORPSE');
 const AMULET_OF_STRANGULATION = objectNames.indexOf('AMULET_OF_STRANGULATION');
 const LUCKSTONE = objectNames.indexOf('LUCKSTONE');
 const FEDORA = objectNames.indexOf('FEDORA');
@@ -168,46 +173,97 @@ function is_ice(x, y) {
 }
 
 /**
- * C ref: timeout.c slip_or_trip — fumble message + optional ice/mount arms.
- * Envelope: floor-object trip (no RNG); ice/FROMOUTSIDE path with rn2(3);
- * on_foot stumble `rn2(4)` messages. Named omissions: Hallu highc bite;
- * corpse touch_petrifies; mounted rn2(4)+dismount_steed; ice hurtle/
- * confdir/`rn2(10+DEX)`; PLNMSG_ONE_ITEM_HERE pronoun; Blind/dknown polish.
+ * C ref: timeout.c slip_or_trip (1222–1341) — fumble/stumble messaging,
+ * whole body in C order. Caller: nh_timeout FUMBLING arm (timeout.c:906).
+ * Floor-object trip (no RNG): PLNMSG_ONE_ITEM_HERE pronoun it/they/them;
+ * else dknown-or-seen doname, else rock/something (sobj_at, invent.c);
+ * Hallu highc bite/bites by quan; bare-handed cockatrice-corpse trip →
+ * instapetrify. Ice/FROMOUTSIDE: steed named third-person via
+ * upstart(x_monnam SUPPRESS_SADDLE) else "You"; vtense steed/you picks
+ * slip/slide with rn2(2); on/off by current ice; non-ice-source fumble
+ * while mounted always unseats (uncursed saddle) unless ice-only and
+ * rn2(3); else rn2(10+DEX) slip with NODIAG grid-bug forward-only
+ * confdir + hurtle unless back onto the move's start square. Plain
+ * fumble: on_foot rn2(4) trip/slip/flounder/stumble; mounted rn2(4)
+ * stirrups/reins/saddle-horn/side messages (Your() = "Your " prefix) +
+ * dismount_steed(DISMOUNT_FELL) unless the saddle is cursed.
+ * Named omissions: none in this body.
  */
 async function slip_or_trip() {
     const u = game.u || {};
     const on_foot = !u.usteed;
     let otmp = objects_at(u.ux | 0, u.uy | 0);
+    let saddle = null;
     if (otmp && on_foot && !u.uinwater && is_pool(u.ux | 0, u.uy | 0)) {
         otmp = null;
     }
 
     if (otmp && on_foot) {
-        // C: trip over particular floor object — no rn2(4)
+        /* C: trip over something in particular. A sole just-named item
+         * reads as a pronoun; else the top item by name when dknown or
+         * seen, else rocks, else anonymous "something". */
         let what;
-        if (otmp.dknown || !u.Blind) {
+        if ((game.iflags?.last_msg | 0) === PLNMSG_ONE_ITEM_HERE) {
+            what = ((otmp.quan | 0) === 1) ? 'it'
+                : (u.Hallucination ? 'they' : 'them');
+        } else if (otmp.dknown || !u.Blind) {
             what = doname(otmp);
         } else {
-            let rock = null;
-            for (let o = otmp; o; o = o.nexthere) {
-                if (o.otyp === ROCK) { rock = o; break; }
-            }
-            if (!rock) what = 'something';
-            else what = ((rock.quan | 0) === 1) ? 'a rock' : 'some rocks';
+            const rock = sobj_at(ROCK, u.ux | 0, u.uy | 0);
+            what = !rock ? 'something'
+                : (((rock.quan | 0) === 1) ? 'a rock' : 'some rocks');
         }
         if (u.Hallucination) {
-            await pline(`Egads!  ${what} bites your ${body_part(FOOT)}!`);
+            /* C: strcpy(buf) + highc(buf[0]); "bite" + ("s" iff single). */
+            const bite = (!otmp || (otmp.quan | 0) === 1) ? 's' : '';
+            const cap = what ? highc(what.charAt(0)) + what.slice(1) : what;
+            await pline(`Egads!  ${cap} bite${bite} your ${body_part(FOOT)}!`);
         } else {
             await pline(`You trip over ${what}.`);
         }
-        // touch_petrifies corpse arm deferred
+        /* C: bare-handed trip over a petrifying corpse is instant. */
+        if (!u.uarmf && (otmp.otyp | 0) === CORPSE
+            && touch_petrifies(mons(otmp.corpsenm))
+            && !(u.Stone_resistance || u.HStone_resistance
+                || u.EStone_resistance)) {
+            await instapetrify(
+                `tripping over ${an(pmname(otmp.corpsenm, NEUTRAL))} corpse`);
+        }
     } else if (((u.HFumbling | 0) & FROMOUTSIDE)
         || (is_ice(u.ux | 0, u.uy | 0) && !rn2(3))) {
-        // Ice / FROMOUTSIDE slip — mounted dismount + hurtle deferred
-        const verb = rn2(2) ? 'slip' : 'slide';
-        const prep = is_ice(u.ux | 0, u.uy | 0) ? 'on' : 'off';
-        await pline(`You ${verb} ${prep} the ice.`);
-        // !on_foot dismount / !rn2(10+DEX) hurtle deferred (no further RNG here)
+        /* C: is fumbling from ice alone? EFumbling is the extrinsic half
+         * (flat mirror + uprops, attrib.js Fumbling shape). */
+        const eFumbling = (u.EFumbling | 0)
+            | (u.uprops?.[FUMBLING]?.extrinsic | 0);
+        const ice_only = !(eFumbling || ((u.HFumbling | 0) & ~FROMOUTSIDE));
+        /* C: "steed" forces third-person vtense even if the steed has a
+         * name; "you" stays second person. A slip just off moved-off ice
+         * reads "off", otherwise "on". */
+        const who = u.usteed
+            ? upstart(x_monnam(u.usteed, ARTICLE_THE, null,
+                SUPPRESS_SADDLE, false))
+            : 'You';
+        await pline(`${who} ${vtense(u.usteed ? 'steed' : 'you',
+            rn2(2) ? 'slip' : 'slide')} ${is_ice(u.ux | 0, u.uy | 0) ? 'on' : 'off'} the ice.`);
+        /* C: non-ice-source fumble while mounted always unseats (a cursed
+         * saddle holds); ice-only unseats on !rn2(3) so ice never reads
+         * safer than fumbling. which_armor is a pure read, so hoisting it
+         * out of the short-circuit changes no RNG or state. */
+        saddle = !on_foot ? which_armor(u.usteed, W_SADDLE) : null;
+        if (!on_foot && (!saddle || !saddle.cursed)
+            && (!ice_only || !rn2(3))) {
+            await pline('You lose your balance.');
+            await dismount_steed(DISMOUNT_FELL);
+        } else if (!rn2(10 + acurr(A_DEX))) {
+            /* C: grid-bug form only hurtles forward; otherwise a random
+             * direction via confdir; never hurtle back onto the square
+             * this move started from. */
+            if (!NODIAG(u.umonnum)) confdir(true);
+            if ((u.ux | 0) + (u.dx | 0) !== (u.ux0 | 0)
+                || (u.uy | 0) + (u.dy | 0) !== (u.uy0 | 0)) {
+                await hurtle(u.dx | 0, u.dy | 0, 1, false);
+            }
+        }
     } else if (on_foot) {
         // C: timeout.c:1302 switch (rn2(4))
         switch (rn2(4)) {
@@ -228,9 +284,25 @@ async function slip_or_trip() {
             await pline('You stumble.');
             break;
         }
-    } else {
-        // Mounted saddle messages + dismount_steed deferred; still burn rn2(4)
-        rn2(4);
+    } else if ((saddle = which_armor(u.usteed, W_SADDLE)) == null
+        || !saddle.cursed) {
+        /* C: mounted plain fumble; a cursed saddle keeps the hero seated.
+         * Your() prefixes "Your ". */
+        switch (rn2(4)) {
+        case 1:
+            await pline(`Your ${makeplural(body_part(FOOT))} slip out of the stirrups.`);
+            break;
+        case 2:
+            await pline('You let go of the reins.');
+            break;
+        case 3:
+            await pline('You bang into the saddle-horn.');
+            break;
+        default:
+            await pline('You slide to one side of the saddle.');
+            break;
+        }
+        await dismount_steed(DISMOUNT_FELL);
     }
 }
 

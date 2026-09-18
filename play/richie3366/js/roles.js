@@ -48,7 +48,22 @@ import {
     ROLE_NONE, ROLE_RANDOM, ROLE_GENDERS, ROLE_ALIGNS,
     ROLE_MALE, ROLE_FEMALE, ROLE_NEUTER,
     ROLE_LAWFUL, ROLE_NEUTRAL, ROLE_CHAOTIC,
+    ROLE_RACEMASK, ROLE_GENDMASK, ROLE_ALIGNMASK,
+    P_CLERIC_SPELL, PL_CSIZ,
 } from './const.js';
+import { rn2, rn2_on_display_rng } from './rng.js';
+import {
+    ok_role, ok_race, ok_gend, ok_align,
+    validrace, validgend, validalign,
+} from './player_selection.js';
+import { findword, strNsubst } from './hacklib.js';
+import { tty_askname } from './askname.js';
+import {
+    mons, is_male, is_female, is_neuter, commit_pm_fixup,
+    M2_PEACEFUL, M2_NASTY, M2_STALK, M2_HOSTILE,
+    M3_CLOSE, M3_WANTSARTI, M3_WAITFORU,
+} from './monsters.js';
+import { objectNames } from './objects.js';
 
 function pm(name) {
     const i = monsterNames.indexOf(name);
@@ -996,4 +1011,293 @@ export function race_alignmentcount(racenum) {
         if (races[racenum].allow & ROLE_NEUTRAL) ++aligncount;
     }
     return aligncount;
+}
+
+// C ref: monflag.h — role_init writes these onto mons[ldr/nem].
+const MS_LEADER = 36;
+const MS_NEMESIS = 37;
+
+/**
+ * C ref: role.c randrole `:718–728` — rn2(SIZE(roles)-1); roles.length
+ * already excludes the C terminator, so rn2(roles.length) is the same draw.
+ */
+export function randrole(for_display) {
+    if (for_display) return rn2_on_display_rng(roles.length);
+    return rn2(roles.length);
+}
+
+// C ref: role.c randrole_filtered `:730–744` (staticfn, kept module-local)
+// — honor all the filter masks; fall back to randrole when nothing passes.
+function randrole_filtered() {
+    const set = [];
+    for (let i = 0; i < roles.length; ++i)
+        if (ok_role(i, ROLE_NONE, ROLE_NONE, ROLE_NONE)
+            && ok_race(i, ROLE_RANDOM, ROLE_NONE, ROLE_NONE)
+            && ok_gend(i, ROLE_NONE, ROLE_RANDOM, ROLE_NONE)
+            && ok_align(i, ROLE_NONE, ROLE_NONE, ROLE_RANDOM))
+            set.push(i);
+    return set.length ? set[rn2(set.length)] : randrole(false);
+}
+
+/**
+ * C ref: role.c randrace `:786–810` — count the valid races, pick with the
+ * x100 factor (bad-RNG guard), walk again to the winner. The `/ 100` is C
+ * integer division. Fallback when the role allows nothing: any race.
+ */
+export function randrace(rolenum) {
+    let n = 0;
+    for (let i = 0; i < races.length && races[i].noun; i++)
+        if (roles[rolenum].allow & races[i].allow & ROLE_RACEMASK)
+            n++;
+    // Pick a random race
+    if (n) n = Math.trunc(rn2(n * 100) / 100);
+    for (let i = 0; i < races.length && races[i].noun; i++)
+        if (roles[rolenum].allow & races[i].allow & ROLE_RACEMASK) {
+            if (n)
+                n--;
+            else
+                return i;
+        }
+    // This role has no permitted races?
+    return rn2(races.length);
+}
+
+/**
+ * C ref: role.c randalign `:915–940` — same envelope over ROLE_ALIGNS
+ * with a plain rn2(n) pick. Fallback: any alignment.
+ */
+export function randalign(rolenum, racenum) {
+    let n = 0;
+    for (let i = 0; i < ROLE_ALIGNS; i++)
+        if (roles[rolenum].allow & races[racenum].allow & aligns[i].allow
+            & ROLE_ALIGNMASK)
+            n++;
+    // Pick a random alignment
+    if (n) n = rn2(n);
+    for (let i = 0; i < ROLE_ALIGNS; i++)
+        if (roles[rolenum].allow & races[racenum].allow & aligns[i].allow
+            & ROLE_ALIGNMASK) {
+            if (n)
+                n--;
+            else
+                return i;
+        }
+    // This role/race has no permitted alignments?
+    return rn2(ROLE_ALIGNS);
+}
+
+/**
+ * C ref: role.c plnamesuffix `:1664–1721` — strip `-role-race-gender-align`
+ * suffix tokens from the player name into flags.init*, prompting via
+ * askname when the name is empty or generic. C callers: unixmain `:198`
+ * (JS: askname_if_needed covers the prompt arm), role_init `:1988`, and
+ * the rename path `:2700`. Async only: the askname arm blocks on input
+ * (Constitution §2). game.plname is the svp.plname buffer;
+ * game.plnamelen the gp.plnamelen username-with-dashes length (JS never
+ * sets it — unixmain does in C).
+ */
+export async function plnamesuffix() {
+    const flags = game.flags || (game.flags = {});
+    let plname = String(game.plname ?? '');
+
+    // some generic user names will be ignored in favor of prompting
+    const genericusers = game.sysopt?.genericusers;
+    if (genericusers) {
+        if (genericusers[0] === '*') {
+            plname = '';
+        } else {
+            // ignore an appended '-role-race-gender-alignment' tail when
+            // measuring the name against the generic-users list
+            const dash = plname.indexOf('-', game.plnamelen | 0);
+            const i = dash >= 0 ? dash : plname.length;
+            if (findword(genericusers, plname, i, false))
+                plname = '';
+        }
+        if (!plname) game.plnamelen = 0;
+    }
+
+    do {
+        if (!plname) {
+            await tty_askname(); // fill game.plname[] (C askname)
+            plname = String(game.plname ?? '');
+            game.plnamelen = 0; // plname[] might have -role-race-&c attached
+        }
+
+        // Look for tokens delimited by '-'
+        const dash = plname.indexOf('-', game.plnamelen | 0);
+        if (dash >= 0) {
+            let eptr = plname.slice(dash + 1); // C: *eptr = '\0', eptr past it
+            plname = plname.slice(0, dash);
+            game.plname = plname;
+            while (eptr !== null) {
+                // Isolate the next token
+                let sptr = eptr;
+                const d2 = sptr.indexOf('-');
+                if (d2 >= 0) {
+                    sptr = sptr.slice(0, d2);
+                    eptr = eptr.slice(d2 + 1);
+                } else {
+                    eptr = null;
+                }
+                // Try to match it to something
+                let i;
+                if ((i = str2role(sptr)) !== ROLE_NONE)
+                    flags.initrole = i;
+                else if ((i = str2race(sptr)) !== ROLE_NONE)
+                    flags.initrace = i;
+                else if ((i = str2gend(sptr)) !== ROLE_NONE)
+                    flags.initgend = i;
+                else if ((i = str2align(sptr)) !== ROLE_NONE)
+                    flags.initalign = i;
+            }
+        } else {
+            game.plname = plname;
+        }
+    } while (!game.plname && !(game.iflags?.defer_plname));
+
+    // commas in the name confuse the record file, convert to spaces
+    game.plname = strNsubst(game.plname, ',', ' ', 0);
+}
+
+/**
+ * C ref: role.c role_init `:1980–2117` — resolve role/race/gender/alignment
+ * from flags.init* (options, plname suffix, player selection) with random
+ * fallback, copy urole/urace, fix up quest leader/guardian/nemesis permonst
+ * data, pick the pantheon, fill missing gods, set godgend, and grant
+ * Priests their SPE_LIGHT skill. Whole body in C order.
+ *
+ * C callers: allmain.c newgame `:786` (wired: js/allmain.js newgame);
+ * restore.c dorecover `:596` (named omission: js/save.js restores
+ * urole/urace/quest_status/flags from the save payload, which subsumes C's
+ * derive-then-overwrite sequence; re-running the derivation there would
+ * only re-burn the ldrgend/nemgend draws C makes before its Sfi reads).
+ * The allmain.c `:805` quest_init comment, makemon.c `:1269` quest-pager
+ * comment and decl.h/flag.h/monsters.h notes are comments, not call sites.
+ * Async only: plnamesuffix's askname arm blocks on input (Constitution §2).
+ */
+export async function role_init() {
+    const flags = game.flags || (game.flags = {});
+    let alignmnt;
+
+    // Strip the role letter out of the player name (backwards compat).
+    await plnamesuffix();
+
+    // Check for a valid role. Try flags.initrole first.
+    if (!validrole(flags.initrole)) {
+        // Try the player letter second (svp.pl_character; options.c also
+        // writes it, role_init copies it back below, save.c persists it).
+        if ((flags.initrole = str2role(String(game.pl_character ?? ''))) < 0)
+            // None specified; pick a random role
+            flags.initrole = randrole_filtered();
+    }
+
+    // We now have a valid role index. Copy the role name back.
+    // This should become OBSOLETE (C comment).
+    game.pl_character = String(roles[flags.initrole].name.m ?? '');
+    game.pl_character = game.pl_character.slice(0, PL_CSIZ - 1); // C: [31] = 0
+
+    // Check for a valid race
+    if (!validrace(flags.initrole, flags.initrace))
+        flags.initrace = randrace(flags.initrole);
+
+    // Check for a valid gender. If new game, check both initgend
+    // and female. On restore, assume flags.female is correct.
+    if (flags.pantheon === -1) { // new game
+        if (!validgend(flags.initrole, flags.initrace, flags.female ? 1 : 0))
+            flags.female = !flags.female;
+    }
+    if (!validgend(flags.initrole, flags.initrace, flags.initgend))
+        // Note that there is no way to check for an unspecified gender.
+        flags.initgend = flags.female ? 1 : 0;
+
+    // Check for a valid alignment
+    if (!validalign(flags.initrole, flags.initrace, flags.initalign))
+        // Pick a random alignment
+        flags.initalign = randalign(flags.initrole, flags.initrace);
+    alignmnt = aligns[flags.initalign].value;
+
+    // Initialize gu.urole and gu.urace (whole-struct copy in C; the JS
+    // newgame setup re-shapes these into the field-rich game objects next).
+    game.urole = { ...roles[flags.initrole] };
+    game.urace = { ...races[flags.initrace] };
+    if (!game.quest_status) game.quest_status = {};
+
+    // Fix up the quest leader
+    if (game.urole.ldrnum !== NON_PM) {
+        const pm = mons(game.urole.ldrnum);
+        commit_pm_fixup(game.urole.ldrnum, {
+            msound: MS_LEADER,
+            mflags2: pm.mflags2 | M2_PEACEFUL,
+            mflags3: pm.mflags3 | M3_CLOSE,
+            maligntyp: alignmnt * 3,
+        });
+        // if gender is random, we choose it now instead of waiting
+        // until the leader monster is created
+        game.quest_status.ldrgend = is_neuter(pm) ? 2
+            : is_female(pm) ? 1
+                : is_male(pm) ? 0
+                    : (rn2(100) < 50 ? 1 : 0);
+    }
+
+    // Fix up the quest guardians
+    if (game.urole.guardnum !== NON_PM) {
+        const pm = mons(game.urole.guardnum);
+        commit_pm_fixup(game.urole.guardnum, {
+            mflags2: pm.mflags2 | M2_PEACEFUL,
+            maligntyp: alignmnt * 3,
+        });
+    }
+
+    // Fix up the quest nemesis
+    if (game.urole.neminum !== NON_PM) {
+        const pm = mons(game.urole.neminum);
+        commit_pm_fixup(game.urole.neminum, {
+            msound: MS_NEMESIS,
+            mflags2: (pm.mflags2 & ~M2_PEACEFUL) | M2_NASTY | M2_STALK | M2_HOSTILE,
+            mflags3: (pm.mflags3 & ~M3_CLOSE) | M3_WANTSARTI | M3_WAITFORU,
+        });
+        // if gender is random, we choose it now instead of waiting
+        // until the nemesis monster is created
+        game.quest_status.nemgend = is_neuter(pm) ? 2
+            : is_female(pm) ? 1
+                : is_male(pm) ? 0
+                    : (rn2(100) < 50 ? 1 : 0);
+    }
+
+    // Fix up the god names
+    if (flags.pantheon === -1) { // new game
+        let trycnt = 0;
+        flags.pantheon = flags.initrole; // use own gods
+        // unless they're missing
+        while (!roles[flags.pantheon].lgod && ++trycnt < 100)
+            flags.pantheon = randrole(false);
+        if (!roles[flags.pantheon].lgod) {
+            for (let i = 0; i < roles.length; i++)
+                if (roles[i].lgod) {
+                    flags.pantheon = i;
+                    break;
+                }
+        }
+    }
+    if (!game.urole.lgod) {
+        game.urole.lgod = roles[flags.pantheon].lgod;
+        game.urole.ngod = roles[flags.pantheon].ngod;
+        game.urole.cgod = roles[flags.pantheon].cgod;
+    }
+    // 0 or 1; no gods are neuter, nor is gender randomized
+    game.quest_status.godgend =
+        align_gtitle(game.urole, alignmnt) === 'goddess' ? 1 : 0;
+
+    if (game.urole.mnum === PM_CLERIC) { // C: Role_if(PM_CLERIC)
+        const speLight = objectNames.indexOf('SPE_LIGHT');
+        if (game.objects?.[speLight])
+            game.objects[speLight].oc_skill = P_CLERIC_SPELL;
+    }
+
+    // C `#if 0` infravision fixup is compiled out (mons[] stays const;
+    // set_uasmon manages Infravision) — no code, like C.
+
+    // Artifacts are fixed in hack_artifacts()
+
+    // Success!
 }

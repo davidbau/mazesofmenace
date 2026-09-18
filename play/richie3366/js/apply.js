@@ -77,7 +77,7 @@ import { nomul, confdir, losehp, maybe_half_phys, is_pool, is_lava, overexertion
 import { getpos, getpos_sethilite } from './getpos.js';
 import { walk_path, thitmonst, hurtle } from './dothrow.js';
 import { uhim, uhis } from './roles.js';
-import { is_art } from './artifact.js';
+import { is_art, retouch_object } from './artifact.js';
 import { ART_SNICKERSNEE } from './generated/artifacts_data.js';
 import { P_SKILL, weapon_type, dbon, MON_WEP, is_wet_towel, dry_a_towel, hands_obj, possibly_unwield, setmnotwielded } from './weapon.js';
 import { pickup_object, spoteffects } from './pickup.js';
@@ -2282,7 +2282,7 @@ export async function use_tinning_kit(obj) {
  * FIGURINE → use_figurine (D-1029) + fig_transform / attach_fig_transform_timeout (D-1032) +
  * UNICORN_HORN → use_unicorn_horn (D-1030) +
  * HORN_OF_PLENTY → hornoplenty (D-1031).
- * Named omissions: retouch_object;
+ * Named omissions:
  * Medusa/nymph mirror arms;
  * shop check_unpaid / lamp-oil verbalize; pickup invent getobj tip;
  * break-wand release_hold / flash_hits (D-0979);
@@ -2306,6 +2306,10 @@ export async function doapply() {
     // C apply.c:4226 getobj("use or apply", apply_ok, GETOBJ_NOFLAGS)
     let obj = await getobj('use or apply', apply_ok, GETOBJ_NOFLAGS);
     if (!obj) return false;
+
+    // C apply.c:4230 retouch_object(&obj, FALSE) — evading your grasp costs
+    // a turn (no drop); live artifact.js export, in C order before the cases.
+    if (!(await retouch_object(obj, false))) return true; // ECMD_TIME
 
     // C: WAND_CLASS → do_break_wand (before tool cases in C after getobj)
     if (obj.oclass === WAND_CLASS) {

@@ -37,7 +37,7 @@ import { objects_at, sobj_at, mksobj, obj_extract_self, place_object } from './m
 import { objectNames, SPBOOK_CLASS } from './objects.js';
 import {
     amorphous, throws_rocks, is_flyer, is_floater, is_swimmer, likes_lava,
-    amphibious, monsterNames, passes_walls, is_dlord, is_dprince,
+    amphibious, monsterNames, mons, passes_walls, is_dlord, is_dprince,
     is_rider, control_teleport, can_teleport, haseyes, G_UNIQ,
     is_minion, is_vampshifter,
 } from './monsters.js';
@@ -101,6 +101,7 @@ const Trap_Effect_Finished = 0;
 const Trap_Moved_Mon = 4;
 
 const BOULDER = objectNames.indexOf('BOULDER');
+const CORPSE = objectNames.indexOf('CORPSE');
 const SCR_SCARE_MONSTER = objectNames.indexOf('SCR_SCARE_MONSTER');
 const PM_FLOATING_EYE = monsterNames.indexOf('PM_FLOATING_EYE');
 const PM_MINOTAUR = monsterNames.indexOf('PM_MINOTAUR');
@@ -1830,28 +1831,108 @@ export async function u_teleport_mon(mtmp, give_feedback) {
 }
 
 /**
- * C ref: teleport.c rloco — relocate a floor object.
- * Caller: trap.c launch_obj TELEP_TRAP (D-1237). Envelope: extract +
- * goodpos pick + place_object. Named omit: Rider corpse revive;
- * flooreffects; shop bill/stolen_value; W-tower /dndest restricted_fall.
- * @returns {boolean} true if placed elsewhere
+ * C ref: teleport.c rloco (`teleport.c:2102–2187`) — relocate a floor object.
+ * Restart in C order (D-2463): Rider-corpse revive; extract-then-read;
+ * goodpos pick + dndest restricted_fall + W-tower inside/outside gate;
+ * flooreffects("fall"); shop bill/stolen_value; place + newsym pair.
+ * Dynamic do.js/shk.js imports: both already import this file (cycle-safe
+ * per rloc_maybe_minvent_shop_bill). Callers: dokick scatter, zap bhito,
+ * trap launch_obj, mon mdrop_special_objs (all await); mkcorpstat + hack
+ * hurtle_step stay named omits (sync chain / no live JS counterpart).
+ * @returns {Promise<boolean>} true if placed elsewhere
  */
-export function rloco(obj) {
+export async function rloco(obj) {
     if (!obj) return false;
+    // C :2109–2112 — a Rider corpse revives in place instead of relocating.
+    if ((obj.otyp | 0) === CORPSE && is_rider(mons(obj.corpsenm | 0))) {
+        const { revive_corpse } = await import('./do.js');
+        if (await revive_corpse(obj)) return false;
+    }
+
+    // C :2114–2117 — extract first; ox/oy survive extract on both sides
+    // (C remove_object keeps coords; JS obj_extract_self likewise).
+    obj_extract_self(obj);
     const otx = obj.ox | 0;
     const oty = obj.oy | 0;
-    obj_extract_self(obj);
+    // C :2117 — an object not yet on the map (fell through a trap door)
+    // is confined to dndest when the level defines one.
+    const dndest = game.dndest || {};
+    const restricted_fall = otx === 0 && (dndest.lx | 0);
     let tx = 0;
     let ty = 0;
     let try_limit = 4000;
     do {
+        // C :2118–2120 — both draws precede the try_limit break check.
         tx = rn1(COLNO - 3, 2);
         ty = rn2(ROWNO);
         if (!--try_limit) break;
-    } while (!goodpos(tx, ty, null, 0));
-    // flooreffects / shop bill deferred
+    } while (!goodpos(tx, ty, null, 0)
+        || (restricted_fall
+            && (!within_bounded_area(tx, ty,
+                    dndest.lx | 0, dndest.ly | 0,
+                    dndest.hx | 0, dndest.hy | 0)
+                || ((dndest.nlx | 0)
+                    && within_bounded_area(tx, ty,
+                        dndest.nlx | 0, dndest.nly | 0,
+                        dndest.nhx | 0, dndest.nhy | 0))))
+        /* C :2131–2139 — on the Wizard Tower levels, objects inside should
+           stay inside and objects outside should stay outside. */
+        || ((dndest.nlx | 0) && On_W_tower_level(game.u?.uz)
+            && within_bounded_area(tx, ty,
+                    dndest.nlx | 0, dndest.nly | 0,
+                    dndest.nhx | 0, dndest.nhy | 0)
+                !== within_bounded_area(otx, oty,
+                    dndest.nlx | 0, dndest.nly | 0,
+                    dndest.nhx | 0, dndest.nhy | 0)));
+
+    // C :2141–2147 — flooreffects may consume the object (pool/lava/pit).
+    const { flooreffects } = await import('./do.js');
+    if (await flooreffects(obj, tx, ty, 'fall')) {
+        /* update old location (if any) since flooreffects() couldn't;
+           unblock_point() for boulder handled by obj_extract_self() */
+        if (!(otx === 0 && oty === 0)) newsym(otx, oty);
+        return false;
+    } else if (otx === 0 && oty === 0) {
+        ; /* fell through a trap door; no update of old loc needed */
+    } else {
+        const { find_objowner, costly_spot, costly_adjacent,
+            subfrombill, addtobill, stolen_value } = await import('./shk.js');
+        const shkp = find_objowner(obj, otx, oty);
+        const objinshop = shkp && costly_spot(otx, oty);
+        const onboundary = shkp && costly_adjacent(shkp, otx, oty);
+
+        /*
+         * If object starts inside shop or is unpaid and on shop boundary:
+         * if hero is outside the shop, treat this as theft;
+         * otherwise, if it arrives inside same shop, remove it from bill;
+         * otherwise, if it arrives on the boundary, add it to bill;
+         * if it arrives outside the shop, treat this as a theft.
+         * Billing routines deal with obj->no_charge.
+         */
+        if (objinshop || (obj.unpaid && onboundary)) {
+            const u = game.u || {};
+            // C `char h = *in_rooms(...)`: '' derefs to '\0' (falsy).
+            const h = (in_rooms(u.ux | 0, u.uy | 0, SHOPBASE) || '')[0] || '\0';
+            const oo = (in_rooms(otx, oty, 0) || '')[0] || '\0';
+            const hinshop = h !== '\0'
+                && (in_rooms(shkp.mx | 0, shkp.my | 0, 0) || '').includes(h);
+
+            if (hinshop && costly_spot(tx, ty)
+                /* verify that it's the same shop */
+                && oo !== '\0' && (in_rooms(tx, ty, 0) || '').includes(oo)) {
+                if (obj.unpaid) subfrombill(obj, shkp);
+            } else if (hinshop && costly_adjacent(shkp, tx, ty)
+                && oo !== '\0' && (in_rooms(tx, ty, 0) || '').includes(oo)) {
+                if (!obj.unpaid) await addtobill(obj, false, false, false);
+            } else {
+                await stolen_value(obj, otx, oty, false, false);
+            }
+        }
+
+        newsym(otx, oty); /* update old location */
+    }
     place_object(obj, tx, ty);
-    if (otx || oty) newsym(otx, oty);
+    /* note: block_point() for boulder handled by place_object() */
     newsym(tx, ty);
     return true;
 }

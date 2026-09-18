@@ -37,7 +37,7 @@ function newseg() {
 }
 
 /** C ref: rm.h place_worm_seg — occupy level.monsters[x][y] with worm head. */
-function place_worm_seg(worm, x, y) {
+export function place_worm_seg(worm, x, y) {
     if (!game._level_monsters) game._level_monsters = new Map();
     const key = `${x},${y}`;
     if (game._level_monsters.has(key)) {

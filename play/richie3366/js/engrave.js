@@ -42,7 +42,7 @@
 import { game } from './gstate.js';
 import { sanitize_name } from './bones.js';
 import { rn1, rn2, rnd } from './rng.js';
-import { pline, newsym, impossible, Hallucination } from './display.js';
+import { pline, You, newsym, impossible, Hallucination } from './display.js';
 import { getlin, yn_function } from './getline.js';
 import { getobj, useup, hold_another_object, prinv, update_inventory, Blind } from './invent.js';
 import { splitobj, obj_extract_self } from './mkobj.js';
@@ -550,9 +550,10 @@ export async function read_engr_at(x, y) {
         || !(pristine[elen - 1] === last && '.!?'.includes(last))) {
         endpunct = '.';
     }
-    await pline(
-        `You ${blind ? 'feel the words' : 'read'}: "${et}"${endpunct}`,
-    );
+    // C engrave.c:396 You("%s: \"%s\"%s", Blind?"feel the words":"read",
+    // et, endpunct) — et is verbatim (a "%s" arg, never re-scanned).
+    // Keep the C format+args shape so engraved '%' prints literally.
+    await You('%s: "%s"%s', blind ? 'feel the words' : 'read', et, endpunct);
     if (ep.engr_txt) ep.engr_txt.remembered_text = text;
     ep.eread = 1;
     ep.erevealed = 1;

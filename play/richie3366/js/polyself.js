@@ -5,7 +5,7 @@ import { game } from './gstate.js';
 import { rn2, rn1, d, rnd } from './rng.js';
 import { dist2, strstri, strsubst } from './hacklib.js';
 import {
-    pline, urgent_pline, newsym, see_monsters, impossible, Hallucination,
+    pline, You, urgent_pline, newsym, see_monsters, impossible, Hallucination,
     canseemon,
 } from './display.js';
 import { getlin, yn_function, y_n } from './getline.js';
@@ -23,7 +23,7 @@ import {
 } from './mhitm.js';
 import { mksobj, objects_at, maybe_adjust_light } from './mkobj.js';
 import { throwit } from './dothrow.js';
-import { ubuzz, ubreatheu, You, resists_fire, destroy_items } from './zap.js';
+import { ubuzz, ubreatheu, resists_fire, destroy_items } from './zap.js';
 import { were_summon, were_beastie, counter_were } from './were.js';
 import { unpunish } from './read.js';
 import { surface, split_mon } from './sit.js';
@@ -997,7 +997,9 @@ export async function rehumanize() {
     await encumber_msg();
     update_inventory();
     if (wasFlying && !Flying() && u.usteed)
-        await You(`and ${mon_nam(u.usteed)} return gently to the ${surface(u.ux, u.uy)}.`);
+        // C polyself.c:1413 You("and %s return gently to the %s.",
+        // mon_nam(u.usteed), surface(u.ux, u.uy)).
+        await You('and %s return gently to the %s.', mon_nam(u.usteed), surface(u.ux, u.uy));
     // retouch_equipment(2) named above
     if (!u.uarmg) await selftouch(no_longer_petrify_resistant);
 }
@@ -2430,7 +2432,8 @@ export async function dogaze() {
                 looked--;
                 continue;
             } else if (flags.safe_dog !== false && mtmp.mtame && !confused) {
-                await You(`avoid gazing at ${y_monnam(mtmp)}.`);
+                // C polyself.c:1689 You("avoid gazing at %s.", y_monnam(mtmp)).
+                await You('avoid gazing at %s.', y_monnam(mtmp));
             } else {
                 if (flags.confirm !== false && mtmp.mpeaceful && !confused) {
                     const qbuf = `Really ${adtyp === AD_CONF ? 'confuse' : 'attack'} ${mon_nam(mtmp)}?`;
@@ -2455,7 +2458,9 @@ export async function dogaze() {
                     const orig_dmg = dmg;
                     const lev = u.ulevel | 0;
 
-                    await You(`attack ${mon_nam(mtmp)} with a fiery gaze!`);
+                    // C polyself.c:1717 You("attack %s with a fiery gaze!",
+                    // mon_nam(mtmp)).
+                    await You('attack %s with a fiery gaze!', mon_nam(mtmp));
                     if (resists_fire(mtmp)) {
                         await pline(`The fire doesn't burn ${mon_nam(mtmp)}!`);
                         dmg = 0;
@@ -2476,7 +2481,9 @@ export async function dogaze() {
                     const freeAction = !!(u.Free_action || u.HFree_action
                         || u.EFree_action);
                     if (!freeAction) {
-                        await You(`are frozen by ${s_suffix(mon_nam(mtmp))} gaze!`);
+                        // C polyself.c:1739 You("are frozen by %s gaze!",
+                        // s_suffix(mon_nam(mtmp))).
+                        await You('are frozen by %s gaze!', s_suffix(mon_nam(mtmp)));
                         nomul(((u.ulevel | 0) > 6 || rn2(4))
                             ? -d((mtmp.m_lev | 0) + 1,
                                 (mtmp.data?.mattk?.[0]?.damd | 0))
@@ -2485,7 +2492,9 @@ export async function dogaze() {
                         game.nomovemsg = 0;
                         return ECMD_TIME;
                     } else {
-                        await You(`stiffen momentarily under ${s_suffix(mon_nam(mtmp))} gaze.`);
+                        // C polyself.c:1749 You("stiffen momentarily under %s
+                        // gaze.", s_suffix(mon_nam(mtmp))).
+                        await You('stiffen momentarily under %s gaze.', s_suffix(mon_nam(mtmp)));
                     }
                 }
                 /* Technically this one shouldn't affect you at all because
@@ -2534,11 +2543,15 @@ export async function dospinweb() {
     const levitation = !!(((u.HLevitation | 0) || (u.ELevitation | 0))
         && !((u.BLevitation | 0)));
     if (levitation || rejectTerrain) {
-        await You(`must be on ${rejectTerrain ? 'solid' : 'the'} ground to spin a web.`);
+        // C polyself.c:1508 You("must be on %s ground to spin a web.",
+        // reject_terrain ? "solid" : "the").
+        await You('must be on %s ground to spin a web.', rejectTerrain ? 'solid' : 'the');
         return ECMD_OK;
     }
     if (u.uswallow) {
-        await You(`release web fluid inside ${mon_nam(u.ustuck)}.`);
+        // C polyself.c:1513 You("release web fluid inside %s.",
+        // mon_nam(u.ustuck)).
+        await You('release web fluid inside %s.', mon_nam(u.ustuck));
         if (is_animal(u.ustuck?.data)) {
             await expels(u.ustuck, u.ustuck?.data, true);
             return ECMD_OK;
@@ -2600,7 +2613,8 @@ export async function dospinweb() {
             return ECMD_TIME;
         case HOLE:
         case TRAPDOOR:
-            await You(`web over the ${(ttmp.ttyp | 0) === TRAPDOOR ? 'trap door' : 'hole'}.`);
+            // C polyself.c:1578 You("web over the %s.", TRAPDOOR?"trap door":"hole").
+            await You('web over the %s.', (ttmp.ttyp | 0) === TRAPDOOR ? 'trap door' : 'hole');
             deltrap(ttmp);
             newsym(x, y);
             return ECMD_TIME;

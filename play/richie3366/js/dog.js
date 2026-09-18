@@ -39,6 +39,7 @@ import { christen_monst, Monnam, mon_pmname, s_suffix } from './do_name.js';
 import {
     monnear, m_at, see_monster_closeup, minliquid, restore_cham,
     wake_nearto, discard_minvent, mdrop_special_objs,
+    mon_leaving_level, m_into_limbo,
 } from './mon.js';
 import { mon_offmap } from './monmove.js';
 import {
@@ -49,7 +50,10 @@ import {
     newsym, pline, pline_mon, canspotmon, canseemon, Hallucination,
     impossible,
 } from './display.js';
-import { redraw_worm, count_wsegs, wormgone } from './worm.js';
+import { redraw_worm, count_wsegs, wormgone, get_wormno, initworm } from './worm.js';
+import { set_residency } from './shk.js';
+import { Is_qstart } from './quest.js';
+import { builds_up } from './hacklib.js';
 import { hero_conflict } from './mondata.js';
 import { cansee } from './vision.js';
 import { night } from './calendar.js';
@@ -70,6 +74,7 @@ const PM_KITTEN = monsterNames.indexOf('PM_KITTEN');
 const PM_PONY = monsterNames.indexOf('PM_PONY');
 const PM_NAZGUL = monsterNames.indexOf('PM_NAZGUL');
 const PM_ERINYS = monsterNames.indexOf('PM_ERINYS');
+const PM_LONG_WORM = monsterNames.indexOf('PM_LONG_WORM');
 const EXPENSIVE_CAMERA = objectNames.indexOf('EXPENSIVE_CAMERA');
 const SPE_CREATE_FAMILIAR = objectNames.indexOf('SPE_CREATE_FAMILIAR');
 const CORPSE = objectNames.indexOf('CORPSE');
@@ -706,6 +711,69 @@ export async function tamedog(mtmp, obj, givemsg = true) {
     return true;
 }
 
+/* C dog.c:15–19 — mon_arrive `when` (file-local enum). Before_you and
+   After_you share the independent-migrant body below; With_you places
+   beside the hero; Wiz_arrive forces MIGR_WITH_HERO with a limbo tail. */
+const Before_you = 0;
+const With_you = 1;
+const After_you = 2;
+const Wiz_arrive = -1;
+
+/* C dog.c:301 — `note: always reset when used so doesn't need to be
+   part of struct 'g'`; losedogs() zeroes it on entry. */
+let failed_arrivals = [];
+
+/**
+ * C ref: mon.c relmon `:2561–2590` — take mon off the map
+ * (mon_leaving_level), unlink from fmon, then prepend onto the target
+ * list (migrating_mons/mydogs/failed_arrivals) or orphan it.
+ * JS level lists are arrays: unlink by identity, prepend by unshift.
+ * C panics when fmon is empty or mon is not on it (kept as impossible).
+ */
+async function relmon(mon, list) {
+    if (!mon) return;
+    await mon_leaving_level(mon);
+    const fmon = game.fmon || [];
+    const i = fmon.indexOf(mon);
+    if (i < 0) {
+        await impossible('relmon: mon not in list.');
+    } else {
+        fmon.splice(i, 1);
+    }
+    if (list) {
+        list.unshift(mon);
+    }
+}
+
+/** C ref: stairs.c stairway_find_dir — first stairway with matching up.
+ * Local mirror of the mklev.js clone (dog cannot import mklev:
+ * mklev → trap → dog); same loop as arrive_stairway_find_from. */
+function arrive_stairway_find_dir(up) {
+    const want = !!up;
+    for (let s = game.stairs; s; s = s.next)
+        if (!!s.up === want) return s;
+    return null;
+}
+
+/**
+ * C ref: dog.c mon_arrive `:430–453` head shared by every `when` —
+ * STILL_ARRIVING + fmon link, isshk set_residency, long-worm wormno
+ * (baby long worms have no tail so C skips is_longworm() here too).
+ */
+function mon_arrive_link(mtmp) {
+    mtmp.mstate = (mtmp.mstate | 0) | MON_STILL_ARRIVING;
+    if (!game.fmon) game.fmon = [];
+    game.fmon.unshift(mtmp);
+    if (mtmp.isshk) set_residency(mtmp, false);
+    const num_segs = mtmp.wormno | 0;
+    if (mtmp.data === mons(PM_LONG_WORM)) {
+        mtmp.wormno = get_wormno();
+        if (mtmp.wormno) initworm(mtmp, num_segs);
+    } else {
+        mtmp.wormno = 0;
+    }
+}
+
 /**
  * C ref: dog.c mon_arrive(With_you) — place accompanying pet near hero.
  * C restore_cham `:464` before usteed return / With_you place (PfSC
@@ -716,11 +784,14 @@ export async function tamedog(mtmp, obj, givemsg = true) {
  */
 async function mon_arrive_with_you(mtmp) {
     const u = game.u;
-    mtmp.mstate = (mtmp.mstate | 0) | MON_STILL_ARRIVING;
-    if (!game.fmon) game.fmon = [];
-    game.fmon.unshift(mtmp);
+    mon_arrive_link(mtmp);
+    /* C `:454–461` — strategy + level flags + track clear precede the
+       With_you placement (shared with the independent path). */
+    mtmp.mstrategy = (mtmp.mstrategy | 0) | STRAT_ARRIVE;
+    mtmp.mstate = (mtmp.mstate | 0) & ~(MON_MIGRATING | MON_LIMBO);
     mtmp.mux = u.ux;
     mtmp.muy = u.uy;
+    arrive_track_clear(mtmp);
     await restore_cham(mtmp);
     if (mtmp === u.usteed) return;
 
@@ -925,22 +996,22 @@ export function arrive_wander_xy(xlocale, ylocale, wander) {
  * switch, before my=xyflags / place (callee D-1193).
  * D-1538: catchup wander = min(nmv,8); EXACT_XY zeros wander; then
  * xlocale&&wander → in_rooms/somexy or corridor rn1 (C :491–500/:506/:582–605).
- * Named omissions: worm/isshk residency; Wiz_arrive;
- * failed_arrivals/relmon; debug_fuzzer portal; impossible() no-portal;
- * full mnearto yank.
+ * Named omissions: full mnearto yank (move_other=FALSE always). The
+ * portal debug_fuzzer arm and the no-portal impossible() are live above.
  * D-1746: MON_STILL_ARRIVING for see_monsters (C `:430` / `:622`).
  */
-async function mon_arrive_after_you(mtmp) {
+async function mon_arrive_after_you(mtmp, when = After_you) {
     const u = game.u;
-    mtmp.mstate = (mtmp.mstate | 0) | MON_STILL_ARRIVING;
-    if (!game.fmon) game.fmon = [];
-    game.fmon.unshift(mtmp);
+    mon_arrive_link(mtmp);
     mtmp.mstrategy = (mtmp.mstrategy | 0) | STRAT_ARRIVE;
     mtmp.mstate = (mtmp.mstate | 0) & ~(MON_MIGRATING | MON_LIMBO);
 
     mtmp.mux = u.ux | 0;
     mtmp.muy = u.uy | 0;
-    const xyloc0 = mtmp.mtrack?.[0]?.x | 0;
+    /* C dog.c:481–485 — resurrect() drives an existing Wizard here;
+       his mtrack flags are overridden with MIGR_WITH_HERO. */
+    let xyloc0 = mtmp.mtrack?.[0]?.x | 0;
+    if ((when | 0) === Wiz_arrive) xyloc0 = MIGR_WITH_HERO;
     const xyflags = mtmp.mtrack?.[0]?.y | 0;
     let xlocale = mtmp.mtrack?.[1]?.x | 0;
     let ylocale = mtmp.mtrack?.[1]?.y | 0;
@@ -1010,8 +1081,22 @@ async function mon_arrive_after_you(mtmp) {
             xlocale = t.tx | 0;
             ylocale = t.ty | 0;
             break;
+        } else if (game.iflags?.debug_fuzzer) {
+            /* C `:560–564` — debugfuzzer returns from or enters
+               another branch */
+            const fzstway = arrive_stairway_find_dir(!builds_up(game.u?.uz));
+            if (fzstway) {
+                xlocale = fzstway.sx | 0;
+                ylocale = fzstway.sy | 0;
+                break;
+            }
         }
-        /* debug_fuzzer / impossible() named — FALLTHROUGH to random */
+        /* C `:565–567` — no arrival portal outside endgame/quest exile */
+        if (!((game.u?.uevent?.qexpelled | 0)
+                && (Is_qstart(game.u?.uz0) || Is_qstart(game.u?.uz)))) {
+            await impossible('mon_arrive: no corresponding portal?');
+        }
+        /* FALLTHROUGH to MIGR_RANDOM */
     }
     /* falls through */
     default:
@@ -1040,41 +1125,102 @@ async function mon_arrive_after_you(mtmp) {
     mtmp.mx = 0;
     mtmp.my = xyflags;
 
+    let failed_to_place = false;
     if (xlocale) {
-        await mnearto_no_yank(mtmp, xlocale, ylocale, RLOC_NOMSG);
+        failed_to_place = !(await mnearto_no_yank(mtmp, xlocale, ylocale, RLOC_NOMSG));
     } else {
-        await rloc(mtmp, RLOC_NOMSG);
+        failed_to_place = !(await rloc(mtmp, RLOC_NOMSG));
+    }
+
+    /* C dog.c:614–621 — no room: losedogs() re-queues via
+       failed_arrivals; Wiz_arrive (not losedogs-driven) goes to limbo. */
+    if (failed_to_place) {
+        if ((when | 0) !== Wiz_arrive) {
+            /* losedogs() will deal with this */
+            await relmon(mtmp, failed_arrivals);
+        } else {
+            /* when==Wiz_arrive => not being called by losedogs() */
+            await m_into_limbo(mtmp);
+        }
     }
     mtmp.mstate = (mtmp.mstate | 0) & ~MON_STILL_ARRIVING;
 }
 
 /**
- * C ref: dog.c losedogs — mydogs With_you then migrating_mons After_you
- * (mux/muy match u.uz, xyloc != MIGR_EXACT_XY). Both arms await
- * restore_cham (C mon_arrive `:464`). Named omissions:
- * kops dismiss; MIGR_EXACT_XY Before_you; failed_arrivals / m_into_limbo.
+ * C ref: dog.c mon_arrive `:419–623` dispatcher over `when`.
+ * With_you places beside the hero; every other `when` (Before_you and
+ * After_you share the body; Wiz_arrive forces MIGR_WITH_HERO plus the
+ * limbo tail) takes the independent-migrant path. C callers: losedogs
+ * Before_you/With_you/After_you (dog.c:371/383/397), resurrect
+ * Wiz_arrive (wizard.c:748).
+ */
+export async function mon_arrive(mtmp, when) {
+    if ((when | 0) === With_you) return mon_arrive_with_you(mtmp);
+    return mon_arrive_after_you(mtmp, when | 0);
+}
+
+/**
+ * C ref: dog.c losedogs `:303–415` — Before_you re-place, then mydogs
+ * With_you, then migrating_mons After_you (mux/muy match u.uz,
+ * xyloc != MIGR_EXACT_XY), then the failed_arrivals drain back onto
+ * migrating_mons via fmon + m_into_limbo. Named omissions: kops-dismiss
+ * scan (dismissKops/make_happy_shoppers head `:310–356`).
  */
 export async function losedogs() {
+    const uz = game.u?.uz || {};
+    /* C `:303–309` — arrivals reset per call. */
+    failed_arrivals = [];
+
+    /* C `:366–374` — Before_you: accessible-but-unleft migrants re-place
+       before pets so pets can't steal their spots. */
+    {
+        const stay = [];
+        for (const mtmp of game.migrating_mons || []) {
+            const xyloc = mtmp.mtrack?.[0]?.x | 0;
+            if ((mtmp.mux | 0) === (uz.dnum | 0)
+                && (mtmp.muy | 0) === (uz.dlevel | 0)
+                && xyloc === MIGR_EXACT_XY) {
+                await mon_arrive(mtmp, Before_you);
+            } else {
+                stay.push(mtmp);
+            }
+        }
+        game.migrating_mons = stay;
+    }
+
+    /* C `:379–383` — pets and level followers; failures land on
+       failed_arrivals first, then migrate back with this level. */
     const dogs = game.mydogs || [];
     game.mydogs = [];
     for (const mtmp of dogs) {
-        await mon_arrive_with_you(mtmp);
+        await mon_arrive(mtmp, With_you);
     }
 
-    const uz = game.u?.uz || {};
-    const mig = game.migrating_mons || [];
-    const stay = [];
-    for (const mtmp of mig) {
-        const xyloc = mtmp.mtrack?.[0]?.x | 0;
-        if ((mtmp.mux | 0) === (uz.dnum | 0)
-            && (mtmp.muy | 0) === (uz.dlevel | 0)
-            && xyloc !== MIGR_EXACT_XY) {
-            await mon_arrive_after_you(mtmp);
-        } else {
-            stay.push(mtmp);
+    /* C `:390–399` — regular migrants; no room ends up on
+       failed_arrivals (relmon inside mon_arrive). */
+    {
+        const stay = [];
+        for (const mtmp of game.migrating_mons || []) {
+            const xyloc = mtmp.mtrack?.[0]?.x | 0;
+            if ((mtmp.mux | 0) === (uz.dnum | 0)
+                && (mtmp.muy | 0) === (uz.dlevel | 0)
+                && xyloc !== MIGR_EXACT_XY) {
+                await mon_arrive(mtmp, After_you);
+            } else {
+                stay.push(mtmp);
+            }
         }
+        game.migrating_mons = stay;
     }
-    game.migrating_mons = stay;
+
+    /* C `:403–415` — failed arrivals back onto migrating_mons;
+       m_into_limbo expects them on fmon, so re-link first. */
+    while (failed_arrivals.length) {
+        const mtmp = failed_arrivals.shift();
+        if (!game.fmon) game.fmon = [];
+        game.fmon.unshift(mtmp);
+        await m_into_limbo(mtmp);
+    }
 }
 
 const LARGEST_INT = 2147483647;

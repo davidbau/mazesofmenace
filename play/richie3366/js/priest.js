@@ -10,6 +10,7 @@ import {
     EPRI, EMIN, TEMPLE, ROOMOFFSET, SPINE, MM_NOMSG, IS_ALTAR, AM_SHRINE, AM_MASK,
     Amask2align, ACH_TMPL, In_endgame,
     CLAIRVOYANT, PROTECTION, FROMOUTSIDE, INTRINSIC, LL_CONDUCT,
+    IS_DOOR, u_at, BZ_OFS_AD, BZ_M_SPELL,
 } from './const.js';
 import { pline, You_feel, canseemon, canspotmon, verbalize, newsym, Hallucination } from './display.js';
 import { makemon, set_malign, newemin } from './makemon.js';
@@ -26,7 +27,9 @@ import { bribe } from './minion.js';
 import { incr_itimeout } from './potion.js';
 import { currency } from './invent.js';
 import { mhis } from './mondata.js';
-import { Monnam, mon_nam } from './do_name.js';
+import { Monnam, mon_nam, s_suffix } from './do_name.js';
+import { linedup } from './mthrowu.js';
+import { buzz } from './zap.js';
 
 const PM_GHOST = monsterNames.indexOf('PM_GHOST');
 const PM_HIGH_CLERIC = monsterNames.indexOf('PM_HIGH_CLERIC');
@@ -168,6 +171,101 @@ export function free_epri(mtmp) {
         mtmp.mextra.epri = null;
     }
     if (mtmp) mtmp.ispriest = 0;
+}
+
+/** C: monattk.h AD_ELEC (local-const idiom, cf. mhitu.js AD_DREN). */
+const AD_ELEC = 6;
+
+/** C: hacklib.h sgn — mirrors mthrowu.js local. */
+function sgn(n) {
+    return n < 0 ? -1 : n > 0 ? 1 : 0;
+}
+
+/**
+ * C ref: priest.c ghod_hitsu `:795–874` — god smites the hero for striking
+ * a temple priest: pick a bolt origin (shrine, else a temple edge lined up
+ * with the hero), speak one of three anger lines, then fire an unspecified-
+ * monster lightning bolt and exercise WIS.
+ * Callers: mon.c wakeup (priest in temple), uhitm.c hmon (priest struck).
+ */
+export async function ghod_hitsu(priest) {
+    const u = game.u;
+    if (!u) return;
+    // C: int roomno = (int) temple_occupied(u.urooms) (room char code)
+    const roomch = temple_occupied(u.urooms);
+    if (!roomch || roomch === '\0' || !has_shrine(priest)) return;
+    const epri = EPRI(priest);
+    let ax = epri.shrpos.x | 0;
+    let ay = epri.shrpos.y | 0;
+    let x = ax;
+    let y = ay;
+    // C: svr.rooms[roomno - ROOMOFFSET] (bones.js charCodeAt idiom)
+    const troom = game.level.rooms[(roomch.charCodeAt(0) | 0) - ROOMOFFSET];
+    // C short-circuit: hero on the shrine square skips the first linedup
+    if (u_at(x, y) || !linedup(u.ux, u.uy, x, y, 1)) {
+        if (IS_DOOR(game.level.at(u.ux, u.uy)?.typ)) {
+            if (u.ux === ((troom.lx | 0) - 1)) {
+                x = troom.hx | 0;
+                y = u.uy;
+            } else if (u.ux === ((troom.hx | 0) + 1)) {
+                x = troom.lx | 0;
+                y = u.uy;
+            } else if (u.uy === ((troom.ly | 0) - 1)) {
+                x = u.ux;
+                y = troom.hy | 0;
+            } else if (u.uy === ((troom.hy | 0) + 1)) {
+                x = u.ux;
+                y = troom.ly | 0;
+            }
+        } else {
+            switch (rn2(4)) {
+            case 0:
+                x = u.ux;
+                y = troom.ly | 0;
+                break;
+            case 1:
+                x = u.ux;
+                y = troom.hy | 0;
+                break;
+            case 2:
+                x = troom.lx | 0;
+                y = u.uy;
+                break;
+            default:
+                x = troom.hx | 0;
+                y = u.uy;
+                break;
+            }
+        }
+        if (!linedup(u.ux, u.uy, x, y, 1)) return;
+    }
+    // C: pray.c extern (extern.h:2570); dynamic import avoids a
+    // priest↔pray static cycle (imports.mjs CHECK; mon.js hot_pursuit idiom)
+    const { a_gname_at } = await import('./pray.js');
+    switch (rn2(3)) {
+    case 0:
+        await pline(`${a_gname_at(ax, ay)} roars in anger:  "Thou shalt suffer!"`);
+        break;
+    case 1:
+        await pline(`${s_suffix(a_gname_at(ax, ay))} voice booms:  "How darest thou harm my servant!"`);
+        break;
+    default:
+        await pline(`${a_gname_at(ax, ay)} roars:  "Thou dost profane my shrine!"`);
+        break;
+    }
+    /* bolt of lightning cast by unspecified monster */
+    const oldcurrwand = game.current_wand;
+    game.current_wand = null;
+    const oldbuzzer = game.buzzer;
+    game.buzzer = null;
+    try {
+        await buzz(BZ_M_SPELL(BZ_OFS_AD(AD_ELEC)), 6, x, y,
+            sgn(game._tbx || 0), sgn(game._tby || 0));
+    } finally {
+        game.buzzer = oldbuzzer;
+        game.current_wand = oldcurrwand;
+    }
+    exercise(A_WIS, false);
 }
 
 /**

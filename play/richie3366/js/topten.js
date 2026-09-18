@@ -5,9 +5,9 @@ import { game } from './gstate.js';
 import { vfsReadFile, vfsWriteFile } from './storage.js';
 import { yyyymmdd } from './calendar.js';
 import { depth } from './hacklib.js';
-import { genders, aligns } from './roles.js';
+import { genders, aligns, str2role, str2race } from './roles.js';
 import {
-    COLNO, VERSION_MAJOR, VERSION_MINOR, PATCHLEVEL,
+    BUFSZ, COLNO, VERSION_MAJOR, VERSION_MINOR, PATCHLEVEL,
     PERSMAX, POINTSMIN, ENTRYMAX, PERS_IS_UID,
     PANICKED,
 } from './const.js';
@@ -359,8 +359,9 @@ function outentry(rank, t1, so, emit) {
  * @param {string} deathStr formatkiller(how, TRUE) from caller (avoid cycle)
  *
  * Named omissions: LOGFILE/XLOGFILE; lock_file; toptenwin NHW_TEXT;
- * UPDATE_RECORD_IN_PLACE; prscore; hangup; full escape/ascend/quit
+ * UPDATE_RECORD_IN_PLACE; hangup; full escape/ascend/quit
  * outentry arms; ordin() for rank>10 message.
+ * (`prscore` lives in this file now, below.)
  */
 export function topten(how, when = 0, deathStr = '') {
     if (game.program_state?.panicking) return;
@@ -526,6 +527,241 @@ export function topten(how, when = 0, deathStr = '') {
     void t0_used;
 
     if (!done_stopprint) render_topten_lines(outLines);
+}
+
+/**
+ * C ref: topten.c score_wanted :1112–1192 (staticfn) — whole body in C order.
+ * Union (not intersection) of -u/-p/-r/all/role-letter/maxrank criteria;
+ * the C FIXME comment above the loop is kept verbatim in spirit (union).
+ */
+function score_wanted(current_ver, rank, t1, playerct, players, uid) {
+    // C :1124–1127 — current-version gate.
+    if (current_ver
+        && (t1.ver_major !== VERSION_MAJOR
+            || t1.ver_minor !== VERSION_MINOR
+            || t1.patchlevel !== PATCHLEVEL)) {
+        return 0;
+    }
+    // C :1129–1130 — uid identity when no names were given.
+    if (sysopt().pers_is_uid && !playerct && t1.uid === uid) return 1;
+    for (let i = 0; i < playerct; i++) {
+        let arg = players[i];
+        // C :1161–1162 — handle '-uname' by skipping the '-u'.
+        if (ch(arg, 0) === '-' && ch(arg, 1) === 'u' && ch(arg, 2) !== '\0') {
+            arg = arg.slice(2);
+        }
+        // C :1164–1174 — '-p role' / '-r race' / '-u name' take the next arg.
+        // strchr("pru", c) also matches the NUL terminator, mirrored by the
+        // '\0' in the includes below (ch() reads OOB as NUL, as C does).
+        if (ch(arg, 0) === '-' && 'pru\0'.includes(ch(arg, 1))
+            && ch(arg, 2) === '\0' && i + 1 < playerct) {
+            const nxt = players[i + 1];
+            if ((ch(arg, 1) === 'p' && str2role(nxt) === str2role(t1.plrole))
+                || (ch(arg, 1) === 'r' && str2race(nxt) === str2race(t1.plrace))
+                || (ch(arg, 1) === 'u'
+                    && (nxt === 'all'
+                        || String(t1.name).slice(0, NAMSZ) === String(nxt).slice(0, NAMSZ)))) {
+                return 1;
+            }
+            i++;
+        // C :1175–1179 — 'all' / name prefix / '-<roleletter>' / maxrank.
+        } else if (arg === 'all'
+            || String(t1.name).slice(0, NAMSZ) === String(arg).slice(0, NAMSZ)
+            || (ch(arg, 0) === '-' && ch(arg, 1) === (t1.plrole || '')[0]
+                && ch(arg, 2) === '\0')
+            || (ch(arg, 0) >= '0' && ch(arg, 0) <= '9'
+                && rank <= parseInt(arg, 10))) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+/**
+ * C NUL-terminated string indexing: reads past the end yield '\0'.
+ * Every ch() use below mirrors a C `arg[k]` read on a NUL-terminated arg.
+ */
+function ch(s, k) {
+    const t = String(s || '');
+    return k < t.length ? t[k] : '\0';
+}
+
+/**
+ * C getuid() (POSIX uid, read at topten.c:1265 when sysopt.pers_is_uid).
+ * No browser counterpart; topten() records uid 0 for every entry it writes,
+ * so 0 is the identity that matches the player's own entries.
+ */
+function getuid() {
+    return 0;
+}
+
+/**
+ * C ref: topten.c prscore :1194–1353 — whole body in C order.
+ * `nethack -s` score-subset display: arg validation, record read, -v gate,
+ * player selector, wanted scan, header + entry lines or the cannot-find +
+ * usage arms. All output funnels through the file's render_topten_lines
+ * panel idiom (C routes via topten_print → raw_print with toptenwin==WIN_ERR
+ * on this path; raw_print/raw_printf have no scored window surface, D-2471).
+ *
+ * @param {number} argc C argc for the -s argv (argv[0] untrustworthy, as in C)
+ * @param {string[]} argv C argv slice starting at the program name
+ */
+export async function prscore(argc, argv) {
+    const outLines = [];
+    const emit = (text, bold) => {
+        outLines.push({ text: String(text), bold: !!bold });
+    };
+    // C raw_print / raw_printf — named-omit mechanisms; same line surface.
+    const raw_print = (s) => emit(s, false);
+    const show = () => render_topten_lines(outLines);
+
+    // C :1204–1217 — expect "-s" or "--scores"; "-s<anything>" is accepted.
+    // ln is the length of argv[1] up to the first space (or the whole arg).
+    const a1 = argc < 2 ? null : String(argv[1]);
+    const ln = a1 === null
+        ? 0
+        : (() => { const sp = a1.indexOf(' '); return sp >= 0 ? sp : a1.length; })();
+    if (ln < 2 || (a1.slice(0, 2) !== '-s' && a1 !== '--scores')) {
+        // C raw_printf("prscore: bad arguments (%d)", argc).
+        raw_print(`prscore: bad arguments (${argc})`);
+        show();
+        return;
+    }
+
+    // C :1219–1223 — fopen_datafile(RECORD, "r", SCOREPREFIX). Rule #2 VFS
+    // analogue: a missing record is the failed open; an empty one reads on
+    // into the cannot-find arm below, as C's first readentry does.
+    if (vfsReadFile(RECORD_VFS) == null) {
+        raw_print('Cannot open record file!');
+        show();
+        return;
+    }
+    // C :1225–1232 AMIGA window scaffolding — named omit (platform).
+
+    // C :1236–1240 — without prior initialization, set up the dungeon table
+    // (outentry resolves dungeon names from it).
+    let init_done = false;
+    if (((game.wiz1_level?.dlevel) | 0) === 0) {
+        // C dlb_init() — named omit (no DLB data library in JS; the dungeon
+        // table is embedded via js/generated, D-0477 pattern).
+        const { init_dungeons } = await import('./dungeon.js');
+        init_dungeons();
+        init_done = true;
+    }
+
+    // C :1244–1251 — consume "-s"/"--scores"; "-s<anything>" keeps argc
+    // and advances past the "-s" (argv is local, so slice-copies are exact).
+    let args = argv.slice();
+    if (args[1][1] === '-' || args[1].length <= 2) {
+        argc--;
+        args = args.slice(1);
+    } else {
+        args[1] = args[1].slice(2);
+    }
+    // C :1255–1260 — "-v" means all versions present, not just current.
+    let current_ver = true;
+    if (argc > 1 && args[1] === '-v') {
+        current_ver = false;
+        argc--;
+        args = args.slice(1);
+    }
+
+    // C :1262–1277 — default selector (own uid, or own plname) vs the
+    // explicit argv remainder.
+    let uid = -1;
+    let playerct;
+    let players;
+    if (argc <= 1) {
+        if (sysopt().pers_is_uid) {
+            uid = getuid();
+            playerct = 0;
+            players = [];
+        } else {
+            let player0 = game.plname || '';
+            if (!player0) player0 = 'all';
+            playerct = 1;
+            players = [player0];
+        }
+    } else {
+        playerct = --argc;
+        players = args.slice(1);
+    }
+    raw_print('');
+
+    // C :1279–1291 — read the whole record (readentry/newttentry mechanics
+    // live as read_record_entries/readentry_line above: same zeroed shape,
+    // same points==0 terminator); note the first wanted entry.
+    const tt_head = [];
+    let match_found = false;
+    let rank = 1;
+    for (const t1 of read_record_entries()) {
+        if (t1.points === 0) break;
+        tt_head.push(t1);
+        if (!match_found
+            && score_wanted(current_ver, rank, t1, playerct, players, uid)) {
+            match_found = true;
+        }
+        rank++;
+    }
+
+    // C (void) fclose(rfile) — no-op (VFS snapshots the whole record).
+    // C :1293–1296 — free_dungeons()/dlb_cleanup() when init_done: named
+    // omits (no dungeon-free/DLB layer; the table persists in game state).
+    void init_done;
+
+    if (match_found) {
+        // C :1298–1303 — header, then one line per wanted entry (rank counts
+        // every record entry, displayed or not).
+        outheader(emit);
+        let rank2 = 1;
+        for (const t1 of tt_head) {
+            if (score_wanted(current_ver, rank2, t1, playerct, players, uid)) {
+                outentry(rank2, t1, false, emit);
+            }
+            rank2++;
+        }
+    } else {
+        // C :1305–1345 — "Cannot find any ..." + usage. BUFSZ overflow arms
+        // kept exact (Strcat/Strcpy truncation at BUFSZ-1).
+        let pbuf = `Cannot find any ${current_ver ? 'current ' : ''}entries for `;
+        if (playerct < 1) {
+            pbuf += 'you';
+        } else {
+            // C minor bug kept: '-u name' lists still say "any of".
+            if (playerct > 1) pbuf += 'any of ';
+            for (let i = 0; i < playerct; i++) {
+                // Accept '-u name' and '-uname' in the feedback, as C does.
+                let nm = players[i];
+                if (nm.slice(0, 2) === '-u') {
+                    if (nm.length <= 2) continue;
+                    nm = nm.slice(2);
+                    players[i] = nm;
+                }
+                // C :1323–1330 — stop printing players too many to fit.
+                if (pbuf.length + nm.length + 2 >= BUFSZ) {
+                    if (pbuf.length < BUFSZ - 4) pbuf += '...';
+                    else pbuf = pbuf.slice(0, pbuf.length - 4) + '...';
+                    break;
+                }
+                pbuf += nm;
+                if (i < playerct - 1) {
+                    if (nm[0] === '-' && 'pr\0'.includes(ch(nm, 1))
+                        && ch(nm, 2) === '\0') pbuf += ' ';
+                    else pbuf += ':';
+                }
+            }
+        }
+        // C :1339–1340 — end-of-sentence punctuation when there is room.
+        if (pbuf.length < BUFSZ - 1) pbuf += '.';
+        raw_print(pbuf);
+        // C raw_printf("Usage: %s -s ...", gh.hname): gh.hname is the
+        // argv[0]-derived program name; no argv[0] in JS.
+        raw_print('Usage: nethack -s [-v] <playertypes> [maxrank] [playernames]');
+        raw_print('Player types are: [-p role] [-r race]');
+    }
+    // C free_ttlist(tt_head) — named omit (GC; tt_head is a plain array).
+    // C AMIGA display/destroy tail — named omit (platform).
+    show();
 }
 
 /** C ref: end.c nh_terminate + contest post-topten input-boundary capture. */

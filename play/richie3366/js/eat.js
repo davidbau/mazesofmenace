@@ -36,7 +36,7 @@ import { game } from './gstate.js';
 import { rn2, rnd, rn1, d } from './rng.js';
 import {
     pline, You_feel, newsym, see_monsters, more,
-    canspotmon, canseemon, bot, Hallucination,
+    canspotmon, canseemon, bot, Hallucination, verbalize,
 } from './display.js';
 import { yn_function, paranoid_query, y_n } from './getline.js';
 import {
@@ -50,6 +50,9 @@ import {
     mksobj, obj_extract_self, set_bknown,
 } from './mkobj.js';
 import { BY_COOKIE, bcsign, outrumor } from './rumors.js';
+import { livelog_printf } from './pline.js';
+import { Soundeffect } from './sndprocs.js';
+import { se_sinister_laughter } from './generated/seffects_data.js';
 import {
     singular, xname, doname, the, makeplural, obj_is_pname, thesimpleoname,
     an, killer_xname, yobjnam, Tobjnam,
@@ -75,7 +78,7 @@ import {
     SLT_ENCUMBER, EXT_ENCUMBER, FROMFORM, W_ARTI, W_WEP, W_RINGL, W_RINGR,
     W_ARMOR, W_TOOL, W_AMUL, W_SADDLE, W_BALL, W_CHAIN, W_RING, NOSE,
     HUNGER, CONFLICT, REGENERATION, SLOW_DIGESTION, PROTECTION,
-    SATIATED, NOT_HUNGRY, HUNGRY, WEAK, FAINTING, FAINTED, STOMACH, SICK_VOMITABLE,
+    SATIATED, NOT_HUNGRY, HUNGRY, WEAK, FAINTING, FAINTED, STOMACH, SICK_VOMITABLE, SICK_ALL,
     STONED, SICK, VOMITING,
     IS_ALTAR,
     TIMEOUT, NON_PM, LOW_PM, ROTTEN_TIN, HOMEMADE_TIN, SPINACH_TIN, HEALTHY_TIN,
@@ -93,7 +96,7 @@ import {
     WWALKING, MAGICAL_BREATHING, FLYING, GD_EATGOLD, Is_waterlevel,
     Is_astralevel, EXPL_FIERY,
     CHOKING, STARVING, STARVED, A_LAWFUL, STRANGLED, PARANOID_EATING,
-    POISONING,
+    POISONING, LL_CONDUCT,
     DEAF,
     GETOBJ_EXCLUDE, GETOBJ_SUGGEST, GETOBJ_EXCLUDE_SELECTABLE,
     GETOBJ_EXCLUDE_NONINVENT, GETOBJ_NOFLAGS, GETOBJ_DOWNPLAY,
@@ -104,7 +107,7 @@ import {
 } from './attrib.js';
 import {
     nomul, unmul, losehp, finish_maybe_wail, still_chewing, is_pool, is_lava,
-    stop_occupation, end_running,
+    stop_occupation, end_running, You_hear, fall_asleep,
 } from './hack.js';
 import { Blind, near_capacity, observe_object, makeknown, getobj, freeinv,
     encumber_msg, update_inventory, useupall, useup, useupf } from './invent.js';
@@ -243,6 +246,7 @@ const PM_FAMINE = monsterNames.indexOf('PM_FAMINE');
 const PM_STONE_GOLEM = monsterNames.indexOf('PM_STONE_GOLEM');
 const PM_CAVE_DWELLER = monsterNames.indexOf('PM_CAVE_DWELLER');
 const PM_ORC = monsterNames.indexOf('PM_ORC');
+const PM_DWARF = monsterNames.indexOf('PM_DWARF');
 const PM_WRAITH = monsterNames.indexOf('PM_WRAITH');
 const PM_HUMAN_WERERAT = monsterNames.indexOf('PM_HUMAN_WERERAT');
 const PM_HUMAN_WEREJACKAL = monsterNames.indexOf('PM_HUMAN_WEREJACKAL');
@@ -270,6 +274,8 @@ const PM_MASTER_MIND_FLAYER = monsterNames.indexOf('PM_MASTER_MIND_FLAYER');
 const PM_VIOLET_FUNGUS = monsterNames.indexOf('PM_VIOLET_FUNGUS');
 const PM_PYROLISK = monsterNames.indexOf('PM_PYROLISK');
 const EGG = objectNames.indexOf('EGG');
+const CARROT = objectNames.indexOf('CARROT');
+const EUCALYPTUS_LEAF = objectNames.indexOf('EUCALYPTUS_LEAF');
 const GLOB_OF_GREEN_SLIME = objectNames.indexOf('GLOB_OF_GREEN_SLIME');
 const PANCAKE = objectNames.indexOf('PANCAKE');
 const CREAM_PIE = objectNames.indexOf('CREAM_PIE');
@@ -282,6 +288,9 @@ const SLIME_MOLD = objectNames.indexOf('SLIME_MOLD');
 /* C monattk.h — stun / hallucination damage types for cpostfx hallu. */
 const AD_STUN = 12;
 const AD_HALU = 36;
+/* C monattk.h — engulf / blind attack for the fpostfx carrot arm. */
+const AT_ENGL = 11;
+const AD_BLND = 11;
 
 /** C: eat.c CANNIBAL_ALLOWED — Cave Dweller or orc race. */
 function CANNIBAL_ALLOWED() {
@@ -1955,10 +1964,154 @@ async function cpostfx(pm) {
 }
 
 /**
- * C ref: eat.c done_eating `:543–573` — finish meal; cpostfx for CORPSE; fpostfx.
- * Envelope: fortune cookie rumor; wolfsbane you_unwere(TRUE); royal-jelly
- * fpostfx incl. heal_legs(0).
- * Named omissions: carrot blindness; EGG + other fpostfx otyps.
+ * C ref: eat.c fpostfx `:2510–2600` (staticfn) — post-meal food specials for
+ * non-corpse meals, called from done_eating (`:562–565`).
+ * C order: SPRIG_OF_WOLFSBANE you_unwere (`:2513–2516`); CARROT engulf-blind
+ * make_blinded (`:2517–2521`); FORTUNE_COOKIE rumor + literate conduct
+ * (`:2522–2528`); LUMP_OF_ROYAL_JELLY queen morph / gainstr / HP / heal_legs
+ * (`:2529–2559`); EGG petrify make_stoned (`:2560–2575`); EUCALYPTUS_LEAF
+ * sick/vomit cure (`:2576–2581`); APPLE cursed Snow-White sleep
+ * (`:2582–2599`).
+ * attacktype_fordmg is the in-file clone (`:364`, kept per its doc to avoid
+ * a makemon-cycle edge); AT_ENGL/AD_BLND locals per monattk.h `:21`/`:53`.
+ * Deaf is the youprop.h `:125` triple (HDeaf/EDeaf/uroleplay.deaf), matching
+ * apply.js Deaf_hero (module-local there) and hack.js You_hear.
+ */
+async function fpostfx(otmp) {
+    switch (otmp.otyp | 0) {
+    case SPRIG_OF_WOLFSBANE: {
+        // C `:2513–2516` — wolfsbane cures lycanthropy.
+        const u = game.u || {};
+        if (ismnum(u.ulycn) || is_were(game.youmonst?.data)) {
+            await you_unwere(true);
+        }
+        break;
+    }
+    case CARROT: {
+        // C `:2517–2521` — carrot ends blindness, unless swallowed by an
+        // engulfer whose attack blinds (AT_ENGL/AD_BLND); then it stays.
+        const u = game.u || {};
+        if (!u.uswallow || !attacktype_fordmg(u.ustuck?.data, AT_ENGL, AD_BLND))
+            await make_blinded(u.ucreamed | 0, true);
+        break;
+    }
+    case FORTUNE_COOKIE: {
+        // C `:2522–2528` — the cookie's rumor; the first read (while !Blind)
+        // marks the literate conduct (the counter still advances after that).
+        await outrumor(bcsign(otmp), BY_COOKIE);
+        if (!Blind()) {
+            if (!game.u) game.u = {};
+            if (!game.u.uconduct) game.u.uconduct = {};
+            if (!(game.u.uconduct.literate | 0)) {
+                livelog_printf(LL_CONDUCT,
+                    'became literate by reading the fortune inside a cookie');
+            }
+            game.u.uconduct.literate = (game.u.uconduct.literate | 0) + 1;
+        }
+        break;
+    }
+    case LUMP_OF_ROYAL_JELLY: {
+        // C `:2529–2559` — killer-bee heroes may morph to queen; otherwise
+        // VERY healthy: gainstr, +-rnd(20) HP (cursed can kill), heal_legs.
+        const u = game.u || {};
+        const Unchanging = !!(u.Unchanging || u.HUnchanging || u.EUnchanging);
+        const formndx = (hero_form_data()?.mndx
+            ?? game.youmonst?.mnum ?? u.umonnum) | 0;
+        if (!(formndx === PM_KILLER_BEE && !Unchanging
+            && await polymon(PM_QUEEN_BEE))) {
+            /* This stuff seems to be VERY healthy! */
+            await gainstr(otmp, 1, true);
+            if (Upolyd(u)) {
+                u.mh = (u.mh | 0) + (otmp.cursed ? -rnd(20) : rnd(20));
+                if (game.disp) game.disp.botl = true;
+                if (game.flags) game.flags.botl = true;
+                if ((u.mh | 0) > (u.mhmax | 0)) {
+                    if (!rn2(17)) setuhpmax((u.mhmax | 0) + 1, false);
+                    u.mh = u.mhmax;
+                } else if ((u.mh | 0) <= 0) {
+                    await rehumanize();
+                }
+            } else {
+                u.uhp = (u.uhp | 0) + (otmp.cursed ? -rnd(20) : rnd(20));
+                if (game.disp) game.disp.botl = true;
+                if (game.flags) game.flags.botl = true;
+                if ((u.uhp | 0) > (u.uhpmax | 0)) {
+                    if (!rn2(17)) setuhpmax((u.uhpmax | 0) + 1, false);
+                    u.uhp = u.uhpmax;
+                } else if ((u.uhp | 0) <= 0) {
+                    if (!game.killer) game.killer = { name: '', format: 0 };
+                    game.killer.format = KILLED_BY_AN;
+                    game.killer.name = 'rotten lump of royal jelly';
+                    await done(POISONING);
+                }
+            }
+            if (!otmp.cursed) await heal_legs(0);
+        }
+        break;
+    }
+    case EGG: {
+        // C `:2560–2575` — eggs of petrifiers (cockatrice…) stone the eater
+        // unless Stone-resistant or saved by a stone-golem morph. (The
+        // "tastes like chicken" joke lives in fprefx, not here.)
+        const eggptr = mons(otmp.corpsenm | 0);
+        if (ismnum(otmp.corpsenm) && eggptr && flesh_petrifies(eggptr)) {
+            const u = game.u || {};
+            const Stone_resistance = !!(u.HStone_resistance || u.EStone_resistance
+                || u.Stone_resistance);
+            // C `gy.youmonst.data`; hero_form_data is the cprefx idiom.
+            if (!Stone_resistance
+                && !(poly_when_stoned(hero_form_data())
+                    && await polymon(PM_STONE_GOLEM))) {
+                const Stoned = !!(u.Stoned | 0);
+                if (!Stoned) {
+                    if (!game.killer) game.killer = { name: '', format: 0 };
+                    const eggmeat = pmnames[otmp.corpsenm | 0]?.[NEUTRAL] || 'strange';
+                    game.killer.name = `${eggmeat} egg`;
+                    await make_stoned(5, null, KILLED_BY_AN, game.killer.name);
+                }
+            }
+        }
+        break;
+    }
+    case EUCALYPTUS_LEAF: {
+        // C `:2576–2581` — eucalyptus cures sickness and vomiting, uncursed.
+        const u = game.u || {};
+        if (u.Sick && !otmp.cursed)
+            await make_sick(0, null, true, SICK_ALL);
+        if (u.Vomiting && !otmp.cursed)
+            await make_vomiting(0, true);
+        break;
+    }
+    case APPLE: {
+        // C `:2582–2599` — Snow-White cursed apple (poison is a weapon-only
+        // property, so cursed substitutes): sleeping dwarfs verbalize under
+        // Hallucination; the Deaf or sound-off just fall asleep; otherwise
+        // sinister laughter sounds first.
+        const u = game.u || {};
+        if (otmp.cursed && !((u.HSleep_resistance | 0) || (u.ESleep_resistance | 0)
+            || u.Sleep_resistance)) {
+            if (Race_if(PM_DWARF) && Hallucination()) {
+                await verbalize('Heigh-ho, ho-hum, I think I\'ll skip work today.');
+            } else if (((u.HDeaf | 0) || (u.EDeaf | 0) || u.uroleplay?.deaf)
+                || game.flags?.acoustics === false) {
+                // C You("fall asleep.") — pline form per house style.
+                await pline('You fall asleep.');
+            } else {
+                Soundeffect(se_sinister_laughter, 100);
+                await You_hear('sinister laughter as you fall asleep...');
+            }
+            fall_asleep(-rn1(11, 20), true);
+        }
+        break;
+    }
+    }
+}
+
+/**
+ * C ref: eat.c done_eating `:543–573` — finish meal; cpostfx for CORPSE,
+ * fpostfx for everything else (`:562–565`).
+ * Envelope: nomovemsg/message (`:548–561`), cpostfx/fpostfx dispatch,
+ * useup/useupf. fpostfx (`:2510–2600`) lives just above in C order.
  */
 async function done_eating(message) {
     const piece = game.context?.victual?.piece;
@@ -1985,54 +2138,12 @@ async function done_eating(message) {
         const consuming = Upolyd(u) && ((u.umonnum | 0) === PM_FIRE_ELEMENTAL);
         await pline(`You finish ${consuming ? 'consuming' : 'eating'} ${food_xname(piece, true)}.`);
     }
+    // C `:562–565` — corpse (or globby) meals run cpostfx; every other
+    // meal runs its food post-effect.
     if (piece.otyp === CORPSE || piece.globby) {
         await cpostfx(piece.corpsenm | 0);
-    } else if (piece.otyp === FORTUNE_COOKIE) {
-        // C: fpostfx — cookie rumor
-        await outrumor(bcsign(piece), BY_COOKIE);
-    } else if (piece.otyp === SPRIG_OF_WOLFSBANE) {
-        // C: fpostfx SPRIG_OF_WOLFSBANE → you_unwere(TRUE)
-        const u = game.u || {};
-        if (ismnum(u.ulycn) || is_were(game.youmonst?.data)) {
-            await you_unwere(true);
-        }
-    } else if (piece.otyp === LUMP_OF_ROYAL_JELLY) {
-        // C ref: eat.c fpostfx `:2540–2562` LUMP_OF_ROYAL_JELLY — killer-bee
-        // queen morph, gainstr, HP, then heal_legs(0) unless cursed.
-        const u = game.u || {};
-        const Unchanging = !!(u.Unchanging || u.HUnchanging || u.EUnchanging);
-        const formndx = (hero_form_data()?.mndx
-            ?? game.youmonst?.mnum ?? u.umonnum) | 0;
-        if (!(formndx === PM_KILLER_BEE && !Unchanging
-            && await polymon(PM_QUEEN_BEE))) {
-            /* This stuff seems to be VERY healthy! */
-            await gainstr(piece, 1, true);
-            if (Upolyd(u)) {
-                u.mh = (u.mh | 0) + (piece.cursed ? -rnd(20) : rnd(20));
-                if (game.disp) game.disp.botl = true;
-                if (game.flags) game.flags.botl = true;
-                if ((u.mh | 0) > (u.mhmax | 0)) {
-                    if (!rn2(17)) setuhpmax((u.mhmax | 0) + 1, false);
-                    u.mh = u.mhmax;
-                } else if ((u.mh | 0) <= 0) {
-                    await rehumanize();
-                }
-            } else {
-                u.uhp = (u.uhp | 0) + (piece.cursed ? -rnd(20) : rnd(20));
-                if (game.disp) game.disp.botl = true;
-                if (game.flags) game.flags.botl = true;
-                if ((u.uhp | 0) > (u.uhpmax | 0)) {
-                    if (!rn2(17)) setuhpmax((u.uhpmax | 0) + 1, false);
-                    u.uhp = u.uhpmax;
-                } else if ((u.uhp | 0) <= 0) {
-                    if (!game.killer) game.killer = { name: '', format: 0 };
-                    game.killer.format = KILLED_BY_AN;
-                    game.killer.name = 'rotten lump of royal jelly';
-                    await done(POISONING);
-                }
-            }
-            if (!piece.cursed) await heal_legs(0);
-        }
+    } else {
+        await fpostfx(piece);
     }
     if (carried(piece)) useup(piece);
     else useupf(piece, 1);

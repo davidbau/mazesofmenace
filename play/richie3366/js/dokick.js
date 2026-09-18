@@ -2191,7 +2191,7 @@ export async function obj_delivery(near_hero) {
             // dummy coords; rloco has no current position to update
             otmp.ox = 0;
             otmp.oy = 0;
-            if (rloco(otmp) && !nobreak && breaktest(otmp)) {
+            if ((await rloco(otmp)) && !nobreak && breaktest(otmp)) {
                 delobj(otmp);
             }
         }

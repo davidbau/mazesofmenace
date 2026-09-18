@@ -20,7 +20,7 @@ import { rn2 } from './rng.js';
 import { makemon, set_malign, newegd } from './makemon.js';
 import { mon_track_clear } from './monmove.js';
 import {
-    pline, flush_topl_more, newsym, canspotmon, map_invisible, verbalize,
+    pline, You, flush_topl_more, newsym, canspotmon, map_invisible, verbalize,
     map_location, unset_seenv, mon_visible, impossible, pline_mon,
 } from './display.js';
 import { getlin } from './getline.js';
@@ -55,7 +55,7 @@ import { m_at, m_carrying, mnexto, mpickgold } from './mon.js';
 import { upstart, dist2 } from './hacklib.js';
 import { SetVoice } from './sndprocs.js';
 import { is_fainted } from './eat.js';
-import { You } from './zap.js';
+
 import { remove_monster, place_monster } from './steed.js';
 import { obfree } from './shk.js';
 import { monsterNames, mons, pmnames } from './monsters.js';
@@ -983,11 +983,13 @@ async function gd_letknow(grd) {
                 : 'angry shouting'}.`,
         );
     } else {
+        // C vault.c:877 You(see/confronted "%s.", x_monnam(grd, A, "angry")).
         const xn = x_monnam(grd, ARTICLE_A, 'angry', 0, false);
         await You(
             um_dist(grd.mx, grd.my, 2)
-                ? `see ${xn} approaching.`
-                : `are confronted by ${xn}.`,
+                ? 'see %s approaching.'
+                : 'are confronted by %s.',
+            xn,
         );
     }
 }

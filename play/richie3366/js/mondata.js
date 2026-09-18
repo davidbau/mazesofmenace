@@ -121,7 +121,7 @@ const PM_BABY_GRAY_DRAGON = monsterNames.indexOf('PM_BABY_GRAY_DRAGON');
 const GRAY_DRAGON_SCALES = objectNames.indexOf('GRAY_DRAGON_SCALES');
 
 /** C ref: mondata.c monsndx — mons[] index of a permonst pointer. */
-function monsndx(ptr) {
+export function monsndx(ptr) {
     return ((ptr?.mndx ?? ptr?.mnum ?? NON_PM) | 0);
 }
 

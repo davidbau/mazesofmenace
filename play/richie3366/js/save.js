@@ -30,6 +30,7 @@ import {
     restore_dungeon_topology,
 } from './dungeon.js';
 import { rest_track } from './track.js';
+import { open_levelfile } from './files.js';
 import { restore_timers, restore_light_sources, run_timers, dobjsfree } from './mkobj.js';
 import { vision_reset } from './vision.js';
 import { setworn } from './do_wear.js';
@@ -146,6 +147,12 @@ function serOtherLevels(currentLedger) {
         if (ltmp === currentLedger) continue;
         const info = game.level_info?.[ltmp];
         if (!info || !((info.flags | 0) & LFILE_EXISTS)) continue;
+        /* C save.c:201 — onhfp = open_levelfile(ltmp, whynot): the gate
+           above is the open() probe (stash ⟺ flag, so the handle is
+           non-null here); getlev/savelev read the stash below. The !onhfp
+           HUP/tricked arm (pline1/delete_savefile/done-TRICKED) is named
+           in c-js-map/data.md — no HUP signals or pline1 in JS. */
+        open_levelfile(ltmp, null);
         levels[String(ltmp)] = serLevel(info);
     }
     return levels;

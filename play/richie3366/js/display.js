@@ -10,7 +10,7 @@
 import { game } from './gstate.js';
 import { rank_of } from './roles.js';
 import { cansee, couldsee, vision_recalc, vision_off_newsym_gbuf } from './vision.js';
-import { objects_at } from './mkobj.js';
+import { objects_at, sobj_at } from './mkobj.js';
 import {
     mcolors, mons, pmnames, infravision, infravisible, mindless, NUMMONS,
     is_flyer,
@@ -112,10 +112,14 @@ import {
     MSGTYP_NOSHOW,
     MSGTYP_STOP,
     PLINE_NOREPEAT,
+    PLINE_VERBALIZE,
+    PLINE_SPEECH,
+    NO_CURS_ON_U,
     OVERRIDE_MSGTYPE,
     URGENT_MESSAGE,
     SUPPRESS_HISTORY,
     PLNMSG_UNKNOWN,
+    BUFSZ,
     gp,
     ECMD_OK,
 } from './const.js';
@@ -138,7 +142,7 @@ import {
 } from './attrib.js';
 import { depth, dist2 } from './hacklib.js';
 import { monsterNames } from './generated/monsters_data.js';
-import { observe_object, near_capacity } from './invent.js';
+import { observe_object, near_capacity, update_inventory } from './invent.js';
 import { visible_region_at, show_region } from './region.js';
 import { see_wsegs, worm_known, level_mon_at } from './worm.js';
 import { SoundSpeak } from './sndprocs.js';
@@ -4670,13 +4674,15 @@ export function suppress_map_output() {
 
 /**
  * C ref: display.c feel_location `:745–909` — Blind map update for the
- * hero cell or an adjacent square (boulder-push). Reachable arm:
+ * hero cell or an adjacent square (boulder-push). Levitate arm
+ * (`:777–858`): obstructed/closed-door background, pile boulder via
+ * sobj_at, open-door background, ROOM/POOL do_room_glyph polish, hallway
+ * background + litcorr/darkroom remembered-glyph fixups. Reachable arm:
  * engr_can_be_felt → _map_location(show) → Punished bc_felt → ROOM/CORR
  * dark adjust; then `:901–908` sensed mon overlay when !u_at (sensemon
  * includes MATCH_WARN D-1514) with is_worm_tail (D-1749). newsym
  * Detect_monsters skips tails; this overlay does not.
- * Named omissions: full levitate-arm do_room_glyph / litcorr /
- * remembered-boulder polish; usteed P_RIDING in can_reach_floor.
+ * Named omissions: usteed P_RIDING in can_reach_floor (feel_can_reach_floor).
  */
 export function feel_location(x, y) {
     // C `:754–758` — same mklev/save/restore gate as newsym/show_glyph.
@@ -4697,20 +4703,66 @@ export function feel_location(x, y) {
     set_seenv(loc, u.ux | 0, u.uy | 0, x, y);
 
     if (!feel_can_reach_floor()) {
-        // Levitate arm (partial) — walls/closed doors via map_background;
-        // boulder via map_object; else map_background. Full do_room_glyph
-        // / litcorr remembered-boulder arms deferred.
+        // C `:777–858` — Levitation Rules in C order: stone/walls/closed
+        // doors felt as background; boulders felt before doorways (sobj_at
+        // finds a boulder anywhere in the pile, not just the pile top);
+        // open doors as background; ROOM/POOL remembered-boulder polish;
+        // everything else (hallways) as background + remembered-glyph
+        // litcorr/darkroom fixups.
         const typ = loc.typ | 0;
         if (IS_OBSTRUCTED(typ)
             || (IS_DOOR(typ) && (loc.doormask & (D_LOCKED | D_CLOSED)))) {
+            // C `:793–796` — stone, walls, closed doors.
             map_background(x, y, 1);
-        } else {
-            const obj = objects_at(x, y);
-            if (obj && (obj.otyp | 0) === BOULDER_OTYP) {
-                map_object(obj, 1);
-            } else {
-                map_background(x, y, 1);
+        } else if (sobj_at(BOULDER_OTYP, x, y)) {
+            // C `:797–798` — boulder before doorway.
+            map_object(sobj_at(BOULDER_OTYP, x, y), 1);
+        } else if (IS_DOOR(typ)) {
+            // C `:799–800` — open doors.
+            map_background(x, y, 1);
+        } else if (IS_ROOM(typ) || IS_POOL(typ)) {
+            // C `:801–849` — open room or water: clear a remembered
+            // boulder (or unseen-monster memory) down to the seen
+            // background or the floor symbol; repaint a stale
+            // wall-range memory glyph as floor.
+            const mem = loc.remembered_glyph;
+            const memG = (mem && typeof mem.glyph === 'number')
+                ? mem.glyph : NO_GLYPH;
+            let do_room_glyph = false;
+            if (memG === objnum_to_glyph(BOULDER_OTYP)
+                || memory_glyph_is_invisible(loc)) {
+                // C `:830–834` — non-ROOM seen cells keep the background
+                // (fountains/pools underneath when already seen).
+                if (typ !== ROOM && loc.seenv) map_background(x, y, 1);
+                else do_room_glyph = true;
+            } else if (memG >= cmap_to_glyph(S_stone)
+                       && memG < cmap_to_glyph(S_darkroom)) {
+                // C `:835–838` — stale remembered wall.
+                do_room_glyph = true;
             }
+            if (do_room_glyph) {
+                // C `:839–845` — dark-room tint (rogue level stays stone),
+                // else the lit/unlit floor symbol.
+                const darkRoom = game.flags?.dark_room !== false
+                    && game.iflags?.use_color !== false
+                    && !Is_rogue_level(game.u?.uz);
+                set_memory_cmap(x, y, loc, darkRoom ? S_darkroom
+                    : (loc.waslit ? S_room : S_stone));
+            }
+        } else {
+            // C `:850–858` — hallways are felt; corridors never felt as
+            // lit (unless remembered that way); dark-room ROOM memory.
+            map_background(x, y, 1);
+            const mem = loc.remembered_glyph;
+            const memG = (mem && typeof mem.glyph === 'number')
+                ? mem.glyph : NO_GLYPH;
+            if (typ === CORR && memG === cmap_to_glyph(S_litcorr)
+                && !loc.waslit)
+                set_memory_cmap(x, y, loc, S_corr);
+            else if (typ === ROOM && game.flags?.dark_room !== false
+                     && game.iflags?.use_color !== false
+                     && memG === cmap_to_glyph(S_room))
+                set_memory_cmap(x, y, loc, S_darkroom);
         }
     } else {
         // C `:860–861` — engr_can_be_felt → erevealed
@@ -5227,6 +5279,21 @@ function show_memory_glyph(x, y) {
 }
 
 /**
+ * C ref: display.c `show_glyph(x, y, lev->glyph)` — remember a cmap floor
+ * symbol as hero memory and paint it. `cmap_idx_to_glyph` supplies the
+ * tty ch/color/dec plus the integer glyph id (the feel_location
+ * do_room_glyph/litcorr/darkroom arms `:839–858`); the id rides both the
+ * memory record and the paint call like `show_memory_glyph`.
+ */
+function set_memory_cmap(x, y, loc, cmapIdx) {
+    const g = cmap_idx_to_glyph(cmapIdx);
+    loc.remembered_glyph = {
+        ch: g.ch, color: g.color, decgfx: !!g.dec, glyph: g.glyph,
+    };
+    show_glyph_cell(x, y, g.ch, g.color, !!g.dec, 0, g.glyph);
+}
+
+/**
  * C ref: display.c curs_on_u `:1687–1690` — put the cursor on the hero:
  * flush waiting glyphs, then park the tty cursor on the hero. C body is
  * one call (`:1689` flush_screen(1)); the `/* Flush waiting glyphs & put
@@ -5350,11 +5417,40 @@ export async function under_ground(mode) {
     }
 }
 
-export async function docrt() {
+// C ref: include/display.h `:1016–1022` docrt_flags_bits — OR-able
+// refresh controls for docrt_flags (C enum; JS module consts).
+export const docrtRecalc = 0; // full docrt(), recalculate the map
+export const docrtRefresh = 1; // redraw_map(), draw what the map shows
+export const docrtMapOnly = 2; // ORed with Recalc/Refresh: map, not status/perminv
+export const docrtNocls = 4; // skip the cls() before repainting memory
+
+/**
+ * C ref: display.c docrt_flags `:1709–1773` — the main refresh-the-screen
+ * routine with finer control, in C order. Every arm ends at post_map
+ * (`:1766–1772`: update_inventory + disp.botlx unless maponly); the
+ * if/else chain below is C's gotos. `show_glyph(x, y, lev->glyph)` paints
+ * hero memory without live mon_to_glyph/obj_to_glyph — under Hallu that
+ * would burn display RNG for sensed monsters while cansee is false, so
+ * the memory loop uses show_memory_glyph (D-0838).
+ * Async: cls/redraw_map await bot/more (nhgetch reach); the void C body
+ * rides awaits (same shape as redraw_map D-1974).
+ * Callers: docrt `:1704` (docrtRecalc), cmd.c `:4014` getdir ^R
+ * (docrtRefresh), getpos.c `:760` getpos_refresh (docrtRefresh),
+ * wintty.c `:435` tty rescale (docrtRefresh; no JS equivalent trigger —
+ * browser resize rides the display layer, stays named in the map).
+ */
+export async function docrt_flags(refresh_flags) {
+    // C `:1711–1715` — flag decode.
+    const maponly = ((refresh_flags | 0) & docrtMapOnly) !== 0;
+    const redrawonly = ((refresh_flags | 0) & docrtRefresh) !== 0;
+    const nocls = ((refresh_flags | 0) & docrtNocls) !== 0;
+
+    // C `:1717–1718` — display isn't ready yet (plus the file's
+    // !game.level guard: C levl[] always exists, JS game.level may not
+    // during init). in_docrt skips nested redraw and gates
+    // show_glyph_change (D-1219).
     if (!game.u?.ux || !game.level) return;
     if (!game.program_state) game.program_state = {};
-    // C display.c docrt_flags 1717–1720 / 1772 — in_docrt skips nested
-    // redraw and gates show_glyph_change (D-1219).
     if (game.program_state.in_docrt) return;
     game.program_state.in_docrt = true;
     try {
@@ -5366,62 +5462,70 @@ export async function docrt() {
         // mid-redraw floor. No-op when nothing pends; burns no RNG
         // (scen-intrinsic-Caveman-92052 step 17).
         await flush_topl_more();
-        // C docrt_flags `:1726–1728` → post_map: the uswallow arm still
-        // sets botlx on every non-maponly call (plain docrt() never maponly).
-        if (game.u.uswallow) {
+        if (redrawonly) {
+            // C `:1722–1724` — redraw what the map shows (gbuf resend,
+            // no vision_recalc/cls), then post_map.
+            await redraw_map(0);
+        } else if (game.u.uswallow) {
+            // C `:1726–1728` — swallowed(1) does cls()+bot() in C; JS
+            // swallowed skips both (cls here, bot via botlx at post_map).
             await cls();
             swallowed(1);
-            if (game.flags) game.flags.botlx = true;
-            return;
-        }
-        // C docrt_flags `:1730–1732` — engulfed-water map arm (Underwater
-        // ≡ u.uinwater, youprop.h:279; the water level has its own routines).
-        if ((game.u.uinwater | 0) && !Is_waterlevel(game.u.uz)) {
+        } else if ((game.u.uinwater | 0) && !Is_waterlevel(game.u.uz)) {
+            // C `:1730–1732` — engulfed-water map arm (Underwater ≡
+            // u.uinwater, youprop.h:279; the water level has its routines).
             await under_water(1);
-            // C `:1730–1732` → post_map: underwater arm sets botlx too.
-            if (game.flags) game.flags.botlx = true;
-            return;
-        }
-        // C docrt_flags `:1734–1736` — buried map arm (C's own
-        // `/* [not implemented] */` marker notwithstanding, it calls through).
-        if (game.u.uburied) {
+        } else if (game.u.uburied) {
+            // C `:1734–1736` — buried map arm (C's own
+            // `/* [not implemented] */` marker notwithstanding, it calls
+            // through).
             await under_ground(1);
-            // C `:1734–1736` → post_map: buried arm sets botlx too.
-            if (game.flags) game.flags.botlx = true;
-            return;
-        }
-        // C vision_recalc(2) update loop newsyms prior sight while !cansee
-        // (Hallu mon_warning → rn2(5)). JS vision_recalc(2) skips that loop
-        // (D-0583 getbones/getpos paint). Under Hallu, burn-only newsyms on
-        // live viz before cls (D-0852). Non-Hallu skipped — incomplete
-        // !cansee memory/waslit arms regress PASS screens (#992 cohort).
-        {
-            const u = game.u || {};
-            if (u.Hallucination
-                || ((u.HHallucination | 0) && !(u.Halluc_resistance | 0))) {
-                vision_off_newsym_gbuf({ useLiveViz: true });
+        } else {
+            // C vision_recalc(2) update loop newsyms prior sight while
+            // !cansee (Hallu mon_warning → rn2(5)). JS vision_recalc(2)
+            // skips that loop (D-0583 getbones/getpos paint). Under Hallu,
+            // burn-only newsyms on live viz before cls (D-0852). Non-Hallu
+            // skipped — incomplete !cansee memory/waslit arms regress PASS
+            // screens (#992 cohort).
+            {
+                const u = game.u || {};
+                if (u.Hallucination
+                    || ((u.HHallucination | 0) && !(u.Halluc_resistance | 0))) {
+                    vision_off_newsym_gbuf({ useLiveViz: true });
+                }
             }
-        }
-        vision_recalc(2);
-        await cls();
-        // C: show_glyph(x,y, lev->glyph) for all cells (memory; no Hallu RNG)
-        for (let y = 0; y < ROWNO; y++)
+            // C `:1739` — shut down vision.
+            vision_recalc(2);
+            // C `:1741–1748` — cls() fills the physical screen with rock
+            // and clears the glyph buffer.
+            if (!nocls) await cls();
+            // C `:1750–1755` — display memory (x outer, y inner).
             for (let x = 1; x < COLNO; x++)
-                show_memory_glyph(x, y);
-        // C: vision_recalc(0) — see what is to be seen (+ newsym updates)
-        vision_recalc(0);
-        // C docrt also see_monsters() after vision — floating warns / sensed mons
-        see_monsters();
-        // C display.c `:1766–1769` post_map (non-maponly): update_inventory()
-        // then disp.botlx = TRUE ("caller needs to call bot() to actually
-        // redraw status") — the moveloop gate repaints on the next tick.
-        if (game.flags) game.flags.botlx = true;
-        // Named omission:
-        // docrt_flags maponly/redrawonly/nocls params (the unported
-        // redrawonly arm's post_map botlx goes with it); update_inventory().
+                for (let y = 0; y < ROWNO; y++)
+                    show_memory_glyph(x, y);
+            // C `:1758` — see what is to be seen.
+            vision_recalc(0);
+            // C `:1761` — overlay with monsters.
+            see_monsters();
+        }
+        // C `:1766–1772` post_map (every arm lands here): perm_invent
+        // update + disp.botlx = TRUE ("caller needs to call bot() to
+        // actually redraw status") — the moveloop gate repaints next tick.
+        if (!maponly) {
+            update_inventory();
+            if (game.flags) game.flags.botlx = true;
+        }
     } finally {
         game.program_state.in_docrt = false;
     }
+}
+
+/**
+ * C ref: display.c docrt `:1701–1705` — plain docrt() is
+ * docrt_flags(docrtRecalc).
+ */
+export async function docrt() {
+    await docrt_flags(docrtRecalc);
 }
 
 // ── Serialize a map row with DEC line-drawing and ANSI colors ──
@@ -7256,9 +7360,9 @@ export function set_msg_dir(dir) {
  * Live dest: msg_mon_movement after place (D-1228); rolling-boulder
  * TELEP/LEVEL_TELEP in launch_obj (D-1237).
  */
-export async function pline_xy(x, y, msg) {
+export async function pline_xy(x, y, fmt, ...args) {
     set_msg_xy(x, y);
-    await pline(msg);
+    await vpline(fmt, ...args);
 }
 
 /**
@@ -7279,13 +7383,13 @@ export async function pline_xy(x, y, msg) {
  * Rolling-boulder TELEP is pline_xy (D-1237).
  * Do not wrap msg_mon_movement as pline_mon (D-1228).
  */
-export async function pline_mon(mtmp, msg) {
+export async function pline_mon(mtmp, fmt, ...args) {
     if (mtmp === game.youmonst) {
         set_msg_xy(0, 0);
     } else {
         set_msg_xy(mtmp.mx, mtmp.my);
     }
-    await pline(msg);
+    await vpline(fmt, ...args);
 }
 
 /**
@@ -7294,9 +7398,9 @@ export async function pline_mon(mtmp, msg) {
  * xytodir(-dx,-dy); run>=2 boulder "A boulder blocks your path."
  * (D-1226).
  */
-export async function pline_dir(dir, msg) {
+export async function pline_dir(dir, fmt, ...args) {
     set_msg_dir(dir);
-    await pline(msg);
+    await vpline(fmt, ...args);
 }
 
 /**
@@ -7328,16 +7432,75 @@ function vpline_consume_msg_loc(msg) {
     return msg;
 }
 
+// C ref: pline.c You `:355–363` / Your `:365–373` / You_feel `:375–388` /
+// You_cant `:390–398` / pline_The `:400–408` / There `:410–418` —
+// YouMessage prefix on the FORMAT then vpline with the same args
+// (You_buf growth unneeded in JS). You_feel's Unaware dream arm and
+// You_hear/You_see (hack.js / below) keep their prop gates; the plain
+// prefixes here wire the C callers that have none.
+export async function You(fmt, ...args) {
+    if (fmt == null || fmt === '') return;
+    await vpline(`You ${fmt}`, ...args);
+}
+export async function Your(fmt, ...args) {
+    if (fmt == null || fmt === '') return;
+    await vpline(`Your ${fmt}`, ...args);
+}
+export async function You_cant(fmt, ...args) {
+    if (fmt == null || fmt === '') return;
+    await vpline(`You can't ${fmt}`, ...args);
+}
+export async function pline_The(fmt, ...args) {
+    if (fmt == null || fmt === '') return;
+    await vpline(`The ${fmt}`, ...args);
+}
+export async function There(fmt, ...args) {
+    if (fmt == null || fmt === '') return;
+    await vpline(`There ${fmt}`, ...args);
+}
 // C ref: pline.c You_feel — prefix "You feel " (Unaware dream path deferred)
-export async function You_feel(msg) {
-    if (msg == null || msg === '') return;
-    await pline(`You feel ${msg}`);
+export async function You_feel(fmt, ...args) {
+    if (fmt == null || fmt === '') return;
+    await vpline(`You feel ${fmt}`, ...args);
+}
+export async function You_see(fmt, ...args) {
+    // Named: C Unaware «dream that you see» + Blind «sense» arms (D-2065
+    // family; need Unaware/Blind prop edges — plain arm only here).
+    if (fmt == null || fmt === '') return;
+    await vpline(`You see ${fmt}`, ...args);
 }
 
-// C ref: pline.c verbalize — wrap spoken text in double quotes
-export async function verbalize(msg) {
-    if (msg == null || msg === '') return;
-    await pline(`"${msg}"`);
+// C ref: pline.c verbalize :476–490 — quote the format, then vpline.
+// C order: va_start; gp.pline_flags |= PLINE_VERBALIZE;
+// tmp = You_buf(strlen(line) + sizeof "\"\"") (:482–483); Strcpy/Strcat
+// the quotes (:484–486); vpline(tmp, the_args) (:487);
+// gp.pline_flags &= ~PLINE_VERBALIZE (:488); va_end. You_buf (:338–348)
+// is C shared-buffer growth (gy.you_buf) — unneeded in JS (immutable
+// strings); vpline is pline()/pline_after_consume() above. The flag is
+// read by SND_SPEECH sound_speak (sounds.c:2201 strips the quotes) via
+// the SoundSpeak macro (sndprocs.h:240–246; js/sndprocs.js SoundSpeak
+// is a no-op without SND_LIB). Variadic formats follow the
+// livelog_printf/impossible convention (%s/%d/%ld/%%); live JS callers
+// pass one pre-formatted string, which takes the no-args path unchanged.
+export async function verbalize(line, ...args) {
+    if (line == null || line === '') return;
+    let tmp = `"${String(line)}"`;
+    if (args.length > 0) {
+        let i = 0;
+        tmp = tmp.replace(/%%|%(?:ld|[ds])/g, (m) => {
+            if (m === '%%') return '%';
+            return String(args[i++] ?? '');
+        });
+    }
+    gp.pline_flags |= PLINE_VERBALIZE;
+    try {
+        // C vpline(tmp, the_args) with the quoted FORMAT: route the
+        // pre-formatted text through the "%s" arm so arg-introduced '%'
+        // is never re-scanned (C va_arg verbatim semantics).
+        await vpline('%s', tmp);
+    } finally {
+        gp.pline_flags &= ~PLINE_VERBALIZE;
+    }
 }
 
 /**
@@ -7385,10 +7548,10 @@ async function vpline_after_putmesg(line, msgtyp) {
  * default MSGTYP_NOREP; suppress when identical to gp.prevmsg unless
  * a MSGTYPE= pattern matched first).
  */
-export async function Norep(msg) {
+export async function Norep(fmt, ...args) {
     gp.pline_flags = PLINE_NOREPEAT;
     try {
-        await pline(msg);
+        await vpline(fmt, ...args);
     } finally {
         gp.pline_flags = 0;
     }
@@ -7400,42 +7563,178 @@ export async function Norep(msg) {
  * update_topl and gp.prevmsg still run, so a later Norep compares
  * against this line.
  */
-export async function custompline(flags, msg) {
-    msg = vpline_consume_msg_loc(msg);
-    if (msg == null || msg === '') return;
+export async function custompline(flags, fmt, ...args) {
     gp.pline_flags = flags | 0;
     try {
-        await pline_after_consume(msg, (flags & SUPPRESS_HISTORY) !== 0);
+        await vpline(fmt, ...args);
     } finally {
         gp.pline_flags = 0;
     }
 }
 
-// ── pline ──
-// C ref: pline.c vpline — msgtype_type then flush_screen before putmesg.
-export async function pline(msg) {
-    msg = vpline_consume_msg_loc(msg);
-    if (msg == null || msg === '') return;
-    await pline_after_consume(msg);
+// ── vpline ──
+// C ref: pline.c vpline `:153–291` — the whole body in C order.
+// BIGBUFSZ is 5*BUFSZ (C `:10–12`); the vsnprintf result is chopped to
+// BUFSZ-1 preserving the last 3 chars (`:216–231`). Static `in_pline`
+// is module-local `_vpline_in_pline`. The accessiblemsg prefix
+// (`:175–190`, D-1207) is `vpline_consume_msg_loc` above: C recurses
+// with the prefixed format + same va_list, which is prefix-then-format
+// (the prefix never contains '%'), so consume-then-format below is the
+// same net text without reusing a va_list.
+const BIGBUFSZ = 5 * BUFSZ;
+let _vpline_in_pline = 0;
+
+/**
+ * C ref: pline.c vpline `:192–212` — vsnprintf-style expansion.
+ * C arms: no '%' → as-is; exactly "%s" → first va_arg verbatim
+ * (percent signs inside it are NOT expanded); else vsnprintf.
+ * JS covers the contest's pline verbs (`%s/%d/%i/%u/%ld/%lu/%x/%X/%o/%c/%%`
+ * with optional flags/width/precision, stripped before conversion).
+ * @returns {{ text: string, ln: number }}
+ */
+function vpline_expand(fmt, args) {
+    const f = String(fmt);
+    if (!f.includes('%')) return { text: f, ln: f.length };
+    if (f === '%s') {
+        const s = String(args[0] ?? '');
+        return { text: s, ln: s.length };
+    }
+    let i = 0;
+    const text = f.replace(/%%|%[-+ #0-9.]*?(ld|lu|d|i|u|x|X|o|c|s)/g, (m, spec) => {
+        if (m === '%%') return '%';
+        const a = args[i++];
+        switch (spec) {
+            case 's': return String(a ?? '');
+            case 'c': return typeof a === 'number' ? String.fromCharCode(a | 0) : String(a ?? '').charAt(0);
+            case 'x': return ((Number(a) | 0) >>> 0).toString(16);
+            case 'X': return (((Number(a) | 0) >>> 0)).toString(16).toUpperCase();
+            case 'o': return (((Number(a) | 0) >>> 0)).toString(8);
+            case 'u':
+            case 'lu': return (Number(a) >>> 0).toString(10);
+            default: return String(Number(a) | 0);
+        }
+    });
+    return { text, ln: text.length };
 }
 
-async function pline_after_consume(msg, suppressHistory = false) {
+/**
+ * C ref: pline.c vpline `:216–231` — modest overflow truncates to
+ * BUFSZ-1 with '...' at [BUFSZ-1-6..-4] and the final 3 chars kept:
+ * "___ extremely long text" -> "___ extremely l...ext".
+ */
+function vpline_truncate(line, ln) {
+    if (ln <= BUFSZ - 1) return line;
+    // C copies the over-long line into pbuf first when it is not already
+    // there (`line != pbuf`); JS strings make the copy implicit.
+    const head = String(line).slice(0, BUFSZ - 1 - 6);
+    const tail = String(line).slice(ln - 3);
+    return `${head}...${tail}`;
+}
+
+/**
+ * C ref: pline.c vpline `:153–291` — whole body in C order.
+ * Callers (same file + C wrappers): pline / pline_dir / pline_xy /
+ * pline_mon / custompline / urgent_pline / Norep / You / Your /
+ * You_cant / pline_The / There / verbalize below, plus the file-idiom
+ * prefixed `pline("You ...")` sites (hack.js/lock.js idiom) which now
+ * flow through here via pline().
+ * Named omissions (no live JS export — see D-log): `panic` on
+ * `ln > BIGBUFSZ-1` (fatal exit, never hit; longest corpus topline is
+ * far shorter — JS keeps the truncated line); `raw_print`/`raw_printf`
+ * (pre-window/recursive terminal path — sets last_msg UNKNOWN and
+ * returns after dumplog, no scored window surface); `alloc` (prefixed
+ * accessiblemsg tmp — JS strings, GC); `maybe_play_sound` (USER_SOUNDS
+ * compiled out of the contest C — D-1807); `putmesg` as a named export
+ * (split: SoundSpeak + topl window in `pline_after_consume` below).
+ */
+export async function vpline(fmt, ...args) {
+    // C `:160–163` — always snapshot+reset a11y.msg_loc first (D-1207),
+    // even for empty lines. The helper prefixes `coord_desc: ` when
+    // accessiblemsg && isok(saved) (NONE→COMFULL).
+    let line = vpline_consume_msg_loc(fmt);
+    // C `:165–166` — empty format returns after the reset above.
+    if (line == null || line === '') return;
+    // C HANGUPHANDLING `:167–170` — before wizkit.
+    if (game.program_state?.done_hup) return;
+    // C `:171–172` — wizkit wishing suppresses the message entirely.
+    if (game.program_state?.wizkit_wishing) return;
+    // C `:192–212` — printf arms (helper above).
+    const { text, ln } = vpline_expand(line, args);
+    line = text;
+    // C `:213–214` — `ln > BIGBUFSZ-1` panics. Named omit (no JS panic
+    // export; fatal, never reached in scored runs) — execution continues
+    // to the BUFSZ truncation below instead of aborting.
+    // C `:216–231` — modest overflow truncates preserving the last 3.
+    line = vpline_truncate(line, ln);
+    // C DUMPLOG_CORE `:233–239` — dumplogmsg before putmesg when
+    // SUPPRESS_HISTORY is off (yn ATR_NOHISTORY still named).
+    if ((gp.pline_flags & SUPPRESS_HISTORY) === 0) dumplogmsg(line);
+    // C `:243–249` — `if (in_pline++ || !window_inited)`: raw_print path.
+    // C prints via raw_print (named omit above), sets last_msg UNKNOWN,
+    // and jumps to pline_done (SPEECH clear + --in_pline).
+    const _wasIn = _vpline_in_pline;
+    _vpline_in_pline++;
+    try {
+        if (_wasIn || !game.iflags?.window_inited) {
+            if (game.iflags) game.iflags.last_msg = PLNMSG_UNKNOWN;
+            return;
+        }
+        // C `:251–268` — OVERRIDE_MSGTYPE / msgtype_type / URGENT suppress
+        // gate lives in `pline_after_consume` (vpline_msgtyp_gate) so the
+        // window body stays one function; order matches C (gate → vision
+        // → flush → putmesg). The suppress jump lands on pline_done via
+        // this try/finally (SPEECH clear + --in_pline).
+        await pline_after_consume(line, true);
+    } finally {
+        // C pline_done `:285–290` — SND_SPEECH clear (compiled out of the
+        // contest C; the flag still clears) then --in_pline.
+        gp.pline_flags &= ~PLINE_SPEECH;
+        _vpline_in_pline--;
+    }
+}
+
+// C ref: pline.c pline `:103–110` — va_start then vpline.
+export async function pline(fmt, ...args) {
+    await vpline(fmt, ...args);
+}
+
+async function pline_after_consume(msg, alreadyDumplogged = false) {
     const CO = game?.nhDisplay?.cols || 80;
     const line = String(msg);
-    // C pline.c vpline DUMPLOG_CORE: dumplogmsg before putmesg when
-    // SUPPRESS_HISTORY is off (default). yn ATR_NOHISTORY still named.
-    if (!suppressHistory) dumplogmsg(line);
+    // C pline.c vpline DUMPLOG_CORE `:233–239`: vpline() above already
+    // dumplogged before the in_pline/raw gate; direct callers pass false.
+    // yn ATR_NOHISTORY still named.
+    if (!alreadyDumplogged) dumplogmsg(line);
     const { msgtyp, suppress } = vpline_msgtyp_gate(line);
     if (suppress) return;
-    // C pline.c vpline: vision_recalc before flush when dirty (boulder
-    // extract / door / light sets vision_full_recalc mid-turn).
+    // C pline.c vpline `:270–276` — vision_recalc(0) with in_pline saved
+    // at 0 so a recursive pline during recalc takes the raw_print path
+    // (boulder extract / door / light set vision_full_recalc mid-turn).
     if (game.vision_full_recalc) {
-        vision_recalc(0);
+        const _savedInPline = _vpline_in_pline;
+        _vpline_in_pline = 0;
+        try {
+            vision_recalc(0);
+        } finally {
+            _vpline_in_pline = _savedInPline;
+        }
     }
-    // C: if (u.ux) flush_screen(...) before putmesg — botl update first
-    if (game.u?.ux) await flush_screen(1);
-    // C pline.c putmesg `:79` SoundSpeak after putstr; empty without SND_LIB.
-    SoundSpeak(line);
+    // C `:277–278` — if (u.ux) flush_screen(NO_CURS_ON_U ? 0 : 1).
+    if (game.u?.ux) await flush_screen((gp.pline_flags & NO_CURS_ON_U) ? 0 : 1);
+    // C pline.c putmesg `:69–80` — debug_prevent_pline skips putstr (the
+    // rest — execplinehandler/prevmsg/more — still runs); URGENT/NOHISTORY
+    // attrs need wincap2 (tty) so only SoundSpeak paints here. Named: the
+    // putstr(WIN_MESSAGE) window call itself (topl block below is its JS
+    // paint); debug_prevent_pline is never set in scored runs.
+    const _prevented = !!game.iflags?.debug_prevent_pline;
+    if (!_prevented) SoundSpeak(line);
+    // C putmesg early-return above skips the message-window paint but not
+    // the trailer (execplinehandler / prevmsg / STOP more). Never set here.
+    if (_prevented) {
+        _prevmsg = line.slice(0, BUFSZ - 1);
+        await vpline_after_putmesg(line, msgtyp);
+        return;
+    }
 
     // Capture skip before more(); C still paints the new line with the
     // pre-more skip flag even if ESC sets WIN_STOP during more().
@@ -7454,8 +7753,8 @@ async function pline_after_consume(msg, suppressHistory = false) {
         && ((notdied = line.startsWith('You die') ? 0 : 1) !== 0)) {
         _toplines = _toplines ? `${_toplines}  ${line}` : line;
         if (!skip) game._pending_message = _toplines;
-        // C: gp.prevmsg = line (new text only, not the concatenated topline)
-        _prevmsg = line;
+        // C `:282` strncpy(gp.prevmsg, line, BUFSZ) (new text, not topline).
+        _prevmsg = line.slice(0, BUFSZ - 1);
         await vpline_after_putmesg(line, msgtyp);
         return;
     }
@@ -7490,8 +7789,8 @@ async function pline_after_consume(msg, suppressHistory = false) {
     // C topl.c update_topl `:280` remember_topl before replacing gt.toplines
     remember_topl();
     _toplines = formatted;
-    // C: strncpy(gp.prevmsg, line, BUFSZ) after putmesg
-    _prevmsg = line;
+    // C vpline `:282` strncpy(gp.prevmsg, line, BUFSZ) after putmesg.
+    _prevmsg = line.slice(0, BUFSZ - 1);
     // C: if (!notdied) cw->flags &= ~WIN_STOP, skip = FALSE;
     if (!notdied) {
         _win_stop = false;
@@ -7512,8 +7811,8 @@ async function pline_after_consume(msg, suppressHistory = false) {
  * C ref: pline.c urgent_pline — URGENT_MESSAGE / WIN_NOSTOP so ESC'd
  * --More-- (WIN_STOP) cannot suppress this line; clears STOP first.
  */
-export async function urgent_pline(msg) {
-    if (msg == null || msg === '') return;
+export async function urgent_pline(fmt, ...args) {
+    if (fmt == null || fmt === '') return;
     // C tty_putstr ATR_URGENT: if WIN_STOP, clear_nhwindow + clear STOP
     if (_win_stop) {
         _win_stop = false;
@@ -7524,7 +7823,7 @@ export async function urgent_pline(msg) {
     _win_nostop = true;
     gp.pline_flags = URGENT_MESSAGE;
     try {
-        await pline(msg);
+        await vpline(fmt, ...args);
     } finally {
         // C: NOSTOP is one-shot after putstr returns
         _win_nostop = false;
@@ -7550,7 +7849,7 @@ export async function impossible(s, ...args) {
         if (m === '%%') return '%';
         return String(args[i++] ?? '');
     });
-    await urgent_pline(pbuf);
+    await urgent_pline('%s', pbuf);
     if (ps.in_sanity_check) {
         ps.in_impossible = 0;
         return;
@@ -7559,7 +7858,7 @@ export async function impossible(s, ...args) {
     if (ps.something_worth_saving) {
         pbuf2 += '  (Saving and reloading may fix this problem.)';
     }
-    await pline(pbuf2);
-    await pline(`Please report these messages to ${DEVTEAM_EMAIL}.`);
+    await pline('%s', pbuf2);
+    await pline('%s', `Please report these messages to ${DEVTEAM_EMAIL}.`);
     ps.in_impossible = 0;
 }

@@ -17,7 +17,7 @@ import {
     MOVEMENTCMD,
     CMD_PARAM,
 } from './generated/extcmdlist_data.js';
-import { NHKF_ESC, NHKF_COUNT } from './const.js';
+import { NHKF_ESC, NHKF_COUNT, MV_WALK, MV_RUN, MV_RUSH } from './const.js';
 import { game } from './gstate.js';
 
 const C = (ch) => 0x1f & (typeof ch === 'string' ? ch.charCodeAt(0) : ch);
@@ -153,6 +153,24 @@ export function show_menu_controls_lines(lines, dolist) {
     }
 }
 
+/**
+ * C ref: cmd.c reset_commands `:3440–3472` !num_pad — sdir `hykulnjb`
+ * rebound per move mode over move_funcs rows 0..7 (cmd.c:2070–2083).
+ * Index by MV_WALK/MV_RUN/MV_RUSH (hack.h movemodes: 0/1/2).
+ */
+const MOVE_WALK_ECNAMES = [
+    'movewest', 'movenorthwest', 'movenorth', 'movenortheast',
+    'moveeast', 'movesoutheast', 'movesouth', 'movesouthwest',
+];
+const MOVE_RUN_ECNAMES = [
+    'runwest', 'runnorthwest', 'runnorth', 'runnortheast',
+    'runeast', 'runsoutheast', 'runsouth', 'runsouthwest',
+];
+const MOVE_RUSH_ECNAMES = [
+    'rushwest', 'rushnorthwest', 'rushnorth', 'rushnortheast',
+    'rusheast', 'rushsoutheast', 'rushsouth', 'rushsouthwest',
+];
+
 /** Build default cmdbinds map: key → EXTCMDLIST index (!num_pad). */
 function build_default_cmdbinds() {
     /** @type {(typeof EXTCMDLIST[number] | null)[]} */
@@ -188,23 +206,11 @@ function build_default_cmdbinds() {
     // reset_commands !num_pad: sdir = "hykulnjb><" but N_DIRS=8
     // (up/down stay as extcmdlist '<' / '>' binds; not rebound here)
     const sdir = 'hykulnjb';
-    const moveNames = [
-        'movewest', 'movenorthwest', 'movenorth', 'movenortheast',
-        'moveeast', 'movesoutheast', 'movesouth', 'movesouthwest',
-    ];
-    const runNames = [
-        'runwest', 'runnorthwest', 'runnorth', 'runnortheast',
-        'runeast', 'runsoutheast', 'runsouth', 'runsouthwest',
-    ];
-    const rushNames = [
-        'rushwest', 'rushnorthwest', 'rushnorth', 'rushnortheast',
-        'rusheast', 'rushsoutheast', 'rushsouth', 'rushsouthwest',
-    ];
     for (let dir = 0; dir < 8; dir++) {
         const di = sdir.charCodeAt(dir);
-        set(di, byTxt.get(moveNames[dir]));
-        set(highc(di), byTxt.get(runNames[dir]));
-        set(C(di), byTxt.get(rushNames[dir]));
+        set(di, byTxt.get(MOVE_WALK_ECNAMES[dir]));
+        set(highc(di), byTxt.get(MOVE_RUN_ECNAMES[dir]));
+        set(C(di), byTxt.get(MOVE_RUSH_ECNAMES[dir]));
     }
     return binds;
 }
@@ -273,6 +279,29 @@ function cmd_from_func_ecname(ecname) {
     }
     if (binds[32]?.txt === ecname) return 32;
     return ret;
+}
+
+/**
+ * C ref: cmd.c cmd_from_dir `:3029–3032` — key bound to the movement
+ * command for DIR_ dir + MV_ mode, i.e. cmd_from_func of
+ * move_funcs[dir][mode] (cmd.c:2070–2083), whose columns are
+ * { do_move_*, do_run_*, do_rush_* } = { MV_WALK, MV_RUN, MV_RUSH }.
+ * Out-of-range dir/mode returns 0 (C would index off the table;
+ * callers only pass rn2(N_DIRS) dirs). Only live caller is the
+ * debug-fuzzer randomkey (cmd.c:3563).
+ * @param {number} dir
+ * @param {number} mode
+ * @returns {number}
+ */
+export function cmd_from_dir(dir, mode) {
+    if (dir < 0 || dir >= 8) return 0;
+    const names =
+        mode === MV_WALK ? MOVE_WALK_ECNAMES
+        : mode === MV_RUN ? MOVE_RUN_ECNAMES
+        : mode === MV_RUSH ? MOVE_RUSH_ECNAMES
+        : null;
+    if (!names) return 0;
+    return cmd_from_func_ecname(names[dir]);
 }
 
 /**

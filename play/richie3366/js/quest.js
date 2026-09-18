@@ -55,7 +55,7 @@ function Is_special(lev) {
 }
 
 /** C ref: quest.h / dungeon.c Is_qstart */
-function Is_qstart(lev) {
+export function Is_qstart(lev) {
     return on_level(lev, game.qstart_level);
 }
 

@@ -12,13 +12,14 @@
 // autodescribe topline, force unknown-direction pline, pick_chars
 // LOOK_*, ESC → -1.
 // getpos_menu / S_goodpos tmp_at hilite / engraving full showsyms /
-// docrtRefresh redraw_map-only deferred.
+// docrtRefresh redraw_map-only live via docrt_flags (display.js).
 // getpos_getvalid `(invalid target)` live (D-0899).
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import {
-    flush_screen, flush_screen_getpos_dirty, pline, docrt, terrain_glyph,
+    flush_screen, flush_screen_getpos_dirty, pline, docrt, docrt_flags, docrtRefresh,
+    terrain_glyph,
     look_shown_at, newsym_force, glyph_is_invisible,
     glyph_at, glyph_is_cmap, glyph_to_cmap, back_to_glyph,
     glyph_is_monster, GLYPH_MON_MALE_OFF, GLYPH_MON_FEM_OFF,
@@ -108,16 +109,17 @@ function redraw_cmd(key) {
 /**
  * C ref: getpos.c getpos_refresh `:753–765` — clear GoodposSymbol hilite
  * back to defaultHiliteState, then docrt_flags(docrtRefresh) →
- * redraw_map (resend gbuf; no vision_recalc/cls), then re-sethilite when
- * HiliteBackground so valid-spot frames redraw. JS uses flush_screen(1) —
- * full docrt() under Blind regressed farlook describe (stone/corridor).
+ * redraw_map (resend gbuf; no vision_recalc/cls) + post_map botlx, then
+ * re-sethilite when HiliteBackground so valid-spot frames redraw.
+ * docrtRefresh is not full docrt() (which under Blind regressed farlook
+ * describe stone/corridor) — only the gbuf resend runs.
  */
 async function getpos_refresh() {
     if (getpos_hilitefunc && getpos_hilite_state === HiliteGoodposSymbol) {
         getpos_hilitefunc(false); // tmp_at(DISP_END)
         getpos_hilite_state = defaultHiliteState; // C `:757`
     }
-    await flush_screen(1);
+    await docrt_flags(docrtRefresh); // C `:760`
     // C `:762–765` resetting to the current values draws valid-spot
     // highlighting when the Background state is active.
     if (getpos_hilitefunc && getpos_hilite_state === HiliteBackground) {

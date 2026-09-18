@@ -33,7 +33,7 @@ import {
     set_bot_disabled, tty_nhbell, MG_FLAG_NOOVERRIDE, SYM_OFF_X, SYM_MAX,
 } from './display.js';
 import { howmonseen, couldsee, cansee } from './vision.js';
-import { getlin, y_n } from './getline.js';
+import { getlin, mungspaces, y_n } from './getline.js';
 import {
     paint_corner_nhw_menu, dismiss_nhw_menu, dfeature_at, display_inventory,
     observe_object, process_menu_search, trap_predicament,
@@ -50,7 +50,7 @@ import {
 } from './objnam.js';
 import { strstri, lcase } from './hacklib.js';
 import { distant_monnam, coyotename, PM_COYOTE, pmname, Mgender, Ugender, mon_nam, rndmonnam } from './do_name.js';
-import { hides_under, is_hider, is_clinger, is_flyer, mons,
+import { hides_under, is_hider, is_clinger, is_flyer, is_orc, mons,
     M2_HUMAN, M2_ELF, M2_ORC, M2_DEMON, pmnames, NEUTRAL,
 } from './monsters.js';
 import { mlet_class_explain, DEF_MONSYM_MLET } from './mondata.js';
@@ -2361,27 +2361,45 @@ async function look_engrs(nearby) {
     }
 }
 
+/**
+ * C ref: pager.c do_look `:1704–1800` — the "What do you want to look at:"
+ * menu. JS paints it on the corner NHW_MENU path (create/start/add/end/
+ * select/destroy_nhwindow are the C windowing mechanism); the entries and
+ * accelerators below are the C content: `/`+`i`+`?` always, then a blank
+ * separator + m/M/o/O/t/T/e/E only when NOT swallowed and NOT
+ * hallucinating (`:1755`, swallowed display hides targets, hallu class
+ * letters mismatch). lootabc abandons the `y`|`n` compat accelerators in
+ * favor of `/`+`?` (`:1716–1753`); the `t`/`T`/`e`/`E` compat keys
+ * `^`/`"`/`` ` ``/`|` apply only when lootabc is off.
+ */
 async function whatis_menu_choice() {
     await flush_topl_more();
+    const lootabc = !!(game.flags && game.flags.lootabc);
+    const suppressed = !!(game.u && game.u.uswallow) || !!Hallucination();
     const entries = [
         { text: 'What do you want to look at:', attr: ATR_INVERSE },
         { text: '', attr: 0 },
         { text: '/ - something on the map', attr: 0 },
         { text: "i - something you're carrying", attr: 0 },
         { text: '? - something else (by symbol or name)', attr: 0 },
-        { text: '', attr: 0 },
-        { text: 'm - nearby monsters', attr: 0 },
-        { text: 'M - all monsters shown on map', attr: 0 },
-        { text: 'o - nearby objects', attr: 0 },
-        { text: 'O - all objects shown on map', attr: 0 },
-        { text: 't - nearby traps', attr: 0 },
-        { text: 'T - all seen or remembered traps', attr: 0 },
-        { text: 'e - nearby engravings', attr: 0 },
-        { text: 'E - all seen or remembered engravings', attr: 0 },
     ];
+    if (!suppressed) {
+        entries.push(
+            { text: '', attr: 0 },
+            { text: 'm - nearby monsters', attr: 0 },
+            { text: 'M - all monsters shown on map', attr: 0 },
+            { text: 'o - nearby objects', attr: 0 },
+            { text: 'O - all objects shown on map', attr: 0 },
+            { text: 't - nearby traps', attr: 0 },
+            { text: 'T - all seen or remembered traps', attr: 0 },
+            { text: 'e - nearby engravings', attr: 0 },
+            { text: 'E - all seen or remembered engravings', attr: 0 },
+        );
+    }
+    const letters = suppressed ? '/i?' : '/i?mMoOtTeE';
     const searchItems = entries
         .filter((e) => e.text && e.text[1] === ' ' && e.text[0] !== '')
-        .filter((e) => '/i?mMoOtTeE'.includes(e.text[0]))
+        .filter((e) => letters.includes(e.text[0]))
         .map((e) => ({
             selectable: true,
             selector: e.text[0],
@@ -2420,16 +2438,38 @@ async function whatis_menu_choice() {
                 // treats that as re-prompt. Do not docrt/cls.
                 continue;
             }
-            // lootabc false: y ≡ /, n ≡ ?
-            if (ch === 'y') {
-                await dismiss_nhw_menu();
-                return '/';
+            // C `:1733–1753` + `:1775–1794`: lootabc off keeps the
+            // unshown `y`|`n` compat (y ≡ /, n ≡ ?) and the t/T/e/E
+            // compat keys `^`/`"`/`` ` ``/`|`; lootabc on abandons them
+            // for `/`+`?`. Suppressed rows (swallowed/hallu) are not
+            // menu entries, so their letters bell here too.
+            if (!lootabc) {
+                if (ch === 'y') {
+                    await dismiss_nhw_menu();
+                    return '/';
+                }
+                if (ch === 'n') {
+                    await dismiss_nhw_menu();
+                    return '?';
+                }
+                if (ch === '^' && !suppressed) {
+                    await dismiss_nhw_menu();
+                    return 't';
+                }
+                if (ch === '"' && !suppressed) {
+                    await dismiss_nhw_menu();
+                    return 'T';
+                }
+                if (ch === '`' && !suppressed) {
+                    await dismiss_nhw_menu();
+                    return 'e';
+                }
+                if (ch === '|' && !suppressed) {
+                    await dismiss_nhw_menu();
+                    return 'E';
+                }
             }
-            if (ch === 'n') {
-                await dismiss_nhw_menu();
-                return '?';
-            }
-            if ('/i?mMoOtTeE'.includes(ch)) {
+            if (letters.includes(ch)) {
                 await dismiss_nhw_menu();
                 return ch;
             }
@@ -2441,22 +2481,97 @@ async function whatis_menu_choice() {
     }
 }
 
+/** C ref: pager.c what_is_a_location `:1670`. */
+const WHAT_IS_A_LOCATION = 'a monster, object or location';
+
+/* C ref: pager.c suptext1 `:2233–2242` (static). */
+const SUPTEXT1 = [
+    '%s is a member of a marauding horde of orcs',
+    'rumored to have brutally attacked and plundered',
+    'the ordinarily sheltered town that is located ',
+    'deep within The Gnomish Mines.',
+    '',
+    'The members of that vicious horde proudly and ',
+    'defiantly acclaim their allegiance to their',
+    'leader %s in their names.',
+];
+
+/* C ref: pager.c suptext2 `:2244–2251` (static). */
+const SUPTEXT2 = [
+    '"%s" is the common dungeon name of',
+    'a nefarious orc who is known to acquire property',
+    'from thieves and sell it off for profit.',
+    '',
+    'The perpetrator was last seen hanging around the',
+    'stairs leading to the Gnomish Mines.',
+];
+
 /**
- * C ref: pager.c do_look(mode=0) / dowhatis.
- * cmdq_pop KEY skips the look-at menu (itemed `/` queues 'i', D-1686).
- * Returns ECMD_OK (0) — never takes time.
+ * C ref: pager.c do_supplemental_info `:2255–2315` (staticfn) — in-game
+ * mythology for marauding-horde orcs, unavailable from data.base. C
+ * paints it on an NHW_MENU window (create/putstr/display/destroy); JS
+ * uses the same NHW_MENU helper checkfile uses (show_nhw_menu_text).
+ * Note the C gate: with without_asking (VERBOSE `:` look) nothing is
+ * ever shown — the lore only appears after a `y` to the prompt.
  */
-export async function do_look(mode = 0) {
-    const quick = mode === 1;
+async function do_supplemental_info(name, pm, without_asking) {
+    if (!(is_orc(pm) && String(name ?? '').length < BUFSZ - 1)) return;
+    const entrytext = String(name ?? '');
+    const bp = strstri(entrytext, ' of ');
+    const bp2 = strstri(entrytext, ' the Fence');
+    if (!bp && !bp2) return;
+    const fullname = entrytext;
+    let yes_to_moreinfo = false;
+    if (!without_asking) {
+        let question = 'More info about "';
+        question += entrytext.slice(0, QBUFSZ - 1 - (question.length + 2));
+        question += '"?';
+        if ((await y_n(question)) === 'y') yes_to_moreinfo = true;
+    }
+    if (yes_to_moreinfo) {
+        let subs = 0;
+        let gang = '';
+        let textp;
+        if (bp) {
+            textp = SUPTEXT1;
+            gang = bp.slice(4); // C `bp + 4` past " of "
+        } else {
+            textp = SUPTEXT2;
+        }
+        const lines = [];
+        for (const txt of textp) {
+            // C `strstri(textp[i], "%s")` gate + Sprintf(buf, txt, arg).
+            if (strstri(txt, '%s') != null) {
+                lines.push(String(txt).replace('%s', subs++ ? gang : fullname));
+            } else {
+                lines.push(txt);
+            }
+        }
+        await show_nhw_menu_text(lines);
+    }
+}
+
+/**
+ * C ref: pager.c do_look(mode, click_cc) `:1673–1963`.
+ * cmdq_pop KEY skips the look-at menu (itemed `/` queues 'i', D-1686).
+ * clicklook (mode 2) takes its cell from click_cc, never asks getpos,
+ * never runs checkfile, and loops exactly once. Returns ECMD_OK (0).
+ */
+export async function do_look(mode = 0, click_cc = null) {
+    const quick = mode === 1; /* use cursor; don't search for "more info" */
+    const clicklook = mode === 2; /* right mouse-click method */
     let i = 0;
     let from_screen = false;
     let sym = 0;
     const cc = { x: game.u?.ux || 1, y: game.u?.uy || 0 };
 
     /* C pager.c `:1692–1700` — cmdq_pop KEY is the look choice;
-       else cmdq_clear; goto dowhatiscmd (skip the menu). */
+       else cmdq_clear(CQ_CANNED); goto dowhatiscmd (skip the menu).
+       cmdq_clear() defaults to CQ_CANNED (js/cmd.js). */
     const cmdq = cmdq_pop();
+    let have_cmdq = false;
     if (cmdq) {
+        have_cmdq = true;
         if (cmdq.typ === CMDQ_KEY || cmdq.typ === 'key') {
             i = typeof cmdq.key === 'string'
                 ? cmdq.key.charCodeAt(0)
@@ -2464,12 +2579,24 @@ export async function do_look(mode = 0) {
         } else {
             cmdq_clear();
         }
-    } else if (quick) {
-        i = 'y'.charCodeAt(0);
-    } else {
-        i = (await whatis_menu_choice()).charCodeAt(0);
+    } else if (!clicklook) {
+        if (quick) {
+            i = 'y'.charCodeAt(0);
+        } else {
+            i = (await whatis_menu_choice()).charCodeAt(0);
+        }
     }
-
+    /* C `:1802–1807` — clicklook (no canned input) skips the switch
+       entirely: cell from click_cc, straight to the describe loop. A
+       popped cmdq `goto dowhatiscmd`s into the switch even in
+       clicklook mode, so the switch runs when !clicklook || have_cmdq. */
+    if (clicklook && !have_cmdq) {
+        cc.x = click_cc ? click_cc.x | 0 : game.u.ux;
+        cc.y = click_cc ? click_cc.y | 0 : game.u.uy;
+        sym = 0;
+        from_screen = false;
+    }
+    if (!clicklook || have_cmdq) {
     const ch = String.fromCharCode(i);
     switch (ch) {
     default:
@@ -2500,11 +2627,9 @@ export async function do_look(mode = 0) {
     case '?': {
         from_screen = false;
         let out_str = await getlin('Specify what? (type the word)');
-        if (out_str === ' ') {
-            /* keep */
-        } else {
-            out_str = String(out_str || '').trim().replace(/\s+/g, ' ');
-        }
+        /* C `:1845–1848` — keep a single space as-is; else live
+           mungspaces (getline.js): strip ends, condense runs. */
+        if (out_str !== ' ') out_str = mungspaces(out_str);
         if (!out_str || out_str.charCodeAt(0) === 27) return 0;
         if (out_str.length > 1) {
             await checkfile(out_str, null, CHK_USR | CHK_DONT_ASK, null);
@@ -2538,73 +2663,83 @@ export async function do_look(mode = 0) {
         await look_engrs(false);
         return 0;
     }
+    } /* !clicklook || have_cmdq — clicklook skips dowhatiscmd */
 
     const save_verbose = game.flags?.verbose !== false;
     if (game.flags) game.flags.verbose = save_verbose && !quick;
 
     let ans = 0;
     do {
-        if (from_screen) {
-            if (game.flags?.verbose !== false) {
-                await pline(
-                    'Please move the cursor to a monster, object or location.',
-                );
-            } else {
-                await pline('Pick a monster, object or location.');
-            }
-            // Force --More-- before getpos when message is long
-            if ((game._pending_message || '').length > 40) await more();
-            // C: getpos(&cc, quick, …) — quick glance uses force=TRUE
-            ans = await getpos(
-                cc,
-                quick,
-                'a monster, object or location',
-                brief_at,
-            );
-            if (ans < 0 || cc.x < 0) break;
-            if (game.flags) game.flags.verbose = false;
-        }
-
-        // C pager.c `:1917` — do_screen_description(cc, from_screen ||
-        // clicklook, sym, …); JS has no clicklook, so looked is from_screen
-        // and a typed symbol takes the unlooked arm.
+        /* C `:1900–1914` — reset per round (fresh holders); the getpos
+           question only when asking from the screen (clicklook takes
+           its cell silently, ans stays 0). */
         const outH = { s: '' };
         const firstH = { v: '' };
         const supplH = { pm: null };
-        let found = 0;
-        if (from_screen) {
-            found = do_screen_description(cc, true, 0, outH, firstH, supplH);
-        } else if (sym) {
-            found = do_screen_description(cc, false, sym, outH, firstH, supplH);
+        if (from_screen || clicklook) {
+            if (from_screen) {
+                if (game.flags?.verbose !== false) {
+                    await pline(
+                        `Please move the cursor to ${WHAT_IS_A_LOCATION}.`,
+                    );
+                } else {
+                    await pline(`Pick ${WHAT_IS_A_LOCATION}.`);
+                }
+                // Force --More-- before getpos when message is long
+                if ((game._pending_message || '').length > 40) await more();
+                // C: getpos(&cc, quick, …) — quick glance uses force=TRUE
+                ans = await getpos(cc, quick, WHAT_IS_A_LOCATION, brief_at);
+                if (ans < 0 || cc.x < 0) break; /* done */
+                if (game.flags) game.flags.verbose = false; /* ask once */
+            }
         }
+
+        /* C `:1917` — always called with (from_screen || clicklook). */
+        const found = do_screen_description(
+            cc, from_screen || clicklook, sym, outH, firstH, supplH,
+        );
+
+        /* Finally, print out our explanation. */
         if (found) {
-            // C: putmixed(WIN_MESSAGE) — no forced more(); pline wrap
-            // already more()'s when out_str spans lines.
-            await pline(outH.s);
-            // C: checkfile only when !LOOK_QUICK/ONCE && (VERBOSE || (help && !quick))
+            /* C `:1922` putmixed(WIN_MESSAGE, 0, out_str): literal text
+               (may hold an encoded glyph) with no forced more(). JS has
+               no putmixed export; route the literal through the "%s" arm
+               (vpline "%s"-exact verbatim, pline.c:197-203) on the same
+               message-window path so '%' in the text prints literally. */
+            await pline('%s', outH.s);
+            /* C DUMPLOG_CORE `:1925–1939` decode_mixed+dumplogmsg omitted:
+               DUMPLOG retired (D-1776) — pline already dumplogmsgs. */
+
+            /* Check the data file for information about this thing. */
             if (
                 found === 1
                 && ans !== LOOK_QUICK
                 && ans !== LOOK_ONCE
                 && (ans === LOOK_VERBOSE || (game.flags?.help !== false && !quick))
+                && !clicklook
             ) {
                 // C `:1944–1951`: (ans == LOOK_VERBOSE) ? chkfilDontAsk
                 // : chkfilNone — ':' shows the entry without asking.
-                // C passes do_look's local pm (never assigned: always NULL),
-                // so the lookup keys off temp_buf/firstmatch — NOT the
-                // didlook permonst (supplemental_pm feeds only the named-omit
-                // do_supplemental_info, pager.c:2255 own row).
+                // C passes do_look's local pm (never assigned: always
+                // NULL), so the lookup keys off temp_buf/firstmatch —
+                // NOT the didlook permonst; supplemental_pm feeds only
+                // do_supplemental_info below.
                 const supplHolder = { s: '' };
                 await checkfile(
                     firstH.v, null,
                     ans === LOOK_VERBOSE ? CHK_DONT_ASK : 0,
                     supplHolder,
                 );
+                if (supplH.pm) {
+                    await do_supplemental_info(
+                        supplHolder.s, supplH.pm, ans === LOOK_VERBOSE,
+                    );
+                }
             }
-        } else if (from_screen || sym) {
+        } else {
             await pline("I've never heard of such things.");
         }
-    } while (from_screen && !quick && ans !== LOOK_ONCE);
+    } while (from_screen && !quick && ans !== LOOK_ONCE && !clicklook);
 
     if (game.flags) game.flags.verbose = save_verbose;
     return 0;
@@ -2806,10 +2941,15 @@ export async function dowhatdoes() {
         if (q === 38 || q === 63) await whatdoes_help(); // '&' or '?'
         const nl = reslt.indexOf('\n');
         if (nl < 0) {
-            await pline(reslt);
+            // C pager.c:2700 pline("%s", reslt) verbatim.
+            await pline('%s', reslt);
         } else {
-            await pline(`${reslt.slice(0, nl)},`);
-            await pline(`${reslt.slice(0, 8)}${reslt.slice(nl + 1)}`);
+            // C `:2706` pline("%s,", reslt) with reslt NUL-cut at the
+            // newline (first line + comma); `:2708` pline("%8.8s%s",
+            // reslt, p + 1) (8-char key field + second line). JS keeps
+            // its slice emulation of both cuts, routed verbatim.
+            await pline('%s,', reslt.slice(0, nl));
+            await pline('%s%s', reslt.slice(0, 8), reslt.slice(nl + 1));
         }
     } else {
         const label = key2txt(q);

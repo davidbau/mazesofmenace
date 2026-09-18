@@ -224,7 +224,7 @@ import { rn1, rn2, rnd, d } from './rng.js';
 import { getlin, yn_function } from './getline.js';
 import { livelog_printf } from './pline.js';
 import {
-    flush_screen, flush_topl_more, pline, pline_dir, pline_mon, Norep, You_feel, newsym,
+    flush_screen, flush_topl_more, pline, pline_dir, pline_mon, Norep, You, Your, You_feel, newsym,
     tmp_at, zapdir_to_glyph, nh_delay_output, canseemon, canspotmon, shieldeff,
     obj_glyph, cmap_to_glyph, glyph_is_invisible, map_invisible, unmap_object,
     bot, set_msg_xy, impossible,
@@ -305,7 +305,7 @@ import { bare_artifactname, defends, defends_when_carried, artifact_origin, revo
 import {
     Ring_gone, Ring_off, Ring_on, setworn, set_wear, hard_helmet,
 } from './do_wear.js';
-import { which_armor, mon_set_minvis, check_gear_next_turn, wearslot, wearmask_to_obj, extract_from_minvent } from './worn.js';
+import { which_armor, mon_set_minvis, check_gear_next_turn, wearslot, wearmask_to_obj, extract_from_minvent, bypass_objlist, nxt_unbypassed_obj } from './worn.js';
 import { mhurtle, hero_breaks, breaks } from './dothrow.js';
 import { abuse_dog, wary_dog, tamedog } from './dog.js';
 import { setuwep, setuswapwep, setuqwep, set_twoweap } from './wield.js';
@@ -329,7 +329,7 @@ import {
     NO_KILLER_PREFIX, DIED, KILLED_BY, KILLED_BY_AN, isok, ZAP_POS, STONE,
     IS_DOOR, IS_ROOM, D_CLOSED, D_LOCKED, D_NODOOR, D_BROKEN,
     DISP_BEAM, DISP_CHANGE, DISP_END, DISP_FLASH, DISP_TETHER,
-    OBJ_FREE, OBJ_FLOOR, OBJ_INVENT, OBJ_MINVENT, OBJ_CONTAINED, OBJ_BURIED,
+    OBJ_FREE, OBJ_FLOOR, OBJ_INVENT, OBJ_MINVENT, OBJ_CONTAINED, OBJ_BURIED, NOBJ_STATES,
     Has_contents, ZAPPED_WAND, THROWN_WEAPON, THROWN_TETHERED_WEAPON,
     KICKED_WEAPON,
     FLASHED_LIGHT, INVIS_BEAM, NOTELL, TELL,
@@ -352,7 +352,7 @@ import {
     def_warnsyms, S_flashbeam,
     W_RING, W_ARMG, W_ARMH, W_ARMOR, W_SADDLE, W_ART, W_ARTI,
     W_WEP, W_SWAPWEP, W_QUIVER, W_WEAPONS,
-    REFLECTING, ANTIMAGIC, SHOCK_RES, DRAIN_RES, TELEPORT_CONTROL, STUNNED, M_SEEN_MAGR, M_SEEN_REFL,
+    REFLECTING, ANTIMAGIC, SHOCK_RES, DRAIN_RES, TELEPORT_CONTROL, STUNNED, M_SEEN_MAGR, M_SEEN_REFL, LEVITATION, FLYING,
     NO_MINVENT, MM_NOWAIT, MM_NOMSG, MM_NOCOUNTBIRTH, MM_MALE, MM_FEMALE,
     IS_POOL, CONTAINED_TOO, BURIED_TOO, ROOM, CORR, GRAVE,
     CORPSTAT_GENDER, CORPSTAT_MALE, CORPSTAT_FEMALE, MFAST,
@@ -855,15 +855,9 @@ function useupf(obj, numused) {
     delobj(victim);
 }
 
-/** C ref: pline.c You — prefix "You ". Exported for pray.c pleased. */
-export async function You(rest) {
-    await pline(`You ${rest}`);
-}
-
-/** C ref: pline.c Your — prefix "Your ". */
-async function Your(rest) {
-    await pline(`Your ${rest}`);
-}
+// C ref: pline.c You/Your — single definition lives in display.js
+// (D-2471; prefix-on-format then vpline with the same args). The local
+// pre-format+re-scan clones are deleted; callers use the display export.
 
 /** C ref: dbridge.c / rm.h is_ice — ICE or drawbridge-under DB_ICE. */
 export function is_ice(x, y) {
@@ -1699,44 +1693,84 @@ async function maybe_destroy_item(carrier, obj, dmgtyp) {
 }
 
 /**
- * C ref: zap.c destroy_items — limit rn2 + invent/minvent scan.
- * Hero uses game.invent array; monsters use minvent nobj chain.
- * Named omissions: bypass_objlist; defer levitation/were.
+ * C ref: zap.c destroy_items `:5965–6097` — limit from dmg_in (C `:5996–6008`),
+ * reservoir-sample eligible stacks over a bypass_objlist /
+ * nxt_unbypassed_obj traversal (C `:6074–6082`), defer worn
+ * levitation/flying + lycanthropy-triggering holy/unholy water to a second
+ * pass (C `:6059–6072`), then destroy via maybe_destroy_item with o_id/where
+ * identity (C `:6083–6093`), clear bypass (C `:6094–6096`), return dmg_out.
+ * Hero uses game.invent array; monsters use minvent nobj chain (C `:5984`).
+ * The gameover break is the JS rendering of C losehp→done noreturn.
  */
 export async function destroy_items(mon, dmgtyp, dmg_in) {
     let limit = Math.trunc((dmg_in | 0) / DMG_DESTROY_SCALE);
+    // C :5997 — dmg = 9: 20% chance of limit=1, 80% of limit=2, etc.
     if (((dmg_in | 0) % DMG_DESTROY_SCALE) > rn2(DMG_DESTROY_SCALE)) limit++;
     if (limit > MAX_ITEMS_DESTROYED) limit = MAX_ITEMS_DESTROYED;
-    if (limit < 1) return 0;
+    if (limit < 1) return 0; // C :6006–6008 — nothing destroyed
 
     const u_carry = is_youmonst_carrier(mon);
-    const items = new Array(MAX_ITEMS_DESTROYED).fill(null);
+    // C :5984 — struct obj **objchn; re-read the live head each use so a
+    // recursive destroy_items (trap drop mid-pass) sees the current chain.
+    const objchn = () => (u_carry ? game.invent : mon?.minvent);
+    const items_to_destroy = [];
+    for (let k = 0; k < MAX_ITEMS_DESTROYED; k++) {
+        // C :5987–5991 — 0 is never a valid o_id
+        items_to_destroy.push({ oid: 0, otmp: null, deferred: false });
+    }
     let elig_stacks = 0;
+    let where = NOBJ_STATES;
 
-    const visit = (obj) => {
-        if (!destroyable(obj, dmgtyp)) return;
+    bypass_objlist(objchn(), false); // C :6074 — clear bypass bit for invent
+    let obj;
+    while ((obj = nxt_unbypassed_obj(objchn())) != null) {
+        if (!destroyable(obj, dmgtyp)) continue; // C :6077–6078
+        // C :6080–6082 — reservoir sample; rn2 only once the array is full
         const i = (elig_stacks < limit) ? elig_stacks : rn2(elig_stacks);
         elig_stacks++;
-        if (i < 0 || i >= limit) return;
-        items[i] = obj;
-    };
-
-    if (u_carry) {
-        for (const obj of game.invent || []) visit(obj);
-    } else {
-        for (let obj = mon?.minvent; obj; obj = obj.nobj) visit(obj);
-    }
-
-    if (elig_stacks > limit) elig_stacks = limit;
-    let dmg_out = 0;
-    for (let i = 0; i < elig_stacks; i++) {
-        const obj = items[i];
-        if (obj) {
-            dmg_out += await maybe_destroy_item(mon, obj, dmgtyp);
-            // C: losehp→done noreturn mid-loop
-            if (u_carry && game.program_state?.gameover) break;
+        if (i < 0 || i >= limit) continue; // C :6083–6086
+        items_to_destroy[i].oid = obj.o_id | 0;
+        items_to_destroy[i].otmp = obj;
+        if (where === NOBJ_STATES) {
+            where = obj.where;
+        } else if (where !== obj.where) {
+            await impossible('destroy_item: items in multiple chains');
+        }
+        // C :6064–6072 — loss of this item might dump us onto a trap, so a
+        // recursive destroy_items would bypass-skip the rest; hold it for
+        // the second pass. Destroyed poly potions/wands don't polymorph,
+        // so only levitation/flying worn gear and lycanthropy-triggering
+        // holy/unholy water defer.
+        if (u_carry
+            && (((obj.owornmask | 0) !== 0
+                 && (((game.objects?.[obj.otyp]?.oc_oprop | 0) === LEVITATION)
+                     || ((game.objects?.[obj.otyp]?.oc_oprop | 0) === FLYING)))
+                || ((obj.otyp | 0) === POT_WATER && ismnum(game.u?.ulycn)
+                    && (Upolyd(game.u) ? obj.blessed : obj.cursed)))) {
+            items_to_destroy[i].deferred = true;
+        } else {
+            items_to_destroy[i].deferred = false;
         }
     }
+    if (elig_stacks > limit) elig_stacks = limit; // C :6087–6089
+    let dmg_out = 0;
+    for (let defer = 0; defer <= 1; ++defer) {
+        for (let i = 0; i < elig_stacks; ++i) {
+            const entry = items_to_destroy[i];
+            const target = entry.otmp;
+            if (target && (target.o_id | 0) === (entry.oid | 0)
+                && target.where === where
+                && entry.deferred === (defer === 1)) {
+                dmg_out += await maybe_destroy_item(mon, target, dmgtyp);
+                entry.otmp = null;
+                // C: losehp→done noreturn mid-loop
+                if (u_carry && game.program_state?.gameover) break;
+            }
+        }
+        if (u_carry && game.program_state?.gameover) break;
+    }
+    // C :6094–6096 — almost certainly not everything was destroyed
+    bypass_objlist(objchn(), false);
     return dmg_out;
 }
 
@@ -2324,7 +2358,7 @@ export async function dobuzz(
                         await pline(`The ${flash_str(fltyp)} whizzes by you!`);
                     } else if (damgtype === ZT_LIGHTNING) {
                         // C zap.c:4985–4986 — blind miss still tingles
-                        await Your(`${body_part(ARM)} tingles.`);
+                        await Your('%s tingles.', body_part(ARM));
                     }
                     // C zap.c:4988–4989 — lightning blinds via flashburn on
                     // any pass through the hero, hit or missed or reflected
@@ -2594,7 +2628,8 @@ export async function release_hold() {
         await expels(mtmp, mtmp.data, true);
     } else if (sticks(game.youmonst?.data)) {
         set_ustuck(null);
-        await You(`release ${mon_nam(mtmp)}.`);
+        // C zap.c:598 You("release %s.", mon_nam(mtmp)).
+        await You('release %s.', mon_nam(mtmp));
     } else {
         await unstuck(u.ustuck);
         let relbuf;
@@ -2610,7 +2645,8 @@ export async function release_hold() {
         } else {
             relbuf = `by ${mon_nam(mtmp)}`;
         }
-        await You(`are released ${relbuf}.`);
+        // C zap.c:607 You("are released %s.", relbuf).
+        await You('are released %s.', relbuf);
     }
 }
 
@@ -3825,7 +3861,8 @@ export async function bhitm(mtmp, otmp) {
             await mon_adjust_speed(mtmp, -1, otmp);
             check_gear_next_turn(mtmp);
             if (engulfing_u(mtmp) && is_whirly(mtmp.data)) {
-                await You(`disrupt ${mon_nam(mtmp)}!`);
+                // C zap.c:227 You("disrupt %s!", mon_nam(mtmp)).
+                await You('disrupt %s!', mon_nam(mtmp));
                 await pline('A huge hole opens up...');
                 await expels(mtmp, mtmp.data, true);
             }
@@ -5364,10 +5401,12 @@ async function bhito(obj, otmp) {
             if (!obj.cobj) {
                 await pline(`${Tobjnam_zap(obj, 'are')} empty.`);
             } else if (SchroedingersBox(obj)) {
+                // C zap.c:2243 You("aren't sure whether %s has %s or its
+                // corpse inside.", the(xname(obj)), an(Hallu?rndmonnam:"cat")).
                 await You(
-                    `aren't sure whether ${the(xname(obj))} has ${
-                        an(Hallucination() ? rndmonnam(null) : 'cat')
-                    } or its corpse inside.`,
+                    "aren't sure whether %s has %s or its corpse inside.",
+                    the(xname(obj)),
+                    an(Hallucination() ? rndmonnam(null) : 'cat'),
                 );
                 obj.cknown = 0;
             } else {
@@ -5430,7 +5469,7 @@ async function bhito(obj, otmp) {
     }
     case WAN_TELEPORTATION:
     case SPE_TELEPORT_AWAY:
-        rloco(obj);
+        await rloco(obj);
         break;
     case WAN_UNDEAD_TURNING:
     case SPE_TURN_UNDEAD:
@@ -6126,7 +6165,8 @@ async function zap_map(x, y, obj) {
                 const ttmpname = trapname(ttmp.ttyp, false);
                 /* Invocation_lev vibrating-square "the" named */
                 const use_the = hallu ? !rn2(4) : false;
-                await You(`find ${use_the ? the(ttmpname) : an(ttmpname)}${use_the ? '!' : '.'}`);
+                // C zap.c:3790 You("find %s%c", use_the?the:an, '!'/'.').
+                await You('find %s%c', use_the ? the(ttmpname) : an(ttmpname), use_the ? '!' : '.');
                 /* C :3793 — assign, not OR */
                 learn.v = !hallu;
             }
@@ -6187,7 +6227,8 @@ async function zap_updown(obj) {
         /* C zap.c :3236–3262 */
         let ptmp = 0;
         if (dz < 0) {
-            await You(`probe towards the ${ceiling_updown(x, y)}.`);
+            // C zap.c:3241 You("probe towards the %s.", ceiling(x, y)).
+            await You('probe towards the %s.', ceiling_updown(x, y));
         } else {
             const rememberedltyp = update_mapseen_for(x, y);
             ptmp += await bhitpile(obj, bhito, x, y, dz);
@@ -6202,7 +6243,8 @@ async function zap_updown(obj) {
             } else {
                 surf = the(surface_zap(x, y));
             }
-            await You(`probe beneath ${surf}.`);
+            // C zap.c:3257 You("probe beneath %s.", surf).
+            await You('probe beneath %s.', surf);
             ptmp += await display_binventory(x, y, true);
         }
         if (!ptmp) await Your('probe reveals nothing.');

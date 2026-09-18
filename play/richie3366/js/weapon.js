@@ -9,13 +9,14 @@ import { game } from './gstate.js';
 import { rn2, rnd, rnl, d } from './rng.js';
 import {
     flush_topl_more, pline, You_feel, canseemon, bot, pline_mon, newsym,
+    impossible,
 } from './display.js';
 import { cansee } from './vision.js';
 import { select_menu_pick_none } from './invent.js';
 import { select_menu_pick_one } from './options.js';
 import { yn_function } from './getline.js';
 import { Monnam, mon_nam, s_suffix } from './do_name.js';
-import { doname, xname, vtense, The, distant_name, otense, Tobjnam, arti_light_description } from './objnam.js';
+import { doname, xname, vtense, The, the, distant_name, otense, Tobjnam, Yname2, makeplural, is_plural, arti_light_description } from './objnam.js';
 import {
     WEAPON_CLASS, GEM_CLASS, TOOL_CLASS, BALL_CLASS, CHAIN_CLASS,
     objectNames, objectNameStrs, is_axe, is_pick, is_spear, LEATHER, SILVER,
@@ -23,7 +24,7 @@ import {
 import { is_pool, handle_tip } from './hack.js';
 import { dist2 } from './hacklib.js';
 import {
-    is_ammo, ammo_and_launcher, is_missile, mwelded, is_weptool,
+    is_ammo, ammo_and_launcher, is_missile, mwelded, is_weptool, bimanual,
 } from './wield.js';
 import {
     is_lord, is_prince, strongmonst, mon_hates_blessings, mon_hates_silver,
@@ -59,6 +60,7 @@ import { mbodypart } from './polyself.js';
 import { attacktype_fordmg } from './uhitm.js';
 import { acurr, A_STR } from './attrib.js';
 import { m_carrying, mon_has_shield } from './mon.js';
+import { mhis } from './mondata.js';
 import { ATR_INVERSE } from './terminal.js';
 import {
     skill_based_spellbook_id, spell_skilltype,
@@ -709,37 +711,45 @@ export async function select_hwep(mtmp) {
 }
 
 /**
- * C ref: weapon.c mon_wield_item — HTH + ranged + dig-tool pick/axe.
- * Live: artifact_light begin_burn + wield-shine pline (`weapon.c:918–928`).
- * Named omissions: mwelded refuse-wield plines, weld-on-wield,
- * autoreturn tether pline.
+ * C ref: weapon.c mon_wield_item `:801–934` — full body in C order.
+ * NEED_HTH (`select_hwep`) / NEED_RANGED (`select_rwep` + `gp.propellor`)
+ * / NEED_PICK_AXE / NEED_AXE / NEED_PICK_OR_AXE (dig tools use '.',
+ * HTH/ranged use '!'); already-wielding-same-otyp early-0; mwelded
+ * refuse-wield (`NO_WEAPON_WANTED`, return 1); `mon->mw = obj` +
+ * `setmnotwielded` + canseemon wield pline + autoreturn tether pline +
+ * 3.6.3 W_WEP-toggle weld-on-wield pline; artifact_light begin_burn +
+ * wield-shine pline (`:918–928`, D-2125); final `owornmask = W_WEP`.
+ * `mon_has_shield` is `which_armor(mon, W_ARMS)` (`js/mon.js:413`).
  */
 export async function mon_wield_item(mon) {
+    /* This case actually should never happen */
     if (mon.weapon_check === NO_WEAPON_WANTED) return 0;
     let obj = null;
-    // C: dig tools use '.' (exclaim FALSE); HTH/ranged use '!'
-    let exclaim = true;
+    let exclaim = true; /* assume mon is planning to attack */
     switch (mon.weapon_check) {
     case NEED_HTH_WEAPON:
         obj = await select_hwep(mon);
         break;
     case NEED_RANGED_WEAPON:
-        select_rwep(mon);
-        obj = game._propellor;
+        select_rwep(mon); /* (void) */
+        obj = game._propellor; /* C: gp.propellor */
         break;
     case NEED_PICK_AXE:
         obj = m_carrying(mon, PICK_AXE);
+        /* KMH -- allow other picks */
         if (!obj && !mon_has_shield(mon)) {
             obj = m_carrying(mon, DWARVISH_MATTOCK);
         }
-        exclaim = false;
+        exclaim = false; /* mon is just planning to dig */
         break;
     case NEED_AXE:
+        /* currently, only 2 types of axe */
         obj = m_carrying(mon, BATTLE_AXE);
         if (!obj || mon_has_shield(mon)) obj = m_carrying(mon, AXE);
         exclaim = false;
         break;
     case NEED_PICK_OR_AXE:
+        /* prefer pick for fewer switches on most levels */
         obj = m_carrying(mon, DWARVISH_MATTOCK);
         if (!obj) obj = m_carrying(mon, BATTLE_AXE);
         if (!obj || mon_has_shield(mon)) {
@@ -749,26 +759,66 @@ export async function mon_wield_item(mon) {
         exclaim = false;
         break;
     default:
-        mon.weapon_check = NEED_WEAPON;
+        await impossible('weapon_check %d for %s?', mon.weapon_check, mon_nam(mon));
         return 0;
     }
     if (obj && obj !== hands_obj) {
         const mw_tmp = MON_WEP(mon);
+
         if (mw_tmp && mw_tmp.otyp === obj.otyp) {
+            /* already wielding it */
             mon.weapon_check = NEED_WEAPON;
             return 0;
         }
-        // mwelded refuse-wield deferred — treat as free switch
-        mon.mw = obj;
-        if (mw_tmp) mw_tmp.owornmask = (mw_tmp.owornmask || 0) & ~W_WEP;
+        /* Actually, this isn't necessary--as soon as the monster
+         * wields the weapon, the weapon welds itself, so the monster
+         * can know it's cursed and needn't even bother trying.
+         * Still....
+         */
+        if (mw_tmp && mwelded(mw_tmp)) {
+            if (canseemon(mon)) {
+                let mon_hand = mbodypart(mon, HAND);
+                if (bimanual(mw_tmp)) mon_hand = makeplural(mon_hand);
+                const welded_buf = `${otense(mw_tmp, 'are')} welded to ${mhis(mon)} ${mon_hand}`;
+                if (obj.otyp === PICK_AXE) {
+                    await pline(`Since ${s_suffix(mon_nam(mon))} weapon${plur(mw_tmp.quan)} ${welded_buf},`);
+                    await pline(`${mon_nam(mon)} cannot wield that ${xname(obj)}.`);
+                } else {
+                    await pline_mon(mon, `${Monnam(mon)} tries to wield ${doname(obj)}.`);
+                    await pline(`${Yname2(mw_tmp)} ${welded_buf}!`);
+                }
+                mw_tmp.bknown = 1;
+            }
+            mon.weapon_check = NO_WEAPON_WANTED;
+            return 1;
+        }
+        mon.mw = obj; /* wield obj */
+        { const sm = setmnotwielded(mon, mw_tmp); if (sm) await sm; }
         mon.weapon_check = NEED_WEAPON;
-        // C: canseemon → pline_mon("%s wields %s%c", Monnam, doname, !|.)
-        // before final owornmask (weld arm still deferred)
         if (canseemon(mon)) {
             await pline_mon(
                 mon,
                 `${Monnam(mon)} wields ${doname(obj)}${exclaim ? '!' : '.'}`,
             );
+            const arw = autoreturn_weapon(obj);
+            if (arw && arw.tethered) {
+                await pline_mon(mon, `${Monnam(mon)} secures the tether on ${the(xname(obj))}.`);
+            }
+
+            /* 3.6.3: mwelded() predicate expects the object to have its
+               W_WEP bit set in owornmask, but the pline here and for
+               artifact_light don't want that because they'd have '(weapon
+               in hand/claw)' appended; so we set it for the mwelded test
+               and then clear it, until finally setting it for good below */
+            obj.owornmask = (obj.owornmask || 0) | W_WEP;
+            const newly_welded = mwelded(obj);
+            obj.owornmask = (obj.owornmask || 0) & ~W_WEP;
+            if (newly_welded) {
+                let mon_hand = mbodypart(mon, HAND);
+                if (bimanual(obj)) mon_hand = makeplural(mon_hand);
+                await pline(`${Tobjnam(obj, 'weld')} ${is_plural(obj) ? 'themselves' : 'itself'} to ${s_suffix(mon_nam(mon))} ${mon_hand}!`);
+                obj.bknown = 1;
+            }
         }
         // C weapon.c:918–928 — a newly wielded light artifact ignites:
         // begin_burn sets lamplit first (arti_light_radius, and the
@@ -779,11 +829,12 @@ export async function mon_wield_item(mon) {
                 await pline(
                     `${Tobjnam(obj, 'shine')} ${arti_light_description(obj)} in ${s_suffix(mon_nam(mon))} ${mbodypart(mon, HAND)}!`,
                 );
+            /* 3.6.3: artifact might be getting wielded by invisible monst */
             } else if (cansee(mon.mx, mon.my)) {
                 await pline(`Light begins shining ${dist2(mon.mx, mon.my, game.u.ux, game.u.uy) <= 5 * 5 ? 'nearby' : 'in the distance'}.`);
             }
         }
-        obj.owornmask = (obj.owornmask || 0) | W_WEP;
+        obj.owornmask = W_WEP;
         return 1;
     }
     mon.weapon_check = NEED_WEAPON;
