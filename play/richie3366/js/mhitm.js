@@ -18,7 +18,7 @@ import { arti_reflects, artifact_hit, permapoisoned, is_art } from './artifact.j
 import { find_mac, which_armor, bypass_obj, is_flimsy } from './worn.js';
 import { update_monster_region } from './region.js';
 import { remove_worm, place_worm_tail_randomly, worm_known } from './worm.js';
-import { place_monster, remove_monster, dismount_steed, doorless_door, test_move_ok } from './steed.js';
+import { place_monster, remove_monster, dismount_steed, doorless_door } from './steed.js';
 import {
     M_ATTK_MISS,
     M_ATTK_HIT,
@@ -95,6 +95,7 @@ import {
     EF_VERBOSE,
     ER_NOTHING,
     PROTECTION,
+    TEST_MOVE,
 } from './const.js';
 import {
     verysmall, G_FREQ, G_NOCORPSE, G_UNIQ, is_neuter, nonliving,
@@ -165,7 +166,7 @@ import { livelog_printf } from './pline.js';
 import { shtypes } from './shknam.js';
 import { obfree, setpaid, discard_damage_owned_by } from './shk.js';
 import { search_special } from './sounds.js';
-import { closed_door } from './hack.js';
+import { closed_door, test_move } from './hack.js';
 import { emits_light, del_light_source } from './light.js';
 import { on_level } from './dungeon.js';
 import { clear_fcorr, parkguard } from './vault.js';
@@ -2166,10 +2167,9 @@ function is_blunt_weapon_mm(o) {
  * C's boolean. RNG order kept: rn2(3) distance, rn2(chance) gate, message
  * rn2(2)+rn2(2), effect rn2(4) stun. Called from mhitu hitmu, mhitm mdamagem,
  * and uhitm hmon (maybe_knockback).
- * Named omissions: full hack.c test_move arms for the hero-defender gate
- * (passes-walls/ooze/tunnel/boulder/water/trap — steed.js test_move_ok is the
- * live TEST_MOVE terrain/doorway subset); rogue-level arm of doorless_door
- * is inlined here (steed.js clone omits it).
+ * Named omissions: test_move block_door/block_entry shopkeeper arms
+ * (stub-false/false); rogue-level arm of doorless_door is inlined here
+ * (steed.js clone omits it).
  */
 export async function mhitm_knockback(magr, mdef, mattk, mhm, weapon_used) {
     const sgn1 = (v) => ((v | 0) < 0 ? -1 : ((v | 0) > 0 ? 1 : 0));
@@ -2215,8 +2215,9 @@ export async function mhitm_knockback(magr, mdef, mattk, mhm, weapon_used) {
     const dy = sgn1(defy - agry);
 
     // C: can't move most targets into or out of a doorway diagonally
+    // Full test_move TEST_MOVE (was the test_move_ok doorway subset).
     if (u_def) {
-        if (!test_move_ok(defx, defy, dx, dy)) return false;
+        if (!await test_move(defx, defy, dx, dy, TEST_MOVE)) return false;
     } else {
         // C: subset of test_move()
         if (!isok(defx + dx, defy + dy)) return false;
@@ -2342,7 +2343,7 @@ function completelyburns_mm(data) {
 }
 
 /** C ref: mon.c mlifesaver — worn AMULET_OF_LIFE_SAVING on living/vampshift. */
-function mlifesaver(mon) {
+export function mlifesaver(mon) {
     if (!mon?.data) return null;
     if (!nonliving(mon.data) || is_vampshifter(mon)) {
         const otmp = which_armor(mon, W_AMUL);

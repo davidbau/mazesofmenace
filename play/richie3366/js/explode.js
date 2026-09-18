@@ -224,7 +224,7 @@ function resists_magm(mon) {
 }
 
 /** C ref: mondata.c completelyburns — paper/straw golem. */
-function completelyburns(data) {
+export function completelyburns(data) {
     const mndx = data?.mndx ?? data?.mnum;
     return mndx === PM_PAPER_GOLEM || mndx === PM_STRAW_GOLEM;
 }

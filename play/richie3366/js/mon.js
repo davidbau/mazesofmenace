@@ -5,7 +5,7 @@
 
 import { game } from './gstate.js';
 import { rn2, rnd, d } from './rng.js';
-import { dochugw, m_everyturn_effect, monflee, can_hide_under_obj, can_fog } from './monmove.js';
+import { dochugw, m_everyturn_effect, monflee, can_hide_under_obj, can_fog, mon_offmap } from './monmove.js';
 import {
     COLNO, ROWNO, IS_OBSTRUCTED, IS_DOOR, IS_TREE, D_CLOSED, D_LOCKED, D_BROKEN,
     ALLOW_ROCK, ALLOW_DIG, Is_rogue_level, NOTONL, ALLOW_ALL, ALLOW_BARS,
@@ -49,8 +49,9 @@ import {
 import {
     objects_at, sobj_at, kill_egg, place_object, stackobj, delobj, is_metallic,
     is_rustprone, mksobj_at, is_organic, is_mines_prize, is_soko_prize,
-    obj_extract_self, nxtobj, splitobj,
+    obj_extract_self, nxtobj, splitobj, g_at, add_to_minv,
 } from './mkobj.js';
+import { gd_move } from './vault.js';
 import {
     objectNames, objectDescrs, ROCK_CLASS, SCROLL_CLASS,
 } from './generated/objects_data.js';
@@ -85,7 +86,7 @@ import { touch_artifact } from './artifact.js';
 import { experience, more_experienced, newexplevel } from './exper.js';
 import { hastrack } from './track.js';
 import { MON_WEP } from './weapon.js';
-import { is_axe, is_pick } from './objects.js';
+import { is_axe, is_pick, GOLD } from './objects.js';
 
 const PM_FLOATING_EYE = monsterNames.indexOf('PM_FLOATING_EYE');
 const PM_GREMLIN = monsterNames.indexOf('PM_GREMLIN');
@@ -138,8 +139,9 @@ function mdistu(mtmp) {
     return dist2(mtmp.mx, mtmp.my, game.u.ux, game.u.uy);
 }
 
-/** C ref: hack.c may_passwall — STWALL + W_NONPASSWALL blocks. */
-function may_passwall(x, y) {
+/** C ref: hack.c may_passwall — STWALL + W_NONPASSWALL blocks. Exported for
+ * hack.c test_move (same C body; teleport.js keeps its D-1100 local copy). */
+export function may_passwall(x, y) {
     const loc = game.level?.at(x, y);
     if (!loc) return false;
     // C: wall_info aliases flags; OR JS split W_* fields (D-0865).
@@ -1576,6 +1578,31 @@ export async function migrate_mon(mtmp, target_lev, xyloc) {
 }
 
 /**
+ * C ref: mon.c mpickgold `:1827–1843` — monster picks up floor gold at its
+ * feet: extract + add_to_minv; when seen, newsym, plus a verbose
+ * non-guard pline_mon with the gold-vs-money material message
+ * (GOLD = objclass.h 15, Au). Callers: vault.c gd_move newpos +
+ * gd_pick_corridor_gold (same iteration).
+ */
+export async function mpickgold(mtmp) {
+    const gold = g_at(mtmp.mx, mtmp.my);
+    if (gold) {
+        const mat = game.objects?.[gold.otyp]?.oc_material ?? 0;
+        obj_extract_self(gold);
+        add_to_minv(mtmp, gold);
+        if (cansee(mtmp.mx, mtmp.my)) {
+            if ((game.flags?.verbose !== false) && !mtmp.isgd) {
+                await pline_mon(
+                    mtmp,
+                    `${Monnam(mtmp)} picks up some ${mat === GOLD ? 'gold' : 'money'}.`,
+                );
+            }
+            newsym(mtmp.mx, mtmp.my);
+        }
+    }
+}
+
+/**
  * C ref: mon.c m_into_limbo `:3834–3840` — MON_LIMBO then migrate to current
  * ledger with MIGR_APPROX_XY. Callers: deal_with_overcrowding (same file),
  * do.c u_collide_m, teleport.c u_teleport_mon, vault.c clear_fcorr.
@@ -2508,10 +2535,34 @@ async function minliquid_core(mtmp) {
     return 0;
 }
 
-// C ref: mondata.h unique_corpstat — G_UNIQ. Local (same shape as the
-// teleport.js/trap.js/music.js locals; mondata.js monsndx stays unexported).
-function unique_corpstat(ptr) {
+// C ref: mondata.h unique_corpstat — G_UNIQ. Exported (was file-local);
+// uhitm.c xkilled tame-murder gamelog shares it (no fifth local).
+export function unique_corpstat(ptr) {
     return !!((ptr?.geno | 0) & G_UNIQ);
+}
+
+/**
+ * C ref: mon.c iter_mons `:4527–4540` — call vfunc for every living
+ * on-level monster. DEADMONSTER is `mhp < 1`; fmon is a JS array (no nmon
+ * unlink hazard), so the C mtmp2 snapshot is the loop itself.
+ */
+export async function iter_mons(vfunc) {
+    for (const mtmp of game.fmon || []) {
+        if ((mtmp.mhp | 0) < 1 || mon_offmap(mtmp)) continue;
+        await vfunc(mtmp);
+    }
+}
+
+/**
+ * C ref: mon.c anger_quest_guardians `:3072–3077` (staticfn) — anger the
+ * quest guards on the level. Guard comparison by mndx (mon.js:1016 idiom);
+ * setmangry is async.
+ */
+export async function anger_quest_guardians(mtmp) {
+    const guardnum = game.urole?.guardnum | 0;
+    if ((mtmp.data?.mndx ?? mtmp.mnum ?? NON_PM) === guardnum) {
+        await setmangry(mtmp, true);
+    }
 }
 
 // C ref: mon.c mm_2way_aggression `:2387–2420` — the two-way half of
@@ -2858,10 +2909,15 @@ async function movemon_singlemon(mtmp) {
         return true;
     }
 
-    // C: parked vault guard at <0,0> — gd_move may discard; no NORMAL_SPEED spend.
-    // Named omission: full gd_move corridor teardown (D-0795); skip spend only.
+    // C mon.c:1233-1239 — parked vault guard at <0,0> gets one gd_move
+    // per turn (tears down the corridor, clears isgd when done); no
+    // NORMAL_SPEED spend, and FALSE either way (dead or alive).
     if (mtmp?.isgd && !(mtmp.mx | 0)
         && !((mtmp.mstate | 0) & MON_MIGRATING)) {
+        if ((game.moves | 0) > (mtmp.mlstmv | 0)) {
+            await gd_move(mtmp);
+            mtmp.mlstmv = game.moves | 0;
+        }
         return false;
     }
 

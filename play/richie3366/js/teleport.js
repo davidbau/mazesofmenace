@@ -1411,8 +1411,7 @@ export async function teleok(x, y, trapok) {
  * Named omissions: fill_pit still uses thin
  * extract+deltrap+delobj (C flooreffects("settle") named);
  * shop-enter plines beyond spoteffects subset;
- * hostile gd_move rloc/gd_letknow/wallify_vault (uleftvault calls
- * gd_move after mpeaceful=0; JS gd_move still early-returns hostile);
+ * (gd_move hostile rloc/gd_letknow/wallify_vault went live in D-2448);
  * walk invocation_message is D-1150; mkmaze.c inv_pos is D-1154;
  * vision.c vision_recalc / goto_level / newgame / seffect_magic_mapping
  * / wizcmds / save / postmov notice_mon callers; spot_monsters option.

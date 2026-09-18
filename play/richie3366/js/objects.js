@@ -118,6 +118,8 @@ export function def_char_to_objclass(ch) {
 /** C objclass.h enum obj_material_types — dmgval leather/silver gates. */
 export const LEATHER = 7;
 export const SILVER = 14;
+/** C objclass.h GOLD = 15 (Au) — mon.c mpickgold gold-vs-money message. */
+export const GOLD = 15;
 
 /**
  * C obj.h is_axe — WEAPON/TOOL with P_AXE skill. Canonical home; the

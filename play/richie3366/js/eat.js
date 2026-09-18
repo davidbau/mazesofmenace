@@ -106,14 +106,14 @@ import {
     nomul, unmul, losehp, finish_maybe_wail, still_chewing, is_pool, is_lava,
     stop_occupation, end_running,
 } from './hack.js';
-import { near_capacity, observe_object, makeknown, getobj, freeinv,
+import { Blind, near_capacity, observe_object, makeknown, getobj, freeinv,
     encumber_msg, update_inventory, useupall, useup, useupf } from './invent.js';
 import {
     make_confused, make_vomiting, make_glib, make_stoned, make_slimed,
     make_stunned, make_hallucinated, make_sick,
 } from './potion.js';
 import { addinv_nomerge } from './u_init.js';
-import { dropy, dropx, make_blinded, revive_corpse, donull } from './do.js';
+import { dropy, dropx, make_blinded, BlindedTimeout, revive_corpse, donull } from './do.js';
 import { type_is_pname, rndmonnam, pmname, Ugender, mon_nam, Monnam } from './do_name.js';
 import { ART_ORB_OF_DETECTION } from './generated/artifacts_data.js';
 import { hands_obj } from './weapon.js';
@@ -2188,10 +2188,11 @@ async function rottenfood(obj) {
         }
         // C: make_confused(HConfusion + d(2, 4), FALSE)
         await make_confused((u.HConfusion | 0) + d(2, 4), false);
-    } else if (!rn2(4) && !(game.u?.Blind || ((game.u?.HBlinded | 0) & TIMEOUT))) {
+    } else if (!rn2(4) && !Blind()) {
         await pline('Everything suddenly goes dark.');
-        // C: make_blinded(BlindedTimeout + d(2, 10), FALSE) — body deferred
-        d(2, 10);
+        // C eat.c:1824-1828 — Blinded timer may be nonzero via Eyes override
+        await make_blinded(BlindedTimeout() + d(2, 10), false);
+        if (!Blind()) await pline('Your vision clears.');
     } else if (!rn2(3)) {
         const duration = rnd(10);
         await pline('The world spins and goes dark.');

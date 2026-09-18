@@ -11,29 +11,29 @@ import {
     HMON_MELEE, HMON_THROWN, HMON_KICKED, HMON_APPLIED, STRAT_WAITMASK,
     STRAT_WAITFORU, AD_SPEL,
     XKILL_GIVEMSG, XKILL_NOMSG, XKILL_NOCORPSE, XKILL_NOCONDUCT,
-    LL_CONDUCT, Upolyd, P_BARE_HANDED_COMBAT, P_TWO_WEAPON_COMBAT, P_BASIC, P_WHIP,
-    A_CHAOTIC, INTRINSIC, CORPSTAT_BURIED, CORPSTAT_NONE, ONAME_NO_FLAGS,
+    LL_CONDUCT, LL_KILLEDPET, Upolyd, P_BARE_HANDED_COMBAT, P_TWO_WEAPON_COMBAT, P_BASIC, P_WHIP,
+    A_CHAOTIC, A_NONE, INTRINSIC, CORPSTAT_BURIED, CORPSTAT_NONE, OBJ_BURIED, ONAME_NO_FLAGS,
     P_DAGGER, P_KNIFE, P_AXE, P_SABER, P_NONE, P_SKILLED, NEED_WEAPON,
     M_ATTK_MISS, M_ATTK_HIT, M_ATTK_DEF_DIED, NATTK, MSLOW,
     M_AP_OBJECT, M_AP_FURNITURE, M_AP_MONSTER, M_AP_TYPE, M_AP_NOTHING,
     M_AP_TYPMASK, MHID_ALTMON,
     MIM_REVEAL, MIM_OMIT_WAIT, engulfing_u, OBJ_FREE, OBJ_INVENT, MON_DETACH,
-    has_mgivenname, ARTICLE_NONE, ARTICLE_THE, ARTICLE_A, ARTICLE_YOUR, SUPPRESS_SADDLE,
+    MGIVENNAME, has_mgivenname, ARTICLE_NONE, ARTICLE_THE, ARTICLE_A, ARTICLE_YOUR, SUPPRESS_SADDLE,
     SUPPRESS_NAME, SUPPRESS_IT, SUPPRESS_INVISIBLE, SUPPRESS_HALLUCINATION, EXACT_NAME,
     HAND, LEG, A_LAWFUL, Is_airlevel, Is_waterlevel, PARANOID_HIT, LOW_PM,
     W_ARM, W_ARMC, W_ARMH, W_ARMU, W_ARMG, W_RINGL, W_RINGR, W_ARMF, W_AMUL, W_WEP,
     MON_EXPLODE, NO_MM_FLAGS, NO_TRAP_FLAGS, DISP_ALWAYS, DISP_END, STOMACH, DIED, NO_KILLER_PREFIX, ERODE_CORRODE, ERODE_BURN, EF_GREASE, EF_NONE,
     KILLED_BY_AN, PASSES_WALLS, SLOW_DIGESTION, MALE, FEMALE, MMOVE_DIED, CXN_ARTICLE,
-    ERODE_ROT, NO_NC_FLAGS, AD_CURS,
+    ERODE_ROT, NO_NC_FLAGS, AD_CURS, EDOG, is_pit,
 } from './const.js';
 import {
-    WEAPON_CLASS, ARMOR_CLASS, TOOL_CLASS, FOOD_CLASS, COIN_CLASS, RANDOM_CLASS,
+    WEAPON_CLASS, ARMOR_CLASS, TOOL_CLASS, FOOD_CLASS, COIN_CLASS, RANDOM_CLASS, POTION_CLASS,
     objectNameStrs, objectNames,
 } from './objects.js';
-import { exercise, A_STR, A_DEX, A_WIS, A_CON, acurr, adjalign, change_luck } from './attrib.js';
+import { exercise, A_STR, A_DEX, A_WIS, A_CON, acurr, adjalign, change_luck, ALIGNLIM } from './attrib.js';
 import { overexertion, nomul, losehp, is_pool, maybe_half_phys } from './hack.js';
 import { ing_suffix, upstart } from './hacklib.js';
-import { pline, pline_mon, newsym, canseemon, canspotmon, sensemon, map_invisible, unmap_object, memory_glyph_is_invisible, glyph_is_invisible_id, flush_topl_more, You_feel, tmp_at, map_location, nh_delay_output, mon_glyph, shieldeff, impossible } from './display.js';
+import { pline, pline_mon, newsym, canseemon, canspotmon, sensemon, map_invisible, unmap_object, memory_glyph_is_invisible, glyph_is_invisible_id, flush_topl_more, You_feel, tmp_at, map_location, nh_delay_output, mon_glyph, shieldeff, impossible, see_monsters, hero_Blind_telepat } from './display.js';
 import { cansee } from './vision.js';
 import {
     dmgval, hitval, P_SKILL, weapon_hit_bonus, martial_bonus,
@@ -69,19 +69,20 @@ import {
     MR_FIRE, MR_COLD, MR_ELEC, MR_ACID,
 } from './monsters.js';
 import {
-    mkobj, place_object, stackobj, delobj, relobj_on_death, obj_extract_self,
+    mkobj, mksobj_at, place_object, stackobj, delobj, relobj_on_death, obj_extract_self,
 } from './mkobj.js';
 import {
     monnear, record_mvitals_died, seemimic, wakeup, setmangry, dist2,
     wake_nearto, m_carrying, healmon, zombie_maker, zombie_form,
-    mtrapped_in_pit, LEVEL_SPECIFIC_NOCORPSE,
+    mtrapped_in_pit, LEVEL_SPECIFIC_NOCORPSE, unique_corpstat,
+    iter_mons, anger_quest_guardians,
 } from './mon.js';
 import { monflee, m_move, accessible } from './monmove.js';
 import { livelog_printf } from './pline.js';
 import { experience, more_experienced, newexplevel } from './exper.js';
 import { explode, mon_explodes, adtyp_to_expltype } from './explode.js';
 import { rehumanize, body_part, mbodypart, uunstick } from './polyself.js';
-import { mon_nam, Monnam, x_monnam, x_monnam_tame, Hallucination, type_is_pname, pmname, a_monnam, safe_oname, s_suffix } from './do_name.js';
+import { mon_nam, Monnam, x_monnam, x_monnam_tame, Hallucination, type_is_pname, pmname, Mgender, a_monnam, safe_oname, s_suffix } from './do_name.js';
 import { artifact_hit, youmonst, is_art, artifact_exists, shade_glare, find_artifact } from './artifact.js';
 import { xname, vtense, The, An, an, singular, makeplural, cxname, simpleonames, otense, mshot_xname, Yobjnam2, doname, corpse_xname } from './objnam.js';
 import { abuse_dog, tamedog } from './dog.js';
@@ -97,12 +98,16 @@ import { m_unleash } from './apply.js';
 import { mhe, mhis } from './mondata.js';
 import { hard_helmet } from './do_wear.js';
 import { findgold, inv_cnt } from './steal.js';
-import { mselftouch, instapetrify } from './trap.js';
+import { mselftouch, instapetrify, t_at } from './trap.js';
 import { merge_choice_invent } from './pickup.js';
 import { addinv } from './u_init.js';
-import { dropy } from './do.js';
+import { dropy, flooreffects } from './do.js';
 import { munslime, mon_adjust_speed } from './muse.js';
 import { night } from './calendar.js';
+import { p_coaligned } from './priest.js';
+import { Soundeffect } from './sndprocs.js';
+import { uhis } from './roles.js';
+import { se_distant_thunder, se_applause } from './generated/seffects_data.js';
 
 const PM_BLACK_PUDDING = monsterNames.indexOf('PM_BLACK_PUDDING');
 const PM_BROWN_PUDDING = monsterNames.indexOf('PM_BROWN_PUDDING');
@@ -130,6 +135,12 @@ const CORPSE = objectNames.indexOf('CORPSE');
 const BOULDER = objectNames.indexOf('BOULDER');
 const PM_LIZARD = monsterNames.indexOf('PM_LIZARD');
 const PM_ORACLE = monsterNames.indexOf('PM_ORACLE');
+// C monflag.h — quest msound ranks (makemon.js:701–702 keeps the same values)
+const MS_NEMESIS = 37;
+const MS_GUARDIAN = 38;
+// C mon.c xkilled — mail-daemon drop (MAIL_STRUCTURES always on, global.h:430)
+const PM_MAIL_DAEMON = monsterNames.indexOf('PM_MAIL_DAEMON');
+const SCR_MAIL = objectNames.indexOf('SCR_MAIL');
 
 // C ref: monattk.h damage types used by passive / passive_obj
 const AD_MAGM = 1;
@@ -599,23 +610,19 @@ function first_weapon_hit(weapon) {
 }
 
 /**
- * C ref: mon.c xkilled treasure drop — mkobj(RANDOM_CLASS) then food/size
- * filters and place. flooreffects pool/lava/hot-potion/boulder omitted
- * (ordinary floor → place).
+ * C ref: mon.c xkilled treasure drop `:3588–3610` — mkobj(RANDOM_CLASS),
+ * permafood veto, small-monster big-object veto with artifact un-create,
+ * then `!flooreffects(otmp, x, y, nomsg ? "" : "fall")` → place + stack.
+ * The G_NOCORPSE/hero-square/Kop/clone gates live at the call site (C order).
  */
-function xkilled_treasure_drop(mtmp, mdat, mndx, x, y) {
-    const mv = game.mvitals?.[mndx]?.mvflags ?? 0;
-    if (mv & G_NOCORPSE) return;
-    // no extra item from swallower or steed
-    if (x === (game.u?.ux | 0) && y === (game.u?.uy | 0)) return;
-    if (mdat?.mlet === 'S_KOP') return;
-    if (mtmp.mcloned) return;
+async function xkilled_treasure_drop(mtmp, mdat, x, y, nomsg) {
     const otmp = mkobj(RANDOM_CLASS, true);
     if (!otmp) return;
     const otyp = otmp.otyp | 0;
     if (otmp.oclass === FOOD_CLASS
         && !((mdat?.mflags2 ?? 0) & M2_COLLECT)
         && !otmp.oartifact) {
+        // C: no permafood from kills (unless the monster collects food)
         delobj(otmp);
     } else if ((mdat?.msize ?? 0) < MZ_HUMAN && otyp !== FIGURINE
         && ((otmp.owt | 0) > 30 || !!(game.objects?.[otyp]?.oc_big))) {
@@ -624,31 +631,34 @@ function xkilled_treasure_drop(mtmp, mdat, mndx, x, y) {
             artifact_exists(otmp, safe_oname(otmp), false, ONAME_NO_FLAGS);
         }
         delobj(otmp);
-    } else {
-        // C: !flooreffects(...) → place_object + stackobj
+    } else if (!(await flooreffects(otmp, x, y, nomsg ? '' : 'fall'))) {
         place_object(otmp, x, y);
         stackobj(otmp);
     }
 }
 
 /**
- * C ref: mon.c xkilled — hero kill; treasure !rn2(6) then corpse_chance
- * → make_corpse; cleanup luck/align before experience.
- * Named omissions: flooreffects non-floor arms,
- * floor-boulder nocorpse (sobj_at 12 clones, no export), MAIL_DAEMON,
- * human-murder Blind_telepat see_monsters, quest leader/nemesis/
- * guardian/priest special adjalign arms, tame You_hear Soundeffect,
- * be_sad / vamp_rise_msg (+ xkilled disintegested=nocorpse writer and
- * Maybe-not/vamp_rise readers around mondead) / thrownobj-into-engulfer.
+ * C ref: mon.c xkilled `:3477–3740` — hero kill in C order: conduct,
+ * kill message, pit/boulder gates, pet blame, engulfer missile, vamp/
+ * disinteg writers around monstone/mondead, lifesaved, treasure !rn2(6),
+ * corpse_chance → make_corpse, wasinside museum + spoteffects, newsym,
+ * cleanup (murder/peaceful/unicorn luck), experience, quest/priest/tame/
+ * peaceful adjalign arms, malign. C `#if 0` HARDFOUGHT livelog stays out.
+ * Named omissions: mhitm_ad_rust + mhitm_ad_fire uhitm arms (C callers
+ * `:2294`/`:2547`, enclosing C functions unported) and wiz_kill
+ * (`wizcmds.c:315`, unported) — own coverage rows.
  */
 export async function xkilled(mtmp, xkill_flags = XKILL_GIVEMSG) {
+    // C `:3485–3498` — flag unpack; sad_feeling saved and always cleared
     const nomsg = (xkill_flags & XKILL_NOMSG) !== 0;
-    const nocorpse = (xkill_flags & XKILL_NOCORPSE) !== 0;
+    let nocorpse = (xkill_flags & XKILL_NOCORPSE) !== 0;
     const noconduct = (xkill_flags & XKILL_NOCONDUCT) !== 0;
     const x = mtmp.mx, y = mtmp.my;
     const wasinside = engulfing_u(mtmp);
     let burycorpse = false;
-    mtmp.mhp = 0;
+    const be_sad = !!(game.iflags && game.iflags.sad_feeling);
+    if (game.iflags) game.iflags.sad_feeling = false;
+    mtmp.mhp = 0; /* caller will usually have already done this */
     if (!noconduct) {
         if (!game.u.uconduct) game.u.uconduct = {};
         // C: if (!u.uconduct.killer++) livelog...
@@ -682,60 +692,119 @@ export async function xkilled(mtmp, xkill_flags = XKILL_GIVEMSG) {
         }
         await pline(`You ${verb} ${whom}!`);
     }
-    // C: mtrapped && t_at pit: floor boulder → nocorpse (sobj_at named);
-    // carrying boulder → burycorpse. mtrapped_in_pit is the pit gate.
-    if (mtrapped_in_pit(mtmp) && m_carrying(mtmp, BOULDER)) {
-        burycorpse = true;
+    // C `:3515–3524` — trapped in a pit: floor boulder kills corpse/
+    // treasure up front (out of order by necessity); carried boulder
+    // buries the corpse.
+    if (mtmp.mtrapped) {
+        const pit = t_at(x, y);
+        if (pit && is_pit(pit.ttyp)) {
+            if (sobj_at(BOULDER, x, y)) nocorpse = true;
+            if (m_carrying(mtmp, BOULDER)) burycorpse = true;
+        }
     }
-    // C: if (gs.stoned) monstone(mtmp); else mondead(mtmp);
-    const was_stoned = !!(game.context?.stoned);
+    // C `:3527–3528` — a tame pet knows who killed it
+    if (mtmp.mtame && !mtmp.isminion) {
+        const edog = EDOG(mtmp);
+        if (edog) edog.killed_by_u = 1;
+    }
+    // C `:3530–3544` — thrown missile that killed the engulfer joins the
+    // mon's inventory (placed with the rest on expel); the thrower is told.
+    // Missiles that burn up (potions) or return (boomerang) are excluded.
+    {
+        const thrown = game.thrownobj;
+        if (wasinside && thrown && thrown !== game.u?.uball
+            && thrown.oclass !== POTION_CLASS
+            && thrown !== game.iflags?.returning_missile) {
+            mpickobj(mtmp, thrown);
+            game.thrownobj = null;
+        }
+    }
+    // C `:3546–3551` — vamp-rise wording writers around the kill
+    // (gd.disintegested = nocorpse; mhitm.js:2895 reads game.disintegested)
+    game.vamp_rise_msg = false;
+    game.disintegested = nocorpse;
+    const was_stoned = !!game.context?.stoned;
     if (was_stoned) {
         await monstone(mtmp);
     } else {
         await mondead(mtmp);
     }
+    game.disintegested = false; /* reset */
+    // C mon.c mon_leaving_level :2702-2703 via m_detach/mondead — death
+    // releases a holder before xkilled's lifesave check, on every dead path
+    // including lifesaved; never on the monstone path (:3286–3373 has no
+    // unstuck call). JS mondead covers only relobj/unmap/newsym, so wire
+    // unstuck here. Dynamic import: uhitm<->mhitu cycle idiom; call-time use.
+    if (!was_stoned) {
+        mtmp.mtrapped = 0;
+        await (await import('./mhitu.js')).unstuck(mtmp);
+    }
+    // C `:3553–3562` — lifesaved: stoned reset + unseen "Maybe not..."
     if ((mtmp.mhp | 0) >= 1) {
         if (game.context) game.context.stoned = false;
-        return; // lifesaved
+        if (!cansee(x, y) && !game.vamp_rise_msg) {
+            await pline('Maybe not...');
+        }
+        return;
     }
-    // C mon.c mon_leaving_level :2702-2703 via m_detach :2760 / mondead :3175 /
-    // xkilled :3535 — death releases a holder before the rn2(6) treasure draw;
-    // JS mondead covers only relobj/unmap/newsym, so wire unstuck here.
-    // Dynamic import: uhitm<->mhitu cycle idiom (mon.js:1714); call-time use only.
-    mtmp.mtrapped = 0;
-    await (await import('./mhitu.js')).unstuck(mtmp);
-    const mdat = mtmp.data;
+    // C `:3564–3565` — pet-death sadness
+    if (be_sad) {
+        await pline('You have a sad feeling for a moment, then it passes.');
+    }
+    const mdat = mtmp.data; /* note: mondead can change mtmp->data */
     const mndx = mtmp.mnum ?? mdat?.mndx;
-    // C: if (gs.stoned) { gs.stoned = FALSE; goto cleanup; }
-    // C: if (nocorpse || LEVEL_SPECIFIC_NOCORPSE(mdat)) goto cleanup;
+    // C `:3570–3576` — stoned or nocorpse jumps to cleanup (skips drops,
+    // expel and newsym alike).
     if (was_stoned) {
         if (game.context) game.context.stoned = false;
     } else if (!(nocorpse || LEVEL_SPECIFIC_NOCORPSE(mdat))) {
+        // C MAIL_STRUCTURES (global.h:430, always on) — dead mail daemon
+        // leaves a scroll of mail.
+        if ((mndx | 0) === PM_MAIL_DAEMON) {
+            stackobj(mksobj_at(SCR_MAIL, x, y, false, false));
+        }
         if (accessible(x, y) || is_pool(x, y)) {
-            if (!rn2(6)) xkilled_treasure_drop(mtmp, mdat, mndx, x, y);
-            // C: if (!wasinside && corpse_chance(...)) { gz.zombify=...; make_corpse; reset }
+            // C `:3584–3594` — illogical but traditional treasure drop:
+            // !rn2(6) first, then the no-extra-item gates.
+            if (!rn2(6)
+                && !((game.mvitals?.[mndx]?.mvflags ?? 0) & G_NOCORPSE)
+                && (x !== (game.u?.ux | 0) || y !== (game.u?.uy | 0))
+                && mdat?.mlet !== 'S_KOP'
+                && !mtmp.mcloned) {
+                await xkilled_treasure_drop(mtmp, mdat, x, y, nomsg);
+            }
+            // C `:3596–3617` — corpse unless the hero was inside
             if (!wasinside && await corpse_chance(mtmp)) {
                 game.zombify = (!game.thrownobj && !game.context?.stoned
                     && !game.u?.uwep
                     && zombie_maker(game.youmonst)
                     && zombie_form(mtmp.data) !== NON_PM);
-                await make_corpse(mtmp, burycorpse ? CORPSTAT_BURIED : CORPSTAT_NONE);
-                game.zombify = false;
+                const cadaver = await make_corpse(
+                    mtmp, burycorpse ? CORPSTAT_BURIED : CORPSTAT_NONE);
+                game.zombify = false; /* reset */
+                if (burycorpse && cadaver && cansee(x, y) && !mtmp.minvis
+                    && (cadaver.where | 0) === OBJ_BURIED && !nomsg) {
+                    await pline(
+                        `${s_suffix(Monnam(mtmp))} corpse ends up buried.`);
+                }
             }
         }
-        // C mon.c:3632-3640: wasinside → museum copy + spoteffects(TRUE)
-        // (poor man's expels); the release-square describe (e.g. stairs
-        // via pickup→check_here→describe_decor) comes from this call.
+        // C `:3619–3627` — wasinside: museum copy (nmon/minvent/mextra
+        // cleared) + spoteffects(TRUE), poor man's expels(). The
+        // release-square describe (e.g. stairs via pickup→check_here→
+        // describe_decor) comes from this call.
         // Dynamic import: same-cycle idiom as mhitu.unstuck above and the
         // expels-tail spoteffects call (D-2193); call-time use only.
         if (wasinside) {
-            mtmp = { ...mtmp };
+            mtmp = { ...mtmp, nmon: 0, minvent: 0, mextra: 0 };
             await (await import('./pickup.js')).spoteffects(true);
+            /* use the reference copy now */
         }
-        if (x > 0) newsym(x, y);
+        // C `:3629` — the square may now show corpse or other objects
+        newsym(x, y);
     }
 
-    // C cleanup: punish bad behavior — before experience
+    // C `cleanup:` — punish bad behavior, before experience
     if (is_human(mdat)
         && (!always_hostile(mdat) && (mtmp.malign | 0) <= 0)
         && (mndx < PM_ARCHEOLOGIST || mndx > PM_WIZARD)
@@ -744,9 +813,10 @@ export async function xkilled(mtmp, xkill_flags = XKILL_GIVEMSG) {
         if (game.u) game.u.HTelepat = (game.u.HTelepat | 0) & ~INTRINSIC;
         change_luck(-2);
         await pline('You murderer!');
-        // Blind && !Blind_telepat see_monsters named (3 Blind_telepat clones)
+        // C — blind without telepathy stops sensing monsters
+        if (Blind() && !hero_Blind_telepat()) see_monsters();
     }
-    // (peaceful && !rn2(2)) || mtame → short-circuit burns rn2 when peaceful
+    // C — (peaceful && !rn2(2)) || tame; short-circuit burns rn2 when peaceful
     if ((mtmp.mpeaceful && !rn2(2)) || mtmp.mtame) {
         change_luck(-1);
     }
@@ -761,27 +831,72 @@ export async function xkilled(mtmp, xkill_flags = XKILL_GIVEMSG) {
         }
     }
 
+    // C — experience before alignment points
     const died = game.mvitals?.[mndx]?.died | 0;
     const tmp = experience(mtmp, died);
     more_experienced(tmp, 0);
-    await newexplevel();
+    await newexplevel(); /* will decide if you go up */
 
-    // C: special adjalign arms — tame before peaceful; then malign
-    if (mtmp.mtame) {
-        adjalign(-15);
-        // You_hear thunder/applause — no RNG; pline-only for Hallu/Deaf
+    // C — alignment arms in order: leader, nemesis, guardian, priest,
+    // tame, peaceful, then malign.
+    const qs = game.quest_status || {};
+    if ((mtmp.m_id | 0) === (qs.leader_m_id | 0) && (qs.leader_m_id | 0)) {
+        /* REAL BAD! m_id 0 is unset (dog.js:642), as in mhitm.js:3222 */
+        adjalign(-((game.u?.ualign?.record | 0) + Math.trunc(ALIGNLIM() / 2)));
+        if (game.u) game.u.ugangr = (game.u.ugangr | 0) + 7;
+        change_luck(-20);
+        await pline(`That was ${game.u?.uevent?.qcompleted ? 'probably ' : ''}bad idea...`);
+        if (!game.context?.mon_moving) {
+            await iter_mons(anger_quest_guardians);
+        }
+    } else if ((mdat?.msound | 0) === MS_NEMESIS) {
+        /* Real good! */
+        if (!qs.killed_leader) adjalign(Math.trunc(ALIGNLIM() / 4));
+    } else if ((mdat?.msound | 0) === MS_GUARDIAN) {
+        /* Bad */
+        adjalign(-Math.trunc(ALIGNLIM() / 8));
+        if (game.u) game.u.ugangr = (game.u.ugangr | 0) + 1;
+        change_luck(-4);
+        if (!Hallucination()) {
+            await pline('That was probably a bad idea...');
+        } else {
+            await pline('Whoopsie-daisy!');
+        }
+    } else if (mtmp.ispriest) {
+        const coaligned = p_coaligned(mtmp);
+        adjalign(coaligned ? -2 : 2);
+        /* killing your priest cancels divine protection */
+        if (coaligned && game.u) game.u.ublessed = 0;
+        if ((mdat?.maligntyp | 0) === A_NONE) {
+            adjalign(Math.trunc(ALIGNLIM() / 4)); /* BIG bonus */
+        }
+    } else if (mtmp.mtame) {
+        adjalign(-15); /* bad!! */
+        if (!Hallucination()) {
+            Soundeffect(se_distant_thunder, 40);
+        } else {
+            Soundeffect(se_applause, 40);
+        }
+        // You_hear is pline-only when deaf (kept from the prior port)
         const Deaf = !!(game.u?.Deaf || game.u?.HDeaf || game.u?.EDeaf);
         if (!Deaf) {
-            if (game.u?.Hallucination) {
+            if (Hallucination()) {
                 await pline('You hear the studio audience applaud!');
             } else {
                 await pline('You hear the rumble of distant thunder...');
             }
         }
-    } else if (mtmp.mpeaceful && !mtmp.ispriest) {
+        if (!unique_corpstat(mdat)) {
+            const mname = has_mgivenname(mtmp);
+            livelog_printf(LL_KILLEDPET, 'murdered %s%s%s faithful %s',
+                mname ? MGIVENNAME(mtmp) : '', mname ? ', ' : '',
+                uhis(), pmname(mdat, Mgender(mtmp)));
+        }
+    } else if (mtmp.mpeaceful) {
         adjalign(-5);
     }
-    // quest/nemesis/guardian/priest arms deferred
+
+    /* malign was already adjusted for u.ualign.type and randomization */
     adjalign(mtmp.malign | 0);
 }
 
@@ -3252,8 +3367,8 @@ function is_plural_that(otmp) {
 /**
  * C drawing.c defsyms[].explanation — PCHAR desc, not PCHAR2 tilenm
  * (defsym.h PCHAR_DRAWING). Furniture mimics use 1–2/15–16/25–26/33–37
- * (DELPHI S_fountain is D-1556). Ice/pool/trap cmap except
- * S_trapped_chest named.
+ * (DELPHI S_fountain is D-1556). Water/ice/drawbridge/air/cloud +
+ * trap cmap 38–73 covered (do_screen_description table scan).
  */
 const DEFSYM_EXPLANATION = [
     'stone', 'wall', 'wall', 'wall', 'wall', 'wall', 'wall', 'wall',
@@ -3263,7 +3378,19 @@ const DEFSYM_EXPLANATION = [
     'engraving', 'staircase up', 'staircase down', 'ladder up',
     'ladder down', 'branch staircase up', 'branch staircase down',
     'branch ladder up', 'branch ladder down', 'altar', 'grave',
-    'opulent throne', 'sink', 'fountain',
+    'opulent throne', 'sink', 'fountain', 'water', 'ice', 'molten lava',
+    'wall of lava', 'lowered drawbridge', 'lowered drawbridge',
+    'raised drawbridge', 'raised drawbridge', 'air', 'cloud', 'water',
+    'arrow trap', 'dart trap', 'falling rock trap', 'squeaky board',
+    'bear trap', 'land mine', 'rolling boulder trap', 'sleeping gas trap',
+    'rust trap', 'fire trap', 'pit', 'spiked pit', 'hole', 'trap door',
+    'teleportation trap', 'level teleporter', 'magic portal', 'web',
+    'statue trap', 'magic trap', 'anti-magic field', 'polymorph trap',
+    'vibrating square', 'trapped door', 'trapped chest',
+    // C defsym.h 74–85 carry no explanation (beams, shields); the falsy
+    // slots keep the 'furniture' fallback below, as before.
+    '', '', '', '', '', '', '', '', '', '', '', '',
+    'poison cloud', 'valid position',
 ];
 const S_TRAPPED_CHEST = 73; // defsym.h PCHAR S_trapped_chest
 

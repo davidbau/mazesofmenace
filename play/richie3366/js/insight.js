@@ -84,29 +84,38 @@ import { show_text_pages, show_nhw_menu_text, mhidden_description } from './page
 import { visible_region_at, reg_damg } from './region.js';
 import {
     NUMMONS, mons, haseyes, G_UNIQ, M2_PNAME, monsterNames, pmnames, NEUTRAL,
-    MZ_TINY, MZ_SMALL, MZ_MEDIUM, MZ_LARGE, MZ_HUGE,
+    MZ_TINY, MZ_SMALL, MZ_MEDIUM, MZ_LARGE, MZ_HUGE, is_animal,
 } from './monsters.js';
 import { an, makeplural } from './objnam.js';
-import { upstart } from './hacklib.js';
+import { upstart, ordin } from './hacklib.js';
 import { align_str, rank_of, rank_to_xlev } from './roles.js';
-import { x_monnam_tame, a_monnam } from './do_name.js';
+import { x_monnam, a_monnam } from './do_name.js';
 import { find_mac } from './mhitm.js';
-import { digests } from './mhitu.js';
+import { digests, enfolds } from './mhitu.js';
 import { sticks } from './engrave.js';
+import { count_wsegs, wseg_at } from './worm.js';
 import { fingers_or_gloves } from './do_wear.js';
-import { body_part } from './polyself.js';
+import { body_part, mbodypart } from './polyself.js';
 import { Fast, Very_fast } from './attrib.js';
 import { Blind } from './invent.js';
 import { Invis } from './timeout.js';
 import { Glib } from './potion.js';
-import { A_NONE, A_LAWFUL, A_CHAOTIC, MHID_PREFIX, MHID_ARTICLE, MHID_ALTMON, MHID_REGION } from './const.js';
+import { A_NONE, A_LAWFUL, A_CHAOTIC, A_NEUTRAL, MHID_PREFIX, MHID_ARTICLE, MHID_ALTMON, MHID_REGION } from './const.js';
 import {
     SICK, STONED, SLIMED, STRANGLED, VOMITING,
     SICK_VOMITABLE, SICK_NONVOMITABLE, BOTH_SIDES,
     M_AP_NOTHING, M_AP_TYPMASK, LEG, TIMEOUT, Upolyd,
+    ARTICLE_YOUR, SUPPRESS_IT, SUPPRESS_INVISIBLE,
+    STRAT_WAITMASK, MFAST, MSLOW,
+    EPRI, EMIN, EDOG, ismnum,
 } from './const.js';
 
 const PM_HIGH_CLERIC = monsterNames.indexOf('PM_HIGH_CLERIC');
+// C ref: insight.c mstatusline `:3292` — `mtmp->data == &mons[PM_LONG_WORM]`.
+// JS `mons()` builds fresh objects, so compare `data.mndx` (cf. detect.js).
+const PM_LONG_WORM = monsterNames.indexOf('PM_LONG_WORM');
+// C ref: monflag.h:183 — MZ_GIGANTIC is 7, off the scale (no JS export).
+const MZ_GIGANTIC = 7;
 
 /** C LL_majors — only used for final dumplog path (deferred). */
 const LL_MAJORS =
@@ -1202,7 +1211,8 @@ export function piousness(showneg, suffix) {
 }
 
 /**
- * C ref: insight.c size_str — msize → adjective for mstatusline.
+ * C ref: insight.c size_str :3203–3230 — msize → adjective for mstatusline.
+ * C order: TINY/SMALL/MEDIUM/LARGE/HUGE/GIGANTIC, else `unknown size (%d)`.
  */
 function size_str(msize) {
     switch (msize | 0) {
@@ -1211,49 +1221,142 @@ function size_str(msize) {
     case MZ_MEDIUM: return 'medium';
     case MZ_LARGE: return 'large';
     case MZ_HUGE: return 'huge';
-    default: return 'gigantic';
+    case MZ_GIGANTIC: return 'gigantic';
+    default: return `unknown size (${msize | 0})`;
     }
 }
 
 /**
- * C ref: priest.c mon_aligntyp — priest/minion emin deferred → data.maligntyp.
+ * C ref: priest.c mon_aligntyp :280–290 — ispriest ? EPRI shralign
+ * : isminion ? EMIN min_align : data.maligntyp; A_NONE passthrough,
+ * else sign → LAWFUL/CHAOTIC/NEUTRAL. Caller: insight.c mstatusline :3277.
  */
 function mon_aligntyp(mon) {
-    const algn = mon?.data?.maligntyp ?? 0;
+    const algn = mon?.ispriest ? (EPRI(mon)?.shralign ?? 0)
+        : mon?.isminion ? (EMIN(mon)?.min_align ?? 0)
+            : (mon?.data?.maligntyp ?? 0);
     if (algn === A_NONE) return A_NONE;
     if (algn > 0) return A_LAWFUL;
     if (algn < 0) return A_CHAOTIC;
-    return 0; // A_NEUTRAL
+    return A_NEUTRAL;
 }
 
 /**
- * C ref: insight.c mstatusline — stethoscope/probe one-line monster status.
- * Branch envelope: tame/peaceful suffix; mhidden_description (D-1554);
- * align + size; Level/HP/AC.
- * Named omissions: wizard tame hungry/apport; worm segments; shapechanger/
- * eating; ailment flags (cancelled/confused/…); ustuck/usteed/leash;
- * gb.bhitpos worm-tail region gate (uses mx,my).
+ * C ref: insight.c mstatusline :3275–3398 — stethoscope/probe monster status.
+ * C order: mon_aligntyp :3277; tame/peaceful+wizard :3281–3290; long-worm
+ * :3292–3306 (count_wsegs, head-inclusive ++nsegs, wseg_at(bhitpos)+ordin);
+ * shapechanger :3307; eating :3311; mhidden :3315 (mundetected||m_ap_type||
+ * visible_region_at(bhitpos)); cancelled/confused/blind/stunned :3320–3326;
+ * asleep/can't-move/meditating :3328–3337 (#else arm live); scared/trapped/
+ * speed/invisible :3338–3347; ustuck :3348–3366 (uswallow digests/is_animal+
+ * enfolds, else sticks(youmonst)); usteed :3368–3380 (carrying + Wounded_legs
+ * EWounded_legs&BOTH_SIDES mbodypart LEG makeplural); leashed :3381;
+ * x_monnam ARTICLE_YOUR SUPPRESS_IT|SUPPRESS_INVISIBLE :3386; pline :3391.
+ * Callers set gb.bhitpos (apply.c:395 stethoscope rx,ry; zap bhitm);
+ * JS reads game.bhitpos ?? game._bhitpos, falling back to the head pos
+ * when no caller set it (apply stethoscope currently doesn't).
  */
 export async function mstatusline(mtmp) {
     if (!mtmp) return;
+    const u = game.u || {};
+    const alignment = mon_aligntyp(mtmp); // C :3277
     let info = '';
+    // C :3281–3290 — tame (wizard count + hungry/apport unless minion)
     if (mtmp.mtame) {
-        info = ', tame';
-        // wizard (%d; hungry; apport) deferred
+        info += ', tame';
+        if (wizardMode()) {
+            info += ` (${mtmp.mtame | 0}`;
+            if (!mtmp.isminion) {
+                const edog = EDOG(mtmp) || {};
+                info += `; hungry ${edog.hungrytime | 0}; apport ${edog.apport | 0}`;
+            }
+            info += ')';
+        }
     } else if (mtmp.mpeaceful) {
-        info = ', peaceful';
+        info += ', peaceful';
     }
-    // C: mundetected || m_ap_type (unmasked) || visible_region_at(bhitpos)
-    if (mtmp.mundetected || mtmp.m_ap_type
-        || visible_region_at(mtmp.mx | 0, mtmp.my | 0)) {
-        info += mhidden_description(mtmp,
-            MHID_PREFIX | MHID_ARTICLE | MHID_ALTMON | MHID_REGION);
+    // C :3292–3306 — long worm segment feedback (head counts as a segment)
+    if ((mtmp.data?.mndx ?? mtmp.mnum) === PM_LONG_WORM && PM_LONG_WORM >= 0) {
+        const nsegs0 = count_wsegs(mtmp);
+        if (!nsegs0) {
+            info += ', single segment';
+        } else {
+            const nsegs = (nsegs0 | 0) + 1; // include head
+            const bhit = game.bhitpos ?? game._bhitpos;
+            const segndx = wseg_at(mtmp,
+                (bhit?.x ?? mtmp.mx) | 0, (bhit?.y ?? mtmp.my) | 0);
+            info += `, ${segndx | 0}${ordin(segndx)} of ${nsegs} segments`;
+        }
     }
-    const monnambuf = x_monnam_tame(mtmp);
-    const alignment = mon_aligntyp(mtmp);
-    const sz = size_str(mtmp.data?.msize ?? MZ_MEDIUM);
+    // C :3307–3310 — shapechanger (innate form hidden, fact exposed)
+    if (ismnum(mtmp.cham) && (mtmp.data?.mndx ?? -1) !== (mtmp.cham | 0)) {
+        info += ', shapechanger';
+    }
+    // C :3311–3314 — pets eating mimic corpses mimic while eating
+    if (mtmp.meating) info += ', eating';
+    // C :3315–3319 — stethoscope exposes mimic first; probing wand doesn't
+    {
+        const bhit = game.bhitpos ?? game._bhitpos;
+        const bx = ((bhit?.x ?? mtmp.mx) | 0);
+        const by = ((bhit?.y ?? mtmp.my) | 0);
+        if (mtmp.mundetected || (mtmp.m_ap_type | 0)
+            || visible_region_at(bx, by)) {
+            info += mhidden_description(mtmp,
+                MHID_PREFIX | MHID_ARTICLE | MHID_ALTMON | MHID_REGION);
+        }
+    }
+    // C :3320–3327 — cancellable ailments
+    if (mtmp.mcan) info += ', cancelled';
+    if (mtmp.mconf) info += ', confused';
+    if (mtmp.mblinded || !mtmp.mcansee) info += ', blind';
+    if (mtmp.mstun) info += ', stunned';
+    // C :3328–3337 — asleep; #else live arm: frozen||!mcanmove; else waitmask
+    if (mtmp.msleeping) {
+        info += ', asleep';
+    } else if (mtmp.mfrozen || !mtmp.mcanmove) {
+        info += ", can't move";
+    } else if (((mtmp.mstrategy | 0) & STRAT_WAITMASK) !== 0) {
+        info += ', meditating';
+    }
+    // C :3338–3347 — flee/trapped/speed/invisible
+    if (mtmp.mflee) info += ', scared';
+    if (mtmp.mtrapped) info += ', trapped';
+    if (mtmp.mspeed) {
+        info += (mtmp.mspeed === MFAST) ? ', fast'
+            : (mtmp.mspeed === MSLOW) ? ', slow'
+                : ', [? speed]';
+    }
+    if (mtmp.minvis) info += ', invisible';
+    // C :3348–3366 — ustuck: swallow/engulf wins over sticks(youmonst)
+    if (mtmp === u.ustuck) {
+        const pm = u.ustuck?.data;
+        if (u.uswallow) {
+            info += digests(pm) ? ', digesting you'
+                : (is_animal(pm) && !enfolds(pm)) ? ', swallowing you'
+                    : ', engulfing you';
+        } else {
+            info += !sticks(game.youmonst?.data) ? ', holding you'
+                : ', held by you';
+        }
+    }
+    // C :3368–3380 — usteed carries; hero leg damage applies to steed
+    if (mtmp === u.usteed) {
+        info += ', carrying you';
+        if (((u.HWounded_legs | 0) || (u.EWounded_legs | 0) || u.Wounded_legs)) {
+            const legs = ((u.EWounded_legs | 0) & BOTH_SIDES);
+            let what = mbodypart(mtmp, LEG);
+            if (legs === BOTH_SIDES) what = makeplural(what);
+            info += `, injured ${what}`;
+        }
+    }
+    // C :3381–3384 — leashed
+    if (mtmp.mleashed) info += ', leashed';
+    // C :3386–3389 — saddled even when named; invisible already suppressed
+    const monnambuf = x_monnam(mtmp, ARTICLE_YOUR, null,
+        SUPPRESS_IT | SUPPRESS_INVISIBLE, false);
+    // C :3391–3397 — `Status of %s (%s, %s):  Level %d  HP %d(%d)  AC %d%s.`
     await pline(
-        `Status of ${monnambuf} (${align_str(alignment)}, ${sz}):  `
+        `Status of ${monnambuf} (${align_str(alignment)}, ${size_str(mtmp.data?.msize ?? MZ_MEDIUM)}):  `
         + `Level ${mtmp.m_lev | 0}  HP ${mtmp.mhp | 0}(${mtmp.mhpmax | 0})  `
         + `AC ${find_mac(mtmp)}${info}.`,
     );

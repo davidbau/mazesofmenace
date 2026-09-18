@@ -135,7 +135,7 @@ import { make_engr_at, make_grave, wipe_engr_at, random_engraving, del_engr_at, 
 import { cmd_from_ecname } from './dokeylist.js';
 import {
     find_level, dungeon_branch, at_dgn_entrance, insert_branch, get_level,
-    on_level,
+    on_level, init_dungeons,
 } from './dungeon.js';
 import { premap_detect } from './detect.js';
 import {
@@ -23889,6 +23889,13 @@ function load_pri_filb() {
 // C ref: mklev.c makelevel()
 async function makelevel() {
     const g = game;
+    // C ref: mklev.c:1260–1263 — defensive re-init when called before dungeon
+    // setup (game.wiz1_level is set by fixup_level_locations via LEVEL_MAP,
+    // so dlevel 0 means init never ran); the C impossible + init_dungeons().
+    if ((g.wiz1_level?.dlevel | 0) === 0) {
+        await impossible('makelevel() called when dungeon not yet initialized.');
+        init_dungeons();
+    }
     oinit();
     clear_level_structures();
     // C: themerms.lua local postprocess = {} (fresh each Lua load / level)

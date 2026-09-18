@@ -4092,7 +4092,7 @@ export async function shk_move(shkp) {
 import { gd_move as vault_gd_move, hidden_gold } from './vault.js';
 
 /**
- * C ref: vault.c gd_move — re-export peaceful escort subset from vault.js.
+ * C ref: vault.c gd_move — re-export the full port from vault.js (D-2448).
  */
 export async function gd_move(grd) {
     return vault_gd_move(grd);

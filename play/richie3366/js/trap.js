@@ -109,11 +109,12 @@ import {
     P_RIDING, P_BASIC, M_AP_FURNITURE, M_AP_OBJECT,
     A_LAWFUL, XKILL_NOMSG, SHOP_HOLE_COST,
     COST_BURN, COST_RUST, COST_ROT, COST_CORRODE, COST_CRACK,
+    TEST_MOVE,
 } from './const.js';
 import {
     is_pool, is_lava, waterbody_name, crawl_destination, SURFACE_AT,
     maybe_half_phys, nomul, unmul, losehp, finish_maybe_wail, stop_occupation,
-    in_rooms, set_uinwater,
+    in_rooms, set_uinwater, test_move,
 } from './hack.js';
 import { goodpos, mlevel_tele_trap, mtele_trap, tele_trap, level_tele_trap, domagicportal, rloco, random_teleport_level, teleds, safe_teleds, noteleport_level, dotele, unconscious } from './teleport.js';
 import { get_level, on_level, at_dgn_entrance } from './dungeon.js';
@@ -155,7 +156,7 @@ import { inv_cnt, remove_worn_item } from './steal.js';
 import { ynq } from './getline.js';
 import { more_experienced, newexplevel } from './exper.js';
 import { killed, stumble_onto_mimic } from './uhitm.js';
-import { rider_cant_reach, dismount_steed, test_move_ok } from './steed.js';
+import { rider_cant_reach, dismount_steed } from './steed.js';
 import { resist, blank_novel, poly_obj, is_ice } from './zap.js';
 import { fill_pit, fillholetyp, liquid_flow, maybe_dunk_boulders, bury_an_obj } from './dig.js';
 import { u_wield_art, attacks, bare_artifactname, has_magic_key } from './artifact.js';
@@ -4609,7 +4610,9 @@ function See_invisible() {
     const u = game.u || {};
     return !!((u.HSee_invisible | 0) || (u.ESee_invisible | 0) || u.See_invisible);
 }
-function Fire_resistance() {
+/** C youprop.h Fire_resistance — H||E||sticky. Exported for hack.c
+ * test_move Known_lwalking (same-SCC hoisted edge, no TDZ). */
+export function Fire_resistance() {
     const u = game.u || {};
     return !!(u.Fire_resistance || u.HFire_resistance || u.EFire_resistance);
 }
@@ -6603,9 +6606,8 @@ export async function cnv_trap_obj(otyp, cnt, ttmp, bury_it) {
 /**
  * C ref: trap.c move_into_trap `:5393–5437` — failed adjacent untrap stumbles
  * hero onto the trap (`Whoops...` already printed by try_disarm).
- * C order: `test_move(u.ux,u.uy,sgn(x-ux),sgn(y-uy),TEST_MOVE)` (here the
- * doorway-diagonal subset `test_move_ok` — C hack.c `:1140–1147` into /
- * `:1205–1213` out of an intact doorway over accessible_cell) &&
+ * C order: `test_move(u.ux,u.uy,sgn(x-ux),sgn(y-uy),TEST_MOVE)` (full port,
+ * js/hack.js — was the `test_move_ok` doorway-diagonal subset) &&
  * (`!Punished` || `drag_ball(x,y,&bc,&bx,&by,&cx,&cy,&unused,TRUE)` whose JS
  * shape is `{ok,bc_control,ballx,bally,chainx,chainy}`); then `ux0/uy0`,
  * `u_on_newpos(x,y)` (thin mklev.js + steed share — C dungeon.c:1568),
@@ -6613,10 +6615,8 @@ export async function cnv_trap_obj(otyp, cnt, ttmp, bury_it) {
  * `move_bc(0,bc,...)` when punished, `tseen=0` check_here hack,
  * `failing_untrap++`, `spoteffects(TRUE)`, `failing_untrap--`, re-`tseen=1`,
  * `exercise(WIS)`; else `Fortunately, you don't move into/onto it.`
- * Named omissions: full `test_move` rock/closed-door/boulder/worm/travel arms
- * (try_disarm already gates boulder/tight-diagonal/reach; trap cells are
- * accessible so the doorway subset is the live arm — block_door/block_entry
- * shopkeeper, may_passwall, underwater, tunnels, autodig ride along);
+ * Named omissions: `test_move` block_door/block_entry shopkeeper arms
+ * (C hack.c `:1141`/`:1209` — stub-false/false, no shop ESHK wire-up);
  * `u_on_newpos` cliparound/uundetected/see_nearby/earth_sense; drag jerk
  * hmon/miss damage (ball.js burns the rnd(20) roll).
  */
@@ -6632,7 +6632,8 @@ async function move_into_trap(ttmp) {
     let bc = 0, bx = 0, by = 0, cx = 0, cy = 0;
     let canMove = false;
     // C short-circuit: test_move first; drag_ball only when punished.
-    if (test_move_ok(u.ux | 0, u.uy | 0, dx, dy)) {
+    // Full test_move TEST_MOVE (was the test_move_ok doorway subset).
+    if (await test_move(u.ux | 0, u.uy | 0, dx, dy, TEST_MOVE)) {
         if (!isPunished) {
             canMove = true;
         } else {

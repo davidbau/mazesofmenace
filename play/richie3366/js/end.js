@@ -3,6 +3,9 @@
 //        bones.c can_make_bones / drop_upon_death / savebones.
 
 import { game } from './gstate.js';
+// C: end.c really_done ESCAPED fake-Amulet arm — carrying() is a hoisted
+// function decl in the shared SCC; call-time use only (no TDZ read).
+import { carrying } from './hack.js';
 import { rn2, d } from './rng.js';
 import { depth, strstri } from './hacklib.js';
 import {
@@ -30,9 +33,9 @@ import {
     DISCLOSE_PROMPT_DEFAULT_NO, DISCLOSE_PROMPT_DEFAULT_SPECIAL, NUM_DISCLOSURE_OPTIONS,
     BASICENLIGHTENMENT, MAGICENLIGHTENMENT,
     ENL_GAMEOVERALIVE, ENL_GAMEOVERDEAD,
-    Is_container, SORTLOOT_LOOT, SORTLOOT_PACK,
+    Is_container, IS_GRAVE, SORTLOOT_LOOT, SORTLOOT_PACK,
     PARANOID_DIE, PARANOID_BONES, PARANOID_QUIT, TT_LAVA, Has_contents,
-    has_oname, LIFESAVED, W_AMUL,
+    has_oname, LIFESAVED, W_AMUL, ACH_BLND, ACH_NUDE, ACH_UWIN,
     DELPHI, ROOMOFFSET, Is_oracle_level, Is_astralevel, In_endgame,
     In_quest, ismnum, has_ebones, has_mgivenname, MGIVENNAME, BUFSZ,
     M_AP_TYPE, M_AP_MONSTER,
@@ -65,6 +68,7 @@ import {
 } from './invent.js';
 import {
     list_vanquished, list_genocided, show_conduct, count_achievements,
+    record_achievement,
 } from './insight.js';
 import { show_overview } from './dungeon.js';
 import { A_CON, acurr, adjattrib } from './attrib.js';
@@ -93,6 +97,7 @@ const AMULET_OF_LIFE_SAVING = objectNames.indexOf('AMULET_OF_LIFE_SAVING');
 const FIRST_AMULET = objectNames.indexOf('AMULET_OF_ESP');
 const LAST_AMULET = objectNames.indexOf('AMULET_OF_YENDOR');
 const LAST_GLASS_GEM = objectNames.indexOf('WORTHLESS_VIOLET_GLASS');
+const FAKE_AMULET_OF_YENDOR = objectNames.indexOf('FAKE_AMULET_OF_YENDOR');
 const BELL_OF_OPENING = objectNames.indexOf('BELL_OF_OPENING');
 const SPE_BOOK_OF_THE_DEAD = objectNames.indexOf('SPE_BOOK_OF_THE_DEAD');
 const CANDELABRUM_OF_INVOCATION =
@@ -961,13 +966,21 @@ async function show_death_rip_and_summary(how, umoney, endtime = 0) {
 }
 
 /**
- * C ref: end.c really_done — gameover; paybill; disclose; score; bones; rip; topten.
- * Named omissions: dump/livelog; logfile/xlogfile; toptenwin NHW_TEXT;
+ * C ref: end.c really_done `:1130–1590` — gameover; cleanup; urealtime;
+ * achievements; first-move pline; bones_ok/launch; arise; QUIT; fixup;
+ * paybill; disclose; keepdogs; finish_paybill; grave; score (+ascension);
+ * arise pline; savebones; done_money; rip/goodbye; amulet suffix; topten.
+ * Named omissions: dumplog family (dump_open_log/dump_everything/
+ * dump_redirect/genl_outrip/dump_forward_putstr/dump_close_log — file
+ * side-channel, DUMPLOG retired D-1776); livelog_printf/logfile/xlogfile
+ * (no session effect); wait_synch/signals/sethanguphandler/exit_nhwindows
+ * (platform/windowing, no JS counterpart); sound_exit_nhsound (no sound
+ * lib); panic() caller (C end.c:470 — panic itself unported, own row);
  * inven_inuse / ball-chain arms of done_object_cleanup;
  * unleash_all in finish_paybill; ParanoidBones getlin; DUMPLOG second
- * artifact_score; POSIX signal/hangup in clearlocks; grddead inside
- * mongone; display_pickinv cache setter; insight fmt_elapsed_time /
- * savegamestate / dosuspend / dosh timet_delta callers.
+ * artifact_score; grddead inside mongone; display_pickinv cache setter;
+ * insight fmt_elapsed_time / savegamestate / dosuspend / dosh
+ * timet_delta callers.
  */
 async function really_done(how) {
     if (!game.program_state) game.program_state = {};
@@ -1000,10 +1013,21 @@ async function really_done(how) {
     game.iflags.at_night = night() ? 1 : 0;
     game.iflags.at_midnight = midnight() ? 1 : 0;
 
+    // C end.c really_done — final achievement tracking: blind-from-birth
+    // and nudist only with tangible progress (a prior achievement or
+    // !beginner — u_init sets beginner TRUE like C u_init.c:950);
+    // ascension always last. record_achievement is gameover-quiet.
+    const u = game.u || {};
+    if (((u.uachieved?.[0] | 0) || !game.flags?.beginner)) {
+        if (u.uroleplay?.blind) record_achievement(ACH_BLND);
+        if (u.uroleplay?.nudist) record_achievement(ACH_NUDE);
+    }
+    if (how === ASCENDED) record_achievement(ACH_UWIN);
+
     // C end.c:1186-1187 — die on the first move: "Do not pass Go.  Do not
     // collect 200 zorkmids." svm.moves is game.moves; done_stopprint gates.
-    // Achievements (uachieved/beginner/ASCENDED) + dump_open_log stay named
-    // omissions (dump/livelog); wait_synch/signals have no JS counterpart.
+    // dump_open_log stays a named omission (log-file side channel, D-1776);
+    // wait_synch/signals have no JS counterpart.
     if (((game.moves | 0) <= 1) && how < PANICKED && !(game.program_state?.done_stopprint | 0)) {
         await pline(`Do not pass Go.  Do not collect 200 ${currency(200)}.`);
     }
@@ -1018,7 +1042,6 @@ async function really_done(how) {
         if (launch_in_progress()) force_launch_placement();
     }
 
-    const u = game.u || {};
     // C end.c:1206–1219 — maintain ugrave_arise even for !bones_ok: no
     // corpse or grave for PANICKED, none for BURNING/DISSOLVED, a statue
     // for STONING, slime-arise unless green slimes are genocided; the
@@ -1081,7 +1104,35 @@ async function really_done(how) {
         await keepdogs(true);
     }
 
-    // C: score before bones (invent still held; gold may already be money2mon'd)
+    // C: finish_paybill after disclosure but before bones — it moves
+    // invent gold to the shopkeeper and drops invent, so the score block
+    // below must see the post-payment invent (JS previously scored first).
+    if (bones_ok && taken) await finish_paybill();
+
+    // C end.c grave creation after disclosure (keeps this grave out of
+    // #overview): race-based corpse when !Upolyd (role mons are human);
+    // NOCORPSE reads u.umonnum like C; "plname, "+formatkiller epitaph;
+    // emptygrave (C flags) when the grave is new — the corpse isn't buried.
+    // ugrave_arise null/undefined ≡ NON_PM (C u_init.c:989 init; JS u_init
+    // leaves it unset, zap.js:2028 sets it on one path).
+    let corpse = null;
+    const arise = u.ugrave_arise;
+    const ariseUnset = arise == null || arise === NON_PM;
+    const noCorpse = !!((game.mvitals?.[u.umonnum | 0]?.mvflags | 0) & G_NOCORPSE);
+    if (bones_ok && ariseUnset && !noCorpse) {
+        const mnum = Upolyd(u) ? (u.umonnum | 0) : (game.urace?.mnum | 0);
+        const wasAlreadyGrave = IS_GRAVE(game.level?.at(u.ux | 0, u.uy | 0)?.typ);
+        const plname = game.plname || 'Player';
+        corpse = mk_named_object(CORPSE, mons(mnum), u.ux | 0, u.uy | 0, plname);
+        make_grave(u.ux | 0, u.uy | 0, `${plname}, ${formatkiller(how, true)}`);
+        if (IS_GRAVE(game.level?.at(u.ux | 0, u.uy | 0)?.typ) && !wasAlreadyGrave) {
+            game.level.at(u.ux | 0, u.uy | 0).flags = 1;
+        }
+    }
+
+    // C: score before bones [container gold]. deepest_lev_reached(FALSE);
+    // net umoney0 gain less tithe below PANICKED; depth bonus; ascension
+    // bonus for keeping the original deity (half via helm-of-OA return).
     let umoney = money_cnt(game.invent);
     // C: umoney += hidden_gold(TRUE)
     umoney += hidden_gold(true);
@@ -1092,23 +1143,15 @@ async function really_done(how) {
     tmp += 50 * (deepest - 1);
     if (deepest > 20) tmp += 1000 * ((deepest > 30) ? 10 : deepest - 20);
     u.urexp = nowrap_add(u.urexp | 0, tmp);
-    game._done_money = umoney;
-
-    let corpse = null;
-    const arise = u.ugrave_arise;
-    const ariseUnset = arise == null || arise === NON_PM;
-    const umon = Upolyd(u) ? (u.umonnum | 0) : (game.urace?.mnum | 0);
-    const noCorpse = !!((game.mvitals?.[umon]?.mvflags | 0) & G_NOCORPSE);
-    if (bones_ok && ariseUnset && !noCorpse) {
-        const mnum = Upolyd(u) ? (u.umonnum | 0) : (game.urace?.mnum | 0);
-        const plname = game.plname || 'Player';
-        corpse = mk_named_object(CORPSE, mons(mnum), u.ux | 0, u.uy | 0, plname);
-        // formatkiller body deferred — fixed epitaph text (no RNG)
-        make_grave(u.ux | 0, u.uy | 0, `${plname}, killed`);
+    if (how === ASCENDED
+        && ((u.ualign?.type | 0)
+            === (u.ualignbase?.original ?? u.ualign?.type))) {
+        const curBase = u.ualignbase?.current ?? u.ualign?.type;
+        const origBase = u.ualignbase?.original ?? u.ualign?.type;
+        // C u.urexp/2L — full-width trunc (urexp can exceed 2^31; |0 wraps).
+        tmp = (curBase === origBase) ? (u.urexp | 0) : Math.trunc(u.urexp / 2);
+        u.urexp = nowrap_add(u.urexp | 0, tmp);
     }
-
-    // C: finish_paybill after disclosure, before bones
-    if (bones_ok && taken) await finish_paybill();
 
     // C end.c:1351-1361 — grave-arise feedback even when bones won't be
     // made (its presence must not tip off bones); flushed to the message
@@ -1129,7 +1172,13 @@ async function really_done(how) {
         if (!wizard || (await paranoid_query(paranoidBones, 'Save bones?'))) {
             await savebones(how, endtime, corpse);
         }
+        // corpse may be an invalid pointer now (C) — JS drops the binding.
+        corpse = null;
     }
+
+    // C gd.done_money = umoney — rip output can't use hidden_gold()
+    // (containers are gone when bones were saved). rip.js reads it.
+    game._done_money = umoney;
 
     // C really_done `:1433–1449` — zero valuables, get_valuables,
     // oc_cost score, then unique-item count. Only ESCAPED/ASCENDED
@@ -1148,6 +1197,20 @@ async function really_done(how) {
 
     // C: outrip + goodbye into NHW_TEXT then display_nhwindow(TRUE)
     await show_death_rip_and_summary(how, umoney, endtime);
+
+    // C really_done killer-name suffix, after the tombstone (which never
+    // carries it) for the dumplog/topten record: Amulet; ESCAPED astral
+    // disgrace or fake Amulet. carrying/Is_astralevel/uhave live.
+    if (u.uhave?.amulet) {
+        game.killer.name = `${game.killer?.name || ''} (with the Amulet)`;
+    } else if (how === ESCAPED) {
+        if (Is_astralevel(u.uz)) {
+            game.killer.name = `${game.killer?.name || ''} (in celestial disgrace)`;
+        } else if (carrying(FAKE_AMULET_OF_YENDOR)) {
+            game.killer.name = `${game.killer?.name || ''} (with a fake Amulet)`;
+        }
+        /* don't bother counting to see whether it should be plural */
+    }
 
     // C: !toptenwin → exit_nhwindows then topten raw_print; nh_terminate
     // captures final screen (contest nomux input boundary, no nhgetch).

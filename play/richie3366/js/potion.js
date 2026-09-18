@@ -393,9 +393,10 @@ async function peffect_see_invisible(otmp) {
         await newuhs(false);
         return;
     }
-    // POT_SEE_INVISIBLE — make_blinded(0) deferred
+    // C potion.c:861-865 — uncursed tells them they can see again immediately
     if (!otmp.cursed) {
-        // make_blinded(0L, TRUE) deferred
+        const { make_blinded } = await import('./do.js');
+        await make_blinded(0, true);
     }
     const HInvis = !!(u.HInvis || u.Invis);
     const HSee = !!(u.HSee_invisible || u.See_invisible);

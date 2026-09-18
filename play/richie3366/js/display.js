@@ -950,7 +950,7 @@ function hero_HTelepat() {
     const u = game.u || {};
     return (u.HTelepat | 0) || (u.uprops?.[TELEPAT]?.intrinsic | 0);
 }
-function hero_Blind_telepat() {
+export function hero_Blind_telepat() {
     return !!(hero_HTelepat() || hero_ETelepat());
 }
 function hero_Unblind_telepat() {
@@ -3637,7 +3637,7 @@ let _auto_describe_text = null;
 
 /**
  * C display.c show_glyph 2059–2070 — force accessiblemsg, describe, pline_xy.
- * firstmatch via getpos auto_describe_text (D-1217 named full table).
+ * firstmatch via getpos auto_describe_text (do_screen_description).
  */
 async function emit_show_glyph_change(x, y) {
     if (!game.a11y) {

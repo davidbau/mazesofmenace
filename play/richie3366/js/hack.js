@@ -34,25 +34,27 @@ import {
     BRK_BY_HERO, BRK_FROM_INV, BRK_MELEE, BRK_KNOWN2BREAK, BRK_KNOWN2NOTBREAK,
     ARTICLE_NONE, ARTICLE_A, ARTICLE_THE, ARTICLE_YOUR, SUPPRESS_SADDLE,
     has_mgivenname, RUN_TPORT, RUN_LEAP, RUN_STEP, RUN_CRAWL,
+    DO_MOVE, TEST_MOVE, TEST_TRAV, TEST_TRAP, S_stone,
 } from './const.js';
 import {
     pline, Norep, newsym, canspotmon, canseemon, map_invisible, You_feel,
     set_msg_xy, feel_location, map_object, verbalize, curs_on_u,
-    nh_delay_output,
+    nh_delay_output, back_to_glyph, glyph_to_cmap, glyph_is_cmap, pline_dir,
 } from './display.js';
 import { gethungry, morehungry, is_fainted } from './eat.js';
 import { unconscious, enexto, goodpos, rloc_to } from './teleport.js';
-import { m_at, hideunder, seemimic, bad_rock } from './mon.js';
+import { m_at, hideunder, seemimic, bad_rock, may_passwall, cant_squeeze_thru } from './mon.js';
 import { recalc_block_point } from './vision.js';
-import { is_hider, hides_under, throws_rocks, noncorporeal, metallivorous, mons, is_flyer, is_swimmer, verysmall, bigmonst, passes_bars, dmgtype, is_rider } from './monsters.js';
+import { is_hider, hides_under, throws_rocks, noncorporeal, metallivorous, mons, is_flyer, is_swimmer, verysmall, bigmonst, passes_bars, dmgtype, is_rider, amorphous, tunnels, needspick, is_floater, is_clinger, is_whirly } from './monsters.js';
 import {
     objects_at, sobj_at, obj_extract_self, place_object, delobj,
     peek_timer, stop_timer, start_timer, splitobj,
 } from './mkobj.js';
 import { objectNames } from './generated/objects_data.js';
-import { WEAPON_CLASS, TOOL_CLASS, COIN_CLASS, is_blade } from './objects.js';
+import { WEAPON_CLASS, TOOL_CLASS, COIN_CLASS, is_blade, is_pick } from './objects.js';
 import { xname, the, The, makeplural, an } from './objnam.js';
-import { A_STR, A_CON, A_DEX, acurr, acurrstr, exercise } from './attrib.js';
+import { A_STR, A_CON, A_DEX, acurr, acurrstr, exercise, Fumbling } from './attrib.js';
+import { objdescr_is } from './apply.js';
 import { rn2, rnd, rn1 } from './rng.js';
 import { ing_suffix } from './hacklib.js';
 import { midnight } from './calendar.js';
@@ -61,12 +63,12 @@ import {
     monsterNames,
 } from './generated/monsters_data.js';
 import { ART_STING } from './generated/artifacts_data.js';
-import { hliquid, Hallucination, y_monnam, x_monnam, type_is_pname } from './do_name.js';
+import { hliquid, Hallucination, y_monnam, x_monnam, type_is_pname, YMonnam } from './do_name.js';
 import { near_capacity, inv_weight, freeinv, weapon_descr } from './invent.js';
 import { record_achievement } from './insight.js';
 import {
     b_trapped, selftouch, t_at, into_vs_onto, immune_to_trap, trapname,
-    sokoban_guilt, feeltrap, deltrap, climb_pit,
+    sokoban_guilt, feeltrap, deltrap, climb_pit, Fire_resistance,
 } from './trap.js';
 import { paranoid_query } from './getline.js';
 import { is_art, attacks, bare_artifactname } from './artifact.js';
@@ -78,9 +80,15 @@ import { surface } from './sit.js';
 import { autopick_testobj } from './pickup.js';
 import { Hello } from './roles.js';
 import { SetVoice } from './sndprocs.js';
-import { set_ustuck, Conflict } from './mhitu.js';
+import { set_ustuck, Conflict, Levitation, Flying } from './mhitu.js';
 import { sticks } from './engrave.js';
 import { revive_corpse, l_nhcore_call } from './do.js';
+import { is_db_wall } from './dbridge.js';
+import { doopen_indir } from './lock.js';
+import { use_pick_axe2 } from './dig.js';
+import { You, is_ice, resists_cold, Cold_resistance } from './zap.js';
+import { can_ooze } from './monmove.js';
+import { worm_cross } from './worm.js';
 
 export { set_msg_xy };
 
@@ -90,6 +98,12 @@ const DIRS_ORD = [
 ];
 
 const BOULDER = objectNames.indexOf('BOULDER');
+/** C hack.c test_move — tool/boot otyps for the TEST_TRAV two-in-row gate
+ * (`:1262–1269`) and Known_wwalking (`:59–61`). */
+const PICK_AXE_OTYP = objectNames.indexOf('PICK_AXE');
+const DWARVISH_MATTOCK_OTYP = objectNames.indexOf('DWARVISH_MATTOCK');
+const WAN_DIGGING_OTYP = objectNames.indexOf('WAN_DIGGING');
+const WATER_WALKING_BOOTS_OTYP = objectNames.indexOf('WATER_WALKING_BOOTS');
 const PM_ORACLE = monsterNames.indexOf('PM_ORACLE');
 /** C hack.h invlet_basic — a-zA-Z slots; overflow '#' is extra. */
 const INVLET_BASIC = 52;
@@ -280,6 +294,275 @@ export function test_move_run_blocked_by_boulder(x, y) {
     if (Blind || Hallucination()) return false;
     if (could_move_onto_boulder(x, y)) return false;
     return true;
+}
+
+/**
+ * C youprop.h Blind for test_move feel/bump gates — `u.Blind || u.ublind`
+ * plus the prop form (cmd.js:3390 idiom used by the domove door port).
+ */
+function Blind_tm() {
+    const u = game.u || {};
+    return !!(u.Blind || u.ublind || Blind_im());
+}
+
+/**
+ * C hack.c:59–66 Known_wwalking / Known_lwalking — no JS helper existed;
+ * ported here beside their only caller test_move (same C file).
+ */
+function test_move_known_wwalking() {
+    const u = game.u || {};
+    const boots = u.uarmf;
+    return !!(boots && (boots.otyp | 0) === WATER_WALKING_BOOTS_OTYP
+        && game.objects?.[boots.otyp]?.oc_name_known && !u.usteed);
+}
+function test_move_known_lwalking() {
+    const u = game.u || {};
+    return !!(test_move_known_wwalking() && Fire_resistance()
+        && (u.uarmf?.oerodeproof | 0) && (u.uarmf?.rknown | 0));
+}
+
+/**
+ * C ref: hack.c test_move :991–1255 — whole-function port in C order.
+ * mode is DO_MOVE / TEST_MOVE / TEST_TRAV / TEST_TRAP (const.js). TEST_*
+ * modes are message-free in C (every pline gated on DO_MOVE); the entry
+ * `door_opened = FALSE` clear runs on all modes and is kept.
+ * You_cant / Your / There / pline_The have no JS export (lock.js:602
+ * precedent) — rendered as net-identical pline text, never new clones.
+ * Named omissions (c-js-map turns): block_door (shk.c:5791 — stub-false
+ * js/cmd.js:1176, no shop ESHK wire-up) / block_entry (shk.c:5826 — no JS
+ * impl) / ECMD_OK + canned-kick fake (JS doopen_indir returns bool, not
+ * ECMD codes; cmdq_peek is cmd.js-local) / defsyms[].explanation prose
+ * (tree/wall/solid-stone heuristic, cmd.js:1201 stand-in) / autodig flag
+ * (no JS option; arm live on game.flags.autodig).
+ */
+export async function test_move(ux, uy, dx, dy, mode) {
+    ux |= 0; uy |= 0; dx |= 0; dy |= 0; mode |= 0; // C :995–999 coordxy args
+    const u = game.u || {};
+    const x = ux + dx; // C :996
+    const y = uy + dy; // C :996
+    const youmonst = game.youmonst;
+    const ydat = youmonst?.data;
+
+    if (!game.context) game.context = {};
+    game.context.door_opened = false; // C :1000, all modes
+
+    if (!isok(x, y)) // C :1002–1003
+        return false;
+
+    const loc = game.level?.at(x, y); // C :1005 tmpr
+    if (!loc) return false;
+    const typ = loc.typ | 0;
+
+    // C :1008–1011 physical obstacles at the destination.
+    if (IS_OBSTRUCTED(typ) || typ === IRONBARS) {
+        if (Blind_tm() && mode === DO_MOVE) // C :1012–1013
+            feel_location(x, y);
+        if (Passes_walls_prop() && may_passwall(x, y)) { // C :1014–1016
+            ; // do nothing
+        } else if ((u.uinwater | 0) !== 0) { // C :1017–1025 Underwater
+            if (mode === DO_MOVE)
+                await pline('There is an obstacle there.'); // C There()
+            return false;
+        } else if (typ === IRONBARS) { // C :1026–1036
+            if (mode === DO_MOVE
+                && (dmgtype(ydat, AD_RUST) || dmgtype(ydat, AD_CORR)
+                    || metallivorous(ydat))
+                && await still_chewing(x, y)) { // C :1027–1031
+                return false;
+            }
+            if (!(Passes_walls_prop() || passes_bars(ydat))) { // C :1032
+                if (mode === DO_MOVE && game.flags?.mention_walls) // C :1033–1035
+                    await You('cannot pass through the bars.');
+                return false;
+            }
+        } else if (ydat && tunnels(ydat) && !needspick(ydat)) { // C :1037–1042 eat rock
+            if (mode === DO_MOVE && await still_chewing(x, y))
+                return false;
+        } else if (game.flags?.autodig && !(game.context.run | 0) // C :1043–1048 MRKR
+                   && !(game.context.nopick | 0)
+                   && u.uwep && is_pick(u.uwep)) {
+            if (mode === DO_MOVE)
+                await use_pick_axe2(u.uwep);
+            return false;
+        } else { // C :1049–1072 generic rock
+            if (mode === DO_MOVE) {
+                if (is_db_wall(x, y)) { // C :1051
+                    await pline('That drawbridge is up!');
+                } else if (Passes_walls_prop() && !may_passwall(x, y) // C :1052–1055
+                           && Sokoban_here()) { // C In_sokoban(&u.uz)
+                    await pline('The Sokoban walls resist your ability.'); // C pline_The
+                } else if (game.flags?.mention_walls) { // C :1056–1070
+                    const glyph = back_to_glyph(x, y);
+                    const sym = glyph_is_cmap(glyph) ? glyph_to_cmap(glyph) : -1;
+                    let buf;
+                    if (sym === S_stone) // C :1063–1064
+                        buf = 'solid stone';
+                    else if (sym >= 0) { // C :1065–1066 an(explanation)
+                        if (loc.typ === TREE || (IS_TREE(loc.typ) && loc.typ !== STONE))
+                            buf = an('tree');
+                        else if ((IS_WALL(loc.typ) || loc.typ === SDOOR) && loc.seenv)
+                            buf = an('wall');
+                        else
+                            buf = 'solid stone';
+                    } else // C :1067–1069
+                        buf = `impossible [background glyph=${glyph}]`;
+                    await pline_dir(xytodir(dx, dy), `It's ${buf}.`); // C :1070
+                }
+            }
+            return false;
+        }
+    } else if (IS_DOOR(typ)) { // C :1074
+        if (closed_door(x, y)) { // C :1075
+            if (Blind_tm() && mode === DO_MOVE) // C :1076–1077
+                feel_location(x, y);
+            if (Passes_walls_prop()) { // C :1078–1080
+                ; // do nothing
+            } else if (can_ooze(youmonst)) { // C :1081–1084
+                if (mode === DO_MOVE)
+                    await You('ooze under the door.');
+            } else if ((u.uinwater | 0) !== 0) { // C :1085–1089 Underwater
+                if (mode === DO_MOVE)
+                    await pline('There is an obstacle there.');
+                return false;
+            } else if (ydat && tunnels(ydat) && !needspick(ydat)) { // C :1090–1094 eat door
+                if (mode === DO_MOVE && await still_chewing(x, y))
+                    return false;
+            } else { // C :1095–1142
+                if (mode === DO_MOVE) {
+                    if (amorphous(ydat)) // C :1097–1099
+                        await You("try to ooze under the door, but can't squeeze your possessions through.");
+                    if (game.flags?.autoopen !== false && !(game.context.run | 0) // C :1100–1102
+                        && !u.Confusion && !u.Stunned && !Fumbling()) {
+                        // C :1103 tmp = doopen_indir(x, y); JS returns bool,
+                        // not ECMD codes — the ECMD_OK + canned-kick fake
+                        // (:1104–1111) is a named omission, so door_opened
+                        // is always !closed_door here.
+                        await doopen_indir(x, y);
+                        game.context.door_opened = !closed_door(x, y); // C :1112
+                        game.context.move = (ux !== (u.ux | 0) || uy !== (u.uy | 0)) ? 1 : 0; // C :1113
+                    } else if (x === ux || y === uy) { // C :1114 orthogonal
+                        if (Blind_tm() || u.Stunned || acurr(A_DEX) < 10 // C :1115–1117
+                            || Fumbling()) {
+                            if (u.usteed) { // C :1118–1121
+                                await pline(`You can't lead ${y_monnam(u.usteed)} through that closed door.`); // C You_cant
+                            } else { // C :1122–1125
+                                await pline('Ouch!  You bump into a door.');
+                                exercise(A_DEX, false);
+                            }
+                            game.context.door_opened = true; // C :1131
+                            game.context.move = 1; // C :1131 = TRUE
+                            nomul(0); // C :1135 stop running
+                        } else
+                            await pline('That door is closed.'); // C :1136–1137
+                    }
+                } else if (mode === TEST_TRAV || mode === TEST_TRAP) { // C :1140 goto testdiag
+                    // C :1141–1142 diagonal check shared with the open-door
+                    // arm below; the DO_MOVE pline there is unreachable on
+                    // these modes, so only the gate runs here.
+                    if (dx && dy && !Passes_walls_prop()
+                        && (!doorless_door(x, y) || false)) // C :1141 block_door named
+                        return false;
+                }
+                return false; // C :1142
+            }
+        } else {
+            // C :1144 testdiag label (open door): diagonal into intact doorway banned.
+            if (dx && dy && !Passes_walls_prop() // C :1145–1147
+                && (!doorless_door(x, y) || false)) { // block_door named omit
+                if (mode === DO_MOVE) { // C :1149–1155
+                    if (Blind_tm())
+                        feel_location(x, y);
+                    if ((u.uinwater | 0) || game.flags?.mention_walls) // C Underwater
+                        await pline("You can't move diagonally into an intact doorway."); // C You_cant
+                }
+                return false; // C :1156
+            }
+        }
+    }
+    if (dx && dy && ydat && bad_rock(ydat, ux, y) // C :1169–1170 tight diagonal
+        && bad_rock(ydat, x, uy)) {
+        switch (cant_squeeze_thru(youmonst)) { // C :1172
+        case 3: // C :1173–1176
+            if (mode === DO_MOVE)
+                await You('cannot pass that way.');
+            return false;
+        case 2: // C :1177–1180
+            if (mode === DO_MOVE)
+                await You('are carrying too much to get through.');
+            return false;
+        case 1: // C :1181–1184
+            if (mode === DO_MOVE)
+                await pline('Your body is too large to fit through.'); // C Your()
+            return false;
+        default:
+            break; // C :1186–1187 can squeeze through
+        }
+    } else if (dx && dy && worm_cross(ux, uy, x, y)) { // C :1188–1192
+        if (mode === DO_MOVE)
+            await pline(`${YMonnam(m_at(ux, y))} is in your way.`); // C :1190–1191
+        return false;
+    }
+    // C :1193–1196 travel path must not cross a trap or known liquid.
+    if ((game.context.run | 0) === 8 && mode !== DO_MOVE && !u_at(x, y)) { // C :1197
+        const tr = t_at(x, y); // C :1199
+        if (tr && tr.tseen && (tr.ttyp | 0) !== VIBRATING_SQUARE) // C :1201–1202
+            return mode === TEST_TRAP;
+        // C :1206 is_pool_or_lava (dbridge.c:77) == is_pool || is_lava.
+        if (loc.seenv && (is_pool(x, y) || is_lava(x, y)) // C :1206
+            && ((IS_WATERWALL(typ) || typ === LAVAWALL) // C :1208–1210
+                || !(Levitation_st() || Flying_st() // C :1214–1218
+                     || (is_pool(x, y) ? test_move_known_wwalking()
+                         : (test_move_known_lwalking()
+                             && is_lava(u.ux | 0, u.uy | 0))))))
+            return mode === TEST_TRAP; // C :1220
+    }
+
+    if (mode === TEST_TRAP) // C :1223–1224 do not move through traps
+        return false;
+
+    const ust = game.level?.at(ux, uy); // C :1227
+
+    // C :1229–1231 diagonal out of a doorway that still has a door.
+    if (dx && dy && !Passes_walls_prop() && ust && IS_DOOR(ust.typ | 0)
+        && (!doorless_door(ux, uy) || false)) { // block_entry named omit (shk.c:5826)
+        if (mode === DO_MOVE && game.flags?.mention_walls) // C :1233–1234
+            await pline("You can't move diagonally out of an intact doorway."); // C You_cant
+        return false; // C :1235
+    }
+
+    if (sobj_at(BOULDER, x, y) && (Sokoban_here() || !Passes_walls_prop())) { // C :1238
+        if (mode !== TEST_TRAV && (game.context.run | 0) >= 2 // C :1239–1241
+            && !Blind_tm() && !Hallucination() && !could_move_onto_boulder(x, y)) {
+            if (mode === DO_MOVE && game.flags?.mention_walls) // C :1243–1244
+                await pline_dir(xytodir(dx, dy), 'A boulder blocks your path.');
+            return false; // C :1245
+        }
+        if (mode === DO_MOVE) { // C :1247–1254
+            // C :1249 tunneling monsters chew before pushing (not in Sokoban).
+            if (ydat && tunnels(ydat) && !needspick(ydat) && !Sokoban_here()) {
+                if (await still_chewing(x, y)) // C :1251–1252
+                    return false;
+            } else if (await moverock() < 0) // C :1253–1254 uses u.dx/u.dy
+                return false;
+        } else if (mode === TEST_TRAV) { // C :1255–1271
+            if (Sokoban_here()) // C :1258–1259 never travel thru Sokoban boulders
+                return false;
+            // C :1261 two boulders in a row need a way through (!Sokoban
+            // re-check is redundant after the return above; kept C shape).
+            if (sobj_at(BOULDER, ux, uy) && !Sokoban_here()) {
+                const digwand = carrying(WAN_DIGGING_OTYP);
+                if (!Passes_walls_prop() // C :1262–1269
+                    && !could_move_onto_boulder(ux, uy)
+                    && !(ydat && tunnels(ydat) && !needspick(ydat))
+                    && !carrying(PICK_AXE_OTYP) && !carrying(DWARVISH_MATTOCK_OTYP)
+                    && !(digwand && !game.objects?.[digwand.otyp]?.oc_name_known))
+                    return false; // C :1270
+            }
+        }
+        // C :1272 assume you'll push it when you get there.
+    }
+
+    return true; // C :1275 legal place to move
 }
 
 /* C pickup.c autopick_testobj is extern (hack.c cannot_push passes TRUE):
@@ -1669,37 +1952,6 @@ function reg_damg(reg) {
 }
 
 /**
- * C ref: hack.c test_move(TEST_MOVE) — silent viability for
- * avoid_trap_andor_region. IRONBARS allow via Passes_walls ||
- * passes_bars (D-1270; chew is DO_MOVE only). Named omissions:
- * Passes_walls/ooze/autodig/Underwater/squeeze/worm_cross. C always
- * clears context.door_opened. run>=2 boulder abort is D-1226 (silent
- * here).
- */
-function test_move_viable(dx, dy) {
-    const u = game.u;
-    if (!u) return false;
-    const x = (u.ux | 0) + (dx | 0);
-    const y = (u.uy | 0) + (dy | 0);
-    if (game.context) game.context.door_opened = false;
-    if (!isok(x, y)) return false;
-    const loc = game.level?.at(x, y);
-    if (!loc) return false;
-    if (IS_OBSTRUCTED(loc.typ)) return false;
-    if (loc.typ === IRONBARS && !test_move_hero_passes_bars()) return false;
-    if (closed_door(x, y)) return false;
-    if (dx && dy) {
-        if (IS_DOOR(loc.typ) && !doorless_door(x, y)) return false;
-        const here = game.level?.at(u.ux, u.uy);
-        if (here && IS_DOOR(here.typ) && !doorless_door(u.ux, u.uy)) {
-            return false;
-        }
-    }
-    if (test_move_run_blocked_by_boulder(x, y)) return false;
-    return true;
-}
-
-/**
  * C ref: hack.c avoid_trap_andor_region — ParanoidTrap yn before a
  * viable step onto a tseen trap (or into a visible gas region).
  * Default paranoia_bits include PARANOID_TRAP, not PARANOID_CONFIRM,
@@ -1724,7 +1976,7 @@ export async function avoid_trap_andor_region(x, y) {
             const newDmg = reg_damg(newreg);
             const oldDmg = oldreg ? reg_damg(oldreg) : 0;
             if ((!oldreg || (newDmg > 0 && oldDmg === 0))
-                && test_move_viable(u.dx, u.dy)) {
+                && await test_move(u.ux | 0, u.uy | 0, u.dx | 0, u.dy | 0, TEST_MOVE)) {
                 const cloud = newDmg > 0 ? 'poison gas' : 'vapor';
                 const qbuf = upstart_word(
                     `${u_locomotion('step')} into that ${cloud} cloud?`,
@@ -1740,7 +1992,7 @@ export async function avoid_trap_andor_region(x, y) {
 
     if (ParanoidTrap && !Stunned_prop() && !Confusion_prop() && wouldAsk) {
         const trap = t_at(x, y);
-        if (trap && trap.tseen && test_move_viable(u.dx, u.dy)
+        if (trap && trap.tseen && await test_move(u.ux | 0, u.uy | 0, u.dx | 0, u.dy | 0, TEST_MOVE)
             && (immune_to_trap(game.youmonst, trap.ttyp) !== TRAP_CLEARLY_IMMUNE
                 || Hallucination())) {
             const traptype = Hallucination() ? rnd(TRAPNUM - 1) : (trap.ttyp | 0);
@@ -2010,6 +2262,58 @@ export async function water_turbulence() {
         return true;
     }
     return false;
+}
+
+/**
+ * C hack.c air_turbulence `:2342–2360` — Air level without Levitation or
+ * flight: rn2(4) turbulence spends the move (tumble / can't control /
+ * thin air + DEX exercise).
+ * @returns {Promise<boolean>} true → lose the move
+ */
+export async function air_turbulence() {
+    const u = game.u || {};
+    if (Is_airlevel(u.uz) && rn2(4) && !Levitation() && !Flying()) {
+        switch (rn2(3)) {
+        case 0:
+            await You('tumble in place.');
+            exercise(A_DEX, false);
+            break;
+        case 1:
+            await pline("You can't control your movements very well."); // C You_cant
+            break;
+        case 2:
+            await pline("It's hard to walk in thin air.");
+            exercise(A_DEX, true);
+            break;
+        }
+        return true;
+    }
+    return false;
+}
+
+/**
+ * C hack.c slippery_ice_fumbling `:2396–2415` — standing on ice without
+ * snow boots, cold resistance, flight or skating physiology: rn2(2 or 3)
+ * sets extrinsic Fumbling so the hero slips on the next move; leaving
+ * the ice clears the FROMOUTSIDE slip. Pure state, no pline.
+ */
+export function slippery_ice_fumbling() {
+    const u = game.u || {};
+    let on_ice = !Levitation() && is_ice(u.ux | 0, u.uy | 0);
+    const iceskater = u.usteed || game.youmonst;
+    if (on_ice) {
+        if ((u.uarmf && objdescr_is(u.uarmf, 'snow boots'))
+            || resists_cold(iceskater) || Flying()
+            || is_floater(iceskater?.data) || is_clinger(iceskater?.data)
+            || is_whirly(iceskater?.data)) {
+            on_ice = false;
+        } else if (!rn2(Cold_resistance() ? 3 : 2)) {
+            u.HFumbling = (((u.HFumbling | 0) | FROMOUTSIDE) & ~TIMEOUT) + 1;
+        }
+    }
+    if (!on_ice && ((u.HFumbling | 0) & FROMOUTSIDE)) {
+        u.HFumbling = (u.HFumbling | 0) & ~FROMOUTSIDE;
+    }
 }
 
 /**

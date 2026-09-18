@@ -528,7 +528,7 @@ const DEF_MONSYM_EXPLAIN = [
     'apelike creature', 'zombie', 'human or elf', 'ghost', 'golem',
     'major demon', 'sea monster', 'lizard', 'long worm tail', 'mimic',
 ];
-const DEF_MONSYM_MLET = [
+export const DEF_MONSYM_MLET = [
     null,
     'S_ANT', 'S_BLOB', 'S_COCKATRICE', 'S_DOG', 'S_EYE', 'S_FELINE',
     'S_GREMLIN', 'S_HUMANOID', 'S_IMP', 'S_JELLY', 'S_KOBOLD',

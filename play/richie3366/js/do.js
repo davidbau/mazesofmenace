@@ -2467,7 +2467,7 @@ export async function dodrop() {
  * Callees: do_wear.c reset_remarm, lock.c reset_pick, apply.c reset_trapset.
  * reset_trapset is latebound: apply.js already imports do.js.
  */
-async function reset_occupations() {
+export async function reset_occupations() {
     reset_remarm();
     reset_pick();
     const { reset_trapset } = await import('./apply.js');
@@ -2734,8 +2734,8 @@ export async function doup() {
     return ECMD_TIME;
 }
 
-/** C youprop.h BlindedTimeout. */
-function BlindedTimeout() {
+/** C youprop.h BlindedTimeout. Exported for eat.js rottenfood (D-2452). */
+export function BlindedTimeout() {
     return (game.u?.HBlinded | 0) & TIMEOUT;
 }
 

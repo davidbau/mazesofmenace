@@ -110,7 +110,7 @@ function IS_ROOM(typ) {
 }
 
 // C ref: questpgr.c is_quest_artifact — oartifact == urole.questarti
-function is_quest_artifact(obj) {
+export function is_quest_artifact(obj) {
     const want = game.urole?.questarti | 0;
     // C compares raw; guard want!==0 so incomplete urole cannot skip all rn2
     return want !== 0 && (obj?.oartifact | 0) === want;

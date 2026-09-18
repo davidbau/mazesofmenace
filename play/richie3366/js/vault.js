@@ -9,12 +9,11 @@
 //        wallify_vault (this iter; vault.c :646–731; cleanup-awaited).
 // Named omissions: wallify_vault xy_set_wall_state (mklev.js-local);
 // Croesus mon_wield;
-// fracture_rock boulder shatter; reset_faint; SetVoice; spot_stop_timers;
-// xy_set_wall_state; mimic_obj_name; full Deaf/Blind message variants that
-// need noit_mhis; gd_move goldincorridor (witness consume/destroy live);
-// gd_mv_monaway; mpickgold; dig del_engr_at; confused-disappears arms;
-// Well begone verbalize; clear_fcorr: Punished/uball (occupant yelp/rloc/
-// m_into_limbo live); corridor-disappears / encased-in-rock pline.
+// fracture_rock boulder shatter; reset_faint; SetVoice (no-op stub);
+// spot_stop_timers; xy_set_wall_state; mimic_obj_name; gd_move debugpline1;
+// clear_fcorr: Punished/uball (occupant yelp/rloc/m_into_limbo live);
+// defensive !isok/!crm early-0 in the gd_move dig loop (C in-bounds
+// by construction).
 
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
@@ -22,20 +21,26 @@ import { makemon, set_malign, newegd } from './makemon.js';
 import { mon_track_clear } from './monmove.js';
 import {
     pline, flush_topl_more, newsym, canspotmon, map_invisible, verbalize,
-    map_location, unset_seenv,
+    map_location, unset_seenv, mon_visible, impossible, pline_mon,
 } from './display.js';
 import { getlin } from './getline.js';
-import { Monnam, noit_Monnam, noit_mon_nam, pmname } from './do_name.js';
+import {
+    Monnam, noit_Monnam, noit_mon_nam, pmname, Some_Monnam, x_monnam,
+} from './do_name.js';
 import { adjalign } from './attrib.js';
 import { nomul, in_rooms, You_hear } from './hack.js';
 import { makeplural } from './objnam.js';
-import { cansee, couldsee, recalc_block_point, block_point } from './vision.js';
+import {
+    cansee, couldsee, recalc_block_point, block_point, unblock_point,
+} from './vision.js';
 import { COIN_CLASS } from './objects.js';
-import { del_engr_at, make_grave } from './engrave.js';
+import { del_engr_at, make_grave, sticks } from './engrave.js';
 import { t_at, deltrap } from './trap.js';
-import { rloc } from './teleport.js';
+import { rloc, enexto } from './teleport.js';
 import { yelp } from './sounds.js';
-import { place_object, stackobj, obj_extract_self, g_at, sobj_at } from './mkobj.js';
+import {
+    place_object, stackobj, obj_extract_self, g_at, sobj_at, add_to_minv,
+} from './mkobj.js';
 import {
     VAULT, VAULT_GUARD_TIME, ROOMOFFSET, COLNO, ROWNO,
     ROOM, CORR, SCORR, STONE, HWALL, VWALL, DOOR, D_NODOOR,
@@ -43,16 +48,22 @@ import {
     MM_EGD, MM_NOMSG, IS_WALL, IS_DOOR, IS_STWALL, IS_POOL,
     M_AP_OBJECT, M_AP_TYPE, EGD, u_at,
     A_LAWFUL, Has_contents, IS_ROOM, ACCESSIBLE, isok,
-    GD_EATGOLD, GD_DESTROYGOLD,
-    RLOC_NOMSG, RLOC_MSG, FEMALE, MALE, IN_SIGHT, COULD_SEE,
+    GD_EATGOLD, GD_DESTROYGOLD, ARTICLE_A, FCSIZ,
+    RLOC_NOMSG, RLOC_MSG, RLOC_ERR, FEMALE, MALE, IN_SIGHT, COULD_SEE,
 } from './const.js';
-import { m_at } from './mon.js';
+import { m_at, m_carrying, mnexto, mpickgold } from './mon.js';
+import { upstart, dist2 } from './hacklib.js';
+import { SetVoice } from './sndprocs.js';
+import { is_fainted } from './eat.js';
+import { You } from './zap.js';
+import { remove_monster, place_monster } from './steed.js';
 import { obfree } from './shk.js';
 import { monsterNames, mons, pmnames } from './monsters.js';
 import { m_canseeu, mhe } from './mondata.js';
 import { objectNames } from './generated/objects_data.js';
 
 const PM_GUARD = monsterNames.indexOf('PM_GUARD');
+const TIN_WHISTLE = objectNames.indexOf('TIN_WHISTLE');
 const GOLD_PIECE = objectNames.indexOf('GOLD_PIECE');
 const ROCK = objectNames.indexOf('ROCK');
 const BOULDER = objectNames.indexOf('BOULDER');
@@ -520,8 +531,7 @@ export function vault_summon_gd() {
  * C ref: vault.c uleftvault — hero teleported out of vault with a live
  * guard. Gold (invent or hidden_gold(TRUE)) and not adjacent → irate +
  * mpeaceful=0 (bypass setmangry); if dest is outside fakecorr, extra
- * gd_move. Named omit: hostile gd_move rloc / gd_letknow / wallify
- * (gd_move still early-returns when !mpeaceful).
+ * gd_move (hostile rloc / wallify_vault / gd_letknow arms live, D-2448).
  */
 export async function uleftvault(grd) {
     // C: only called if caller checked vault_occupied + findgd
@@ -862,57 +872,206 @@ function um_dist(x, y, n) {
 }
 
 /**
- * C ref: vault.c gd_move — peaceful vault escort subset.
- * Branch envelope: on-level peaceful; fcend==1 warn when gold or not
- * adjacent; um_dist rn2(10) + Move along! verbalize + restfakecorr;
- * !u_in_vault look-around → gddone + gd_move_cleanup Suddenly;
- * adjacent dig while-loop (wall→DOOR if beyond ROOM, else ortho
- * redirect, else STONE→CORR) + place guard + restfakecorr;
- * early/gddone/begone → gd_move_cleanup.
- * Named omissions: goldincorridor; hostile-gd_move wallify calls
- * (:913/:920, gd_move still early-returns when !mpeaceful);
- * other verbalize arms; gd_mv_monaway; mpickgold; stuck
- * find_guard_dest retry / confused disappears; dig del_engr_at;
- * clear_fcorr Punished arm (occupant yelp/rloc/limbo live); corridor-disappears /
- * encased pline; sticks() on ustuck (treat ustuck as blocking Move
- * along! like !sticks); Well begone verbalize; SetVoice on witness.
+ * C ref: vault.c gd_mv_monaway `:734–750` — shove the occupant of the
+ * guard's destination aside (Out-of-my-way verbalize, rloc, else limbo).
+ * m_at is the MON_AT equivalent (live mons only, D-1565/D-1231).
+ */
+async function gd_mv_monaway(grd, nx, ny) {
+    const mtmp = m_at(nx, ny);
+    if (mtmp && mtmp !== grd) {
+        if (!Deaf()) {
+            SetVoice(grd, 0, 80, 0);
+            await verbalize('Out of my way, scum!');
+        }
+        if (!(await rloc(mtmp, RLOC_ERR | RLOC_MSG)) || m_at(nx, ny)) {
+            const { m_into_limbo } = await import('./mon.js');
+            await m_into_limbo(mtmp);
+        }
+        recalc_block_point(nx, ny);
+    }
+}
+
+/**
+ * C ref: vault.c gd_pick_corridor_gold `:752–833` (staticfn) — guard
+ * collects floor gold in the fake corridor: from under the hero (step
+ * closer first when far and seen, up to 9 enexto tries), in place, or by
+ * moving onto a third spot and back; seen pickup pline with calm-down
+ * infix. C distu() is dist2-to-hero (hack.h:1531).
+ */
+async function gd_pick_corridor_gold(grd, goldx, goldy) {
+    const u = game.u || {};
+    const guardx = grd.mx | 0;
+    const guardy = grd.my | 0;
+    const under_u = u_at(goldx, goldy);
+    const see_it = cansee(goldx, goldy);
+
+    if (under_u) {
+        const gold = g_at(goldx, goldy);
+        if (!gold) {
+            await impossible("vault guard: no gold at hero's feet?");
+            return;
+        }
+        const gdelta = dist2(guardx, guardy, u.ux, u.uy);
+        if (gdelta > 2 && see_it) {
+            let bestdelta = gdelta;
+            const bestcc = { x: guardx, y: guardy };
+            const newcc = { x: 0, y: 0 };
+            let tryct = 9;
+            do {
+                if (enexto(newcc, goldx, goldy, grd.data)) {
+                    const newdelta = dist2(newcc.x, newcc.y, u.ux, u.uy);
+                    if (newdelta < bestdelta
+                        || (newdelta === bestdelta
+                            && dist2(newcc.x, newcc.y, guardx, guardy)
+                                < dist2(bestcc.x, bestcc.y, guardx, guardy))) {
+                        bestdelta = newdelta;
+                        bestcc.x = newcc.x;
+                        bestcc.y = newcc.y;
+                    }
+                }
+            } while (--tryct >= 0);
+
+            if (bestdelta < gdelta) {
+                remove_monster(guardx, guardy);
+                newsym(guardx, guardy);
+                place_monster(grd, bestcc.x, bestcc.y);
+                newsym(grd.mx, grd.my);
+            }
+        }
+        obj_extract_self(gold);
+        add_to_minv(grd, gold);
+        newsym(goldx, goldy);
+    } else if ((goldx | 0) === guardx && (goldy | 0) === guardy) {
+        await mpickgold(grd); /* does a newsym */
+    } else {
+        /* just for insurance... make room for guard */
+        await gd_mv_monaway(grd, goldx, goldy);
+        if (see_it) { /* skip if player won't see the message */
+            remove_monster(grd.mx, grd.my);
+            newsym(grd.mx, grd.my);
+            place_monster(grd, goldx, goldy); /* sets grd.mx,my */
+        }
+        await mpickgold(grd); /* does a newsym */
+    }
+
+    if (see_it) { /* cansee(goldx, goldy) */
+        const calm = (grd.mpeaceful && (EGD(grd)?.warncnt | 0) > 5)
+            ? ' calms down and' : '';
+        await pline(
+            `${Some_Monnam(grd)}${calm} picks up the gold${under_u ? ' from beneath you' : ''}.`,
+        );
+    }
+
+    /* if guard was moved to get the gold, move him back */
+    if ((grd.mx | 0) !== guardx || (grd.my | 0) !== guardy) {
+        remove_monster(grd.mx, grd.my);
+        newsym(grd.mx, grd.my);
+        place_monster(grd, guardx, guardy);
+        newsym(guardx, guardy);
+    }
+}
+
+/**
+ * C ref: vault.c gd_letknow `:869–886` (staticfn) — unseen guard: whistle
+ * vs shouting heard; seen: approaching vs confronted with angry x_monnam.
+ */
+async function gd_letknow(grd) {
+    if (!cansee(grd.mx, grd.my) || !mon_visible(grd)) {
+        await You_hear(
+            `${m_carrying(grd, TIN_WHISTLE)
+                ? "the shrill sound of a guard's whistle"
+                : 'angry shouting'}.`,
+        );
+    } else {
+        const xn = x_monnam(grd, ARTICLE_A, 'angry', 0, false);
+        await You(
+            um_dist(grd.mx, grd.my, 2)
+                ? `see ${xn} approaching.`
+                : `are confronted by ${xn}.`,
+        );
+    }
+}
+
+/**
+ * C ref: vault.c gd_move `:973–978` + `:990–994` restore tail — put back
+ * fakecorr[0]'s saved typ/flags at the guard's old cell. rm.h:213
+ * (doormask IS flags): a DOOR ftyp restores its doormask, like
+ * clear_fcorr's IS_DOOR split.
+ */
+function restore_fakecorr0(egrd, m, n) {
+    const fc0 = egrd.fakecorr?.[0];
+    const cell = game.level?.at?.(m, n);
+    if (!cell || !fc0) return;
+    cell.typ = fc0.ftyp | 0;
+    if (IS_DOOR(cell.typ)) cell.doormask = fc0.flags | 0;
+    else cell.flags = fc0.flags | 0;
+}
+
+/**
+ * C ref: vault.c gd_move `:888–1201` — whole body in C order: off-level /
+ * dead-at-<0,0> cleanup; wallify when both out; hostile rloc/wallify/
+ * clear_fcorr/gd_letknow arms; teleported-guard reject; witness scold;
+ * fcend==1 follow-me (warncnt 3) / warn-knave (7 + mnexto + restore) /
+ * fainted-or-multi warncnt++ / teleported-gold rloc+restore+gd_letknow /
+ * Well-begone cleanup; fcend>1 corridor-disappears + gold warn (6) /
+ * hostile (So-be-it) arms; goldincorridor scan + gd_pick_corridor_gold;
+ * um_dist Move-along + restfakecorr; look-around → proceed/newpos;
+ * nextpos dig while-loop + fakecorr append (FCSIZ throw ≡ panic) +
+ * stuck find_guard_dest retry; newpos monaway + remove/place +
+ * mpickgold + restfakecorr.
+ * Named omissions: debugpline1 wizard log; defensive !isok/!crm early-0
+ * in the dig loop (C in-bounds by construction); clear_fcorr
+ * Punished/uball arm (occupant yelp/rloc/limbo live).
+ * rm.h:213 `doormask IS flags` — a fresh-DOOR fakecorr entry stores its
+ * doormask, read back with the clear_fcorr IS_DOOR split.
  *
  * @returns {Promise<number>} 1 moved, 0 stayed, -1 normal AI, -2 died
  */
 export async function gd_move(grd) {
-    if (!grd?.isgd) return -1;
     const egrd = EGD(grd);
     if (!egrd) return -1;
-    const u = game.u;
-    if (!u) return -1;
+    const u = game.u || {};
 
-    const gd = egrd.gdlevel;
-    if (!gd || (gd.dnum | 0) !== (u.uz?.dnum | 0)
-        || (gd.dlevel | 0) !== (u.uz?.dlevel | 0)) {
-        return -1;
-    }
+    if (!on_level(egrd.gdlevel, u.uz)) return -1; // :893-894
 
     const semi_dead = (grd.mhp | 0) < 1;
-    if (semi_dead || !(grd.mx | 0) || egrd.gddone) {
+    if (semi_dead || !(grd.mx | 0) || egrd.gddone) { // :896-899
         egrd.gddone = 1;
         return await gd_move_cleanup(grd, semi_dead, false);
     }
 
-    const u_in_vault = !!vault_occupied(u.urooms);
-    if (!grd.mpeaceful) return -1;
+    const u_in_vault = vault_occupied(u.urooms) ? true : false; // :907
+    const grd_in_vault = in_rooms(grd.mx, grd.my, VAULT) // :908
+        ? true : false;
+    if (!u_in_vault && !grd_in_vault) await wallify_vault(grd); // :909-911
 
-    if (Math.abs((egrd.ogx | 0) - (grd.mx | 0)) > 1
-        || Math.abs((egrd.ogy | 0) - (grd.my | 0)) > 1) {
+    if (!grd.mpeaceful) { // :913-928
+        if (!u_in_vault
+            && (grd_in_vault || (in_fcorridor(grd, grd.mx, grd.my)
+                && !in_fcorridor(grd, u.ux, u.uy)))) {
+            await rloc(grd, RLOC_MSG);
+            await wallify_vault(grd);
+            if (!in_fcorridor(grd, grd.mx, grd.my)) {
+                await clear_fcorr(grd, true);
+            }
+            await gd_letknow(grd);
+            return -1;
+        }
+        if (!in_fcorridor(grd, grd.mx, grd.my)) {
+            await clear_fcorr(grd, true);
+        }
         return -1;
     }
+    if (Math.abs((egrd.ogx | 0) - (grd.mx | 0)) > 1 // :934-935
+        || Math.abs((egrd.ogy | 0) - (grd.my | 0)) > 1) {
+        return -1; /* teleported guard - treat as monster */
+    }
 
-    if (egrd.witness) {
-        // C: SetVoice deferred; consume/destroy verbalize + hostile
+    if (egrd.witness) { // :937-947
         if (!Deaf()) {
+            SetVoice(grd, 0, 80, 0);
             await verbalize(
-                `How dare you ${
-                    ((egrd.witness | 0) & GD_EATGOLD) ? 'consume' : 'destroy'
-                } that gold, scoundrel!`,
+                `How dare you ${((egrd.witness | 0) & GD_EATGOLD) ? 'consume' : 'destroy'} that gold, scoundrel!`,
             );
         }
         egrd.witness = 0;
@@ -920,83 +1079,180 @@ export async function gd_move(grd) {
         return -1;
     }
 
-    const umoney = money_cnt(game.invent);
+    const umoney = money_cnt(game.invent); // :949-950
     const u_carry_gold = umoney > 0 || hidden_gold(true) > 0;
 
-    if ((egrd.fcend | 0) === 1) {
-        if (u_in_vault && (u_carry_gold || um_dist(grd.mx, grd.my, 1))) {
-            if ((egrd.warncnt | 0) === 7) {
+    if ((egrd.fcend | 0) === 1) { // :951
+        if (u_in_vault && (u_carry_gold || um_dist(grd.mx, grd.my, 1))) { // :952
+            if ((egrd.warncnt | 0) === 3 && !Deaf()) { // :953-962
+                const buf = `${u_carry_gold
+                    ? (!umoney ? 'drop that hidden gold and '
+                        : 'drop that gold and ')
+                    : ''}follow me!`;
+                SetVoice(grd, 0, 80, 0);
+                if (egrd.dropgoldcnt || !u_carry_gold) {
+                    await verbalize(`I repeat, ${buf}`);
+                } else {
+                    await verbalize(upstart(buf));
+                }
+                if (u_carry_gold) {
+                    egrd.dropgoldcnt = (egrd.dropgoldcnt | 0) + 1;
+                }
+            }
+            if ((egrd.warncnt | 0) === 7) { // :963-984
+                const m = grd.mx | 0;
+                const n = grd.my | 0;
+                if (!Deaf()) {
+                    SetVoice(grd, 0, 80, 0);
+                    await verbalize("You've been warned, knave!");
+                }
                 grd.mpeaceful = 0;
+                await mnexto(grd, RLOC_NOMSG);
+                restore_fakecorr0(egrd, m, n);
+                recalc_block_point(m, n); /* guard corridor goes away */
+                del_engr_at(m, n);
+                newsym(m, n);
                 return -1;
             }
-            if ((game.multi | 0) >= 0) egrd.warncnt = (egrd.warncnt | 0) + 1;
+            /* not fair to get mad when (s)he's fainted or paralyzed */
+            if (!is_fainted() && (game.multi | 0) >= 0) { // :985-987
+                egrd.warncnt = (egrd.warncnt | 0) + 1;
+            }
             return 0;
         }
-        if (!u_in_vault) {
-            if (u_carry_gold) {
+
+        if (!u_in_vault) { // :990
+            if (u_carry_gold) { /* player teleported */ // :991-998
+                const m = grd.mx | 0;
+                const n = grd.my | 0;
+                await rloc(grd, RLOC_MSG);
+                restore_fakecorr0(egrd, m, n);
+                recalc_block_point(m, n); /* guard corridor goes away */
+                del_engr_at(m, n);
+                newsym(m, n);
                 grd.mpeaceful = 0;
+                await gd_letknow(grd);
                 return -1;
             }
-            // C: verbalize("Well, begone.") deferred
+            if (!Deaf()) { // :999-1006
+                SetVoice(grd, 0, 80, 0);
+                await verbalize('Well, begone.');
+            }
             egrd.gddone = 1;
             return await gd_move_cleanup(grd, semi_dead, false);
         }
     }
 
-    if (um_dist(grd.mx, grd.my, 1) || egrd.gddone) {
-        // C vault.c ~1066–1071: !gddone && !rn2(10) && !Deaf &&
-        // !uswallow && !(ustuck && !sticks) → verbalize; then restfakecorr.
-        if (!egrd.gddone && !rn2(10) && !Deaf()
-            && !u.uswallow && !u.ustuck) {
+    if ((egrd.fcend | 0) > 1) { // :1009
+        if ((egrd.fcend | 0) > 2 && in_fcorridor(grd, grd.mx, grd.my) // :1010-1017
+            && !egrd.gddone && !in_fcorridor(grd, u.ux, u.uy)
+            && ((game.level?.at?.(egrd.fakecorr[0].fx, egrd.fakecorr[0].fy)?.typ | 0)
+                === (egrd.fakecorr[0].ftyp | 0))) {
+            await pline(`${noit_Monnam(grd)}, confused, disappears.`);
+            return await gd_move_cleanup(grd, semi_dead, true);
+        }
+        if (u_carry_gold && (in_fcorridor(grd, u.ux, u.uy) // :1018-1020
+            /* cover a 'blind' spot */
+            || ((egrd.fcend | 0) > 1 && u_in_vault))) {
+            if (!(grd.mx | 0)) { // :1021-1023
+                await restfakecorr(grd);
+                return -2;
+            }
+            if ((egrd.warncnt | 0) < 6) { // :1024-1034
+                egrd.warncnt = 6;
+                if (Deaf()) {
+                    if (!Blind()) {
+                        await pline(
+                            `${noit_Monnam(grd)} holds out ${noit_mhis(grd)} palm demandingly!`,
+                        );
+                    }
+                } else {
+                    SetVoice(grd, 0, 80, 0);
+                    await verbalize('Drop all your gold, scoundrel!');
+                }
+                return 0;
+            }
+            if (Deaf()) { // :1035-1049
+                if (!Blind()) {
+                    await pline(
+                        `${noit_Monnam(grd)} rubs ${noit_mhis(grd)} hands with enraged delight!`,
+                    );
+                }
+            } else {
+                SetVoice(grd, 0, 80, 0);
+                await verbalize('So be it, rogue!');
+            }
+            grd.mpeaceful = 0;
+            return -1;
+        }
+    }
+
+    let m = 0; // :1051-1057
+    let n = 0;
+    let goldincorridor = false;
+    for (let fci = egrd.fcbeg | 0; fci < (egrd.fcend | 0); fci++) {
+        if (g_at(egrd.fakecorr[fci].fx, egrd.fakecorr[fci].fy)) {
+            m = egrd.fakecorr[fci].fx;
+            n = egrd.fakecorr[fci].fy;
+            goldincorridor = true;
+            break;
+        }
+    }
+    /* new gold can appear if it was embedded in stone and hero kicks it
+       (on even via wish and drop) so don't assume hero has been warned */
+    if (goldincorridor && !egrd.gddone) { // :1059-1065
+        await gd_pick_corridor_gold(grd, m, n);
+        if (!grd.mpeaceful) return -1;
+        egrd.warncnt = 5;
+        return 0;
+    }
+    if (um_dist(grd.mx, grd.my, 1) || egrd.gddone) { // :1066-1074
+        if (!egrd.gddone && !rn2(10) && !Deaf() && !u.uswallow
+            && !(u.ustuck && !sticks(game.youmonst?.data))) {
+            SetVoice(grd, 0, 80, 0);
             await verbalize('Move along!');
         }
         await restfakecorr(grd);
-        return 0;
+        return 0; /* didn't move */
     }
 
-    const x = grd.mx | 0;
+    const x = grd.mx | 0; // :1075-1076
     const y = grd.my | 0;
     let nx = x;
     let ny = y;
     let typ = 0;
-    let action = 'corr'; // 'corr' | 'door'
-    let skip_dig = false;
+    let newspot = false;
 
-    // C vault.c ~1078–1110: !u_in_vault look-around (ortho only)
-    if (!u_in_vault) {
+    // C look-around `:1080–1110` (hor & vert only): goto proceed
+    // (convert + proceed) or goto newpos (accessible + gddone set →
+    // monaway + cleanup), else fall through to nextpos.
+    let phase = u_in_vault ? 'nextpos' : 'look';
+    if (phase === 'look') {
+        phase = 'nextpos';
         look: for (let lx = x - 1; lx <= x + 1; lx++) {
             for (let ly = y - 1; ly <= y + 1; ly++) {
                 if ((lx === x || ly === y) && (lx !== x || ly !== y)
                     && isok(lx, ly)) {
-                    const crm = game.level?.at?.(lx, ly);
-                    if (!crm) continue;
-                    const ltyp = crm.typ | 0;
-                    if (!IS_STWALL(ltyp) && !IS_POOL(ltyp)) {
-                        if (in_fcorridor(grd, lx, ly)) continue;
+                    const cell = game.level?.at?.(lx, ly);
+                    if (!cell) continue;
+                    typ = cell.typ | 0;
+                    if (!IS_STWALL(typ) && !IS_POOL(typ)) {
+                        if (in_fcorridor(grd, lx, ly)) continue; // nextnxy
                         if (in_rooms(lx, ly, VAULT)) continue;
+                        /* seems we found a good place to leave him alone */
                         egrd.gddone = 1;
-                        if (ACCESSIBLE(ltyp)) {
-                            // C: goto newpos → gd_mv_monaway + cleanup
-                            return await gd_move_cleanup(
-                                grd, semi_dead, false,
-                            );
-                        }
-                        // Non-accessible: convert SCORR→CORR else DOOR
-                        // then fall into proceed (C goto proceed).
-                        typ = ltyp;
                         nx = lx;
                         ny = ly;
-                        if (ltyp === SCORR) {
-                            crm.typ = CORR;
-                            crm.flags = 0;
-                            action = 'corr';
-                        } else {
-                            crm.typ = DOOR;
-                            crm.doormask = D_NODOOR;
-                            action = 'door';
+                        if (ACCESSIBLE(typ)) {
+                            // C goto newpos, gddone set → monaway + cleanup
+                            await gd_mv_monaway(grd, nx, ny);
+                            return await gd_move_cleanup(grd, semi_dead, false);
                         }
+                        cell.typ = (typ === SCORR) ? CORR : DOOR;
+                        if (cell.typ === DOOR) cell.doormask = D_NODOOR;
+                        else cell.flags = 0;
                         del_engr_at(lx, ly);
-                        skip_dig = true;
+                        phase = 'proceed'; // C goto proceed
                         break look;
                     }
                 }
@@ -1004,112 +1260,120 @@ export async function gd_move(grd) {
         }
     }
 
-    if (!skip_dig) {
-        // C nextpos: one step toward gdx,gdy, then dig while-loop may
-        // redirect onto an alternate orthogonal cell (vault.c ~1111–1155).
+    for (;;) {
+        if (phase === 'nextpos') {
+            // C nextpos `:1111–1126`: one step toward gdx,gdy.
+            nx = x;
+            ny = y;
+            const ggx = egrd.gdx | 0;
+            const ggy = egrd.gdy | 0;
+            const dx = (ggx > x) ? 1 : (ggx < x) ? -1 : 0;
+            let dy = (ggy > y) ? 1 : (ggy < y) ? -1 : 0;
+            if (Math.abs(ggx - x) >= Math.abs(ggy - y)) nx += dx;
+            else ny += dy;
+
+            let crm = null;
+            for (;;) { // C dig while-loop `:1127–1156`
+                if (!isok(nx, ny)) return 0; // defensive
+                crm = game.level?.at?.(nx, ny);
+                if (!crm) return 0; // defensive
+                typ = crm.typ | 0;
+                if (typ === STONE) break;
+                const ex = nx + nx - x;
+                const ey = ny + ny - y;
+                /* in view of the above we must have IS_WALL(typ) or typ == POOL */
+                /* must be a wall here */
+                if (isok(ex, ey)
+                    && IS_ROOM(game.level?.at?.(ex, ey)?.typ | 0)) {
+                    crm.typ = DOOR;
+                    crm.doormask = D_NODOOR;
+                    del_engr_at(ex, ey);
+                    break; // goto proceed
+                }
+                if (dy && nx !== x) {
+                    nx = x;
+                    ny = y + dy;
+                    continue;
+                }
+                if (dx && ny !== y) {
+                    ny = y;
+                    nx = x + dx;
+                    dy = 0;
+                    continue;
+                }
+                /* I don't like this, but ... */
+                if (IS_ROOM(typ)) {
+                    crm.typ = DOOR;
+                    crm.doormask = D_NODOOR;
+                    del_engr_at(ex, ey);
+                    break; // goto proceed
+                }
+                break;
+            }
+            if (typ === STONE && crm) { // C while-exit `:1156`
+                crm.typ = CORR;
+                crm.flags = 0;
+            }
+        }
+        // C proceed `:1157–1181`
+        newspot = true;
+        unblock_point(nx, ny); /* doesn't block light */
+        if (cansee(nx, ny)) newsym(nx, ny);
+
         const ggx = egrd.gdx | 0;
         const ggy = egrd.gdy | 0;
-        let dx = (ggx > x) ? 1 : (ggx < x) ? -1 : 0;
-        let dy = (ggy > y) ? 1 : (ggy < y) ? -1 : 0;
-        nx = x;
-        ny = y;
-        if (Math.abs(ggx - x) >= Math.abs(ggy - y)) nx += dx;
-        else ny += dy;
-
-        // Resolve final (nx,ny) + action without mutating yet (C mutates at
-        // end of while / proceed; collision after redirect still rare).
-        action = 'corr';
-        for (let guard_iters = 0; guard_iters < 8; guard_iters++) {
-            if (!isok(nx, ny)) return 0;
-            const crm = game.level?.at?.(nx, ny);
-            if (!crm) return 0;
-            typ = crm.typ | 0;
-            if (typ === STONE) {
-                action = 'corr';
-                break;
+        if ((nx !== ggx || ny !== ggy)
+            || ((grd.mx | 0) !== ggx || (grd.my | 0) !== ggy)) {
+            /* fakecorr overflow does not occur because egrd->fakecorr[]
+               is too small, but it has occurred when the same <x,y> are
+               put into it repeatedly for some as yet unexplained reason */
+            if (!egrd.fakecorr) egrd.fakecorr = [];
+            const fi = egrd.fcend | 0;
+            egrd.fcend = fi + 1;
+            if (fi === FCSIZ) throw new Error('fakecorr overflow'); // C panic
+            const cell = game.level?.at?.(nx, ny);
+            egrd.fakecorr[fi] = {
+                fx: nx,
+                fy: ny,
+                ftyp: typ,
+                // C `fcp->flags = crm->flags`; doormask IS flags (rm.h:213).
+                flags: (cell && (cell.typ | 0) === DOOR)
+                    ? (cell.doormask | 0) : (cell?.flags | 0),
+            };
+        } else if (!egrd.gddone) {
+            /* We're stuck, so try to find a new destination. */
+            const dest = { x: 0, y: 0 };
+            if (!find_guard_dest(grd, dest)
+                || (dest.x === ggx && dest.y === ggy)) {
+                await pline(`${Monnam(grd)}, confused, disappears.`);
+                return await gd_move_cleanup(grd, semi_dead, true);
             }
-            const ex = nx + nx - x;
-            const ey = ny + ny - y;
-            if (isok(ex, ey) && IS_ROOM(game.level?.at?.(ex, ey)?.typ | 0)) {
-                action = 'door';
-                break;
-            }
-            if (dy && nx !== x) {
-                nx = x;
-                ny = y + dy;
-                continue;
-            }
-            if (dx && ny !== y) {
-                ny = y;
-                nx = x + dx;
-                dy = 0;
-                continue;
-            }
-            if (IS_ROOM(typ)) {
-                action = 'door';
-                break;
-            }
-            action = 'corr';
-            break;
+            egrd.gdx = dest.x;
+            egrd.gdy = dest.y;
+            phase = 'nextpos';
+            continue; // C goto nextpos
         }
-    }
-
-    if (!egrd.gddone) {
-        if (u.ux === nx && u.uy === ny) return 0;
-        // avoid importing m_at (mon→monmove→shk→vault cycle)
-        for (const m of game.fmon || []) {
-            if (m !== grd && (m.mx | 0) === nx && (m.my | 0) === ny
-                && (m.mhp | 0) > 0) {
-                return 0;
+        // C newpos `:1182–1201`
+        await gd_mv_monaway(grd, nx, ny);
+        if (egrd.gddone) return await gd_move_cleanup(grd, semi_dead, false);
+        egrd.ogx = grd.mx; /* update old positions */
+        egrd.ogy = grd.my;
+        remove_monster(grd.mx, grd.my);
+        place_monster(grd, nx, ny);
+        if (newspot && g_at(nx, ny)) {
+            /* if there's gold already here (most likely from mineralize()),
+               pick it up now so that guard doesn't later think hero dropped
+               it and give an inappropriate message */
+            await mpickgold(grd);
+            if (canspotmon(grd)) {
+                await pline(`${Monnam(grd)} picks up some gold.`);
             }
-        }
-    }
-
-    const loc = game.level?.at?.(nx, ny);
-    if (!loc) return 0;
-    const ftyp = typ;
-    if (!skip_dig) {
-        if (action === 'door') {
-            loc.typ = DOOR;
-            loc.doormask = D_NODOOR;
         } else {
-            loc.typ = CORR;
-            loc.flags = 0;
+            newsym(grd.mx, grd.my);
         }
+        await restfakecorr(grd);
+        return 1;
     }
-    recalc_block_point(nx, ny);
-    if (!egrd.fakecorr) egrd.fakecorr = [];
-    const ggx = egrd.gdx | 0;
-    const ggy = egrd.gdy | 0;
-    const fi = egrd.fcend | 0;
-    if (fi < 40 && ((nx !== ggx || ny !== ggy)
-        || ((grd.mx | 0) !== ggx || (grd.my | 0) !== ggy))) {
-        egrd.fakecorr[fi] = {
-            fx: nx,
-            fy: ny,
-            ftyp,
-            // C stores crm->flags after mutation (doormask for DOOR).
-            flags: action === 'door' ? (loc.doormask | 0) : (loc.flags | 0),
-        };
-        egrd.fcend = fi + 1;
-    }
-
-    // C newpos: if gddone after look-around proceed → cleanup, no place
-    if (egrd.gddone) {
-        return await gd_move_cleanup(grd, semi_dead, false);
-    }
-
-    egrd.ogx = grd.mx;
-    egrd.ogy = grd.my;
-    const ox = grd.mx;
-    const oy = grd.my;
-    grd.mx = nx;
-    grd.my = ny;
-    newsym(ox, oy);
-    newsym(nx, ny);
-    // C vault.c ~1199 — try restore corridor behind after each dig step
-    restfakecorr(grd);
-    return 1;
 }
 
 /**

@@ -95,6 +95,7 @@ const PM_ALIGNED_CLERIC = monsterNames.indexOf('PM_ALIGNED_CLERIC');
 const PM_JUIBLEX = monsterNames.indexOf('PM_JUIBLEX');
 const PM_LONG_WORM = monsterNames.indexOf('PM_LONG_WORM');
 const PM_LONG_WORM_TAIL = monsterNames.indexOf('PM_LONG_WORM_TAIL');
+export const PM_COYOTE = monsterNames.indexOf('PM_COYOTE');
 const SPE_NOVEL = objectNames.indexOf('SPE_NOVEL');
 const STRANGE_OBJECT = objectNames.indexOf('STRANGE_OBJECT');
 const TOWEL = objectNames.indexOf('TOWEL');
@@ -784,6 +785,32 @@ export function distant_monnam(mtmp, article = ARTICLE_THE) {
     const hid = astral_high_cleric_distant_nam(mtmp, article);
     if (hid != null) return hid;
     return x_monnam(mtmp, article, null, 0, true);
+}
+
+/**
+ * C ref: do_name.c coyotename `:1526–1536` — road-runner nemesis aliases.
+ * `x_monnam(ARTICLE_NONE, NULL, 0, TRUE)` + " - " + coynames pick:
+ * cancelled → last ("Canis latrans"), else `m_id % (SIZE-1)`.
+ * Caller (`pager.c` look_at_monster `:430–432`) gates on
+ * `data == &mons[PM_COYOTE] && accurate`; this helper does not re-check.
+ */
+const COYNAMES = [
+    'Carnivorous Vulgaris', 'Road-Runnerus Digestus', 'Eatibus Anythingus',
+    'Famishus-Famishus', 'Eatibus Almost Anythingus', 'Eatius Birdius',
+    'Famishius Fantasticus', 'Eternalii Famishiis', 'Famishus Vulgarus',
+    'Famishius Vulgaris Ingeniusi', 'Eatius-Slobbius', 'Hardheadipus Oedipus',
+    'Carnivorous Slobbius', 'Hard-Headipus Ravenus', 'Evereadii Eatibus',
+    'Apetitius Giganticus', 'Hungrii Flea-Bagius', 'Overconfidentii Vulgaris',
+    'Caninus Nervous Rex', 'Grotesques Appetitus', 'Nemesis Ridiculii',
+    'Canis latrans',
+];
+export function coyotename(mtmp) {
+    if (!mtmp) return 'it';
+    const base = x_monnam(mtmp, ARTICLE_NONE, null, 0, true);
+    const pick = mtmp.mcan
+        ? COYNAMES[COYNAMES.length - 1]
+        : COYNAMES[(mtmp.m_id | 0) % (COYNAMES.length - 1)];
+    return `${base} - ${pick}`;
 }
 
 /**

@@ -257,7 +257,7 @@ import {
     hides_under, is_golem, is_mplayer, vegetarian, carnivorous, NUMMONS,
 } from './monsters.js';
 import { m_at, wakeup, seemimic, dead_species, normal_shape, replmon, find_mid, mongone, restore_cham, m_respond, hideunder, healmon, can_be_hatched, cant_drown, minliquid } from './mon.js';
-import { find_mac, monkilled, shade_miss, resists_sleep_slee, resists_blnd_mm, erode_armor } from './mhitm.js';
+import { find_mac, monkilled, mlifesaver, shade_miss, resists_sleep_slee, resists_blnd_mm, erode_armor } from './mhitm.js';
 import { update_mapseen_for } from './dungeon.js';
 import {
     find_drawbridge, open_drawbridge, close_drawbridge, is_db_wall,
@@ -265,7 +265,7 @@ import {
 } from './dbridge.js';
 import { ok_to_quest } from './quest.js';
 import { more_experienced, losexp, newexplevel } from './exper.js';
-import { obj_resists } from './dogmove.js';
+import { obj_resists, is_quest_artifact } from './dogmove.js';
 import { zap_dig, fracture_rock, break_statue, bury_objs, unearth_objs } from './dig.js';
 import {
     killed, xkilled, flash_hits_mon, m_is_steadfast, that_is_a_mimic,
@@ -298,14 +298,14 @@ import { find_ac, addinv_core1, addinv_core2 } from './u_init.js';
 import { rehumanize, polymon, body_part } from './polyself.js';
 import { costly_alteration, stolen_value, costly_spot, shop_keeper, hot_pursuit, obfree, delete_contents, addtobill } from './shk.js';
 import { dryup } from './fountain.js';
-import { explode } from './explode.js';
+import { explode, completelyburns } from './explode.js';
 import { unpunish, litroom } from './read.js';
 import { engr_at, del_engr, make_engr_at, wipe_engr_at, random_engraving, rloc_engr } from './engrave.js';
 import { bare_artifactname, defends, defends_when_carried, artifact_origin, revoke_invoked_property } from './artifact.js';
 import {
     Ring_gone, Ring_off, Ring_on, setworn, set_wear, hard_helmet,
 } from './do_wear.js';
-import { which_armor, mon_set_minvis, check_gear_next_turn, wearslot, wearmask_to_obj } from './worn.js';
+import { which_armor, mon_set_minvis, check_gear_next_turn, wearslot, wearmask_to_obj, extract_from_minvent } from './worn.js';
 import { mhurtle, hero_breaks, breaks } from './dothrow.js';
 import { abuse_dog, wary_dog, tamedog } from './dog.js';
 import { setuwep, setuswapwep, setuqwep, set_twoweap } from './wield.js';
@@ -340,7 +340,7 @@ import {
     PLNMSG_ENVELOPED_IN_GAS, PLNMSG_OBJ_GLOWS, IRONBARS, SDOOR, SHOPBASE,
     SHOP_DOOR_COST,
     SHOP_BARS_COST, W_NONDIGGABLE, COST_CANCEL, COST_DRAIN, COST_UNCURS, COST_UNBLSS,
-    TIMEOUT, XKILL_GIVEMSG, XKILL_NOCORPSE, Upolyd, INVIS,
+    TIMEOUT, XKILL_GIVEMSG, XKILL_NOMSG, XKILL_NOCORPSE, Upolyd, INVIS, DISINT_RES,
     engulfing_u, Is_container, Is_box,
     MINV_ALL, MINV_NOLET, PICK_NONE,
     SEE_INVIS, DETECT_MONSTERS,
@@ -2102,14 +2102,56 @@ export async function ubreatheu(mattk) {
 }
 
 /**
+ * C ref: zap.c oresist_disintegration macro `:4738–4741` — the inventory
+ * strip spares DISINT_RES-oprops, obj_resists(5,50), quest artifacts and
+ * the worn life-saver. C `obj == m_amulet` is that spare (`:4728`);
+ * JS obj_resists already spares AMULET_OF_YENDOR by name with no draw.
+ */
+function oresists_disintegration(obj, m_amulet) {
+    return ((game.objects?.[obj.otyp]?.oc_oprop | 0) === DISINT_RES
+        || obj_resists(obj, 5, 50)
+        || is_quest_artifact(obj)
+        || obj === m_amulet);
+}
+
+/**
+ * C ref: zap.c disintegrate_mon `:4724–4758` (staticfn) — strip every
+ * non-resistant inventory item (the worn life-saver is preserved so it
+ * can operate), then monkilled(-AD_RBRE) for monster-cast rays, else
+ * xkilled(NOMSG|NOCORPSE).
+ */
+async function disintegrate_mon(mon, type, fltxt) {
+    const m_amulet = mlifesaver(mon);
+    if (canseemon(mon)) {
+        if (!m_amulet) {
+            await pline(`${Monnam(mon)} is disintegrated!`);
+        } else {
+            await hit_msg(fltxt, mon, '!');
+        }
+    }
+    for (let otmp = mon?.minvent; otmp;) {
+        const otmp2 = otmp.nobj;
+        if (!oresists_disintegration(otmp, m_amulet)) {
+            extract_from_minvent(mon, otmp, true, true);
+            obfree(otmp, null);
+        }
+        otmp = otmp2;
+    }
+    if ((type | 0) < 0) {
+        await monkilled(mon, null, -AD_RBRE);
+    } else {
+        await xkilled(mon, XKILL_NOMSG | XKILL_NOCORPSE);
+    }
+}
+
+/**
  * C ref: zap.c dobuzz — wand/spell/breath ray + DISP_BEAM + zhitm/zhitu.
  * Envelope: type<0 newsym; rn1(7,7) range; fireball skips trail
  * zap_over_floor then explode(d(12,6)) (D-0965); gas deferred until
  * after hit/reflect; mon/hero zap_hit; type<0 dead → monkilled(…,
- * AD_RBRE) else xkilled/killed; shopdamage → pay_for_damage (D-0948).
+ * AD_RBRE) else xkilled; shopdamage → pay_for_damage (D-0948).
  * Named omit: mon_reflects; map_invisible; Hallu hdmgtype;
- * disintegrate_mon; fire completelyburns XKILL_NOCORPSE; steed
- * redirect (usteed rn2(3) arm); AD_MAGM..ACID explode combat →
+ * steed redirect (usteed rn2(3) arm); AD_MAGM..ACID explode combat →
  * explode.js (D-0973). Hero-hit arm live: reflect monstseesu+shieldeff
  * (:4972/:4975), zhitu monstunseesu (:4981), blind-miss tingles
  * (:4985–4986), lightning flashburn (:4988–4989), stop_occupation (:4990).
@@ -2199,18 +2241,24 @@ export async function dobuzz(
                         const tmp = await zhitm(mon, type, nd, ootmp);
 
                         if (tmp === MAGIC_COOKIE) {
-                            // C disintegrate_mon: type<0 monkilled(-AD_RBRE)
-                            // else xkilled(NOMSG|NOCORPSE) — deferred → kill
-                            await killed(mon);
+                            // C `:4916–4918` — disintegration runs disintegrate_mon
+                            await disintegrate_mon(mon, type, flash_str(fltyp));
                         } else if ((mon.mhp | 0) < 1) {
-                            // C: type < 0 → monkilled(mon, flash, AD_RBRE);
-                            // else xkilled (hero credit + treasure rn2(6)).
+                            // C `:4919–4931` — monster-cast → monkilled AD_RBRE;
+                            // hero-cast → xkilled, NOCORPSE when fire burns
+                            // paper/straw completely (no "burn completely"
+                            // verbosity).
                             if ((type | 0) < 0) {
                                 await monkilled(
                                     mon, flash_str(fltyp), AD_RBRE,
                                 );
                             } else {
-                                await killed(mon);
+                                let xkflags = XKILL_GIVEMSG;
+                                if (damgtype === ZT_FIRE
+                                    && completelyburns(mon.data)) {
+                                    xkflags |= XKILL_NOCORPSE;
+                                }
+                                await xkilled(mon, xkflags);
                             }
                         } else {
                             if (!ootmp.otmp) {

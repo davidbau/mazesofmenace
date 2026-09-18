@@ -103,7 +103,7 @@ import {
     OBJ_MINVENT, COLNO, ROWNO, A_NONE, GEHENNOM, G_GONE, G_GENOD, G_EXTINCT,
     isok, has_mgivenname, MGIVENNAME, has_emin, has_mcorpsenm, EDOG, MON_FLOOR,
     M_AP_NOTHING, M_AP_OBJECT, M_AP_FURNITURE, M_AP_MONSTER, M_AP_TYPE,
-    ARTICLE_A, ARTICLE_THE, ARTICLE_YOUR, SUPPRESS_SADDLE, SUPPRESS_NAME,
+    ARTICLE_A, ARTICLE_THE, ARTICLE_YOUR, ARTICLE_NONE, SUPPRESS_SADDLE, SUPPRESS_NAME,
     NC_SHOW_MSG, NC_VIA_WAND_OR_SPELL, Upolyd,
     BOLT_LIM, MHID_ARTICLE, MHID_ALTMON,
     IS_DOOR, IS_WALL, IS_POOL, IS_LAVA,
@@ -112,7 +112,7 @@ import {
     ROOMOFFSET, LS_MONSTER,
     AM_NONE, AM_LAWFUL, AM_NEUTRAL, AM_CHAOTIC, ALIGNWEIGHT, Align2amask,
     PROT_FROM_SHAPE_CHANGERS,
-    In_quest, W_ARM, W_ARMH, W_SADDLE, P_POLEARMS, ROT_CORPSE, Is_waterlevel,
+    In_quest, W_ARM, W_ARMH, W_ARMG, W_SADDLE, P_POLEARMS, ROT_CORPSE, Is_waterlevel,
     STRAT_CLOSE, STRAT_WAITFORU, STRAT_APPEARMSG, is_pit,
     PIT, HOLE, TRAPDOOR, ALL_TRAPS,
     A_LAWFUL, ONAME_RANDOM, EMIN,
@@ -163,7 +163,7 @@ import {
 } from './objects.js';
 import { ART_EXCALIBUR, ART_DEMONBANE } from './generated/artifacts_data.js';
 import { cansee, does_block, block_point } from './vision.js';
-import { newsym, Norep, canseemon, sensemon, canspotmon, pline, pline_mon, impossible, coord_desc } from './display.js';
+import { newsym, Norep, canseemon, sensemon, canspotmon, pline, pline_mon, impossible, coord_desc, swallowed } from './display.js';
 import { mhidden_description } from './pager.js';
 import { emits_light, new_light_source, del_light_source } from './light.js';
 import { begin_burn } from './timeout.js';
@@ -176,6 +176,11 @@ import {
 } from './worm.js';
 import { deliver_obj_to_mon } from './dokick.js';
 import { can_be_hatched, m_at, seemimic, hideunder, onscary, monnear } from './mon.js';
+/* C mon.c newcham arms — all SAFE per imports.mjs (hoisted declarations). */
+import { expels, unstuck, digests } from './mhitu.js';
+import { mselftouch } from './trap.js';
+import { You } from './zap.js';
+import { sticks } from './engrave.js';
 import { m_unleash, leashable } from './apply.js';
 import { update_inventory } from './invent.js';
 import { set_apparxy, monflee, can_hide_under_obj, dochugw } from './monmove.js';
@@ -1713,12 +1718,14 @@ function newcham_elbereth(mtmp) {
     return null;
 }
 
+/** C monattk.h attack-type index for engulf attacks (cf. monmove.js). */
+const AT_ENGL = 11;
+
 /**
- * Light / invis / hideunder / long-worm / newsym / vampire cham /
- * check_gear after set_mon_data (and after mleashed). C SHOW_MSG is
- * after newsym; JS still awaits it last so NO_NC_FLAGS stays boolean.
+ * C ref: mon.c newcham `:5399–5412` — light / invis / hideunder right
+ * after set_mon_data (and after mleashed). Sync.
  */
-function newcham_post_set_mon_data(mtmp, olddata, mdat, pfsc) {
+function newcham_light_invis(mtmp, olddata, mdat) {
     const old_light = emits_light(olddata);
     const new_light = emits_light(mtmp.data);
     if (old_light !== new_light) {
@@ -1736,9 +1743,66 @@ function newcham_post_set_mon_data(mtmp, olddata, mdat, pfsc) {
     if (!mtmp.perminvis || old_invis) mtmp.perminvis = new_invis ? 1 : 0;
     mtmp.minvis = mtmp.invis_blkd ? 0 : mtmp.perminvis;
     if (mtmp.mundetected) hideunder(mtmp);
+}
 
-    // ustuck swallow/unstuck named omit (expels/unstuck async)
+/**
+ * C ref: mon.c newcham `:5413–5450` — the hero is stuck to or swallowed
+ * by mtmp when it changes form. Swallowed without AT_ENGL in the new
+ * form breaks out (You emerge/break-out + mhp 1 + expels; that pline is
+ * shown even when msg is FALSE and consumes the later SHOW_MSG) except
+ * noncorporeal / whirly / amorphous / light new forms, which expel
+ * silently; swallowed with AT_ENGL only repaints the swallow glyphs;
+ * a non-swallowed grab releases via unstuck() (no message, so the later
+ * SHOW_MSG stays in sequence) unless the new form — or the hero — still
+ * sticks, or the new form is unsolid-proof.
+ * @returns {null|{consumed:boolean}|Promise<{consumed:boolean}>} null when
+ *   the hero is not stuck (caller continues synchronously)
+ */
+function newcham_ustuck(mtmp, olddata, mdat, l_oldname) {
+    if ((game.u?.ustuck ?? null) !== mtmp) return null;
+    if (game.u?.uswallow) {
+        if (!attacktype(mdat, AT_ENGL)) {
+            /* Does mdat care? Noncorporeal / whirly / amorphous / light
+               new forms expel with no break-out pline. */
+            if (!noncorporeal(mdat) && !is_whirly(mdat)
+                && !(amorphous(mdat) || mdat.mlet === 'S_LIGHT')) {
+                return (async () => {
+                    let msgtrail = '';
+                    if (is_vampshifter(mtmp)) {
+                        msgtrail = ` which was a shapeshifted ${noname_monnam(mtmp, ARTICLE_NONE)}`;
+                    } else if (digests(mdat)) {
+                        msgtrail = `'s stomach`;
+                    }
+                    /* C: shown even if msg is FALSE; consumes the pline */
+                    await You(`${(amorphous(olddata) || is_whirly(olddata)) ? 'emerge from' : 'break out of'} ${l_oldname}${msgtrail}!`);
+                    mtmp.mhp = 1; /* almost dead */
+                    await expels(mtmp, olddata, false);
+                    return { consumed: true };
+                })();
+            }
+            return (async () => {
+                await expels(mtmp, olddata, false);
+                return { consumed: false };
+            })();
+        }
+        /* new form still engulfs: repaint swallow glyphs for it */
+        swallowed(0);
+        return { consumed: false };
+    }
+    if ((!sticks(mdat) && !sticks(game.youmonst?.data)) || unsolid(mdat)) {
+        return (async () => {
+            await unstuck(mtmp);
+            return { consumed: false };
+        })();
+    }
+    return null;
+}
 
+/**
+ * C ref: mon.c newcham `:5452–5456` — long-worm tail + newsym after the
+ * ustuck arms, before SHOW_MSG. Sync.
+ */
+function newcham_worm_newsym(mtmp, mdat) {
     if ((mdat?.mndx | 0) === pm('LONG_WORM')
         && (mtmp.wormno = get_wormno())) {
         initworm(mtmp, rn2(5));
@@ -1747,17 +1811,6 @@ function newcham_post_set_mon_data(mtmp, olddata, mdat, pfsc) {
 
     mtmp.meverseen = 0;
     newsym(mtmp.mx | 0, mtmp.my | 0);
-
-    // C: vampire cham after the pline; JS applies it before awaiting More
-    // so sync callers (makemon) keep immediate mutation.
-    if ((mtmp.cham === NON_PM || mtmp.cham == null)
-        && mdat.mlet === 'S_VAMPIRE' && !pfsc) {
-        mtmp.cham = pm_to_cham(mdat.mndx ?? NON_PM);
-    }
-
-    // W_ARMG mselftouch still named (mon_break_armor runs in after_armor)
-    check_gear_next_turn(mtmp);
-    // poly_steed runs in after_steed (after boulders, before Elbereth)
 }
 
 /**
@@ -1799,14 +1852,66 @@ function newcham_drop_boulders(mtmp, mdat, polyspot) {
 }
 
 /**
- * Rest of newcham after mleashed. SHOW_MSG, mon_break_armor, boulders,
- * poly_steed and Elbereth monflee may return a Promise; NO_NC_FLAGS without
- * those stays boolean true.
+ * Rest of newcham after mleashed, in C order: light/invis/hideunder,
+ * ustuck, worm/newsym, SHOW_MSG, vampire cham, possibly_unwield,
+ * mon_break_armor, mselftouch, check_gear, boulders, poly_steed,
+ * Elbereth. Async steps (ustuck expels, SHOW_MSG, armor, touch,
+ * boulders, steed, flee) return a Promise; a NO_NC_FLAGS change with
+ * none of those stays boolean true (D-1648).
  */
 function newcham_after_unleash(
-    mtmp, olddata, mdat, msg, oldname, seenorsensed, pfsc, polyspot,
+    mtmp, olddata, mdat, msg, oldname, l_oldname, seenorsensed, pfsc,
+    polyspot,
 ) {
-    newcham_post_set_mon_data(mtmp, olddata, mdat, pfsc);
+    newcham_light_invis(mtmp, olddata, mdat);
+    const after_ustuck = (consumed) => {
+        newcham_worm_newsym(mtmp, mdat);
+        const after_newsym = () => {
+            // C `:5480–5483` vampire cham after the pline.
+            if ((mtmp.cham === NON_PM || mtmp.cham == null)
+                && mdat.mlet === 'S_VAMPIRE' && !pfsc) {
+                mtmp.cham = pm_to_cham(mdat.mndx ?? NON_PM);
+            }
+            // C `:5484` possibly_unwield after SHOW_MSG / vampire cham.
+            const pu = possibly_unwield(mtmp, polyspot);
+            if (pu) return Promise.resolve(pu).then(after_armor);
+            return after_armor();
+        };
+        // C `:5458–5478` SHOW_MSG after newsym (skipped when the
+        // break-out pline already consumed it).
+        if (msg && !consumed) {
+            return newcham_show_msg(mtmp, oldname, seenorsensed, mdat)
+                .then(after_newsym);
+        }
+        return after_newsym();
+    };
+    const after_armor = () => {
+        // C `:5485` mon_break_armor(mtmp, polyspot) after possibly_unwield.
+        const mba = mon_break_armor(mtmp, polyspot);
+        if (mba) return Promise.resolve(mba).then(after_touch);
+        return after_touch();
+    };
+    const after_touch = () => {
+        // C `:5486–5488` petrify check once gloves are gone.
+        const touch = !(mtmp.misc_worn_check & W_ARMG)
+            ? mselftouch(mtmp, 'No longer petrify-resistant, ', !game.context?.mon_moving)
+            : null;
+        if (touch) return Promise.resolve(touch).then(after_gear);
+        return after_gear();
+    };
+    const after_gear = () => {
+        // C `:5489` gear recheck is next-turn (flag only, sync).
+        check_gear_next_turn(mtmp);
+        // C boulder loop after check_gear, before poly_steed.
+        const bd = newcham_drop_boulders(mtmp, mdat, polyspot);
+        if (bd) return Promise.resolve(bd).then(after_steed);
+        return after_steed();
+    };
+    const after_steed = () => {
+        // C `:5517–5518` if (mtmp == u.usteed) poly_steed(mtmp, olddata).
+        if (mtmp !== game.u?.usteed) return after_pu();
+        return Promise.resolve(poly_steed(mtmp, olddata)).then(after_pu);
+    };
     const after_pu = () => {
         const ep = newcham_elbereth(mtmp);
         // C :5517–5532 monflee is void; JS async — await at callers.
@@ -1818,32 +1923,12 @@ function newcham_after_unleash(
         }
         return true;
     };
-    const after_steed = () => {
-        // C `:5517–5518` if (mtmp == u.usteed) poly_steed(mtmp, olddata).
-        if (mtmp !== game.u?.usteed) return after_pu();
-        return Promise.resolve(poly_steed(mtmp, olddata)).then(after_pu);
-    };
-    const after_boulder = () => {
-        // C boulder loop after check_gear, before poly_steed.
-        const bd = newcham_drop_boulders(mtmp, mdat, polyspot);
-        if (bd) return Promise.resolve(bd).then(after_steed);
-        return after_steed();
-    };
-    const after_armor = () => {
-        // C :5485 mon_break_armor(mtmp, polyspot) after possibly_unwield
-        // (W_ARMG mselftouch arm still named).
-        const mba = mon_break_armor(mtmp, polyspot);
-        if (mba) return Promise.resolve(mba).then(after_boulder);
-        return after_boulder();
-    };
-    const after_msg = () => {
-        // C :5484 possibly_unwield after SHOW_MSG / vampire cham.
-        const pu = possibly_unwield(mtmp, polyspot);
-        if (pu) return Promise.resolve(pu).then(after_armor);
-        return after_armor();
-    };
-    if (msg) return newcham_show_msg(mtmp, oldname, seenorsensed, mdat).then(after_msg);
-    return after_msg();
+    // C `:5413–5450` ustuck arms between hideunder and worm tail.
+    const ustuck_r = newcham_ustuck(mtmp, olddata, mdat, l_oldname);
+    if (ustuck_r && typeof ustuck_r.then === 'function') {
+        return ustuck_r.then((r) => after_ustuck(r.consumed));
+    }
+    return after_ustuck(ustuck_r ? ustuck_r.consumed : false);
 }
 
 /**
@@ -1866,8 +1951,10 @@ function newcham_after_unleash(
  * D-1914) + boulder bypass+flooreffects (D-1914); possibly_unwield is
  * D-1744;
  * poly_steed steed.c `:851–873` wired after boulders, before Elbereth.
- * Named omissions: W_ARMG mselftouch; ustuck expels/unstuck (async;
- * l_oldname still captured for Hallu RNG).
+ * Ustuck `:5413–5450` (break-out You + mhp 1 + expels consuming SHOW_MSG,
+ * silent expels, swallowed(0) repaint, unstuck release) and W_ARMG
+ * mselftouch `:5486–5488` wired; vampire cham + check_gear run after the
+ * pline in C order. Named omissions: none.
  * @returns {boolean|Promise<boolean>} true if form changed
  */
 export function newcham(mtmp, mdat, ncflags = 0) {
@@ -1902,12 +1989,11 @@ export function newcham(mtmp, mdat, ncflags = 0) {
         );
         oldname = upstart(oldname);
     }
-    // C: always, whether msg — Hallu rndmonnam; ustuck swallow still named
+    // C: always, whether msg — Hallu rndmonnam + ustuck break-out name.
     const l_oldname = x_monnam(
         mtmp, ARTICLE_THE, null,
         has_mgivenname(mtmp) ? SUPPRESS_SADDLE : 0, false,
     );
-    void l_oldname;
 
     if (!mdat) {
         let tryct = 20;
@@ -1933,7 +2019,7 @@ export function newcham(mtmp, mdat, ncflags = 0) {
                     }
                     if (!mdat) return false;
                     return newcham_apply_form(mtmp, mdat, olddata, msg,
-                        oldname, seenorsensed, pfsc, polyspot);
+                        oldname, l_oldname, seenorsensed, pfsc, polyspot);
                 })();
             }
             const mndx = sel;
@@ -1952,7 +2038,7 @@ export function newcham(mtmp, mdat, ncflags = 0) {
             return false;
     }
     return newcham_apply_form(mtmp, mdat, olddata, msg, oldname,
-        seenorsensed, pfsc, polyspot);
+        l_oldname, seenorsensed, pfsc, polyspot);
 }
 
 /**
@@ -1964,8 +2050,8 @@ export function newcham(mtmp, mdat, ncflags = 0) {
  * runs keep the sync boolean (cf. D-1648).
  * @returns {boolean|Promise<boolean>} true if form changed
  */
-function newcham_apply_form(mtmp, mdat, olddata, msg, oldname, seenorsensed,
-    pfsc, polyspot) {
+function newcham_apply_form(mtmp, mdat, olddata, msg, oldname, l_oldname,
+    seenorsensed, pfsc, polyspot) {
     if ((mdat?.mndx | 0) === (olddata?.mndx | 0)) return false;
 
     mgender_from_permonst(mtmp, mdat);
@@ -2004,13 +2090,14 @@ function newcham_apply_form(mtmp, mdat, olddata, msg, oldname, seenorsensed,
         return (async () => {
             await unleash_p;
             return await Promise.resolve(newcham_after_unleash(
-                mtmp, olddata, mdat, msg, oldname, seenorsensed, pfsc,
-                polyspot,
+                mtmp, olddata, mdat, msg, oldname, l_oldname, seenorsensed,
+                pfsc, polyspot,
             ));
         })();
     }
     return newcham_after_unleash(
-        mtmp, olddata, mdat, msg, oldname, seenorsensed, pfsc, polyspot,
+        mtmp, olddata, mdat, msg, oldname, l_oldname, seenorsensed, pfsc,
+        polyspot,
     );
 }
 

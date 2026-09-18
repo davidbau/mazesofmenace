@@ -132,6 +132,30 @@ export function count_wsegs(mtmp) {
 }
 
 /**
+ * C ref: worm.c wseg_at :946–966 — tail-segment index number for (x,y).
+ * C: `m_at(x, y) == worm` gate, then `n - i` over the wtails chain
+ * (head segment counts: C `count_wsegs` excludes the head, this includes
+ * it via the `++nsegs` caller arm in insight.c mstatusline).
+ * JS `level_mon_at` is the `m_at` occupant (head pointer at every seg
+ * cell, wormno arm). Returns 0 when gated out, like C.
+ */
+export function wseg_at(worm, x, y) {
+    let res = 0;
+    if (worm && (worm.wormno | 0) && level_mon_at(x, y) === worm) {
+        let i = 0;
+        let curr = wtails[worm.wormno | 0] || null;
+        for (; curr; curr = curr.nseg) {
+            if ((curr.wx | 0) === (x | 0) && (curr.wy | 0) === (y | 0)) break;
+            ++i;
+        }
+        let n = i;
+        for (; curr; curr = curr.nseg) ++n;
+        res = n - i;
+    }
+    return res | 0;
+}
+
+/**
  * C ref: worm.c remove_worm — take head+tail off the map grid without
  * freeing the wseg chain or unlinking fmon. newsym each occupied cell.
  * Only wx is zeroed (C occupancy test is `if (curr->wx)`).

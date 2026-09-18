@@ -1044,10 +1044,16 @@ export function nhl_nhlib_align_shuffle() {
 }
 
 /**
- * C ref: dungeon.c init_dungeons()
- * Call after init_objects / role setup; before u_init_misc / l_nhcore_init.
+ * C ref: dungeon.c init_dungeons() `:1205–1319`
+ * Call after init_objects / role setup; before u_init_misc / l_nhcore_init
+ * (allmain.c:789). The Lua scaffolding below has no JS counterpart:
+ * dungeon.lua is embedded at build time via `js/generated/dungeon_data.js`
+ * (D-0477 pattern), so its failure arms are named omits (map data.md).
  */
 export function init_dungeons() {
+    // C: `memset(&pd, 0, ...)` + `pd.n_levs = pd.n_brs = 0` (`:1212–1213`),
+    // re-zeroed as `pd.start = 0; pd.n_levs = 0; pd.n_brs = 0` after the
+    // dungeon-table length is read (`:1258–1260`).
     const pd = {
         start: 0,
         n_levs: 0,
@@ -1058,40 +1064,78 @@ export function init_dungeons() {
         final_lev: [],
     };
 
-    // nhl_init for dungeon.lua loads nhlib.lua → shuffle(align)
+    // C: `L = nhl_init(&sbi)` (`:1215–1219`); `if (!L) panic1(...)` — named
+    // omit: no private Lua state in JS. The one observable draw of the Lua
+    // load is nhlib.lua shuffling align[], reproduced here.
+    // C: `if (!nhl_loadlua(L, DUNGEON_FILE))` + `tbuf` panic with the
+    // DLBFILE/prefix/WIN32-interject arms (`:1221–1248`) — named omit: the
+    // generated table cannot fail to load at runtime (a missing table is a
+    // module-load error, not a panic1).
     nhl_nhlib_align_shuffle();
 
+    // C: `if (iflags.window_inited) clear_nhwindow(WIN_MAP)` (`:1250–1251`) —
+    // named omit: screen side effect with no WIN_MAP-clear primitive in JS;
+    // window clearing is owned by the allmain newgame window flow.
+    // C: `svs.sp_levchn = 0` (`:1253`); JS keeps the chain as an array.
     game.sp_levchn = [];
     game.branches = [];
     game.dungeons = [];
     game._branch_id = 0;
+
+    // C: `lua_settop(L, 0); lua_getglobal(L, "dungeon")` +
+    // `if (!lua_istable(L, -1)) panic("dungeon is not a lua table")` +
+    // `lua_len` → `svn.n_dgns` (`:1255–1265`). The generated table is a JS
+    // array, so the type panic becomes an Array check.
+    if (!Array.isArray(dungeonProto))
+        throw new Error('init_dungeons: dungeon is not a lua table');
     game.n_dgns = dungeonProto.length;
 
+    // C: `if (svn.n_dgns >= MAXDUNGEON) panic(...)` (`:1268–1269`).
     if (game.n_dgns >= MAXDUNGEON) throw new Error('init_dungeons: too many dungeons');
 
+    // C: `tidx = lua_gettop(L); lua_pushnil(L); i = 0;` +
+    // `while (lua_next(L, tidx) != 0)` (`:1271–1278`): visit every dungeon
+    // entry in table order; `i` counts successes only.
     let cl = 0;
     let i = 0;
     for (const entry of dungeonProto) {
-        // Ensure slot exists for tmpdungeon bookkeeping even before fill
+        // C: `if (!lua_istable(L, -1)) panic("dungeon[%i] ...", i)` (`:1280–1281`).
+        if (!entry || typeof entry !== 'object')
+            throw new Error(`init_dungeons: dungeon[${i}] is not a lua table`);
+        // Slot for tmpdungeon bookkeeping even before fill (C: fixed array).
         if (!pd.tmpdungeon[i]) pd.tmpdungeon[i] = { branches: 0, levels: 0 };
         if (init_dungeon_dungeons(entry, pd, i)) {
+            // C: `for (; cl < pd.n_levs; cl++) init_level(i, cl, &pd)` —
+            // `cl` carries across dungeons, never reset (`:1284–1286`).
             for (; cl < pd.n_levs; cl++) {
                 init_level(i, cl, pd);
             }
+            // C: `if (!place_level(pd.start, &pd)) panic("couldn't place")`
+            // (`:1291–1292`); DDEBUG stderr block (`:1293–1298`) omitted.
             if (!place_level(pd.start, pd)) {
                 throw new Error("init_dungeon: couldn't place levels");
             }
+            // C: `for (; pd.start < pd.n_levs; pd.start++)` +
+            // `if (pd.final_lev[pd.start]) add_level(...)` (`:1299–1301`).
             for (; pd.start < pd.n_levs; pd.start++) {
                 if (pd.final_lev[pd.start]) add_level(pd.final_lev[pd.start]);
             }
             i++;
         }
+        // C: `lua_pop(L, 1)` per entry (`:1304`) — no counterpart.
     }
-    // After skips, n_dgns already adjusted; i is final count
+    // C: `lua_pop(L, 1)` (drop the dungeon global) + `debugpline2(... DONE ...)`
+    // (`:1306–1308`) — D_DEBUG-only, omitted.
+    // C leaves `svn.n_dgns` decremented once per skip inside
+    // init_dungeon_dungeons; `i` counts the same successes, so re-assert it.
     game.n_dgns = i;
 
+    // C: `init_castle_tune(); fixup_level_locations(); nhl_done(L);`
+    // (`:1310–1312`); `nhl_done` frees the private Lua state — no counterpart.
     init_castle_tune();
     fixup_level_locations();
+    // C: `free_proto_dungeon(&pd)` (`:1313–1315`) frees malloc'd names — GC in
+    // JS, omitted. C: `#ifdef DEBUG dumpit()` (`:1316–1318`) — debug-only.
 }
 
 /**

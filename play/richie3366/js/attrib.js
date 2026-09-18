@@ -274,6 +274,8 @@ export function init_attr(np) {
 // C ref: attrib.c plusattr[] / minusattr[]
 const PLUSATTR = ['strong', 'smart', 'wise', 'agile', 'tough', 'charismatic'];
 const MINUSATTR = ['weak', 'stupid', 'foolish', 'clumsy', 'fragile', 'repulsive'];
+// C ref: attrib.c attrname[] `:20–21` — also used by enlightenment in insight.c
+const ATTRNAME = ['strength', 'intelligence', 'wisdom', 'dexterity', 'constitution', 'charisma'];
 
 /**
  * C ref: attrib.c poisontell — attribute-loss feedback after poisoned().
@@ -495,16 +497,21 @@ function Fixed_abil() {
 }
 
 /**
- * C ref: attrib.c adjattrib() — mutate ABASE/AMAX; You_feel when msgflg <= 0.
- * Dunce cap INT/WIS abort (msgflg==0 constricts pline) live for mhitu
- * AD_DRIN (D-1329). Verbose "already" messages still named.
+ * C ref: attrib.c adjattrib() `:117–199` — mutate ABASE/AMAX; You_feel when
+ * msgflg <= 0; verbose-only feedback when ACURR unmoved; in_moveloop
+ * STR/CON encumber_msg. Dunce cap INT/WIS abort (msgflg==0 constricts
+ * pline) live for mhitu AD_DRIN (D-1329). Your()/You_feel() render via
+ * pline with the prefix inline (no new Your clone; cf mhitu.js/artifact.js).
  * @param {number} ndx
  * @param {number} incr
- * @param {number|boolean} [msgflg=1] positive => silent; zero => message
+ * @param {number|boolean} [msgflg=1] positive => silent; zero => message;
+ * negative => conditional (msg if change made)
  */
 export async function adjattrib(ndx, incr, msgflg = 1) {
+    // C `:124` — Fixed_abil || !incr → FALSE
     if (Fixed_abil() || !incr) return false;
     const u = game.u || {};
+    // C `:127–132` — dunce-cap INT/WIS abort; Your() constricts text when msgflg==0
     if (((ndx | 0) === A_INT || (ndx | 0) === A_WIS)
         && u.uarmh && (u.uarmh.otyp | 0) === DUNCE_CAP) {
         if ((msgflg | 0) === 0) {
@@ -512,11 +519,16 @@ export async function adjattrib(ndx, incr, msgflg = 1) {
         }
         return false;
     }
+    // C `:134–137` — snapshot current/base/peak before mutating base
     const old_acurr = acurr(ndx);
-    const old = abase(ndx);
-    setAbase(ndx, old + incr);
+    const old_abase = abase(ndx);
+    const old_amax = amax(ndx);
+    // C `:138` — ABASE += incr (negative incr reduces)
+    setAbase(ndx, old_abase + incr);
     let attrstr;
+    let abonflg;
     if (incr > 0) {
+        // C `:139–147` — base above peak raises peak, clamped to ATTRMAX
         if (abase(ndx) > amax(ndx)) {
             setAmax(ndx, abase(ndx));
             if (amax(ndx) > attrMax(ndx)) {
@@ -525,29 +537,45 @@ export async function adjattrib(ndx, incr, msgflg = 1) {
             }
         }
         attrstr = PLUSATTR[ndx];
+        abonflg = (((u.abon?.a?.[ndx]) | 0) < 0);
     } else {
+        // C `:148–171` — base below ATTRMIN: pin base, shave peak by an
+        // rn2 share of the excess (so horn/restore cannot recover it all)
         if (abase(ndx) < attrMin(ndx)) {
-            // decrease-below-min path uses rn2; not hit by vary_init_attr on seed8000
             const decr = rn2(attrMin(ndx) - abase(ndx) + 1);
             setAbase(ndx, attrMin(ndx));
             setAmax(ndx, amax(ndx) - decr);
             if (amax(ndx) < attrMin(ndx)) setAmax(ndx, attrMin(ndx));
         }
         attrstr = MINUSATTR[ndx];
+        abonflg = (((u.abon?.a?.[ndx]) | 0) > 0);
     }
-    // C: if (ACURR(ndx) == old_acurr) return FALSE (verbose msgs deferred)
-    if (acurr(ndx) === old_acurr) return false;
+    // C `:172–190` — current unmoved: verbose-only feedback, then FALSE.
+    // msgflg==0 exact (not <=0); flags.verbose defaults on (jsmain init).
+    if (acurr(ndx) === old_acurr) {
+        if ((msgflg | 0) === 0 && game.flags?.verbose !== false) {
+            if (abase(ndx) === old_abase && amax(ndx) === old_amax) {
+                await pline(`You're ${abonflg ? 'currently' : 'already'} as ${attrstr} as you can get.`);
+            } else {
+                // C Your("innate %s has %s.") — prefix inline, no Your clone
+                await pline(`Your innate ${ATTRNAME[ndx]} has ${(incr > 0) ? 'improved' : 'declined'}.`);
+            }
+        }
+        return false;
+    }
+
+    /* C `:192` — any successful change resets abuse/exercise level */
     if (game.u.aexe?.a) game.u.aexe.a[ndx] = 0;
+
+    // C `:194–197` — botl + You_feel("%s%s!") when msgflg <= 0
     if (!game.flags) game.flags = {};
     game.flags.botl = true;
     if (game.disp) game.disp.botl = true;
     if ((msgflg | 0) <= 0) {
-        const { You_feel } = await import('./display.js');
         const very = (incr > 1 || incr < -1) ? 'very ' : '';
         await You_feel(`${very}${attrstr}!`);
     }
-    // C: if (program_state.in_moveloop && (ndx == A_STR || ndx == A_CON))
-    //        encumber_msg();
+    // C `:198–199` — in_moveloop STR/CON change re-reports encumbrance
     if (game.program_state?.in_moveloop
         && ((ndx | 0) === A_STR || (ndx | 0) === A_CON)) {
         const { encumber_msg } = await import('./invent.js');

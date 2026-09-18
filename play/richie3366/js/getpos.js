@@ -24,7 +24,7 @@ import {
     glyph_is_monster, GLYPH_MON_MALE_OFF, GLYPH_MON_FEM_OFF,
 } from './display.js';
 import { cansee } from './vision.js';
-import { lookat } from './pager.js';
+import { do_screen_description } from './pager.js';
 import { NO_COLOR } from './terminal.js';
 import {
     COLNO, ROWNO, isok, TER_MON, TER_OBJ, TER_MAP, TER_DETECT,
@@ -232,7 +232,7 @@ function use_dec_syms() {
 const MAXPCHARS = S_expl_br + 1;
 
 /** C defsym.h PCHAR `ch` column; index is cmap S_*. */
-const DEFSYMS_CH = [
+export const DEFSYMS_CH = [
     ' ', '|', '-', '-', '-', '-', '-', '-', '-', '-', '|', '|',
     '.', '-', '|', '+', '+',
     '#', '#',
@@ -581,23 +581,25 @@ export function room_cmap_explanation(x, y, loc) {
 }
 
 /**
- * C ref: getpos.c auto_describe → do_screen_description firstmatch /
- * pager.c lookat. firstmatch is lookat's buf after the didlook
- * blocked-staircase rewrite (ice_descr sibling named).
+ * C ref: getpos.c auto_describe → do_screen_description firstmatch
+ * (pager.c lookat overwrite + blocked-staircase rewrite in didlook).
  *
- * Named omissions: full do_screen_description symbol table, coord_desc,
- * underwater unreconnoitered (didlook skip), doname_with_price /
+ * Named omissions: coord_desc suffix, doname_with_price /
  * doname_vague_quan, buried/embedded suffixes. Travel:
  * " (no travel path)" via is_valid_travelpt when getloc_travelmode
  * (D-0809). getpos_getvalid "(invalid target)" live (D-0899); S_goodpos
  * hilite glyphs deferred.
  */
 export function auto_describe_text(cx, cy) {
-    // C auto_describe → do_screen_description firstmatch after lookat
-    // overwrite (`pager.c` didlook). Blocked-stair rewrite is didlook,
-    // not lookat itself.
-    const { buf } = lookat(cx, cy);
-    return maybe_blocked_staircase_down(buf);
+    // C getpos.c auto_describe `:643–665` → do_screen_description firstmatch
+    // (lookat overwrite + blocked-stair rewrite happen in its didlook arm).
+    const outStr = { s: '' };
+    const firstMatch = { v: '' };
+    const found = do_screen_description(
+        { x: cx, y: cy }, true, 0, outStr, firstMatch, null,
+    );
+    if (!found) return '';
+    return firstMatch.v || '';
 }
 
 /**

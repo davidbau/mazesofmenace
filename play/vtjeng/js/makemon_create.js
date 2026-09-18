@@ -48,6 +48,7 @@ import {
     MM_EDOG,
     MM_EGD,
     MM_EPRI,
+    MM_EMIN,
     MM_ESHK,
     MM_FEMALE,
     MM_MALE,
@@ -109,6 +110,7 @@ import {
     artifact_exists,
 } from './artifacts.js';
 import { obj_resists } from './bury.js';
+import { newemin } from './minion.js';
 import { in_town } from './hack.js';
 import {
     can_saddle,
@@ -600,6 +602,7 @@ const SUPPORTED_FLAGS = NO_MINVENT
     | MM_EDOG
     | MM_EGD
     | MM_EPRI
+    | MM_EMIN
     | MM_ESHK
     | MM_ADJACENTOK
     | MM_NOGRP
@@ -1240,7 +1243,8 @@ function isMausoleumSpecies(species) {
         || (mndx >= PM_KOBOLD_ZOMBIE && mndx <= PM_GIANT_ZOMBIE);
 }
 
-function assertSupportedSpecies(species) {
+function assertSupportedSpecies(species, env = {}) {
+    const createParticular = env._createParticular === true;
     // The four throne-room rulers are the whole range of mkroom.c
     // mk_zoo_thronemon() (mkroom.c:256-273): rnd(level_difficulty()) picks
     // PM_OGRE_TYRANT above 9, PM_ELVEN_MONARCH above 5, PM_DWARF_RULER above
@@ -1292,6 +1296,11 @@ function assertSupportedSpecies(species) {
             // outside mklev. S_EEL has no arm in m_initweap() or m_initinv(),
             // so the generic makemon() path already builds it.
             && species.pmidx !== PM_GIANT_EEL
+            // read.c wiz_genesis() explicitly reaches makemon() for
+            // hell-only covetous species; the ordinary level reservoir does
+            // not, so keep master lich out of isMausoleumSpecies() while
+            // admitting its direct wizard-mode creation path.
+            && (species.pmidx !== PM_MASTER_LICH || !createParticular)
             && species.pmidx !== PM_GUARD
             // read.c create_particular_creation() can request a hidden
             // hider directly.  PM_TRAPPER is the admitted source species
@@ -1560,7 +1569,7 @@ function preflightCreation(ptr, x, y, mmflags, normalized) {
             && !cloneuCall
             && (!state.in_mklev || (isMainDungeonLevel(state)
                 && !normalized._rndmonMklev))) {
-            assertSupportedSpecies(ptr);
+            assertSupportedSpecies(ptr, normalized);
         }
         if (state.mons[ptr.pmidx] !== ptr) {
             throw new UnsupportedMonsterCreationError(
@@ -3005,7 +3014,8 @@ export function makemon(ptr, x, y, mmflags = 0, env = {}) {
         do {
             ptr = rndmonst(normalized);
             if (!ptr) return null;
-            if (!normalized._rndmonMklev) assertSupportedSpecies(ptr);
+            if (!normalized._rndmonMklev)
+                assertSupportedSpecies(ptr, normalized);
         } while (++attempts <= 50
             && !goodpos(
                 x,
@@ -3030,8 +3040,9 @@ export function makemon(ptr, x, y, mmflags = 0, env = {}) {
     );
     const monster = newMonster();
     if (mmflags & MM_EGD) newegd(monster);
-    if (mmflags & MM_ESHK) neweshk(monster);
     if (mmflags & MM_EPRI) newepri(monster);
+    if (mmflags & MM_ESHK) neweshk(monster);
+    if (mmflags & MM_EMIN) newemin(monster);
     if (mmflags & MM_EDOG) newedog(monster);
     monster.msleeping = Boolean(mmflags & MM_ASLEEP);
     monster.nmon = state.level.monlist;

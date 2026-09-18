@@ -7,6 +7,7 @@
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
+import { rn2 } from './rng.js';
 import {
     newsym, flush_screen, pline, pline_dir, pline_xy, set_msg_xy,
     see_nearby_objects,
@@ -14,7 +15,7 @@ import {
     mon_visible, sensemon, canspotmon, glyph_at, glyph_is_invisible_id,
     glyph_is_warning, unmap_object, map_object,
     look_shown_at, glyph_to_obj_at, Norep, tty_doprev_message, putmsghistory,
-    unmap_invisible, custompline,
+    unmap_invisible, map_invisible, custompline,
 } from './display.js';
 import { COLNO, ROWNO, STONE, DOOR, CORR, ROOM, IRONBARS, TREE, SDOOR,
          D_CLOSED, D_LOCKED, D_NODOOR, D_BROKEN, SCORR, LAVAWALL,
@@ -31,7 +32,7 @@ import { COLNO, ROWNO, STONE, DOOR, CORR, ROOM, IRONBARS, TREE, SDOOR,
          DIR_NW, DIR_NE, DIR_SE, DIR_SW,
          GFILTER_VIEW, GLOC_INTERESTING,
          M_AP_TYPE, M_AP_FURNITURE, M_AP_OBJECT, VIBRATING_SQUARE,
-         PARANOID_TRAP,
+         PARANOID_TRAP, GP_ALLOW_U, NO_TRAP_FLAGS, FOOT, Something,
          LARGEST_INT, GC_NOFLAGS, GC_SAVEHIST, GC_CONDHIST, GC_ECHOFIRST,
          SUPPRESS_HISTORY,
          In_sokoban,
@@ -39,15 +40,16 @@ import { COLNO, ROWNO, STONE, DOOR, CORR, ROOM, IRONBARS, TREE, SDOOR,
          } from './const.js';
 import { FOOD_CLASS, objectNames } from './objects.js';
 import { EXTCMDLIST } from './generated/extcmdlist_data.js';
-import { PM_GRID_BUG } from './generated/monsters_data.js';
+import { PM_GRID_BUG, PM_DWARF } from './generated/monsters_data.js';
 
 const STATUE_OTYP = objectNames.indexOf('STATUE');
 const BOULDER_OTYP = objectNames.indexOf('BOULDER');
 const PICK_AXE_OTYP = objectNames.indexOf('PICK_AXE');
+const PM_DISPLACER_BEAST = monsterNames.indexOf('PM_DISPLACER_BEAST');
 const DWARVISH_MATTOCK_OTYP = objectNames.indexOf('DWARVISH_MATTOCK');
 const AT_EXPL = 13; // monattk.h — fight_empty Upolyd explode
-import { dist2, bad_rock, cant_squeeze_thru, wake_nearto } from './mon.js';
-import { is_hider, tunnels, needspick } from './monsters.js';
+import { dist2, bad_rock, cant_squeeze_thru, wake_nearto, minliquid } from './mon.js';
+import { is_hider, hides_under, tunnels, needspick, monsterNames } from './monsters.js';
 import { vision_recalc, couldsee, cansee } from './vision.js';
 import {
     ddoinv, dodiscovered, doattributes, dolook, doprgold, doprwep, doprarm,
@@ -62,26 +64,27 @@ import { doengrave, maybe_smudge_engr, set_occupation, can_reach_floor, engr_at 
 import { dothrow, dofire } from './dothrow.js';
 import { doapply, check_leash } from './apply.js';
 import { dokick } from './dokick.js';
-import { donull, dodown, doup, dodrop, doddrop } from './do.js';
+import { donull, dodown, doup, dodrop, doddrop, reset_occupations } from './do.js';
 import { dosave, dosave0 } from './save.js';
 import { doset_simple, dotogglepickup, select_menu_pick_one } from './options.js';
 import {
     do_attack, mon_at, is_safemon, explum, attacktype_fordmg,
     stumble_onto_mimic,
 } from './uhitm.js';
-import { rehumanize } from './polyself.js';
+import { rehumanize, body_part } from './polyself.js';
+import { Levitation, Flying } from './mhitu.js';
 import { doopen, doopen_indir, doclose } from './lock.js';
 import { doextcmd, getlin, mungspaces, extcmd_run_by_txt } from './getline.js';
 import { strstri, strsubst } from './hacklib.js';
 import { dosearch, doterrain } from './detect.js';
 import { dotakeoff, doddoremarm, dowear, doputon, doremring } from './do_wear.js';
 import { wiz_wish, wiz_genesis, wiz_level_tele, wiz_map } from './wizcmds.js';
-import { dotelecmd } from './teleport.js';
+import { dotelecmd, goodpos } from './teleport.js';
 import { dowield, dowieldquiver, doswapweapon } from './wield.js';
 import { dowhatis, doquickwhatis, dohelp, dowhatdoes, doversion } from './pager.js';
 import { visctrl, key2txt, cmdbind_get } from './dokeylist.js';
-import { an, doname } from './objnam.js';
-import { m_monnam, mon_nam, Hallucination } from './do_name.js';
+import { an, doname, makeplural } from './objnam.js';
+import { m_monnam, mon_nam, YMonnam, Hallucination } from './do_name.js';
 import { spoteffects, dopickup, doloot, dotip } from './pickup.js';
 import { objects_at } from './mkobj.js';
 import { stairway_at, u_on_newpos, maybe_adjust_hero_bubble, selection_new, selection_getpoint, selection_setpoint } from './mklev.js';
@@ -101,12 +104,13 @@ import {
     end_running, carrying, runmode_delay_output,
     water_turbulence, move_out_of_bounds, avoid_running_into_trap_or_liquid,
     escape_from_sticky_mon, domove_fight_ironbars, domove_fight_web,
+    air_turbulence, slippery_ice_fumbling,
 } from './hack.js';
 import { acurr, exercise, A_DEX, Fumbling } from './attrib.js';
 import { drag_ball, move_bc } from './ball.js';
 import { in_out_region } from './region.js';
 import { m_postmove_effect, can_ooze } from './monmove.js';
-import { exercise_steed } from './steed.js';
+import { exercise_steed, stucksteed, helpless_steed } from './steed.js';
 
 /** C cmd.c command_queue[CQ_*] — JS arrays on game. */
 function cmdq_qname(q) {
@@ -1635,8 +1639,7 @@ function shown_corr_cmap(x, y) {
  * C cmd.c dolookaround — #lookaround and newgame glyph_updates then-arm.
  * Temporarily forces a11y.accessiblemsg On and getloc_filter VIEW.
  * Named: corridor-goes-to rooms TODO; stuff outside current room TODO;
- * integer glyph_at / full do_screen_description table (firstmatch via
- * getpos auto_describe_text / lookat).
+ * firstmatch via getpos auto_describe_text (do_screen_description).
  */
 export async function dolookaround() {
     if (!game.iflags) game.iflags = {};
@@ -3212,6 +3215,74 @@ async function u_rooted() {
     return true;
 }
 
+/**
+ * C ref: dungeon.c earth_sense `:1548–1565` — dwarves on foot in a
+ * room or corridor sense buried goods under their square. Sole C
+ * caller is u_on_newpos; domove reaches it via the end-of-move
+ * re-position (hack.c:2937).
+ */
+export async function earth_sense() {
+    const u = game.u || {};
+    // C: Race_if(PM_DWARF) — urace.mnum.
+    if ((game.urace?.mnum | 0) !== PM_DWARF) return;
+    if (u.usteed || Flying() || Levitation() || Upolyd) return;
+    const typ = game.level?.at?.(u.ux | 0, u.uy | 0)?.typ | 0;
+    if (typ !== CORR && typ !== ROOM) return;
+    const buried = game.level?.buriedobjlist;
+    const found = Array.isArray(buried)
+        ? buried.some((o) => o && (o.ox | 0) === (u.ux | 0) && (o.oy | 0) === (u.uy | 0))
+        : (() => {
+            for (let o = buried; o; o = o.nobj) {
+                // C u_at macro — hero on the buried square.
+                if ((o.ox | 0) === (u.ux | 0) && (o.oy | 0) === (u.uy | 0)) return true;
+            }
+            return false;
+        })();
+    if (found) {
+        await You(`sense something below your ${makeplural(body_part(FOOT))}.`);
+    }
+}
+
+/**
+ * C ref: hack.c domove_attackmon_at `:1955–1990` — attack gate for the
+ * destination monster plus the displacer-beast involuntary swap flag.
+ * Only attack what is known (forcefight, spotted, sensed, or a
+ * non-peaceful floor hider/eel, for which do_attack prints "Wait!");
+ * a displacer beast tracking the hero's old square may swap instead
+ * of being hit. Returns { done, displaceu }: done → the attack spent
+ * the move (domove returns); displaceu → skip the middle and swap
+ * after the occupy below.
+ */
+async function domove_attackmon_at(mtmp, x, y) {
+    const u = game.u || {};
+    const out = { done: false, displaceu: false };
+    // C: forcefight || !mundetected || sensemon
+    //     || ((hides_under || S_EEL) && !safemon)
+    if (game.context?.forcefight || !mtmp.mundetected || sensemon(mtmp)
+        || ((hides_under(mtmp.data) || mtmp.data?.mlet === 'S_EEL')
+            && !is_safemon(mtmp))) {
+        /* target monster might decide to switch places with you... */
+        // C mons[] identity ≡ mndx (monmove.js:794 precedent); C
+        // helpless() macro ≡ helpless_steed; NODIAG ≡ grid bug (cmd :1789).
+        out.displaceu = ((mtmp.data?.mndx | 0) === PM_DISPLACER_BEAST && !rn2(2)
+            && (mtmp.mux | 0) === (u.ux0 | 0) && (mtmp.muy | 0) === (u.uy0 | 0)
+            && !helpless_steed(mtmp)
+            && !mtmp.meating && !mtmp.mtrapped
+            && !u.utrap && !u.ustuck && !u.usteed
+            && !(u.dx && u.dy
+                && (((u.umonnum | 0) === PM_GRID_BUG)
+                    || (bad_rock(mtmp.data, x, u.uy0 | 0)
+                        && bad_rock(mtmp.data, u.ux0 | 0, y))
+                    || (bad_rock(game.youmonst?.data, u.ux0 | 0, y)
+                        && bad_rock(game.youmonst?.data, x, u.uy0 | 0))))
+            && goodpos(u.ux0 | 0, u.uy0 | 0, mtmp, GP_ALLOW_U));
+        /* if not displacing, try to attack; note that it might evade;
+           also, we don't attack tame or peaceful when safemon() */
+        if (!out.displaceu && await do_attack(mtmp)) out.done = true;
+    }
+    return out;
+}
+
 async function domove(dx, dy) {
     const u = game.u;
     const forcefight = !!game.context?.forcefight;
@@ -3255,6 +3326,11 @@ async function domove(dx, dy) {
         u_on_newpos(newx, newy);
         mtmp = u.ustuck;
     } else {
+        // C ref: hack.c domove_core `:2742–2745` — air turbulence, then
+        // slippery-ice fumbling, before ux+dx / impaired_movement.
+        // C returns bare here (a continuing run re-rolls next turn).
+        if (await air_turbulence()) return;
+        slippery_ice_fumbling();
         // C ref: hack.c domove_core — impaired_movement after ux+dx
         // (Confusion/Stunned may rn2(5) then confdir).
         if (impaired_movement()) {
@@ -3323,13 +3399,30 @@ async function domove(dx, dy) {
         }
     }
 
+    // C hack.c:2775 — bhitpos tracks the target square for zap/throw aim.
+    if (!game.bhitpos) game.bhitpos = { x: 0, y: 0 };
+    game.bhitpos.x = newx;
+    game.bhitpos.y = newy;
+
+    // C hack.c:2786–2802 — set by domove_attackmon_at below; when true
+    // the middle (ironbars/test_move/swim) is skipped in C and the swap
+    // runs after the occupy. Named omission: the middle skip (JS runs
+    // the middle then swaps — converges the next turn); the swap arm
+    // itself is live below.
+    let displaceu = false;
     if (mtmp) {
+        // C hack.c:2789–2791 — stepping out to attack spends any
+        // multi-turn action first, even for a safemon swap below.
+        if (!is_safemon(mtmp) || forcefight) nomul(0);
         // C ref: hack.c:2794 domove_bump_mon before domove_attackmon_at —
         // m-prefix bump wastes the turn, skipping the do_attack rn2(7).
         if (await domove_bump_mon(mtmp, glyph_at(newx, newy))) return;
-        // C: domove_attackmon_at → do_attack (safemon may return false → swap)
+        // C hack.c:2796–2801 domove_attackmon_at — known/forcefight/hider
+        // gate, displacer-beast swap flag, else do_attack.
         // Swallowed path: mtmp is ustuck; still goes through do_attack.
-        if (await do_attack(mtmp)) {
+        const atk = await domove_attackmon_at(mtmp, newx, newy);
+        displaceu = atk.displaceu;
+        if (atk.done) {
             if (game.context?.run) end_running(true);
             return;
         }
@@ -3339,6 +3432,13 @@ async function domove(dx, dy) {
         // C hack.c `:2813` — unmap_invisible after fight_empty, before
         // u_rooted. Skipped when displaceu (safemon swap).
         unmap_invisible(newx, newy);
+    }
+
+    // C hack.c:2817–2820 — a ridden steed that can't move (helpless or,
+    // with checkfeeding, still eating) spends the turn without stepping.
+    if ((u.dx || u.dy) && u.usteed && await stucksteed(false)) {
+        nomul(0);
+        return;
     }
 
     // C ref: hack.c domove_core — after attack path, before trapmove:
@@ -3586,7 +3686,34 @@ async function domove(dx, dy) {
         await exercise_steed();
     }
 
-    if (mtmp && is_safemon(mtmp)
+    if (displaceu && mtmp) {
+        // C hack.c:2900–2927 — the beast chose to swap places: it goes
+        // to the hero's old square (JS occupancy follows mx/my, so the
+        // remove is implicit), the hero keeps the new one, and the beast
+        // may land in liquid or on a trap. mux/muy still track the hero.
+        const swapGlyph = glyph_at(newx, newy);
+        const noticed_it = canspotmon(mtmp)
+            || glyph_is_invisible_id(swapGlyph)
+            || glyph_is_warning(swapGlyph);
+        mtmp.mx = u.ux0 | 0; // C place_monster(mtmp, u.ux0, u.uy0)
+        mtmp.my = u.uy0 | 0;
+        newsym(newx, newy);
+        newsym(u.ux0 | 0, u.uy0 | 0);
+        /* monst still knows where hero is */
+        mtmp.mux = u.ux | 0;
+        mtmp.muy = u.uy | 0;
+        await pline(`${!noticed_it ? Something : YMonnam(mtmp)} swaps places with you...`);
+        if (!canspotmon(mtmp)) map_invisible(u.ux0 | 0, u.uy0 | 0);
+        /* monster chose to swap places; hero doesn't get any credit
+           or blame if something bad happens to it */
+        if (!game.context) game.context = {};
+        game.context.mon_moving = 1;
+        if (!(await minliquid(mtmp))) {
+            const { mintrap } = await import('./trap.js');
+            await mintrap(mtmp, NO_TRAP_FLAGS);
+        }
+        game.context.mon_moving = 0;
+    } else if (mtmp && is_safemon(mtmp)
         && !(is_hider(mtmp.data) && mtmp.mundetected)) {
         if (!(await domove_swap_with_pet(mtmp, newx, newy))) {
             u.ux = u.ux0;
@@ -3605,6 +3732,17 @@ async function domove(dx, dy) {
             & (DOMOVE_RUSH | DOMOVE_WALK);
         smudgeCoords = { oldx, oldy, newx, newy };
     }
+
+    // C hack.c:2937 dungeon.c u_on_newpos — the tentative occupy above
+    // skipped the full re-position: moving unhides the hero and lets
+    // dwarves earth-sense buried goods. CLIPPING stays deferred (wintty
+    // cliparound singleton, Deferred list); see_nearby_objects below is
+    // the same call's same-level arm.
+    u.uundetected = 0;
+    await earth_sense();
+    // C hack.c:2939 cmd.c reset_occupations — stepping clears any
+    // remarm/pick/trapset occupation (doddrop re-arms its own).
+    await reset_occupations();
 
     // C ref: hack.c domove — check_leash(u.ux0, u.uy0) after place, before
     // newsym/vision (D-1005). Runs even when swap bounced.

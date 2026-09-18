@@ -18,69 +18,85 @@ import { getversionstring } from './version.js';
 import { rn2, rn2_on_display_rng } from './rng.js';
 import { nhgetch } from './input.js';
 import {
-    flush_screen, flush_topl_more, pline, docrt, more,
+    flush_screen, flush_topl_more, pline, impossible, docrt, more,
     mon_glyph, obj_glyph, look_shown_at, terrain_glyph, Hallucination,
     glyph_to_obj_at, glyph_at, glyph_is_trap, glyph_to_trap, trap_to_glyph,
     glyph_is_monster, glyph_is_object, glyph_is_statue, glyph_is_warning,
+    glyph_is_body, glyph_is_normal_object, glyph_is_piletop_generic_obj,
     glyph_is_invisible_id, glyph_is_nothing, glyph_is_unexplored,
     glyph_is_cmap, glyph_to_cmap, glyph_to_obj, glyph_to_warning,
-    canspotself, mon_to_glyph, hero_Invisible, NO_GLYPH,
-    set_bot_disabled, tty_nhbell,
+    canspotself, mon_to_glyph, monsym, cmap_to_glyph, glyph_to_mon,
+    hero_Invisible, NO_GLYPH, GLYPH_TRAP_OFF,
+    GLYPH_STATUE_MALE_OFF, GLYPH_STATUE_FEM_OFF,
+    GLYPH_STATUE_MALE_PILETOP_OFF, GLYPH_STATUE_FEM_PILETOP_OFF,
+    GLYPH_BODY_OFF, GLYPH_BODY_PILETOP_OFF,
+    set_bot_disabled, tty_nhbell, MG_FLAG_NOOVERRIDE, SYM_OFF_X, SYM_MAX,
 } from './display.js';
-import { howmonseen, couldsee } from './vision.js';
-import { getlin, yn_function } from './getline.js';
+import { howmonseen, couldsee, cansee } from './vision.js';
+import { getlin, y_n } from './getline.js';
 import {
     paint_corner_nhw_menu, dismiss_nhw_menu, dfeature_at, display_inventory,
     observe_object, process_menu_search, trap_predicament,
 } from './invent.js';
-import { stairway_at, known_branch_stairs } from './mklev.js';
 import {
     getpos, LOOK_QUICK, LOOK_ONCE, LOOK_VERBOSE, room_cmap_explanation,
-    maybe_blocked_staircase_down,
+    maybe_blocked_staircase_down, DEFSYMS_CH,
 } from './getpos.js';
 import { mon_at, defsym_explanation } from './uhitm.js';
 import { sobj_at, mksobj, mkobj, obj_stop_timers } from './mkobj.js';
 import {
     doname, an, the, xname, singular, ansimpleoname, distant_name, simpleonames,
-    makeplural,
+    makeplural, makesingular, fruit_from_name,
 } from './objnam.js';
-import { strstri } from './hacklib.js';
-import { distant_monnam_none, pmname, Ugender, mon_nam, rndmonnam } from './do_name.js';
+import { strstri, lcase } from './hacklib.js';
+import { distant_monnam, coyotename, PM_COYOTE, pmname, Mgender, Ugender, mon_nam, rndmonnam } from './do_name.js';
 import { hides_under, is_hider, is_clinger, is_flyer, mons,
-    M2_HUMAN, M2_ELF, M2_ORC, M2_DEMON,
+    M2_HUMAN, M2_ELF, M2_ORC, M2_DEMON, pmnames, NEUTRAL,
 } from './monsters.js';
-import { mlet_class_explain } from './mondata.js';
+import { mlet_class_explain, DEF_MONSYM_MLET } from './mondata.js';
 import { is_pool, is_lava, closed_door, waterbody_name } from './hack.js';
 import { altarmask_at } from './pray.js';
 import { align_str } from './roles.js';
 import { is_drawbridge_wall } from './dbridge.js';
-import { PM_WIZARD, PM_GNOME, PM_HUMAN, PM_ELF } from './generated/monsters_data.js';
+import { PM_WIZARD, PM_GNOME, PM_HUMAN, PM_ELF, NUMMONS } from './generated/monsters_data.js';
 import { visible_region_at } from './region.js';
-import { engr_at } from './engrave.js';
+import { engr_at, sticks } from './engrave.js';
+import { digests } from './mhitu.js';
 import { option_help_lines } from './options.js';
 import { dokeylist_lines, domenucontrols_lines } from './dokeylist.js';
-import { trapname, t_at } from './trap.js';
+import { trapname, t_at, ice_descr } from './trap.js';
 import { trapped_chest_at, trapped_door_at } from './detect.js';
 import { costly_spot } from './shk.js';
 import { cmdq_pop, cmdq_clear, pmatch } from './cmd.js';
 import {
     objectNames, objectNameStrs, COIN_CLASS, def_oc_syms,
-    ROCK_CLASS, VENOM_CLASS,
+    ROCK_CLASS, VENOM_CLASS, MAXOCLASSES,
 } from './objects.js';
 import {
     BOLT_LIM, COLNO, ROWNO, STAIRS, LA_DOWN, ROOM, CORR, STONE, SCORR, SDOOR,
     GPCOORDS_NONE, GPCOORDS_MAP, GPCOORDS_COMPASS, GPCOORDS_SCREEN,
     STRAT_WAITMASK, IS_WALL, Upolyd, Is_airlevel, Is_waterlevel, Is_astralevel,
-    u_at, TER_MON, Amask2align, AM_SANCTUM, AM_MASK, D_BROKEN, D_TRAPPED,
+    Is_rogue_level,
+    u_at, TER_MON, TER_OBJ, TER_MAP, TER_DETECT,
+    Amask2align, AM_SANCTUM, AM_MASK, D_BROKEN, D_TRAPPED,
     S_altar, S_ndoor, S_cloud, S_pool, S_water, S_lava, S_lavawall, S_ice,
     S_engroom, S_engrcorr, S_stone, S_grave, S_arrow_trap, S_vibrating_square,
+    S_darkroom, S_vbeam, S_poisoncloud, S_goodpos, S_expl_br, S_expl_tl,
+    S_vwall, S_hwall, S_tlcorn, S_trcorn, S_blcorn, S_brcorn,
+    S_crwall, S_tuwall, S_tdwall, S_tlwall, S_trwall,
+    S_vodoor, S_hodoor, S_bars, S_tree, S_room,
+    S_upladder, S_dnladder, S_brupladder, S_brdnladder,
+    S_hodbridge, S_hbeam, ROGUESET,
+    SYM_NOTHING, SYM_UNEXPLORED, SYM_BOULDER, SYM_INVISIBLE,
+    SYM_PET_OVERRIDE, SYM_HERO_OVERRIDE, WARNCOUNT,
     S_vodbridge, S_hcdbridge, MAXTCHARS, VIBRATING_SQUARE, def_warnsyms,
     POOL, MOAT, WATER, LAVAPOOL, LAVAWALL, ICE,
     HELP, SHELP, HISTORY, LICENSE, OPTIONFILE, OPTMENUHELP, USAGEHELP, DEBUGHELP,
-    ECMD_OK, BUFSZ,
+    ECMD_OK, BUFSZ, QBUFSZ,
     OBJ_FREE, OBJ_FLOOR, OBJ_BURIED, M_AP_OBJECT, M_AP_FURNITURE, M_AP_MONSTER,
-    M_AP_TYPMASK, M_AP_F_DKNOWN,
+    M_AP_TYPMASK, M_AP_F_DKNOWN, M_AP_TYPE,
     MCORPSENM, has_mcorpsenm, MALE, FEMALE,
+    ARTICLE_NONE, BEAR_TRAP, WEB, NO_TRAP, is_pit,
     MHID_PREFIX, MHID_ARTICLE, MHID_ALTMON, MHID_REGION,
     MONSEEN_NORMAL, MONSEEN_SEEINVIS, MONSEEN_INFRAVIS, MONSEEN_TELEPAT,
     MONSEEN_XRAYVIS, MONSEEN_DETECT, MONSEEN_WARNMON,
@@ -94,6 +110,7 @@ const CHK_DONT_ASK = 2;
 /** C ref: pager.c chkfilIaCheck — lookup only, no display (itemed `/`). */
 const CHK_IA_CHECK = 4;
 
+const BOULDER_OTYP = objectNames.indexOf('BOULDER');
 const STRANGE_OBJECT = objectNames.indexOf('STRANGE_OBJECT');
 const SLIME_MOLD = objectNames.indexOf('SLIME_MOLD');
 const LEASH = objectNames.indexOf('LEASH');
@@ -407,18 +424,63 @@ function self_lookat() {
 }
 
 /**
- * C ref: pager.c look_at_monster — distant_monnam ARTICLE_NONE + tame/peaceful
- * + mfrozen/msleeping/STRAT_WAITMASK + mhidden_description (D-1554).
- * howmonseen monbuf is D-1562 (describe_looked [seen:]; look_all NULL).
- * Health / stuck / leashed / trapped / hallu deferred.
+ * C ref: pager.c monhealthdescr `:138–160` — the `#if 0` block is disabled,
+ * so this always stores empty (`nhUse(mon); nhUse(addspace); *outbuf =
+ * '\0'`). Shared by look_at_monster() and done_in_by().
  */
-function look_at_monster_buf(mtmp) {
-    if (!mtmp) return 'monster';
-    const name = distant_monnam_none(mtmp);
-    let buf = '';
-    if (mtmp.mtame) buf = 'tame ';
-    else if (mtmp.mpeaceful) buf = 'peaceful ';
-    buf += name;
+export function monhealthdescr(mon) {
+    return '';
+}
+
+/**
+ * C ref: pager.c look_at_monster `:422–555` — full body in C order.
+ * `buf` arms: coyote (`do_name.c:1526` via live `coyotename`) vs
+ * `distant_monnam(ARTICLE_NONE)` gated on `accurate = !Hallucination`
+ * (`:430–432`); worm-tail "tail of "/"tail of a " on look-vs-mon pos
+ * with the isshk&&accurate split (`:433–436`); `monhealthdescr` prefix
+ * (always empty, see above) (`:437`); tame/peaceful gated on accurate
+ * (`:438–442`); ustuck swallowed/engulfing via `digests` vs held/holding
+ * via `Upolyd && sticks(youmonst.data)` (`:443–451`); mfrozen /
+ * msleeping / STRAT_WAITMASK (`:452–464`); mleashed (`:466–467`);
+ * mtrapped + `cansee` + `t_at` BEAR_TRAP/is_pit/WEB with `tseen = 1`
+ * (`:468–478`); `mhidden_description` on mundetected/M_AP_TYPE/
+ * `visible_region_at(look x,y)` (D-1554) (`:479–484`). `monbuf` arms
+ * (`:486–554`): `howmonseen` bits (D-1562) in C bit order with C ", "
+ * separators; WARNMON hallu "paranoid delusion" vs warntype/mflags2
+ * human/elf/orc/demon/`pmname(data, Mgender)` + `makeplural`.
+ * look_all passes NULL monbuf; describe_looked appends " [seen: %s]".
+ */
+export function look_at_monster(mtmp, x, y) {
+    if (!mtmp) return { buf: 'monster', monbuf: '' };
+    const u = game.u || {};
+    const accurate = !Hallucination(); // C :429
+    // C :430–432 — data == &mons[PM_COYOTE] compares the permonst ptr;
+    // JS mons() builds fresh objects so compare data.mndx (do_name.c idiom).
+    const mndx = mtmp.data?.mndx ?? mtmp.mnum;
+    const name = (mndx === PM_COYOTE && accurate)
+        ? coyotename(mtmp)
+        : distant_monnam(mtmp, ARTICLE_NONE);
+    // C :433–442 Sprintf(buf, "%s%s%s%s", tail, health, tamepeace, name).
+    const tail = (mtmp.mx !== x || mtmp.my !== y)
+        ? ((mtmp.isshk && accurate) ? 'tail of ' : 'tail of a ')
+        : '';
+    const health = accurate ? monhealthdescr(mtmp) : '';
+    const tamepeace = (mtmp.mtame && accurate)
+        ? 'tame '
+        : (mtmp.mpeaceful && accurate)
+            ? 'peaceful '
+            : '';
+    let buf = `${tail}${health}${tamepeace}${name}`;
+    // C :443–451 — u.ustuck == mtmp pointer compare.
+    if (u.ustuck && mtmp && u.ustuck === mtmp) {
+        if (u.uswallow || game.iflags?.save_uswallow) {
+            buf += digests(mtmp.data) ? ', swallowing you' : ', engulfing you';
+        } else {
+            buf += (Upolyd(u) && sticks(game.youmonst?.data))
+                ? ', being held' : ', holding you';
+        }
+    }
+    // C :452–464 (excerpt from mstatusline for stethoscope/probe).
     if (mtmp.mfrozen) {
         buf += ", can't move (paralyzed or sleeping or busy)";
     } else if (mtmp.msleeping) {
@@ -426,70 +488,100 @@ function look_at_monster_buf(mtmp) {
     } else if ((mtmp.mstrategy || 0) & STRAT_WAITMASK) {
         buf += ', meditating';
     }
-    const x = mtmp.mx | 0;
-    const y = mtmp.my | 0;
-    // C: mundetected || M_AP_TYPE || visible_region_at(look x,y).
-    // Worm-tail look coords named (C FIXME uses mx,my inside mhidden).
-    if (mtmp.mundetected || ((mtmp.m_ap_type | 0) & M_AP_TYPMASK)
-        || visible_region_at(x, y)) {
+    // C :466–467.
+    if (mtmp.mleashed) buf += ', leashed to you';
+    // C :468–478 — newsym lets you know of the trap, so mention it here.
+    if (mtmp.mtrapped && cansee(mtmp.mx | 0, mtmp.my | 0)) {
+        const t = t_at(mtmp.mx | 0, mtmp.my | 0);
+        const tt = t ? t.ttyp : NO_TRAP;
+        if (tt === BEAR_TRAP || is_pit(tt) || tt === WEB) {
+            buf += `, trapped in ${an(trapname(tt, false))}`;
+            t.tseen = 1;
+        }
+    }
+    // C :479–484 — shown via persistent detection; x,y are the LOOK
+    // coords (worm-tail FIXME reads mx,my inside mhidden itself).
+    if (mtmp.mundetected || M_AP_TYPE(mtmp) || visible_region_at(x, y)) {
         buf += mhidden_description(mtmp,
             MHID_PREFIX | MHID_ARTICLE | MHID_REGION);
     }
-    return buf;
+    // C :486–554 monbuf; [0] = '\0' then bits in fixed order, ", "
+    // appended while bits remain (mirrored below, not join()).
+    let monbuf = '';
+    let how_seen = howmonseen(mtmp) | 0;
+    if (how_seen !== 0 && how_seen !== MONSEEN_NORMAL) {
+        if (how_seen & MONSEEN_NORMAL) {
+            monbuf += 'normal vision';
+            how_seen &= ~MONSEEN_NORMAL;
+            if (how_seen) monbuf += ', ';
+        }
+        if (how_seen & MONSEEN_SEEINVIS) {
+            monbuf += 'see invisible';
+            how_seen &= ~MONSEEN_SEEINVIS;
+            if (how_seen) monbuf += ', ';
+        }
+        if (how_seen & MONSEEN_INFRAVIS) {
+            monbuf += 'infravision';
+            how_seen &= ~MONSEEN_INFRAVIS;
+            if (how_seen) monbuf += ', ';
+        }
+        if (how_seen & MONSEEN_TELEPAT) {
+            monbuf += 'telepathy';
+            how_seen &= ~MONSEEN_TELEPAT;
+            if (how_seen) monbuf += ', ';
+        }
+        if (how_seen & MONSEEN_XRAYVIS) {
+            // C: Eyes of the Overworld.
+            monbuf += 'astral vision';
+            how_seen &= ~MONSEEN_XRAYVIS;
+            if (how_seen) monbuf += ', ';
+        }
+        if (how_seen & MONSEEN_DETECT) {
+            monbuf += 'monster detection';
+            how_seen &= ~MONSEEN_DETECT;
+            if (how_seen) monbuf += ', ';
+        }
+        if (how_seen & MONSEEN_WARNMON) {
+            if (Hallucination()) {
+                monbuf += 'paranoid delusion';
+            } else {
+                const wt = game.context?.warntype || {};
+                const mW = (wt.obj | 0) | (wt.polyd | 0);
+                const m2 = mtmp.data?.mflags2 | 0;
+                const whom = ((mW & M2_HUMAN & m2) ? 'human'
+                    : (mW & M2_ELF & m2) ? 'elf'
+                      : (mW & M2_ORC & m2) ? 'orc'
+                        : (mW & M2_DEMON & m2) ? 'demon'
+                          : pmname(mtmp.data, Mgender(mtmp)));
+                monbuf += `warned of ${makeplural(whom)}`;
+            }
+            how_seen &= ~MONSEEN_WARNMON;
+            if (how_seen) monbuf += ', ';
+        }
+        // C :550–553 — all 7 bits consumed above, so leftover is
+        // unreachable; C logs impossible() (async debug path, skipped in
+        // this sync look) and still appends "(%u)". Suffix preserved.
+        if (how_seen) monbuf += `(${how_seen >>> 0})`;
+    }
+    return { buf, monbuf };
 }
 
 /**
- * C ref: pager.c look_at_monster :485–554 monbuf — howmonseen bits as
- * "normal vision, telepathy, …". Empty when 0 or NORMAL-only (D-1562).
- * look_all passes NULL monbuf; describe_looked appends " [seen: %s]".
+ * C ref: pager.c look_at_monster `:433–484` buf half (see look_at_monster).
+ * Callers: lookat `:710` (with monbuf), look_all `:2002` (NULL monbuf),
+ * do_screen_description monster arm (with [seen:] suffix).
+ */
+function look_at_monster_buf(mtmp, x, y) {
+    return look_at_monster(mtmp, x, y).buf;
+}
+
+/**
+ * C ref: pager.c look_at_monster `:486–554` monbuf half (D-1562).
+ * Empty when 0 or NORMAL-only. look_all passes NULL monbuf;
+ * describe_looked appends " [seen: %s]".
  */
 function howmonseen_look_buf(mtmp) {
-    let how_seen = howmonseen(mtmp) | 0;
-    if (!how_seen || how_seen === MONSEEN_NORMAL) return '';
-    const parts = [];
-    if (how_seen & MONSEEN_NORMAL) {
-        parts.push('normal vision');
-        how_seen &= ~MONSEEN_NORMAL;
-    }
-    if (how_seen & MONSEEN_SEEINVIS) {
-        parts.push('see invisible');
-        how_seen &= ~MONSEEN_SEEINVIS;
-    }
-    if (how_seen & MONSEEN_INFRAVIS) {
-        parts.push('infravision');
-        how_seen &= ~MONSEEN_INFRAVIS;
-    }
-    if (how_seen & MONSEEN_TELEPAT) {
-        parts.push('telepathy');
-        how_seen &= ~MONSEEN_TELEPAT;
-    }
-    if (how_seen & MONSEEN_XRAYVIS) {
-        parts.push('astral vision');
-        how_seen &= ~MONSEEN_XRAYVIS;
-    }
-    if (how_seen & MONSEEN_DETECT) {
-        parts.push('monster detection');
-        how_seen &= ~MONSEEN_DETECT;
-    }
-    if (how_seen & MONSEEN_WARNMON) {
-        if (Hallucination()) {
-            parts.push('paranoid delusion');
-        } else {
-            const wt = game.context?.warntype || {};
-            const mW = (wt.obj | 0) | (wt.polyd | 0);
-            const m2 = mtmp.data?.mflags2 | 0;
-            const whom = ((mW & M2_HUMAN & m2) ? 'human'
-                : (mW & M2_ELF & m2) ? 'elf'
-                  : (mW & M2_ORC & m2) ? 'orc'
-                    : (mW & M2_DEMON & m2) ? 'demon'
-                      : pmname(mtmp.data, mtmp.female ? FEMALE : MALE));
-            parts.push(`warned of ${makeplural(whom)}`);
-        }
-        how_seen &= ~MONSEEN_WARNMON;
-    }
-    /* C impossible leftover bits */
-    if (how_seen) parts.push(`(${how_seen >>> 0})`);
-    return parts.join(', ');
+    return look_at_monster(mtmp, mtmp?.mx | 0, mtmp?.my | 0).monbuf;
 }
 
 /**
@@ -711,119 +803,206 @@ function lookup_data_base_entry(query) {
 }
 
 /**
- * Parse data.base: keys → body lines (body only; see above for the match).
+ * C pager.c checkfile `:867–935` — prefix strips over the lowered lookup
+ * string, in C order with C's else-if chains (not independent patterns:
+ * `a/an/the/some/digit-count` are one chain, `tame/peaceful` one chain,
+ * `blessed/uncursed/cursed` one chain, `partly used/partly eaten` one
+ * chain, `statue/figurine` one chain).
  */
-function lookup_data_base(query) {
-    const hit = lookup_data_base_entry(query);
-    return hit ? hit.body : null;
-}
-
-function simplify_for_db(inp) {
-    let s = String(inp || '').toLowerCase();
-    const strips = [
-        /^interior of /, /^a /, /^an /, /^the /, /^some /,
-        /^pair of /, /^tame /, /^peaceful /, /^invisible /,
-        /^saddled /, /^blessed /, /^uncursed /, /^cursed /, /^empty /,
-    ];
-    for (const re of strips) s = s.replace(re, '');
-    s = s.replace(/ named .*$/, '').replace(/ called .*$/, '');
-    s = s.replace(/ \(.*$/, '').trim();
+function checkfile_dbase_str(s) {
+    if (s.startsWith('interior of ')) s = s.slice(12); // :872-873
+    if (s.startsWith('a ')) s = s.slice(2); // :874-875
+    else if (s.startsWith('an ')) s = s.slice(3); // :876-877
+    else if (s.startsWith('the ')) s = s.slice(4); // :878-879
+    else if (s.startsWith('some ')) s = s.slice(5); // :880-881
+    else if (s.length && s[0] >= '0' && s[0] <= '9') { // :882-888 count
+        let i = 0;
+        while (i < s.length && s[i] >= '0' && s[i] <= '9') i++;
+        s = s.slice(i);
+        if (s.startsWith(' ')) s = s.slice(1);
+    }
+    if (s.startsWith('pair of ')) s = s.slice(8); // :889-890
+    if (s.startsWith('tame ')) s = s.slice(5); // :891-892
+    else if (s.startsWith('peaceful ')) s = s.slice(9); // :893-894
+    if (s.startsWith('invisible ')) s = s.slice(10); // :895-896
+    if (s.startsWith('saddled ')) s = s.slice(8); // :897-898
+    if (s.startsWith('blessed ')) s = s.slice(8); // :899-900
+    else if (s.startsWith('uncursed ')) s = s.slice(9); // :901-902
+    else if (s.startsWith('cursed ')) s = s.slice(7); // :903-904
+    if (s.startsWith('empty ')) s = s.slice(6); // :905-906
+    if (s.startsWith('partly used ')) s = s.slice(12); // :907-908
+    else if (s.startsWith('partly eaten ')) s = s.slice(13); // :909-910
+    if (s.startsWith('statue of ')) s = 'statue'; // :911-912 [6]='\0'
+    else if (s.startsWith('figurine of ')) s = 'figurine'; // :913-914 [8]
+    // :918-925 — remove enchantment ("+0 aklys").
+    if (s.length > 1 && (s[0] === '+' || s[0] === '-')
+        && s[1] >= '0' && s[1] <= '9') {
+        let i = 1;
+        while (i < s.length && s[i] >= '0' && s[i] <= '9') i++;
+        s = s.slice(i);
+        if (s.startsWith(' ')) s = s.slice(1);
+    }
+    // :929-934 — "moist towel" asks about "wet towel" (memcpy over "moist").
+    if (s.startsWith('moist towel')) s = `wet${s.slice(5)}`;
     return s;
 }
 
 /**
- * C ref: pager.c checkfile — lookup + optional yn + display entry.
- * Ask path uses y_n → tty_yn_function, which more()'s when toplin is
- * NEED_MORE (look putmixed) before painting the yn prompt (D-0334).
- * Two passes (`:996–1035`): pass 1 matches the " named "/" called "
- * given name first (the "wizard" entry for "orcish barbarian called
- * wizard"), pass 0 matches the base description; pass 0 skips an entry
- * C already showed for pass 1 (same dlb offset).
- * Named omissions in this commit: pm-derived dbase (`:862–864`, needs a
- * permonst param this caller does not pass), makesingular/fruit alt
- * (`:990–996`), supplemental_name (`:956–958`).
+ * C pager.c checkfile `:944–981` — split the named/called given name off the
+ * base description, then strip charges/`(lit)`/aum (`:977–981`).
+ * dbase is already lowered (C splits dbase_str after
+ * lcase, so indexOf matches C strstri there); supplemental_name is copied
+ * from the original-case inp (C strstri over inp, `:956–958`). Truncation
+ * `*ep = '\0'` keeps the base when the match sits past position 0.
  */
-function split_db_query(inp) {
-    // C `:862–976` — lcase, strip prefixes, then split at " named " (alt
-    // wins) unless " called " precedes it, else at " called ". The split
-    // runs on the full lowered input BEFORE simplify_for_db (which also
-    // strips " named "/" called " tails); the base piece is simplified
-    // after, matching C since C's prefix strips only anchor at the start
-    // the piece shares with the full string. C strstri is
-    // case-insensitive over already-lcased text.
-    const lowered = String(inp || '').toLowerCase();
-    let rawDbase = lowered;
+function checkfile_split_names(dbase, inp, supplementalHolder) {
     let alt = null;
-    const iNamed = lowered.indexOf(' named ');
-    const iCalled = lowered.indexOf(' called ');
-    // C `:951–958` — " named " wins the alt even when " called " precedes
-    // it (truncate at " called ", alt past " named ").
+    let ep;
+    const iNamed = dbase.indexOf(' named '); // :945-950
+    const iCalled = dbase.indexOf(' called ');
     if (iNamed >= 0) {
-        alt = lowered.slice(iNamed + 7);
-        rawDbase = lowered.slice(
-            0, (iCalled >= 0 && iCalled < iNamed) ? iCalled : iNamed);
-    } else if (iCalled >= 0) {
-        alt = lowered.slice(iCalled + 8);
-        rawDbase = lowered.slice(0, iCalled);
+        alt = dbase.slice(iNamed + 7);
+        ep = (iCalled >= 0 && iCalled < iNamed) ? iCalled : iNamed;
+    } else if (iCalled >= 0) { // :951-958
+        alt = dbase.slice(iCalled + 8);
+        if (supplementalHolder && inp != null) {
+            const tail = strstri(String(inp), ' called ');
+            if (tail) supplementalHolder.s = tail.slice(8, 8 + BUFSZ - 1);
+        }
+        ep = iCalled;
+    } else { // :959-960 ", " fallback
+        ep = dbase.indexOf(', ');
     }
-    const dbase = simplify_for_db(rawDbase);
-    // C `:967–976` — strip article + " (" suffix from the given name.
-    if (alt) {
-        alt = alt.replace(/^(a|an|the) /, '');
+    if (ep > 0) dbase = dbase.slice(0, ep); // :961-962
+    // :977-981 — remove charges or "(lit)" or wizmode "(N aum)" from the
+    // base description (dbase already lowered, so indexOf matches C strstri).
+    const qi = dbase.indexOf(' (');
+    if (qi > 0) dbase = dbase.slice(0, qi);
+    if (alt) { // :967-976 article + " (" suffix off the given name
+        if (alt.startsWith('a ') || alt.startsWith('the '))
+            alt = alt.slice(alt.indexOf(' ') + 1);
+        else if (alt.startsWith('an ')) alt = alt.slice(3);
         const pi = alt.indexOf(' (');
         if (pi > 0) alt = alt.slice(0, pi);
         alt = alt.trim();
-        if (!alt || alt === dbase) alt = null;
+        if (!alt) alt = null;
     }
     return { dbase, alt };
 }
-async function checkfile(inp, flags = 0) {
-    const userTyped = !!(flags & CHK_USR);
-    const dontAsk = !!(flags & CHK_DONT_ASK);
-    const iaChecking = !!(flags & CHK_IA_CHECK);
-    const { dbase, alt } = split_db_query(inp);
-    if (!dbase) return false;
-    // C `:996` — pass 1 (alt) first unless it equals the base, then pass 0.
-    const queries = (alt && alt !== dbase) ? [alt, dbase] : [dbase];
-    let shownIndex = -1;
-    for (let pass = 0; pass < queries.length; pass++) {
-        const q = queries[pass];
-        const hit = lookup_data_base_entry(q);
-        if (!hit || !hit.body.length) continue;
-        // C: chkfilIaCheck — found entry, skip yn/display
-        if (iaChecking) return true;
-        // C `:1052–1053` — pass 0 on the pass-1 entry is already shown.
-        if (hit.index === shownIndex) break;
-        // C `:1056–1072` — user-typed and no-ask display without asking.
-        let yes = dontAsk || userTyped;
-        if (!yes) {
-            // C: y_n("More info about \"…\"?") — ynchars + def 'n'
-            const ch = await yn_function(`More info about "${q}"?`, 'yn', 'n');
-            yes = ch === 'y' || ch === 'Y';
-        }
-        if (!yes) return true;
-        shownIndex = hit.index;
-        // C: NHW_MENU putstr + process_text_window — not NHW_TEXT fullscreen.
-        await show_nhw_menu_text(hit.body.map(l => l || ''));
-    }
-    if (shownIndex < 0) {
-        if (userTyped && !iaChecking) await pline("I don't recognize that.");
-        return false;
-    }
-    return true;
+
+/**
+ * C pager.c checkfile `:984–996` — alternate description when the name
+ * carries no given name: the player's fruit name maps to the generic
+ * slime-mold entry, else the singular of the base description.
+ */
+function checkfile_alt_for(dbase) {
+    if (fruit_from_name(dbase, true, null)) // :990-992
+        return 'slime mold'; // C obj_descr[SLIME_MOLD].oc_name
+    return makesingular(dbase); // :995-996
 }
 
 /**
- * C ref: pager.c ia_checkfile — singular(xname) lookup with chkfilIaCheck.
- * True when data.base has an entry (offers `/` in itemactions).
+ * C pager.c checkfile `:829–1129` (staticfn; callers `:813` ia_checkfile,
+ * `:1838` do_look `/i`, `:1853` `?`, `:1948` verbose glance — pm is NULL at
+ * all four sites: do_look never assigns its pm local, only supplemental_pm
+ * flows to do_screen_description).
+ * Encyclopedia lookup over the embedded data.base text (Contest Rule #2:
+ * dlb_fopen/fseek/fgets/fclose over the built `data` file become reads of
+ * the checked-in `js/generated/dat_text.js` extract (D-0477); the key scan
+ * with `~` exclusion is lookup_data_base_entry, `:1009–1040`).
+ * In C order: flags (`:839–841`), data-open guard (`:845–849`), bad-buffer
+ * impossible (`:851–856`), pm override + lcase (`:862–866`), prefix strips,
+ * named/called split + supplemental, fruit/singular alt, the alt-first
+ * two-pass pmatch loop with the pass-1 offset skip (`:998–1054`), y_n ask
+ * (`:1055–1072`, `== 'y'`), NHW_MENU display (`:1073–1103`), user-typed
+ * miss message (`:1104–1106`).
+ * Named omissions: do_supplemental_info (`pager.c:2255`, own row — the
+ * verbose-glance caller still fills supplemental_name live); dlb I/O-error
+ * arms (`? Seek error`, `bad_data_file` format impossibles — no dlb over
+ * embedded text).
+ */
+async function checkfile(inp, pm = null, chkflags = 0, supplementalHolder = null) {
+    const user_typed_name = (chkflags & CHK_USR) !== 0; // :839-841 UsrTyped
+    const without_asking = (chkflags & CHK_DONT_ASK) !== 0; // :840 DontAsk
+    const ia_checking = (chkflags & CHK_IA_CHECK) !== 0; // :841 IaCheck
+    let res = false;
+    const raw = readDat('data'); // :845-849 dlb_fopen(DATAFILE, "r")
+    if (!raw) {
+        await pline("Cannot open 'data' file!");
+        return res;
+    }
+    if (inp == null || String(inp).length > BUFSZ - 1) { // :851-856
+        await impossible(
+            'bad do_look buffer passed (%s)!', inp == null ? 'null' : 'too long');
+        return res; // C goto checkfile_done (datawin == WIN_ERR)
+    }
+    let dbase; // :862-866 pm override unless user-typed, then lcase
+    if (pm != null && !user_typed_name) {
+        const mndx = typeof pm === 'number' ? pm : pm.mndx;
+        dbase = lcase(pmnames[mndx]?.[NEUTRAL] ?? '');
+    } else {
+        dbase = lcase(String(inp));
+    }
+    dbase = checkfile_dbase_str(dbase); // :867-935
+    if (!dbase) return res; // :938 empty name skips to checkfile_done
+    const split = checkfile_split_names(dbase, inp, supplementalHolder); // :944-976
+    dbase = split.dbase;
+    let alt = split.alt;
+    if (!alt) alt = checkfile_alt_for(dbase); // :984-996
+    let pass1found_in_file = false; // :941
+    let pass1Index = -1; // C pass1offset: text offset of the pass-1 entry
+    for (let pass = alt !== dbase ? 1 : 0; pass >= 0; --pass) { // :998
+        const q = pass ? alt : dbase;
+        const hit = lookup_data_base_entry(q); // :1009-1040 key scan
+        if (hit) {
+            if (pass === 1) { // :1043-1046
+                pass1found_in_file = true;
+                pass1Index = hit.index;
+            } else if (hit.index === pass1Index) { // :1047-1049
+                break; // C goto checkfile_done (already shown)
+            }
+            let yes_to_moreinfo = false; // :1055-1072
+            if (!user_typed_name && !without_asking) {
+                let question = 'More info about "';
+                question += q.slice(0, QBUFSZ - 1 - (question.length + 2));
+                question += '"?';
+                if ((await y_n(question)) === 'y') yes_to_moreinfo = true;
+            }
+            if (user_typed_name || without_asking || yes_to_moreinfo) { // :1073+
+                res = true;
+                if (ia_checking) break; // C goto checkfile_done
+                // :1083-1103 NHW_MENU putstr + display (tab/space strip and
+                // tabexpand already applied by the lookup parser per line).
+                await show_nhw_menu_text(hit.body.map(l => l || ''));
+            }
+        } else if (user_typed_name && pass === 0 && !pass1found_in_file) { // :1104-1106
+            await pline("You don't have any information on those things.");
+        }
+    }
+    return res; // :1122-1128 checkfile_done
+}
+
+/**
+ * C pager.c ia_checkfile `:808–815` — singular(xname) lookup with
+ * chkfilIaCheck|chkfilDontAsk (offers `/` in item actions). Lookup-only:
+ * shares checkfile's sync core (strip → split → fruit/singular alt →
+ * alt-first two passes) with no yn prompt or menu display, matching C
+ * checkfile with IaCheck (found entry → res TRUE, straight to done).
  */
 export function ia_checkfile(otmp) {
     if (!otmp) return false;
     const itemnam = singular(otmp, xname);
-    const dbase = simplify_for_db(itemnam);
+    if (!itemnam || itemnam.length > BUFSZ - 1) return false;
+    const dbase = checkfile_dbase_str(lcase(itemnam));
     if (!dbase) return false;
-    const body = lookup_data_base(dbase);
-    return !!(body && body.length);
+    const split = checkfile_split_names(dbase, itemnam, null);
+    const base = split.dbase;
+    const alt = split.alt || checkfile_alt_for(base);
+    const queries = alt !== base ? [alt, base] : [base];
+    for (const q of queries) {
+        if (lookup_data_base_entry(q)) return true;
+    }
+    return false;
 }
 
 /**
@@ -1016,27 +1195,500 @@ export function add_quoted_engraving(x, y, bufHolder, force) {
 }
 
 /**
- * C ref: display.c back_to_glyph STAIRS/LADDER + defsym.h explanation.
- * known_branch_stairs → S_brupstair/S_brdnstair ("branch staircase …");
- * else S_upstair/S_dnstair ("staircase …"). lookat copies defsyms[].explanation.
+ * C load_symset("DECGraphics") (options.c) + assign_graphics PRIMARYSET:
+ * the DEC symset applies on non-rogue levels. JS records the name on
+ * game.symset / _parsed_rc / flags (options.js symset display); the legacy
+ * decgraphics boolean implies the same set.
  */
-function stair_cmap_explanation(x, y) {
-    const sway = stairway_at(x, y);
-    const loc = game.level?.at?.(x, y);
-    const up = sway
-        ? !!sway.up
-        : !!(loc && !(loc.ladder & LA_DOWN));
-    if (known_branch_stairs(sway)) {
-        return up ? 'branch staircase up' : 'branch staircase down';
-    }
-    return up ? 'staircase up' : 'staircase down';
+function decSymsActive() {
+    if ((game.currentgraphics | 0) === ROGUESET) return false;
+    const nm = game.symset || game._parsed_rc?.symset || game.flags?.symset;
+    if (typeof nm === 'string' && nm.toLowerCase() === 'decgraphics') return true;
+    return !!game.iflags?.decgraphics;
 }
 
-function is_stair_spot(x, y) {
-    const sway = stairway_at(x, y);
-    if (sway) return true;
+/**
+ * C dat/symbols DECGraphics block (`:689–777`, via load_symset): cmap
+ * symbol → full showsyms byte. Sessions record `OPTIONS=symset:DECgraphics`,
+ * so C matches on these bytes (the stored disp_ch bytes are stripped,
+ * byte & 0x7F). Monster/object/warning letters are unremapped.
+ * defsym.h 89/91/92/94 are the swallow tc/ml/mr/bc rows and 97/99/101/103
+ * are the explosion tc/ml/mr/bc rows (no per-row consts in js; consecutive
+ * order per defsym.h PCHAR2 rows).
+ */
+const DEC_CMAP_BYTE = {
+    [S_vwall]: 0xF8, [S_hwall]: 0xF1, [S_tlcorn]: 0xEC, [S_trcorn]: 0xEB,
+    [S_blcorn]: 0xED, [S_brcorn]: 0xEA, [S_crwall]: 0xEE, [S_tuwall]: 0xF6,
+    [S_tdwall]: 0xF7, [S_tlwall]: 0xF5, [S_trwall]: 0xF4, [S_ndoor]: 0xFE,
+    [S_vodoor]: 0xE1, [S_hodoor]: 0xE1, [S_bars]: 0xFC, [S_tree]: 0xE7,
+    [S_room]: 0xFE, [S_upladder]: 0xF9, [S_dnladder]: 0xFA,
+    [S_brupladder]: 0xF9, [S_brdnladder]: 0xFA, [S_altar]: 0xFB,
+    [S_pool]: 0xE0, [S_ice]: 0xFE, [S_lava]: 0xE0, [S_lavawall]: 0xE0,
+    [S_vodbridge]: 0xFE, [S_hodbridge]: 0xFE, [S_water]: 0xE0,
+    [S_vbeam]: 0xF8, [S_hbeam]: 0xF1,
+    89: 0xEF, 91: 0xF8, 92: 0xF8, 94: 0xF3,
+    97: 0xEF, 99: 0xF8, 101: 0xF8, 103: 0xF3,
+};
+
+/** C symbols.c showsyms cmap slot: DEC byte when active, else Primary. */
+function cmap_showsym_code(idx) {
+    if (idx === S_darkroom) {
+        // C display.c map_background `:1850–1853` — showsyms[S_darkroom] is
+        // rewritten at runtime: the room copy when dark_room+use_color,
+        // else the SYM_NOTHING slot (DEF_NOTHING ' ').
+        if ((game.flags?.dark_room !== false)
+            && (game.iflags?.use_color !== false)) {
+            return cmap_showsym_code(S_room);
+        }
+        return showsym_x_code(SYM_NOTHING, 0x20);
+    }
+    if (decSymsActive()) {
+        const dec = DEC_CMAP_BYTE[idx];
+        if (dec !== undefined) return dec;
+    }
+    const prim = DEFSYMS_CH[idx];
+    return (typeof prim === 'string' && prim.length) ? prim.charCodeAt(0) : -1;
+}
+
+/**
+ * C symbols.c get_othersym + init_showsyms SYM_OFF_X slot: option override
+ * or the Primary default (NOTHING/UNEXPLORED → DEF_NOTHING ' ').
+ */
+function showsym_x_code(xidx, dflt) {
+    const ovt = Is_rogue_level(game.u?.uz)
+        ? game.go?.ov_rogue_syms : game.go?.ov_primary_syms;
+    const ov = ovt?.[(xidx | 0) + SYM_OFF_X];
+    if (typeof ov === 'string' && ov.length) return ov.charCodeAt(0);
+    if ((ov | 0)) return ov | 0;
+    return dflt;
+}
+
+/**
+ * C pager.c is_swallow_sym — gs.showsyms[S_sw_tl..S_sw_br] (defsym.h
+ * PCHAR2 88–95: tl,tc,tr,ml,mr,bl,bc,br). Primary `/ - \ | | \ - /`;
+ * DECGraphics remaps tc→0xEF ml/mr→0xF8 bc→0xF3 (dat/symbols:689–777).
+ */
+function is_swallow_code(sym) {
+    const dec = decSymsActive();
+    switch (sym) {
+    case 0x2F: case 0x5C: return true; // tl/tr/bl/br in both sets
+    case 0x2D: case 0x7C: return !dec; // tc/bc/ml/mr Primary
+    case 0xEF: case 0xF8: case 0xF3: return dec; // tc/ml/mr/bc DEC
+    default: return false;
+    }
+}
+
+/** C display.c statue/body bank peel → depicted mnum (ranges from display.js). */
+function statue_body_mnum(glyph) {
+    const g = glyph | 0;
+    if (g >= GLYPH_STATUE_MALE_OFF && g < GLYPH_STATUE_MALE_OFF + NUMMONS) {
+        return g - GLYPH_STATUE_MALE_OFF;
+    }
+    if (g >= GLYPH_STATUE_FEM_OFF && g < GLYPH_STATUE_FEM_OFF + NUMMONS) {
+        return g - GLYPH_STATUE_FEM_OFF;
+    }
+    if (g >= GLYPH_STATUE_MALE_PILETOP_OFF
+        && g < GLYPH_STATUE_MALE_PILETOP_OFF + NUMMONS) {
+        return g - GLYPH_STATUE_MALE_PILETOP_OFF;
+    }
+    if (g >= GLYPH_STATUE_FEM_PILETOP_OFF
+        && g < GLYPH_STATUE_FEM_PILETOP_OFF + NUMMONS) {
+        return g - GLYPH_STATUE_FEM_PILETOP_OFF;
+    }
+    if (g >= GLYPH_BODY_OFF && g < GLYPH_BODY_OFF + NUMMONS) {
+        return g - GLYPH_BODY_OFF;
+    }
+    if (g >= GLYPH_BODY_PILETOP_OFF && g < GLYPH_BODY_PILETOP_OFF + NUMMONS) {
+        return g - GLYPH_BODY_PILETOP_OFF;
+    }
+    return null;
+}
+
+/**
+ * C display.c map_glyphinfo ttychar for do_screen_description `:1268–1271`:
+ * the showsyms byte for the glyph's symbol, as an integer code. Statues
+ * resolve to the depicted monster's letter (C documents this in
+ * do_screen_description `:1359–1361`); trap glyphs peel to their cmap row.
+ */
+function glyph_showsym_code(glyph) {
+    if (glyph_is_monster(glyph)) {
+        const mlet = mons(glyph_to_mon(glyph))?.mlet;
+        return (mlet ? monsym({ mlet }) : '?').charCodeAt(0);
+    }
+    if (glyph_is_statue(glyph) || glyph_is_body(glyph)) {
+        const mnum = statue_body_mnum(glyph);
+        const mlet = (mnum != null) ? mons(mnum)?.mlet : null;
+        if (mlet) return monsym({ mlet }).charCodeAt(0);
+        return def_oc_syms[ROCK_CLASS].sym.charCodeAt(0);
+    }
+    if (glyph_is_normal_object(glyph) || glyph_is_piletop_generic_obj(glyph)) {
+        const row = def_oc_syms[game.objects?.[glyph_to_obj(glyph)]?.oc_class];
+        return (row && row.sym.length) ? row.sym.charCodeAt(0) : 0x3F;
+    }
+    if (glyph_is_trap(glyph)) {
+        return cmap_showsym_code(((glyph | 0) - GLYPH_TRAP_OFF) + S_arrow_trap);
+    }
+    if (glyph_is_cmap(glyph)) return cmap_showsym_code(glyph_to_cmap(glyph));
+    if (glyph_is_warning(glyph)) {
+        const wch = def_warnsyms[glyph_to_warning(glyph)]?.ch;
+        return (typeof wch === 'string' && wch.length) ? wch.charCodeAt(0) : 0x3F;
+    }
+    if (glyph_is_invisible_id(glyph)) return 0x49; // DEF_INVISIBLE 'I'
+    if (glyph_is_unexplored(glyph) || glyph_is_nothing(glyph)) return 0x20; // DEF_NOTHING
+    return 0x20;
+}
+
+/**
+ * C windows.c encglyph as the tty renders it: the stored char through the
+ * DEC→Unicode paint rule (display.js _paint_gbuf_cell, same exclusions).
+ */
+function rendered_glyph_char(x, y) {
     const loc = game.level?.at?.(x, y);
-    return !!(loc && loc.typ === STAIRS);
+    let ch = (typeof loc?.disp_ch === 'string' && loc.disp_ch.length)
+        ? loc.disp_ch[0] : ' ';
+    if (loc?.disp_decgfx) {
+        const uni = DEC_TO_UNICODE[ch];
+        if (uni && ch !== '{' && ch !== '`' && ch !== 'g'
+            && ch !== '|' && ch !== 'o' && ch !== 's') ch = uni;
+    }
+    return ch;
+}
+
+/**
+ * C ref: pager.c do_screen_description `:1247–1627` — the whole symbol-table
+ * description of one map cell (looked) or one queried symbol, in C order:
+ * restricted vision `:1291–1305`, x_str `:1307–1325`, check_monsters
+ * `:1327–1354` ('@'-as-you `:1342–1352`), objects `:1356–1404`,
+ * DEF_INVISIBLE `:1406–1417`, dark room `:1419–1431`, unexplored `:1433–1445`,
+ * cmap scan with the S_lava/S_lavawall/S_water rotation `:1447–1520`,
+ * warnings `:1522–1542`, venom restore `:1544–1555`, option overrides with
+ * check_monsters re-entry `:1554–1600`, "can be many things" `:1602–1606`,
+ * didlook lookat parenthetical `:1607–1640`.
+ * Holders ({s}/{v}/{pm}, the add_cmap_descr convention) stand in for the C
+ * out-pointers and are mutated in place; returns the C `found` count.
+ * `sym` is the C int: the full showsyms byte from glyph_showsym_code
+ * (sessions run symset:DECgraphics, so wall/room/ladder bytes carry the
+ * high bit and never collide with monster letters). The prefix renders the
+ * glyph through the DEC→Unicode paint rule, as C's encglyph/putmixed does.
+ * Named omissions: rogue_syms table (Is_rogue_level showsyms; Primary used);
+ * non-boulder `go.ov_*_syms` option overrides (boulder arm live);
+ * `program_state.gameover` in the hallucinate gate; the
+ * `looked && sym == showsyms[SYM_*+SYM_OFF_X]` halves of the
+ * dark-room/unexplored arms (subsumed by the glyph-bank sym resolution);
+ * `gw.warnsyms[]` (def_warnsyms defaults stand in).
+ */
+export function do_screen_description(cc, looked, sym, outStr, firstMatch, forSupplement) {
+    const u = game.u || {};
+    const MON_INTERIOR = 'the interior of a monster';
+    const UNRECONNOITERED = 'unreconnoitered';
+    let glyph = NO_GLYPH;
+    let skippedVenom = 0;
+    let found = 0;
+    let needToLook = false;
+    // C `:1261–1264` — Underwater/waterlevel; Hallucination (gameover unread).
+    const submerged = !!(u.Underwater && !Is_waterlevel(u.uz));
+    const hallucinate = !!Hallucination();
+    if (looked) {
+        // C `:1268–1271` — glyph_at + map_glyphinfo ttychar (showsyms byte).
+        glyph = glyph_at(cc.x, cc.y);
+        sym = glyph_showsym_code(glyph);
+    } else {
+        sym = sym | 0;
+    }
+    // C `:1271/:1273` — encglyph prefix (rendered) vs `%c` prefix (raw sym).
+    const prefix = `${looked ? rendered_glyph_char(cc.x, cc.y) : String.fromCharCode(sym & 0xFF)}        `;
+    // C `:1291–1305` — restricted vision first.
+    let xStr = null;
+    const terrainmode = game.iflags?.terrainmode | 0;
+    if (!looked) {
+        ; // C `:1294` — skip special handling
+    } else if (((u.uswallow || submerged) && !next2u_look(cc.x, cc.y))
+               || ((terrainmode & (TER_DETECT | TER_MAP)) === TER_DETECT
+                   && glyph === cmap_to_glyph(S_stone))) {
+        xStr = UNRECONNOITERED;
+        needToLook = false;
+    } else if (is_swallow_code(sym)) {
+        xStr = MON_INTERIOR;
+        needToLook = true; // for specific monster type
+    }
+    if (xStr) {
+        // C `:1307–1325` (found is zero here; the else arm guards future cases).
+        if (!found) {
+            outStr.s = `${prefix}${xStr}`;
+            firstMatch.v = xStr;
+            found++;
+        } else {
+            found += append_str(outStr, xStr);
+        }
+    }
+    // C `:1326` check_monsters label — the option-override tail jumps back
+    // here (a loop stands in for goto; the prefix is not recomputed, as in C).
+    if (xStr !== UNRECONNOITERED) {
+        let jumped = true;
+        while (jumped) {
+            jumped = false;
+            // C `:1327–1341` — check for monsters.
+            if (!terrainmode || (terrainmode & TER_MON) !== 0) {
+                for (let i = 1; i < DEF_MONSYM_MLET.length; i++) {
+                    const mlet = DEF_MONSYM_MLET[i];
+                    if (mlet === 'S_invisible') continue; // avoid matching on this
+                    const explain = mlet_class_explain(mlet);
+                    if (sym === monsym({ mlet }).charCodeAt(0) && explain) {
+                        needToLook = true;
+                        if (!found) {
+                            outStr.s = `${prefix}${an(explain)}`;
+                            firstMatch.v = explain;
+                            found++;
+                        } else {
+                            found += append_str(outStr, an(explain));
+                        }
+                    }
+                }
+                // C `:1342–1352` — '@' as you when your race isn't '@'.
+                if ((looked ? (sym === 0x40 && u_at(cc.x, cc.y))
+                            : (sym === 0x40 && !game.flags?.showrace))
+                    && (game.urace?.mnum | 0) !== PM_HUMAN
+                    && (game.urace?.mnum | 0) !== PM_ELF
+                    && !Upolyd(u)) {
+                    found += append_str(outStr, 'you');
+                }
+            }
+            // C `:1356–1404` — check for objects.
+            if (!terrainmode || (terrainmode & TER_OBJ) !== 0) {
+                const ovTab = Is_rogue_level(game.u?.uz)
+                    ? game.go?.ov_rogue_syms : game.go?.ov_primary_syms;
+                const bj = (SYM_BOULDER | 0) + SYM_OFF_X;
+                const ovCh = (ovTab?.[bj]) || 0;
+                const bouldersym = (typeof ovCh === 'string' && ovCh.length)
+                    ? ovCh.charCodeAt(0)
+                    : def_oc_syms[ROCK_CLASS].sym.charCodeAt(0);
+                for (let i = 1; i < MAXOCLASSES; i++) {
+                    if ((i !== ROCK_CLASS)
+                        ? (sym !== def_oc_syms[i].sym.charCodeAt(0))
+                        : (!glyph_is_statue(glyph) && sym !== bouldersym)) {
+                        continue;
+                    }
+                    let ocPtr = def_oc_syms[i].explain;
+                    if (i === ROCK_CLASS && ocPtr === 'boulder or statue') {
+                        if (sym === bouldersym) ocPtr = 'boulder';
+                        else if (glyph_is_statue(glyph)) ocPtr = 'statue';
+                        else if (looked) continue;
+                    }
+                    needToLook = true;
+                    if (looked && i === VENOM_CLASS) {
+                        skippedVenom++;
+                        continue;
+                    }
+                    if (!found) {
+                        outStr.s = `${prefix}${an(ocPtr)}`;
+                        firstMatch.v = ocPtr;
+                        found++;
+                    } else {
+                        found += append_str(outStr, an(ocPtr));
+                    }
+                }
+            }
+            // C `:1406–1417` — DEF_INVISIBLE arm ('I').
+            if (sym === 0x49) {
+                const usealt = ((u.EDetect_monsters | 0) & I_SPECIAL) !== 0;
+                const unseen = (usealt || Blind_look())
+                    ? 'unseen creature' : INVIS_EXPLAIN;
+                if (!found) {
+                    outStr.s = `${prefix}${an(unseen)}`;
+                    firstMatch.v = unseen;
+                    found++;
+                } else {
+                    found += append_str(outStr, an(unseen));
+                }
+            }
+            // C `:1419–1431` — the dark part of a room: glyph bank or the
+            // SYM_NOTHING showsyms slot.
+            if ((glyph !== NO_GLYPH && glyph_is_nothing(glyph))
+                || (looked && sym === showsym_x_code(SYM_NOTHING, 0x20))) {
+                xStr = 'the dark part of a room';
+                if (!found) {
+                    outStr.s = `${prefix}${xStr}`;
+                    firstMatch.v = xStr;
+                    found++;
+                } else {
+                    found += append_str(outStr, xStr);
+                }
+            }
+            // C `:1433–1445` — unexplored: glyph bank or the SYM_UNEXPLORED
+            // showsyms slot.
+            if ((glyph !== NO_GLYPH && glyph_is_unexplored(glyph))
+                || (looked && sym === showsym_x_code(SYM_UNEXPLORED, 0x20))) {
+                xStr = submerged ? 'land' : 'unexplored';
+                if (!found) {
+                    outStr.s = `${prefix}${xStr}`;
+                    firstMatch.v = xStr;
+                    found++;
+                } else {
+                    found += append_str(outStr, xStr);
+                }
+            }
+            // C `:1447–1520` — graphics symbols with the water/lava rotation.
+            const hitTrap = { v: false };
+            for (let i = 0; i < DEFSYMS_CH.length; i++) {
+                const altI = (i === S_lava) ? S_water
+                    : (i === S_lavawall) ? S_lava
+                    : (i === S_water) ? S_lavawall : i;
+                // C `:1466–1468` `if (!*x_str) continue` — beams, shield
+                // effects, swallow boundaries and explosions carry no
+                // explanation (defsym.h 74–85, 88–104; 86–87 are real).
+                if (altI >= S_vbeam && altI <= S_expl_br
+                    && altI !== S_poisoncloud && altI !== S_goodpos) {
+                    continue;
+                }
+                xStr = defsym_explanation(altI);
+                if (!xStr) continue;
+                // C `:1475` — the unlooked `/`-query path compares against
+                // the Primary defsyms byte, not the DEC showsyms byte.
+                const cmapByte = looked
+                    ? cmap_showsym_code(altI)
+                    : ((typeof DEFSYMS_CH[altI] === 'string' && DEFSYMS_CH[altI].length)
+                        ? DEFSYMS_CH[altI].charCodeAt(0) : -1);
+                if (sym === cmapByte) {
+                    let article;
+                    // C `:1480–1481` — dark room already included above.
+                    if (altI === S_darkroom && glyph !== NO_GLYPH
+                        && glyph_is_nothing(glyph)) {
+                        continue;
+                    }
+                    // C `:1485–1490` — avoid "an unexplored", "an stone", ….
+                    article = strstri(xStr, ' of a room') ? 2
+                        : (altI === S_stone || xStr === 'air' || xStr === 'land')
+                            ? 0 : 1;
+                    found = add_cmap_descr(
+                        found, altI, glyph, article, cc, xStr, prefix,
+                        hitTrap, firstMatch, outStr,
+                    );
+                    if (altI === S_pool) {
+                        // C `:1495–1501` — same symbol, "moat" second look.
+                        add_cmap_descr(
+                            found, -S_pool, glyph, 1, cc, 'moat', prefix,
+                            hitTrap, firstMatch, outStr,
+                        );
+                        needToLook = true;
+                    }
+                    // C `:1503–1510` — altar/trap/hallu-water/engraving/grave.
+                    if (altI === S_altar || is_cmap_trap(altI)
+                        || (hallucinate && (altI === S_water || altI === S_lava
+                            || altI === S_lavawall || altI === S_ice))
+                        || altI === S_engroom || altI === S_engrcorr
+                        || altI === S_grave) {
+                        needToLook = true;
+                    }
+                }
+            }
+            // C `:1522–1542` — warning symbols.
+            for (let i = 1; i < WARNCOUNT; i++) {
+                const w = def_warnsyms[i];
+                const wch = w?.ch ?? w?.sym;
+                if (typeof wch === 'string' && wch.length
+                    && sym === wch.charCodeAt(0)) {
+                    xStr = w?.desc || w?.explanation
+                        || 'unknown creature causing you worry';
+                    if (!found) {
+                        outStr.s = `${prefix}${xStr}`;
+                        firstMatch.v = xStr;
+                        found++;
+                    } else {
+                        found += append_str(outStr, xStr);
+                    }
+                    // C `:1536–1539` — warning trumps boulders on display.
+                    if (looked && sobj_at(BOULDER_OTYP, cc.x, cc.y)) {
+                        outStr.s += ' co-located with a boulder';
+                    }
+                    break;
+                }
+            }
+            // C `:1544–1555` — ignored venom goes back on a short list.
+            if (skippedVenom && found < 2) {
+                xStr = def_oc_syms[VENOM_CLASS].explain;
+                if (!found) {
+                    outStr.s = `${prefix}${an(xStr)}`;
+                    firstMatch.v = xStr;
+                    found++;
+                } else {
+                    found += append_str(outStr, an(xStr));
+                }
+            }
+            // C `:1554–1600` — optional overriding symbols (#if 0 boulder
+            // arm is compiled out upstream). A match re-enters at
+            // check_monsters; only jump when sym actually changes (C changes
+            // it by construction; this guards the JS stand-ins).
+            for (let j = SYM_OFF_X; j < SYM_MAX; j++) {
+                if (j === (SYM_INVISIBLE | 0) + SYM_OFF_X
+                    || j === (SYM_BOULDER | 0) + SYM_OFF_X) {
+                    continue; // already handled above
+                }
+                const ovt = Is_rogue_level(game.u?.uz)
+                    ? game.go?.ov_rogue_syms : game.go?.ov_primary_syms;
+                const ovs = (ovt?.[j]) || 0;
+                const tmpsym = (typeof ovs === 'string' && ovs.length)
+                    ? ovs.charCodeAt(0) : 0;
+                if (tmpsym && sym === tmpsym) {
+                    if (j === (SYM_PET_OVERRIDE | 0) + SYM_OFF_X) {
+                        if (looked) {
+                            // C `:1584–1590` — re-resolve without override
+                            // (MG_FLAG_NOOVERRIDE): the pet's class letter.
+                            const mtmp = mon_at(cc.x, cc.y);
+                            const under = mtmp
+                                ? monsym(mtmp).charCodeAt(0) : sym;
+                            if (under !== sym) {
+                                sym = under;
+                                jumped = true;
+                            }
+                        }
+                        break;
+                    }
+                    if (j === (SYM_HERO_OVERRIDE | 0) + SYM_OFF_X) {
+                        // C `:1592–1595` — the human class symbol.
+                        if (sym !== 0x40) {
+                            sym = 0x40;
+                            jumped = true;
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+        // C `:1602–1606` — more than four possibilities.
+        if (found > 4) {
+            outStr.s = `${prefix}can be many things`;
+        }
+    }
+    // C `:1607` didlook.
+    if (looked) {
+        let pm = null;
+        if (found > 1 || needToLook) {
+            // C `:1609–1615` — lookat fills look_buf/monbuf.
+            const seen = lookat(cc.x, cc.y);
+            let lookBuf = seen.buf;
+            pm = seen.pm;
+            if (pm && forSupplement) forSupplement.pm = pm;
+            // C `:1616–1617` — ice wording.
+            if (lookBuf === 'ice') lookBuf = ice_descr(cc.x, cc.y);
+            // C `:1618–1620` — quest-blocked downstairs.
+            lookBuf = maybe_blocked_staircase_down(lookBuf);
+            // C `:1622–1632` — firstmatch becomes look_buf; engraving quoted.
+            if (lookBuf) firstMatch.v = lookBuf;
+            if (firstMatch.v) {
+                const tmpH = { s: ` (${firstMatch.v}` };
+                add_quoted_engraving(cc.x, cc.y, tmpH, false);
+                tmpH.s += ')';
+                outStr.s = (outStr.s + tmpH.s).slice(0, BUFSZ - 1);
+                found = 1; // we have something to look up
+            }
+            // C `:1633–1639` — seen-monster suffix.
+            if (seen.monbuf) {
+                outStr.s = (outStr.s + ` [seen: ${seen.monbuf}]`)
+                    .slice(0, BUFSZ - 1);
+            }
+        }
+    }
+    return found;
 }
 
 /** C youprop.h Blind ≡ (HBlinded || EBlinded) && !BBlinded. */
@@ -1371,8 +2023,10 @@ export function lookat(x, y) {
     } else if (glyph_is_monster(glyph)) {
         const mtmp = mon_at(x, y);
         if (mtmp) {
-            buf = look_at_monster_buf(mtmp);
-            monbuf = howmonseen_look_buf(mtmp);
+            // C lookat `:710` — look_at_monster(buf, monbuf, mtmp, x, y).
+            const seen = look_at_monster(mtmp, x, y);
+            buf = seen.buf;
+            monbuf = seen.monbuf;
             pm = mtmp.data || null;
         } else if (Hallucination()) {
             buf = rndmonnam(null);
@@ -1477,25 +2131,6 @@ function brief_at(x, y) {
 }
 
 /**
- * C ref: pager.c do_screen_description + lookat for looked stairs.
- * Ambiguous '<'/'>' → "a staircase … or a branch staircase … (lookat)".
- * After lookat parenthetical, C sets found=1 so checkfile can look up
- * firstmatch (e.g. "branch staircase up") — D-0334.
- * Ladder showsyms deferred (ASCII where ladders share '<' would add two more).
- */
-function describe_stairs_looked(x, y) {
-    // C: lookat firstmatch, then blocked-stair rewrite before parenthetical
-    const look = maybe_blocked_staircase_down(stair_cmap_explanation(x, y));
-    const up = look.endsWith(' up');
-    const ordinary = up ? 'staircase up' : 'staircase down';
-    const branch = up ? 'branch staircase up' : 'branch staircase down';
-    const ch = up ? '<' : '>';
-    const out = `${ch}        ${an(ordinary)} or ${an(branch)} (${look})`;
-    // C: found = 1 after lookat supplies firstmatch for checkfile
-    return { out, first: look, found: 1 };
-}
-
-/**
  * C ref: pager.c is_swallow_sym — gs.showsyms[S_sw_tl..S_sw_br].
  * Full showsyms table deferred; match dat/symbols DECgraphics overrides
  * (tc/ml/mr/bc) plus Primary defaults for unset swallow corners.
@@ -1509,205 +2144,6 @@ function is_swallow_sym(c) {
     }
     // Primary defsym.h: / - \ | | \ - /
     return c === '|' || c === '-' || c === '/' || c === '\\';
-}
-
-/**
- * C ref: pager.c do_screen_description cmap walls + lookat defsyms "wall".
- * DECgraphics S_vwall ('x') shares showsym with S_sw_ml/mr → swallow
- * "the interior of a monster" then "a wall" + lookat "(wall)".
- * Message prefix: C putmixed encglyph uses SO+letter+SI; JS topline has
- * no decgfx flag, so paint DEC_TO_UNICODE like ROOM's · (D-0083).
- */
-function describe_wall_looked(loc, x, y) {
-    const look = 'wall';
-    const tg = terrain_glyph(loc, x, y);
-    const raw = tg?.ch || (game.iflags?.decgraphics ? 'x' : '|');
-    // Unseen wall_angle → S_stone space; treat as not a seen wall glyph.
-    if (!raw || raw === ' ') {
-        return { out: '        dark part of a room', first: 'dark part of a room', found: 1 };
-    }
-    const ch = (tg?.dec && DEC_TO_UNICODE[raw]) ? DEC_TO_UNICODE[raw] : raw;
-    if (is_swallow_sym(raw)) {
-        // found>1 → lookat parenthetical; firstmatch = look_buf ("wall")
-        const out = `${ch}        the interior of a monster or a wall (${look})`;
-        return { out, first: look, found: 1 };
-    }
-    // found==1 && !need_to_look → no parenthetical
-    const out = `${ch}        ${an(look)}`;
-    return { out, first: look, found: 1 };
-}
-
-function describe_looked(x, y) {
-    const u = game.u || {};
-    const plname = game.plname || 'hero';
-    if (u.ux === x && u.uy === y) {
-        // C lookat → self_lookat firstmatch (pmname + Ugender)
-        const first = self_lookat();
-        // C pager.c:1346–1353 — '@' that refers to you when your race
-        // isn't normally shown as '@': tack on "or you" via
-        // found += append_str(out_str, "you") (append_str returns 1,
-        // so C found goes 1→2 here). But didlook `:1591–1616`
-        // (found > 1 || need_to_look) then appends the lookat
-        // parenthetical and resets found = 1 ("we have something to
-        // look up"), so do_look `:1941` (found == 1) still runs
-        // checkfile. Return the post-didlook count.
-        const raceMnum = game.urace?.mnum | 0;
-        const orYou = (raceMnum !== PM_HUMAN && raceMnum !== PM_ELF
-            && !Upolyd(u)) ? ' or you' : '';
-        const out = `@        a human or elf${orYou} (${first})`;
-        return { out, first, found: 1 };
-    }
-    // C lookat `:718–721` — gbuf trap glyph before floor objects.
-    // Detected chest: trap glyph, pile still on fobj; C names the trap.
-    const glyph = glyph_at(x, y);
-    if (glyph_is_trap(glyph)) {
-        // C ref: pager.c do_screen_description — add_cmap_descr `:1220`
-        // first-matches a trap glyph as literally "a trap" (prefix `:1271`
-        // is the `^` glyph + 8 spaces; hit_trap + need_to_look), then the
-        // didlook block `:1611-1614` appends " (lookat)" with
-        // firstmatch = lookat `:718-721` trap_description `:164-181`.
-        const nm = trap_description(glyph_to_trap(glyph), x, y);
-        return { out: `^        a trap (${nm})`, first: nm, found: 1 };
-    }
-    // C ref: pager.c do_screen_description `:1406–1417` — the
-    // DEF_INVISIBLE arm is glyph-driven (sym from the shown glyph_at),
-    // not m_at-driven: a shown 'I' describes as invisexplain even when
-    // mon_at returns the hidden monster (and when it returns none).
-    if (glyph_is_invisible_id(glyph)) {
-        const uu = game.u || {};
-        const usealt = ((uu.EDetect_monsters | 0) & I_SPECIAL) !== 0;
-        const unseen = (usealt || uu.Blind)
-            ? 'unseen creature'
-            : 'remembered, unseen, creature';
-        return { out: `I        ${an(unseen)}`, first: unseen, found: 1 };
-    }
-    const mtmp = mon_at(x, y);
-    if (mtmp) {
-        // C ref: pager.c do_screen_description check_monsters (looked) +
-        // didlook `:1607–1640`. The shown ttychar selects the class row and
-        // out is `an(explain)` under a glyph+8-space prefix; didlook then
-        // appends " (lookat)" and firstmatch becomes look_buf (found back
-        // to 1 for checkfile). S_invisible is skipped by the class loop; a
-        // shown 'I' takes the DEF_INVISIBLE arm (`:1406–1417`, no didlook:
-        // found stays 1 with need_to_look clear, so no parenthetical).
-        const ch = mon_glyph(mtmp).ch || '?';
-        if (ch === 'I') {
-            const u = game.u || {};
-            const usealt = ((u.EDetect_monsters | 0) & I_SPECIAL) !== 0;
-            const unseen = (usealt || u.Blind)
-                ? 'unseen creature'
-                : 'remembered, unseen, creature';
-            return { out: `I        ${an(unseen)}`, first: unseen, found: 1 };
-        }
-        const look = look_at_monster_buf(mtmp);
-        const explain = mlet_class_explain(mtmp.data?.mlet) || 'monster';
-        let out = `${ch}        ${an(explain)}`;
-        let first = explain;
-        if (look) {
-            out += ` (${look})`;
-            first = look;
-        }
-        const seen = howmonseen_look_buf(mtmp);
-        if (seen) out += ` [seen: ${seen}]`;
-        return { out, first, found: 1 };
-    }
-    const loc = game.level?.at?.(x, y);
-    // C ref: pager.c do_screen_description object loop `:1355–1400` —
-    // looked sym matches the oclass showsym → out is `an(explain)` with
-    // need_to_look; the didlook block `:1607–1640` appends the lookat buf
-    // in parens and firstmatch becomes look_buf (found back to 1 for
-    // checkfile). Floor piles live in objects_at, never loc.objects, so
-    // drive off the shown glyph exactly as C matches sym; lookat names
-    // the pile top through object_from_map. Statues keep the old
-    // fallthrough (their C line needs the monster-class prefix from the
-    // unexported mlet table); venom likewise (C lists the shared '.'-sym
-    // cmap row there, not "a splash of venom").
-    const otyp = glyph_to_obj(glyph);
-    const oclass = game.objects?.[otyp]?.oc_class | 0;
-    if (glyph_is_object(glyph) && !glyph_is_statue(glyph)
-        && oclass >= 1 && oclass <= 17 && oclass !== VENOM_CLASS) {
-        // C `:1370–1378` — boulder/statue split; only shown '`' reaches
-        // here (statues excluded above), so "boulder".
-        const ocPtr = oclass === ROCK_CLASS
-            ? 'boulder'
-            : ((def_oc_syms[oclass] || {}).explain || 'strange object');
-        const ocCh = (def_oc_syms[oclass] || {}).sym || '?';
-        const look = look_at_object(x, y, otyp);
-        const out = `${ocCh}        ${an(ocPtr)} (${look})`;
-        return { out, first: look, found: 1 };
-    }
-    if (is_stair_spot(x, y)) return describe_stairs_looked(x, y);
-    // C ref: pager.c do_screen_description — walls before room/corr
-    // (cmap order); DECgraphics S_vwall↔swallow mid (D-0425).
-    if (loc && IS_WALL(loc.typ)) return describe_wall_looked(loc, x, y);
-    // C lookat glyph_at S_stone before typ CORR/ROOM: blank + stone memory
-    // → lookat "stone" (even when typ was updated to CORR).
-    if (loc && (!loc.disp_ch || loc.disp_ch === ' ')) {
-        if (!loc.seenv) {
-            // C ref: pager.c do_screen_description — looked sym ' '
-            // (DEF_NOTHING, hack.h) matches S_GHOST monsym ' ' ("space
-            // symbol", defsym.h) → "a ghost" + need_to_look; SYM_NOTHING
-            // showsym ' ' → "the dark part of a room"; glyph_is_unexplored
-            // (or sym == showsyms[SYM_UNEXPLORED]) → "unexplored"; cmap
-            // S_stone ' ' → "stone" and S_air ' ' → "air" (S_expl_mc ' '
-            // has no explanation, skipped). found=5 > 4 → prefix + "can be
-            // many things"; didlook lookat appends "(look)" — "unexplored
-            // area" for an unexplored glyph, "unexplored" for remembered
-            // stone, "dark part of a room" for a nothing glyph — and forces
-            // found=1 for checkfile.
-            const look = maybe_blocked_staircase_down(lookat(x, y).buf)
-                || 'unexplored';
-            const out = `         can be many things (${look})`;
-            return { out, first: look, found: 1 };
-        }
-        const last = game.lastseentyp?.[x]?.[y] | 0;
-        if (
-            last === STONE || last === SCORR
-            || loc.typ === STONE || loc.typ === SCORR
-        ) {
-            // C: space matches many cmap entries (found>4) → "can be many
-            // things"; lookat parenthetical still "(stone)".
-            const look = 'stone';
-            const out = `         can be many things (${look})`;
-            return { out, first: look, found: 1 };
-        }
-    }
-    // C ref: pager.c do_screen_description — DECgraphics shares showsym
-    // \xfe among S_ndoor/S_room/S_darkroom/S_ice; lookat parenthetical.
-    // Full showsyms-driven cmap scan deferred (ASCII ladders/rooms differ).
-    // C: when lookat fills firstmatch, found = 1 for checkfile (even if
-    // the cmap symbol matched multiple defsyms).
-    if (loc?.typ === ROOM) {
-        // C lookat firstmatch: S_room vs S_darkroom (room_cmap_explanation)
-        const look = room_cmap_explanation(x, y, loc);
-        // C encglyph of DECgraphics S_room is SO+'~'+SI → middle dot ·
-        // (frozen serialize has no decgfx; paint Unicode like map glyphs).
-        const ch = '\u00b7';
-        const out = `${ch}        a doorway or the floor of a room or the dark part of a room or ice (${look})`;
-        return { out, first: look, found: 1 };
-    }
-    if (loc?.typ === CORR) {
-        // C: found > 4 under DECgraphics '#' (corr/bars/tree/bridges/…)
-        // → "can be many things"; lookat still supplies (corridor) and
-        // forces found=1 for checkfile.
-        const look = 'corridor';
-        const out = `#        can be many things (${look})`;
-        return { out, first: look, found: 1 };
-    }
-    const feat = dfeature_at(x, y);
-    if (feat) {
-        const out = `${feat[0] || '.'}        ${an(feat)}`;
-        return { out, first: feat, found: 1 };
-    }
-    const e = engr_at(x, y);
-    if (e?.engr_txt) {
-        return {
-            out: `        an engraving "${e.engr_txt}"`,
-            first: 'engraving',
-            found: 1,
-        };
-    }
-    return { out: '        dark part of a room', first: 'dark part of a room', found: 1 };
 }
 
 /**
@@ -1733,7 +2169,9 @@ async function look_all(nearby, do_mons) {
                     lookbuf = self_lookat();
                     glyphCh = '@';
                 } else if (shown?.kind === 'mon') {
-                    lookbuf = look_at_monster_buf(shown.mtmp);
+                    // C look_all `:2002` — look_at_monster(lookbuf, NULL,
+                    // mtmp, x, y); NULL monbuf, so buf half only.
+                    lookbuf = look_at_monster_buf(shown.mtmp, x, y);
                     glyphCh = mon_glyph(shown.mtmp).ch || '?';
                 }
             } else if (shown?.kind === 'obj') {
@@ -2056,7 +2494,7 @@ export async function do_look(mode = 0) {
                 break;
             }
         }
-        if (name) await checkfile(name, CHK_USR | CHK_DONT_ASK);
+        if (name) await checkfile(name, null, CHK_USR | CHK_DONT_ASK, null);
         return 0;
     }
     case '?': {
@@ -2069,7 +2507,7 @@ export async function do_look(mode = 0) {
         }
         if (!out_str || out_str.charCodeAt(0) === 27) return 0;
         if (out_str.length > 1) {
-            await checkfile(out_str, CHK_USR | CHK_DONT_ASK);
+            await checkfile(out_str, null, CHK_USR | CHK_DONT_ASK, null);
             return 0;
         }
         sym = out_str.charCodeAt(0);
@@ -2127,31 +2565,44 @@ export async function do_look(mode = 0) {
             if (game.flags) game.flags.verbose = false;
         }
 
+        // C pager.c `:1917` — do_screen_description(cc, from_screen ||
+        // clicklook, sym, …); JS has no clicklook, so looked is from_screen
+        // and a typed symbol takes the unlooked arm.
+        const outH = { s: '' };
+        const firstH = { v: '' };
+        const supplH = { pm: null };
+        let found = 0;
         if (from_screen) {
-            const { out, first, found } = describe_looked(cc.x, cc.y);
-            if (found) {
-                // C: putmixed(WIN_MESSAGE) — no forced more(); pline wrap
-                // already more()'s when out_str spans lines.
-                await pline(out);
-                // C: checkfile only when !LOOK_QUICK/ONCE && (VERBOSE || (help && !quick))
-                if (
-                    found === 1
-                    && ans !== LOOK_QUICK
-                    && ans !== LOOK_ONCE
-                    && (ans === LOOK_VERBOSE || (game.flags?.help !== false && !quick))
-                ) {
-                    // C `:1944–1948`: (ans == LOOK_VERBOSE) ? chkfilDontAsk
-                    // : chkfilNone — ':' shows the entry without asking.
-                    await checkfile(
-                        first, ans === LOOK_VERBOSE ? CHK_DONT_ASK : 0,
-                    );
-                }
-            } else {
-                await pline("I've never heard of such things.");
-            }
+            found = do_screen_description(cc, true, 0, outH, firstH, supplH);
         } else if (sym) {
-            await pline(`${String.fromCharCode(sym)}        (symbol lookup stub)`);
-            await more();
+            found = do_screen_description(cc, false, sym, outH, firstH, supplH);
+        }
+        if (found) {
+            // C: putmixed(WIN_MESSAGE) — no forced more(); pline wrap
+            // already more()'s when out_str spans lines.
+            await pline(outH.s);
+            // C: checkfile only when !LOOK_QUICK/ONCE && (VERBOSE || (help && !quick))
+            if (
+                found === 1
+                && ans !== LOOK_QUICK
+                && ans !== LOOK_ONCE
+                && (ans === LOOK_VERBOSE || (game.flags?.help !== false && !quick))
+            ) {
+                // C `:1944–1951`: (ans == LOOK_VERBOSE) ? chkfilDontAsk
+                // : chkfilNone — ':' shows the entry without asking.
+                // C passes do_look's local pm (never assigned: always NULL),
+                // so the lookup keys off temp_buf/firstmatch — NOT the
+                // didlook permonst (supplemental_pm feeds only the named-omit
+                // do_supplemental_info, pager.c:2255 own row).
+                const supplHolder = { s: '' };
+                await checkfile(
+                    firstH.v, null,
+                    ans === LOOK_VERBOSE ? CHK_DONT_ASK : 0,
+                    supplHolder,
+                );
+            }
+        } else if (from_screen || sym) {
+            await pline("I've never heard of such things.");
         }
     } while (from_screen && !quick && ans !== LOOK_ONCE);
 

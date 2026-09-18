@@ -34,6 +34,7 @@ import {
     A_DEX, A_CHA, A_WIS,
     MON_FLOOR, MON_OFFMAP,
     ARTICLE_YOUR, SUPPRESS_SADDLE,
+    TEST_MOVE,
 } from './const.js';
 import { objectNames, objectDescrs } from './objects.js';
 import { rnd, rn2, rn1 } from './rng.js';
@@ -42,8 +43,8 @@ import { getdir } from './lock.js';
 import { y_n } from './getline.js';
 import { m_at, cant_drown } from './mon.js';
 import { isok, strsubst } from './hacklib.js';
-import { Monnam, mon_nam, monverbself, pmname, Mgender, y_monnam, Hallucination, hliquid, x_monnam, minimal_monnam } from './do_name.js';
-import { losehp, maybe_half_phys, finish_maybe_wail, is_pool, is_lava } from './hack.js';
+import { Monnam, mon_nam, monverbself, pmname, Mgender, y_monnam, Hallucination, hliquid, x_monnam, minimal_monnam, YMonnam } from './do_name.js';
+import { losehp, maybe_half_phys, finish_maybe_wail, is_pool, is_lava, test_move } from './hack.js';
 import { set_wounded_legs, heal_legs, legs_in_no_shape, sokoban_guilt, mintrap } from './trap.js';
 import { finish_meating } from './dogmove.js';
 import { an } from './objnam.js';
@@ -444,6 +445,28 @@ export async function exercise_steed() {
 }
 
 /**
+ * C ref: steed.c stucksteed `:878–895` — can the steed move at all.
+ * Helpless steed (asleep or paralyzed) won't move; with checkfeeding a
+ * steed in the midst of a meal is still eating. Spends the move.
+ */
+export async function stucksteed(checkfeeding) {
+    const steed = game.u?.usteed;
+    if (steed) {
+        /* check whether steed can move */
+        if (helpless_steed(steed)) {
+            await pline(`${YMonnam(steed)} won't move!`);
+            return true;
+        }
+        /* optionally check whether steed is in the midst of a meal */
+        if (checkfeeding && steed.meating) {
+            await pline(`${YMonnam(steed)} is still eating.`);
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
  * C ref: steed.c maybewakesteed
  */
 function maybewakesteed(steed) {
@@ -636,9 +659,10 @@ export async function mount_steed(mtmp, force) {
         return false;
     }
 
+    // Full test_move TEST_MOVE (was the test_move_ok doorway subset).
     if (u.uswallow || u.ustuck || u.utrap || u.Punished
-        || !test_move_ok(u.ux, u.uy, (mtmp.mx | 0) - (u.ux | 0),
-            (mtmp.my | 0) - (u.uy | 0))) {
+        || !await test_move(u.ux, u.uy, (mtmp.mx | 0) - (u.ux | 0),
+            (mtmp.my | 0) - (u.uy | 0), TEST_MOVE)) {
         if (u.Punished || !(u.uswallow || u.ustuck || u.utrap)) {
             await pline('You are unable to swing your leg over.');
         } else {
@@ -1002,7 +1026,7 @@ export async function poly_steed(steed, oldshape) {
 }
 
 /** C hack.h helpless — msleeping || !mcanmove. */
-function helpless_steed(mtmp) {
+export function helpless_steed(mtmp) {
     return !!(mtmp.msleeping || !mtmp.mcanmove);
 }
 
