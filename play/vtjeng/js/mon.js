@@ -82,6 +82,7 @@ import {
     In_endgame,
     Is_astralevel,
     I_SPECIAL,
+    IS_FOUNTAIN,
     IS_WATERWALL,
     is_pit,
     isok,
@@ -172,8 +173,9 @@ import { artifact_exists, artifactTouchable } from './artifacts.js';
 import { night } from './calendar.js';
 import {
     docrt,
+    flash_glyph_at,
     glyph_is_invisible,
-    map_monster_glyph_info,
+    mon_to_glyph,
     newsym,
     see_monsters,
     swallowed,
@@ -436,6 +438,7 @@ import {
     PM_HUMAN_WERERAT,
     PM_HUMAN_WEREWOLF,
     PM_HUMAN_ZOMBIE,
+    PM_GREMLIN,
     PM_IRON_GOLEM,
     PM_JABBERWOCK,
     PM_KOBOLD_MUMMY,
@@ -630,7 +633,13 @@ import {
 } from './startup_a11y.js';
 import { mpickobj, relobj } from './steal.js';
 import { replshk, shkgone } from './shk.js';
-import { enexto, goodpos, noteleport_level, rloc_to } from './teleport.js';
+import {
+    enexto,
+    goodpos,
+    noteleport_level,
+    rloc_to,
+    tele_restrict,
+} from './teleport.js';
 import {
     fill_pit,
     is_lava,
@@ -2065,18 +2074,10 @@ async function liquidMessage(text, monster, env) {
 
 async function liquidTeleportRestricted(monster, env) {
     const state = env.state ?? game;
-    if (!noteleport_level(monster, state)) return false;
-    // C's tele_restrict() reports the restriction only when canseemon() does.
-    if (liquidCanSeeMonster(monster, env)) {
-        await liquidMessage(
-            'A mysterious force prevents '
-                + monsterCommonName(monster, state)
-                + ' from teleporting!',
-            monster,
-            env,
-        );
-    }
-    return true;
+    // C minliquid_core() calls the canonical teleport.c tele_restrict()
+    // owner. Keep its raw environment so planning names/messages use the
+    // same seams as every other teleport restriction callsite.
+    return tele_restrict(monster, state, env);
 }
 
 async function liquidRelocate(monster, flags, env) {
@@ -2086,16 +2087,15 @@ async function liquidRelocate(monster, flags, env) {
 
 async function liquidDamageInventory(monster, lava, env) {
     const operationName = lava ? 'fireDamageChain' : 'waterDamageChain';
+    const sourceName = lava ? 'fire_damage_chain' : 'water_damage_chain';
     const operation = env[operationName];
     // Both source damage-chain functions return immediately for a null chain.
-    // Avoid requiring an owner for that no-op, while refusing before an
-    // inventory item can be silently lost.
+    // A nonempty chain is an explicit discarded-result gap in this span; name
+    // that source call and continue, as C does, rather than throwing after a
+    // valid minliquid branch has already changed the monster.
     if (typeof operation !== 'function') {
-        if (monster.minvent) {
-            throw new TypeError(
-                'monster liquid effects require ' + operationName,
-            );
-        }
+        if (monster.minvent)
+            note_unported('trap.c ' + sourceName);
         return;
     }
     if (lava) {
@@ -2138,11 +2138,11 @@ async function liquidOvercrowding(monster, env) {
     await liquidOperation(env, 'dealWithOvercrowding')(monster, env);
 }
 
-// C ref: mon.c minliquid() and minliquid_core() (945-1122). This is the
-// ordinary non-flying/non-floating pool and lava path. Species-specific
-// gremlin multiplication and iron-golem rust, eel distress, and the Plane of
-// Water exceptions outside this ordinary witness remain owned by the
-// fail-closed action boundary.
+// C ref: mon.c minliquid() and minliquid_core() (945-1122). This includes the
+// source-specific gremlin, iron-golem, and stranded-eel arms before the
+// ordinary non-flying/non-floating pool and lava paths. The liquid inventory
+// chains remain named discarded-call gaps when a nonempty inventory reaches
+// them, because C ignores their return values.
 export async function minliquid(monster, env = {}) {
     const state = env.state ?? game;
     state.iflags ??= {};
@@ -2164,6 +2164,15 @@ export async function minliquid(monster, env = {}) {
 
 export async function minliquid_core(monster, env = {}) {
     const state = env.state ?? game;
+    const namingEnv = { ...env, state };
+    const random = {
+        d,
+        rn1,
+        rn2,
+        rnd,
+        rne,
+        ...(env.random ?? {}),
+    };
     const location = state.level?.at?.(monster.mx, monster.my);
     const waterwall = Boolean(location && IS_WATERWALL(location.typ));
     const inpool = is_pool(monster.mx, monster.my, state)
@@ -2171,12 +2180,61 @@ export async function minliquid_core(monster, env = {}) {
             || on_level(state.u?.uz, state.water_level));
     const inlava = is_lava(monster.mx, monster.my, state)
         && !(is_flyer(monster.data) || is_floater(monster.data));
+    const infountain = Boolean(location && IS_FOUNTAIN(location.typ));
 
     // C's steed exception is a hero property, not a monster species branch,
     // and it is needed before the liquid-specific tests below.
     if (monster === state.u?.usteed
         && (Flying(state) || Levitation(state))
         && !waterwall) {
+        return 0;
+    }
+
+    // C mon.c:987-991. Gremlins split in a pool or fountain on a nonzero
+    // rn2(3), dry a fountain only when a clone was made, then damage a pool
+    // inventory. split_mon()'s returned clone is part of this branch's source
+    // contract, so it is awaited rather than replaced by a trace draw.
+    if (monsndx(monster.data) === PM_GREMLIN
+        && (inpool || infountain)
+        && random.rn2(3)) {
+        const { split_mon } = await import('./potion.js');
+        const clone = await split_mon(monster, null, {
+            ...env,
+            state,
+            random,
+        });
+        if (clone) {
+            const { dryup } = await import('./fountain.js');
+            await dryup(monster.mx, monster.my, false, state, {
+                ...env,
+                state,
+                random,
+            });
+        }
+        if (inpool)
+            await liquidDamageInventory(monster, false, env);
+        return 0;
+    } else if (monsndx(monster.data) === PM_IRON_GOLEM
+        && inpool
+        && !random.rn2(5)) {
+        // C mon.c:993-1009. Rust consumes d(2,6), lowers both current and
+        // maximum hit points, and lets mondied() decide whether the golem
+        // survives before its inventory chain is reached.
+        const dam = random.d(2, 6);
+        if (liquidCanSee(monster, env)) {
+            await liquidMessage(
+                capitalizedMonsterName(monster, state, namingEnv) + ' rusts.',
+                monster,
+                env,
+            );
+        }
+        monster.mhp -= dam;
+        if (monster.mhpmax > dam) monster.mhpmax -= dam;
+        if (monster.mhp < 1) {
+            await (env.mondied ?? mondied)(monster, state, env);
+            if (monster.mhp < 1) return 1;
+        }
+        await liquidDamageInventory(monster, false, env);
         return 0;
     }
 
@@ -2200,7 +2258,7 @@ export async function minliquid_core(monster, env = {}) {
                             ? 'melts away'
                             : 'burns to a crisp';
                     await liquidMessage(
-                        capitalizedMonsterName(monster, state)
+                        capitalizedMonsterName(monster, state, namingEnv)
                             + ' ' + verb + '.',
                         monster,
                         env,
@@ -2212,7 +2270,7 @@ export async function minliquid_core(monster, env = {}) {
                 if (monster.mhp < 1) {
                     if (liquidCanSee(monster, env)) {
                         await liquidMessage(
-                            capitalizedMonsterName(monster, state)
+                            capitalizedMonsterName(monster, state, namingEnv)
                                 + ' surrenders to the fire.',
                             monster,
                             env,
@@ -2221,7 +2279,7 @@ export async function minliquid_core(monster, env = {}) {
                     await mondead(monster, state, env);
                 } else if (liquidCanSee(monster, env)) {
                     await liquidMessage(
-                        capitalizedMonsterName(monster, state)
+                        capitalizedMonsterName(monster, state, namingEnv)
                             + ' burns slightly.',
                         monster,
                         env,
@@ -2253,18 +2311,18 @@ export async function minliquid_core(monster, env = {}) {
             if (liquidCanSee(monster, env)) {
                 await liquidMessage(
                     state.context?.mon_moving
-                        ? capitalizedMonsterName(monster, state)
+                        ? capitalizedMonsterName(monster, state, namingEnv)
                             + ' drowns.'
                         : 'You drown '
-                            + monsterCommonName(monster, state) + '.',
+                            + monsterCommonName(monster, state, 0, namingEnv) + '.',
                     monster,
                     env,
                 );
             }
             if (engulfing_u(monster, state)) {
                 await liquidMessage(
-                    capitalizedMonsterName(monster, state)
-                        + ' sinks as ' + hliquid('water', { state })
+                    capitalizedMonsterName(monster, state, namingEnv)
+                        + ' sinks as ' + hliquid('water', namingEnv)
                         + ' rushes in and flushes you out.',
                     monster,
                     env,
@@ -2281,6 +2339,20 @@ export async function minliquid_core(monster, env = {}) {
             }
             return 1;
         }
+    } else if (monster.data?.mlet === S_EEL
+        && !on_level(state.u?.uz, state.water_level)
+        && !breathless(monster.data)) {
+        // C mon.c:1111-1119. A stranded eel loses one hit point when its
+        // two source draws pass, then refreshes fleeing without a message.
+        if (monster.mhp > 1
+            && random.rn2(monster.mhp) > random.rn2(8)) {
+            monster.mhp--;
+        }
+        await monflee(monster, 2, false, false, {
+            ...env,
+            state,
+            random,
+        });
     }
     return 0;
 }
@@ -4434,7 +4506,7 @@ export function dealloc_monst(mon) {
 //
 // 2721-2722's seemimic() stops. A monster whose appearance is neither
 // M_AP_NOTHING nor M_AP_MONSTER is showing a false object or piece of
-// furniture, and revealing it needs display.c seemimic(), which wakeup() above
+// furniture, and revealing it needs mon.c seemimic(), which wakeup() above
 // already records as unported.
 //
 // js/dog.js relmon() and js/makemon_create.js mongone() hold the other two
@@ -6612,13 +6684,13 @@ export async function shieldeff_mon(mtmp, rawEnv = {}) {
     );
 }
 
-// C ref: mon.c flash_mon() (6067-6089). The temporary vision bits make the
+// C ref: mon.c flash_mon() (6067-6079). The temporary vision bits make the
 // monster's square drawable while flash_glyph_at() alternates its glyph; the
 // bits are restored before newsym() redraws the remembered square. The
-// display.c flash_glyph_at() animation is not ported, but its mon_to_glyph()
-// argument is still evaluated because it can consume display-RNG draws under
-// hallucination.
-export function flash_mon(mtmp, state = game) {
+// display.c flash_glyph_at() resolves the alternating frames and waits after
+// each flush. Its mon_to_glyph() argument is evaluated before the animation,
+// because it can consume display-RNG draws under hallucination.
+export async function flash_mon(mtmp, state = game) {
     const mx = mtmp.mx;
     const my = mtmp.my;
     let count = couldsee(mx, my, state) ? 8 : 4;
@@ -6626,9 +6698,11 @@ export function flash_mon(mtmp, state = game) {
 
     if (!state.flags?.sparkle) count = Math.trunc(count / 2);
     state.viz_array[my][mx] |= IN_SIGHT | COULD_SEE;
-    map_monster_glyph_info(mtmp, state); // mon_to_glyph(mtmp, newsym_rn2)
-    void count; // flash_glyph_at() is the recorded display.c gap.
-    note_unported('display.c flash_glyph_at');
+    const glyph = mon_to_glyph(mtmp, state);
+    await flash_glyph_at(mx, my, glyph, count, state);
     state.viz_array[my][mx] = saveviz;
-    newsym(mx, my);
+    // newsym() is a live-game display owner. A planning clone still restores
+    // its temporary vision byte, but must not repaint the live game on return.
+    if (state === game && !state.program_state?.planning)
+        newsym(mx, my);
 }

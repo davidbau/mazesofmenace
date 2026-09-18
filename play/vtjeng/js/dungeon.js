@@ -3,7 +3,7 @@
 // Data ref: dat/dungeon.lua, translated in dungeon_data.js.
 
 import { game } from './gstate.js';
-import { rn2 } from './rng.js';
+import { rn2, rnd } from './rng.js';
 import { DUNGEON_DATA } from './dungeon_data.js';
 import {
     AGGRAVATE_MONSTER,
@@ -39,6 +39,7 @@ import {
     LEVITATION,
     LR_DOWNTELE,
     LR_UPTELE,
+    MAGIC_PORTAL,
     M_AP_FURNITURE,
     M_AP_TYPMASK,
     MAXNROFROOMS,
@@ -96,6 +97,7 @@ import { is_lava, is_pool } from './trap.js';
 import { ttyPline } from './tty_message.js';
 // js/windows.js does not import from this file, so there is no cycle.
 import { add_menu_heading, getlin, select_menu } from './windows.js';
+import { displayTtyMenuTextWindow } from './tty_menu.js';
 
 export const BR_STAIR = 0;
 export const BR_NO_END1 = 1;
@@ -906,6 +908,21 @@ export function assign_level(dest, src) {
     return dest;
 }
 
+// C ref: dungeon.c assign_rnd_level() (1986-1995). The caller supplies the
+// signed number of levels to move; rnd() is one-based, and the destination is
+// clamped to the branch's actual bounds after the draw.
+export function assign_rnd_level(dest, src, range, state = game) {
+    assign_level(dest, src);
+    // C uses the two-way conditional literally.  In particular, range==0
+    // still evaluates rnd(-range); rnd(0) is its canonical no-draw result.
+    const amount = range > 0 ? rnd(range) : -rnd(-range);
+    dest.dlevel += amount;
+    const maximum = dunlevs_in_dungeon(dest, state);
+    if (dest.dlevel > maximum) dest.dlevel = maximum;
+    else if (dest.dlevel < 1) dest.dlevel = 1;
+    return dest;
+}
+
 // C refs: dungeon.c dname_to_dnum(), dungeon_branch() and at_dgn_entrance().
 // The last answers whether the hero stands on the level a named branch leaves
 // from, which do.c goto_level() asks about "The Quest" before its leader's
@@ -1396,9 +1413,9 @@ export function Is_botlevel(level, state = game) {
 }
 
 // ---------------------------------------------------------------------------
-// print_dungeon() and its helpers, ported for the bymenu=TRUE path only.
+// print_dungeon() and its helpers.
 // C ref: dungeon.c unplaced_floater(), unreachable_level(), tport_menu(),
-// br_string(), chr_u_on_lvl(), print_branch(), print_dungeon() (2174-2398).
+// br_string(), chr_u_on_lvl(), print_branch(), print_dungeon() (2174-2438).
 // ---------------------------------------------------------------------------
 
 // C ref: dungeon.c unplaced_floater() (2174-2187). Returns true when the
@@ -1470,27 +1487,38 @@ function chr_u_on_lvl(dlev, state) {
 
 // C ref: dungeon.c print_branch() (2261-2286). Pushes branch entries whose
 // parent end (end1) falls between the lower and upper bounds in the given
-// dungeon. Only the bymenu=TRUE arm is ported.
-function print_branch(items, dnum, lower_bound, upper_bound, lchoices, state) {
+// dungeon. The non-menu arm writes the same plain line that putstr() receives.
+function print_branch(
+    items, dnum, lower_bound, upper_bound, lchoices, bymenu, state,
+) {
     for (let br = state.svb?.branches; br; br = br.next) {
         if (br.end1.dnum === dnum && lower_bound < br.end1.dlevel
             && br.end1.dlevel <= upper_bound) {
-            const buf = `${chr_u_on_lvl(br.end1, state)} ${br_string(br.type)}`
+            // C uses chr_u_on_lvl() only for the menu arm; the informational
+            // arm starts with a literal space (dungeon.c:2272).
+            const marker = bymenu ? chr_u_on_lvl(br.end1, state) : ' ';
+            const buf = `${marker} ${br_string(br.type)}`
                 + ` to ${state.dungeons[br.end2.dnum].dname}: `
                 + `${depth(br.end1, state)}`;
-            tport_menu(items, buf, lchoices, br.end1,
-                unreachable_level(br.end1, false, state), state);
+            if (bymenu) {
+                tport_menu(items, buf, lchoices, br.end1,
+                    unreachable_level(br.end1, false, state), state);
+            } else {
+                items.push({ text: buf });
+            }
         }
     }
 }
 
-// C ref: dungeon.c print_dungeon() (2288-2398), bymenu=TRUE path only.
+// C ref: dungeon.c print_dungeon() (2288-2438).
 // Builds a PICK_ONE menu of all dungeon levels and branches, highlights
 // dungeon headings with iflags.menu_headings, and returns { playerlev, dnum,
 // dlevel } for the selected entry or null when the hero cancels.
 //
-// The bymenu=FALSE informational path uses putstr/NHW_TEXT and is not ported.
-export async function print_dungeon(state = game) {
+// The bymenu=FALSE informational path uses putstr on the same NHW_MENU
+// window, then displays it as a text window. It returns zero after the
+// acknowledgement, as C does when rlev and rdgn are null.
+export async function print_dungeon(state = game, { bymenu = true } = {}) {
     const items = [];
     const lchoices = {
         lev: [],
@@ -1504,7 +1532,7 @@ export async function print_dungeon(state = game) {
         const dptr = state.dungeons[i];
         // In_endgame spelled out against state.
         const inEndgame = state.u.uz.dnum === state.astral_level?.dnum;
-        if (inEndgame && i !== state.astral_level?.dnum) continue;
+        if (bymenu && inEndgame && i !== state.astral_level?.dnum) continue;
 
         const isUnplaced = unplaced_floater(i, state);
         const descr = isUnplaced ? 'depth' : 'level';
@@ -1525,7 +1553,8 @@ export async function print_dungeon(state = game) {
                 buf += `, entrance on ${dptr.depth_start + dptr.entry_lev - 1}`;
             }
         }
-        items.push(add_menu_heading(buf, state));
+        if (bymenu) items.push(add_menu_heading(buf, state));
+        else items.push({ text: buf });
 
         // Circle through the special levels to find levels in this dungeon.
         let last_level = 0;
@@ -1534,7 +1563,7 @@ export async function print_dungeon(state = game) {
 
             // Print any branches before this level.
             print_branch(items, i, last_level, slev.dlevel.dlevel,
-                lchoices, state);
+                lchoices, bymenu, state);
 
             let entry = `${chr_u_on_lvl(slev.dlevel, state)} ${slev.proto}: `
                 + `${depth(slev.dlevel, state)}`;
@@ -1542,13 +1571,73 @@ export async function print_dungeon(state = game) {
             if (on_level(slev.dlevel, state.stronghold_level)) {
                 entry += ` (tune ${state.svt?.tune ?? state.tune ?? ''})`;
             }
-            tport_menu(items, entry, lchoices, slev.dlevel,
-                unreachable_level(slev.dlevel, isUnplaced, state), state);
+            if (bymenu) {
+                tport_menu(items, entry, lchoices, slev.dlevel,
+                    unreachable_level(slev.dlevel, isUnplaced, state), state);
+            } else {
+                items.push({ text: entry });
+            }
 
             last_level = slev.dlevel.dlevel;
         }
         // Print branches after the last special level.
-        print_branch(items, i, last_level, MAXLEVEL, lchoices, state);
+        print_branch(items, i, last_level, MAXLEVEL, lchoices, bymenu, state);
+    }
+
+    if (!bymenu) {
+        // C's floating-branch and portal diagnostics are part of the same
+        // NHW_MENU window, after all dungeon headings and special levels.
+        let first = true;
+        for (let br = state.svb?.branches; br; br = br.next) {
+            if (br.end1.dnum !== state.n_dgns) continue;
+            if (first) {
+                items.push({ text: '' });
+                items.push({ text: 'Floating branches' });
+                first = false;
+            }
+            items.push({
+                text: `   ${br_string(br.type)} to `
+                    + `${state.dungeons[br.end2.dnum].dname}`,
+            });
+        }
+
+        let diagnostic = '';
+        if (Invocation_lev(state.u.uz, state)) {
+            diagnostic = `Invocation position @ (${state.inv_pos?.x},${state.inv_pos?.y})`
+                + `, hero @ (${state.u.ux},${state.u.uy})`;
+        } else {
+            const portal = (state.level?.traps ?? []).find(
+                (trap) => trap.ttyp === MAGIC_PORTAL,
+            );
+            if (portal) {
+                diagnostic = `Portal @ (${portal.tx},${portal.ty})`
+                    + `, hero @ (${state.u.ux},${state.u.uy})`;
+            } else {
+                const current = state.u.uz;
+                const sameLevel = (level) => Boolean(
+                    level && current.dnum === level.dnum
+                        && current.dlevel === level.dlevel,
+                );
+                if (sameLevel(state.earth_level)
+                    || sameLevel(state.water_level)
+                    || sameLevel(state.fire_level)
+                    || sameLevel(state.air_level)
+                    || sameLevel(state.qstart_level)
+                    || at_dgn_entrance('The Quest', state)
+                    || sameLevel(state.knox_level)) {
+                    diagnostic = 'No portal found.';
+                }
+            }
+        }
+        if (diagnostic) {
+            items.push({ text: '' });
+            items.push({ text: diagnostic });
+        }
+        // The hook is test-only and mirrors _captureMenuItems above; the game
+        // itself sends these strings through the canonical TTY window owner.
+        state._captureDungeonLines?.(items);
+        await displayTtyMenuTextWindow(state, items);
+        return 0;
     }
 
     state._captureMenuItems?.(items);
@@ -2174,6 +2263,17 @@ export async function donamelevel(state = game) {
 export function find_mapseen(lev, state = game) {
     return state.svm?.mapseenchn?.find((entry) => on_level(entry.lev, lev))
         ?? null;
+}
+
+// C ref: dungeon.c remdun_mapseen() (2807-2826). C retains the overview
+// nodes, marking every level in one dungeon unreachable so #overview ignores
+// them while end-of-game disclosure can still include their history.
+export function remdun_mapseen(dnum, state = game) {
+    for (const mapseen of state.svm?.mapseenchn ?? []) {
+        if (mapseen.lev?.dnum !== dnum) continue;
+        mapseen.flags ??= {};
+        mapseen.flags.notreachable = 1;
+    }
 }
 
 // C ref: dungeon.c recbranch_mapseen() (2446-2473). A staircase, portal, or

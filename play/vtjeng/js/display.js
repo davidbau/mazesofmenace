@@ -81,7 +81,7 @@ import {
     WM_X_TL, WM_X_TR, WM_X_BL, WM_X_BR, WM_X_TLBR, WM_X_BLTR,
     HI_DOMESTIC, M_AP_FURNITURE, M_AP_OBJECT, M_AP_MONSTER,
     M_AP_TYPMASK, MON_STILL_ARRIVING, WARN_OF_MON,
-    SYM_BOULDER, SYM_INVISIBLE, SYM_NOTHING,
+    SYM_BOULDER, SYM_INVISIBLE, SYM_NOTHING, SYM_UNEXPLORED,
     SYM_PET_OVERRIDE, SYM_HERO_OVERRIDE,
     WARNING, WARNCOUNT,
     PROT_FROM_SHAPE_CHANGERS,
@@ -290,6 +290,7 @@ import { critically_low_hp } from './pray.js';
 import { visible_region_at } from './region.js';
 import {
     M1_HUMANOID,
+    M1_MINDLESS,
     NON_PM,
     NUMMONS,
     PM_TENGU,
@@ -297,12 +298,35 @@ import {
 import { rn2_on_display_rng } from './rng.js';
 import {
     canSeeMonster,
+    heroIsBlind,
     monsterVisible,
     noteGlyphBufferMutation,
     queueGlyphUpdateNotice,
     sensesMonster,
     sensesMonsterWithoutDetection,
 } from './startup_a11y.js';
+
+// C ref: display.c tp_sensemon() (166-168), through display.h's
+// _tp_sensemon() macro.  This is intentionally only the telepathy predicate;
+// Warning, underwater, swallowed, and Detect_monsters gates belong to the
+// wider sensemon() wrapper and must not suppress callers that ask whether
+// telepathy sensed a monster. The C helper is pure: it only reads the hero
+// and monster fields and returns the telepathy result.
+export function tp_sensemon(mon, state = game) {
+    const hero = state.u ?? {};
+    const data = mon?.data;
+    if (!data || (data.mflags1 & M1_MINDLESS)) return false;
+    const telepathy = hero.uprops?.[TELEPAT] ?? {};
+    const blind = heroIsBlind(state);
+    const intrinsic = Boolean(telepathy.intrinsic);
+    const extrinsic = Boolean(telepathy.extrinsic);
+    if (blind && (intrinsic || extrinsic)) return true;
+    if (!extrinsic) return false;
+    const dx = (mon.mx ?? 0) - (hero.ux ?? 0);
+    const dy = (mon.my ?? 0) - (hero.uy ?? 0);
+    return dx * dx + dy * dy
+        <= Math.trunc(hero.unblind_telepat_range ?? 0);
+}
 
 const WALL_TYPES = new Set([
     SDOOR, VWALL, HWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER,
@@ -958,6 +982,21 @@ export function map_monster_glyph_info(monster, state = game) {
     );
 }
 
+// C ref: display.h mon_to_glyph() (554-556).  This producer is deliberately
+// separate from map_monster_glyph_info(): flash_mon() calls mon_to_glyph(),
+// which always uses the ordinary monster range even when the monster is tame.
+// Hallucination still replaces the species with one display-RNG draw, while
+// mon->female continues to choose the glyph half.
+export function mon_to_glyph(
+    monster, state = game, displayRandom = rn2_on_display_rng,
+) {
+    if (!monster?.data)
+        throw new TypeError('mon_to_glyph requires monster data');
+    return presentedMonsterGlyphInfo(
+        monster, state, false, false, true, displayRandom,
+    );
+}
+
 function displayDraw(random, bound) {
     const result = random(bound);
     if (!Number.isInteger(result) || result < 0 || result >= bound) {
@@ -1041,12 +1080,19 @@ export function hallucinated_statue_glyph_info(
 // Hallucination changes the presented species for both detected and physically
 // seen monsters, but not the gender half of the range each of the three
 // what_mon() macros picks: that stays mon->female whatever species is shown.
-function presentedMonsterGlyphInfo(monster, state, detected, pet = false) {
+function presentedMonsterGlyphInfo(
+    monster,
+    state,
+    detected,
+    pet = false,
+    forceOrdinary = false,
+    displayRandom = rn2_on_display_rng,
+) {
     const hallucinating = heroHallucinating(state);
-    if (monster.mtame && !hallucinating)
+    if (monster.mtame && !hallucinating && !forceOrdinary)
         return actualMonsterGlyphInfo(monster, state);
     const species = hallucinating
-        ? state.mons?.[rn2_on_display_rng(NUMMONS)]
+        ? state.mons?.[displayRandom(NUMMONS)]
         : monster.data;
     if (!species) {
         throw new Error(
@@ -1229,6 +1275,18 @@ function monsterWarnsHero(monster, state) {
         state.u?.ux ?? 0,
         state.u?.uy ?? 0,
     ) < 100 && warningLevel >= threshold;
+}
+
+// C ref: display.c warning_of() (654-662).  Keep the predicate in
+// monsterWarnsHero(), which is also what the warning glyph uses, and expose
+// the source helper for detect.c mfind0()/warnreveal callers.  This helper is
+// pure: C only reads the warning property, distance, and monster level.
+export function warning_of(monster, state = game) {
+    if (!monsterWarnsHero(monster, state)) return 0;
+    return Math.min(
+        Math.trunc((monster.m_lev ?? 0) / 4),
+        WARNCOUNT - 1,
+    );
 }
 
 function warningGlyphInfo(monster, state) {
@@ -2416,6 +2474,63 @@ export function show_glyph_cell(x, y, glyph) {
     );
 }
 
+// C ref: display.c flash_glyph_at() (1305-1321). The caller supplies the
+// first glyph as a resolved presentation in this port; accepting a glyph
+// number as well keeps the C integer contract available to direct callers.
+// `hero_memory` selects levl[x][y].glyph in C, represented by the remembered
+// glyph number here. An unexplored JS square has no remembered record; its
+// `undefined` memory is the port's representation of C's GLYPH_UNEXPLORED
+// entry, including the configured SYM_UNEXPLORED presentation.
+export async function flash_glyph_at(
+    x, y, targetGlyph, repeatCount, state = game,
+) {
+    const location = state.level?.at(x, y);
+    if (!location) return;
+
+    const target = Number.isInteger(targetGlyph)
+        ? map_glyphinfo(targetGlyph, state) : targetGlyph;
+    if (!target || typeof target !== 'object') {
+        throw new TypeError('flash_glyph_at requires a glyph presentation');
+    }
+    const useMemory = Boolean(state.level?.flags?.hero_memory);
+    const rememberedNumber = useMemory
+        ? location.remembered_glyph?.glyph : undefined;
+    const background = Number.isInteger(rememberedNumber)
+        ? map_glyphinfo(rememberedNumber, state)
+        : useMemory
+            ? unexploredGlyphInfo(state)
+            : map_glyphinfo(back_to_glyph(x, y, state), state);
+
+    // display.c's animation is a window-port side effect. Planning clones
+    // still resolve the two glyphs in source order, but cannot paint the live
+    // terminal or consume animation hooks owned by the live game.
+    if (state !== game || state.program_state?.planning) return;
+
+    const total = repeatCount * 2;
+    for (let i = 0; i < total; ++i) {
+        show_glyph_cell(x, y, i % 2 === 0 ? target : background);
+        await flush_screen(1);
+        await nh_delay_output(state);
+    }
+}
+
+function unexploredGlyphInfo(state) {
+    // C's GLYPH_UNEXPLORED map entry uses SYM_UNEXPLORED with NO_COLOR.
+    // Keep the configured symbol (including any G_unexplored customization)
+    // while retaining the sentinel number for animation observers.
+    const presentation = glyphPresentation(
+        misc_symbol(SYM_UNEXPLORED, state),
+        NO_COLOR,
+        state,
+        numeric_glyph_customization(GLYPH_UNEXPLORED_OFF, state),
+    );
+    Object.defineProperty(presentation, 'glyph', {
+        configurable: true,
+        value: GLYPH_UNEXPLORED_OFF,
+    });
+    return presentation;
+}
+
 // C ref: display.c swallow_to_glyph() (2429-2446). The monster number is
 // packed above the eight stomach-wall positions; Hallucination changes only
 // the displayed monster and consumes the display RNG, just like what_mon().
@@ -2921,20 +3036,11 @@ export function glyph_is_invisible(glyph) {
  *
  * The two halves land in different places: the memory write goes to the
  * `state` handed in, and show_glyph_cell() below takes no state and paints the
- * module-global `game`. see_nearby_objects() settled what to do about that
- * shape, and this refuses a foreign state for the same reason rather than
- * splitting the two halves silently. It matters here because the once-per-turn
- * planning clone shares its level cells with the live game
- * (js/unported_monster_actions.js planningState()), so a dry run that reached
- * this function would leave a remembered 'I' and a painted cell behind in the
- * running game. The clone never reaches it: js/mhitm.js pre_mm_attack() marks
- * through an injected operation that a planning scan binds to a no-op, the way
- * it binds `redraw`.
+ * module-global `game`. A live call therefore keeps the foreign-state guard,
+ * while the explicit map_invisible_planning() seam below retains the source
+ * memory write for a planning clone without painting the live terminal.
  */
-export function map_invisible(x, y, state = game) {
-    if (state !== game) {
-        throw new TypeError('map_invisible() draws to the global game');
-    }
+function mapInvisibleMemory(x, y, state) {
     if (x === state.u?.ux && y === state.u?.uy) return;
     const location = state.level?.at(x, y);
     if (!location) return;
@@ -2942,7 +3048,28 @@ export function map_invisible(x, y, state = game) {
         location.remembered_glyph
             = rememberedGlyphNumber(GLYPH_INVISIBLE, state);
     }
+    return true;
+}
+
+export function map_invisible(x, y, state = game) {
+    if (state !== game) {
+        throw new TypeError('map_invisible() draws to the global game');
+    }
+    if (!mapInvisibleMemory(x, y, state)) return;
     show_glyph_cell(x, y, map_glyphinfo(GLYPH_INVISIBLE, state));
+}
+
+// C ref: display.c map_invisible()'s levl[].glyph write. The C call also
+// paints the live window, so planningState() uses this explicit seam to keep
+// the memory mutation on its cloned location grid while suppressing that
+// live-only display half.
+export function map_invisible_planning(x, y, state) {
+    if (!state || state === game) {
+        throw new TypeError(
+            'map_invisible_planning() requires a foreign planning state',
+        );
+    }
+    mapInvisibleMemory(x, y, state);
 }
 
 /**
@@ -5131,6 +5258,15 @@ export function exp_percent_changing(state = game) {
 // levels gives the next index, with level 30 alone giving 8.
 export function xlev_to_rank(xlev) {
     return xlev <= 2 ? 0 : xlev <= 30 ? Math.trunc((xlev + 2) / 4) : 8;
+}
+
+// C ref: botl.c rank_to_xlev() (313-329). Return the first experience level
+// represented by a rank; insight.c stores ranks, while rank_of() takes a
+// level. Values outside the documented 0..8 range follow C's conditional
+// boundaries rather than being clamped by a caller.
+export function rank_to_xlev(rank) {
+    return rank < 1 ? 1 : rank < 2 ? 3
+        : rank < 8 ? rank * 4 - 2 : 30;
 }
 
 // C ref: botl.c rank_of() (332-358). The rank title for experience level

@@ -363,7 +363,6 @@ import {
 import { UnsupportedExperienceChangeError } from './exper.js';
 import {
     doread,
-    UnsupportedMonsterRequestError,
     UnsupportedReadError,
 } from './read.js';
 import {
@@ -372,7 +371,7 @@ import {
 } from './polyself.js';
 import {
     wiz_genesis, wiz_identify, wiz_intrinsic, wiz_level_change,
-    wiz_level_tele, wiz_map, wiz_polyself, wiz_wish,
+    wiz_level_tele, wiz_map, wiz_polyself, wiz_wish, wiz_where,
 } from './wizcmds.js';
 import {
     dozap,
@@ -1851,7 +1850,7 @@ export const ADMITTED_COMMANDS = Object.freeze([
     'takeoff', 'wear',
     'puton', 'quaff', 'read', 'zap', 'cast', 'reqmenu', 'fight', 'rush', 'run', 'repeat',
     'options', 'autopickup',
-    'wizwish', 'wizidentify', 'wizlevelport', 'wizgenesis', 'wizintrinsic', 'wizmap', 'fire', 'throw',
+    'wizwish', 'wizidentify', 'wizlevelport', 'wizgenesis', 'wizintrinsic', 'wizmap', 'wizwhere', 'fire', 'throw',
     'swap', 'kick',
     'save', 'wield', 'quiver', 'help', 'whatis', '#', 'loot', 'force', 'tip',
     'glance', 'showgold', 'seeweapon', 'seearmor', 'seerings', 'seeamulet',
@@ -2943,12 +2942,6 @@ export function failClosedCommandRefusals() {
         // reach it, so leaving it out would discard every screen the wish
         // prompt already matched instead of stopping on the last of them.
         UnsupportedWishError,
-        // read.c raises this from every parse and creation arm of
-        // create_particular() this port leaves unported, all of them after
-        // getlin() has echoed the whole typed monster name. Leaving it out
-        // would discard every screen the ^G prompt already matched instead of
-        // stopping on the last of them.
-        UnsupportedMonsterRequestError,
         // zap.c raises this from dozap()'s effect arms and from every arm of
         // the ray below weffects() that this port has not reached. Each one
         // stops after the command has already spent a charge and painted its
@@ -3492,6 +3485,13 @@ async function runGenesisCommand(key, state) {
 // with ECMD_OK, so rhack() only clears command state after mapping completes.
 async function runMapCommand(key, state) {
     return failClosedCommand(key, state, () => wiz_map(state));
+}
+
+// C ref: wizcmds.c wiz_where(). The handler waits for the informational
+// dungeon window before returning ECMD_OK, so the extended command cannot
+// advance the game until its output is dismissed.
+async function runWhereCommand(key, state) {
+    return failClosedCommand(key, state, () => wiz_where(state));
 }
 
 // C ref: wizcmds.c wiz_intrinsic(). Its menu and all selected property
@@ -5210,6 +5210,8 @@ async function doextcmd(key, state) {
         return await runGenesisCommand(key, state);
     case 'wiz_map':
         return await runMapCommand(key, state);
+    case 'wiz_where':
+        return await runWhereCommand(key, state);
     case 'wiz_intrinsic':
         return await runIntrinsicCommand(key, state);
     case 'wiz_polyself':

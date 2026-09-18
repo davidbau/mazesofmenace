@@ -11,10 +11,12 @@ import {
     BLINDED,
     COLD_RES,
     CONFLICT,
+    DETECT_MONSTERS,
     DISPLACED,
     DIED,
     FIRE_RES,
     FEMALE,
+    G_EXTINCT,
     HALF_PHDAM,
     INVIS,
     M_AP_NOTHING,
@@ -25,8 +27,11 @@ import {
     M_ATTK_HIT,
     M_ATTK_MISS,
     MALE,
+    MM_EDOG,
+    MM_NOMSG,
     M_SEEN_COLD,
     NATTK,
+    NO_MINVENT,
     NEED_HTH_WEAPON,
     NEED_WEAPON,
     PROTECTION,
@@ -48,7 +53,7 @@ import {
     is_pit,
     u_at,
 } from './const.js';
-import { exercise } from './attrib.js';
+import { exercise, minuhpmax } from './attrib.js';
 // js/unported_monster_actions.js already imports allmain.js across the same
 // cycle and records why it is safe: `stop_occupation` is a hoisted function
 // declaration, initialized before either module body runs, and nothing here
@@ -62,21 +67,26 @@ import {
     map_invisible,
     newsym,
     swallowed,
+    tp_sensemon,
 } from './display.js';
 import { reset_occupations } from './cmd.js';
 import {
     Monnam,
+    Amonnam,
     capitalizedMonsterName,
+    christen_monst,
     hliquid,
     monsterPossessive,
     pmname,
 } from './do_name.js';
+import { initedog } from './dog.js';
 import { In_hell, on_level } from './dungeon.js';
 import { done_in_by } from './end.js';
 import { game } from './gstate.js';
 import { nomul, showdamage, spoteffects } from './hack.js';
 import { dist2, distmin } from './hacklib.js';
 import { is_home_elemental } from './makemon.js';
+import { makemon_runtime } from './makemon_create.js';
 import {
     attk_protection,
     engulf_target,
@@ -107,6 +117,7 @@ import {
     dmgtype,
     gender,
     mhis,
+    monsndx,
     monstunseesu,
     mon_hates_blessings,
     perceives,
@@ -131,16 +142,17 @@ import {
     WEAPON_CLASS,
     getObjects,
 } from './objects.js';
-import { xnameFresh } from './objnam.js';
+import { donameFresh, xnameFresh } from './objnam.js';
 import { is_quest_artifact } from './questpgr.js';
-import { d, rn2, rn2_on_display_rng } from './rng.js';
+import { d, rn1, rn2, rnd, rne, rn2_on_display_rng } from './rng.js';
 import {
     canSeeMonster,
     canSpotMonster,
+    heroIsBlind,
     messageAt,
     monsterVisible,
 } from './startup_a11y.js';
-import { t_at } from './trap.js';
+import { is_pool, t_at } from './trap.js';
 import {
     displayPendingTtyMessageWindow,
     ttyPline,
@@ -181,6 +193,61 @@ export class MonsterDeathPlanningError extends Error {
         this.monsterId = monster.m_id;
         this.how = DIED;
     }
+}
+
+// C ref: mhitu.c cloneu() (2616-2640).  The clone is created through the
+// ordinary makemon() owner, then initialized as a dog before its hit-point
+// pool is split.  This return value is consumed by potion.c split_mon(), so a
+// failed creation returns null and never mutates the hero's pool.
+export async function cloneu(rawState = game, rawEnv = {}) {
+    const state = rawEnv.state ?? rawState ?? game;
+    const random = {
+        d,
+        rn1,
+        rn2,
+        rnd,
+        rne,
+        ...(rawEnv.random ?? {}),
+    };
+    const mndx = monsndx(state.youmonst?.data);
+    if (state.u.mh <= 1)
+        return null;
+    if ((state.mvitals?.[mndx]?.mvflags ?? 0) & G_EXTINCT)
+        return null;
+    const creationEnv = {
+        ...rawEnv,
+        state,
+        random,
+        // mhitu.c:cloneu() invokes makemon() at the hero square with this
+        // exact inventoryless dog-creation shape during ordinary play.  The
+        // marker lets makemon_create.js admit that source caller outside
+        // level generation without widening the generic runtime allowlist.
+        _cloneu: true,
+        ...(rawEnv.planning
+            ? {
+                message: rawEnv.message ?? (async () => {}),
+                norepMessage: rawEnv.norepMessage ?? (async () => {}),
+            }
+            : {}),
+    };
+    let monster = await makemon_runtime(
+        state.youmonst.data,
+        state.u.ux,
+        state.u.uy,
+        NO_MINVENT | MM_EDOG | MM_NOMSG,
+        creationEnv,
+    );
+    if (!monster)
+        return null;
+    monster.mcloned = true;
+    monster = christen_monst(monster, state.plname, { ...rawEnv, state });
+    initedog(monster, true, { ...rawEnv, state, random });
+    monster.m_lev = state.youmonst.data.mlevel;
+    monster.mhpmax = state.u.mhmax;
+    monster.mhp = Math.trunc(state.u.mh / 2);
+    state.u.mh -= monster.mhp;
+    state.disp.botl = true;
+    return monster;
 }
 
 function requireMattackuOperation(env, name) {
@@ -1407,16 +1474,11 @@ function Half_physical_damage(state) {
 // Ported: the base damage roll, mhitm_adtyping(), mhitm_knockback(), the
 // negative-armor-class reduction, mdamageu() and passiveum().
 //
-// Ported: the marker for an unspottable attacker in hitmu() and missmu().
-//
-// Refused where C acts: the block that reveals an attacker hidden under an
-// object, which needs doname(), Amonnam() and tp_sensemon().
-//
-// One piece of C is absent rather than refused: mhm.permdmg's whole block
-// (1229-1259), which drains permanent hit points. Death's life-force drain is
-// its only writer, that is uhitm.c mhitm_ad_deth(), and mhitm_adtyping()
-// refuses AD_DETH above. The field is still initialized, because the mhm
-// record is C's and every arm of that switch may write it.
+// Ported: the marker for an unspottable attacker in hitmu() and missmu(), the
+// hidden-under-object reveal, and the permanent hit-point accounting. The
+// latter is exercised when a future uhitm.c mhitm_ad_deth() writer supplies a
+// nonzero field; that AD_DETH arm remains an unported source gap, while this
+// reader preserves C's update and display order.
 //
 // mhm.specialdmg has no ported reader either, and mhitm_ad_phys() did not
 // bring one. Its two C readers, uhitm.c:3992 and :3995, are inside the
@@ -1425,7 +1487,6 @@ function Half_physical_damage(state) {
 async function hitmu(mtmp, mattk, env) {
     const state = env.state;
     const random = env.random;
-    const unsupported = requireMattackuOperation(env, 'unsupported');
     const markInvisible = requireMattackuOperation(env, 'markInvisible');
     const spotMonster = env.canSpotMonster ?? canSpotMonster;
     const mdat = mtmp.data;
@@ -1449,8 +1510,31 @@ async function hitmu(mtmp, mattk, env) {
     /*  If the monster is undetected & hits you, you should know where
      *  the attack came from.
      */
-    if (mtmp.mundetected && (hides_under(mdat) || mdat.mlet === M.S_EEL))
-        unsupported('a hit by a monster that was hiding');
+    if (mtmp.mundetected && (hides_under(mdat) || mdat.mlet === M.S_EEL)) {
+        mtmp.mundetected = 0;
+        if (!tp_sensemon(mtmp, state)
+            && !activeHeroProperty(state, DETECT_MONSTERS)) {
+            const obj = state.level?.objects?.[mtmp.mx]?.[mtmp.my] ?? null;
+            if (obj) {
+                let what;
+                if (heroIsBlind(state) && !obj.dknown)
+                    what = 'something';
+                else if (is_pool(mtmp.mx, mtmp.my, state)
+                    && !state.u.uinwater)
+                    what = 'the water';
+                else
+                    what = donameFresh(obj, state);
+
+                let name = Amonnam(mtmp, { ...env, state });
+                // C substitutes Something when Amonnam() cannot identify an
+                // unseen attacker, preserving sentence capitalization.
+                if (name === 'It') name = 'Something';
+                await env.message(`${name} was hidden under ${what}!`, state);
+            }
+            // C repaints even when there is no object beneath the attacker.
+            env.redraw(mtmp.mx, mtmp.my);
+        }
+    }
 
     /*  First determine the base damage done */
     mhm.damage = random.d(mattk.damn, mattk.damd);
@@ -1495,6 +1579,40 @@ async function hitmu(mtmp, mattk, env) {
                 && is_quest_artifact(state.uarmh, state)
                 && mon_hates_blessings(mtmp)))
             mhm.damage = Math.trunc((mhm.damage + 1) / 2);
+
+        if (mhm.permdmg) {
+            /* Death's life force drain: half-physical damage does not reduce
+             * this permanent component. Keep the random draw and thresholds
+             * in the C order. */
+            mhm.permdmg = random.rn2(Math.trunc(mhm.damage / 2) + 1);
+            if (Upolyd(state.u)
+                || state.u.uhpmax > 25 * state.u.ulevel)
+                mhm.permdmg = mhm.damage;
+            else if (state.u.uhpmax > 10 * state.u.ulevel)
+                mhm.permdmg += Math.trunc(mhm.damage / 2);
+            else if (state.u.uhpmax > 5 * state.u.ulevel)
+                mhm.permdmg += Math.trunc(mhm.damage / 4);
+
+            let lowerlimit;
+            if (Upolyd(state.u)) {
+                lowerlimit = Math.min(
+                    state.youmonst.data.mlevel, state.u.ulevel,
+                );
+            } else {
+                lowerlimit = minuhpmax(1, state);
+            }
+            const hpmax = Upolyd(state.u) ? state.u.mhmax : state.u.uhpmax;
+            const reduced = hpmax - mhm.permdmg;
+            if (reduced > lowerlimit) {
+                if (Upolyd(state.u)) state.u.mhmax = reduced;
+                else state.u.uhpmax = reduced;
+            } else if (hpmax > lowerlimit) {
+                if (Upolyd(state.u)) state.u.mhmax = lowerlimit;
+                else state.u.uhpmax = lowerlimit;
+            }
+            state.disp ??= {};
+            state.disp.botl = true;
+        }
 
         await mdamageu(mtmp, mhm.damage, state, env);
         // A completed really_done() must not continue into passiveum() or the
@@ -1611,9 +1729,8 @@ export function ranged_attk_available(mtmp, rawEnv = {}) {
 //
 // The source calls whose results are discarded but whose full owners
 // are outside this span remain named at their call sites: erode_armor,
-// acid_damage, drain_item, shieldeff, and split_mon.  Their surrounding
-// source branches still consume the conditional draws before recording the
-// discarded call.
+// acid_damage, drain_item, and shieldeff. Their surrounding source branches
+// still consume the conditional draws before recording the discarded call.
 async function assess_dmg(mtmp, tmp, state, env) {
     const message = env.message
         ?? (env.planning ? async () => {} : ttyPline);
@@ -1810,8 +1927,17 @@ async function passiveum(olduasmon, mtmp, mattk, state, env) {
             state.u.mh += Math.trunc((tmp + random.rn2(2)) / 2);
             if (state.u.mhmax < state.u.mh)
                 state.u.mhmax = state.u.mh;
-            if (state.u.mhmax > ((state.youmonst.data.mlevel + 1) * 8))
-                note_unported('mon.c split_mon');
+            if (state.u.mhmax > ((state.youmonst.data.mlevel + 1) * 8)) {
+                // C discards split_mon()'s returned clone, but the call still
+                // performs the hero HP/max-HP split before passiveum returns.
+                const { split_mon } = await import('./potion.js');
+                await split_mon(state.youmonst, mtmp, {
+                    ...env,
+                    state,
+                    random,
+                    message,
+                });
+            }
             break;
         case M.AD_STUN:
             if (!mtmp.mstun) {

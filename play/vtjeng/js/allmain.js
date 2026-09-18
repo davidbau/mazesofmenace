@@ -125,7 +125,7 @@ import {
 } from './startup_a11y.js';
 import { u_wipe_engr } from './engrave.js';
 import { check_special_room } from './rooms.js';
-import { mnexto } from './teleport.js';
+import { mnexto, rloc } from './teleport.js';
 import {
     block_point,
     cansee,
@@ -158,7 +158,11 @@ import { UnsupportedEnlightenmentError } from './insight.js';
 import { UnsupportedShopError } from './shk.js';
 import { UnsupportedVaultGuardError, invault } from './vault.js';
 import { fightm } from './mhitm.js';
-import { m_everyturn_effect } from './monmove.js';
+import {
+    m_everyturn_effect,
+    onscary,
+    set_apparxy,
+} from './monmove.js';
 import {
     admitPlannedVisionChange,
     preflightElapsedTurnTail,
@@ -171,6 +175,7 @@ import {
     create_gas_cloud,
     run_regions,
 } from './region.js';
+import { note_unported } from './unported.js';
 import {
     UnsupportedHeroTimeoutBoundaryError,
     nh_timeout,
@@ -178,7 +183,7 @@ import {
     preflight_nh_timeout_elapsed_turn,
 } from './timeout.js';
 import { regen_hp, regen_pw } from './regen.js';
-import { automatic_search } from './detect.js';
+import { automatic_search, warnreveal } from './detect.js';
 import { age_spells } from './spell.js';
 import { settrack } from './track.js';
 import { clear_splitobjs } from './obj.js';
@@ -672,17 +677,45 @@ function elapsedTurnMinLiquid(monster, env) {
         unsupported: unavailableElapsedTurnOperation(
             'monster liquid effect',
         ),
-        relocateMonster: unavailableElapsedTurnOperation(
-            'monster liquid relocation',
+        // minliquid() uses rloc()'s result to decide whether its liquid
+        // effect is finished. Keep the relocation on the elapsed-turn state
+        // and provide the complete teleport.c hook set for both the planning
+        // and live passes.
+        relocateMonster: (subject, flags, relocationEnv) => rloc(
+            subject,
+            flags,
+            {
+                ...relocationEnv,
+                state: env.state,
+                random: relocationEnv.random ?? env.random,
+                message: env.planning ? async () => {} : ttyPline,
+                newsym: env.planning
+                    ? () => {}
+                    : (x, y) => newsym(x, y, env.state),
+                onscary: (x, y, target) => onscary(
+                    x,
+                    y,
+                    target,
+                    env.state,
+                ),
+                setApparxy: (target, setEnv) => set_apparxy(target, {
+                    ...setEnv,
+                    state: env.state,
+                    random: relocationEnv.random ?? env.random,
+                }),
+            },
         ),
-        fireDamageChain: unavailableElapsedTurnOperation(
-            'monster fire inventory damage',
-        ),
-        waterDamageChain: unavailableElapsedTurnOperation(
-            'monster water inventory damage',
-        ),
-        dealWithOvercrowding: unavailableElapsedTurnOperation(
-            'monster liquid overcrowding',
+        // C discards both inventory-chain return values. The chain owners
+        // remain unported, so record their exact source calls and continue
+        // the minliquid branch rather than turning a valid monster effect
+        // into an elapsed-turn refusal.
+        fireDamageChain: () => note_unported('trap.c fire_damage_chain'),
+        waterDamageChain: () => note_unported('trap.c water_damage_chain'),
+        // C discards deal_with_overcrowding()'s result. Its remaining level
+        // transition branches are outside this span, so name and skip that
+        // discarded call after rloc() has returned false.
+        dealWithOvercrowding: () => note_unported(
+            'mon.c deal_with_overcrowding',
         ),
         hooks: {
             ...(env.hooks ?? {}),
@@ -903,19 +936,13 @@ async function finishElapsedTurnAfterTimeout(
     }
     await regen_pw(wtcap, state, regenEnv);
 
-    // C ref: allmain.c moveloop_core():342-344. A Ranger or an Archeologist
+    // C ref: allmain.c moveloop_core():342-346. A Ranger or an Archeologist
     // holds SEARCHING from experience level 1 (js/attrib.js ran_abil and
-    // arc_abil), so this runs on every turn that hero takes.
-    //
-    // No converting try wraps the call, and none is owed. detect.c dosearch0()
-    // keeps every branch this port cannot finish behind one of its `!aflag`
-    // tests -- feel_location() at 2040 and mfind0() at 2064 -- or behind the
-    // Norep() at 2023, so UnsupportedSearchError belongs to the explicit `s`
-    // command alone and js/cmd.js failClosedCommandRefusals() is its only
-    // owner. The third `!aflag` test, unmap_invisible() at 2076, refuses
-    // nothing now that both of its arms are ported. scripts/detect.test.mjs
-    // 'every explicit search refusal leaves the automatic arm intact' pins
-    // that split on ten shared states.
+    // arc_abil), so automatic searching runs on every turn that hero takes;
+    // the following Warning arm then reveals nearby hidden threats through
+    // detect.c warnreveal(). UnsupportedSearchError remains limited to the
+    // explicit `s` command's unported terrain/trap branches and is converted
+    // by js/cmd.js at that command boundary.
     //
     // detect.c:2079-2088, the trap block, is the one C does not gate on aflag,
     // and js/detect.js preflightTrap() refuses its two unported branches --
@@ -927,12 +954,26 @@ async function finishElapsedTurnAfterTimeout(
     // arrival square, while hallucination has no D:1 source this port reaches.
     // Give them the boundary class, and this seam its catch, when a recorded
     // case reaches one.
+    const searchEnv = {
+        state,
+        random,
+        planning,
+        // A planning clone must not repaint the live terminal.  The
+        // discovery state changes still run on the clone through
+        // detect.c's mfind0() and warning reveal path.
+        newSym: planning ? () => {} : (x, y) => newsym(x, y),
+    };
     if (propertyActive(state, SEARCHING)
         && !state.level.flags?.noautosearch
         && (state.multi ?? 0) >= 0) {
         if (planning)
             elapsedTurnBoundary('burdened multi-cycle automatic search');
-        await automatic_search({ state, random });
+        await automatic_search(searchEnv);
+    }
+    if (propertyActive(state, WARNING)) {
+        await warnreveal({
+            ...searchEnv,
+        });
     }
     // C ref: allmain.c:351 mkot_trap_warn(). Sense traps near the hero when
     // wielding the Master Key of Thievery without gloves.
