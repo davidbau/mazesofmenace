@@ -176,6 +176,7 @@ import {
     Hallucination, rndmonnam,
 } from './do_name.js';
 import { objdescr_is } from './apply.js';
+import { explode_oil } from './explode.js';
 import { remove_worn_item } from './steal.js';
 import { newuhs, fix_petrification, Unaware } from './eat.js';
 import { heal_legs, water_damage, float_up, self_invis_message, ceiling } from './trap.js';
@@ -360,8 +361,9 @@ async function peffect_oil(otmp) {
 
 /**
  * C ref: objnam.c fruitname — pl_fruit (+ " juice" when juice).
+ * Exported for do.c dosinkring RIN_POISON_RESISTANCE (D-2527).
  */
-function fruitname(juice) {
+export function fruitname(juice) {
     const raw = String(game.pl_fruit || game.flags?.fruit || 'slime mold');
     const of = raw.toLowerCase().indexOf(' of ');
     const fruitNam = of >= 0 ? raw.slice(of + 4) : raw;
@@ -2735,7 +2737,7 @@ function Unaware_pot() {
 /**
  * C youprop.h Half_gas_damage — damp/wet towel (ublindf spe > 0).
  */
-function Half_gas_damage() {
+export function Half_gas_damage() {
     const t = game.u?.ublindf;
     return !!(t && TOWEL >= 0 && t.otyp === TOWEL && (t.spe | 0) > 0);
 }
@@ -3747,22 +3749,6 @@ async function potionhit_mon_illness(mon) {
             await pline(`${Monnam(mon)} looks rather ill.`);
         }
     }
-}
-
-/**
- * C explode.c explode_oil :974–983 / splatter_burning_oil :962–969.
- * Caller already gated on lamplit. end_burn then LOST_EXPLODING then
- * explode ZT_SPELL_O_FIRE / BURNING_OIL / EXPL_FIERY.
- */
-async function explode_oil(obj, x, y) {
-    if (!obj) return;
-    const diluted = !!obj.odiluted;
-    const { end_burn } = await import('./timeout.js');
-    end_burn(obj, true);
-    obj.how_lost = LOST_EXPLODING;
-    const dmg = d(diluted ? 3 : 4, 4);
-    const { explode } = await import('./explode.js');
-    await explode(x, y, ZT_SPELL_O_FIRE, dmg, BURNING_OIL, EXPL_FIERY);
 }
 
 /**

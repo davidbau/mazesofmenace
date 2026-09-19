@@ -5,14 +5,15 @@
 
 import { game } from './gstate.js';
 import { rn1, rn2, rnd } from './rng.js';
-import { MAXULEV, NATTK, LARGEST_INT, Upolyd, ismnum, LL_MINORAC, KILLED_BY, DIED } from './const.js';
+import { MAXULEV, NATTK, LARGEST_INT, Upolyd, LL_MINORAC, KILLED_BY, DIED } from './const.js';
 import { pline } from './display.js';
-import { acurr, A_WIS, newhp, adjabil } from './attrib.js';
+import { acurr, A_WIS, newhp, adjabil, minuhpmax } from './attrib.js';
+import { resists_drli } from './zap.js';
+import { monhp_per_lvl } from './makemon.js';
+import { rehumanize } from './polyself.js';
 import { find_mac } from './mhitm.js';
 import { NORMAL_SPEED } from './mon.js';
-import {
-    extra_nasty, is_undead, is_demon, is_were, is_vampshifter,
-} from './monsters.js';
+import { extra_nasty } from './monsters.js';
 import { Goodbye, xlev_to_rank } from './roles.js';
 import {
     PM_CLERIC,
@@ -284,90 +285,83 @@ export async function newexplevel() {
 }
 
 /**
- * C ref: mondata.c resists_drli — undead/demon/were/lycan/vampshifter.
- * Named omit: defended(AD_DRLI) worn-item walk (Drain_resistance H||E
- * covers the youprop throne gate).
- */
-function resists_drli_you() {
-    const u = game.u || {};
-    const ptr = game.youmonst?.data;
-    if (is_undead(ptr) || is_demon(ptr) || is_were(ptr)
-        || ismnum(u.ulycn)
-        || is_vampshifter(game.youmonst)) {
-        return true;
-    }
-    return !!((u.HDrain_resistance | 0) || (u.EDrain_resistance | 0)
-        || u.Drain_resistance);
-}
-
-/**
- * C ref: exper.c losexp `:207–293` — drain one experience level.
- * Level-1 drain with a drainer is fatal `:232–237` (killer.format
- * KILLED_BY, killer.name=drainer, done(DIED)); done() returns on
- * Lifesaved or a declined wizard/explore "Die?", then play continues
- * below like C (D-1894).
- * Named omit: SoundAchievement; Upolyd monhp_per_lvl/rehumanize;
- * uhpmax-up clamp via setuhpmax.
+ * C ref: exper.c losexp `:207–291` — drain one experience level, in C order.
+ * Level-1 drain with a drainer is fatal `:233–237` (killer KILLED_BY,
+ * killer.name=drainer, done(DIED)); done() returns on Lifesaved or a
+ * declined wizard/explore "Die?", then play continues below like C (D-1894).
+ * Named omissions: SoundAchievement `:231` (no SND_LIB, same as pluslvl);
+ * fuzzer_savelife (debug-fuzz only — the `:240–243` early return is kept).
  */
 export async function losexp(drainer) {
     const u = game.u || (game.u = {});
-    // C exper.c:214–217 — #levelchange overrides Drain_resistance and
-    // is never fatal (drainer becomes Null).
+    // C `:212–217` — explicit #levelchange overrides life-drain
+    // resistance and is never fatal (drainer becomes Null).
     if (drainer && drainer === '#levelchange') {
         drainer = null;
-    } else if (resists_drli_you()) {
+    } else if (resists_drli(game.youmonst)) { // C `:216` — mondata.c resists_drli
         return;
     }
 
+    // C `:219–224` — level-loss message; "Goodbye level 1." is fatal;
+    // divine anger (drainer==NULL) on a level-1 character resets to 0 XP
+    // silently.
     if ((u.ulevel | 0) > 1 || drainer) {
         await pline(`${Goodbye()} level ${u.ulevel | 0}.`);
     }
 
     if ((u.ulevel | 0) > 1) {
+        // C `:226–231` — lose the level, shed intrinsics, chronicle it.
         u.ulevel = (u.ulevel | 0) - 1;
         await adjabil((u.ulevel | 0) + 1, u.ulevel | 0);
-        // C ref: exper.c losexp — livelog the lost level; SoundAchievement
-        // sa2_xpleveldown deferred (no SND_LIB).
         livelog_printf(LL_MINORAC, 'lost experience level %d', (u.ulevel | 0) + 1);
-    } else {
-        // C exper.c:232-237 — level-1 drain with a drainer is fatal:
-        // killer.format=KILLED_BY, killer.name=drainer, done(DIED).
-        // done() returns when Lifesaved or when wizard/explore declines
-        // the "Die?" prompt; play then continues below like C.
+    } else { // C `:232` — ulevel==1
         if (drainer) {
+            // C `:233–237` — fatal drain: killer KILLED_BY + drainer name.
+            // svk.killer.name != drainer is a pointer check; the JS string
+            // compare is its value equivalent.
             if (!game.killer) game.killer = { name: '', format: 0 };
             game.killer.format = KILLED_BY;
             if (game.killer.name !== drainer) game.killer.name = drainer;
             await done(DIED);
-            // C :239-243 — debug-fuzz savelife can raise ulevel past 1.
-            if ((u.ulevel | 0) > 1) return;
         }
-        u.uexp = 0;
-        // C ref: exper.c losexp — divine-anger reset to 0 XP still chronicles.
-        livelog_printf(LL_MINORAC, 'lost all experience');
+        // C `:239–243` — no drainer, or lifesaved: a debug-fuzz
+        // fuzzer_savelife() blessed restore-ability can raise ulevel past 1.
+        if ((u.ulevel | 0) > 1) return;
+        u.uexp = 0; // C `:244`
+        livelog_printf(LL_MINORAC, 'lost all experience'); // C `:245`
     }
 
-    const olduhpmax = u.uhpmax | 0;
-    const uhpmin = Math.max(u.ulevel | 0, 10); // attrib.c minuhpmax(10)
-    const numHp = (u.uhpinc?.[u.ulevel | 0] | 0);
-    u.uhpmax = olduhpmax - numHp;
-    if ((u.uhpmax | 0) < uhpmin) u.uhpmax = uhpmin;
-    if ((u.uhpmax | 0) > olduhpmax) u.uhpmax = olduhpmax;
-    u.uhp = (u.uhp | 0) - numHp;
-    if ((u.uhp | 0) < 1) u.uhp = 1;
-    else if ((u.uhp | 0) > (u.uhpmax | 0)) u.uhp = u.uhpmax;
+    // C `:247` assert(ulevel in range) — valid array index by construction.
+    const olduhpmax = u.uhpmax | 0; // C `:249`
+    const uhpmin = minuhpmax(10); // C `:250` — same minimum as life-saving
+    const numHp = (u.uhpinc?.[u.ulevel | 0] | 0); // C `:251`
+    u.uhpmax = olduhpmax - numHp; // C `:252`
+    if ((u.uhpmax | 0) < uhpmin) setuhpmax(uhpmin, true); // C `:253–254`
+    // C `:255–259` — never let uhpmax go up (strength-loss, fire-trap and
+    // Death minimums differ); healing-wielder drain assumes no rise.
+    if ((u.uhpmax | 0) > olduhpmax) setuhpmax(olduhpmax, true); // C `:260–261`
 
-    const numEn = (u.ueninc?.[u.ulevel | 0] | 0);
-    u.uenmax = (u.uenmax | 0) - numEn;
-    if ((u.uenmax | 0) < 0) u.uenmax = 0;
-    u.uen = (u.uen | 0) - numEn;
-    if ((u.uen | 0) < 0) u.uen = 0;
-    else if ((u.uen | 0) > (u.uenmax | 0)) u.uen = u.uenmax;
+    u.uhp = (u.uhp | 0) - numHp; // C `:263`
+    if ((u.uhp | 0) < 1) u.uhp = 1; // C `:264–265`
+    else if ((u.uhp | 0) > (u.uhpmax | 0)) u.uhp = u.uhpmax; // C `:266–267`
 
-    if ((u.uexp | 0) > 0) u.uexp = newuexp(u.ulevel | 0) - 1;
+    const numEn = (u.ueninc?.[u.ulevel | 0] | 0); // C `:269`
+    u.uenmax = (u.uenmax | 0) - numEn; // C `:270`
+    if ((u.uenmax | 0) < 0) u.uenmax = 0; // C `:271–272`
+    u.uen = (u.uen | 0) - numEn; // C `:273`
+    if ((u.uen | 0) < 0) u.uen = 0; // C `:274–275`
+    else if ((u.uen | 0) > (u.uenmax | 0)) u.uen = u.uenmax; // C `:276–277`
 
-    // Upolyd mh strip + rehumanize deferred
-    if (!game.flags) game.flags = {};
+    if ((u.uexp | 0) > 0) u.uexp = newuexp(u.ulevel | 0) - 1; // C `:279–280`
+
+    if (Upolyd(u)) { // C `:282–288`
+        const numUp = monhp_per_lvl(game.youmonst); // C `:283`
+        u.mhmax = (u.mhmax | 0) - numUp; // C `:284`
+        u.mh = (u.mh | 0) - numUp; // C `:285`
+        if ((u.mh | 0) <= 0) await rehumanize(); // C `:286–287`
+    }
+
+    if (!game.flags) game.flags = {}; // C `:290` disp.botl = TRUE
     game.flags.botl = true;
     if (game.disp) game.disp.botl = true;
 }

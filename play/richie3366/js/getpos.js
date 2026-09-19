@@ -18,7 +18,7 @@
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import {
-    flush_screen, flush_screen_getpos_dirty, pline, docrt, docrt_flags, docrtRefresh,
+    flush_screen, flush_screen_getpos_dirty, pline, You, coord_desc, docrt, docrt_flags, docrtRefresh,
     terrain_glyph,
     look_shown_at, newsym_force, glyph_is_invisible,
     glyph_at, glyph_is_cmap, glyph_to_cmap, back_to_glyph,
@@ -26,7 +26,7 @@ import {
 } from './display.js';
 import { cansee } from './vision.js';
 import { do_screen_description } from './pager.js';
-import { NO_COLOR } from './terminal.js';
+import { NO_COLOR, ATR_INVERSE } from './terminal.js';
 import {
     COLNO, ROWNO, isok, TER_MON, TER_OBJ, TER_MAP, TER_DETECT,
     GLOC_MONS, GLOC_OBJS, GLOC_DOOR, GLOC_EXPLORE, GLOC_INTERESTING, GLOC_VALID,
@@ -62,6 +62,8 @@ import { visctrl } from './dokeylist.js';
 import { distmin } from './hacklib.js';
 import { engr_at } from './engrave.js';
 import { objectNames } from './objects.js';
+import { an } from './objnam.js';
+import { select_menu_pick_one } from './options.js';
 import { PM_LONG_WORM_TAIL } from './generated/monsters_data.js';
 
 export const LOOK_TRADITIONAL = 0;
@@ -924,6 +926,77 @@ function gather_locs(gloc) {
     return { arr, count: arr.length };
 }
 
+/**
+ * C ref: getpos.c getpos_menu `:665–725` — PICK_ONE menu over the
+ * gather_locs spots (array[0] == hero skipped) when getloc_usemenu is on
+ * (m|M o|O d|D x|X a|A z|Z key) or menu_requested travel (`_`). The C
+ * window layer (create_nhwindow/start_menu/add_menu/end_menu/select_menu/
+ * destroy_nhwindow, `nul_glyphinfo`, ATR_NONE, clr=NO_COLOR,
+ * MENU_ITEMFLAGS_NONE, `any.a_int`, free()) maps to one
+ * select_menu_pick_one call (same mapping as there_cmd_menu/doextlist):
+ * title + blank header rows, one selectable row per spot whose
+ * do_screen_description succeeds, the 1-based garr index carried as
+ * `a_int` for the C `:719` readback. C order, all arms.
+ * @param {{x:number,y:number}} ccp — out: chosen spot (untouched on cancel)
+ * @param {number} gloc — GLOC_* selector
+ * @returns {Promise<boolean>} C boolean (pick_cnt > 0)
+ */
+export async function getpos_menu(ccp, gloc) {
+    // C `:677` — gather_locs fills garr/gcount (file-local here).
+    const { arr, count } = gather_locs(gloc);
+
+    // C `:679–685` — gcount always includes the hero; fewer than 2 means
+    // nothing to list. free(garr) is a GC no-op in JS.
+    if (count < 2) {
+        await You(
+            'cannot %s %s.',
+            (game.iflags?.getloc_filter | 0) === GFILTER_VIEW ? 'see' : 'detect',
+            GLOC_DESCR[gloc][0],
+        );
+        return false;
+    }
+
+    // C `:687–689` — create_nhwindow(NHW_MENU) + start_menu STANDARD +
+    // any = cg.zeroany: the item list below. `:692` skip array[0] (hero).
+    const items = [];
+    for (let i = 1; i < count; i++) {
+        // C `:693–697` — firstmatch "unknown", sym 0, any.a_int = i + 1.
+        const a_int = i + 1;
+        const x = arr[i].x;
+        const y = arr[i].y;
+        const outStr = { s: '' };
+        const firstMatch = { v: 'unknown' };
+        // C `:699–700` — only described spots get a menu row.
+        if (do_screen_description({ x, y }, true, 0, outStr, firstMatch, null)) {
+            // C `:701–702` — coord_desc reuses tmpbuf (coords only; the
+            // description stays in firstmatch which never aliases tmpbuf).
+            const coords = coord_desc(x, y, game.iflags?.getpos_coords);
+            // C `:703–704` — "firstmatch[ coords]".
+            const fullbuf = `${firstMatch.v}${coords ? ' ' : ''}${coords}`;
+            // C `:705–706` — add_menu ATR_NONE/clr/MENU_ITEMFLAGS_NONE.
+            items.push({ text: fullbuf, attr: 0, selectable: true, a_int });
+        }
+    }
+
+    // C `:710–713` — end_menu title "Pick <an item>[ filter][ for travel]".
+    const title = `Pick ${an(GLOC_DESCR[gloc][1])}`
+        + (GLOC_FILTERTXT[game.iflags?.getloc_filter | 0] || '')
+        + (game.iflags?.getloc_travelmode ? ' for travel destination' : '');
+    // C `:714–716` — select_menu PICK_ONE + destroy_nhwindow; title + blank
+    // header rows follow the there_cmd_menu/doextlist convention.
+    const res = await select_menu_pick_one([
+        { text: title, attr: ATR_INVERSE, selectable: false },
+        { text: '', attr: 0, selectable: false },
+        ...items,
+    ]);
+    // C `:717–722` — pick_cnt > 0 writes garr[a_int - 1] into ccp.
+    if (res.kind !== 'pick' || res.item == null) return false;
+    const idx = ((res.item.a_int | 0) - 1) | 0;
+    ccp.x = arr[idx].x;
+    ccp.y = arr[idx].y;
+    return true;
+}
+
 // C ref: cmd.c spkeys_binds defaults (!num_pad) for getpos help text.
 const GETPOS_SPKEY_DEFAULT = {
     [NHKF_GETPOS_SELF]: '@'.charCodeAt(0),
@@ -1456,12 +1529,22 @@ export async function getpos(ccp, force, goal, describeAt) {
             continue;
         }
 
-        // C ref: getpos.c mMoOdDxX — gather_locs + next/prev (gloc 0..5).
-        // getloc_usemenu → getpos_menu named omitted (cycle path).
+        // C ref: getpos.c mMoOdDxX — getpos_menu pick when getloc_usemenu,
+        // else gather_locs + next/prev (gloc 0..5).
         {
             const gtmp = mMoOdDxX_nhkf.findIndex((nhkf) => key === getpos_spkey(nhkf));
             if (gtmp >= 0) {
                 const gloc = gtmp >> 1; // 0..5 MONS..VALID
+                // C getpos.c:1016–1022 — getloc_usemenu replaces the cycle
+                // with a getpos_menu pick; cancel keeps the cursor (nxtc).
+                if (g.iflags?.getloc_usemenu) {
+                    const tmpcrd = { x: 0, y: 0 };
+                    if (await getpos_menu(tmpcrd, gloc)) {
+                        cx = tmpcrd.x;
+                        cy = tmpcrd.y;
+                    }
+                    continue;
+                }
                 if (!garr[gloc]) {
                     const gathered = gather_locs(gloc);
                     garr[gloc] = gathered.arr;

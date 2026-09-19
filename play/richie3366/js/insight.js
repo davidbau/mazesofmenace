@@ -77,7 +77,7 @@ import {
     VANQ_COUNT_H_L,
     VANQ_COUNT_L_H,
 } from './const.js';
-import { pline } from './display.js';
+import { pline, impossible } from './display.js';
 import { livelog_printf } from './pline.js';
 import { objectNameStrs } from './objects.js';
 import { show_text_pages, show_nhw_menu_text, mhidden_description } from './pager.js';
@@ -339,52 +339,70 @@ const achieve_msg = [
 ];
 
 /**
- * C ref: insight.c record_achievement — append unless duplicate abs.
- * SoundAchievement named (contest Soundeffect is empty).
+ * C ref: insight.c record_achievement `:2407–2472` — record an achievement
+ * in u.uachieved (0-terminated; ranks stored negated for female), sound it,
+ * and livelog it unless recorded during final disclosure.
  */
 export function record_achievement(achidx) {
-    const absidx = Math.abs(achidx | 0);
-    if (((achidx | 0) < 1 && (absidx < ACH_RNK1 || absidx > ACH_RNK8))
-        || (achidx | 0) >= N_ACH) {
+    // C `:2412` int i, absidx; int repeat_achievement = 0.
+    const ai = achidx | 0;
+    const absidx = Math.abs(ai);
+    // C `:2414–2421` — valid achievements are 1..N_ACH-1, but ranks may be
+    // stored as the complement (negative) to track gender.
+    if ((ai < 1 && (absidx < ACH_RNK1 || absidx > ACH_RNK8))
+        || ai >= N_ACH) {
+        // C `:2419` — sync callers don't await (cf. do_wear.js setworn).
+        impossible('Achievement #%d is out of range.', ai);
         return;
     }
+    // C `:2423–2433` — the list has an extra slot so at least one 0 always
+    // ends it; find the first empty slot or achievement #achidx. Duplicates
+    // happen when Bell, Candelabrum, Book or Amulet is dropped and re-taken.
     const ach = ensure_uachieved();
     let i = 0;
-    let repeat = false;
-    for (; ach[i]; i++) {
+    let repeat_achievement = false;
+    for (; ach[i]; ++i) {
         if (Math.abs(ach[i] | 0) === absidx) {
-            repeat = true;
+            repeat_achievement = true;
             break;
         }
     }
-    // SoundAchievement(achidx, 0, repeat) named — no SND_LIB
-    if (repeat) return;
-    ach[i] = achidx | 0;
-    ach[i + 1] = 0;
+    // C `:2435–2441` — sound even on repeat (level-based theme music hook).
+    // sndprocs.h `:232–237` calls sound_achievement when a SND_LIB_* backend
+    // is integrated, but no SND_LIB_* backend is defined in this build, so
+    // the `:274` empty definition applies: a compile-time no-op, named here.
+    if (repeat_achievement) return; // C `:2443–2444` don't duplicate it
+    ach[i] = ai; // C `:2445`
+    ach[i + 1] = 0; // keep the 0-terminated invariant (C relies on the extra slot)
 
-    /* avoid livelog during final disclosure (nudist / blind-from-birth /
-       ascension logged separately in really_done) */
+    // C `:2447–2451` — no livelog during final disclosure (nudist and
+    // blind-from-birth); ascension is logged separately in really_done().
     if (game.program_state?.gameover) return;
 
-    const row = achieve_msg[absidx] || achieve_msg[0];
     if (absidx >= ACH_RNK1 && absidx <= ACH_RNK8) {
+        // C `:2453–2461` — rank titles are built on the fly by role.
+        const row = achieve_msg[absidx];
         const u = game.u || {};
-        const title = rank_of(
-            rank_to_xlev(absidx - (ACH_RNK1 - 1)),
-            game.urole?.mnum,
-            achidx < 0,
-        );
         livelog_printf(row.llflag,
             'attained the rank of %s (level %d)',
-            title, u.ulevel | 0);
-    } else if (achidx === ACH_SOKO_PRIZE || achidx === ACH_MINE_PRIZE) {
-        const otyp = achidx === ACH_SOKO_PRIZE
+            rank_of(rank_to_xlev(absidx - (ACH_RNK1 - 1)),
+                    game.urole?.mnum, // C Role_switch = gu.urole.mnum (you.h:248)
+                    (ai < 0) ? true : false),
+            u.ulevel | 0);
+    } else if (ai === ACH_SOKO_PRIZE || ai === ACH_MINE_PRIZE) {
+        // C `:2462–2468` — these two append the prize item's name. C indexes
+        // achieve_msg[achidx]; achidx > 0 here so it equals [absidx].
+        // OBJ_NAME(objects[otyp]) (objclass.h:190) is the generated oc_name
+        // table (both "bag of holding" and "amulet of reflection" are fully
+        // named in their objects[] entry, per the C note).
+        const otyp = (ai === ACH_SOKO_PRIZE)
             ? (game.context?.achieveo?.soko_prize_otyp | 0)
             : (game.context?.achieveo?.mines_prize_otyp | 0);
-        livelog_printf(row.llflag, '%s %s',
-            row.msg, objectNameStrs[otyp] || '');
+        livelog_printf(achieve_msg[ai].llflag, '%s %s',
+            achieve_msg[ai].msg, objectNameStrs[otyp] || '');
     } else {
-        livelog_printf(row.llflag, '%s', row.msg);
+        // C `:2469–2471`
+        livelog_printf(achieve_msg[absidx].llflag, '%s', achieve_msg[absidx].msg);
     }
 }
 

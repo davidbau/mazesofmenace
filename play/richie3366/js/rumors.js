@@ -5,7 +5,7 @@
 import { rn2, rnd } from './rng.js';
 import { game } from './gstate.js';
 import { A_WIS, exercise } from './attrib.js';
-import { pline, verbalize } from './display.js';
+import { pline, verbalize, impossible } from './display.js';
 import { SetVoice, voice_oracle } from './sndprocs.js';
 import { Monnam } from './do_name.js';
 import { ynq, y_n } from './getline.js';
@@ -14,7 +14,7 @@ import { money_cnt, money2mon } from './shk.js';
 import { record_achievement } from './insight.js';
 import { more_experienced, newexplevel } from './exper.js';
 import { show_text_pages } from './pager.js';
-import { ACH_ORCL, ECMD_OK, ECMD_TIME } from './const.js';
+import { ACH_ORCL, ECMD_OK, ECMD_TIME, RUMORFILE } from './const.js';
 import {
     TRUE_RUMOR_BUF,
     FALSE_RUMOR_BUF,
@@ -83,28 +83,74 @@ export function get_rnd_text(buf, rng = rn2, padlength = MD_PAD_RUMORS) {
 }
 
 /**
- * C ref: rumors.c getrumor(truth, rumor_buf, exclude_cookie)
+ * C ref: rumors.c getrumor `:117–191` — rumor_buf OUT-param becomes the
+ * return string (callers `getrumor(0, true)` / `getrumor(truth, bool)`).
+ * dlb file handles are Rule #2 embeds (D-0477): TRUE/FALSE_RUMOR_BUF hold
+ * the true/false sections, so dlb_fopen always succeeds and dlb_fclose is
+ * a no-op; init_rumors header parse ran at build time (extract-rumors.py).
+ * RNG order kept: rn2(2) for adjtruth, then get_rnd_line draws.
  */
 export function getrumor(truth = 0, exclude_cookie = true) {
+    // C :125 rumor_buf[0] = '\0'
     let rumor = '';
-    let count = 0;
-    let adjtruth = 0;
-    do {
-        rumor = '';
-        adjtruth = truth + rn2(2);
-        const buf = (adjtruth === 1 || adjtruth === 2) ? TRUE_RUMOR_BUF : FALSE_RUMOR_BUF;
-        rumor = get_rnd_line(buf);
-        if (exclude_cookie && rumor.startsWith('[cookie] ')) rumor = '';
-    } while (count++ < 50 && exclude_cookie && !rumor);
-
-    if (!exclude_cookie && rumor.startsWith('[cookie] '))
+    // C :129 a previous try failed to open RUMORFILE
+    if ((game.true_rumor_size ?? 0) < 0) return rumor;
+    // C :132 rumors = dlb_fopen(RUMORFILE, "r") — embed always opens
+    if (TRUE_RUMOR_BUF && FALSE_RUMOR_BUF) {
+        let count = 0; // C :134
+        let adjtruth = 0; // C :135, read at :175 below
+        do {
+            rumor = ''; // C :138
+            // C :139-143 first outrumor() inits sizes; embed sets them
+            // from the split buffers (starts/ends subsumed by the split)
+            if ((game.true_rumor_size ?? 0) === 0) {
+                if (TRUE_RUMOR_BUF.length > 0 && FALSE_RUMOR_BUF.length > 0) {
+                    game.true_rumor_size = TRUE_RUMOR_BUF.length;
+                    game.false_rumor_size = FALSE_RUMOR_BUF.length;
+                } else {
+                    game.true_rumor_size = -1; // C :104 init failed
+                    rumor = `Error reading "${RUMORFILE.slice(0, 80)}".`; // C :141 %.80s
+                    return rumor; // C :142
+                }
+            }
+            // C :149 switch (adjtruth = truth + rn2(2))
+            adjtruth = truth + rn2(2);
+            let buf;
+            switch (adjtruth) {
+            case 2: // C :150 (bogus-input passthrough)
+            case 1: // C :151
+                buf = TRUE_RUMOR_BUF; // C :153-155 true range
+                break;
+            case 0: // C :157 (0 means false here, not "either")
+            case -1: // C :158
+                buf = FALSE_RUMOR_BUF; // C :159-160 false range
+                break;
+            default:
+                impossible('strange truth value for rumor'); // C :162
+                return 'Oops...'; // C :163 strcpy
+            }
+            // C :164-166 get_rnd_line(rumors, line, sizeof line, rn2,
+            // beginning, ending, MD_PAD_RUMORS) — buf section version
+            rumor = get_rnd_line(buf);
+        } while (count++ < 50 && exclude_cookie // C :168-170
+            && rumor.startsWith('[cookie] '));
+        // C :171 dlb_fclose — no-op under embed
+        if (count >= 50) // C :172
+            impossible("Can't find non-cookie rumor?"); // C :173
+        else if (!game.in_mklev) // C :174 avoid WIS for graffiti
+            exercise(A_WIS, adjtruth > 0); // C :175
+    } else {
+        // C :176-178 open failed — unreachable under embed; record so the
+        // C :129 guard trips on later calls, as C does
+        impossible(`Can't open '${RUMORFILE}' file.`);
+        game.true_rumor_size = -1;
+    }
+    if (!exclude_cookie // C :180-181
+        && rumor.startsWith('[cookie] ')) {
+        // C :183-189 memmove loop stripping the marker
         rumor = rumor.slice('[cookie] '.length);
-
-    // C: graffiti during mklev skips WIS exercise
-    if (!game.in_mklev)
-        exercise(A_WIS, adjtruth > 0);
-
-    return rumor;
+    }
+    return rumor; // C :190
 }
 
 /**

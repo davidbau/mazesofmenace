@@ -105,7 +105,7 @@ import {
     ECMD_OK, ECMD_TIME, MON_DETACH,
     Is_container, Waterproof_container, Is_box,
     xytodir, DIR_180, DIR_ERR,
-    OBJ_FLOOR, OBJ_FREE, VAULT, TEMPLE, SHOPBASE, ESHK, M_SEEN_ELEC, CONTAINED_TOO, BURIED_TOO,
+    OBJ_FLOOR, OBJ_FREE, VAULT, TEMPLE, SHOPBASE, ESHK, M_SEEN_ELEC, M_SEEN_FIRE, CONTAINED_TOO, BURIED_TOO,
     GETOBJ_PROMPT, GETOBJ_SUGGEST, GETOBJ_EXCLUDE, GETOBJ_DOWNPLAY,
     P_RIDING, P_BASIC, M_AP_FURNITURE, M_AP_OBJECT,
     A_LAWFUL, XKILL_NOMSG, SHOP_HOLE_COST,
@@ -130,7 +130,7 @@ import { observe_object, encumber_msg, near_capacity, makeknown, update_inventor
 import { makemon, rndmonnum_adj, mpickobj, set_malign, newcham } from './makemon.js';
 import {
     A_CHA, A_STR, A_DEX, A_CON, A_WIS, adjattrib, exercise, adjalign,
-    poisoned, change_luck, Fumbling, acurr,
+    poisoned, change_luck, Fumbling, acurr, minuhpmax,
 } from './attrib.js';
 import { tamedog, wary_dog, abuse_dog } from './dog.js';
 import { welded, uwepgone, uswapwepgone } from './wield.js';
@@ -155,10 +155,10 @@ import { unplacebc, placebc, ballfall, drag_ball, move_bc } from './ball.js';
 import { carried, is_fainted, reset_faint } from './eat.js';
 import { inv_cnt, remove_worn_item } from './steal.js';
 import { ynq } from './getline.js';
-import { more_experienced, newexplevel } from './exper.js';
+import { more_experienced, newexplevel, losexp, setuhpmax } from './exper.js';
 import { killed, stumble_onto_mimic } from './uhitm.js';
 import { rider_cant_reach, dismount_steed } from './steed.js';
-import { resist, blank_novel, poly_obj, is_ice } from './zap.js';
+import { resist, blank_novel, poly_obj, is_ice, Drain_resistance } from './zap.js';
 import { fill_pit, fillholetyp, liquid_flow, maybe_dunk_boulders, bury_an_obj } from './dig.js';
 import { u_wield_art, attacks, bare_artifactname, has_magic_key, is_art, defends_when_carried } from './artifact.js';
 import { ART_STING, ART_MAGICBANE } from './generated/artifacts_data.js';
@@ -4665,50 +4665,100 @@ export async function self_invis_message() {
 }
 
 /**
- * C ref: trap.c dofiretrap — null-box floor path.
- * Envelope: d(2,4); Underwater boil; tower pline; Fire_resistance rn2(2);
- * ordinary second d(2,4)+uhpmax rn2; losehp; burnarmor||rn2(3) →
- * destroy_items + ignite_items; burn_away_slime; burn_floor.
- * Named omissions: box/carried; shieldeff/monstseesu; Upolyd golem alts;
- * minuhpmax/setuhpmax/losexp; surface().
+ * C ref: trap.c dofiretrap `:4233–4314` — hero fire trap (box or floor).
+ * C order: `:4241` d(2,4) orig/num; `:4244–4253` box-unattended-pool /
+ * Underwater steam arm (`the(xname/surface)` spray, boil `rnd(3)`);
+ * `:4254–4256` tower pline (`bursts` box / `erupts` floor);
+ * `:4257–4261` Fire_resistance `shieldeff` + `monstseesu` + `rn2(2)`;
+ * `:4262–4284` Upolyd golem `mhmax` alts + `mlevel` burn + `monstunseesu`;
+ * `:4285–4300` ordinary second `d(2,4)` + `uhpmax` burn / `setuhpmax` /
+ * `losexp` drain gate + `monstunseesu`; `:4301–4304` `losehp` fire damage;
+ * `:4305` `burn_away_slime`; `:4307–4310` `burnarmor||rn2(3)` →
+ * `destroy_items(AD_FIRE)` + `ignite_items`; `:4311–4312` floor-only
+ * `burn_floor_objects` smell; `:4313–4314` unconditional `melt_ice`.
+ * Named omissions: none — every arm and callee is live or file-local.
  */
 async function dofiretrap(box) {
     const u = game.u || (game.u = {});
     const see_it = !Blind();
-    const orig_dmg = d(2, 4);
+    const orig_dmg = d(2, 4); /* C `:4241` orig_dmg = num = d(2,4) */
     let num = orig_dmg;
 
-    if (!box && u.Underwater) {
-        await pline('A cascade of steamy bubbles erupts from the floor!');
-        if (Fire_resistance()) await pline('You are uninjured.');
+    /* C `:4244` — (box && !carried(box)) ? pool-at-box : Underwater
+     * (youprop Underwater ≡ u.uinwater; u.Underwater is never written). */
+    if ((box && !carried(box)) ? is_pool(box.ox | 0, box.oy | 0) : (u.uinwater | 0)) {
+        await pline(
+            `A cascade of steamy bubbles erupts from ${the(box ? xname(box) : surface(u.ux, u.uy))}!`,
+        );
+        if (Fire_resistance()) await You('are uninjured.');
         else losehp(rnd(3), 'boiling water', KILLED_BY);
         return;
     }
     await pline(
-        `A ${TOWER_OF_FLAME} ${box ? 'bursts' : 'erupts'} from the floor!`,
+        `A ${TOWER_OF_FLAME} ${box ? 'bursts' : 'erupts'} from ${the(box ? xname(box) : surface(u.ux, u.uy))}!`,
     );
     if (Fire_resistance()) {
+        /* C `:4257–4261` */
+        await shieldeff(u.ux, u.uy);
+        monstseesu(M_SEEN_FIRE);
         num = rn2(2);
     } else if (Upolyd(u)) {
-        num = orig_dmg;
+        /* C `:4262–4284` — poly-form max-HP burn via golem alts. */
+        let alt;
+        switch (u.umonnum | 0) {
+        case PM_PAPER_GOLEM:
+            alt = u.mhmax | 0;
+            break;
+        case PM_STRAW_GOLEM:
+            alt = Math.trunc((u.mhmax | 0) / 2);
+            break;
+        case PM_WOOD_GOLEM:
+            alt = Math.trunc((u.mhmax | 0) / 4);
+            break;
+        case PM_LEATHER_GOLEM:
+            alt = Math.trunc((u.mhmax | 0) / 8);
+            break;
+        default:
+            alt = 0;
+            break;
+        }
+        if (alt > num) num = alt;
+        if ((u.mhmax | 0) > mons(u.umonnum | 0).mlevel) {
+            u.mhmax = (u.mhmax | 0) - rn2(Math.min(u.mhmax | 0, num + 1));
+            if (game.flags) game.flags.botl = true;
+            if (game.disp) game.disp.botl = true;
+        }
+        if ((u.mh | 0) > (u.mhmax | 0)) {
+            u.mh = u.mhmax;
+            if (game.flags) game.flags.botl = true;
+            if (game.disp) game.disp.botl = true;
+        }
+        monstunseesu(M_SEEN_FIRE);
     } else {
+        /* C `:4285–4300` — ordinary second d(2,4) + max-HP burn. */
+        const uhpmin = minuhpmax(1);
+        const olduhpmax = u.uhpmax | 0;
         num = d(2, 4);
-        const uhpmin = 1;
         if ((u.uhpmax | 0) > uhpmin) {
             u.uhpmax = (u.uhpmax | 0) - rn2(Math.min(u.uhpmax | 0, num + 1));
             if (game.flags) game.flags.botl = true;
+            if (game.disp) game.disp.botl = true;
+        } /* note: no 'else' here */
+        if ((u.uhpmax | 0) < uhpmin) {
+            setuhpmax(Math.min(olduhpmax, uhpmin), false); /* sets disp.botl */
+            if (!Drain_resistance()) await losexp(null); /* never fatal, drainer Null */
         }
         if ((u.uhp | 0) > (u.uhpmax | 0)) {
             u.uhp = u.uhpmax;
             if (game.flags) game.flags.botl = true;
+            if (game.disp) game.disp.botl = true;
         }
+        monstunseesu(M_SEEN_FIRE);
     }
-    if (!num) await pline('You are uninjured.');
-    else losehp(num, TOWER_OF_FLAME, KILLED_BY_AN);
-    {
-        const { burn_away_slime } = await import('./timeout.js');
-        await burn_away_slime();
-    }
+    if (!num) await You('are uninjured.');
+    else losehp(num, TOWER_OF_FLAME, KILLED_BY_AN); /* fire damage */
+    await burn_away_slime(); /* C `:4305`, static timeout.js import */
+
     const you = game.youmonst || { _youmonst: true };
     if ((await burnarmor(you)) || rn2(3)) {
         // Dynamic import avoids trap↔zap cycle.
@@ -4716,13 +4766,15 @@ async function dofiretrap(box) {
         await destroy_items(you, AD_FIRE, orig_dmg);
         await ignite_items(game.invent);
     }
-    // C: !box && burn_floor_objects(ux,uy,see_it,TRUE); smell if !see_it
     if (!box) {
-        const { burn_floor_objects, melt_ice, is_ice } = await import('./zap.js');
-        if (await burn_floor_objects(u.ux, u.uy, see_it, true) && !see_it) {
-            await pline('You smell paper burning.');
+        const { burn_floor_objects } = await import('./zap.js');
+        if ((await burn_floor_objects(u.ux, u.uy, see_it, true)) && !see_it) {
+            await You('smell paper burning.');
         }
-        if (is_ice(u.ux, u.uy)) await melt_ice(u.ux, u.uy, null);
+    }
+    if (is_ice(u.ux, u.uy)) {
+        const { melt_ice } = await import('./zap.js');
+        await melt_ice(u.ux, u.uy, null);
     }
 }
 

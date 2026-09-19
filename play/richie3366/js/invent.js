@@ -58,7 +58,7 @@ import {
 import { xprname, an, the, just_an, vtense, doname, distant_name, Japanese_item_name, xname, cxname_singular, set_xname_observe, set_distant_cansee, ansimpleoname, simpleonames, set_not_fully_identified, makeplural, makesingular, body_part_latebound, corpse_xname, killer_xname } from './objnam.js';
 import { yn_function, getlin, mungspaces } from './getline.js';
 import { get_count, pmatchi, cmdq_pop, cmdq_clear } from './cmd.js';
-import { mergable, is_damageable, stop_timer, splitobj, unsplitobj, clear_splitobjs, unknwn_contnr_contents, weight, delobj } from './mkobj.js';
+import { mergable, merged, is_damageable, stop_timer, splitobj, unsplitobj, clear_splitobjs, unknwn_contnr_contents, weight, delobj } from './mkobj.js';
 import { unpaid_cost, doinvbill, gem_learned, obfree, shopper_financial_report } from './shk.js';
 import { hidden_gold } from './vault.js';
 import { setnotworn, dropy } from './do.js';
@@ -8518,20 +8518,15 @@ function reorder_invent_adjust() {
 }
 
 /**
- * Absorb obj into otmp (C invent.c merged for invent stacks).
- * Returns survivor or null if not mergable.
+ * Absorb obj into otmp via C invent.c merged() (doadjust `:5205–5247`).
+ * Full C order (age, oname, lights, timers, compare-learn, worn fixup,
+ * globby) — not just quan/known. Returns survivor or null if not mergable.
+ * Caller re-extracts the survivor (C keeps merging into the extracted slot).
  */
 function invent_merged(otmp, obj) {
-    if (!mergable(otmp, obj)) return null;
-    otmp.quan = (otmp.quan || 1) + (obj.quan || 1);
-    if (obj.known) otmp.known = 1;
-    if (obj.bknown) otmp.bknown = 1;
-    if (obj.rknown) otmp.rknown = 1;
-    extract_invent(obj);
-    obj.nobj = null;
-    obj.where = OBJ_FREE;
-    obfree(obj, otmp);
-    return otmp;
+    const potmp = { obj: otmp };
+    if (!merged(potmp, { obj })) return null;
+    return potmp.obj;
 }
 
 function names_ok_for_adjust_merge(otmp, obj) {

@@ -33,6 +33,8 @@ import {
     MENU_FIRST_PAGE,
     MENU_LAST_PAGE,
     MENU_SEARCH,
+    MENU_SHIFT_RIGHT,
+    MENU_SHIFT_LEFT,
     MENU_ITEMFLAGS_SKIPINVERT,
     PICK_ONE,
     PICK_ANY,
@@ -75,21 +77,49 @@ import {
     WC_PLAYER_SELECTION,
     WC_HILITE_PET,
     WC_MOUSE_SUPPORT,
+    WC2_FULLSCREEN,
+    WC2_SOFTKEYBOARD,
+    WC2_WRAPTEXT,
+    WC2_HILITE_STATUS,
+    WC2_DARKGRAY,
+    WC2_HITPOINTBAR,
+    WC2_MENU_SHIFT,
+    WC2_STATUSLINES,
+    WC2_TERM_SIZE,
+    WC2_WINDOWBORDERS,
+    WC2_PETATTR,
+    WC2_GUICOLOR,
+    WC2_EXTRASTATUS,
     MSGTYP_NORMAL,
     MSGTYP_NOREP,
     MSGTYP_NOSHOW,
     MSGTYP_STOP,
+    HL_NONE,
+    HL_BOLD,
+    HL_DIM,
+    HL_ITALIC,
+    HL_ULINE,
+    HL_BLINK,
+    HL_INVERSE,
+    BUFSZ,
+    QBUFSZ,
     gp,
 } from './const.js';
 import { game } from './gstate.js';
 import { sanitize_name } from './bones.js';
 import { rnd } from './rng.js';
-import { str_end_is, str_start_is, highc, strstri, strsubst } from './hacklib.js';
+import { str_end_is, str_start_is, highc, strstri, strsubst, strNsubst } from './hacklib.js';
 import { name_to_mon } from './mondata.js';
 import { nhgetch } from './input.js';
-import { flush_screen, pline, docrt, check_gold_symbol, clear_committed_status, set_bot_disabled } from './display.js';
-import { paint_corner_nhw_menu, dismiss_nhw_menu, collect_menu_gacc, process_menu_search, toggle_menu_curr, menu_digit_is_gacc, reassign, update_inventory, invlet_constant, perm_invent_toggled } from './invent.js';
-import { ATR_INVERSE } from './terminal.js';
+import { flush_screen, pline, docrt, check_gold_symbol, clear_committed_status, set_bot_disabled, tty_wait_synch } from './display.js';
+import { paint_corner_nhw_menu, dismiss_nhw_menu, collect_menu_gacc, process_menu_search, toggle_menu_curr, menu_digit_is_gacc, reassign, update_inventory, invlet_constant, perm_invent_toggled, select_menu_pick_none } from './invent.js';
+import {
+    ATR_INVERSE,
+    CLR_BLACK, CLR_RED, CLR_GREEN, CLR_BROWN, CLR_BLUE, CLR_MAGENTA,
+    CLR_CYAN, CLR_GRAY, CLR_ORANGE, CLR_BRIGHT_GREEN, CLR_YELLOW,
+    CLR_BRIGHT_BLUE, CLR_BRIGHT_MAGENTA, CLR_BRIGHT_CYAN, CLR_WHITE,
+    NO_COLOR,
+} from './terminal.js';
 import {
     WEAPON_CLASS, ARMOR_CLASS, RING_CLASS, AMULET_CLASS, TOOL_CLASS,
     FOOD_CLASS, POTION_CLASS, SCROLL_CLASS, SPBOOK_CLASS, WAND_CLASS,
@@ -98,7 +128,8 @@ import {
 } from './objects.js';
 import { EXTCMDLIST, INTERNALCMD } from './generated/extcmdlist_data.js';
 import { getlin } from './getline.js';
-import { makesingular, fruit_from_name } from './objnam.js';
+import { makesingular, fruit_from_name, makeplural } from './objnam.js';
+import { clr2colorname } from './artifact.js';
 
 /** C ref: global.h PL_FSIZ — fruit name buffer. */
 const PL_FSIZ = 32;
@@ -671,6 +702,93 @@ function wc_supported(optnam) {
     }
     return false;
 }
+
+/**
+ * C options.c wc2_options[] `:9823–9842` (name/bit pairs, C order).
+ * The contest tty port advertises no wincap2 bits.
+ */
+export const wc2_options = [
+    { wc_name: 'armorstatus', wc_bit: WC2_EXTRASTATUS },
+    { wc_name: 'fullscreen', wc_bit: WC2_FULLSCREEN },
+    { wc_name: 'guicolor', wc_bit: WC2_GUICOLOR },
+    { wc_name: 'hilite_status', wc_bit: WC2_HILITE_STATUS },
+    { wc_name: 'hitpointbar', wc_bit: WC2_HITPOINTBAR },
+    { wc_name: 'menu_shift', wc_bit: WC2_MENU_SHIFT },
+    { wc_name: 'petattr', wc_bit: WC2_PETATTR },
+    { wc_name: 'softkeyboard', wc_bit: WC2_SOFTKEYBOARD },
+    { wc_name: 'status hilite rules', wc_bit: WC2_HILITE_STATUS },
+    { wc_name: 'statushilites', wc_bit: WC2_HILITE_STATUS },
+    { wc_name: 'statuslines', wc_bit: WC2_STATUSLINES },
+    { wc_name: 'term_cols', wc_bit: WC2_TERM_SIZE },
+    { wc_name: 'term_rows', wc_bit: WC2_TERM_SIZE },
+    { wc_name: 'terrainstatus', wc_bit: WC2_EXTRASTATUS },
+    { wc_name: 'use_darkgray', wc_bit: WC2_DARKGRAY },
+    { wc_name: 'weaponstatus', wc_bit: WC2_EXTRASTATUS },
+    { wc_name: 'windowborders', wc_bit: WC2_WINDOWBORDERS },
+    { wc_name: 'wraptext', wc_bit: WC2_WRAPTEXT },
+];
+
+/** C `windowprocs.wincap2`; unset bag → contest tty (no wincap2 bits). */
+function windowprocs_wincap2() {
+    const wp = game.windowprocs;
+    if (wp && typeof wp === 'object' && Object.hasOwn(wp, 'wincap2')) {
+        return wp.wincap2 | 0;
+    }
+    return 0;
+}
+
+/** C options.c wc2_supported `:9965–9976`. */
+export function wc2_supported(optnam) {
+    for (let k = 0; k < wc2_options.length; k++) {
+        if (wc2_options[k].wc_name === optnam) {
+            return (windowprocs_wincap2() & wc2_options[k].wc_bit) !== 0;
+        }
+    }
+    return false;
+}
+
+/**
+ * C decl.h `gm.mapped_menu_cmds` / `gm.mapped_menu_op` + `gn.n_menu_mapped`.
+ * Fresh C has n_menu_mapped = 0, so both strings are empty and every lookup
+ * is the identity. Aliases arrive via `add_menu_cmd_alias` (menu-key BIND
+ * parsing — named omission, same as the map's mouse/menu-alias line).
+ */
+function mapped_menu_strings() {
+    const m = game.mappedMenu;
+    if (m && typeof m.cmds === 'string' && typeof m.ops === 'string') return m;
+    return { cmds: '', ops: '' };
+}
+
+/**
+ * C options.c get_menu_cmd_key `:8093–8104` — the rebound key for menu
+ * command ch (`strchr(mapped_menu_op)` → `mapped_menu_cmds[idx]`), else ch.
+ * Single-character strings carry C `char` here.
+ */
+export function get_menu_cmd_key(ch) {
+    const { cmds, ops } = mapped_menu_strings();
+    const idx = ops.indexOf(ch);
+    return idx >= 0 ? cmds[idx] : ch;
+}
+
+/**
+ * C options.c default_menu_cmd_info[] `:314–340` (menu_cmd_t name/cmd/desc,
+ * C order; the trailing `{ 0, '\0', 0 }` sentinel is the array end in JS).
+ */
+export const default_menu_cmd_info = [
+    { name: 'menu_next_page', cmd: MENU_NEXT_PAGE, desc: 'Go to next page' },
+    { name: 'menu_previous_page', cmd: MENU_PREVIOUS_PAGE, desc: 'Go to previous page' },
+    { name: 'menu_first_page', cmd: MENU_FIRST_PAGE, desc: 'Go to first page' },
+    { name: 'menu_last_page', cmd: MENU_LAST_PAGE, desc: 'Go to last page' },
+    { name: 'menu_select_all', cmd: MENU_SELECT_ALL, desc: 'Select all items in entire menu' },
+    { name: 'menu_invert_all', cmd: MENU_INVERT_ALL, desc: 'Invert selection for all items' },
+    { name: 'menu_deselect_all', cmd: MENU_UNSELECT_ALL, desc: 'Unselect all items in entire menu' },
+    { name: 'menu_select_page', cmd: MENU_SELECT_PAGE, desc: 'Select all items on current page' },
+    { name: 'menu_invert_page', cmd: MENU_INVERT_PAGE, desc: 'Invert current page\'s selections' },
+    { name: 'menu_deselect_page', cmd: MENU_UNSELECT_PAGE, desc: 'Unselect all items on current page' },
+    { name: 'menu_search', cmd: MENU_SEARCH, desc: 'Search and invert matching items' },
+    { name: 'menu_shift_right', cmd: MENU_SHIFT_RIGHT, desc: 'Pan current page to right (perm_invent only)' },
+    { name: 'menu_shift_left', cmd: MENU_SHIFT_LEFT, desc: 'Pan current page to left (perm_invent only)' },
+];
 
 /**
  * C options.c doset `:8869–8872` / `:8846–8848` WC skip.
@@ -1295,6 +1413,362 @@ async function handler_perminv_mode() {
     return optn_ok;
 }
 
+/**
+ * C ref: coloratt.c colornames[] `:14–30` pre-alias rows as (name, C CLR_*).
+ * Local table (objnam.js DONAME_CLR2COLORNAME precedent) driving the
+ * query_color pick menu; the list arm uses live clr2colorname instead.
+ */
+const MENU_COLORNAMES = [
+    ['black', CLR_BLACK],
+    ['red', CLR_RED],
+    ['green', CLR_GREEN],
+    ['brown', CLR_BROWN],
+    ['blue', CLR_BLUE],
+    ['magenta', CLR_MAGENTA],
+    ['cyan', CLR_CYAN],
+    ['gray', CLR_GRAY],
+    ['orange', CLR_ORANGE],
+    ['light green', CLR_BRIGHT_GREEN],
+    ['yellow', CLR_YELLOW],
+    ['light blue', CLR_BRIGHT_BLUE],
+    ['light magenta', CLR_BRIGHT_MAGENTA],
+    ['light cyan', CLR_BRIGHT_CYAN],
+    ['white', CLR_WHITE],
+    ['no color', NO_COLOR],
+];
+
+/**
+ * C ref: wintype.h `:128–134` menu attribute values. terminal.js ATR_*
+ * are display bitmasks with different numbering — menucoloring attrs
+ * use these C values (also the query_attr PICK_ANY → HL_* source).
+ */
+const MC_ATR_NONE = 0;
+const MC_ATR_BOLD = 1;
+const MC_ATR_DIM = 2;
+const MC_ATR_ITALIC = 3;
+const MC_ATR_ULINE = 4;
+const MC_ATR_BLINK = 5;
+const MC_ATR_INVERSE = 7;
+
+/**
+ * C ref: coloratt.c attrnames[] `:40–48` pre-alias rows. The aliases
+ * (`normal`, `uline`, `reverse`) can never win first-match; omitted.
+ */
+const MENU_ATTRNAMES = [
+    ['none', MC_ATR_NONE],
+    ['bold', MC_ATR_BOLD],
+    ['dim', MC_ATR_DIM],
+    ['italic', MC_ATR_ITALIC],
+    ['underline', MC_ATR_ULINE],
+    ['blink', MC_ATR_BLINK],
+    ['inverse', MC_ATR_INVERSE],
+];
+
+/* C decl.h gm.menu_colorings `:599` + gs.save_colorings `:885` +
+ * gc.color_colorings `:278`. Module-level: config-session state, never
+ * saved (no save.c reader), like C process lifetime. Entries mirror
+ * struct menucoloring { match, origstr, color, attr, next }. */
+let menuColorings = null;
+let saveMenuColorState = false;
+let saveColorings = null;
+let colorColorings = null;
+
+/**
+ * C ref: coloratt.c attr2attrname `:320–328` — first matching name,
+ * (char *)0 when none.
+ */
+export function attr2attrname(attr) {
+    const a = attr | 0;
+    for (const [name, val] of MENU_ATTRNAMES) {
+        if (val === a) return name;
+    }
+    return null;
+}
+
+/**
+ * C ref: coloratt.c count_menucolors `:709–717`.
+ */
+export function count_menucolors() {
+    let count = 0;
+    for (let tmp = menuColorings; tmp; tmp = tmp.next) count++;
+    return count;
+}
+
+/**
+ * C ref: coloratt.c free_one_menu_coloring `:684–706` — unlink idx
+ * (0..); out-of-range unlinks nothing.
+ */
+export function free_one_menu_coloring(idx) {
+    let i = idx | 0;
+    let prev = null;
+    let tmp = menuColorings;
+    while (tmp) {
+        if (i === 0) {
+            regex_free(tmp.match);
+            if (prev) prev.next = tmp.next;
+            else menuColorings = tmp.next;
+            return;
+        }
+        i--;
+        prev = tmp;
+        tmp = tmp.next;
+    }
+}
+
+/**
+ * C ref: coloratt.c add_menu_coloring_parsed `:585–613` — validated
+ * callers only (test_regex_pattern ran first); recompile can still fail,
+ * then FALSE. config_error_add paths named (msgtype_add precedent).
+ */
+export function add_menu_coloring_parsed(str, c, a) {
+    if (!str) return false;
+    const match = regex_init();
+    if (!regex_compile(String(str), match)) {
+        regex_free(match);
+        return false;
+    }
+    menuColorings = {
+        match,
+        origstr: String(str),
+        color: c | 0,
+        attr: a | 0,
+        next: menuColorings,
+    };
+    if (!game.iflags) game.iflags = {};
+    game.iflags.use_menu_color = true;
+    return true;
+}
+
+/**
+ * C ref: coloratt.c basic_menu_colors `:530–580` — swap user colorings
+ * for `blue`=blue… patterns while picking, then restore. Unix links
+ * posixregex (sys/unix/Makefile.src:229) so regex_id != "pmatchregex"
+ * and the pattern format is plain "%s" (`:546–548`).
+ */
+export function basic_menu_colors(load_colors) {
+    if (!game.iflags) game.iflags = {};
+    const iflags = game.iflags;
+    if (load_colors) {
+        saveMenuColorState = !!iflags.use_menu_color;
+        saveColorings = menuColorings;
+        iflags.use_menu_color = true;
+        if (colorColorings) {
+            menuColorings = colorColorings;
+        } else {
+            menuColorings = null;
+            for (const [nm, col] of MENU_COLORNAMES) {
+                if (col === CLR_BLACK || col === CLR_WHITE || col === NO_COLOR) continue;
+                add_menu_coloring_parsed(nm, col, MC_ATR_NONE);
+            }
+            colorColorings = menuColorings;
+        }
+    } else {
+        iflags.use_menu_color = saveMenuColorState;
+        menuColorings = saveColorings;
+    }
+}
+
+/**
+ * C ref: coloratt.c query_color `:475–518` — basic_menu_colors around a
+ * PICK_ONE over colornames (dflt_color preselected), -1 on ESC. The C
+ * pick_cnt==2 arm (preselected NO_COLOR + explicit pick) collapses: the
+ * helper returns the explicit pick directly, Enter-with-preselected
+ * returns the preselected entry (pick_cnt==0 → dflt_color, same value).
+ */
+export async function query_color(prompt, dflt_color) {
+    const dflt = dflt_color | 0;
+    basic_menu_colors(true);
+    const raw = [
+        { text: prompt ? String(prompt) : 'Pick a color', selectable: false },
+    ];
+    for (const [nm, col] of MENU_COLORNAMES) {
+        raw.push({ text: nm, selectable: true, color: col, selected: col === dflt });
+    }
+    const res = await select_menu_pick_one(raw);
+    basic_menu_colors(false);
+    if (res.kind !== 'pick') return -1;
+    return res.item.color | 0;
+}
+
+/**
+ * C ref: coloratt.c query_attr `:396–472` — allow_many when prompt starts
+ * with "Choose" (PICK_ANY → HL_* bitmask, ATR_NONE excluded unless the
+ * sole pick); else PICK_ONE with dflt_attr preselected. Empty finish →
+ * -1 (PICK_ANY) like C's PICK_ANY-empty/ESC arm; PICK_ONE cancel → -1.
+ * The single-pick helper subsumes C's pick_cnt==2 arm (explicit pick
+ * returned directly) and its pick_cnt==0 arm (preselected returned).
+ */
+export async function query_attr(prompt, dflt_attr) {
+    const dflt = dflt_attr | 0;
+    const allow_many = !!prompt && str_start_is(String(prompt), 'Choose', true);
+    const raw = [
+        { text: prompt ? String(prompt) : 'Pick an attribute', selectable: false },
+    ];
+    for (const [nm, val] of MENU_ATTRNAMES) {
+        raw.push({ text: nm, selectable: true, attrval: val, selected: val === dflt });
+    }
+    if (allow_many) {
+        const picks = await select_menu_pick_any(raw);
+        if (!picks.length) return -1;
+        let k = 0;
+        for (const p of picks) {
+            const a = p.attrval | 0;
+            if (a !== MC_ATR_NONE || picks.length === 1) {
+                switch (a) {
+                    case MC_ATR_NONE: k = HL_NONE; break;
+                    case MC_ATR_BOLD: k |= HL_BOLD; break;
+                    case MC_ATR_DIM: k |= HL_DIM; break;
+                    case MC_ATR_ITALIC: k |= HL_ITALIC; break;
+                    case MC_ATR_ULINE: k |= HL_ULINE; break;
+                    case MC_ATR_BLINK: k |= HL_BLINK; break;
+                    case MC_ATR_INVERSE: k |= HL_INVERSE; break;
+                    default: break;
+                }
+            }
+        }
+        return k;
+    }
+    const res = await select_menu_pick_one(raw);
+    if (res.kind !== 'pick') return -1;
+    return res.item.attrval | 0;
+}
+
+/**
+ * C ref: options.c test_regex_pattern `:7871–7900` — validate only, the
+ * compiled regexp is discarded. config_error_add paths named
+ * (msgtype_add precedent); regex_error_desc has no JS counterpart.
+ */
+function test_regex_pattern(str, errmsg) {
+    void errmsg;
+    if (!str) return false;
+    const match = regex_init();
+    if (!match) return false;
+    const retval = regex_compile(String(str), match);
+    regex_free(match);
+    return retval;
+}
+
+/**
+ * C ref: options.c handle_add_list_remove `:9208–9251`, common to
+ * msg-types, menu-colors, autopickup-exceptions — PICK_ONE add / list /
+ * remove / exit (C accelerators a/l/r/x), exit preselected, cancel → 3.
+ * `:9227` any.a_int++ precedes the list/remove skip, so a_int counts
+ * every row including skipped ones: exit-with-empty carries 4 → 3
+ * (done). The C pick_cnt>1 arm (preselected exit + explicit pick)
+ * cannot arise from the single-pick helper.
+ */
+async function handle_add_list_remove(optname, numtotal) {
+    const name = String(optname ?? '');
+    const total = numtotal | 0;
+    const rows = [
+        { letr: 'a', desc: `add new ${name}` },
+        { letr: 'l', desc: `list ${makeplural(name)}` },
+        { letr: 'r', desc: `remove existing ${name}` },
+        { letr: 'x', desc: 'exit this menu' },
+    ];
+    const raw = [{ text: 'Do what?', selectable: false }];
+    let a_int = 0; // C: any = cg.zeroany → a_int starts 0
+    for (let i = 0; i < rows.length; i++) {
+        a_int++; // :9227 any.a_int++ precedes the skip below
+        /* omit list and remove if there aren't any yet */
+        if (!total && (i === 1 || i === 2)) continue; // :9229–9230
+        // :9231–9235 Sprintf desc + add_menu with the pre-skip a_int
+        raw.push({
+            text: rows[i].desc,
+            selectable: true,
+            selector: rows[i].letr,
+            a_int,
+            selected: i === 3,
+        });
+    }
+    const res = await select_menu_pick_one(raw);
+    if (res.kind !== 'pick') return 3;
+    return (res.item.a_int | 0) - 1;
+}
+
+/**
+ * C ref: options.c `:6420–6430` menucolors_done — shared exit of the
+ * handler's done arm and the add-arm ESC. Assumes a change when
+ * use_menu_color is on (redundant update is cheap).
+ */
+function menucolors_done() {
+    const iflags = game.iflags || {};
+    if (iflags.use_menu_color && iflags.perm_invent) update_inventory();
+    return optn_ok;
+}
+
+/**
+ * C ref: options.c handler_menu_colors `:6407–6499` — optfn_o_menu_colors
+ * do_handler (`:8383`). add/list/remove loop over menu_colorings with
+ * C short-circuit, ESC, truncation and remove-shift semantics below.
+ */
+export async function handler_menu_colors() {
+    for (;;) { // :6416 menucolors_again
+        const nmc = count_menucolors(); // :6417
+        const opt_idx = await handle_add_list_remove('menucolor', nmc); // :6418
+        if (opt_idx === 3) { // :6419 done
+            return menucolors_done(); // :6420–6430
+        } else if (opt_idx === 0) { // :6432 add new
+            const mcbuf = await getlin('What new menucolor pattern?'); // :6433–6434
+            if (mcbuf.charCodeAt(0) === 0x1b) return menucolors_done(); // :6435–6436 ESC
+            let mcclr = -1;
+            let mcattr = MC_ATR_NONE;
+            if (
+                mcbuf.length > 0 && // :6437 *mcbuf
+                test_regex_pattern(mcbuf, 'MENUCOLORS regex') && // :6438
+                (mcclr = await query_color(null, NO_COLOR)) !== -1 && // :6439
+                (mcattr = await query_attr(null, MC_ATR_NONE)) !== -1 && // :6440
+                !add_menu_coloring_parsed(mcbuf, mcclr, mcattr) // :6441
+            ) {
+                await pline('Error adding the menu color.'); // :6442
+                await tty_wait_synch(); // :6443
+            }
+            // :6445 goto menucolors_again
+        } else { // :6447 list (1) or remove (2)
+            // :6482–6484 end_menu prompt, painted as header (perminv precedent)
+            const raw = [
+                {
+                    text: `${opt_idx === 1 ? 'List of' : 'Remove which'} menu colors`,
+                    selectable: false,
+                },
+            ];
+            let mc_idx = 0; // :6459
+            for (let tmp = menuColorings; tmp; tmp = tmp.next) { // :6453, :6460
+                const sattr = attr2attrname(tmp.attr); // :6461
+                // :6462 clrbuf[QBUFSZ] copy + :6463 (void) strNsubst ' ' → '-'
+                const sclr = strNsubst(clr2colorname(tmp.color), ' ', '-', 0)
+                    .slice(0, QBUFSZ - 1);
+                mc_idx++; // :6464 any.a_int = ++mc_idx
+                // :6466–6468 suffix — buf is `"` `\` `"` `=color[&attr]`
+                // (single backslash + quote, no trailing quote); :6470 length available
+                const buf = `"\\\"=${sclr}${tmp.attr !== MC_ATR_NONE ? `&${sattr}` : ''}`;
+                const ln = BUFSZ - buf.length - 1;
+                // :6471–6475 main string with '...' truncation
+                const main = `"${tmp.origstr.length > ln
+                    ? `${tmp.origstr.slice(0, Math.max(ln - 3, 0))}...`
+                    : tmp.origstr}`;
+                // :6477 combine (skip buf's initial quote)
+                raw.push({ text: main + buf.slice(1), selectable: true, a_int: mc_idx }); // :6478–6479
+            }
+            if (opt_idx === 1) { // :6485–6486 PICK_NONE
+                await select_menu_pick_none(raw); // :6487
+                continue; // :6495–6496 pick_cnt >= 0 → again
+            }
+            // :6485–6487 PICK_ANY; cancelValue keeps C's pick_cnt -1
+            // (ESC) distinct from pick_cnt 0 (finish-empty).
+            const picks = await select_menu_pick_any(raw, { cancelValue: null });
+            if (picks === null) return optn_ok; // :6495 pick_cnt == -1 → :6498 return
+            if (!picks.length) continue; // :6495 pick_cnt == 0 → menucolors_again
+            for (let k = 0; k < picks.length; k++) { // :6488–6491
+                // -k: earlier removals shift later indices (filter order).
+                free_one_menu_coloring((picks[k].a_int | 0) - 1 - k);
+            }
+            // :6492 pick_list freed (GC); :6494 destroy (inside helpers);
+            // :6495–6496 pick_cnt >= 0 → again
+        }
+    }
+}
+
 /** C ref: hacklib.c mungspaces — trim ends, compress internal spaces. */
 function mungspaces(s) {
     return String(s || '').trim().replace(/\s+/g, ' ');
@@ -1461,6 +1935,8 @@ async function doset_compound_via_getlin(opt) {
             await handler_pickup_types();
         } else if (name === 'perminv_mode') {
             await handler_perminv_mode();
+        } else if (name === 'menu colors') {
+            await handler_menu_colors();
         }
         // Other hasHandler compounds deferred (number_pad/symset/…).
         return;
@@ -1490,8 +1966,8 @@ function currently_set_val(n) {
 /**
  * C ref: options.c optfn_* get_val for doset_simple_menu compound/othr rows.
  * Named omissions: full handlers for fruit/number_pad/autounlock/symset/
- * statuslines/exceptions/menu colors/status rules — display values only
- * until those handlers are ported.
+ * statuslines/exceptions/status rules — display values only until those
+ * handlers are ported (menu colors handler is live: handler_menu_colors).
  */
 function simple_opt_get_val(opt) {
     const name = opt.name;
@@ -1547,7 +2023,7 @@ function simple_opt_get_val(opt) {
         return (n != null && n >= 3) ? '3' : '2';
     }
     if (name === 'menu colors') {
-        return currently_set_val(game.iflags?.menu_colors_count ?? 0);
+        return currently_set_val(count_menucolors());
     }
     if (name === 'status highlight rules') {
         return currently_set_val(game.iflags?.status_hilite_count ?? 0);
@@ -1868,7 +2344,13 @@ function invert_pick_any_matching(items, acc, count = -1) {
  * MENU_SEARCH is D-1646.
  * Returns selected selectable items (may be empty).
  */
-export async function select_menu_pick_any(rawItems) {
+/**
+ * C ref: wintty.c process_menu_window PICK_ANY loop. Finish (Enter/space)
+ * returns the selected items (possibly none); ESC deselects all then
+ * cancels. Callers that must tell cancel apart from finish-empty
+ * (options.c `:6495` pick_cnt -1 vs 0) pass { cancelValue }.
+ */
+export async function select_menu_pick_any(rawItems, opts = {}) {
     const rows = 24;
     const lmax = Math.min(52, rows - 1);
     // C wintty.c:2611 — every menu item starts with count -1 (no count).
@@ -1947,6 +2429,10 @@ export async function select_menu_pick_any(rawItems) {
                 // menu (incl. WIN_STATUS) stay painted. docrt()+flush
                 // blanks them while bot is disabled.
                 await dismiss_nhw_menu({ keep_status: true });
+                // C wintty.c:1604–1615 — ESC cancels (C pick_cnt -1),
+                // distinct from finish-empty (pick_cnt 0). Default []
+                // keeps every other caller on its existing contract.
+                if (opts && opts.cancelValue !== undefined) return opts.cancelValue;
                 return [];
             }
             if (key === 13 || key === 10) {
@@ -2485,7 +2971,7 @@ export async function doset() {
         { name: 'autocompletions', val: '(0 currently set)' },
         { name: 'autopickup exceptions', val: '(0 currently set)' },
         { name: 'bind keys', val: '(0 currently set)' },
-        { name: 'menu colors', val: '(0 currently set)' },
+        { name: 'menu colors', val: currently_set_val(count_menucolors()) },
         { name: 'message types', val: '(0 currently set)' },
         { name: 'status condition fields', val: '(16 currently set)' },
         { name: 'status highlight rules', val: '(0 currently set)' },
@@ -2504,9 +2990,11 @@ export async function doset() {
     const selected = await select_menu_pick_any(raw);
     const boolPicks = [];
     const handlerPicks = [];
+    const othrPicks = [];
     for (const it of selected) {
         if (it.kind === 'bool') boolPicks.push(it.name);
         else if (it.kind === 'comp' && it.handler) handlerPicks.push(it.name);
+        else if (it.kind === 'othr') othrPicks.push(it.name);
     }
     // C options.c doset → parseoptions → optfn_boolean: one pline per bool.
     // pline appends with "  " while NEED_MORE fits; otherwise more() first.
@@ -2525,6 +3013,13 @@ export async function doset() {
             await handler_pickup_types();
         } else if (name === 'perminv_mode') {
             await handler_perminv_mode();
+        }
+    }
+    // C options.c doset Othr rows → optfn do_handler; only menu colors
+    // has a live handler (handler_menu_colors, C `:8383`).
+    for (const name of othrPicks) {
+        if (name === 'menu colors') {
+            await handler_menu_colors();
         }
     }
     // C options.c doset `:8973` reset_needed_visuals after picks.

@@ -41,16 +41,23 @@ import { calc_capacity, Blind } from './invent.js';
 import { losehp, nomul, maybe_half_phys, dissolve_bars, is_pool, is_lava, stop_occupation } from './hack.js';
 import { finish_losehp_done } from './end.js';
 import {
-    pline, mon_visible, see_with_infrared, tmp_at, obj_glyph,
+    pline, pline_The, mon_visible, see_with_infrared, tmp_at, obj_glyph,
     nh_delay_output, newsym, canspotmon, impossible, set_msg_xy,
 } from './display.js';
-import { Monnam, mon_nam, s_suffix as s_suffix_ucatch, some_mon_nam } from './do_name.js';
+import { Monnam, mon_nam, s_suffix as s_suffix_ucatch, some_mon_nam, hliquid } from './do_name.js';
 import {
-    nohands, mons, throws_rocks, MZ_MEDIUM, MZ_TINY, nonliving,
+    nohands, mons, pmnames, throws_rocks, MZ_MEDIUM, MZ_TINY, nonliving,
     is_unicorn, touch_petrifies, bigmonst, is_elf, poly_when_stoned,
-    eyecount,
+    eyecount, resists_acid, resists_ston, mon_hates_silver,
+    noncorporeal, amorphous, is_vampshifter, passes_walls, unsolid,
 } from './monsters.js';
-import { xname, singular, an, vtense, the, makeplural, mshot_xname, killer_xname, obj_is_pname, otense, simpleonames } from './objnam.js';
+import { xname, singular, an, vtense, the, makeplural, mshot_xname, killer_xname, obj_is_pname, otense, simpleonames, distant_name } from './objnam.js';
+import { stone_missile } from './dothrow.js';
+import { spec_abon } from './artifact.js';
+import { minstapetrify } from './trap.js';
+import { munstone } from './muse.js';
+import { Soundeffect } from './sndprocs.js';
+import { se_splat_egg } from './generated/seffects_data.js';
 import { mbodypart, body_part, polymon } from './polyself.js';
 import {
     VENOM_CLASS, POTION_CLASS, WEAPON_CLASS, GEM_CLASS, TOOL_CLASS,
@@ -63,7 +70,7 @@ import {
 } from './generated/monsters_data.js';
 import { potionhit, make_stoned } from './potion.js';
 import { make_blinded } from './do.js';
-import { dobuzz } from './zap.js';
+import { dobuzz, resists_poison } from './zap.js';
 import {
     m_seenres, cvt_adtyp_to_mseenres, get_atkdam_type, mhim,
 } from './mondata.js';
@@ -726,15 +733,22 @@ async function hit(str, mtmp, force) {
 }
 
 /**
- * C ref: mthrowu.c ohitmon — missile hits another monster.
+ * C ref: mthrowu.c ohitmon `:321–502` — missile hits another monster.
  * Returns true if missile is done (stop flight); false to keep going.
- *
- * Named omissions: distant_name/mshot_xname; spec_abon;
- * stone_missile/passes_rocks; poison/silver/acid/egg petrify;
- * can_blnd; vampshifter destroy verb; mon_notices unfreeze in
- * omon_adj. Caller `m_throw` shade_miss is D-1382.
+ * C order: notonhead/ismimic/vis/observe `:334–339`; to-hit tmp +marcher
+ * level +mon_launcher spec_abon `:341–349`; miss arm `:350–360`
+ * (distant_name/mshot_xname; range-0 drop at the mon cell); potion arm
+ * `:361–368`; hit arm `:369–502` (material, harmless via stone_missile +
+ * mondata.h:208 passes_rocks macro, dmgval, acid-immune 0, splat sfx,
+ * egg/hit messages, poison, silver, acid-burn, egg-petrify via
+ * munstone/muse.js + minstapetrify, kill → xkilled/mondied, can_blnd
+ * venom/pie, setmangry, drop_throw + range==-1 boulder re-extract
+ * continue D-0700). `#if 0` orc/elf +1 `:376–378` is compiled out in C.
+ * Named omissions: mon_notices unfreeze in omon_adj (same-file local).
+ * Caller m_throw shade_miss is D-1382. do.c:210 deliberately inlines its
+ * own dmgval path (drop_throw→flooreffects) and never calls ohitmon.
  * Rolling boulder (range==-1): after drop_throw, re-extract and return
- * false so launch_obj keeps rolling (D-0700 / mthrowu.c ohitmon).
+ * false so launch_obj keeps rolling (D-0700).
  */
 export async function ohitmon(mtmp, otmp, range, verbose) {
     const bx = game.bhitpos?.x ?? mtmp.mx;
@@ -745,18 +759,20 @@ export async function ohitmon(mtmp, otmp, range, verbose) {
     const vis = cansee(bx, by);
     if (vis) observe_object(otmp);
 
+    // C :341–349 — high-level archer aiming at this target hits more often
     let tmp = 5 + find_mac(mtmp) + omon_adj(mtmp, otmp, false);
     const marcher = game.marcher;
+    const mon_launcher = marcher ? MON_WEP(marcher) : null;
     if (marcher && game.mtarget === mtmp) {
         if ((marcher.m_lev | 0) > 5) tmp += (marcher.m_lev | 0) - 5;
-        // mon_launcher artifact spec_abon deferred
+        if (mon_launcher && mon_launcher.oartifact) tmp += spec_abon(mon_launcher, mtmp);
     }
 
-    // C: if (tmp < rnd(20)) miss; else hit
+    // C :350–360 — miss arm
     if (tmp < rnd(20)) {
         if (!ismimic) {
             if (vis) {
-                await miss(xname(otmp), mtmp);
+                await miss(distant_name(otmp, mshot_xname), mtmp);
             } else if (verbose && !game.mtarget) {
                 await pline('It is missed.');
             }
@@ -775,45 +791,88 @@ export async function ohitmon(mtmp, otmp, range, verbose) {
         return true;
     }
 
-    // stone_missile && passes_rocks → harmless deferred
-    const harmless = false;
+    // C :370–371 — stone missiles pass harmlessly through rock-phasers
+    const material = game.objects?.[otmp.otyp | 0]?.oc_material | 0;
+    // C mondata.h:208 passes_rocks macro: passes_walls && !unsolid
+    const harmless = !!(stone_missile(otmp)
+        && passes_walls(mtmp.data) && !unsolid(mtmp.data));
+
+    // C :372–375 (+ acid-immune 0; :376–378 #if 0 orc/elf arm compiled out)
     let damage = dmgval(otmp, mtmp);
-    const n = objectNames[otmp.otyp];
-    if (n === 'ACID_VENOM' /* && resists_acid */) {
-        // resists_acid → damage=0 deferred
-    }
+    if ((otmp.otyp | 0) === ACID_VENOM && resists_acid(mtmp)) damage = 0;
 
     if (ismimic) seemimic(mtmp);
     mtmp.msleeping = 0;
+    Soundeffect(se_splat_egg, 35); // C :383
 
+    // C :384–401
     if (vis) {
-        if (n === 'EGG') {
-            await pline(`Splat!  ${Monnam(mtmp)} is hit with an egg!`);
+        if ((otmp.otyp | 0) === EGG) {
+            const eggwhat = otmp.known
+                ? an(pmnames[otmp.corpsenm | 0]?.[2] ?? 'monster')
+                : 'an';
+            await pline(`Splat!  ${Monnam(mtmp)} is hit with ${eggwhat} egg!`);
         } else {
-            const how = harmless
-                ? ` but passes harmlessly through ${mhim(mtmp)}.`
-                : exclam(damage);
-            await hit(xname(otmp), mtmp, how);
+            const how = !harmless ? exclam(damage)
+                : ` but passes harmlessly through ${mhim(mtmp)}.`;
+            await hit(distant_name(otmp, mshot_xname), mtmp, how);
         }
     } else if (verbose && !game.mtarget) {
-        const punct = exclam(damage);
-        await pline(
-            `${n === 'EGG' ? 'Splat!  ' : ''}${Monnam(mtmp)} is hit${punct}`,
-        );
+        await pline(`${(otmp.otyp | 0) === EGG ? 'Splat!  ' : ''}${Monnam(mtmp)} is hit${exclam(damage)}`);
     }
 
-    // poison / silver / acid burn / egg petrify / can_blnd deferred
+    // C :403–417 — poisoned missile arm
+    if (otmp.opoisoned && is_poisonable(otmp)) {
+        if (resists_poison(mtmp)) {
+            if (vis) await pline_The("poison doesn't seem to affect %s.", mon_nam(mtmp));
+        } else if (rn2(30)) {
+            damage += rnd(6);
+        } else {
+            if (vis) await pline_The('poison was deadly...');
+            damage = mtmp.mhp | 0;
+        }
+    }
 
+    // C :418–432 — silver arm (extra silver damage already in dmgval)
+    if (material === SILVER && mon_hates_silver(mtmp)) {
+        const flesh = !noncorporeal(mtmp.data) && !amorphous(mtmp.data);
+        if (vis) {
+            const m_name = flesh ? `${s_suffix_ucatch(mon_nam(mtmp))} flesh` : mon_nam(mtmp);
+            await pline_The('silver sears %s!', m_name);
+        } else if (verbose && !game.mtarget) {
+            await pline(`${flesh ? 'Its flesh' : 'It'} is seared!`);
+        }
+    }
+
+    // C :433–443 — acid-burn arm
+    if ((otmp.otyp | 0) === ACID_VENOM && cansee(mtmp.mx, mtmp.my)) {
+        if (resists_acid(mtmp)) {
+            if (vis || (verbose && !game.mtarget)) {
+                await pline('%s is unaffected.', Monnam(mtmp));
+            }
+        } else if (vis) {
+            await pline_The('%s burns %s!', hliquid('acid'), mon_nam(mtmp));
+        } else if (verbose && !game.mtarget) {
+            await pline('It is burned!');
+        }
+    }
+
+    // C :444–455 — cockatrice-egg petrify arm
+    if ((otmp.otyp | 0) === EGG && touch_petrifies(mons(otmp.corpsenm | 0))) {
+        if (!(await munstone(mtmp, false))) await minstapetrify(mtmp, false);
+        if (resists_ston(mtmp)) damage = 0;
+    }
+
+    // C :457–474 — damage + kill (might already be dead if petrified)
     if (!harmless && (mtmp.mhp | 0) > 0) {
         mtmp.mhp = (mtmp.mhp | 0) - damage;
         if ((mtmp.mhp | 0) < 1) {
             if (vis || (verbose && !game.mtarget)) {
-                const verb = (nonliving(mtmp.data) || !canspotmon(mtmp))
+                const verb = (nonliving(mtmp.data) || is_vampshifter(mtmp) || !canspotmon(mtmp))
                     ? 'destroyed' : 'killed';
                 await pline(`${Monnam(mtmp)} is ${verb}!`);
             }
-            // C: !mon_moving && (otyp!=BOULDER || range>=0 || otrapped)
-            //    → xkilled(NOMSG); else mondied (corpse_chance)
+            // C :467–471 — don't blame hero for unknown rolling boulder trap
             if (!game.context?.mon_moving
                 && ((otmp.otyp | 0) !== BOULDER
                     || (range | 0) >= 0
@@ -825,12 +884,25 @@ export async function ohitmon(mtmp, otmp, range, verbose) {
         }
     }
 
-    // C: if (!DEADMONSTER(mtmp) && !mon_moving) setmangry(mtmp, TRUE)
+    // C :476–490 — blinding venom and cream pie do 0 damage but still blind
+    if ((mtmp.mhp | 0) > 0 && can_blnd(null, mtmp,
+        ((otmp.otyp | 0) === BLINDING_VENOM) ? AT_SPIT : AT_WEAP, otmp)) {
+        if (vis && mtmp.mcansee) {
+            // C :479–486 — shorten the name; the hit() line above said it all
+            await pline('%s is blinded by %s.', Monnam(mtmp), the(
+                (otmp.oclass | 0) === VENOM_CLASS ? 'venom'
+                    : (otmp.otyp | 0) === CREAM_PIE ? 'pie'
+                    : xname(otmp)));
+        }
+        mtmp.mcansee = 0;
+        mtmp.mblinded = Math.min(127, (mtmp.mblinded | 0) + rnd(25) + 20);
+    }
+
+    // C :492 — if (!DEADMONSTER(mtmp) && !mon_moving) setmangry(mtmp, TRUE)
     if ((mtmp.mhp | 0) > 0 && !game.context?.mon_moving) {
         await setmangry(mtmp, true);
     }
-    // C: objgone = drop_throw(...); if (!objgone && range == -1) {
-    //    obj_extract_self(otmp); return FALSE; } — rolling boulder keeps going
+    // C :494–496 — rolling boulder keeps going after a non-consuming hit
     const objgone = await drop_throw(otmp, true, bx, by);
     if (!objgone && (range | 0) === -1) {
         obj_extract_self(otmp);

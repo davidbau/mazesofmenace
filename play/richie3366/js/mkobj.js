@@ -11,7 +11,7 @@
 
 import { game } from './gstate.js';
 import { rn2, rnd, rn1, rne, rnz } from './rng.js';
-import { depth as depth_of_level, level_difficulty as level_difficulty_of, strsubst } from './hacklib.js';
+import { depth as depth_of_level, level_difficulty as level_difficulty_of, strsubst, strstri } from './hacklib.js';
 import {
     RANDOM_CLASS,
     WEAPON_CLASS,
@@ -41,7 +41,7 @@ import {
     undead_to_corpse, can_be_hatched, dead_species, copy_mextra,
     zombie_form,
 } from './mon.js';
-import { oname, safe_oname } from './do_name.js';
+import { oname, safe_oname, x_monnam } from './do_name.js';
 import { confers_luck, nartifact_exist, mk_artifact, permapoisoned } from './artifact.js';
 import {
     mons, is_male, is_female, is_neuter, is_human, verysmall, PM_LICHEN, monsterNames,
@@ -59,8 +59,9 @@ import {
     MAX_EGG_HATCH_TIME,
     OBJ_FREE, OBJ_FLOOR, OBJ_INVENT, OBJ_BURIED, OBJ_MINVENT, OBJ_CONTAINED,
     OBJ_MIGRATING, OBJ_ONBILL, OBJ_LUAFREE, OBJ_DELETED, MIGR_TO_SPECIES, W_WEP,
+    W_SWAPWEP, W_QUIVER,
     G_GONE,
-    LOST_NONE, LOST_EXPLODING, LOW_PM,
+    LOST_NONE, LOST_EXPLODING, LOST_THROWN, LOW_PM,
     CORPSTAT_NEUTER, CORPSTAT_FEMALE, CORPSTAT_MALE,
     CXN_NO_PFX,
     Is_rogue_level, isok, ICE, DRAWBRIDGE_UP, DB_UNDER, DB_ICE,
@@ -70,14 +71,19 @@ import {
     MAX_OIL_IN_FLASK, nothing_happens, EPRI, PLNMSG_OBJ_GLOWS,
     In_quest, SPINACH_TIN, RANDOM_TIN,
     BURIED_TOO,
+    NOBJ_STATES, ARTICLE_A, EXACT_NAME,
 } from './const.js';
 import { set_tin_variety, eating_glob } from './eat.js';
 import { set_moreluck } from './attrib.js';
 import { recalc_block_point, cansee } from './vision.js';
 import { del_light_source, discard_flashes, obj_sheds_light, obj_adjust_light_radius } from './light.js';
-import { arti_light_radius, get_obj_location, obj_split_light_source, Is_candle } from './timeout.js';
+import { arti_light_radius, get_obj_location, obj_split_light_source, Is_candle, obj_merge_light_sources } from './timeout.js';
 import { obfree, splitbill, same_price, globby_bill_fixup } from './shk.js';
 import { hands_obj, MON_WEP, setmnotwielded } from './weapon.js';
+/* C invent.c merged `:878–913` worn-slot fixup (imports.mjs --can SAFE,
+   hoisted cycle-safe, same 96-module SCC). */
+import { setnotworn } from './do.js';
+import { setworn } from './do_wear.js';
 import { obj_resists } from './dogmove.js';
 import { newsym, pline, Hallucination, impossible } from './display.js';
 import { maybe_unhide_at } from './monmove.js';
@@ -1515,11 +1521,78 @@ function item_on_ice(item) {
 }
 
 /**
+ * C ref: mkobj.c obj_state_names `:3289–3293` (file-static, NOBJ_STATES
+ * entries in OBJ_* order) — the where index names where_name returns.
+ */
+const OBJ_STATE_NAMES = [
+    'free', 'floor', 'contained', 'invent',
+    'minvent', 'migrating', 'buried', 'onbill',
+    'luafree', 'deleted',
+];
+
+/**
+ * C ref: mkobj.c where_name `:3296–3309` (staticfn) — obj->where index into
+ * obj_state_names; null obj → "nowhere", out-of-range or empty slot →
+ * "unknown[%d]" in the file-static buffer (returned directly here; the
+ * caller consumes it synchronously like C's impossible args).
+ */
+export function where_name(obj) {
+    if (!obj) return 'nowhere';
+    const where = obj.where | 0;
+    if (where < 0 || where >= NOBJ_STATES || !OBJ_STATE_NAMES[where]) {
+        return `unknown[${where}]`;
+    }
+    return OBJ_STATE_NAMES[where];
+}
+
+/**
+ * C ref: alloc.c fmt_ptr `:125–135` — %p/0x hex of the heap pointer into a
+ * rotating static ptrbuf. JS has no heap pointers: render the stable
+ * identity the port uses in its place (obj o_id, monst m_id;
+ * timeout.js fmt_timer_arg precedent), 0x-hex.
+ */
+function fmt_ptr(ptr) {
+    const id = (ptr?.o_id ?? ptr?.m_id ?? 0) | 0;
+    return `0x${(id >>> 0).toString(16)}`;
+}
+
+/* C ref: mkobj.c ofmt0 `:2940–2944` — pline format for insane_object(). */
+const OFMT0_SANITY = '%s obj %s %s: %s';
+
+/**
+ * C ref: mkobj.c insane_object `:3314–3339` (staticfn) — sanity-report an
+ * inconsistent object via impossible(): doname under iflags.override_ID
+ * (so the name shows fully identified), then the two-arg or the
+ * held-by-mon six-arg form. The mon arm also fires when mesg mentions
+ * "minvent" without "contained" (check_contained's nested messages).
+ * Async only because JS impossible() can reach --More--.
+ */
+export async function insane_object(obj, fmt, mesg, mon) {
+    let objnm = 'null!';
+    let monnm = 'null!';
+    if (obj) {
+        if (!game.iflags) game.iflags = {};
+        game.iflags.override_ID = (game.iflags.override_ID | 0) + 1;
+        objnm = doname(obj);
+        game.iflags.override_ID = (game.iflags.override_ID | 0) - 1;
+    }
+    if (mon || (strstri(mesg, 'minvent') && !strstri(mesg, 'contained'))) {
+        const altfmt = String(fmt) + ' held by mon %s (%s)';
+        if (mon) monnm = x_monnam(mon, ARTICLE_A, null, EXACT_NAME, true);
+        await impossible(altfmt, mesg, fmt_ptr(obj), where_name(obj),
+                         objnm, fmt_ptr(mon), monnm);
+    } else {
+        await impossible(fmt, mesg, fmt_ptr(obj), where_name(obj), objnm);
+    }
+}
+
+/**
  * C ref: mkobj.c check_glob `:3419–3443` (staticfn) — sanity: quan 1, owt
  * nonzero, GLOB range (LOWEST_GLOB GLOB_OF_GRAY_OOZE … HIGHEST_GLOB
  * GLOB_OF_BLACK_PUDDING; the `#if 0` multiple-of-20 arm stays out like C).
- * C reports via insane_object (no JS port — own row when a falsifier fires);
- * impossible() keeps the observable (a disorder pline, no state change).
+ * C reports via insane_object `:3440–3441` (ofmt0, " obj " substituted with
+ * the globbuf, carrier when MINVENT); impossible() keeps the observable
+ * (a disorder pline, no state change).
  * Missing quan reads as 1 (C always sets quan; JS-side unset convention,
  * same guard as the simpleonames clone).
  */
@@ -1527,7 +1600,8 @@ async function check_glob(obj, mesg) {
     if (((obj.quan ?? 1) | 0) !== 1 || !((obj.owt | 0))
         || (obj.otyp | 0) < GLOB_OF_GRAY_OOZE || (obj.otyp | 0) > GLOB_OF_BLACK_PUDDING) {
         const globbuf = ` glob ${obj.otyp | 0},quan=${(obj.quan ?? 1) | 0},owt=${obj.owt | 0} `;
-        await impossible(strsubst(mesg, ' obj ', globbuf));
+        await insane_object(obj, OFMT0_SANITY, strsubst(mesg, ' obj ', globbuf),
+                            ((obj.where | 0) === OBJ_MINVENT) ? obj.ocarry : null);
     }
 }
 
@@ -2452,31 +2526,35 @@ export function mergable(otmp, obj) {
         return false;
     // JS-only (D-2207): floor pickups merge into quivered/wielded stacks and
     // addinv_core0 tries the quiver first (`:1098–1106`). Reject only a worn
-    // combine stack (`obj`): absorbing one needs merged()'s setworn/setnotworn
-    // slot fixup (`:877–913`) with no JS port yet (map: turns wield
-    // `finish_splitting`). An unworn `obj` into a worn `otmp` needs no fixup
-    // on either side (fixup fires only on obj worn).
+    // combine stack (`obj`): absorbing one needs merged()'s `:878–913`
+    // setworn/setnotworn slot fixup, which only fires on a worn `obj`
+    // (D-2324 owns lifting this gate). An unworn `obj` into a worn `otmp`
+    // needs no fixup on either side.
     if ((obj.owornmask | 0)) return false;
     return true;
 }
 
 /**
- * C ref: invent.c merged() — absorb *pobj into *potmp; free *pobj.
- * stackobj passes (&newObj, &existing) so the newly placed object survives.
- * Globby → pudding_merge_message + obj_absorb (D-0993).
+ * C ref: invent.c merged() `:814–948` — absorb *pobj into *potmp; free *pobj.
+ * In C order: mergable gate `:819`; age average `:826–831`; quan `:833–834`;
+ * coin weight + bknown wipe / non-pudding reweigh `:835–840`; oname absorb
+ * `:841–842`; extract `:843`; pickup_prev `:845–846`; light merge `:849–850`
+ * then stop timers `:851–852`; known/rknown/bknown reconcile + discovered
+ * `:858–876`; #adjust worn-slot fixup `:878–913` (`#if 0` mcarried arm
+ * `:906–912` compiled out — named omit); bypass `:919–920`; globby absorb
+ * `:924–928`; compare-learn pline `:933–938`; obfree + return `:940–945`.
+ * Sync like C; async messages (pudding_merge_message, discovered pline,
+ * impossible) are fire-and-forget (D-0993 pattern).
  */
-function merged(potmp, pobj) {
+export function merged(potmp, pobj) {
     let otmp = potmp.obj;
-    let obj = pobj.obj;
+    const obj = pobj.obj;
+    if (!otmp || !obj) return false;
+    // C `:819`
     if (!mergable(otmp, obj)) return false;
-    if (obj.globby) {
-        // sync callers: fire-and-forget message (flooreffects awaits)
-        void pudding_merge_message(otmp, obj);
-        const kept = obj_absorb(potmp, pobj);
-        potmp.obj = kept;
-        pobj.obj = null;
-        return !!kept;
-    }
+    // C `:826–831` — approximate age by quantity proportion; skip when lit
+    // (burn would need stop/merge/restart) or globby (obj_absorb averages
+    // glob age by weight instead).
     if (!obj.lamplit && !obj.globby) {
         const oq = otmp.quan || 1;
         const nq = obj.quan || 1;
@@ -2484,24 +2562,83 @@ function merged(potmp, pobj) {
         const na = obj.age ?? 0;
         otmp.age = Math.trunc((oa * oq + na * nq) / (oq + nq));
     }
+    // C `:833–834` — glob quantity stays 1 (weight carries the merge).
     if (!otmp.globby) otmp.quan = (otmp.quan || 1) + (obj.quan || 1);
+    // C `:835–840` — gold reweighs + bknown wipe; puddings keep owt
+    // (obj_absorb owns glob weight).
     if (otmp.oclass === COIN_CLASS) {
         otmp.owt = weight(otmp);
         otmp.bknown = 0;
-    } else {
+    } else if (!Is_pudding(otmp)) {
         otmp.owt = weight(otmp);
     }
+    // C `:841–842` — unnamed survivor takes the absorbed stack's name.
+    // JS oname() works in place and returns the same object.
+    if (!has_oname(otmp) && has_oname(obj)) {
+        otmp = potmp.obj = oname(otmp, ONAME(obj), ONAME_SKIP_INVUPD) || otmp;
+    }
+    // C `:843`
     obj_extract_self(obj);
-    // C invent.c merged: "really should merge the timeouts" then
-    // obj_stop_timers(obj) so the absorbed object's HATCH_EGG (etc.)
-    // does not fire after extract.
+    // C `:845–846`
+    if (obj.pickup_prev && (otmp.where | 0) === OBJ_INVENT) otmp.pickup_prev = 1;
+    // C `:849–852` — "really should merge the timeouts" after the lights,
+    // so the absorbed stack's HATCH_EGG (etc.) never fires post-extract.
+    if (obj.lamplit) obj_merge_light_sources(obj, otmp);
     if (obj.timed) obj_stop_timers(obj);
-    if (obj.known !== otmp.known) otmp.known = 1;
-    if (obj.bknown !== otmp.bknown) otmp.bknown = 1;
-    if (obj.rknown !== otmp.rknown) otmp.rknown = 1;
+    // C `:853–876` — comparing stacks identifies them per dimension; a
+    // mismatch means one side was previously identified (rknown needs
+    // oerodeproof, bknown exempts Clerics).
+    let discovered = false;
+    if ((obj.known | 0) !== (otmp.known | 0)) {
+        otmp.known = 1;
+        discovered = true;
+    }
+    if ((obj.rknown | 0) !== (otmp.rknown | 0)) {
+        otmp.rknown = 1;
+        if (otmp.oerodeproof) discovered = true;
+    }
+    if ((obj.bknown | 0) !== (otmp.bknown | 0)) {
+        otmp.bknown = 1;
+        if ((game.urole?.mnum | 0) !== (PM_CLERIC | 0)) discovered = true;
+    }
+    // C `:878–913` — `#adjust` merging wielded stacks: W_WEP > W_SWAPWEP >
+    // W_QUIVER; impossible() keeps otmp's mask otherwise. Reachable only
+    // once mergable() stops rejecting a worn `obj` (D-2324 owns that gate).
+    if ((obj.owornmask | 0) && (otmp.where | 0) === OBJ_INVENT) {
+        let wmask = (otmp.owornmask | 0) | (obj.owornmask | 0);
+        if (wmask & W_WEP) {
+            wmask = W_WEP;
+        } else if (wmask & W_SWAPWEP) {
+            wmask = W_SWAPWEP;
+        } else if (wmask & W_QUIVER) {
+            wmask = W_QUIVER;
+        } else {
+            void impossible('merging strangely worn items (%lx)', wmask);
+            wmask = otmp.owornmask | 0;
+        }
+        if ((otmp.owornmask | 0) & ~wmask) setnotworn(otmp);
+        setworn(otmp, wmask);
+        setnotworn(obj);
+    }
+    // C `:919–920` — bypass follows the absorbed stack (polymorph-zap
+    // re-hit guard for stackobj() on monster drops).
     if (obj.bypass) otmp.bypass = 1;
+    // C `:922–928` — globs absorb by weight inside obj_absorb, which frees obj.
+    if (obj.globby) {
+        // sync callers: fire-and-forget message (flooreffects awaits)
+        void pudding_merge_message(otmp, obj);
+        obj_absorb(potmp, pobj);
+        return true;
+    }
+    // C `:930–938` — comparison taught something (thrown missiles exempt:
+    // monsters unidentify those too often to be worth the spam).
+    if (discovered && (otmp.where | 0) === OBJ_INVENT
+        && (obj.how_lost | 0) !== LOST_THROWN
+        && (otmp.how_lost | 0) !== LOST_THROWN) {
+        void pline('You learn more about your items by comparing them.');
+    }
+    // C `:940` — free(obj), bill->otmp.
     obfree(obj, otmp);
-    potmp.obj = otmp;
     pobj.obj = null;
     return true;
 }

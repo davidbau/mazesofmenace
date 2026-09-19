@@ -31,11 +31,12 @@ import {
     CXN_SINGULAR,
     CONTAINED_TOO, BURIED_TOO, ER_DESTROYED, WT_SPLASH_THRESHOLD, COST_DEGRD,
     TT_PIT, FIRE_RES, PIT,
-    ROOM, CORR, DRAWBRIDGE_UP, TRAPDOOR, HOLE,
-    IS_WATERWALL, IS_ALTAR, is_pit, is_hole, u_at, Has_contents,
+    ROOM, SINK, CORR, DRAWBRIDGE_UP, TRAPDOOR, HOLE,
+    IS_WATERWALL, IS_ALTAR, IS_SINK, is_pit, is_hole, u_at, Has_contents,
     Is_container, Is_waterlevel, Is_airlevel,
     In_quest, In_endgame, In_mines, In_sokoban, Is_rogue_level,
     Is_astralevel, Is_knox_level, Is_bigroom, MON_FLOOR,
+    COLNO, ROWNO,
     PRIMARYSET, ROGUESET,
     ERODE_BURN, EF_DESTROY,
     NHCORE_GETPOS_TIP, NHCORE_ENTER_TUTORIAL, NHCORE_LEAVE_TUTORIAL,
@@ -52,10 +53,10 @@ import {
     selftouch, uteetering_at_seen_pit, uescaped_shaft, maketrap, climb_pit,
 } from './trap.js';
 import {
-    COIN_CLASS, SCROLL_CLASS, SPBOOK_CLASS, POTION_CLASS, objectNames,
+    COIN_CLASS, SCROLL_CLASS, SPBOOK_CLASS, POTION_CLASS, RING_CLASS, objectNames,
 } from './objects.js';
 import {
-    pline, Norep, docrt, flush_screen, flush_topl_more, newsym,
+    pline, Norep, You, pline_The, You_see, docrt, flush_screen, flush_topl_more, newsym,
     assign_graphics, check_gold_symbol,
     You_feel, canseemon, canspotmon, impossible, describe_level,
     see_monsters,
@@ -98,22 +99,23 @@ import {
 } from './hack.js';
 import { show_getpos_tip } from './getpos.js';
 import { place_object, stackobj, weight, delobj, obj_extract_self,
+    objects_at, add_to_buried,
     obj_nexto_xy, obj_meld, pudding_merge_message,
     save_timers, restore_timers, run_timers, splitobj,
-    save_light_sources, restore_light_sources, dobjsfree,
+    save_light_sources, restore_light_sources, dobjsfree, set_bknown,
 } from './mkobj.js';
 import { ship_object, obj_delivery, container_impact_dmg, impact_drop } from './dokick.js';
 import {
     doname, xname, the, The, vtense, an, yname, corpse_xname, is_plural,
     otense, makeplural, body_part_latebound, obj_pmname_corpse,
 } from './objnam.js';
-import { Monnam, Amonnam, Adjmonnam, mon_nam } from './do_name.js';
+import { Monnam, Amonnam, Adjmonnam, mon_nam, hliquid, rndmonnam, trycall } from './do_name.js';
 import { revive } from './zap.js';
 import {
     near_capacity, learn_unseen_invent, encumber_msg,
-    freeinv_core, getobj, ggetobj,
+    freeinv_core, getobj, ggetobj, useup,
 } from './invent.js';
-import { can_reach_floor, set_occupation } from './engrave.js';
+import { can_reach_floor, set_occupation, engr_at } from './engrave.js';
 import {
     pickup, query_category, query_objlist, add_valid_menu_class,
     allow_category, allow_all, count_justpicked, find_justpicked,
@@ -121,7 +123,7 @@ import {
 } from './pickup.js';
 import { Fumbling } from './attrib.js';
 import {
-    welded, setuwep, setuswapwep, setuqwep, set_twoweap,
+    welded, bimanual, setuwep, setuswapwep, setuqwep, set_twoweap,
 } from './wield.js';
 import { body_part } from './polyself.js';
 import {
@@ -159,7 +161,9 @@ import {
     placebc, unplacebc, drag_down, ballrelease, set_bc, ballfall, drop_ball,
 } from './ball.js';
 import { obj_resists } from './dogmove.js';
-import { Soundeffect, se_scratching, se_alarm } from './sndprocs.js';
+import { Soundeffect, se_scratching, se_alarm, se_drain_noises, se_ring_in_drain } from './sndprocs.js';
+import { polymorph_sink, dipsink_set_levltyp } from './fountain.js';
+import { fruitname } from './potion.js';
 import { delete_levelfile, open_levelfile } from './files.js';
 import { strange_feeling } from './detect.js';
 
@@ -180,6 +184,41 @@ const LARGE_BOX = objectNames.indexOf('LARGE_BOX');
 const STATUE = objectNames.indexOf('STATUE');
 const CRYSKNIFE = objectNames.indexOf('CRYSKNIFE');
 const WORM_TOOTH = objectNames.indexOf('WORM_TOOTH');
+/** C do.c dosinkring — ring otyps for the sink-drop switch (D-2527). */
+const RIN_ADORNMENT = objectNames.indexOf('RIN_ADORNMENT');
+const RIN_GAIN_STRENGTH = objectNames.indexOf('RIN_GAIN_STRENGTH');
+const RIN_GAIN_CONSTITUTION = objectNames.indexOf('RIN_GAIN_CONSTITUTION');
+const RIN_INCREASE_ACCURACY = objectNames.indexOf('RIN_INCREASE_ACCURACY');
+const RIN_INCREASE_DAMAGE = objectNames.indexOf('RIN_INCREASE_DAMAGE');
+const RIN_PROTECTION = objectNames.indexOf('RIN_PROTECTION');
+const RIN_REGENERATION = objectNames.indexOf('RIN_REGENERATION');
+const RIN_SEARCHING = objectNames.indexOf('RIN_SEARCHING');
+const RIN_STEALTH = objectNames.indexOf('RIN_STEALTH');
+const RIN_SUSTAIN_ABILITY = objectNames.indexOf('RIN_SUSTAIN_ABILITY');
+const RIN_LEVITATION = objectNames.indexOf('RIN_LEVITATION');
+const RIN_HUNGER = objectNames.indexOf('RIN_HUNGER');
+const RIN_AGGRAVATE_MONSTER = objectNames.indexOf('RIN_AGGRAVATE_MONSTER');
+const RIN_CONFLICT = objectNames.indexOf('RIN_CONFLICT');
+const RIN_WARNING = objectNames.indexOf('RIN_WARNING');
+const RIN_POISON_RESISTANCE = objectNames.indexOf('RIN_POISON_RESISTANCE');
+const RIN_FIRE_RESISTANCE = objectNames.indexOf('RIN_FIRE_RESISTANCE');
+const RIN_COLD_RESISTANCE = objectNames.indexOf('RIN_COLD_RESISTANCE');
+const RIN_SHOCK_RESISTANCE = objectNames.indexOf('RIN_SHOCK_RESISTANCE');
+const RIN_FREE_ACTION = objectNames.indexOf('RIN_FREE_ACTION');
+const RIN_SLOW_DIGESTION = objectNames.indexOf('RIN_SLOW_DIGESTION');
+const RIN_TELEPORTATION = objectNames.indexOf('RIN_TELEPORTATION');
+const RIN_TELEPORT_CONTROL = objectNames.indexOf('RIN_TELEPORT_CONTROL');
+const RIN_POLYMORPH = objectNames.indexOf('RIN_POLYMORPH');
+const RIN_POLYMORPH_CONTROL = objectNames.indexOf('RIN_POLYMORPH_CONTROL');
+const RIN_INVISIBILITY = objectNames.indexOf('RIN_INVISIBILITY');
+const RIN_SEE_INVISIBLE = objectNames.indexOf('RIN_SEE_INVISIBLE');
+const RIN_PROTECTION_FROM_SHAPE_CHAN =
+    objectNames.indexOf('RIN_PROTECTION_FROM_SHAPE_CHAN');
+const MEAT_RING = objectNames.indexOf('MEAT_RING');
+/** C do_name.c color prefs — hcolor identity when !Hallu (cf. read.js). */
+const NH_BLACK = 'black';
+const NH_SILVER = 'silver';
+const NH_WHITE = 'white';
 /** C worn.c worn[] — hero slot pointer + mask (setnotworn). */
 const WORN_SLOTS = [
     ['uarm', W_ARM],
@@ -2235,38 +2274,58 @@ export async function u_collide_m(mtmp) {
 }
 
 /**
- * C ref: do.c canletgo — shared drop/throw worn/weld/loadstone gates.
- * Named omissions: loadstone corpsenm count kludge detail; full weldmsg
- * only when word non-empty (drop path uses canletgo before setuwep).
+ * C ref: do.c canletgo `:665–711` — shared drop/throw gate: worn armor /
+ * welded uwep / cursed loadstone / leashed / saddle, in C order.
+ * `something` is c_common_strings.c_something (`decl.c:45`); `*word`
+ * (C `:668`) is the non-empty-word message gate; `plur` (`dungeon.c`)
+ * is inlined (`quan == 1 ? '' : 's'`) — no new clone.
  */
 export async function canletgo(obj, word) {
     if (!obj) return false;
+    const hasWord = typeof word === 'string' ? word.length > 0 : !!word;
     const mask = obj.owornmask || 0;
+    // C `:667–672` — worn armor or accessory.
     if (mask & (W_ARMOR | W_ACCESSORY)) {
-        if (word) {
+        if (hasWord) {
             await Norep(`You cannot ${word} something you are wearing.`);
         }
         return false;
     }
+    // C `:673–686` — welded uwep (welded() sets bknown per wield.c:1051–1058;
+    // no weldmsg() here, so bknown may set silently when word is "").
     const u = game.u || {};
     if (obj === u.uwep && welded(u.uwep)) {
-        if (word) {
-            await Norep(`You cannot ${word} something welded to your hand.`);
+        if (hasWord) {
+            let hand = body_part(HAND); // C `:677`
+            if (bimanual(u.uwep)) hand = makeplural(hand); // C `:679–680`
+            await Norep(`You cannot ${word} something welded to your ${hand}.`);
         }
         return false;
     }
-    // LOADSTONE cursed / LEASH / W_SADDLE — minimal gates
+    // C `:687–702` — cursed loadstone.
     const LOADSTONE = objectNames.indexOf('LOADSTONE');
     if (LOADSTONE >= 0 && (obj.otyp | 0) === LOADSTONE && obj.cursed) {
-        if (word) {
-            await pline(`For some reason, you cannot ${word} the stone!`);
+        if (hasWord) {
+            // C `:692–694` — getobj() throw-count kludge (throw forces 1).
+            if (word === 'throw' && (obj.quan | 0) > 1) obj.corpsenm = 1;
+            await pline(`For some reason, you cannot ${word}${obj.corpsenm ? ' any of' : ''} the stone${(obj.quan | 0) === 1 ? '' : 's'}!`);
         }
-        obj.bknown = 1;
+        obj.corpsenm = 0; // C `:698` reset
+        set_bknown(obj, 1); // C `:699`
         return false;
     }
+    // C `:703–708` — leash tied to a monster.
+    const LEASH = objectNames.indexOf('LEASH');
+    if (LEASH >= 0 && (obj.otyp | 0) === LEASH && (obj.leashmon | 0) !== 0) {
+        if (hasWord) {
+            await pline_The(`leash is tied around your ${body_part(HAND)}.`);
+        }
+        return false;
+    }
+    // C `:709–711` — saddle being sat on.
     if (mask & W_SADDLE) {
-        if (word) {
-            await pline(`You cannot ${word} something you are sitting on.`);
+        if (hasWord) {
+            await You(`cannot ${word} something you are sitting on.`);
         }
         return false;
     }
@@ -2382,9 +2441,234 @@ export async function better_not_try_to_drop_that(otmp) {
 }
 
 /**
+ * C ref: do.c teleport_sink `:459–494` (staticfn) — teleport the sink at
+ * the hero to a random ROOM square; TRUE if the sink moved (D-2527).
+ * `dipsink_set_levltyp` (fountain.js) is the shared sink-count analog.
+ * @returns {boolean}
+ */
+function teleport_sink() {
+    const u = game.u || {};
+    let cx = 1;
+    let cy = 1;
+    let trycnt = 0;
+
+    do {
+        // C `#else` arm (the `#if 0` edge-squares arm is compiled out):
+        // cx 2..COLNO-2, cy 1..ROWNO-2.
+        cx = 1 + rnd(COLNO - 1 - 2);
+        cy = 1 + rn2(ROWNO - 2);
+        if ((game.level?.at?.(cx, cy)?.typ | 0) === ROOM
+            && !t_at(cx, cy) && !engr_at(cx, cy)
+            && (!cansee(cx, cy) || distu(cx, cy) > 3 * 3)) {
+            // This double-counts level sinks/fountains via set_levltyp();
+            // C notes that is not a problem.
+            const alreadylooted = game.level.at(u.ux, u.uy).looted;
+            // remove old sink
+            dipsink_set_levltyp(u.ux, u.uy, ROOM); // was SINK: nsinks--
+            game.level.at(u.ux, u.uy).looted = 0;
+            newsym(u.ux, u.uy);
+            // create sink at new position
+            dipsink_set_levltyp(cx, cy, SINK); // now SINK: nsinks++
+            game.level.at(cx, cy).looted = alreadylooted ? 1 : 0;
+            newsym(cx, cy);
+            return true;
+        }
+    } while (++trycnt < 200);
+
+    return false;
+}
+
+/**
+ * C ref: do.c dosinkring `:498–661` (staticfn) — obj is a ring (or meat
+ * ring) being dropped over a kitchen sink; sole C caller is drop() (D-2527).
+ * First switch: effects noticeable without eyes. Second switch (Blind
+ * gated): effects needing eyes. `ideed` = the effect identifies the ring
+ * (trycall); `nosink` = the sink itself is gone (no drainpipe sound and
+ * no backup lottery — but the buried/useup lottery still runs).
+ */
+export async function dosinkring(obj) {
+    const u = game.u || {};
+    let ideed = true;
+    let nosink = false;
+
+    await You(`drop ${doname(obj)} down the drain.`);
+    obj.in_use = true; // block free identification via interrupt
+    switch (obj.otyp | 0) { // effects that can be noticed without eyes
+    case RIN_SEARCHING:
+        await You(`thought ${yname(obj)} got lost in the sink, but there it is!`);
+        // C `goto giveback` — shares the SLOW_DIGESTION tail below.
+        obj.in_use = false;
+        await dropx(obj);
+        await trycall(obj);
+        return;
+    case RIN_SLOW_DIGESTION:
+        await pline_The('ring is regurgitated!');
+    // giveback:
+        obj.in_use = false;
+        await dropx(obj);
+        await trycall(obj);
+        return;
+    case RIN_LEVITATION:
+        await pline_The('sink quivers upward for a moment.');
+        break;
+    case RIN_POISON_RESISTANCE:
+        await You(`smell rotten ${makeplural(fruitname(false))}.`);
+        break;
+    case RIN_AGGRAVATE_MONSTER:
+        await pline(
+            `Several ${Hallucination() ? makeplural(rndmonnam()) : 'flies'}`
+            + ' buzz angrily around the sink.',
+        );
+        break;
+    case RIN_SHOCK_RESISTANCE:
+        await pline('Static electricity surrounds the sink.');
+        break;
+    case RIN_CONFLICT:
+        Soundeffect(se_drain_noises, 50);
+        await You_hear('loud noises coming from the drain.');
+        break;
+    case RIN_SUSTAIN_ABILITY: // KMH
+        await pline_The(`${hliquid('water')} flow seems fixed.`);
+        break;
+    case RIN_GAIN_STRENGTH:
+        await pline_The(
+            `${hliquid('water')} flow seems ${(obj.spe | 0) < 0 ? 'weak' : 'strong'}er now.`,
+        );
+        break;
+    case RIN_GAIN_CONSTITUTION:
+        await pline_The(
+            `${hliquid('water')} flow seems ${(obj.spe | 0) < 0 ? 'less' : 'great'}er now.`,
+        );
+        break;
+    case RIN_INCREASE_ACCURACY: // KMH
+        await pline_The(
+            `${hliquid('water')} flow ${(obj.spe | 0) < 0 ? 'misses' : 'hits'} the drain.`,
+        );
+        break;
+    case RIN_INCREASE_DAMAGE:
+        await pline_The(
+            `water's force seems ${(obj.spe | 0) < 0 ? 'small' : 'great'}er now.`,
+        );
+        break;
+    case RIN_HUNGER:
+        ideed = false;
+        for (let otmp = objects_at(u.ux, u.uy); otmp;) {
+            const otmp2 = otmp.nexthere;
+            if (otmp !== u.uball && otmp !== u.uchain
+                && !obj_resists(otmp, 1, 99)) {
+                if (!Blind()) {
+                    await pline(
+                        `Suddenly, ${doname(otmp)} ${otense(otmp, 'vanish')} from the sink!`,
+                    );
+                    ideed = true;
+                }
+                delobj(otmp);
+            }
+            otmp = otmp2;
+        }
+        break;
+    case MEAT_RING:
+        // Not the same as aggravate monster; besides, it's obvious.
+        await pline('Several flies buzz around the sink.');
+        break;
+    case RIN_TELEPORTATION:
+        nosink = teleport_sink();
+        // Give message even if blind; levitation is impossible here, so the
+        // outcome is felt even when it can't be seen.
+        await pline_The(`sink ${nosink ? '' : 'momentarily '}vanishes.`);
+        ideed = false;
+        break;
+    case RIN_POLYMORPH:
+        await polymorph_sink();
+        nosink = true;
+        // For the S_room case the same vanish message as teleportation.
+        ideed = (game.level?.at?.(u.ux, u.uy)?.typ | 0) !== ROOM;
+        break;
+    default:
+        ideed = false;
+        break;
+    }
+    if (!Blind() && !ideed) {
+        ideed = true;
+        switch (obj.otyp | 0) { // effects that need eyes
+        case RIN_ADORNMENT:
+            await pline_The('faucets flash brightly for a moment.');
+            break;
+        case RIN_REGENERATION:
+            await pline_The('sink looks as good as new.');
+            break;
+        case RIN_INVISIBILITY:
+            await You(`don't see anything happen to the sink.`);
+            break;
+        case RIN_FREE_ACTION:
+            await You_see('the ring slide right down the drain!');
+            break;
+        case RIN_SEE_INVISIBLE:
+            await You_see(
+                `some ${Hallucination() ? 'oxygen molecules' : 'air'} in the sink.`,
+            );
+            break;
+        case RIN_STEALTH:
+            await pline_The('sink seems to blend into the floor for a moment.');
+            break;
+        case RIN_FIRE_RESISTANCE:
+            await pline_The(
+                `hot ${hliquid('water')} faucet flashes brightly for a moment.`,
+            );
+            break;
+        case RIN_COLD_RESISTANCE:
+            await pline_The(
+                `cold ${hliquid('water')} faucet flashes brightly for a moment.`,
+            );
+            break;
+        case RIN_PROTECTION_FROM_SHAPE_CHAN:
+            await pline_The('sink looks nothing like a fountain.');
+            break;
+        case RIN_PROTECTION:
+            await pline_The(
+                `sink glows ${hcolor((obj.spe | 0) < 0 ? NH_BLACK : NH_SILVER)} for a moment.`,
+            );
+            break;
+        case RIN_WARNING:
+            await pline_The(`sink glows ${hcolor(NH_WHITE)} for a moment.`);
+            break;
+        case RIN_TELEPORT_CONTROL:
+            await pline_The('sink looks like it is being beamed aboard somewhere.');
+            break;
+        case RIN_POLYMORPH_CONTROL:
+            await pline_The(
+                'sink momentarily looks like a regularly erupting geyser.',
+            );
+            break;
+        default:
+            break;
+        }
+    }
+    if (ideed) {
+        await trycall(obj);
+    } else if (!nosink) {
+        Soundeffect(se_ring_in_drain, 50);
+        await You_hear('the ring bouncing down the drainpipe.');
+    }
+    if (!rn2(20) && !nosink) {
+        await pline_The(`sink backs up, leaving ${doname(obj)}.`);
+        obj.in_use = false;
+        await dropx(obj);
+    } else if (!rn2(5)) {
+        freeinv_drop(obj);
+        obj.in_use = false;
+        obj.ox = u.ux;
+        obj.oy = u.uy;
+        add_to_buried(obj);
+    } else {
+        useup(obj);
+    }
+}
+
+/**
  * C ref: do.c drop — canletgo, corpse better_not_try guard (:720), unwield,
- * verbose pline, dropx.
- * Named omissions: sink rings; Heart of Ahriman finesse_ahriman/float_down;
+ * ring-over-sink dosinkring (:753-757, D-2527), verbose pline, dropx.
+ * Named omissions: Heart of Ahriman finesse_ahriman/float_down;
  * swallowed digests path.
  */
 export async function drop(obj) {
@@ -2408,6 +2692,13 @@ export async function drop(obj) {
             await pline(`You drop ${doname(obj)} into something.`);
         }
     } else {
+        // C do.c:753-757 — ring (or meat ring) dropped over a sink.
+        const here = game.level?.at?.(u.ux | 0, u.uy | 0);
+        if ((obj.oclass === RING_CLASS || (obj.otyp | 0) === MEAT_RING)
+            && IS_SINK(here?.typ)) {
+            await dosinkring(obj);
+            return ECMD_TIME;
+        }
         if (!can_reach_floor(true)) {
             // C do.c:758–772 — freeinv + hitfloor(TRUE); how_lost not
             // set on this arm. finesse_ahriman / float_down named.
@@ -2420,7 +2711,6 @@ export async function drop(obj) {
             return ECMD_TIME;
         }
         // C: skip verbose "You drop" when standing on altar (doaltarobj speaks)
-        const here = game.level?.at?.(u.ux | 0, u.uy | 0);
         if (!IS_ALTAR(here?.typ) && game.flags?.verbose !== false) {
             await pline(`You drop ${doname(obj)}.`);
         }

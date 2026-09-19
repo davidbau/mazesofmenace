@@ -25198,14 +25198,45 @@ function mk_knox_portal(x, y) {
     place_branch(br, x, y);
 }
 
-// C ref: mklev.c makerooms()
+// C ref: mklev.c:366-436 makerooms() — whole-body port in C order.
+// C :373 gl.luathemes[dnum] ⇔ g._luathemes_loaded[dnum] (marked once per
+// branch by makelevel_ordinary above); the lua state itself is compiled
+// in (THEMEROOM_META/MAPS), so the :375-390 load cannot fail.
 async function makerooms() {
     const g = game;
+    // C :369-370.
     let tried_vault = false;
-    const difficulty = depth_of_level(g.u?.uz);
     let themeroom_tries = 0;
+    // C :373 — themes handle for this branch (NULL before first load).
+    const dnum = g.u?.uz?.dnum ?? 0;
+    if (!g._luathemes_loaded) g._luathemes_loaded = {};
+    // C :375-390 — load-once gate. C inits the lua sandbox, loads the
+    // branch themerms file, saves the state, and on failure clears the
+    // name so the next level does not retry. JS rooms are compiled in:
+    // marking the branch loaded is the whole load step (no RNG here;
+    // the nhlib-load shuffle beat lives in makelevel_ordinary, which runs
+    // before this call exactly as C loads before looping).
+    if (!g._luathemes_loaded[dnum]) {
+        g._luathemes_loaded[dnum] = true;
+    }
+    const themes = g._luathemes_loaded[dnum] === true;
 
+    // C :392-399 — pre hook. create_des_coder's SpLev_Map memset already
+    // runs inside reset_xystart_size (:1449); iflags.in_lua has no JS
+    // counterpart (error-message flag only); gi.in_mk_themerooms ⇔
+    // g.in_mk_themerooms. pre_themerooms_generate resolves debug env
+    // only (themerms.lua:982-1004; THEMERM/THEMERMFILL unported — map).
+    if (themes) {
+        g.in_mk_themerooms = true;
+        g.themeroom_failed = false;
+        pre_themerooms_generate();
+        g.in_mk_themerooms = false;
+    }
+
+    // C :401-403 — make rooms until satisfied; rnd_rect() returns 0 when
+    // no more rects are available.
     while (g.level.nroom < (MAXNROFROOMS - 1) && rnd_rect()) {
+        // C :404-410 — one vault attempt once past MAXNROFROOMS/6.
         if (g.level.nroom >= Math.trunc(MAXNROFROOMS / 6) && rn2(2) && !tried_vault) {
             tried_vault = true;
             if (create_vault()) {
@@ -25213,21 +25244,46 @@ async function makerooms() {
                 g.vault_y = g.level.rooms[g.level.nroom]?.ly ?? -1;
                 if (g.level.rooms[g.level.nroom]) g.level.rooms[g.level.nroom].hx = -1;
             }
-        } else {
-            // C: themes path always calls themerooms_generate; failure is
-            // gt.themeroom_failed (map placement miss), not a false return.
+        } else if (themes) {
+            // C :412-421 — themed room via lua; only gt.themeroom_failed
+            // breaks (the pcall return is unchecked in C). themerooms_-
+            // generate manages g.in_mk_themerooms itself (try/finally);
+            // the wrapper set/clear mirrors C :413/:417.
+            g.in_mk_themerooms = true;
             g.themeroom_failed = false;
-            const ok = await themerooms_generate(difficulty);
-            if (!ok || g.themeroom_failed) {
-                if (themeroom_tries++ > 10
-                    || g.level.nroom >= Math.trunc(MAXNROFROOMS / 6))
-                    break;
-            }
+            await themerooms_generate(depth_of_level(g.u?.uz));
+            g.in_mk_themerooms = false;
+            if (g.themeroom_failed
+                && (themeroom_tries++ > 10
+                    || g.level.nroom >= Math.trunc(MAXNROFROOMS / 6)))
+                break;
+        } else {
+            // C :422-424 — no themes for this branch: plain ordinary room.
+            if (!create_room(-1, -1, -1, -1, -1, -1, OROOM, -1))
+                break;
         }
     }
-    // C mklev.c:428–434 — reset_xystart_size then post_themerooms_generate
-    // (lua body is empty). xstart must not leak from the last des.map.
-    reset_xystart_size();
+    // C :428-435 — post hook. reset_xystart_size must not leak the last
+    // des.map origin; post_themerooms_generate is empty
+    // (themerms.lua:1006-1008).
+    if (themes) {
+        reset_xystart_size();
+        g.in_mk_themerooms = true;
+        g.themeroom_failed = false;
+        post_themerooms_generate();
+        g.in_mk_themerooms = false;
+    }
+}
+
+// C ref: themerms.lua:982-1004 pre_themerooms_generate() — resolves the
+// THEMERM/THEMERMFILL debug env to room/fill indexes (warns when unknown).
+// No JS counterpart (debug env unported — map); the makerooms call site
+// keeps the C :396-397 order.
+function pre_themerooms_generate() {
+}
+
+// C ref: themerms.lua:1006-1008 post_themerooms_generate() — empty body.
+function post_themerooms_generate() {
 }
 
 // Themed room metadata — must match C's themerms.lua frequency table exactly.
@@ -27421,7 +27477,12 @@ async function themerooms_generate(difficulty) {
                 pick = meta;
             }
         }
-        if (!pick) return false;
+        // C themerms.lua:975-978 — impossible, then return with
+        // themeroom_failed clear (makerooms does not break on it).
+        if (!pick) {
+            await impossible('no eligible themed rooms?');
+            return false;
+        }
 
         const mapdef = THEMEROOM_MAPS[pick.name];
         if (mapdef) {

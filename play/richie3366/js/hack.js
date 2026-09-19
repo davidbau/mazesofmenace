@@ -33,6 +33,7 @@ import {
     LEVITATION, FLYING, BLINDED, FOOT, SWIMMING, VIBRATING_SQUARE,
     BRK_BY_HERO, BRK_FROM_INV, BRK_MELEE, BRK_KNOWN2BREAK, BRK_KNOWN2NOTBREAK,
     ARTICLE_NONE, ARTICLE_A, ARTICLE_THE, ARTICLE_YOUR, SUPPRESS_SADDLE,
+    LL_CONDUCT,
     has_mgivenname, RUN_TPORT, RUN_LEAP, RUN_STEP, RUN_CRAWL,
     DO_MOVE, TEST_MOVE, TEST_TRAV, TEST_TRAP, S_stone,
 } from './const.js';
@@ -40,10 +41,11 @@ import {
     pline, You, Norep, newsym, canspotmon, canseemon, map_invisible, You_feel,
     set_msg_xy, feel_location, map_object, verbalize, curs_on_u,
     nh_delay_output, back_to_glyph, glyph_to_cmap, glyph_is_cmap, pline_dir,
+    impossible,
 } from './display.js';
 import { gethungry, morehungry, is_fainted } from './eat.js';
 import { unconscious, enexto, goodpos, rloc_to } from './teleport.js';
-import { m_at, hideunder, seemimic, bad_rock, may_passwall, cant_squeeze_thru } from './mon.js';
+import { m_at, hideunder, seemimic, bad_rock, may_passwall, cant_squeeze_thru, minliquid } from './mon.js';
 import { recalc_block_point } from './vision.js';
 import { is_hider, hides_under, throws_rocks, noncorporeal, metallivorous, mons, is_flyer, is_swimmer, verysmall, bigmonst, passes_bars, dmgtype, is_rider, amorphous, tunnels, needspick, is_floater, is_clinger, is_whirly } from './monsters.js';
 import {
@@ -52,8 +54,8 @@ import {
 } from './mkobj.js';
 import { objectNames } from './generated/objects_data.js';
 import { WEAPON_CLASS, TOOL_CLASS, COIN_CLASS, is_blade, is_pick } from './objects.js';
-import { xname, the, The, makeplural, an } from './objnam.js';
-import { A_STR, A_CON, A_DEX, acurr, acurrstr, exercise, Fumbling } from './attrib.js';
+import { xname, the, The, makeplural, an, just_an } from './objnam.js';
+import { A_STR, A_CON, A_DEX, acurr, acurrstr, exercise, Fumbling, adjalign } from './attrib.js';
 import { objdescr_is } from './apply.js';
 import { rn2, rnd, rn1 } from './rng.js';
 import { ing_suffix } from './hacklib.js';
@@ -69,6 +71,8 @@ import { record_achievement } from './insight.js';
 import {
     b_trapped, selftouch, t_at, into_vs_onto, immune_to_trap, trapname,
     sokoban_guilt, feeltrap, deltrap, climb_pit, Fire_resistance,
+    mintrap, NO_TRAP_FLAGS,
+    Trap_Effect_Finished, Trap_Killed_Mon, Trap_Caught_Mon, Trap_Moved_Mon,
 } from './trap.js';
 import { paranoid_query } from './getline.js';
 import { is_art, attacks, bare_artifactname } from './artifact.js';
@@ -87,7 +91,13 @@ import { is_db_wall } from './dbridge.js';
 import { doopen_indir } from './lock.js';
 import { use_pick_axe2 } from './dig.js';
 import { is_ice, resists_cold, Cold_resistance } from './zap.js';
-import { can_ooze } from './monmove.js';
+import { can_ooze, curr_mon_load } from './monmove.js';
+import { abuse_dog } from './dog.js';
+import { livelog_printf } from './pline.js';
+import { experience, more_experienced, newexplevel } from './exper.js';
+import { place_monster, remove_monster } from './steed.js';
+import { mundisplaceable } from './uhitm.js';
+import { monsndx } from './mondata.js';
 import { worm_cross } from './worm.js';
 
 export { set_msg_xy };
@@ -1043,140 +1053,146 @@ function swap_nodiag(mtmp) {
     return monnum === PM_GRID_BUG;
 }
 
-/** C mon.c curr_mon_load — skip boulder weight when throws_rocks. */
-function swap_curr_mon_load(mtmp) {
-    let curload = 0;
-    for (let obj = mtmp?.minvent; obj; obj = obj.nobj) {
-        if (obj.otyp !== BOULDER || !throws_rocks(mtmp.data)) {
-            curload += obj.owt || 0;
-        }
-    }
-    return curload;
-}
-
 /**
- * C monst.h mundisplaceable — priest/shk/gd/Oracle/quest leader.
- * Local clone: uhitm.js already exports this, but hack.js cannot import
- * uhitm.js (uhitm imports hack).
- */
-function swap_mundisplaceable(mon) {
-    if (!mon) return false;
-    if (mon.ispriest || mon.isshk || mon.isgd) return true;
-    const mndx = mon.mnum ?? mon.data?.mndx;
-    if (PM_ORACLE >= 0 && mndx === PM_ORACLE) return true;
-    const lid = game.quest_status?.leader_m_id;
-    if (lid != null && (mon.m_id | 0) === (lid | 0)) return true;
-    return false;
-}
-
-function YMonnam_swap(mtmp) {
-    const s = y_monnam(mtmp) || '';
-    return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
-}
-
-/** C objnam.c just_an — article only, for trapname "a pit" / "an arrow trap". */
-function just_an_swap(str) {
-    const s = String(str ?? '').replace(/^\s+/, '');
-    if (!s) return 'a ';
-    const c0 = s[0].toLowerCase();
-    if (!s[1] || s[1] === ' ') {
-        return 'aefhilmnosx'.includes(c0) ? 'an ' : 'a ';
-    }
-    if (/^the /i.test(s) || /^molten lava$/i.test(s)
-        || /^iron bars$/i.test(s) || /^ice$/i.test(s)) {
-        return '';
-    }
-    return 'aeiou'.includes(c0) ? 'an ' : 'a ';
-}
-
-/**
- * C ref: hack.c:2098–2224 domove_swap_with_pet.
+ * C ref: hack.c:2098–2225 domove_swap_with_pet.
  * Caller has tentatively occupied dest (u.ux+=dx). Park hero at ux0
  * for seemimic/newsym, then resume dest. Returns true if the pet
  * moved to ux0.
- * Named: teleport.c goodpos origin conjunct; minliquid/mintrap
- * aftermath (experience/guilt/abuse_dog); displaceu; livelog killer.
+ * Caller: hack.c:2922 domove (JS: js/cmd.js domove displacement site).
  */
 export async function domove_swap_with_pet(mtmp, x, y) {
     const u = game.u;
     if (!mtmp || !u) return false;
+    /* C :2101–2105 — if it turns out we can't actually move; boulder
+       captured at dest after occupy, before parking at ux0. */
     let didnt_move = false;
-    // C: captured at dest after occupy, before parking at ux0.
     const u_with_boulder = !!sobj_at(BOULDER, u.ux, u.uy);
 
-    /* C: seemimic/newsym before moving hero, otherwise display draws
-       the hero here before a cancelled swap (ignore steed mx,my). */
+    /* C :2107–2114 — seemimic/newsym should be done before moving hero,
+       otherwise the display code will draw the hero here before we
+       possibly cancel the swap below (we can ignore steed mx,my here). */
     u.ux = u.ux0;
     u.uy = u.uy0;
     mtmp.mundetected = 0;
-    if (((mtmp.m_ap_type | 0) & M_AP_TYPMASK) !== M_AP_NOTHING) {
+    if (M_AP_TYPE(mtmp)) {
         seemimic(mtmp);
     }
     u.ux = mtmp.mx;
-    u.uy = mtmp.my;
+    u.uy = mtmp.my; /* resume swapping positions */
 
+    /* C :2116–2118 */
     let trap = mtmp.mtrapped ? t_at(mtmp.mx, mtmp.my) : null;
-    if (!trap) mtmp.mtrapped = 0;
+    if (!trap) {
+        mtmp.mtrapped = 0;
+    }
 
-    if (mtmp.mtrapped && is_pit(trap?.ttyp) && sobj_at(BOULDER, trap.tx, trap.ty)) {
+    /* C :2120–2124 — can't swap places with pet pinned in a pit
+       by a boulder. */
+    if (mtmp.mtrapped && is_pit(trap.ttyp) && sobj_at(BOULDER, trap.tx, trap.ty)) {
         didnt_move = true;
+    /* C :2125–2128 — can't swap places when pet can't move to your spot. */
     } else if ((u.ux0 | 0) !== (x | 0) && (u.uy0 | 0) !== (y | 0)
         && swap_nodiag(mtmp)) {
-        await pline(`You stop.  ${YMonnam_swap(mtmp)} can't move diagonally.`);
+        await You(`stop.  ${YMonnam(mtmp)} can't move diagonally.`);
         didnt_move = true;
+    /* C :2129–2136 — can't swap places when pet won't fit there with
+       the boulder. */
     } else if (u_with_boulder
         && !(verysmall(mtmp.data)
-            && (!mtmp.minvent || swap_curr_mon_load(mtmp) <= 600))) {
-        await pline(
-            `You stop.  ${YMonnam_swap(mtmp)} won't fit into the same spot that you're at.`,
-        );
+            && (!mtmp.minvent || curr_mon_load(mtmp) <= 600))) {
+        await You(`stop.  ${YMonnam(mtmp)} won't fit into the same spot that you're at.`);
         didnt_move = true;
+    /* C :2137–2143 — can't swap places when pet won't fit thru
+       the opening. */
     } else if ((u.ux0 | 0) !== (x | 0) && (u.uy0 | 0) !== (y | 0)
         && bad_rock(mtmp.data, x, u.uy0)
         && bad_rock(mtmp.data, u.ux0, y)
-        && (bigmonst(mtmp.data) || swap_curr_mon_load(mtmp) > 600)) {
-        await pline(`You stop.  ${YMonnam_swap(mtmp)} won't fit through.`);
+        && (bigmonst(mtmp.data) || curr_mon_load(mtmp) > 600)) {
+        await You(`stop.  ${YMonnam(mtmp)} won't fit through.`);
         didnt_move = true;
+    /* C :2144–2160 — all mtame are also mpeaceful, so this affects
+       pets too. trap != NULL implied by mtrapped (cleared above). */
     } else if (mtmp.mpeaceful && mtmp.mtrapped) {
         const what = trapname(trap.ttyp, false);
         let which = 'that ';
         if (!trap.tseen) {
-            feeltrap(trap);
-            which = just_an_swap(what);
+            feeltrap(trap); /* show on map once mtmp is out of the way */
+            which = just_an(what); /* "a " or "an " */
         }
-        await pline(
-            `You stop.  ${YMonnam_swap(mtmp)} can't move out of ${which}${what}.`,
-        );
+        await You(`stop.  ${YMonnam(mtmp)} can't move out of ${which}${what}.`);
         await handle_tip(TIP_UNTRAP_MON);
         didnt_move = true;
+    /* C :2161–2169 — displacing peaceful into unsafe or trapped space,
+       or trying to displace quest leader, Oracle, shk, priest, or
+       vault guard. */
     } else if (mtmp.mpeaceful
-        && (/* goodpos(u.ux0, u.uy0, mtmp, 0) named */
-            t_at(u.ux0, u.uy0) != null
-            || swap_mundisplaceable(mtmp))) {
-        await pline(
-            `You stop.  ${YMonnam_swap(mtmp)} doesn't want to swap places.`,
-        );
+        && (!goodpos(u.ux0, u.uy0, mtmp, 0)
+            || t_at(u.ux0, u.uy0) != null
+            || mundisplaceable(mtmp))) {
+        await You(`stop.  ${YMonnam(mtmp)} doesn't want to swap places.`);
         didnt_move = true;
     } else {
+        /* C :2171–2185 — the swap. */
         mtmp.mtrapped = 0;
-        mtmp.mx = u.ux0 | 0;
-        mtmp.my = u.uy0 | 0;
+        remove_monster(x, y);
+        place_monster(mtmp, u.ux0, u.uy0);
         newsym(x, y);
         newsym(u.ux0, u.uy0);
 
-        const swapArt = mtmp.mtame
-            ? ARTICLE_YOUR
-            : (!has_mgivenname(mtmp) && !type_is_pname(mtmp.data))
-                ? ARTICLE_THE
-                : ARTICLE_NONE;
-        const swapAdj = (mtmp.mpeaceful && !mtmp.mtame) ? 'peaceful' : null;
-        const swapSupp = has_mgivenname(mtmp) ? SUPPRESS_SADDLE : 0;
-        const swapVerb = mtmp.mpeaceful ? 'swap places with' : 'frighten';
-        await pline(
-            `You ${swapVerb} ${x_monnam(mtmp, swapArt, swapAdj, swapSupp, false)}.`,
+        await You(
+            `${mtmp.mpeaceful ? 'swap places with' : 'frighten'} ${x_monnam(
+                mtmp,
+                mtmp.mtame
+                    ? ARTICLE_YOUR
+                    : (!has_mgivenname(mtmp) && !type_is_pname(mtmp.data))
+                        ? ARTICLE_THE
+                        : ARTICLE_NONE,
+                (mtmp.mpeaceful && !mtmp.mtame) ? 'peaceful' : 0,
+                has_mgivenname(mtmp) ? SUPPRESS_SADDLE : 0,
+                false,
+            )}.`,
         );
-        // minliquid / mintrap switch (Trap_Caught/Moved/Killed + abuse_dog
-        // / adjalign / experience / rn2(4) guilt) named
+
+        /* C :2187–2223 — check for displacing it into pools and traps. */
+        switch (await minliquid(mtmp) ? Trap_Killed_Mon : await mintrap(mtmp, NO_TRAP_FLAGS)) {
+        case Trap_Effect_Finished:
+            break;
+        case Trap_Caught_Mon: /* trapped */
+        case Trap_Moved_Mon: /* changed levels */
+            /* there's already been a trap message, reinforce it */
+            await abuse_dog(mtmp);
+            adjalign(-3);
+            break;
+        case Trap_Killed_Mon: {
+            /* C :2202–2212 — drowned or died... you killed your pet by
+               direct action, so get experience and possibly penalties;
+               minliquid() and mintrap() call mondead() rather than
+               killed() so we duplicate some of the latter here. */
+            if (!u.uconduct) u.uconduct = {};
+            // C :2206 — if (!u.uconduct.killer++) livelog first kill.
+            if (!(u.uconduct.killer | 0)) {
+                u.uconduct.killer = 1;
+                livelog_printf(LL_CONDUCT, 'killed for the first time');
+            } else {
+                u.uconduct.killer = (u.uconduct.killer | 0) + 1;
+            }
+            const mndx = monsndx(mtmp.data);
+            const tmp = experience(mtmp, game.mvitals?.[mndx]?.died | 0);
+            more_experienced(tmp, 0);
+            await newexplevel(); /* will decide if you go up */
+            /* C :2214–2220 — That's no way to treat a pet!
+               Your god gets angry. */
+            if (rn2(4)) {
+                await You_feel('guilty about losing your pet like this.');
+                u.ugangr = (u.ugangr | 0) + 1;
+                adjalign(-15);
+            }
+            break;
+        }
+        default:
+            await impossible("that's strange, unknown mintrap result!");
+            break;
+        }
     }
     return !didnt_move;
 }

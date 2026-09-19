@@ -315,7 +315,7 @@ import {
     mkobj, mksobj, delobj, delobj_core, objects_at, sobj_at, replace_object, rnd_class, weight, splitobj, container_weight,
     oc_merge_of, uncurse, unbless, attach_egg_hatch_timeout, obj_extract_self,
     eaten_stat, start_timer, spot_stop_timers, spot_time_left, obj_stop_timers,
-    obj_ice_effects, place_object, stackobj, mergable, set_corpsenm, kill_egg,
+    obj_ice_effects, place_object, stackobj, mergable, merged, set_corpsenm, kill_egg,
     get_mtraits, free_omonst, free_omid, is_metallic, is_crackable,
     mksobj_at, is_flammable, is_rottable, is_rustprone, is_corrodeable,
     erosion_matters, is_damageable, fixup_oil,
@@ -371,7 +371,7 @@ import {
     has_mcorpsenm, ERODE_CORRODE,
     LL_WISH, LL_CONDUCT, LL_ARTIFACT, ONAME_WISH, ONAME_KNOW_ARTI,
 } from './const.js';
-import { monstseesu, monstunseesu } from './mondata.js';
+import { monstseesu, monstunseesu, defended } from './mondata.js';
 
 const MZ_HUMAN = MZ_MEDIUM;
 const SPE_HEALING = objectNames.indexOf('SPE_HEALING');
@@ -3709,8 +3709,8 @@ async function miss_msg(str, mtmp) {
 
 /**
  * C ref: mondata.c resists_drli :201–211 — undead/demon/were/lycan/
- * Death/vampshifter, else defended(AD_DRLI). First caller: zap.c
- * bhitm SPE_DRAIN_LIFE (D-1436). Named omit: defended worn-item walk.
+ * Death/vampshifter, else defended(mon, AD_DRLI) (`:210`). First caller:
+ * zap.c bhitm SPE_DRAIN_LIFE (D-1436).
  */
 export function resists_drli(mon) {
     const ptr = mon?.data;
@@ -3720,7 +3720,7 @@ export function resists_drli(mon) {
         || (ptr.mndx | 0) === PM_DEATH || is_vampshifter(mon)) {
         return true;
     }
-    return false;
+    return defended(mon, AD_DRLI); /* C mondata.c:210 */
 }
 
 /**
@@ -4074,7 +4074,7 @@ export async function bhitm(mtmp, otmp) {
         // else m_lev-- + weaker pline. Does not discover the type
         // (unlike probing).
         // Callees: makemon.c monhp_per_lvl; mondata.c resists_drli
-        // (defended AD_DRLI named); mon.c shieldeff_mon; zap.c
+        // (defended AD_DRLI via resists_drli tail); mon.c shieldeff_mon; zap.c
         // resist. zapyourself SPE_DRAIN is D-1446; bhito
         // drain_item is D-1453; zap_steed SPE_DRAIN_LIFE
         // routes here (D-1464).
@@ -4803,12 +4803,10 @@ export async function zapyourself(obj, ordinary) {
                 for (let j = i + 1; j < inv.length; j++) {
                     const onxt = inv[j];
                     if (!mergable(otmp, onxt)) continue;
-                    otmp.quan = (otmp.quan || 1) + (onxt.quan || 1);
-                    otmp.owt = weight(otmp);
-                    if (onxt.known) otmp.known = 1;
-                    if (onxt.bknown) otmp.bknown = 1;
-                    if (onxt.rknown) otmp.rknown = 1;
-                    obj_extract_self(onxt);
+                    // C `:2996` — merged() absorbs in C order (age, oname,
+                    // lights, timers, compare-learn) and frees onxt.
+                    const potmp = { obj: otmp };
+                    if (!merged(potmp, { obj: onxt })) continue;
                     didmerge = true;
                     break outer;
                 }

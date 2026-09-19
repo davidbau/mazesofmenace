@@ -1409,6 +1409,29 @@ async function m_tele(mtmp, vismon, oseen, how) {
     }
 }
 
+/**
+ * C ref: muse.c munstone `:2883–2903` — monster cures impending stoning from
+ * inventory (lizard/acid cure via mon_consume_unstone). Same-file locals
+ * mcould_eat_tin / cures_stoning / mon_consume_unstone; helpless() is the
+ * monst.h macro (msleeping || !mcanmove). C is sync; JS is async because
+ * mon_consume_unstone plines. Caller: mthrowu.c ohitmon `:444` egg arm.
+ */
+export async function munstone(mon, by_you) {
+    if (resists_ston(mon)) return false;
+    /* C monst.h helpless() macro: msleeping || !mcanmove */
+    if (mon.meating || mon.msleeping || !mon.mcanmove) return false;
+    mon.mstrategy = (mon.mstrategy | 0) & ~STRAT_WAITFORU;
+
+    const tinok = mcould_eat_tin(mon);
+    for (let obj = mon.minvent; obj; obj = obj.nobj) {
+        if (cures_stoning(mon, obj, tinok)) {
+            await mon_consume_unstone(mon, obj, by_you, true);
+            return true;
+        }
+    }
+    return false;
+}
+
 /** C ref: muse.c mcould_eat_tin `:3000` — opener / dagger / knife; welded mwep. */
 function mcould_eat_tin(mon) {
     if (is_animal(mon?.data)) return false;

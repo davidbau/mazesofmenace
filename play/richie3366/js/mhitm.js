@@ -138,7 +138,7 @@ import { mon_offmap, set_apparxy, mb_trapped } from './monmove.js';
 import { hurtle, mhurtle, will_hurtle } from './dothrow.js';
 import { make_stunned } from './potion.js';
 import { m_is_steadfast } from './uhitm.js';
-import { mintrap } from './trap.js';
+import { mintrap, acid_damage } from './trap.js';
 import { breamm, spitmm, thrwmm } from './mthrowu.js';
 // C ref: mon.c mondead tail (D-row for data.md:358) — one block for the
 // death-tail family. ESM permits several import statements per module;
@@ -1322,6 +1322,35 @@ export async function mhitm_ad_were(magr, mattk, mdef, mhm) {
 export async function mhitm_ad_heal(magr, mattk, mdef, mhm) {
     if (is_youmonst(mdef)) return;
     await mhitm_ad_phys(magr, mattk, mdef, mhm);
+}
+
+/**
+ * C ref: uhitm.c mhitm_ad_acid `:2769–2786` — mhitm (mon→mon) arm.
+ * Cancelled zeroes the leftover and returns; resists_acid/defended
+ * is harmless (vis-gated pline, leftover zeroed), else burns
+ * (vis-gated pline_mon + pline, leftover kept); then rn2(30)
+ * erode_armor + rn2(6) acid_damage on the defender's weapon.
+ * mhitu arm is mhitm_ad_acid_u (mhitu.js); uhitm arm is the
+ * damageum_adtyping row.
+ */
+export async function mhitm_ad_acid(magr, mattk, mdef, mhm) {
+    if ((magr.mcan | 0)) {
+        mhm.damage = 0;
+        return;
+    }
+    if (resists_acid(mdef) || defended(mdef, AD_ACID)) {
+        if (_mm_vis && canseemon(mdef)) {
+            await pline(
+                `${Monnam(mdef)} is covered in ${hliquid('acid')}, but it seems harmless.`,
+            );
+        }
+        mhm.damage = 0;
+    } else if (_mm_vis && canseemon(mdef)) {
+        await pline_mon(mdef, `${Monnam(mdef)} is covered in ${hliquid('acid')}!`);
+        await pline(`It burns ${mon_nam(mdef)}!`);
+    }
+    if (!rn2(30)) await erode_armor(mdef, ERODE_CORRODE);
+    if (!rn2(6)) await acid_damage(MON_WEP(mdef));
 }
 
 /**
@@ -4215,11 +4244,47 @@ async function mdamagem(magr, mdef, mattk, mwep, dieroll) {
         return (hitflags === M_ATTK_AGR_DIED) ? M_ATTK_AGR_DIED : M_ATTK_HIT;
     }
 
+    // C: mhitm_adtyping → mhitm_ad_acid for AD_ACID (uhitm.c:2742–2786
+    // mhitm arm :2769–2786). Cancelled/resisted zeroes the leftover;
+    // erode/acid dice live inside the callee. mhitu arm is
+    // mhitm_ad_acid_u (mhitu.js); uhitm arm is the damageum_adtyping
+    // row. D-2247 shipped the mhitu arm; this commits the rest.
+    if ((mattk.adtyp | 0) === AD_ACID) {
+        const mhm = {
+            damage,
+            hitflags: M_ATTK_MISS,
+            done: false,
+            dieroll: dieroll | 0,
+        };
+        await mhitm_ad_acid(magr, mattk, mdef, mhm);
+        // C mhitm.c:1061-1065 — knockback preempts damage on HIT/DEF_DIED/offmap
+        if (await mhitm_knockback(magr, mdef, mattk, mhm, !!mwep)
+            && (((mhm.hitflags & (M_ATTK_DEF_DIED | M_ATTK_HIT)) !== 0) || mon_offmap(mdef))) {
+            return mhm.hitflags;
+        }
+        if (mhm.done) return mhm.hitflags;
+        damage = mhm.damage | 0;
+        hitflags = mhm.hitflags | 0;
+        if (!damage) return hitflags;
+        mdef.mhp -= damage;
+        if (mdef.mhp < 1) {
+            mdef.mhp = 0;
+            await mdamagem_monkilled(magr, mdef, mattk, mwep);
+            if ((mdef.mhp | 0) > 0) return hitflags; /* lifesaved */
+            if (hitflags === M_ATTK_AGR_DIED) {
+                return M_ATTK_DEF_DIED | M_ATTK_AGR_DIED;
+            }
+            const grew = await grow_up(magr, mdef);
+            return M_ATTK_DEF_DIED | (grew ? 0 : M_ATTK_AGR_DIED);
+        }
+        return (hitflags === M_ATTK_AGR_DIED) ? M_ATTK_AGR_DIED : M_ATTK_HIT;
+    }
+
     // C: mhitm_adtyping → mhitm_ad_heal for AD_HEAL (uhitm.c:4296–4385
     // mhitm arm :4379–4384). Delegates to mhitm_ad_phys (dieroll carried
     // for artifact_hit, like AD_WERE); done propagates via mhm.
     // mhitu nurse-heal arm is mhitm_ad_heal_u (mhitu.js); the uhitm arm
-    // shares the phys shape (named in the callee).
+    // is the damageum_adtyping row.
     if ((mattk.adtyp | 0) === AD_HEAL) {
         const mhm = {
             damage,

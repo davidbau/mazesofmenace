@@ -44,7 +44,7 @@ import { doname, makeplural } from './objnam.js';
 import {
     setworn, armor_simple_name,
     Armor_off, Cloak_off, Boots_off, Gloves_off,
-    Helmet_off, Shield_off, Shirt_off,
+    Helmet_off, Shield_off, Shirt_off, Amulet_off,
 } from './do_wear.js';
 import { uwepgone, uswapwepgone, uqwepgone } from './wield.js';
 import { mpickobj } from './makemon.js';
@@ -239,8 +239,8 @@ async function worn_item_removal(mon, obj) {
  * pass TRUE. W_ARMOR dispatches do_wear.c *_off (D-1086); leftover
  * bits use do.js setnotworn pointer-walk; W_BALL|W_CHAIN + unchain
  * calls read.c unpunish.
- * Named omit: donning/cancel_don; in_use; uskin skinback; Amulet_off
- * (setworn W_AMUL stand-in); Ring_gone / Blindf_off still setworn.
+ * Named omit: donning/cancel_don; in_use; uskin skinback;
+ * Ring_gone / Blindf_off still setworn.
  */
 export async function remove_worn_item(obj, unchain_ball) {
     if (!obj) return;
@@ -263,8 +263,8 @@ export async function remove_worn_item(obj, unchain_ball) {
         else if (obj === u.uarmu) Shirt_off();
         else setworn(null, obj.owornmask & W_ARMOR);
     } else if (obj.owornmask & W_AMUL) {
-        // C Amulet_off() — named omit
-        setworn(null, W_AMUL);
+        // C steal.c:264–265 — Amulet_off() does its own off_msg.
+        await Amulet_off();
     } else if (obj.owornmask & W_RING) {
         // C Ring_gone(obj) — named omit this iter
         if (obj === u.uleft) setworn(null, W_RINGL);

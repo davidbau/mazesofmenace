@@ -57,9 +57,10 @@ import {
     maybe_half_phys, nomul, stop_occupation, You_hear, in_rooms,
 } from './hack.js';
 import { exercise, A_STR } from './attrib.js';
+import { end_burn } from './timeout.js';
 import {
     isok, u_at, PHYS_EXPL_TYPE, MON_EXPLODE, EXPL_NOXIOUS, EXPL_FIERY,
-    EXPL_FROSTY, EXPL_MAGICAL,
+    EXPL_FROSTY, EXPL_MAGICAL, LOST_EXPLODING,
     STRAT_WAITMASK, KILLED_BY_AN, KILLED_BY, NO_KILLER_PREFIX,
     BURNING_OIL, TRAP_EXPLODE, XKILL_GIVEMSG, XKILL_NOCORPSE, BURNING, DIED,
     XKILL_NOMSG, XKILL_NOCONDUCT, INVULNERABLE,
@@ -1087,4 +1088,29 @@ export async function scatter(sx, sy, blastforce, scflags, obj = null) {
     // shop_origin, so shkp is valid).
     if (lostgoods) await credit_report(shkp, 1, false);
     return total;
+}
+
+/** C explode.c ZT_SPELL_O_FIRE — explode_oil blast type (value kludge, see zap.c). */
+const ZT_SPELL_O_FIRE = 11;
+
+/**
+ * C ref: explode.c splatter_burning_oil :962–969 — regular fiery blast,
+ * d(diluted ? 3 : 4, 4), BURNING_OIL olet.
+ */
+async function splatter_burning_oil(x, y, diluted_oil) {
+    const dmg = d(diluted_oil ? 3 : 4, 4);
+    await explode(x, y, ZT_SPELL_O_FIRE, dmg, BURNING_OIL, EXPL_FIERY);
+}
+
+/**
+ * C ref: explode.c explode_oil :974–983 — lit oil explodes; extinguish as
+ * a light source first (end_burn), mark LOST_EXPLODING, then splatter.
+ * Callers: breakobj POT_OIL arm (dothrow.c:2501), potionhit ×2 (potion.c).
+ */
+export async function explode_oil(obj, x, y) {
+    const diluted_oil = !!obj?.odiluted;
+    if (!obj?.lamplit) await impossible('exploding unlit oil');
+    end_burn(obj, true);
+    obj.how_lost = LOST_EXPLODING;
+    await splatter_burning_oil(x, y, diluted_oil);
 }

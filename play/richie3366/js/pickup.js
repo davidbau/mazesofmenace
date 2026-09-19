@@ -110,6 +110,7 @@ import { trycall, Monnam, christen_monst, oname, rndmonnam, Amonnam, a_monnam, x
 import { makemon, set_malign } from './makemon.js';
 import { more_experienced, newexplevel } from './exper.js';
 import { hard_helmet } from './do_wear.js';
+import { tiphat } from './sounds.js';
 import { mdamageu, digests } from './mhitu.js';
 import { P_SKILL } from './weapon.js';
 import { rider_cant_reach, dismount_steed } from './steed.js';
@@ -4726,7 +4727,8 @@ function tip_ok(obj) {
  * Ported: floor ynq (D-1654); m-prefix skip / TRADITIONAL boxes>1 gate;
  * getobj("tip", tip_ok, GETOBJ_PROMPT) + container/horn tipcontainer
  * (D-1665); choose_tip_container_menu when boxes>1 (D-1679).
- * Named omissions: candle/oil/grease/food/venom spill; tiphat; statue.
+ * Named omissions: candle/oil/grease/food/venom spill; statue.
+ * Wires tiphat (sounds.js) when the tipped item is the worn helm.
  * @returns {Promise<number>} ECMD_*
  */
 export async function dotip() {
@@ -4783,7 +4785,10 @@ export async function dotip() {
         await pline(`The ${xname(cobj)} ${otense(cobj, 'are')} securely sealed.`);
         return ECMD_OK;
     }
-    /* spill / tiphat / statue named */
+    // C pickup.c `:3670–3671`: tipping the worn helm tips it at a monster
+    if (u.uarmh && cobj === u.uarmh)
+        return (await tiphat()) ? ECMD_TIME : ECMD_OK;
+    /* spill / statue named */
     await pline(nothing_happens);
     return ECMD_OK;
 }

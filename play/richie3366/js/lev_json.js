@@ -18,7 +18,8 @@ import {
     LS_OBJECT, LS_MONSTER, ESHK,
 } from './const.js';
 import { mons } from './monsters.js';
-import { restmon_edog, savemon_edog } from './makemon.js';
+import { savemon_edog } from './makemon.js';
+import { restmon } from './restore.js';
 import { savecemetery, restcemetery } from './dungeon.js';
 import { forget_temple_entry } from './priest.js';
 import { peek_track } from './track.js';
@@ -131,6 +132,10 @@ export function deserObjChain(arr, where) {
         if (otmp.cobj) {
             for (let c = otmp.cobj; c; c = c.nobj) c.ocontainer = otmp;
         }
+        // C restobj `:206–210` — omonst_length > 0 defers to restmon(OMONST).
+        if (otmp.oextra && otmp.oextra.omonst != null) {
+            restmon(otmp.oextra.omonst);
+        }
         if (!head) head = otmp;
         else prev.nobj = otmp;
         prev = otmp;
@@ -193,7 +198,9 @@ function deserMon(raw) {
         const c = raw.mtrack?.[j];
         mtmp.mtrack.push({ x: c?.x | 0, y: c?.y | 0 });
     }
-    restmon_edog(mtmp);
+    // C restmonchn `:393` restmon(mtmp) after newmonst — full mextra
+    // rebuild in C order (covers the old restmon_edog arm).
+    restmon(mtmp);
     // C restshk: bill_p aliases bill (js/shk.js:361). JSON.stringify
     // duplicated the array; -1000 sentinel stays.
     const eshk = ESHK(mtmp);

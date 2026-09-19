@@ -8,9 +8,10 @@ import {
     flush_screen, pline, newsym, mark_topline_seen,
     canseemon, canspotmon, nh_delay_output, tmp_at, obj_glyph, verbalize,
     glyph_at, glyph_is_monster, glyph_is_invisible_id, map_invisible,
+    You, Your,
 } from './display.js';
 import { cansee, vision_recalc } from './vision.js';
-import { rn2, rnd, rn1 } from './rng.js';
+import { rn2, rnd, rn1, d } from './rng.js';
 import {
     place_object, splitobj, stackobj, delobj, is_crackable, sobj_at,
     weight,
@@ -21,7 +22,7 @@ import {
 } from './hack.js';
 import {
     WEAPON_CLASS, TOOL_CLASS, COIN_CLASS, GEM_CLASS, FOOD_CLASS, ARMOR_CLASS,
-    POTION_CLASS, SCROLL_CLASS, RING_CLASS, objectNames, objectNameStrs,
+    POTION_CLASS, SCROLL_CLASS, RING_CLASS, VENOM_CLASS, objectNames, objectNameStrs,
     is_sword, is_axe,
 } from './objects.js';
 import {
@@ -36,6 +37,7 @@ import {
     ACCFOOD, HMON_THROWN, HMON_KICKED, HMON_APPLIED, engulfing_u, STRAT_WAITMASK,
     M_AP_TYPE, M_AP_MONSTER, M_AP_NOTHING,
     BRK_FROM_INV, BRK_KNOWN2BREAK, BRK_KNOWN2NOTBREAK, BRK_KNOWN_OUTCOME,
+    ERODE_CRACK, EF_DESTROY, EF_VERBOSE, ER_DESTROYED, ESHK, EYE, EXPL_FIERY,
     ismnum, isok, u_at, MM_IGNOREWATER, MM_IGNORELAVA, MM_NOMSG,
     HURTLING, FORCEBUNGLE, IRONBARS, Upolyd, FACE, HEAD, ARM, FOOT, STONING,
     TIMEOUT, WT_TO_DMG, POTHIT_HERO_THROW, Has_contents, NON_PM, LOW_PM,
@@ -43,7 +45,7 @@ import {
     BOLT_LIM, AKLYS_LIM, HAND, THROWN_WEAPON, THROWN_TETHERED_WEAPON,
     xdir, ydir, xytodir, N_DIRS, RIGHT_HANDED, IS_SINK, HI_WOOD, OBJ_MINVENT,
     DISP_FLASH, DISP_CHANGE, DISP_END, DISP_TETHER, BACKTRACK,
-    ARTICLE_A, SUPPRESS_SADDLE, AUGMENT_IT, has_mgivenname,
+    ARTICLE_A, SUPPRESS_SADDLE, AUGMENT_IT, has_mgivenname, has_oname, RLOC_MSG,
     W_ARMU, W_ARM, W_ARMC,
     ECMD_OK, ECMD_TIME, LARGEST_INT, CQ_CANNED,
     DEAF, SHOPBASE, Is_waterlevel,
@@ -85,22 +87,28 @@ import {
     is_domestic, nohands, M1_NOTAKE, MZ_HUGE, MZ_MEDIUM,
     is_unicorn, is_orc, is_elf, your_race, is_animal, is_whirly,
     touch_petrifies, poly_when_stoned, hates_silver, mon_hates_blessings,
-    haseyes, passes_walls, unsolid, mons, throws_rocks,
+    haseyes, breathless, eyecount, passes_walls, unsolid, mons, throws_rocks,
 } from './monsters.js';
 import { tamedog } from './dog.js';
 import { hmon, passive_obj } from './uhitm.js';
 import { cutworm } from './worm.js';
-import { potionbreathe, potionhit } from './potion.js';
+import { potionbreathe, potionhit, Half_gas_damage } from './potion.js';
 import { body_part, polymon } from './polyself.js';
-import { goodpos, rloc_to } from './teleport.js';
+import { goodpos, rloc_to, tele_restrict, rloc } from './teleport.js';
 import {
     mintrap, t_at, Trap_Killed_Mon, Trap_Caught_Mon, Trap_Moved_Mon,
-    minstapetrify, instapetrify,
+    minstapetrify, instapetrify, erode_obj,
 } from './trap.js';
 import { in_out_region, m_in_out_region } from './region.js';
 import { u_wipe_engr } from './engrave.js';
 import { getdir } from './lock.js';
-import { hard_helmet } from './do_wear.js';
+import { hard_helmet, armor_simple_name } from './do_wear.js';
+import { canletgo } from './do.js';
+import { explode_oil, explode } from './explode.js';
+import {
+    check_shop_obj, costly_spot, shop_keeper, stolen_value, inside_shop,
+    make_angry_shk,
+} from './shk.js';
 
 const GLASS = 19;
 const POT_WATER = objectNames.indexOf('POT_WATER');
@@ -456,6 +464,111 @@ function Deaf_youprop() {
         || u.uroleplay?.deaf);
 }
 
+/** C: global.h sgn — sign of an alignment value (-1, 0, 1). */
+function sgn(n) {
+    const x = n | 0;
+    return (x > 0) - (x < 0);
+}
+
+/**
+ * C ref: dothrow.c gem_accept `:2309–2382` (staticfn) — unicorn catches a
+ * thrown gem or glass (sole C caller thitmonst `:2097`, reached only when
+ * the missile is GEM_CLASS, the monster is a unicorn, the material is not
+ * MINERAL and the hero is not slinging). Pacifies the monster, adjusts
+ * Luck by identification state, then either takes the object via mpickobj
+ * (C `ret = 1`) or leaves it (C `nopick`, `ret = 0`). C is sync; async
+ * here for check_shop_obj / tele_restrict / rloc.
+ * @returns {boolean} true when the monster took the object
+ */
+export async function gem_accept(mon, obj) {
+    // C `:2312–2316` message fragments
+    const nogood = ' is not interested in your junk.';
+    const acceptgift = ' accepts your gift.';
+    const maybeluck = ' hesitatingly';
+    const noluck = ' graciously';
+    const addluck = ' gratefully';
+    const u = game.u || {};
+    const objects = game.objects || {};
+    // C `:2320–2321`
+    const is_buddy = sgn(mon.data?.maligntyp) === sgn(u.ualign?.type);
+    const is_gem = (objects[obj.otyp]?.oc_material | 0) === GEMSTONE;
+    let ret = false;
+
+    // C `:2323–2324`
+    let buf = Monnam(mon);
+    mon.mpeaceful = 1;
+    mon.mavenge = 0;
+
+    // C `goto nopick` skips the accept block below
+    let nopick = false;
+    // C `:2327` — object properly identified
+    if (obj.dknown && objects[obj.otyp]?.oc_name_known) {
+        if (is_gem) {
+            if (is_buddy) {
+                // C `:2330–2331`
+                buf += addluck;
+                change_luck(5);
+            } else {
+                // C `:2333–2334`
+                buf += maybeluck;
+                change_luck(rn2(7) - 3);
+            }
+        } else {
+            // C `:2337–2339`
+            buf += nogood;
+            nopick = true;
+        }
+    // C `:2343` — making guesses (wrote a name or called it something)
+    } else if (has_oname(obj) || objects[obj.otyp]?.oc_uname) {
+        if (is_gem) {
+            if (is_buddy) {
+                // C `:2346–2347`
+                buf += addluck;
+                change_luck(2);
+            } else {
+                // C `:2349–2350`
+                buf += maybeluck;
+                change_luck(rn2(3) - 1);
+            }
+        } else {
+            // C `:2353–2355`
+            buf += nogood;
+            nopick = true;
+        }
+    // C `:2359` — value completely unknown to @
+    } else {
+        if (is_gem) {
+            if (is_buddy) {
+                // C `:2362–2363`
+                buf += addluck;
+                change_luck(1);
+            } else {
+                // C `:2365–2366`
+                buf += maybeluck;
+                change_luck(rn2(3) - 1);
+            }
+        } else {
+            // C `:2369–2371` — worthless glass doesn't anger them
+            buf += noluck;
+        }
+    }
+    if (!nopick) {
+        // C `:2373–2377`
+        buf += acceptgift;
+        if ((u.ushops && u.ushops[0]) || obj.unpaid) {
+            const { check_shop_obj } = await import('./shk.js');
+            await check_shop_obj(obj, mon.mx | 0, mon.my | 0, true);
+        }
+        mpickobj(mon, obj); /* may merge and free obj */
+        ret = true;
+    }
+
+    // C `nopick:` `:2379–2381` — C pline1: no format interpretation
+    if (!Blind()) await pline(buf);
+    if (!(await tele_restrict(mon))) await rloc(mon, RLOC_MSG);
+    return ret;
+}
+
 /**
  * C ref: dothrow.c thitmonst — mon-hit after bhit / use_pole / kick.
  * Ported: tmp (Luck/DEX/distmin/bow-gloves/omon_adj/elf-orc);
@@ -463,7 +576,7 @@ function Deaf_youprop() {
  * tmiss; APPLIED miss wakeup; pie/egg/venom DEX; food tamedog;
  * leader catch / finish_quest (D-1312); swallow vanish pline
  * (D-1324; entrails/currents + cockatrice minstapetrify/delobj).
- * Deferred: gem_accept luck/mpickobj; iron ball / boulder hit;
+ * gem_accept luck/mpickobj (D-2517); deferred: iron ball / boulder hit;
  * potionhit; check_shop_obj on mulch; mshot_xname.
  * @returns {boolean} true if obj was consumed / taken care of
  */
@@ -526,8 +639,7 @@ export async function thitmonst(mon, obj) {
             return false;
         } else {
             await pline(`${Monnam(mon)} catches ${the(xname(obj))}.`);
-            // gem_accept luck / mpickobj deferred
-            return false;
+            return await gem_accept(mon, obj);
         }
     }
 
@@ -890,7 +1002,8 @@ export async function throw_gold(obj) {
  * C ref: dothrow.c throw_obj — multishot + split + throwit.
  * getdir is done by caller (dofire/dothrow) matching JS input boundary;
  * C calls getdir inside throw_obj — same one prompt either way.
- * After self refuse: u_wipe_engr(2) (D-1374; callee D-1051).
+ * After coin gate: canletgo(obj, "throw") (`:118`); after self refuse:
+ * u_wipe_engr(2) (D-1374; callee D-1051).
  */
 export async function throw_obj(obj, shotlimit) {
     const u = game.u || {};
@@ -903,6 +1016,11 @@ export async function throw_obj(obj, shotlimit) {
         return throw_gold(obj);
     }
 
+    // C dothrow.c:118 — canletgo(obj, "throw") before Mjollnir / too-heavy /
+    // self / wipe (C order: coin → canletgo → Mjollnir → too-heavy → self).
+    if (!(await canletgo(obj, 'throw'))) {
+        return ECMD_OK; // no time passes (unsplit_stack)
+    }
     // C ref: dothrow.c throw_obj — after getdir, self (dx=dy=dz=0) refuses
     if (!(u.dx || 0) && !(u.dy || 0) && !(u.dz || 0)) {
         await pline('You cannot throw an object at yourself.');
@@ -911,8 +1029,8 @@ export async function throw_obj(obj, shotlimit) {
     /* C dothrow.c throw_obj `:138` — after self refuse, before petrify /
        welded / wet-towel / multishot: u_wipe_engr(2). Callee D-1051;
        no extra RNG with no engraving / HEADSTONE / BURN-on-stone /
-       Levitation. canletgo / Mjollnir / too-heavy still named (C
-       returns before this wipe). D-1374. */
+       Levitation. Mjollnir / too-heavy still named (C returns before
+       this wipe). D-1374. */
     u_wipe_engr(2);
     // C throw_obj :139–148 bare-hand cockatrice instapetrify + killer_xname
     // named omit (throwit returning-missile :1747 is D-1346).
@@ -1033,7 +1151,7 @@ async function You_hear(line) {
 function Blind() {
     return !!(game.u?.Blind || game.u?.ublind);
 }
-/** C: distu / next2u — adjacent incl. hero cell. */
+/** C you.h:558 next2u — distu ≤ 2, the 3×3 incl. hero cell. */
 function next2u(x, y) {
     const u = game.u || {};
     const dx = Math.abs((x | 0) - (u.ux | 0));
@@ -1245,76 +1363,123 @@ export async function release_camera_demon(obj, x, y) {
 }
 
 /**
- * C ref: dothrow.c breakobj — side effects then delobj (non-fracture).
- * Named omit: crackable erode_obj; explode_oil;
- * pyrolisk explode; break_seq simultaneous make_angry polish.
- * @returns {Promise<number>} 1 if destroyed
+ * C ref: dothrow.c breakobj :2480–2574 — breakage side effects, then
+ * delobj except for fracturing boulder/statue (caller dispositions those).
+ * In C order: `:2488–2491` crackable erode_obj ERODE_CRACK; `:2493–2532`
+ * oclass/otyp switch (MIRROR luck; POT_WATER oil-explode / next2u breath
+ * + odor/eyes + potionbreathe; EXPENSIVE_CAMERA demon; EGG luck + pyrolisk
+ * explode flag; BOULDER/STATUE fracture); `:2534–2563` hero_caused shop
+ * billing (unpaid/from_invent check_shop_obj; costly-spot break_seq /
+ * seq_peaceful / stolen_value / inside_shop make_angry); `:2565–2570`
+ * delobj + fiery explode + return 1.
+ * Callers: flooreffects hot-ground (do.c:352 → js/do.js); toss_up ×2
+ * (dothrow.c:1273/1301, in-file); throwit land (dothrow.c:1789, in-file);
+ * hero_breaks (dothrow.c:2435, in-file); breaks (dothrow.c:2453, in-file).
+ * Named omission: fracture_rock billable arm (zap.c:5552 → js/dig.js:1801
+ * stays sync; breakobj is async — cascade deferred to its own row).
+ * @returns {Promise<number>} 1 if destroyed (0 when erode_obj spares it)
  */
-/** Exported for flooreffects hot-ground shatter (do.c; D-0992). */
 export async function breakobj(obj, x, y, hero_caused, from_invent) {
     if (!obj) return 0;
+    // C :2488–2491 — crackable armor: erode_obj owns message + disposition.
     if (is_crackable(obj)) {
-        // erode_obj ERODE_CRACK deferred — still remove for striking path
-        delobj(obj);
-        return 1;
+        return ((await erode_obj(
+            obj, armor_simple_name(obj), ERODE_CRACK, EF_DESTROY | EF_VERBOSE,
+        )) === ER_DESTROYED) ? 1 : 0;
     }
-    const otyp = obj.oclass === POTION_CLASS ? POT_WATER : (obj.otyp | 0);
+    // C :2493 — every potion breaks as POT_WATER here.
+    const otyp = (obj.oclass | 0) === POTION_CLASS ? POT_WATER : (obj.otyp | 0);
     let fracture = false;
+    let explosion = false;
     switch (otyp) {
     case MIRROR:
+        // C :2494–2497.
         if (hero_caused) change_luck(-2);
         break;
-    case POT_WATER:
-        obj.in_use = 1;
+    case POT_WATER: // C :2498–2521 — really, all potions.
+        obj.in_use = 1; // C :2499 — in case it's fatal.
         if ((obj.otyp | 0) === POT_OIL && obj.lamplit) {
-            // explode_oil deferred
+            // C :2500–2501.
+            await explode_oil(obj, x, y);
         } else if (next2u(x, y)) {
-            await potionbreathe(obj);
+            // C :2502–2518 — monster breathing isn't handled (as in C).
+            const youdata = game.youmonst?.data;
+            if (!breathless(youdata) || haseyes(youdata)) {
+                // Wet towel protects both eyes and breathing.
+                if ((obj.otyp | 0) !== POT_WATER && !Half_gas_damage()) {
+                    if (!breathless(youdata)) {
+                        // C :2507 — [familiar-odor-when-known left open in C].
+                        await You('smell a peculiar odor...');
+                    } else {
+                        // C :2509–2515.
+                        let eyes = body_part(EYE);
+                        if (eyecount(youdata) !== 1) eyes = makeplural(eyes);
+                        await Your('%s %s.', eyes, vtense(eyes, 'water'));
+                    }
+                }
+                await potionbreathe(obj);
+            }
         }
         break;
     case EXPENSIVE_CAMERA:
+        // C :2522–2524.
         await release_camera_demon(obj, x, y);
         break;
     case EGG:
+        // C :2525–2531 — breaking your own eggs is bad luck.
         if (hero_caused && obj.spe && ismnum(obj.corpsenm)) {
             change_luck(-Math.min(obj.quan | 0, 5));
         }
-        void PM_PYROLISK; // explosion deferred
+        if ((obj.corpsenm | 0) === PM_PYROLISK) explosion = true;
         break;
     case BOULDER:
     case STATUE:
+        // C :2532–2537 — caller handles disposition; shop theft below still
+        // runs (it must, for shop goods).
         fracture = true;
         break;
     default:
         break;
     }
-    // C: hero_caused shop billing (D-0994)
+    // C :2539–2563 — hero's fault: shop billing.
     if (hero_caused) {
-        const { check_shop_obj, stolen_value, costly_spot, shop_keeper,
-            make_angry_shk } = await import('./shk.js');
-        const { in_rooms } = await import('./hack.js');
-        const { SHOPBASE, ESHK } = await import('./const.js');
-        const ushops = game.u?.ushops || '';
+        const u = game.u || {};
+        const ushops = u.ushops || '';
         if (from_invent || obj.unpaid) {
-            if (ushops || obj.unpaid) {
+            // C :2540–2543.
+            if (ushops.charAt(0) || obj.unpaid) {
                 await check_shop_obj(obj, x, y, true);
             }
         } else if (!obj.no_charge && costly_spot(x, y)) {
+            // C :2544–2562 — obj is a floor-object here.
             const o_shop = in_rooms(x, y, SHOPBASE) || '';
             const shkp = shop_keeper(o_shop.charCodeAt(0) || 0);
-            if (shkp) {
-                const loss = await stolen_value(
-                    obj, x, y, !!shkp.mpeaceful, false,
-                );
-                if (loss > 0
-                    && o_shop.charCodeAt(0) !== (ushops.charCodeAt(0) || 0)) {
-                    await make_angry_shk(shkp, x, y);
+            if (shkp) { // C: implies *o_shop != '\0'.
+                const eshkp = ESHK(shkp);
+                if (eshkp) {
+                    // Base shk actions on her peacefulness at start of this
+                    // turn, so "simultaneous" multiple breakage isn't worse.
+                    if (game.hero_seq !== eshkp.break_seq) {
+                        eshkp.seq_peaceful = shkp.mpeaceful;
+                    }
+                    if (((await stolen_value(
+                        obj, x, y, eshkp.seq_peaceful, false,
+                    )) > 0)
+                        && (o_shop.charAt(0) !== ushops.charAt(0)
+                            || !inside_shop(u.ux | 0, u.uy | 0))
+                        && game.hero_seq !== eshkp.break_seq) {
+                        await make_angry_shk(shkp, x, y);
+                    }
+                    // make_angry_shk runs only on the first breakage of a
+                    // given hero move.
+                    eshkp.break_seq = game.hero_seq;
                 }
-                void ESHK;
             }
         }
     }
+    // C :2565–2570.
     if (!fracture) delobj(obj);
+    if (explosion) await explode(x, y, -11, d(3, 6), 0, EXPL_FIERY);
     return 1;
 }
 
@@ -2309,10 +2474,20 @@ export async function throwit(obj, wep_mask = 0, twoweap = false, oldslot = null
         return;
     }
     const loc = game.level?.at?.(x, y);
-    if (loc && !IS_SOFT(loc.typ) && breaktest(obj)) {
-        // Broken — darts usually survive via obj_resists
-        throwit_return(true);
-        return;
+    // C dothrow.c:1780–1792 — !IS_SOFT + breaktest, or venom (fails
+    // breaktest but forced even when the landing is soft): flash, breakmsg,
+    // breakobj; a surviving obj falls through to Splash/flooreffects below.
+    if ((loc && !IS_SOFT(loc.typ) && breaktest(obj))
+        || (obj.oclass | 0) === VENOM_CLASS) {
+        tmp_at(DISP_FLASH, obj_glyph(obj));
+        tmp_at(x, y);
+        nh_delay_output();
+        tmp_at(DISP_END, 0);
+        await breakmsg(obj, cansee(x, y));
+        if (await breakobj(obj, x, y, true, true)) {
+            throwit_return(true);
+            return;
+        }
     }
     // C: Splash/Plop before flooreffects when landing in pool/lava
     {

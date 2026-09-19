@@ -1025,8 +1025,9 @@ function dunlevs_in_dungeon(lev) {
 /**
  * Incremental analog of mkmaze.c set_levltyp fountain/sink counts.
  * Named omit: ice timers, CAN_OVERWRITE, full count_level_features scan.
+ * Exported for do.c teleport_sink (D-2527).
  */
-function dipsink_set_levltyp(x, y, newtyp) {
+export function dipsink_set_levltyp(x, y, newtyp) {
     const loc = game.level?.at(x, y);
     if (!loc) return;
     const oldtyp = loc.typ | 0;
@@ -1055,8 +1056,9 @@ function dipsink_set_levltyp(x, y, newtyp) {
  * C ref: do.c polymorph_sink — tight dipsink POT_POLYMORPH callee.
  * Sink → fountain / throne / altar / grave-or-vanish via rn2(4).
  * defsyms explanations are the PCHAR strings (not PCHAR2 extra).
+ * Exported for do.c dosinkring RIN_POLYMORPH (D-2527).
  */
-async function polymorph_sink() {
+export async function polymorph_sink() {
     const u = game.u || {};
     const loc = game.level?.at(u.ux, u.uy);
     if (!loc || loc.typ !== SINK) return;

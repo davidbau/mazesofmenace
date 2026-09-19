@@ -8,7 +8,7 @@
 
 import { game } from './gstate.js';
 import { rn2, rnd, rn1, rne } from './rng.js';
-import { mksobj, mkobj, weight, mergable, carry_obj_effects, is_mines_prize, is_soko_prize } from './mkobj.js';
+import { mksobj, mkobj, weight, mergable, merged, carry_obj_effects, is_mines_prize, is_soko_prize } from './mkobj.js';
 import {
     WEAPON_CLASS,
     ARMOR_CLASS,
@@ -981,10 +981,10 @@ export async function addinv_core1(obj) {
 
 // C ref: invent.c addinv() → merged() for stack absorb + compare-learn pline.
 // Thrown-autoquiver fill (addinv_core0, live below). Quiver-prefer merge
-// (D-2207; was named). Named omissions: addinv_before; oname absorb;
-// worn combine-stack merge (mergable still rejects obj-worn: merged
-// setworn fixup unported); globby/pudding; lamplit timers;
-// addinv_core2 luck.
+// (D-2207; was named). absorbInto calls the full merged() port (age, oname,
+// lights, timers, worn fixup, globby all live). Named omissions:
+// addinv_before; worn combine-stack merge (mergable still rejects obj-worn —
+// D-2324 owns the gate); addinv_core2 luck.
 export async function addinv(obj) {
     if (!game.invent) game.invent = [];
     // C invent.c addinv_core0 — obj_was_thrown captured before merge
@@ -1004,48 +1004,17 @@ export async function addinv(obj) {
     // spuriously pline — then pickup_prev + compare-learn pline + the
     // `added:` tail (addinv_core2/carry_obj_effects).
     const absorbInto = async (otmp) => {
-        if (!obj.lamplit && !obj.globby) {
-            const oq = otmp.quan || 1;
-            const nq = obj.quan || 1;
-            const oa = otmp.age ?? 0;
-            const na = obj.age ?? 0;
-            otmp.age = Math.trunc((oa * oq + na * nq) / (oq + nq));
-        }
-        if (!otmp.globby) otmp.quan = (otmp.quan || 1) + (obj.quan || 1);
-        if (otmp.oclass === COIN_CLASS) {
-            otmp.owt = weight(otmp);
-            otmp.bknown = 0;
-        } else {
-            otmp.owt = weight(otmp);
-        }
-        // C invent.c merged — identification dims reconcile when they differ
-        let discovered = false;
-        if ((obj.known | 0) !== (otmp.known | 0)) {
-            otmp.known = 1;
-            discovered = true;
-        }
-        if ((obj.rknown | 0) !== (otmp.rknown | 0)) {
-            otmp.rknown = 1;
-            if (otmp.oerodeproof) discovered = true;
-        }
-        if ((obj.bknown | 0) !== (otmp.bknown | 0)) {
-            otmp.bknown = 1;
-            if (game.urole?.mnum !== PM_CLERIC) discovered = true;
-        }
+        // C invent.c addinv_core0 `:1101–1115` — quiver-prefer then chain
+        // merge; merged() absorbs in C order (age, quan, weight, oname,
+        // extract, pickup_prev, lights, timers, ID reconcile + compare-learn
+        // pline, worn fixup, bypass, globby), then `goto added`.
+        const potmp = { obj: otmp };
+        merged(potmp, { obj });
+        otmp = potmp.obj;
         // C: addinv_core0 added: → pickup_prev = 1
         otmp.pickup_prev = 1;
         if (otmp.oclass === COIN_CLASS || objectNames[otmp.otyp] === 'GOLD_PIECE') {
             game._goldCount = (game._goldCount || 0) + (obj.quan || 0);
-        }
-        // C: discovered && OBJ_INVENT && neither how_lost LOST_THROWN
-        const objLost = obj.how_lost ?? 0;
-        const otmpLost = otmp.how_lost ?? 0;
-        if (discovered
-            && (otmp.where === OBJ_INVENT)
-            && objLost !== LOST_THROWN
-            && otmpLost !== LOST_THROWN) {
-            const { pline } = await import('./display.js');
-            await pline('You learn more about your items by comparing them.');
         }
         // C invent.c addinv_core0 — merge paths `goto added`, bypassing the
         // `:1128–1140` thrown-autoquiver fill (fresh-insert only); no setuqwep here.

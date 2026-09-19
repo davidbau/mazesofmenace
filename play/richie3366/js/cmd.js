@@ -92,7 +92,7 @@ import { stairway_at, u_on_newpos, maybe_adjust_hero_bubble, selection_new, sele
 import { In_tutorial } from './dungeon.js';
 import { ATR_INVERSE } from './terminal.js';
 import { dopay } from './shk.js';
-import { getpos, gather_locs_interesting, auto_describe_text } from './getpos.js';
+import { getpos, getpos_menu, gather_locs_interesting, auto_describe_text } from './getpos.js';
 import {
     nomul, moverock, boulder_at, swim_move_danger, trapmove,
     impaired_movement, is_pool, is_lava, carrying_too_much,
@@ -2284,7 +2284,7 @@ async function dotravel_target() {
 /**
  * C ref: cmd.c dotravel — '_' / #travel getpos then dotravel_target.
  * Branch envelope: cancel, already-here, adjacent step, greedy BFS step.
- * Menu getpos / full test_move (TEST_MOVE/DO_MOVE modes) deferred.
+ * Full test_move (TEST_MOVE/DO_MOVE modes) deferred.
  * @returns {Promise<number>} ECMD_*
  */
 export async function dotravel() {
@@ -2300,11 +2300,24 @@ export async function dotravel() {
     }
     game.iflags.getloc_travelmode = true;
 
-    // menu_requested getpos_menu path deferred — always free getpos
-    await pline('Where do you want to travel to?');
-    if ((await getpos(cc, true, 'the desired destination')) < 0) {
-        game.iflags.getloc_travelmode = false;
-        return ECMD_CANCEL;
+    // C cmd.c:5321–5341 — menu_requested picks from the interesting-locs
+    // menu under GFILTER_VIEW (filter restored either way); decline keeps
+    // the cached travelcc and costs no turn (ECMD_OK), else free getpos.
+    if (game.iflags.menu_requested) {
+        const gfilt = game.iflags.getloc_filter | 0;
+        game.iflags.getloc_filter = GFILTER_VIEW;
+        if (!(await getpos_menu(cc, GLOC_INTERESTING))) {
+            game.iflags.getloc_filter = gfilt;
+            game.iflags.getloc_travelmode = false;
+            return ECMD_OK;
+        }
+        game.iflags.getloc_filter = gfilt;
+    } else {
+        await pline('Where do you want to travel to?');
+        if ((await getpos(cc, true, 'the desired destination')) < 0) {
+            game.iflags.getloc_travelmode = false;
+            return ECMD_CANCEL;
+        }
     }
 
     game.iflags.travelcc.x = game.u.tx = cc.x;

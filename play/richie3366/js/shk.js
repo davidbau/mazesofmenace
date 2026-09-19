@@ -77,6 +77,7 @@ import { mon_nam, x_monnam, y_monnam, Monnam } from './do_name.js';
 import {
     COIN_CLASS, FOOD_CLASS, WAND_CLASS, POTION_CLASS, ARMOR_CLASS,
     WEAPON_CLASS, TOOL_CLASS, GEM_CLASS, SCROLL_CLASS, SPBOOK_CLASS,
+    AMULET_CLASS, RING_CLASS,
     BALL_CLASS, CHAIN_CLASS, FIRST_REAL_GEM, LAST_REAL_GEM, objects,
     POT_WATER,
 } from './objects.js';
@@ -808,6 +809,118 @@ export function costly_spot(x, y) {
     const eshkp = ESHK(shkp);
     return inside_shop(x, y)
         && !((x | 0) === (eshkp.shk?.x | 0) && (y | 0) === (eshkp.shk?.y | 0));
+}
+
+/**
+ * C ref: shk.c shop_object `:5386–5403` — floor goods whose price the
+ * shopkeeper will quote when #chatting (caller: dochat, sounds.c `:1280`).
+ * First non-coin object on a costly spot while the keeper is present,
+ * calm and vocal (note: no_charge goods still quote).
+ */
+export function shop_object(x, y) {
+    const rooms = in_rooms(x, y, SHOPBASE);
+    const shkp = rooms ? shop_keeper(rooms.charCodeAt(0)) : null;
+    if (!shkp || !inhishop(shkp)) return null;
+    let otmp = objects_at(x, y);
+    while (otmp && (otmp.oclass | 0) === COIN_CLASS) otmp = otmp.nexthere;
+    return (otmp && costly_spot(x, y) && NOTANGRY(shkp) && !muteshk(shkp))
+        ? otmp
+        : null;
+}
+
+/** C shk.c the_contents_of `:63` — file-local price-quote prefix. */
+const THE_CONTENTS_OF = 'the contents of ';
+
+/**
+ * C ref: shk.c shk_embellish `:5467–5505` (staticfn) — shopkeeper sales
+ * patter suffix for a single quoted price (`rn2(3)` gate, `rn2(5)`
+ * choice; artifacts are one of a kind).
+ */
+function shk_embellish(itm, cost) {
+    if (!rn2(3)) {
+        let choice = rn2(5);
+        if (choice === 0) choice = cost < 100 ? 1 : cost < 500 ? 2 : 3;
+        switch (choice) {
+        case 4: {
+            if (cost < 10) break;
+            const o = itm?.oclass | 0;
+            if (o === FOOD_CLASS) return ", gourmets' delight!";
+            const oc = objects()?.[itm?.otyp | 0];
+            if (oc?.oc_name_known
+                ? oc.oc_magic
+                : (o === AMULET_CLASS || o === RING_CLASS
+                    || o === WAND_CLASS || o === POTION_CLASS
+                    || o === SCROLL_CLASS || o === SPBOOK_CLASS)) {
+                return ', painstakingly developed!';
+            }
+            return ', superb craftsmanship!';
+        }
+        case 3:
+            return ', finest quality.';
+        case 2:
+            return ', an excellent choice.';
+        case 1:
+            return ', a real bargain.';
+        default:
+            break;
+        }
+    } else if (itm?.oartifact) {
+        return ', one of a kind!';
+    }
+    return '.';
+}
+
+/**
+ * C ref: shk.c price_quote `:5406–5465` — quote every non-coin object on
+ * this spot (caller: dochat, sounds.c `:1288`). Several goods share one
+ * NHW_MENU paint (pager helper); a single good is spoken by the keeper
+ * (SetVoice + verbalize). destroy_nhwindow is a no-op in JS.
+ */
+export async function price_quote(first_obj) {
+    const u = game.u || {};
+    const shkp = shop_keeper(inside_shop(u.ux | 0, u.uy | 0));
+    /* caller has verified that there is a shopkeeper */
+    if (!shkp || !inhishop(shkp)) return;
+    // C decl.c globals: the punished ball/chain are never priced
+    const uball = u.uball, uchain = u.uchain;
+    const lines = ['Fine goods for sale:', ''];
+    let buf = '', cost = 0, cnt = 0, contentsonly = false;
+    for (let otmp = first_obj; otmp; otmp = otmp.nexthere) {
+        if ((otmp.oclass | 0) === COIN_CLASS) continue;
+        cost = (otmp.no_charge || otmp === uball || otmp === uchain)
+            ? 0
+            : get_cost(otmp, shkp);
+        contentsonly = !cost;
+        if (Has_contents(otmp)) cost += contained_cost(otmp, shkp, 0, false, false);
+        if (otmp.globby) cost *= get_pricing_units(otmp); // quan 1, vary by wt
+        let price;
+        if (!cost) {
+            price = 'no charge';
+            contentsonly = false;
+        } else {
+            price = `${cost} ${currency(cost)}${(otmp.quan | 0) > 1 ? ' each' : ''}`;
+        }
+        buf = `${contentsonly ? THE_CONTENTS_OF : ''}${doname(otmp)}, ${price}`;
+        lines.push(buf), cnt++;
+    }
+    if (cnt > 1) {
+        // C `:5446` display_nhwindow(tmpwin, TRUE) — pager NHW_MENU paint
+        const { show_nhw_menu_text } = await import('./pager.js');
+        await show_nhw_menu_text(lines);
+    } else if (cnt === 1) {
+        if (!cost) {
+            // C `:5448–5451` "<doname(obj)>, no charge!"
+            SetVoice(shkp, 0, 80, 0);
+            await verbalize(`${upstart(buf)}!`);
+        } else {
+            // C `:5452–5463` — reworded single quote + embellish
+            buf = `${contentsonly ? THE_CONTENTS_OF : ''}${doname(first_obj)}`;
+            SetVoice(shkp, 0, 80, 0);
+            await verbalize(
+                `${upstart(buf)}, price ${cost} ${currency(cost)}${(first_obj.quan | 0) > 1 ? ' each' : ''}${contentsonly ? '.' : shk_embellish(first_obj, cost)}`,
+            );
+        }
+    }
 }
 
 /**

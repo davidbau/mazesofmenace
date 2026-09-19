@@ -51,7 +51,7 @@ import { near_capacity, useup, useupall, hold_another_object, Blind, observe_obj
 import { PM_BARBARIAN, PM_MONK, PM_KNIGHT, PM_SAMURAI, PM_ARCHEOLOGIST, PM_WIZARD, PM_HUMAN, PM_HEALER, PM_ROGUE } from './generated/monsters_data.js';
 import {
     find_mac, get_mattk, make_corpse, monstone, mhitm_knockback, monkilled, mondead,
-    troll_baned, mhitm_ad_poly, mhitm_ad_slee, could_seduce, failed_grab, shade_miss,
+    troll_baned, mhitm_ad_poly, mhitm_ad_slee, mhitm_ad_heal, could_seduce, failed_grab, shade_miss,
     shade_aware, paralyze_monst,
     mhitm_mgc_atk_negated, resists_poison_mm, erode_armor,
     AT_NONE, AT_WEAP, AT_KICK, AT_CLAW, AT_SPIT, AT_HUGS,
@@ -100,7 +100,7 @@ import { obj_resists } from './dogmove.js';
 import { u_wipe_engr } from './engrave.js';
 import { cutworm } from './worm.js';
 import { m_unleash } from './apply.js';
-import { mhe, mhis } from './mondata.js';
+import { mhe, mhis, defended } from './mondata.js';
 import { hard_helmet } from './do_wear.js';
 import { findgold, inv_cnt } from './steal.js';
 import { mselftouch, instapetrify, minstapetrify, t_at } from './trap.js';
@@ -171,6 +171,7 @@ const AD_CORR = 42;
 const AD_SGLD = 20; /* steals gold (leprechaun) — monattk.h */
 const AD_DCAY = 34; /* decays organics (brown pudding) — monattk.h */
 const AD_SLIM = 40; /* turns victim into green slime — monattk.h */
+const AD_HEAL = 27; /* heals opponent's wounds (nurse) — monattk.h */
 /* C hack.h invlet_basic — a-zA-Z invent slots. */
 const invlet_basic = 52;
 
@@ -1959,13 +1960,11 @@ async function damageum_ad_drst(mdef, mattk, mhm) {
  * Drain is d(2,6) off mhpmax (floored at m_lev+1) and mhp; a level-0
  * target dies via xkilled, else m_lev--; leftover damageum d() is zeroed
  * (already inflicted). Unlike Stormbringer, the hero heals nothing.
- * Named omissions: defended(mdef, AD_DRLI) worn-item walk (named on every
- * defended call site; zap.js resists_drli carries the same omit);
- * mhitm (mon→mon) arm (map turns.md:3379).
+ * Named omissions: mhitm (mon→mon) arm (map turns.md:3379).
  */
 async function damageum_ad_drli(mdef, mhm) {
     const magr = game.youmonst;
-    if (!rn2(3) && !resists_drli(mdef)
+    if (!rn2(3) && !(resists_drli(mdef) || defended(mdef, AD_DRLI))
         && !(await mhitm_mgc_atk_negated(magr, mdef, true))) {
         mhm.damage = d(2, 6);
         await pline(`${Monnam(mdef)} becomes weaker!`);
@@ -2343,6 +2342,16 @@ async function damageum_adtyping(mattk, mdef, mhm) {
         await damageum_ad_dcay(mdef, mhm);
     } else if (adtyp === AD_SLIM) {
         await damageum_ad_slim(mdef, mhm);
+    } else if (adtyp === AD_HEAL) {
+        /* C ref: uhitm.c mhitm_ad_heal `:4300–4304` — uhitm (hero as
+           attacker, poly'd nurse) arm: mhitm_ad_phys + done via mhm
+           (damageum checks, like C damageum `:4856–4858`). */
+        await mhitm_ad_heal(game.youmonst, mattk, mdef, mhm);
+    } else if (adtyp === AD_ACID) {
+        /* C ref: uhitm.c mhitm_ad_acid `:2747–2751` — uhitm (hero as
+           attacker) arm: resists_acid/defended zeroes the leftover
+           d(), else the leftover stands (no mcan gate in C). */
+        if (resists_acid(mdef) || defended(mdef, AD_ACID)) mhm.damage = 0;
     }
 }
 
@@ -2856,7 +2865,7 @@ function hug_throttles_umon() {
  * C ref: mondata.c can_be_strangled — headless immune; mindless+breathless
  * immune. AT_HUGS mdef is never youmonst; hero arm kept for C shape.
  */
-function can_be_strangled(mon) {
+export function can_be_strangled(mon) {
     if (!has_head(mon?.data)) return false;
     let nobrainer;
     let nonbreathing;

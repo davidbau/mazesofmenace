@@ -211,7 +211,7 @@ const MAGICAL_CLASSES = [
 const PM_GELATINOUS_CUBE = monsterNames.indexOf('PM_GELATINOUS_CUBE');
 
 /** C ref: mon.c curr_mon_load */
-function curr_mon_load(mtmp) {
+export function curr_mon_load(mtmp) {
     let curload = 0;
     for (let obj = mtmp.minvent; obj; obj = obj.nobj) {
         if (obj.otyp !== BOULDER || !throws_rocks(mtmp.data)) {

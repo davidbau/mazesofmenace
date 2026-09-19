@@ -2263,35 +2263,102 @@ export function An(str) {
 }
 
 /**
- * C ref: objnam.c vtense — plural verb → 3rd-person present for subject.
- * Enough for look_here "There is/are … here." (a/an → singular).
+ * C ref: hacklib.c strncmpi prefix — case-insensitive `lit` match at `at`;
+ * short/overrun tails cannot match (C hits NUL vs `lit` char → nonzero).
+ */
+function startsWithCI(s, at, lit) {
+    if (at + lit.length > s.length) return false;
+    for (let k = 0; k < lit.length; k++) {
+        if (plural_lowc(s[at + k]) !== lit[k]) return false;
+    }
+    return true;
+}
+
+/**
+ * C ref: objnam.c vtense `:2563–2653` — plural verb → 3rd-person present
+ * for subj; verb returned as-is when subj reads plural. Null subj takes
+ * the singular arm (special case; never the raw verb).
  */
 export function vtense(subj, verb) {
-    // C ref: objnam.c vtense — plural verb → 3rd-person present for subject.
-    // Plural if ends in 's' (not *us/*ss); a/an prefix → singular; else singular.
-    // C: null subj → singular 3rd-person (special case; do not return raw verb).
-    let plural = false;
+    // C `:2581–2582` — "a "/"an " prefix reads singular.
     if (subj) {
-        if (/^a /i.test(subj) || /^an /i.test(subj)) {
-            plural = false;
-        } else {
-            const len = subj.length;
-            const spot = len ? subj[len - 1].toLowerCase() : '';
-            const prev = len > 1 ? subj[len - 2].toLowerCase() : '';
-            // C: ends in 's' and not *us/*ss → plural
-            plural = spot === 's' && len > 1 && prev !== 'u' && prev !== 's';
+        if (startsWithCI(subj, 0, 'a ') || startsWithCI(subj, 0, 'an ')) {
+            return vtenseSing(verb);
         }
-        if (plural) return verb;
+        // C `:2583–2593` — scan spaces for the first " of "/" from "/
+        // " called "/" named "/" labeled " marker; the head ends just
+        // before it (guard: a marker at index 0 leaves the whole subj).
+        let spot = -1;
+        for (let i = subj.indexOf(' '); i !== -1; i = subj.indexOf(' ', i + 1)) {
+            if (startsWithCI(subj, i, ' of ') || startsWithCI(subj, i, ' from ')
+                || startsWithCI(subj, i, ' called ') || startsWithCI(subj, i, ' named ')
+                || startsWithCI(subj, i, ' labeled ')) {
+                if (i !== 0) spot = i - 1;
+                break;
+            }
+        }
+        // C `:2594–2596` — no marker: head is the whole subj.
+        const head = spot >= 0 ? subj.slice(0, spot + 1) : subj;
+        const last = head.length - 1;
+        // C `:2600–2607` — plural guess: ends in 's' but not '*us'/'*ss'
+        // (spot != subj ⇒ head length ≥ 2), or makeplural-style eeth/feet/
+        // ia/ae tails (BSTRNCMPI: underrun heads cannot match).
+        const prev = last > 0 ? plural_lowc(head[last - 1]) : '';
+        let pluralGuess = plural_lowc(head[last]) === 's' && last > 0
+            && prev !== 'u' && prev !== 's';
+        if (!pluralGuess && last - 3 >= 0) {
+            const tail4 = head.slice(last - 3, last + 1);
+            pluralGuess = eqCI(tail4, 'eeth') || eqCI(tail4, 'feet');
+        }
+        if (!pluralGuess && last - 1 >= 0) {
+            const tail2 = head.slice(last - 1, last + 1);
+            pluralGuess = eqCI(tail2, 'ia') || eqCI(tail2, 'ae');
+        }
+        if (pluralGuess) {
+            // C `:2609–2620` — special_subjs veto: exact head match, or
+            // "<prefix> <special_subj>" tail (space-separated) → singular.
+            for (const spec of SPECIAL_SUBJS) {
+                if (head.length === spec.length && eqCI(head, spec)) {
+                    return vtenseSing(verb);
+                }
+                if (head.length > spec.length
+                    && head[head.length - 1 - spec.length] === ' '
+                    && eqCI(head.slice(head.length - spec.length), spec)) {
+                    return vtenseSing(verb);
+                }
+            }
+            return verb;
+        }
+        // C `:2625–2627` — 2nd-person singular reads as plural.
+        if (eqCI(subj, 'they') || eqCI(subj, 'you')) return verb;
     }
-    // singular (incl. null subj)
-    if (verb === 'are') return 'is';
-    if (verb === 'have') return 'has';
-    if (verb.endsWith('y') && verb.length > 1 && !'aeiou'.includes(verb[verb.length - 2]))
-        return verb.slice(0, -1) + 'ies';
-    if (verb.endsWith('s') || verb.endsWith('x') || verb.endsWith('ch') || verb.endsWith('sh')
-        || verb.endsWith('z') || verb.endsWith('o'))
-        return verb + 'es';
-    return verb + 's';
+
+    // C `sing:` label `:2630` convergence.
+    return vtenseSing(verb);
+}
+
+/**
+ * C ref: objnam.c vtense `sing:` `:2630–2652` — conjugate the plural verb
+ * to 3rd-person singular via Strcasecpy case-preserving overwrites
+ * (strcasecpy_at): are→is, have→has (last-two overwrite), z/x/s/ch/sh +
+ * 2-letter -o → +es, consonant-y → -ies, else +s.
+ */
+function vtenseSing(verb) {
+    const buf = String(verb);
+    const len = buf.length;
+    if (eqCI(buf, 'are')) return strcasecpy_at(buf, 0, 'is');
+    if (eqCI(buf, 'have')) return strcasecpy_at(buf, len - 2, 's');
+    const last = len > 0 ? plural_lowc(buf[len - 1]) : '';
+    const before = len >= 2 ? plural_lowc(buf[len - 2]) : '';
+    if ('zxs'.includes(last)
+        || (len >= 2 && last === 'h' && 'cs'.includes(before))
+        || (len === 2 && last === 'o')) {
+        return strcasecpy_at(buf, len, 'es');
+    }
+    if (last === 'y' && !MAKEPLURAL_VOWELS.includes(before)) {
+        return strcasecpy_at(buf, len - 1, 'ies');
+    }
+    return strcasecpy_at(buf, len, 's');
 }
 
 /**

@@ -39,7 +39,7 @@
 // with `detecting()` exported from here for its override_vision;
 // open_drawbridge crush/entity;
 // reveal_terrain region/gascloud / trap keep restore /
-// M_AP_FURNITURE; wiz_map_levltyp / wiz_levltyp_legend;
+// M_AP_FURNITURE (wiz_map_levltyp / wiz_levltyp_legend live in js/wizcmds.js);
 // TER_FULL explore-only map body; arboreal default tree;
 // monster_detect cursed wake / blessed WIN_MAP /
 // TER_DETECT autodescribe; map_monst pet/detect/monsym is D-1765;
@@ -1379,8 +1379,8 @@ export async function reveal_terrain(which_subset) {
  * C ref: cmd.c doterrain — #terrain View which? menu then reveal_terrain.
  * Branch envelope: recalc_mapseen; normal a/b/c choices (a preselected *);
  * explore/discover + wizard extras 4–6; Esc cancel (which=-1);
- * space/return → preselected 1; letter pick. wiz_map_levltyp /
- * wiz_levltyp_legend bodies deferred.
+ * space/return → preselected 1; letter pick. Cases 5/6 call the live
+ * wiz_map_levltyp / wiz_levltyp_legend (js/wizcmds.js).
  */
 export async function doterrain() {
     const { nhgetch } = await import('./input.js');
@@ -1479,10 +1479,19 @@ export async function doterrain() {
     case 4:
         await reveal_terrain(TER_MAP | TER_FULL);
         break;
-    case 5:
-    case 6:
-        // wiz_map_levltyp / wiz_levltyp_legend deferred
+    case 5: {
+        // C cmd.c:1182 wiz_map_levltyp() — lazily read inside the body
+        // (imports.mjs --can CHECK: const binding, never at top level).
+        const { wiz_map_levltyp } = await import('./wizcmds.js');
+        await wiz_map_levltyp();
         break;
+    }
+    case 6: {
+        // C cmd.c:1186 wiz_levltyp_legend().
+        const { wiz_levltyp_legend } = await import('./wizcmds.js');
+        await wiz_levltyp_legend();
+        break;
+    }
     default:
         break;
     }

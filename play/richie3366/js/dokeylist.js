@@ -7,7 +7,7 @@
 // defaults (M('?') → "?" / doextlist) is D-1643. Overlay BIND= on if/else
 // keys is D-1657 (`rhack_user_overlay_key` + EXT_CMDS runners). Named
 // omissions: number_pad layouts, swap_yz, rest_on_space wait binding,
-// menu_shift, CMD_PARAM bound-key param display, overlay on walk keys.
+// CMD_PARAM bound-key param display, overlay on walk keys.
 
 import {
     EXTCMDLIST,
@@ -17,8 +17,17 @@ import {
     MOVEMENTCMD,
     CMD_PARAM,
 } from './generated/extcmdlist_data.js';
-import { NHKF_ESC, NHKF_COUNT, MV_WALK, MV_RUN, MV_RUSH } from './const.js';
+import {
+    NHKF_ESC, NHKF_COUNT, MV_WALK, MV_RUN, MV_RUSH,
+    MENU_SELECT_ALL, MENU_UNSELECT_ALL, MENU_INVERT_ALL,
+    MENU_SELECT_PAGE, MENU_UNSELECT_PAGE, MENU_INVERT_PAGE,
+    MENU_NEXT_PAGE, MENU_PREVIOUS_PAGE, MENU_FIRST_PAGE, MENU_LAST_PAGE,
+    MENU_SEARCH, MENU_SHIFT_RIGHT, MENU_SHIFT_LEFT,
+} from './const.js';
 import { game } from './gstate.js';
+import {
+    default_menu_cmd_info, get_menu_cmd_key, wc2_supported,
+} from './options.js';
 
 const C = (ch) => 0x1f & (typeof ch === 'string' ? ch.charCodeAt(0) : ch);
 const M = (ch) => 0x80 | (typeof ch === 'string' ? ch.charCodeAt(0) : ch);
@@ -81,22 +90,10 @@ const SPKEYS_DEFAULT = {
     [NHKF_COUNT]: 'n'.charCodeAt(0),
 };
 
-/** Default menu command keys (wintype.h); aliases deferred. */
-const MENU_CMDS = [
-    { cmd: '>', desc: 'Go to next page' },
-    { cmd: '<', desc: 'Go to previous page' },
-    { cmd: '^', desc: 'Go to first page' },
-    { cmd: '|', desc: 'Go to last page' },
-    { cmd: '.', desc: 'Select all items in entire menu' },
-    { cmd: '@', desc: 'Invert selection for all items' },
-    { cmd: '-', desc: 'Unselect all items in entire menu' },
-    { cmd: ',', desc: 'Select all items on current page' },
-    { cmd: '~', desc: 'Invert current page\'s selections' },
-    { cmd: '\\', desc: 'Unselect all items on current page' },
-    { cmd: ':', desc: 'Search and invert matching items' },
-    // menu_shift_right/left omitted unless wc2 menu_shift (tty: no)
-];
-
+/**
+ * C ref: options.c show_menu_controls `:9080–9086` static hardcoded[].
+ * Verbatim key/desc pairs; the `{ 0, 0 }` sentinel is the array end in JS.
+ */
 const HARDCODED_MENU = [
     { key: 'Return', desc: 'Accept current choice(s) and dismiss menu' },
     { key: 'Enter', desc: 'Same as Return' },
@@ -105,52 +102,93 @@ const HARDCODED_MENU = [
     { key: 'Escape', desc: 'Cancel menu without making any choice(s)' },
 ];
 
+/** C menu key through the rebound map, printable for Sprintf. */
+function menuKeyShown(ch) {
+    return visctrl(get_menu_cmd_key(ch).charCodeAt(0));
+}
+
+/**
+ * C ref: options.c show_menu_controls `:9070–9174` — menu control help text.
+ * `lines` is the JS analogue of C `winid win` + `putstr` (consumed by
+ * show_text_pages via dokeylist_lines / domenucontrols_lines); each shape
+ * below mirrors the cited C Sprintf format.
+ * C callers: cmd.c:2985 (dokeylist `?j`, dolist TRUE) and pager.c:2824
+ * (domenucontrols `?l` via domenucontrols(), dolist FALSE).
+ * @param {string[]} lines
+ * @param {boolean} dolist  true = key bindings help; false = menu controls help
+ */
+export function show_menu_controls(lines, dolist) {
+    const hasMenuShift = wc2_supported('menu_shift'); // C :9088
+    lines.push('Menu control keys:'); // C :9094 putstr
+    /** C `fmt`/`arg` for the trailing hardcoded loop, set per arm. */
+    let fmtHard;
+    let arg;
+    if (dolist) { // C :9095 key bindings help ('?i')
+        for (const mi of default_menu_cmd_info) { // C :9101 desc-terminated
+            const ch = mi.cmd;
+            if ((ch === MENU_SHIFT_RIGHT // C :9102-9104
+                 || ch === MENU_SHIFT_LEFT) && !hasMenuShift)
+                continue;
+            lines.push( // C :9105-9108 Sprintf(buf, "%-7s %s", ...)
+                `${fmtLeft(menuKeyShown(ch), 7)} ${mi.desc}`);
+        }
+        // C :9110-9111 no separator before hardcoded; "%s%-7s %s", arg=""
+        fmtHard = (a, key, desc) => `${a}${fmtLeft(key, 7)} ${desc}`;
+        arg = '';
+    } else { // C :9112 menu controls help ('?k')
+        lines.push(''); // C :9113
+        // C :9114-9115 mc_altfmt[] "%9s  %-6s %s"
+        lines.push(`${fmtRight('', 9)}  ${fmtLeft('Whole', 6)} Current`);
+        lines.push(`${fmtRight('', 9)}  ${fmtLeft(' Menu', 6)}  Page`);
+        // C mc_fmt[] "%8s     %-6s %s"
+        const mc = (label, whole, page) =>
+            `${fmtRight(label, 8)}     ${fmtLeft(whole, 6)} ${page}`;
+        lines.push(mc('Select', // C :9116-9118
+            menuKeyShown(MENU_SELECT_ALL), menuKeyShown(MENU_SELECT_PAGE)));
+        lines.push(mc('Invert', // C :9119-9121
+            menuKeyShown(MENU_INVERT_ALL), menuKeyShown(MENU_INVERT_PAGE)));
+        lines.push(mc('Deselect', // C :9122-9124
+            menuKeyShown(MENU_UNSELECT_ALL), menuKeyShown(MENU_UNSELECT_PAGE)));
+        lines.push(''); // C :9125
+        lines.push(mc('Go to', // C :9126-9128
+            menuKeyShown(MENU_NEXT_PAGE), 'Next page'));
+        lines.push(mc('', // C :9129-9131
+            menuKeyShown(MENU_PREVIOUS_PAGE), 'Previous page'));
+        lines.push(mc('', // C :9132-9134
+            menuKeyShown(MENU_FIRST_PAGE), 'First page'));
+        lines.push(mc('', // C :9135-9137
+            menuKeyShown(MENU_LAST_PAGE), 'Last page'));
+        if (hasMenuShift) { // C :9138
+            lines.push(mc('Pan view', // C :9139-9141
+                menuKeyShown(MENU_SHIFT_RIGHT), 'Right (perm_invent only)'));
+            lines.push(mc('', // C :9142-9144
+                menuKeyShown(MENU_SHIFT_LEFT), 'Left'));
+        }
+        lines.push(''); // C :9146
+        // C typo "Exter" is intentional (upstream :9147-9149)
+        lines.push(mc('Search',
+            menuKeyShown(MENU_SEARCH),
+            'Exter a target string and invert all matching entries'));
+        lines.push(''); // C :9150-9151 separator before hardcoded
+        // C :9152-9153 "%9s  %-8s %s", arg="Other "
+        fmtHard = (a, key, desc) => `${fmtRight(a, 9)}  ${fmtLeft(key, 8)} ${desc}`;
+        arg = 'Other ';
+    }
+    for (const xcp of HARDCODED_MENU) { // C :9155-9159 xcp->key sentinel
+        lines.push(fmtHard(arg, xcp.key, xcp.desc));
+        arg = '';
+    }
+}
+
 /**
  * C ref: options.c show_menu_controls — append lines for dokeylist (?j)
- * or domenucontrols (?l).
+ * or domenucontrols (?l). Kept name for existing callers; C-order body
+ * lives in show_menu_controls above.
  * @param {string[]} lines
  * @param {boolean} dolist  true = key bindings help; false = menu controls help
  */
 export function show_menu_controls_lines(lines, dolist) {
-    lines.push('Menu control keys:');
-    if (dolist) {
-        for (const mc of MENU_CMDS) {
-            lines.push(`${fmtLeft(visctrl(mc.cmd.charCodeAt(0)), 7)} ${mc.desc}`);
-        }
-        let arg = '';
-        const fmt = (a, key, desc) => `${a}${fmtLeft(key, 7)} ${desc}`;
-        for (const xcp of HARDCODED_MENU) {
-            lines.push(fmt(arg, xcp.key, xcp.desc));
-            arg = '';
-        }
-    } else {
-        lines.push('');
-        // mc_altfmt "%9s  %-6s %s"
-        lines.push(`${fmtRight('', 9)}  ${fmtLeft('Whole', 6)} Current`);
-        lines.push(`${fmtRight('', 9)}  ${fmtLeft(' Menu', 6)}  Page`);
-        // mc_fmt "%8s     %-6s %s"
-        const mc = (label, whole, page) =>
-            `${fmtRight(label, 8)}     ${fmtLeft(whole, 6)} ${page}`;
-        lines.push(mc('Select', visctrl('.'.charCodeAt(0)), visctrl(','.charCodeAt(0))));
-        lines.push(mc('Invert', visctrl('@'.charCodeAt(0)), visctrl('~'.charCodeAt(0))));
-        lines.push(mc('Deselect', visctrl('-'.charCodeAt(0)), visctrl('\\'.charCodeAt(0))));
-        lines.push('');
-        lines.push(mc('Go to', visctrl('>'.charCodeAt(0)), 'Next page'));
-        lines.push(mc('', visctrl('<'.charCodeAt(0)), 'Previous page'));
-        lines.push(mc('', visctrl('^'.charCodeAt(0)), 'First page'));
-        lines.push(mc('', visctrl('|'.charCodeAt(0)), 'Last page'));
-        lines.push('');
-        // C typo "Exter" is intentional (upstream)
-        lines.push(mc('Search', visctrl(':'.charCodeAt(0)),
-            'Exter a target string and invert all matching entries'));
-        lines.push('');
-        let arg = 'Other ';
-        for (const xcp of HARDCODED_MENU) {
-            // "%9s  %-8s %s"
-            lines.push(`${fmtRight(arg, 9)}  ${fmtLeft(xcp.key, 8)} ${xcp.desc}`);
-            arg = '';
-        }
-    }
+    show_menu_controls(lines, dolist);
 }
 
 /**
