@@ -7804,6 +7804,51 @@ export async function pline(fmt, ...args) {
     await vpline(fmt, ...args);
 }
 
+// C early_raw_messages home: decl.h ge.early_raw_messages (decl.c:329
+// init 0). Its consumers — restore.c:933 wait_synch pause plus the
+// unixmain/windmain startup pauses — are unported platform paths (no live
+// JS wait_synch at those sites; files.js:1066 precedent), so the count
+// lives module-local here next to its writers.
+let _early_raw_messages = 0;
+
+/**
+ * C ref: pline.c raw_printf `:548–558` — va_start then vraw_printf,
+ * then the second early_raw_messages count (`:556–557`).
+ * Sync like C (raw_print is a direct terminal write, no window work).
+ * Ported callers: version.c compare_critical_bytes/uptodate via
+ * files.js; the score/startup/lock remainder stays map-named (D-2573).
+ */
+export function raw_printf(fmt, ...args) {
+    vraw_printf(fmt, args);
+    // C `:556–557` — second count (the first is vraw_printf `:579–580`;
+    // one raw_printf call adds 2 pre-load, 0 once beyond_savefile_load).
+    if (!game.program_state?.beyond_savefile_load) _early_raw_messages++;
+}
+
+/**
+ * C ref: pline.c vraw_printf `:562–583` (staticfn → file-local).
+ * `%`-check then vsnprintf, truncate to BUFSZ-1 WITHOUT the last-3
+ * preservation vpline does, raw_print, execplinehandler, count.
+ */
+function vraw_printf(fmt, args) {
+    // C `:567–570` — expand only when a '%' is present; vpline_expand
+    // covers the `%s`-exact verbatim arm (percent signs inside the arg
+    // are NOT re-scanned) and the vsnprintf verbs. Width/precision strip
+    // (vpline_expand precedent) only affects unported debug dumps
+    // (earlyarg/makemon/hack `%*s` tables) — named in the map.
+    let line = String(fmt);
+    if (line.includes('%')) line = vpline_expand(line, args).text;
+    // C `:571–576` — chop to BUFSZ-1 (strncpy into pbuf, NUL at
+    // [BUFSZ-1]; JS strings make the copy implicit).
+    if (line.length > BUFSZ - 1) line = line.slice(0, BUFSZ - 1);
+    // C `:577` raw_print — named omit (no pre-window stdout channel in
+    // dual-runtime ESM; the vpline `:243–249` raw path above likewise
+    // drops the text and only records last_msg UNKNOWN).
+    execplinehandler(line); // C `:578` (live above; contest no-op)
+    // C `:579–580` — first count.
+    if (!game.program_state?.beyond_savefile_load) _early_raw_messages++;
+}
+
 async function pline_after_consume(msg, alreadyDumplogged = false) {
     const CO = game?.nhDisplay?.cols || 80;
     const line = String(msg);

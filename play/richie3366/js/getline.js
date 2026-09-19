@@ -814,6 +814,16 @@ const EXT_CMDS = [
         },
     },
     {
+        // C: cmd.c "wizrumorcheck" IFBURIED|AUTOCOMPLETE|WIZMODECMD → wiz_rumor_check
+        name: 'wizrumorcheck',
+        wiz: true,
+        autocomplete: true,
+        run: async () => {
+            const { wiz_rumor_check } = await import('./wizcmds.js');
+            return wiz_rumor_check();
+        },
+    },
+    {
         // C: cmd.c "wizidentify" IFBURIED|WIZMODECMD (no AUTOCOMPLETE) → wiz_identify
         name: 'wizidentify',
         wiz: true,
@@ -1030,6 +1040,13 @@ const EXT_CMDS = [
     {
         name: 'save', wiz: false, autocomplete: false,
         run: async () => (await import('./save.js')).dosave(),
+    },
+    {
+        // C: cmd.c "saveoptions" IFBURIED|GENERALCMD|NOFUZZERCMD (no
+        // AUTOCOMPLETE) → do_write_config_file. Final saveoptions-family
+        // activation ([7/7]); VFS write per Rule #2, no fopen.
+        name: 'saveoptions', wiz: false, autocomplete: false,
+        run: async () => (await import('./cfgfiles.js')).do_write_config_file(),
     },
     {
         name: 'search', wiz: false, autocomplete: false,

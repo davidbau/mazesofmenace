@@ -11,7 +11,7 @@ import {
     flush_topl_more, pline, You_feel, canseemon, bot, pline_mon, newsym,
     impossible,
 } from './display.js';
-import { cansee } from './vision.js';
+import { cansee, couldsee } from './vision.js';
 import { select_menu_pick_none } from './invent.js';
 import { select_menu_pick_one } from './options.js';
 import { yn_function } from './getline.js';
@@ -30,6 +30,7 @@ import {
     is_lord, is_prince, strongmonst, mon_hates_blessings, mon_hates_silver,
     bigmonst, thick_skinned, is_wooden, hates_light, is_swimmer, passes_walls,
     is_giant, mons, resists_ston, touch_petrifies,
+    throws_rocks, likes_gems, mindless, is_animal,
 } from './monsters.js';
 import { which_armor, bypass_obj } from './worn.js';
 import {
@@ -70,7 +71,8 @@ import {
     PM_HEALER, PM_CLERIC, PM_WIZARD,
     monsterNames,
 } from './generated/monsters_data.js';
-import { spec_abon, shade_glare, spec_dbon, touch_artifact } from './artifact.js';
+import { spec_abon, shade_glare, spec_dbon, touch_artifact, is_art } from './artifact.js';
+import { ART_SNICKERSNEE } from './generated/artifacts_data.js';
 
 const PM_NINJA = monsterNames.indexOf('PM_NINJA');
 const PM_PONY = monsterNames.indexOf('PM_PONY');
@@ -451,11 +453,16 @@ function oselect(mtmp, type) {
     return null;
 }
 
-function mwelded_mon(obj) {
-    return !!(obj && obj.cursed);
-}
+/** C pwep[] — weapon.c `:506–510` polearm preference order. */
+const PWEP_NAMES = [
+    'HALBERD', 'BARDICHE', 'SPETUM',
+    'BILL_GUISARME', 'VOULGE', 'RANSEUR',
+    'GUISARME', 'GLAIVE', 'LUCERN_HAMMER',
+    'BEC_DE_CORBIN', 'FAUCHARD', 'PARTISAN',
+    'LANCE',
+];
 
-/** C rwep[] — weapon.c */
+/** C rwep[] — weapon.c `:498–504` */
 const RWEP_NAMES = [
     'DWARVISH_SPEAR', 'SILVER_SPEAR', 'ELVEN_SPEAR', 'SPEAR', 'ORCISH_SPEAR',
     'JAVELIN', 'SHURIKEN', 'YA', 'SILVER_ARROW', 'ELVEN_ARROW', 'ARROW',
@@ -474,57 +481,164 @@ export function monmightthrowwep(obj) {
 }
 
 /**
- * C ref: weapon.c select_rwep — throwable preference walk.
- * Polearms / throw-and-return / egg / Kop pie / boulder deferred.
+ * C ref: weapon.c select_rwep `:532–676` — full body in C order: egg /
+ * Kop pie / boulder `Oselect` returns, polearm walk (`:558–587`), AKLYS
+ * throw-and-return walk (`:589–607`), gem-sling + launcher + rwep walk
+ * (`:611–672`), null failure (`:675`). `gp.propellor` is
+ * `game._propellor`; `&hands_obj` is the `hands_obj` sentinel, `0` is
+ * null. `oc_bimanual` reads as `oc_big` per `objclass.h:65` (select_hwep
+ * precedent). The rwep arm has no `mweponly` gate in C (unlike the
+ * polearm/arwep arms) — kept that way.
+ * Named omissions: `can_touch_safely` inside `oselect` (`mon.c:1957–1974`;
+ * `js/monmove.js:230` stub stays always-safe, select_hwep precedent).
  */
 export function select_rwep(mtmp) {
+    let otmp;
+    const data = mtmp.data;
+    const mlet = data?.mlet;
+
+    // C `:542–543`: propellor starts at hands; cockatrice egg first.
     game._propellor = hands_obj;
+    if ((otmp = oselect(mtmp, otyp('EGG'))) != null) return otmp;
+    // C `:544–545`: pies are first choice for Kops.
+    if (mlet === 'S_KOP') {
+        if ((otmp = oselect(mtmp, otyp('CREAM_PIE'))) != null) return otmp;
+    }
+    // C `:546–547`: boulders for giants.
+    if (throws_rocks(data)) {
+        if ((otmp = oselect(mtmp, otyp('BOULDER'))) != null) return otmp;
+    }
+
+    // C `:556–557`: NO_WEAPON_WANTED means we already tried to wield and
+    // failed — a welded weapon then blocks every non-wielded pick.
     const mwep = MON_WEP(mtmp);
-    const mweponly = !!(mwelded_mon(mwep) && mtmp.weapon_check === NO_WEAPON_WANTED);
-    const loadstone = otyp('LOADSTONE');
-
-    for (const name of RWEP_NAMES) {
-        const i = otyp(name);
-        if (i < 0) continue;
-        const propSkill = game.objects?.[i]?.oc_skill ?? 0;
-        game._propellor = hands_obj;
-
-        if (propSkill < 0) {
-            const abs = -propSkill;
-            if (abs === P_BOW) {
-                game._propellor = oselect(mtmp, otyp('YUMI'))
-                    || oselect(mtmp, otyp('ELVEN_BOW'))
-                    || oselect(mtmp, otyp('BOW'))
-                    || oselect(mtmp, otyp('ORCISH_BOW'));
-            } else if (abs === P_SLING) {
-                game._propellor = oselect(mtmp, otyp('SLING'));
-            } else if (abs === P_CROSSBOW) {
-                game._propellor = oselect(mtmp, otyp('CROSSBOW'));
-            } else {
-                game._propellor = hands_obj; // dart / shuriken
-            }
-            const monw = MON_WEP(mtmp);
-            if (monw && mwelded_mon(monw) && monw !== game._propellor
-                && mtmp.weapon_check === NO_WEAPON_WANTED) {
-                game._propellor = null;
-            }
+    const mweponly = !!(mwelded(mwep) && mtmp.weapon_check === NO_WEAPON_WANTED);
+    // C `:549–553`: the polearm range limit 13 is 3^2+2^2 — one space
+    // beyond the mthrowu.c polearm range 5 (2+1 diagonal).
+    if (dist2(mtmp.mx, mtmp.my, mtmp.mux, mtmp.muy) <= 13
+        && couldsee(mtmp.mx, mtmp.my)) {
+        // C `:562–565`: already-wielded Snickersnee stays wielded.
+        if (is_art(mwep, ART_SNICKERSNEE)) {
+            game._propellor = mwep;
+            return mwep;
         }
 
-        if (game._propellor != null) {
-            if (i !== loadstone) {
-                const otmp = oselect(mtmp, i);
-                if (otmp && !otmp.oartifact
-                    && !(otmp === MON_WEP(mtmp) && mwelded_mon(otmp))
+        // C `:567–587`: polearms first — more damage, not expendable.
+        // Skipped when the weapon is welded (then only missiles throw).
+        for (const name of PWEP_NAMES) {
+            const typ = otyp(name);
+            if (typ < 0) continue;
+            // C: only strong unshielded monsters wield big weapons; all
+            // monsters wield the rest; silver-haters skip silver.
+            const ocl = game.objects?.[typ];
+            if (((strongmonst(data)
+                  && ((mtmp.misc_worn_check | 0) & W_ARMS) === 0)
+                 || !ocl?.oc_big)
+                && (((ocl?.oc_material | 0) !== SILVER)
+                    || !mon_hates_silver(mtmp))) {
+                if ((otmp = oselect(mtmp, typ)) != null
                     && (otmp === mwep || !mweponly)) {
+                    game._propellor = otmp; // force the monster to wield it
                     return otmp;
-                }
-            } else {
-                for (let otmp = mtmp.minvent; otmp; otmp = otmp.nobj) {
-                    if (otmp.otyp === loadstone && !otmp.cursed) return otmp;
                 }
             }
         }
     }
+
+    // C `:589–607`: throw-and-return next (also not expendable); again
+    // skipped when the weapon is welded. arwep[] `:513–517` is one live
+    // row (BOOMERANG commented out): AKLYS at AKLYS_LIM^2.
+    for (const arw of [{ otyp: otyp('AKLYS'), range: AKLYS_LIM * AKLYS_LIM }]) {
+        if (!mindless(data) && !is_animal(data) && !mweponly
+            && dist2(mtmp.mx, mtmp.my, mtmp.mux, mtmp.muy) <= arw.range
+            && couldsee(mtmp.mx, mtmp.my)) {
+            const ocl = game.objects?.[arw.otyp];
+            if ((((mtmp.misc_worn_check | 0) & W_ARMS) === 0)
+                || !ocl?.oc_big) {
+                if ((((ocl?.oc_material | 0) !== SILVER)
+                     || !mon_hates_silver(mtmp))) {
+                    if ((otmp = oselect(mtmp, arw.otyp)) != null
+                        && (otmp === mwep || !mweponly)) {
+                        game._propellor = otmp; // force the monster to wield it
+                        return otmp;
+                    }
+                }
+            }
+        }
+    }
+
+    // C `:609–672`: otherwise the most potent ranged weapon to hand.
+    const DART = otyp('DART');
+    const LOADSTONE = otyp('LOADSTONE');
+    for (const name of RWEP_NAMES) {
+        const i = otyp(name);
+        if (i < 0) continue;
+
+        // C `:613–626`: sling + gems goes just before the darts (rocks
+        // already handled via rwep ordering); propellor is the sling.
+        if (i === DART && !likes_gems(data)
+            && m_carrying(mtmp, otyp('SLING'))) { // propellor
+            for (otmp = mtmp.minvent; otmp; otmp = otmp.nobj) {
+                if (otmp.oclass === GEM_CLASS
+                    && (otmp.otyp !== LOADSTONE || !otmp.cursed)) {
+                    game._propellor = m_carrying(mtmp, otyp('SLING'));
+                    return otmp;
+                }
+            }
+        }
+
+        // C `:628`: KMH — this belongs here so darts will work.
+        game._propellor = hands_obj;
+
+        // C `:630–651`: ammo needs its launcher as propellor.
+        const prop = game.objects?.[i]?.oc_skill | 0;
+        if (prop < 0) {
+            switch (-prop) {
+            case P_BOW:
+                game._propellor = oselect(mtmp, otyp('YUMI'));
+                if (!game._propellor)
+                    game._propellor = oselect(mtmp, otyp('ELVEN_BOW'));
+                if (!game._propellor)
+                    game._propellor = oselect(mtmp, otyp('BOW'));
+                if (!game._propellor)
+                    game._propellor = oselect(mtmp, otyp('ORCISH_BOW'));
+                break;
+            case P_SLING:
+                game._propellor = oselect(mtmp, otyp('SLING'));
+                break;
+            case P_CROSSBOW:
+                game._propellor = oselect(mtmp, otyp('CROSSBOW'));
+                break;
+            default:
+                break;
+            }
+            // C `:648–650`: welded weapon-in-hand but no launcher found —
+            // needed one and didn't have one.
+            if ((otmp = MON_WEP(mtmp)) && mwelded(otmp) && otmp !== game._propellor
+                && mtmp.weapon_check === NO_WEAPON_WANTED) {
+                game._propellor = null;
+            }
+        }
+        // C `:652–655`: propellor = obj (use it); = &hands_obj (none
+        // needed); = 0 (needed one, didn't have one — skip).
+        if (game._propellor != null) {
+            // C `:657–660`: no m_carrying for loadstones — it takes the
+            // first of the type, which may be the unthrowable one.
+            if (i !== LOADSTONE) {
+                // C `:662–665`: no cursed weapon-in-hand, no artifacts.
+                if ((otmp = oselect(mtmp, i)) && !otmp.oartifact
+                    && !(otmp === MON_WEP(mtmp) && mwelded(otmp))) {
+                    return otmp;
+                }
+            } else {
+                for (otmp = mtmp.minvent; otmp; otmp = otmp.nobj) {
+                    if (otmp.otyp === LOADSTONE && !otmp.cursed) return otmp;
+                }
+            }
+        }
+    }
+
+    // C `:675`: failure.
     return null;
 }
 

@@ -138,6 +138,7 @@ import {
     engulfing_u,
     In_endgame,
     In_quest,
+    Is_bigroom,
     Is_knox_level,
     Is_rogue_level,
     thats_enough_tries,
@@ -4519,8 +4520,8 @@ function enlght_line_txt(start, middle, end, ps = '') {
 /**
  * C ref: insight.c background_enlightenment location clause (you_are arg).
  * Ported: In_endgame + endgamelevelname / Elemental prefix; Is_knox;
- * quest dunlev vs depth; Is_rogue_level annotation.
- * Named omissions: Is_bigroom + !Blind ", a very big room".
+ * quest dunlev vs depth; Is_rogue_level annotation; Is_bigroom + !Blind
+ * ", a very big room" (D-2564).
  * observable_depth ≡ depth (C #if0 plane remap unused).
  */
 function background_dungeon_clause(uz = game.u?.uz) {
@@ -4540,6 +4541,7 @@ function background_dungeon_clause(uz = game.u?.uz) {
     }
     let tmpbuf = `level ${In_quest(lev) ? (lev.dlevel | 0) : depth(lev)}`;
     if (Is_rogue_level(lev)) tmpbuf += ', a primitive area';
+    else if (Is_bigroom(lev) && !Blind()) tmpbuf += ', a very big room';
     return `in ${dgnbuf}, on ${tmpbuf}`;
 }
 
@@ -5348,15 +5350,27 @@ export async function enlightenment(mode, final = 0) {
             lines.push(you_are(formBuf));
         }
         // C: !strcmpi(rank, role) → noun + omit role (D-0928 #1194)
-        // C insight.c:529 — Upolyd role line carries "actually " prefix.
+        // C insight.c:517 — Upolyd role line carries "actually " prefix.
         lines.push(you_are(
             (Upolyd(u) ? 'actually ' : '') + background_role_level_clause(
                 rank, role, u.ulevel || 1, genderPart, game.urace,
             ),
         ));
-        // mission line has no period; pantheon continuation finishes it
+        // C insight.c:532-554 — adverb marks helm of opposite alignment
+        // (currently/temporarily), one-time conversion (now/belatedly) or
+        // ignored atheism (nominally); mission line has no period;
+        // pantheon continuation finishes it (D-2564).
+        const baseCur = u.ualignbase?.current ?? atype;
+        const baseOrig = u.ualignbase?.original ?? atype;
+        const adverb = (atype !== baseCur)
+            ? (final ? 'temporarily ' : 'currently ')
+            : (atype !== baseOrig)
+                ? (final ? 'belatedly ' : 'now ')
+                : (!(u.uconduct?.gnostic | 0) && turns > 1000)
+                    ? 'nominally '
+                    : '';
         lines.push(
-            ` ${You_}${final ? were : are}${align}, on a mission for ${u_gname(game.urole, atype)}`,
+            ` ${You_}${final ? were : are}${align}, ${adverb}on a mission for ${u_gname(game.urole, atype)}`,
         );
         let opposed = ` who ${final ? 'was' : 'is'} opposed by`;
         if (atype !== A_LAWFUL) {
@@ -5371,6 +5385,18 @@ export async function enlightenment(mode, final = 0) {
         }
         opposed += '.';
         lines.push(opposed);
+        // C insight.c:574-587 — temporary alignment reports the permanent
+        // one ("actually …"); sex change or permanent alignment change
+        // (helm masked out) reports "started out …" (D-2564).
+        let difalgn = (atype !== baseCur ? 1 : 0)
+            + (baseCur !== baseOrig ? 2 : 0);
+        if (difalgn & 1) {
+            lines.push(you_are(`actually ${align_str(baseCur)}`));
+            difalgn &= ~1;
+        }
+        if (innategend !== initgend || difalgn) {
+            lines.push(` You started out ${innategend !== initgend ? genders[initgend].adj : ''}${(innategend !== initgend && difalgn) ? ' and ' : ''}${difalgn ? align_str(baseOrig) : ''}.`);
+        }
         // C insight.c:565-569 — "normally " when poly form lacks hands.
         // Non-poly keeps "" even under the objnam fallback ('body part').
         {
@@ -6182,7 +6208,7 @@ export async function doattributes(enl_mode = null) {
     }
 
     // C ref: insight.c background_enlightenment — In_endgame /
-    // Is_knox / quest dunlev / rogue (Is_bigroom deferred)
+    // Is_knox / quest dunlev / rogue / bigroom (D-2564 lands the last)
     const dungeonLine = `  You are ${background_dungeon_clause(u.uz)}.`;
     // C: moves==1 → "just started"; else "entered … N turn(s) ago"
     const adventureLine = turns === 1
@@ -6222,12 +6248,52 @@ export async function doattributes(enl_mode = null) {
     ];
     // C insight.c enlightenment: background/basics/characteristics iff BASIC
     if (mode & BASICENLIGHTENMENT) {
+        lines.push(' Background:');
+        // C insight.c:490-506 — Upolyd current shape before underlying role
+        // (final=0 keeps the "currently " prefix; current flags.female
+        // for the adj/cham/form pmname calls; D-2564).
+        if (Upolyd(u)) {
+            const uasmon = game.youmonst?.data || mons(u.umonnum);
+            const altphrasing = vampshifted(game.youmonst);
+            let ptmp = '';
+            if (!is_male(uasmon) && !is_female(uasmon) && !is_neuter(uasmon)) {
+                ptmp += `${genders[female ? 1 : 0].adj} `;
+            }
+            if (altphrasing) {
+                ptmp += `${pmname(mons(game.youmonst?.cham), female ? FEMALE : MALE)} in `;
+            }
+            lines.push(`  You are currently ${altphrasing ? just_an(ptmp) : 'in '}${ptmp}${pmname(uasmon, female ? FEMALE : MALE)} form.`);
+        }
+        // C insight.c:517 — Upolyd role line carries "actually " prefix.
+        // C insight.c:532-554 — mission adverb (final=0: currently/now).
+        const baseCur = u.ualignbase?.current ?? atype;
+        const baseOrig = u.ualignbase?.original ?? atype;
+        const adverb = (atype !== baseCur)
+            ? 'currently '
+            : (atype !== baseOrig)
+                ? 'now '
+                : (!(u.uconduct?.gnostic | 0) && turns > 1000)
+                    ? 'nominally '
+                    : '';
         lines.push(
-            ' Background:',
-            `  You are ${roleLevel}.`,
-            `  You are ${align}, on a mission for ${u_gname(game.urole, atype)}`,
+            `  You are ${(Upolyd(u) ? 'actually ' : '')}${roleLevel}.`,
+            `  You are ${align}, ${adverb}on a mission for ${u_gname(game.urole, atype)}`,
             opposed,
-            `  You are ${hand}-handed.`,
+        );
+        // C insight.c:574-587 — temp alignment + started-out (final=0).
+        let difalgn = (atype !== baseCur ? 1 : 0)
+            + (baseCur !== baseOrig ? 2 : 0);
+        if (difalgn & 1) {
+            lines.push(`  You are actually ${align_str(baseCur)}.`);
+            difalgn &= ~1;
+        }
+        if (innategend !== initgend || difalgn) {
+            lines.push(`  You started out ${innategend !== initgend ? genders[initgend].adj : ''}${(innategend !== initgend && difalgn) ? ' and ' : ''}${difalgn ? align_str(baseOrig) : ''}.`);
+        }
+        // C insight.c:593-594 — "normally " when poly form lacks hands
+        // (same Upolyd-gated expression as the final builder).
+        lines.push(
+            `  You are ${!Upolyd(u) ? '' : (body_part_latebound(HANDED) === 'handed' ? '' : 'normally ')}${hand}-handed.`,
             dungeonLine,
             adventureLine,
         );

@@ -67,7 +67,7 @@ import { doapply, check_leash } from './apply.js';
 import { dokick } from './dokick.js';
 import { donull, dodown, doup, dodrop, doddrop, reset_occupations } from './do.js';
 import { dosave, dosave0 } from './save.js';
-import { doset_simple, dotogglepickup, select_menu_pick_one } from './options.js';
+import { doset_simple, dotogglepickup, select_menu_pick_one, strbuf_append } from './options.js';
 import {
     do_attack, mon_at, is_safemon, explum, attacktype_fordmg,
     stumble_onto_mimic,
@@ -758,6 +758,80 @@ export async function doextlist() {
         }
     }
     return ECMD_OK;
+}
+
+/**
+ * C ref: cmd.c get_changed_key_binds `:2235–2287` [campaign 4/7] — BIND= lines
+ * for changed key bindings: user-rebound commands plus default-key commands
+ * left unbound. sbuf non-null appends (the #saveoptions path); sbuf null
+ * shows a text window (the rebind-menu path).
+ * C order: `:2244–2246` window setup; `:2248–2267` userbind-delta loop over
+ * gc.Cmd.cmdbinds; `:2269–2281` unbound-defaults loop over extcmdlist;
+ * `:2282–2285` display/destroy tail.
+ * JS shape notes: the C cmdbinds list (defaults with user FALSE from
+ * commands_init `:2750–2780` + user overlays from bind_key `:2662–2730`)
+ * is split in JS — defaults live in dokeylist build_default_cmdbinds, user
+ * binds in game.Cmd.binds (RC BIND= overlay via parsebindings, jsmain.js).
+ * Effective-bind reads go through the live cmdbind_get export (dokeylist.js);
+ * userbind iteration below mirrors C list order (cmdbind_add `:2152`
+ * prepends: most recent first, in-place on rebind — same as Map order,
+ * reversed). CMD_PARAM arm folds into the plain arm (param stripped at parse).
+ * Callees: key2txt (dokeylist.js live), strbuf_append (options.js live),
+ * cmdbind_get (dokeylist.js live). Callers: options.c all_options_strbuf
+ * `:9734` (live: js/options.js all_options_strbuf); cmd.c handler_rebind_keys
+ * `:2442` NULL arm (unported — named omission below).
+ * @param {{ str: string|null, len: number }|null} sbuf strbuf or null
+ */
+export function get_changed_key_binds(sbuf) {
+    // C `:2240–2246`: win = WIN_ERR; if (!sbuf) win = create_nhwindow(NHW_TEXT).
+    // js/ has no NHW_TEXT window object (pager show_text_pages is async-only),
+    // so NULL-arm lines accumulate in winLines; the display tail is named below.
+    const winLines = [];
+    // C `:2263–2266` + `:2277–2280`: sbuf ? strbuf_append(sbuf, buf) : putstr(win, 0, buf).
+    const emit = (buf) => {
+        if (sbuf) strbuf_append(sbuf, `${buf}\n`); // C Sprintf `sbuf ? "\n" : ""`
+        else winLines.push(buf);
+    };
+
+    /* commands bound to different key */ // C `:2248`
+    const overlay = game.Cmd?.binds;
+    const userbinds = overlay instanceof Map ? [...overlay.entries()].reverse() : [];
+    for (const [rawKey, name] of userbinds) {
+        const key = Number(rawKey) & 0xff; // C uchar key
+        if (!key) continue; // C cmdbind_add `:2129`: no node for key 0
+        if (!name) continue; // C bind_key "nothing" `:2668` removes the node: no cmd, loop-1 skip
+        // C `:2251`: bind->userbind && bind->cmd && bind->cmd->key != bind->key.
+        // Every overlay entry is a user bind (RC parse is the only JS writer);
+        // re-match the row the way bind_key `:2686–2692` does (ef_txt match,
+        // INTERNALCMD skipped — same predicate as parsebindings). A miss cannot
+        // happen (parse-time match); skip defensively.
+        const ext = EXTCMDLIST.find(
+            (e) => e.txt.toLowerCase() === String(name).toLowerCase()
+                && ((e.flags | 0) & INTERNALCMD) === 0,
+        );
+        if (!ext || ext.key === key) continue;
+        // C `:2253–2260`: CMD_PARAM arm prints BIND=key:cmd(param), plain arm
+        // BIND=key:cmd; the JS RC parser strips (param) at parsebindings (named
+        // omission in options.js), so both arms print BIND=key:cmd here.
+        // key2txt(bind->key, buf2) takes the single key.
+        emit(`BIND=${key2txt(key)}:${ext.txt}`);
+    }
+
+    /* commands which should be bound to a key, but aren't */ // C `:2269`
+    // C `:2271`: i < extcmdlist_length (SIZE-1: skips the null terminator row);
+    // the generated table has no terminator, so exhausting it is exact.
+    for (const ec of EXTCMDLIST) {
+        if (!ec.key) continue; // C `:2273` ec->key && ...
+        // C `:2273` !keys[ec->key] — keys[] marks every bound node; the live
+        // cmdbind_get oracle (defaults + overlay) is the same mapping.
+        if (cmdbind_get(ec.key & 0xff)) continue;
+        emit(`BIND=${key2txt(ec.key & 0xff)}:nothing`); // C `:2274–2275`
+    }
+
+    // C `:2282–2285`: if (!sbuf) { display_nhwindow(win, TRUE); destroy_nhwindow(win); }
+    // Named omission: the sole C NULL caller is handler_rebind_keys (cmd.c:2442),
+    // unported in js/; no sync text-window primitive exists, so winLines has no
+    // display sink yet (a future port shows them via `await show_text_pages(winLines)`).
 }
 
 /**

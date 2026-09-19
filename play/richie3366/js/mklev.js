@@ -10,7 +10,7 @@ import { GameMap } from './game.js';
 import { rn2, rnd, rn1, rnz } from './rng.js';
 import { CLR_CYAN, CLR_GRAY, CLR_BRIGHT_BLUE } from './terminal.js';
 import { init_rect, rnd_rect, get_rect, split_rects } from './rect.js';
-import { depth as depth_of_level, dist2, distmin, level_difficulty as level_difficulty_of, strstri } from './hacklib.js';
+import { depth as depth_of_level, dist2, distmin, level_difficulty, strstri } from './hacklib.js';
 import { getbones } from './bones.js';
 import {
     COLNO, ROWNO, STONE, ROOM, CORR, DOOR, STAIRS,
@@ -149,7 +149,7 @@ import { buried_ball_to_punishment, fracture_rock } from './dig.js';
 import { obfree } from './shk.js';
 import { block_point, unblock_point, does_block, recalc_block_point, vision_recalc } from './vision.js';
 import { emits_light, new_light_source, del_light_source } from './light.js';
-import { monst_to_any, is_pool, is_lava } from './hack.js';
+import { monst_to_any, is_pool, is_lava, in_rooms } from './hack.js';
 import { begin_burn } from './timeout.js';
 import { nexttodoor } from './fountain.js';
 import { ndemon } from './minion.js';
@@ -1283,10 +1283,7 @@ function oinit() {
     setgemprobs(game.u?.uz || null);
 }
 
-// C ref: dungeon.c level_difficulty — via hacklib (builds_up aware)
-function level_difficulty() {
-    return level_difficulty_of(game.u?.uz);
-}
+/* level_difficulty: canonical import from hacklib.js (dungeon.c:2026–2084). */
 
 // place_object / weight / add_to_container / dealloc_obj imported from mkobj.js
 
@@ -1298,8 +1295,7 @@ trap_engravings[TRAPDOOR] = 'Vlad was here';
 trap_engravings[TELEP_TRAP] = 'ad aerarium';
 trap_engravings[LEVEL_TELEP] = 'ad aerarium';
 
-// in_rooms stub
-function in_rooms(x, y, rtype) { return []; }
+// in_rooms: live export from hack.js (C hack.c in_rooms) — no local stub.
 
 // ============================================================
 // Core mklev functions (ported from main project's mklev.js)
@@ -24723,27 +24719,63 @@ function invalid_shop_shape(sroom) {
 }
 
 /**
- * C ref: mkroom.c mkshop — find eligible OROOM (one door, no stairs, valid
- * shape), light it, pick shtypes via rnd(100), set rtype/needfill/topologize.
- * Wizard SHOPTYPE env and stock_room deferred (stocked in fill_special_room).
+ * C ref: mkroom.c mkshop :94-216 — whole-body port in C order.
+ * :97-99 decls (i=-1, ep null); :101-155 wizard SHOPTYPE shoptype block —
+ * wizard reads game.flags (wizard ≡ flags.debug per flag.h; pick_room
+ * precedent); the nh_getenv("SHOPTYPE") endpoint (:103) is a named omit
+ * (no environment in scored ESM per Rule #2, same class as the makemaz
+ * SPLEVTYPE deferral), so ep stays null, the :104-153 dispatch never
+ * fires, and i stays -1; :157-178 gottype room walk (hx<0 sentinel
+ * return :163, past-nroom impossible :165-168, OROOM/stairs gates,
+ * :173 doorct==1 or wizard&&ep multi-door arm with invalid_shop_shape
+ * break); :180-187 light room; :189-201 rnd(100) shtypes pick with the
+ * isbig wand/book→general clamp; :203-215 rtype/needfill/topologize
+ * (SPECIALIZATION off per global.h:120, so the 1-arg topologize arm).
+ * Stocking deferred to fill_special_room (D-0201). Named omissions:
+ * SHOPTYPE dispatch endpoint (c-js-map data.md).
  */
 function mkshop() {
     const g = game;
+    // C :97-99 — int i = -1; char *ep = 0 (lint init)
+    let i = -1;
+    // C :102 — wizard ≡ flags.debug (flag.h); playmode:debug sets flags.debug
+    const wizard = !!(g.flags?.debug || g.flags?.wizard);
+    // C :103 — ep = nh_getenv("SHOPTYPE"). Named omit: scored ESM has no
+    // environment (Rule #2; makemaz SPLEVTYPE precedent), so the endpoint
+    // is always absent and ep stays null.
+    const ep = null;
+    // C :104-153 — SHOPTYPE single-char dispatch (mkzoo ZOO/MORGUE/BEEHIVE/
+    // COURT/BARRACKS/ANTHOLE/COCKNEST/LEPREHALL, mktemple on '_', mkswamp
+    // on '}', shtypes symb match → gottype, g/v arms). Named omit with the
+    // endpoint above: ep is always null, so this block never fires and i
+    // stays -1 (random pick below). Every callee is live in this file.
+
+    // C :157-161 gottype — walk rooms: return = none eligible,
+    // continue = ineligible, break = eligible.
+    const rooms = g.level?.rooms ?? [];
     const nroom = g.level?.nroom | 0;
     let sroom = null;
-    for (let i = 0; i < nroom; i++) {
-        const cand = g.level.rooms[i];
+    for (let idx = 0; ; idx++) {
+        const cand = rooms[idx];
+        // C :163 — hx<0 sentinel ends the walk: no eligible shop room
         if (!cand || cand.hx < 0) return;
+        // C :165-168 — walked past nroom with no sentinel (can't happen on
+        // a bounded JS array; sync fire-and-forget like splev_create_monster)
+        if (idx >= nroom) { impossible('rooms[] not closed by -1?'); return; }
+        // C :169-172 — OROOM + no-stairs gates
         if (cand.rtype !== OROOM) continue;
         if (has_dnstairs(cand) || has_upstairs(cand)) continue;
-        if ((cand.doorct | 0) === 1) {
+        // C :173-177 — doorct==1, or the wizard multi-door arm (ep null
+        // per the omit above, so only doorct==1 fires in practice)
+        if ((cand.doorct | 0) === 1
+            || (wizard && ep && (cand.doorct | 0) !== 0)) {
             if (invalid_shop_shape(cand)) continue;
             sroom = cand;
             break;
         }
     }
-    if (!sroom) return;
 
+    // C :180-187 — light the room when unlit
     if (!sroom.rlit) {
         for (let x = sroom.lx - 1; x <= sroom.hx + 1; x++) {
             for (let y = sroom.ly - 1; y <= sroom.hy + 1; y++) {
@@ -24754,20 +24786,20 @@ function mkshop() {
         sroom.rlit = 1;
     }
 
-    let shopIdx = -1;
-    {
+    // C :189-201 — shoptype not yet determined (i<0): rnd(100) walk over
+    // shtypes probs; big rooms can't be wand/book shops → general (i=0)
+    if (i < 0) {
         let j = rnd(100);
-        let i = 0;
-        for (; i < shtypes.length && (j -= shtypes[i].prob) > 0; i++)
+        for (i = 0; i < shtypes.length && (j -= shtypes[i].prob) > 0; i++)
             continue;
-        shopIdx = i;
-        if (isbig(sroom) && (shtypes[shopIdx]?.symb === WAND_CLASS
-            || shtypes[shopIdx]?.symb === SPBOOK_CLASS)) {
-            shopIdx = 0;
-        }
+        if (isbig(sroom) && (shtypes[i]?.symb === WAND_CLASS
+            || shtypes[i]?.symb === SPBOOK_CLASS))
+            i = 0;
     }
 
-    sroom.rtype = SHOPBASE + shopIdx;
+    // C :203 rtype; :205-210 topologize (SPECIALIZATION off → 1-arg arm);
+    // :211-215 needfill (the shop is stocked in fill_special_room, D-0201)
+    sroom.rtype = SHOPBASE + i;
     topologize(sroom);
     sroom.needfill = FILL_NORMAL;
 }
@@ -28066,71 +28098,95 @@ export function dig_corridor(org, dest, npoints_out, nxcor, ftyp, btyp) {
     return true;
 }
 
-// C ref: mklev.c dosdoor()
+// C ref: mklev.c dosdoor() :615–676 — full body in C order.
+// shdoor (:617): *in_rooms(x, y, SHOPBASE) — shop rooms only (C hack.c
+// goodtype: rtype == SHOPBASE or > SHOPBASE); the live hack.js export
+// returns '' when no room matches, so length > 0 is C *ptr != 0.
 function dosdoor(x, y, aroom, type) {
     const map = game.level;
     const loc = map.at(x, y);
     if (!loc) return;
-    const shdoor = in_rooms(x, y, 0).length > 0;
-    if (!IS_WALL(loc.typ)) type = DOOR;
+    const shdoor = in_rooms(x, y, SHOPBASE).length > 0;
+    if (!IS_WALL(loc.typ)) type = DOOR; // C :619–620 — no S-doors on made doors
     loc.typ = type;
     if (type === DOOR) {
-            if (!rn2(3)) {
-                if (!rn2(5)) loc.flags = D_ISOPEN;
-                else if (!rn2(6)) loc.flags = D_LOCKED;
-                else loc.flags = D_CLOSED;
-                if (loc.flags !== D_ISOPEN && !shdoor
-                    && level_difficulty() >= 5 && !rn2(25))
-                    loc.flags |= D_TRAPPED;
-            } else {
-                loc.flags = shdoor ? D_ISOPEN : D_NODOOR;
-            }
-            // C mklev.c :647–648 — Rogue first so trapped-door mimics skip
-            if (Is_rogue_level(game.u?.uz)) loc.flags = D_NODOOR;
-            if (loc.flags & D_TRAPPED) {
-                // C ref: mklev.c dosdoor — trapped door may become mimic
-                if (level_difficulty() >= 9 && !rn2(5)
-                    && !((((game.mvitals?.[PM_SMALL_MIMIC]?.mvflags ?? 0) & G_GONE))
-                        && (((game.mvitals?.[PM_LARGE_MIMIC]?.mvflags ?? 0) & G_GONE))
-                        && (((game.mvitals?.[PM_GIANT_MIMIC]?.mvflags ?? 0) & G_GONE)))) {
-                    loc.flags = D_NODOOR;
-                    loc.doormask = D_NODOOR;
-                    const mtmp = makemon(mkclass('S_MIMIC', 0), x, y, 0);
-                    if (mtmp) set_mimic_sym(mtmp);
-                }
-            }
-        } else {
-            if (shdoor || !rn2(5)) loc.flags = D_LOCKED;
-            else loc.flags = D_CLOSED;
-            if (!shdoor && level_difficulty() >= 4 && !rn2(20))
+        if (!rn2(3)) { // C :623 — locked, closed, or doorway?
+            if (!rn2(5)) // C :624
+                loc.flags = D_ISOPEN;
+            else if (!rn2(6)) // C :626
+                loc.flags = D_LOCKED;
+            else // C :628
+                loc.flags = D_CLOSED;
+            // C :631–633 — trap gate skips open and shop doors
+            if (loc.flags !== D_ISOPEN && !shdoor
+                && level_difficulty() >= 5 && !rn2(25))
                 loc.flags |= D_TRAPPED;
+        } else {
+            // C :636–642 — STUPID undefined: shdoor ? open : doorway
+            loc.flags = shdoor ? D_ISOPEN : D_NODOOR;
         }
-        // C: struct rm flags/doormask are a union — keep JS mirrors in sync
-        loc.doormask = loc.flags;
-    add_door(x, y, aroom);
+        // C :646–648 — Rogue first so trapped-door mimics are skipped
+        // (also done in roguecorr)
+        if (Is_rogue_level(game.u?.uz)) loc.flags = D_NODOOR;
+        if (loc.flags & D_TRAPPED) { // C :650
+            let mtmp;
+            // C :652–654 — deep mimic classes still viable?
+            if (level_difficulty() >= 9 && !rn2(5)
+                && !(((game.mvitals?.[PM_SMALL_MIMIC]?.mvflags ?? 0) & G_GONE)
+                    && ((game.mvitals?.[PM_LARGE_MIMIC]?.mvflags ?? 0) & G_GONE)
+                    && ((game.mvitals?.[PM_GIANT_MIMIC]?.mvflags ?? 0) & G_GONE))) {
+                // C :656–660 — a mimic instead of the trapped door
+                loc.flags = D_NODOOR;
+                mtmp = makemon(mkclass('S_MIMIC', 0), x, y, NO_MM_FLAGS);
+                if (mtmp) set_mimic_sym(mtmp);
+            }
+        }
+        // C :662 — newsym(x,y) stays commented out in C; not called.
+    } else { // C :663 — SDOOR
+        if (shdoor || !rn2(5)) // C :664–665 — short-circuit: no draw on shdoor
+            loc.flags = D_LOCKED;
+        else // C :666–667
+            loc.flags = D_CLOSED;
+        // C :669–670
+        if (!shdoor && level_difficulty() >= 4 && !rn2(20))
+            loc.flags |= D_TRAPPED;
+    }
+    // C rm.h:213 — doormask IS flags (union); keep the JS mirrors in sync.
+    loc.doormask = loc.flags;
+    add_door(x, y, aroom); // C :673
 }
 
 export function dodoor(x, y, aroom) {
     dosdoor(x, y, aroom, maybe_sdoor(8) ? SDOOR : DOOR);
 }
 
+// C ref: mklev.c alloc_doors() :555–571 — staticfn; grows svd.doors by
+// DOORINC when full. JS arrays grow on indexed assignment, so this only
+// ensures the table exists.
+function alloc_doors() {
+    if (!game.level.doors) game.level.doors = [];
+}
+
+// C ref: mklev.c add_door() :573–612 — full body in C order. The two C
+// loops (rooms :596–600, subrooms :601–605) fold into one: JS stores
+// subrooms in level.rooms past MAXNROFROOMS+1 (see add_subroom).
 function add_door(x, y, aroom) {
     const g = game;
-    if (!g.level.doors) g.level.doors = [];
-    for (let i = 0; i < aroom.doorct; i++) {
+    alloc_doors(); // C :580
+    for (let i = 0; i < aroom.doorct; i++) { // C :582–587 — dup check
         const d = g.level.doors[aroom.fdoor + i];
         if (d && d.x === x && d.y === y) return;
     }
-    if (aroom.doorct === 0) aroom.fdoor = g.level.doorindex;
-    aroom.doorct++;
-    for (let tmp = g.level.doorindex; tmp > aroom.fdoor; tmp--)
+    if (aroom.doorct === 0) aroom.fdoor = g.level.doorindex; // C :589–590
+    aroom.doorct++; // C :592
+    for (let tmp = g.level.doorindex; tmp > aroom.fdoor; tmp--) // C :594–595
         g.level.doors[tmp] = g.level.doors[tmp - 1];
-    for (const broom of g.level.rooms || []) {
-        if (!broom || broom.hx <= 0 || broom === aroom || !(broom.doorct > 0)) continue;
+    for (const broom of g.level.rooms || []) { // C :596–605
+        if (!broom || broom === aroom || !(broom.doorct > 0)) continue;
         if ((broom.fdoor ?? 0) >= aroom.fdoor) broom.fdoor++;
     }
-    g.level.doors[aroom.fdoor] = { x, y };
-    g.level.doorindex++;
+    g.level.doorindex++; // C :607
+    g.level.doors[aroom.fdoor] = { x, y }; // C :608–609
 }
 
 function bydoor(x, y) {

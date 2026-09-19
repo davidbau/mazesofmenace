@@ -96,7 +96,9 @@ import {
     MSGTYP_STOP,
     AUTOCOMPLETE,
     AUTOCOMP_ADJ,
+    PRIMARYSET,
     ROGUESET,
+    H_UTF8,
     HL_NONE,
     HL_BOLD,
     HL_DIM,
@@ -111,10 +113,10 @@ import {
 import { game } from './gstate.js';
 import { sanitize_name } from './bones.js';
 import { rnd } from './rng.js';
-import { str_end_is, str_start_is, highc, strstri, strsubst, strNsubst } from './hacklib.js';
+import { str_end_is, str_start_is, highc, lowc, strstri, strsubst, strNsubst } from './hacklib.js';
 import { name_to_mon } from './mondata.js';
 import { nhgetch } from './input.js';
-import { flush_screen, pline, docrt, check_gold_symbol, clear_committed_status, set_bot_disabled, tty_wait_synch } from './display.js';
+import { flush_screen, pline, docrt, check_gold_symbol, clear_committed_status, set_bot_disabled, tty_wait_synch, update_ov_primary_symset, update_ov_rogue_symset } from './display.js';
 import { paint_corner_nhw_menu, dismiss_nhw_menu, collect_menu_gacc, process_menu_search, toggle_menu_curr, menu_digit_is_gacc, reassign, update_inventory, invlet_constant, perm_invent_toggled, select_menu_pick_none } from './invent.js';
 import {
     ATR_INVERSE,
@@ -130,10 +132,13 @@ import {
     objectNames, objectNameStrs, objects,
 } from './objects.js';
 import { EXTCMDLIST, INTERNALCMD } from './generated/extcmdlist_data.js';
+import { LOADSYMS, SYM_CONTROL } from './generated/glyphsyms_data.js';
 import { yyyymmddhhmmss } from './calendar.js';
-import { getlin } from './getline.js';
+import { getlin, mungspaces } from './getline.js';
 import { makesingular, fruit_from_name, makeplural } from './objnam.js';
 import { clr2colorname } from './artifact.js';
+import { opt_next_cond, status_hilite_linestr_done, status_hilite_linestr_gather } from './botl.js';
+import { get_changed_key_binds } from './cmd.js';
 
 /** C ref: global.h PL_FSIZ — fruit name buffer. */
 const PL_FSIZ = 32;
@@ -1035,6 +1040,26 @@ export function parseNethackrc(rc) {
             continue;
         }
 
+        // C cfgfiles.c cnf_line_ROGUESYMBOLS `:1190–1199` — top-level
+        // ROGUESYMBOLS=. C TRUE→switch_symbols (named: no JS apply step,
+        // ov_* tables are read lazily at render) / FALSE→config_error_add
+        // (named: no JS config-error sink); game-state effect is fully in
+        // parsesymbols, so the result only selects `continue`.
+        const rsymMatch = line.match(/^ROGUESYMBOLS=(.+)/i);
+        if (rsymMatch) {
+            parsesymbols(rsymMatch[1], ROGUESET);
+            continue;
+        }
+
+        // C cfgfiles.c cnf_line_SYMBOLS `:1201–1211` — top-level SYMBOLS=,
+        // same shape as ROGUESYMBOLS (PRIMARYSET; the unmatched-ignored
+        // error gate is likewise named, not wired).
+        const symbolsMatch = line.match(/^SYMBOLS=(.+)/i);
+        if (symbolsMatch) {
+            parsesymbols(symbolsMatch[1], PRIMARYSET);
+            continue;
+        }
+
         const optMatch = line.match(/^OPTIONS=(.+)/i);
         if (!optMatch) continue;
 
@@ -1141,6 +1166,15 @@ export function parseNethackrc(rc) {
                         do_set, negated, val, null, result.iflags, true, null,
                     );
                 }
+                else if (stripped.startsWith('S_')
+                    && parsesymbols(stripped, PRIMARYSET)) {
+                    // C options.c `:663–667` !got_match S_ fallback (C strips
+                    // '!'/'no' at `:540–543`, so negation-free `stripped` is
+                    // the operand; startsWith is case-sensitive like strstr).
+                    // switch_symbols(TRUE) application step named (no JS
+                    // apply step; ov_* tables are read lazily at render).
+                    check_gold_symbol();
+                }
                 else result.flags[key] = val;
             } else {
                 // Boolean flag
@@ -1186,6 +1220,11 @@ export function parseNethackrc(rc) {
                         do_set, negated, '', null, result.iflags, true, null,
                     );
                 } else {
+                    // C options.c `:663` S_ gate on unmatched valueless
+                    // options: without ':'/'=' parsesymbols always returns
+                    // FALSE (pure — the strval check precedes every write),
+                    // kept for C call order.
+                    if (stripped.startsWith('S_')) parsesymbols(stripped, PRIMARYSET);
                     const eqIdx = stripped.indexOf('=');
                     if (eqIdx >= 0
                         && stripped.slice(0, eqIdx).trim().toLowerCase()
@@ -1771,11 +1810,6 @@ export async function handler_menu_colors() {
             // :6495–6496 pick_cnt >= 0 → again
         }
     }
-}
-
-/** C ref: hacklib.c mungspaces — trim ends, compress internal spaces. */
-function mungspaces(s) {
-    return String(s || '').trim().replace(/\s+/g, ' ');
 }
 
 // sanitize_name: bones.c — imported from bones.js (read lazily in bodies).
@@ -3068,13 +3102,15 @@ export function oclass_to_sym(oclass) {
 }
 
 /* ===== C ref: options.c all_options_strbuf() family `:9678–9748` [campaign 1/7] =====
- * #saveoptions writer (cfgfiles.c do_write_config_file `:165–211`, not yet
- * ported — the only C caller, named omission below). Live in this commit:
+ * #saveoptions writer (cfgfiles.c do_write_config_file `:169–210`, live in
+ * js/cfgfiles.js [7/7] — the only C caller). Live in this commit:
  * strbuf_* (strutil.c) + msgtypes / menucolors / apes / autocomplete arms
  * (backing stores live in this file / game bags / generated EXTCMDLIST).
  * Named omissions ship as campaign rows (map): get_option_value + the
- * allopt[]/opt_set_in_config[] table, all_options_conds, get_changed_key_binds,
- * all_options_statushilites (+ parsesymbols producer for savedSymbols).
+ * allopt[]/opt_set_in_config[] table (live [2/7]), all_options_conds
+ * (live [3/7]), get_changed_key_binds (live [4/7], js/cmd.js),
+ * all_options_statushilites (live [6/7], js/botl.js store + writer above;
+ * + parsesymbols producer for savedSymbols, live [5/7]).
  * all_options_palette is compiled
  * out (CHANGE_COLOR off for tty: windconf.h `:29` commented) — no row.
  */
@@ -3117,18 +3153,853 @@ export function strbuf_empty(sbuf) {
 /** C ref: optlist.h `:19` enum OptType; global.h `:580–588` optset_restrictions. */
 const BoolOpt = 0, CompOpt = 1, OthrOpt = 2;
 const SET_IN_CONFIG = 1, SET_GAMEVIEW = 3, SET_IN_GAME = 4;
+// C global.h `:580–588` optset_restrictions values used by allopt rows.
+const SET_HIDDEN = 7, SET_WIZONLY = 5, SET_WIZNOFUZ = 6;
+/** C global.h `:605–611` enum opt OPTCOUNT — row count for the unix build. */
+const OPTCOUNT = 217;
 
-/* C ref: options.c `:111` static boolean opt_set_in_config[OPTCOUNT=248], set at
- * `:640` (config match) and `:5010`/`:8438` (cond prefix). The allopt registry
- * row ships the table (optlist.h NHOPT_PARSE, OPTCOUNT 248); until then both
- * are empty — no option counts as set-in-config, which is today's truth since
- * nothing records it. allopt rows: { name, opttyp, addr: {obj,key} game-bag
- * ref or null (C: boolean *addr), initval, setwhere, optfn } — addr follows the
- * DOSET_BOOL_ADDR convention used by simple_bool_value in this file. */
-const allopt = [];
-const opt_set_in_config = [];
-/** C enum opt pfx_cond_ = 245 (optlist.h NHOPTP cond_ `:904–905`, 245 rows before it). */
-const PFX_COND_IDX = 245;
+/* C ref: options.c `:59–67` allopt_init[] (optlist.h NHOPT_PARSE rows plus the
+ * `:63–67` null-name sentinel) copied to live `allopt` by allopt_array_init
+ * (`:7405`: memcpy + addr=initval + do_init optfn calls — config/doset scope,
+ * named). Unix tty build: 217 rows in C order (D-2548: cc -E with config.h +
+ * PREV_MSGS=1 per options.c `:23–27`; compile asserts OPTCOUNT==217 and
+ * pfx_cond_==215). The 248 figure is the textual superset over all platform
+ * ifdefs (WIN32/MICRO/CURSES/CHANGE_COLOR/IBM_ rows don't compile here).
+ * idx = enum opt ordinal = row position. allopt rows: { name, opttyp,
+ * addr: {obj,key} game-bag ref or null (C: boolean *addr), initval, setwhere,
+ * optfn } — addr twins DOSET_BOOL_ADDR (doset toggles) plus 8 live-field
+ * mappings (debug_mongen, female, menu_tab_sep, monpolycontrol,
+ * montelecontrol, perm_invent, sanity_check, splash_screen); 18 BoolOpt rows
+ * keep addr null (their C addr has no live JS field — named). Every optfn is
+ * null (optfn_boolean, optfn_*, pfxfn_* unported — named). The C sentinel
+ * (name 0, disregarded) is omitted: JS length terminates the loops. */
+const allopt = [
+    // optlist.h:117 NHOPTC(windowtype)
+    { name: 'windowtype', opttyp: CompOpt, idx: 0, setwhere: SET_GAMEVIEW, initval: false, addr: null, optfn: null },
+    // optlist.h:120 NHOPTC(playmode)
+    { name: 'playmode', opttyp: CompOpt, idx: 1, setwhere: SET_GAMEVIEW, initval: false, addr: null, optfn: null },
+    // optlist.h:123 NHOPTC(name)
+    { name: 'name', opttyp: CompOpt, idx: 2, setwhere: SET_GAMEVIEW, initval: false, addr: null, optfn: null },
+    // optlist.h:126 NHOPTC(role)
+    { name: 'role', opttyp: CompOpt, idx: 3, setwhere: SET_GAMEVIEW, initval: false, addr: null, optfn: null },
+    // optlist.h:129 NHOPTC(race)
+    { name: 'race', opttyp: CompOpt, idx: 4, setwhere: SET_GAMEVIEW, initval: false, addr: null, optfn: null },
+    // optlist.h:132 NHOPTC(gender)
+    { name: 'gender', opttyp: CompOpt, idx: 5, setwhere: SET_GAMEVIEW, initval: false, addr: null, optfn: null },
+    // optlist.h:135 NHOPTC(alignment)
+    { name: 'alignment', opttyp: CompOpt, idx: 6, setwhere: SET_GAMEVIEW, initval: false, addr: null, optfn: null },
+    // optlist.h:140 NHOPTB(accessiblemsg)
+    { name: 'accessiblemsg', opttyp: BoolOpt, idx: 7, setwhere: SET_IN_GAME, initval: false, addr: { obj: 'a11y', key: 'accessiblemsg' }, optfn: null },
+    // optlist.h:143 NHOPTB(acoustics)
+    { name: 'acoustics', opttyp: BoolOpt, idx: 8, setwhere: SET_IN_GAME, initval: true, addr: { obj: 'flags', key: 'acoustics' }, optfn: null },
+    // optlist.h:147 NHOPTC(align_message)
+    { name: 'align_message', opttyp: CompOpt, idx: 9, setwhere: SET_GAMEVIEW, initval: false, addr: null, optfn: null },
+    // optlist.h:149 NHOPTC(align_status)
+    { name: 'align_status', opttyp: CompOpt, idx: 10, setwhere: SET_GAMEVIEW, initval: false, addr: null, optfn: null },
+    // optlist.h:155 NHOPTC(altkeyhandling)
+    { name: 'altkeyhandling', opttyp: CompOpt, idx: 11, setwhere: SET_IN_CONFIG, initval: false, addr: null, optfn: null },
+    // optlist.h:159 NHOPTB(altmeta)
+    { name: 'altmeta', opttyp: BoolOpt, idx: 12, setwhere: SET_IN_GAME, initval: false, addr: { obj: 'iflags', key: 'altmeta' }, optfn: null },
+    // optlist.h:167 NHOPTB(armorstatus)
+    { name: 'armorstatus', opttyp: BoolOpt, idx: 13, setwhere: SET_IN_GAME, initval: false, addr: { obj: 'iflags', key: 'armorstatus' }, optfn: null },
+    // optlist.h:170 NHOPTB(ascii_map)
+    { name: 'ascii_map', opttyp: BoolOpt, idx: 14, setwhere: SET_IN_GAME, initval: true /* ascii_map_Def: tty */, addr: null /* C: &iflags.wc_ascii_map, no live field */, optfn: null },
+    // optlist.h:173 NHOPTO("autocompletions")
+    { name: 'autocompletions', opttyp: OthrOpt, idx: 15, setwhere: SET_IN_GAME, initval: true, addr: null, optfn: null },
+    // optlist.h:175 NHOPTB(autodescribe)
+    { name: 'autodescribe', opttyp: BoolOpt, idx: 16, setwhere: SET_IN_GAME, initval: true, addr: { obj: 'iflags', key: 'autodescribe' }, optfn: null },
+    // optlist.h:178 NHOPTB(autodig)
+    { name: 'autodig', opttyp: BoolOpt, idx: 17, setwhere: SET_IN_GAME, initval: false, addr: { obj: 'flags', key: 'autodig' }, optfn: null },
+    // optlist.h:181 NHOPTB(autoopen)
+    { name: 'autoopen', opttyp: BoolOpt, idx: 18, setwhere: SET_IN_GAME, initval: true, addr: { obj: 'flags', key: 'autoopen' }, optfn: null },
+    // optlist.h:184 NHOPTB(autopickup)
+    { name: 'autopickup', opttyp: BoolOpt, idx: 19, setwhere: SET_IN_GAME, initval: false, addr: { obj: 'flags', key: 'pickup' }, optfn: null },
+    // optlist.h:187 NHOPTO("autopickup exceptions")
+    { name: 'autopickup exceptions', opttyp: OthrOpt, idx: 20, setwhere: SET_IN_GAME, initval: true, addr: null, optfn: null },
+    // optlist.h:190 NHOPTB(autoquiver)
+    { name: 'autoquiver', opttyp: BoolOpt, idx: 21, setwhere: SET_IN_GAME, initval: false, addr: { obj: 'flags', key: 'autoquiver' }, optfn: null },
+    // optlist.h:193 NHOPTC(autounlock)
+    { name: 'autounlock', opttyp: CompOpt, idx: 22, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: null },
+    // optlist.h:196 NHOPTB(bgcolors)
+    { name: 'bgcolors', opttyp: BoolOpt, idx: 23, setwhere: SET_IN_GAME, initval: true, addr: { obj: 'iflags', key: 'bgcolors' }, optfn: null },
+    // optlist.h:199 NHOPTO("bind keys")
+    { name: 'bind keys', opttyp: OthrOpt, idx: 24, setwhere: SET_IN_GAME, initval: true, addr: null, optfn: null },
+    // optlist.h:206 NHOPTB(BIOS)
+    { name: 'BIOS', opttyp: BoolOpt, idx: 25, setwhere: SET_IN_CONFIG, initval: false, addr: null, optfn: null },
+    // optlist.h:210 NHOPTB(blind)
+    { name: 'blind', opttyp: BoolOpt, idx: 26, setwhere: SET_IN_CONFIG, initval: false, addr: { obj: 'flags', key: 'blind' }, optfn: null },
+    // optlist.h:213 NHOPTB(bones)
+    { name: 'bones', opttyp: BoolOpt, idx: 27, setwhere: SET_IN_CONFIG, initval: true, addr: { obj: 'flags', key: 'bones' }, optfn: null },
+    // optlist.h:217 NHOPTC(boulder)
+    { name: 'boulder', opttyp: CompOpt, idx: 28, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: null },
+    // optlist.h:221 NHOPTC(catname)
+    { name: 'catname', opttyp: CompOpt, idx: 29, setwhere: SET_GAMEVIEW, initval: false, addr: null, optfn: null },
+    // optlist.h:225 NHOPTB(checkpoint)
+    { name: 'checkpoint', opttyp: BoolOpt, idx: 30, setwhere: SET_IN_GAME, initval: true, addr: { obj: 'flags', key: 'checkpoint' }, optfn: null },
+    // optlist.h:233 NHOPTB(cmdassist)
+    { name: 'cmdassist', opttyp: BoolOpt, idx: 31, setwhere: SET_IN_GAME, initval: true, addr: { obj: 'iflags', key: 'cmdassist' }, optfn: null },
+    // optlist.h:236 NHOPTB(color)
+    { name: 'color', opttyp: BoolOpt, idx: 32, setwhere: SET_IN_GAME, initval: true, addr: { obj: 'iflags', key: 'wc_color' }, optfn: null },
+    // optlist.h:239 NHOPTB(confirm)
+    { name: 'confirm', opttyp: BoolOpt, idx: 33, setwhere: SET_IN_GAME, initval: true, addr: { obj: 'flags', key: 'confirm' }, optfn: null },
+    // optlist.h:243 NHOPTC(crash_email)
+    { name: 'crash_email', opttyp: CompOpt, idx: 34, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: null },
+    // optlist.h:246 NHOPTC(crash_name)
+    { name: 'crash_name', opttyp: CompOpt, idx: 35, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: null },
+    // optlist.h:249 NHOPTC(crash_urlmax)
+    { name: 'crash_urlmax', opttyp: CompOpt, idx: 36, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: null },
+    // optlist.h:258 NHOPTB(customcolors)
+    { name: 'customcolors', opttyp: BoolOpt, idx: 37, setwhere: SET_IN_GAME, initval: true, addr: { obj: 'iflags', key: 'customcolors' }, optfn: null },
+    // optlist.h:261 NHOPTB(customsymbols)
+    { name: 'customsymbols', opttyp: BoolOpt, idx: 38, setwhere: SET_IN_GAME, initval: true, addr: { obj: 'iflags', key: 'customsymbols' }, optfn: null },
+    // optlist.h:264 NHOPTB(dark_room)
+    { name: 'dark_room', opttyp: BoolOpt, idx: 39, setwhere: SET_IN_GAME, initval: true, addr: { obj: 'flags', key: 'dark_room' }, optfn: null },
+    // optlist.h:267 NHOPTB(deaf)
+    { name: 'deaf', opttyp: BoolOpt, idx: 40, setwhere: SET_IN_CONFIG, initval: false, addr: { obj: 'flags', key: 'deaf' }, optfn: null },
+    // optlist.h:271 NHOPTC(DECgraphics)
+    { name: 'DECgraphics', opttyp: CompOpt, idx: 41, setwhere: SET_IN_CONFIG, initval: false, addr: null, optfn: null },
+    // optlist.h:275 NHOPTB(debug_hunger)
+    { name: 'debug_hunger', opttyp: BoolOpt, idx: 42, setwhere: SET_WIZNOFUZ, initval: false, addr: null /* C: &iflags.debug_hunger, no live field */, optfn: null },
+    // optlist.h:278 NHOPTB(debug_mongen)
+    { name: 'debug_mongen', opttyp: BoolOpt, idx: 43, setwhere: SET_WIZNOFUZ, initval: false, addr: { obj: 'iflags', key: 'debug_mongen' } /* C: &iflags.debug_mongen */, optfn: null },
+    // optlist.h:281 NHOPTB(debug_overwrite_stairs)
+    { name: 'debug_overwrite_stairs', opttyp: BoolOpt, idx: 44, setwhere: SET_WIZNOFUZ, initval: false, addr: null /* C: &iflags.debug_overwrite_stairs, no live field */, optfn: null },
+    // optlist.h:284 NHOPTC(disclose)
+    { name: 'disclose', opttyp: CompOpt, idx: 45, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: null },
+    // optlist.h:288 NHOPTC(dogname)
+    { name: 'dogname', opttyp: CompOpt, idx: 46, setwhere: SET_GAMEVIEW, initval: false, addr: null, optfn: null },
+    // optlist.h:291 NHOPTB(dropped_nopick)
+    { name: 'dropped_nopick', opttyp: BoolOpt, idx: 47, setwhere: SET_IN_GAME, initval: true, addr: { obj: 'flags', key: 'nopick_dropped' }, optfn: null },
+    // optlist.h:294 NHOPTC(dungeon)
+    { name: 'dungeon', opttyp: CompOpt, idx: 48, setwhere: SET_IN_CONFIG, initval: false, addr: null, optfn: null },
+    // optlist.h:297 NHOPTC(effects)
+    { name: 'effects', opttyp: CompOpt, idx: 49, setwhere: SET_IN_CONFIG, initval: false, addr: null, optfn: null },
+    // optlist.h:300 NHOPTB(eight_bit_tty)
+    { name: 'eight_bit_tty', opttyp: BoolOpt, idx: 50, setwhere: SET_IN_GAME, initval: false, addr: { obj: 'iflags', key: 'wc_eight_bit_input' } /* C: &iflags.wc_eight_bit_input; gameplay reads this, not eight_bit_tty */, optfn: null },
+    // optlist.h:303 NHOPTB(extmenu)
+    { name: 'extmenu', opttyp: BoolOpt, idx: 51, setwhere: SET_IN_GAME, initval: false, addr: { obj: 'flags', key: 'extmenu' }, optfn: null },
+    // optlist.h:306 NHOPTB(female)
+    { name: 'female', opttyp: BoolOpt, idx: 52, setwhere: SET_IN_CONFIG, initval: false, addr: { obj: 'flags', key: 'female' } /* C: &flags.female */, optfn: null },
+    // optlist.h:309 NHOPTB(fireassist)
+    { name: 'fireassist', opttyp: BoolOpt, idx: 53, setwhere: SET_IN_GAME, initval: true, addr: { obj: 'flags', key: 'fireassist' }, optfn: null },
+    // optlist.h:312 NHOPTB(fixinv)
+    { name: 'fixinv', opttyp: BoolOpt, idx: 54, setwhere: SET_IN_GAME, initval: true, addr: { obj: 'flags', key: 'invlet_constant' }, optfn: null },
+    // optlist.h:315 NHOPTC(font_map)
+    { name: 'font_map', opttyp: CompOpt, idx: 55, setwhere: SET_GAMEVIEW, initval: false, addr: null, optfn: null },
+    // optlist.h:317 NHOPTC(font_menu)
+    { name: 'font_menu', opttyp: CompOpt, idx: 56, setwhere: SET_GAMEVIEW, initval: false, addr: null, optfn: null },
+    // optlist.h:319 NHOPTC(font_message)
+    { name: 'font_message', opttyp: CompOpt, idx: 57, setwhere: SET_GAMEVIEW, initval: false, addr: null, optfn: null },
+    // optlist.h:322 NHOPTC(font_size_map)
+    { name: 'font_size_map', opttyp: CompOpt, idx: 58, setwhere: SET_GAMEVIEW, initval: false, addr: null, optfn: null },
+    // optlist.h:324 NHOPTC(font_size_menu)
+    { name: 'font_size_menu', opttyp: CompOpt, idx: 59, setwhere: SET_GAMEVIEW, initval: false, addr: null, optfn: null },
+    // optlist.h:326 NHOPTC(font_size_message)
+    { name: 'font_size_message', opttyp: CompOpt, idx: 60, setwhere: SET_GAMEVIEW, initval: false, addr: null, optfn: null },
+    // optlist.h:328 NHOPTC(font_size_status)
+    { name: 'font_size_status', opttyp: CompOpt, idx: 61, setwhere: SET_GAMEVIEW, initval: false, addr: null, optfn: null },
+    // optlist.h:330 NHOPTC(font_size_text)
+    { name: 'font_size_text', opttyp: CompOpt, idx: 62, setwhere: SET_GAMEVIEW, initval: false, addr: null, optfn: null },
+    // optlist.h:332 NHOPTC(font_status)
+    { name: 'font_status', opttyp: CompOpt, idx: 63, setwhere: SET_GAMEVIEW, initval: false, addr: null, optfn: null },
+    // optlist.h:334 NHOPTC(font_text)
+    { name: 'font_text', opttyp: CompOpt, idx: 64, setwhere: SET_GAMEVIEW, initval: false, addr: null, optfn: null },
+    // optlist.h:336 NHOPTB(force_invmenu)
+    { name: 'force_invmenu', opttyp: BoolOpt, idx: 65, setwhere: SET_IN_GAME, initval: false, addr: { obj: 'flags', key: 'force_invmenu' }, optfn: null },
+    // optlist.h:339 NHOPTC(fruit)
+    { name: 'fruit', opttyp: CompOpt, idx: 66, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: null },
+    // optlist.h:341 NHOPTB(fullscreen)
+    { name: 'fullscreen', opttyp: BoolOpt, idx: 67, setwhere: SET_IN_CONFIG, initval: false, addr: null /* C: &iflags.wc2_fullscreen, no live field */, optfn: null },
+    // optlist.h:345 NHOPTC(glyph)
+    { name: 'glyph', opttyp: CompOpt, idx: 68, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: null },
+    // optlist.h:348 NHOPTB(goldX)
+    { name: 'goldX', opttyp: BoolOpt, idx: 69, setwhere: SET_IN_GAME, initval: false, addr: { obj: 'flags', key: 'goldX' }, optfn: null },
+    // optlist.h:351 NHOPTB(guicolor)
+    { name: 'guicolor', opttyp: BoolOpt, idx: 70, setwhere: SET_IN_GAME, initval: true, addr: null /* C: &iflags.wc2_guicolor, no live field */, optfn: null },
+    // optlist.h:354 NHOPTB(help)
+    { name: 'help', opttyp: BoolOpt, idx: 71, setwhere: SET_IN_GAME, initval: true, addr: { obj: 'flags', key: 'help' }, optfn: null },
+    // optlist.h:357 NHOPTB(herecmd_menu)
+    { name: 'herecmd_menu', opttyp: BoolOpt, idx: 72, setwhere: SET_IN_GAME, initval: false, addr: { obj: 'flags', key: 'herecmd_menu' }, optfn: null },
+    // optlist.h:365 NHOPTB(hilite_pet)
+    { name: 'hilite_pet', opttyp: BoolOpt, idx: 73, setwhere: SET_IN_GAME, initval: false, addr: { obj: 'iflags', key: 'wc_hilite_pet' } /* C: &iflags.wc_hilite_pet; display.js prefers this */, optfn: null },
+    // optlist.h:368 NHOPTB(hilite_pile)
+    { name: 'hilite_pile', opttyp: BoolOpt, idx: 74, setwhere: SET_IN_GAME, initval: false, addr: { obj: 'iflags', key: 'hilite_pile' }, optfn: null },
+    // optlist.h:372 NHOPTC(hilite_status)
+    { name: 'hilite_status', opttyp: CompOpt, idx: 75, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: null },
+    // optlist.h:379 NHOPTB(hitpointbar)
+    { name: 'hitpointbar', opttyp: BoolOpt, idx: 76, setwhere: SET_IN_GAME, initval: false, addr: { obj: 'iflags', key: 'wc2_hitpointbar' } /* C: &iflags.wc2_hitpointbar; botl.js reads this */, optfn: null },
+    // optlist.h:382 NHOPTC(horsename)
+    { name: 'horsename', opttyp: CompOpt, idx: 77, setwhere: SET_GAMEVIEW, initval: false, addr: null, optfn: null },
+    // optlist.h:386 NHOPTC(IBMgraphics)
+    { name: 'IBMgraphics', opttyp: CompOpt, idx: 78, setwhere: SET_IN_CONFIG, initval: false, addr: null, optfn: null },
+    // optlist.h:390 NHOPTB(idlecheckpoint)
+    { name: 'idlecheckpoint', opttyp: BoolOpt, idx: 79, setwhere: SET_IN_GAME, initval: false, addr: { obj: 'iflags', key: 'idlecheckpoint' }, optfn: null },
+    // optlist.h:394 NHOPTB(ignintr)
+    { name: 'ignintr', opttyp: BoolOpt, idx: 80, setwhere: SET_IN_GAME, initval: false, addr: { obj: 'flags', key: 'ignintr' }, optfn: null },
+    // optlist.h:402 NHOPTB(implicit_uncursed)
+    { name: 'implicit_uncursed', opttyp: BoolOpt, idx: 81, setwhere: SET_IN_GAME, initval: true, addr: { obj: 'flags', key: 'implicit_uncursed' }, optfn: null },
+    // optlist.h:410 NHOPTB(legacy)
+    { name: 'legacy', opttyp: BoolOpt, idx: 82, setwhere: SET_IN_CONFIG, initval: true, addr: { obj: 'flags', key: 'legacy' }, optfn: null },
+    // optlist.h:413 NHOPTB(lit_corridor)
+    { name: 'lit_corridor', opttyp: BoolOpt, idx: 83, setwhere: SET_IN_GAME, initval: false, addr: { obj: 'flags', key: 'lit_corridor' }, optfn: null },
+    // optlist.h:416 NHOPTB(lootabc)
+    { name: 'lootabc', opttyp: BoolOpt, idx: 84, setwhere: SET_IN_GAME, initval: false, addr: { obj: 'flags', key: 'lootabc' }, optfn: null },
+    // optlist.h:419 NHOPTB(mail)
+    { name: 'mail', opttyp: BoolOpt, idx: 85, setwhere: SET_IN_GAME, initval: true, addr: { obj: 'flags', key: 'mail' }, optfn: null },
+    // optlist.h:422 NHOPTC(map_mode)
+    { name: 'map_mode', opttyp: CompOpt, idx: 86, setwhere: SET_GAMEVIEW, initval: false, addr: null, optfn: null },
+    // optlist.h:424 NHOPTB(mention_decor)
+    { name: 'mention_decor', opttyp: BoolOpt, idx: 87, setwhere: SET_IN_GAME, initval: false, addr: { obj: 'flags', key: 'mention_decor' }, optfn: null },
+    // optlist.h:427 NHOPTB(mention_map)
+    { name: 'mention_map', opttyp: BoolOpt, idx: 88, setwhere: SET_IN_GAME, initval: false, addr: { obj: 'a11y', key: 'glyph_updates' }, optfn: null },
+    // optlist.h:430 NHOPTB(mention_walls)
+    { name: 'mention_walls', opttyp: BoolOpt, idx: 89, setwhere: SET_IN_GAME, initval: false, addr: { obj: 'flags', key: 'mention_walls' }, optfn: null },
+    // optlist.h:433 NHOPTC(menu_deselect_all)
+    { name: 'menu_deselect_all', opttyp: CompOpt, idx: 90, setwhere: SET_IN_CONFIG, initval: false, addr: null, optfn: null },
+    // optlist.h:435 NHOPTC(menu_deselect_page)
+    { name: 'menu_deselect_page', opttyp: CompOpt, idx: 91, setwhere: SET_IN_CONFIG, initval: false, addr: null, optfn: null },
+    // optlist.h:438 NHOPTC(menu_first_page)
+    { name: 'menu_first_page', opttyp: CompOpt, idx: 92, setwhere: SET_IN_CONFIG, initval: false, addr: null, optfn: null },
+    // optlist.h:440 NHOPTC(menu_headings)
+    { name: 'menu_headings', opttyp: CompOpt, idx: 93, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: null },
+    // optlist.h:442 NHOPTC(menu_invert_all)
+    { name: 'menu_invert_all', opttyp: CompOpt, idx: 94, setwhere: SET_IN_CONFIG, initval: false, addr: null, optfn: null },
+    // optlist.h:444 NHOPTC(menu_invert_page)
+    { name: 'menu_invert_page', opttyp: CompOpt, idx: 95, setwhere: SET_IN_CONFIG, initval: false, addr: null, optfn: null },
+    // optlist.h:447 NHOPTC(menu_last_page)
+    { name: 'menu_last_page', opttyp: CompOpt, idx: 96, setwhere: SET_IN_CONFIG, initval: false, addr: null, optfn: null },
+    // optlist.h:449 NHOPTC(menu_next_page)
+    { name: 'menu_next_page', opttyp: CompOpt, idx: 97, setwhere: SET_IN_CONFIG, initval: false, addr: null, optfn: null },
+    // optlist.h:451 NHOPTC(menu_objsyms)
+    { name: 'menu_objsyms', opttyp: CompOpt, idx: 98, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: null },
+    // optlist.h:455 NHOPTB(menu_overlay)
+    { name: 'menu_overlay', opttyp: BoolOpt, idx: 99, setwhere: SET_IN_GAME, initval: true, addr: { obj: 'iflags', key: 'menu_overlay' }, optfn: null },
+    // optlist.h:463 NHOPTC(menu_previous_page)
+    { name: 'menu_previous_page', opttyp: CompOpt, idx: 100, setwhere: SET_IN_CONFIG, initval: false, addr: null, optfn: null },
+    // optlist.h:465 NHOPTC(menu_search)
+    { name: 'menu_search', opttyp: CompOpt, idx: 101, setwhere: SET_IN_CONFIG, initval: false, addr: null, optfn: null },
+    // optlist.h:467 NHOPTC(menu_select_all)
+    { name: 'menu_select_all', opttyp: CompOpt, idx: 102, setwhere: SET_IN_CONFIG, initval: false, addr: null, optfn: null },
+    // optlist.h:469 NHOPTC(menu_select_page)
+    { name: 'menu_select_page', opttyp: CompOpt, idx: 103, setwhere: SET_IN_CONFIG, initval: false, addr: null, optfn: null },
+    // optlist.h:472 NHOPTC(menu_shift_left)
+    { name: 'menu_shift_left', opttyp: CompOpt, idx: 104, setwhere: SET_IN_CONFIG, initval: false, addr: null, optfn: null },
+    // optlist.h:474 NHOPTC(menu_shift_right)
+    { name: 'menu_shift_right', opttyp: CompOpt, idx: 105, setwhere: SET_IN_CONFIG, initval: false, addr: null, optfn: null },
+    // optlist.h:476 NHOPTB(menu_tab_sep)
+    { name: 'menu_tab_sep', opttyp: BoolOpt, idx: 106, setwhere: SET_WIZONLY, initval: false, addr: { obj: 'iflags', key: 'menu_tab_sep' } /* C: &iflags.menu_tab_sep */, optfn: null },
+    // optlist.h:479 NHOPTB(menucolors)
+    { name: 'menucolors', opttyp: BoolOpt, idx: 107, setwhere: SET_IN_GAME, initval: false, addr: { obj: 'iflags', key: 'use_menu_color' }, optfn: null },
+    // optlist.h:482 NHOPTO("menu colors")
+    { name: 'menu colors', opttyp: OthrOpt, idx: 108, setwhere: SET_IN_GAME, initval: true, addr: null, optfn: null },
+    // optlist.h:484 NHOPTC(menuinvertmode)
+    { name: 'menuinvertmode', opttyp: CompOpt, idx: 109, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: null },
+    // optlist.h:487 NHOPTC(menustyle)
+    { name: 'menustyle', opttyp: CompOpt, idx: 110, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: null },
+    // optlist.h:490 NHOPTO("message types")
+    { name: 'message types', opttyp: OthrOpt, idx: 111, setwhere: SET_IN_GAME, initval: true, addr: null, optfn: null },
+    // optlist.h:493 NHOPTB(mon_movement)
+    { name: 'mon_movement', opttyp: BoolOpt, idx: 112, setwhere: SET_IN_GAME, initval: false, addr: { obj: 'a11y', key: 'mon_movement' }, optfn: null },
+    // optlist.h:496 NHOPTB(monpolycontrol)
+    { name: 'monpolycontrol', opttyp: BoolOpt, idx: 113, setwhere: SET_WIZONLY, initval: false, addr: { obj: 'iflags', key: 'mon_polycontrol' } /* C: &iflags.mon_polycontrol */, optfn: null },
+    // optlist.h:499 NHOPTB(montelecontrol)
+    { name: 'montelecontrol', opttyp: BoolOpt, idx: 114, setwhere: SET_WIZONLY, initval: false, addr: { obj: 'iflags', key: 'mon_telecontrol' } /* C: &iflags.mon_telecontrol */, optfn: null },
+    // optlist.h:502 NHOPTC(monsters)
+    { name: 'monsters', opttyp: CompOpt, idx: 115, setwhere: SET_IN_CONFIG, initval: false, addr: null, optfn: null },
+    // optlist.h:505 NHOPTC(mouse_support)
+    { name: 'mouse_support', opttyp: CompOpt, idx: 116, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: null },
+    // optlist.h:509 NHOPTC(msg_window)
+    { name: 'msg_window', opttyp: CompOpt, idx: 117, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: null },
+    // optlist.h:516 NHOPTC(msghistory)
+    { name: 'msghistory', opttyp: CompOpt, idx: 118, setwhere: SET_GAMEVIEW, initval: false, addr: null, optfn: null },
+    // optlist.h:521 NHOPTB(news)
+    { name: 'news', opttyp: BoolOpt, idx: 119, setwhere: SET_IN_CONFIG, initval: false, addr: { obj: 'flags', key: 'news' }, optfn: null },
+    // optlist.h:529 NHOPTB(nudist)
+    { name: 'nudist', opttyp: BoolOpt, idx: 120, setwhere: SET_IN_CONFIG, initval: false, addr: { obj: 'flags', key: 'nudist' }, optfn: null },
+    // optlist.h:532 NHOPTB(null)
+    { name: 'null', opttyp: BoolOpt, idx: 121, setwhere: SET_IN_GAME, initval: true, addr: { obj: 'flags', key: 'null' }, optfn: null },
+    // optlist.h:535 NHOPTC(number_pad)
+    { name: 'number_pad', opttyp: CompOpt, idx: 122, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: null },
+    // optlist.h:538 NHOPTC(objects)
+    { name: 'objects', opttyp: CompOpt, idx: 123, setwhere: SET_IN_CONFIG, initval: false, addr: null, optfn: null },
+    // optlist.h:541 NHOPTC(packorder)
+    { name: 'packorder', opttyp: CompOpt, idx: 124, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: null },
+    // optlist.h:556 NHOPTC(paranoid_confirmation)
+    { name: 'paranoid_confirmation', opttyp: CompOpt, idx: 125, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: null },
+    // optlist.h:559 NHOPTB(pauper)
+    { name: 'pauper', opttyp: BoolOpt, idx: 126, setwhere: SET_IN_CONFIG, initval: false, addr: { obj: 'flags', key: 'pauper' }, optfn: null },
+    // optlist.h:562 NHOPTB(perm_invent)
+    { name: 'perm_invent', opttyp: BoolOpt, idx: 127, setwhere: SET_IN_GAME, initval: false, addr: { obj: 'iflags', key: 'perm_invent' } /* C: &iflags.perm_invent */, optfn: null },
+    // optlist.h:565 NHOPTC(perminv_mode)
+    { name: 'perminv_mode', opttyp: CompOpt, idx: 128, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: null },
+    // optlist.h:568 NHOPTC(petattr)
+    { name: 'petattr', opttyp: CompOpt, idx: 129, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: null },
+    // optlist.h:571 NHOPTC(pettype)
+    { name: 'pettype', opttyp: CompOpt, idx: 130, setwhere: SET_GAMEVIEW, initval: false, addr: null, optfn: null },
+    // optlist.h:573 NHOPTC(pickup_burden)
+    { name: 'pickup_burden', opttyp: CompOpt, idx: 131, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: null },
+    // optlist.h:576 NHOPTB(pickup_stolen)
+    { name: 'pickup_stolen', opttyp: BoolOpt, idx: 132, setwhere: SET_IN_GAME, initval: true, addr: { obj: 'flags', key: 'pickup_stolen' }, optfn: null },
+    // optlist.h:579 NHOPTB(pickup_thrown)
+    { name: 'pickup_thrown', opttyp: BoolOpt, idx: 133, setwhere: SET_IN_GAME, initval: true, addr: { obj: 'flags', key: 'pickup_thrown' }, optfn: null },
+    // optlist.h:582 NHOPTC(pickup_types)
+    { name: 'pickup_types', opttyp: CompOpt, idx: 134, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: null },
+    // optlist.h:585 NHOPTC(pile_limit)
+    { name: 'pile_limit', opttyp: CompOpt, idx: 135, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: null },
+    // optlist.h:588 NHOPTC(player_selection)
+    { name: 'player_selection', opttyp: CompOpt, idx: 136, setwhere: SET_GAMEVIEW, initval: false, addr: null, optfn: null },
+    // optlist.h:592 NHOPTB(popup_dialog)
+    { name: 'popup_dialog', opttyp: BoolOpt, idx: 137, setwhere: SET_IN_GAME, initval: false, addr: null /* C: &iflags.wc_popup_dialog, no live field */, optfn: null },
+    // optlist.h:595 NHOPTB(preload_tiles)
+    { name: 'preload_tiles', opttyp: BoolOpt, idx: 138, setwhere: SET_IN_CONFIG, initval: true, addr: null /* C: &iflags.wc_preload_tiles, no live field */, optfn: null },
+    // optlist.h:598 NHOPTB(price_quotes)
+    { name: 'price_quotes', opttyp: BoolOpt, idx: 139, setwhere: SET_IN_GAME, initval: false, addr: { obj: 'iflags', key: 'pricequotes' }, optfn: null },
+    // optlist.h:601 NHOPTB(pushweapon)
+    { name: 'pushweapon', opttyp: BoolOpt, idx: 140, setwhere: SET_IN_GAME, initval: false, addr: { obj: 'flags', key: 'pushweapon' }, optfn: null },
+    // optlist.h:604 NHOPTB(query_menu)
+    { name: 'query_menu', opttyp: BoolOpt, idx: 141, setwhere: SET_IN_GAME, initval: false, addr: { obj: 'iflags', key: 'query_menu' }, optfn: null },
+    // optlist.h:607 NHOPTB(quick_farsight)
+    { name: 'quick_farsight', opttyp: BoolOpt, idx: 142, setwhere: SET_IN_GAME, initval: false, addr: { obj: 'flags', key: 'quick_farsight' }, optfn: null },
+    // optlist.h:616 NHOPTB(rawio)
+    { name: 'rawio', opttyp: BoolOpt, idx: 143, setwhere: SET_IN_CONFIG, initval: false, addr: null, optfn: null },
+    // optlist.h:620 NHOPTB(reroll)
+    { name: 'reroll', opttyp: BoolOpt, idx: 144, setwhere: SET_IN_CONFIG, initval: false, addr: { obj: 'flags', key: 'reroll' }, optfn: null },
+    // optlist.h:623 NHOPTB(rest_on_space)
+    { name: 'rest_on_space', opttyp: BoolOpt, idx: 145, setwhere: SET_IN_GAME, initval: false, addr: { obj: 'flags', key: 'rest_on_space' }, optfn: null },
+    // optlist.h:626 NHOPTC(roguesymset)
+    { name: 'roguesymset', opttyp: CompOpt, idx: 146, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: null },
+    // optlist.h:630 NHOPTC(runmode)
+    { name: 'runmode', opttyp: CompOpt, idx: 147, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: null },
+    // optlist.h:633 NHOPTB(safe_pet)
+    { name: 'safe_pet', opttyp: BoolOpt, idx: 148, setwhere: SET_IN_GAME, initval: true, addr: { obj: 'flags', key: 'safe_dog' } /* C: &flags.safe_dog; gameplay reads safe_dog (doset twin safe_pet noted) */, optfn: null },
+    // optlist.h:636 NHOPTB(safe_wait)
+    { name: 'safe_wait', opttyp: BoolOpt, idx: 149, setwhere: SET_IN_GAME, initval: true, addr: { obj: 'flags', key: 'safe_wait' }, optfn: null },
+    // optlist.h:639 NHOPTB(sanity_check)
+    { name: 'sanity_check', opttyp: BoolOpt, idx: 150, setwhere: SET_WIZONLY, initval: false, addr: { obj: 'iflags', key: 'sanity_check' } /* C: &iflags.sanity_check */, optfn: null },
+    // optlist.h:642 NHOPTC(scores)
+    { name: 'scores', opttyp: CompOpt, idx: 151, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: null },
+    // optlist.h:645 NHOPTC(scroll_amount)
+    { name: 'scroll_amount', opttyp: CompOpt, idx: 152, setwhere: SET_GAMEVIEW, initval: false, addr: null, optfn: null },
+    // optlist.h:648 NHOPTC(scroll_margin)
+    { name: 'scroll_margin', opttyp: CompOpt, idx: 153, setwhere: SET_GAMEVIEW, initval: false, addr: null, optfn: null },
+    // optlist.h:651 NHOPTB(selectsaved)
+    { name: 'selectsaved', opttyp: BoolOpt, idx: 154, setwhere: SET_IN_CONFIG, initval: true, addr: { obj: 'iflags', key: 'wc2_selectsaved' }, optfn: null },
+    // optlist.h:654 NHOPTB(showdamage)
+    { name: 'showdamage', opttyp: BoolOpt, idx: 155, setwhere: SET_IN_GAME, initval: false, addr: { obj: 'iflags', key: 'showdamage' }, optfn: null },
+    // optlist.h:657 NHOPTB(showexp)
+    { name: 'showexp', opttyp: BoolOpt, idx: 156, setwhere: SET_IN_GAME, initval: false, addr: { obj: 'flags', key: 'showexp' }, optfn: null },
+    // optlist.h:660 NHOPTB(showrace)
+    { name: 'showrace', opttyp: BoolOpt, idx: 157, setwhere: SET_IN_GAME, initval: false, addr: { obj: 'flags', key: 'showrace' }, optfn: null },
+    // optlist.h:668 NHOPTB(showscore)
+    { name: 'showscore', opttyp: BoolOpt, idx: 158, setwhere: SET_IN_CONFIG, initval: false, addr: null, optfn: null },
+    // optlist.h:672 NHOPTB(showvers)
+    { name: 'showvers', opttyp: BoolOpt, idx: 159, setwhere: SET_IN_GAME, initval: false, addr: { obj: 'flags', key: 'showvers' }, optfn: null },
+    // optlist.h:675 NHOPTB(silent)
+    { name: 'silent', opttyp: BoolOpt, idx: 160, setwhere: SET_IN_GAME, initval: true, addr: { obj: 'flags', key: 'silent' }, optfn: null },
+    // optlist.h:678 NHOPTB(softkeyboard)
+    { name: 'softkeyboard', opttyp: BoolOpt, idx: 161, setwhere: SET_IN_CONFIG, initval: false, addr: null /* C: &iflags.wc2_softkeyboard, no live field */, optfn: null },
+    // optlist.h:681 NHOPTC(sortdiscoveries)
+    { name: 'sortdiscoveries', opttyp: CompOpt, idx: 162, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: null },
+    // optlist.h:684 NHOPTC(sortloot)
+    { name: 'sortloot', opttyp: CompOpt, idx: 163, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: null },
+    // optlist.h:687 NHOPTB(sortpack)
+    { name: 'sortpack', opttyp: BoolOpt, idx: 164, setwhere: SET_IN_GAME, initval: true, addr: { obj: 'flags', key: 'sortpack' }, optfn: null },
+    // optlist.h:690 NHOPTC(sortvanquished)
+    { name: 'sortvanquished', opttyp: CompOpt, idx: 165, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: null },
+    // optlist.h:693 NHOPTC(soundlib)
+    { name: 'soundlib', opttyp: CompOpt, idx: 166, setwhere: SET_GAMEVIEW, initval: false, addr: null, optfn: null },
+    // optlist.h:701 NHOPTB(sounds)
+    { name: 'sounds', opttyp: BoolOpt, idx: 167, setwhere: SET_IN_GAME, initval: false, addr: { obj: 'flags', key: 'sounds' }, optfn: null },
+    // optlist.h:705 NHOPTB(sparkle)
+    { name: 'sparkle', opttyp: BoolOpt, idx: 168, setwhere: SET_IN_GAME, initval: true, addr: { obj: 'flags', key: 'sparkle' }, optfn: null },
+    // optlist.h:708 NHOPTB(spot_monsters)
+    { name: 'spot_monsters', opttyp: BoolOpt, idx: 169, setwhere: SET_IN_GAME, initval: false, addr: { obj: 'a11y', key: 'mon_notices' }, optfn: null },
+    // optlist.h:711 NHOPTB(splash_screen)
+    { name: 'splash_screen', opttyp: BoolOpt, idx: 170, setwhere: SET_IN_CONFIG, initval: true, addr: { obj: 'iflags', key: 'wc_splash_screen' } /* C: &iflags.wc_splash_screen */, optfn: null },
+    // optlist.h:714 NHOPTB(standout)
+    { name: 'standout', opttyp: BoolOpt, idx: 171, setwhere: SET_IN_GAME, initval: false, addr: { obj: 'flags', key: 'standout' }, optfn: null },
+    // optlist.h:717 NHOPTB(status_updates)
+    { name: 'status_updates', opttyp: BoolOpt, idx: 172, setwhere: SET_IN_CONFIG, initval: true, addr: { obj: 'iflags', key: 'status_updates' }, optfn: null },
+    // optlist.h:720 NHOPTO("status condition fields")
+    { name: 'status condition fields', opttyp: OthrOpt, idx: 173, setwhere: SET_IN_GAME, initval: true, addr: null, optfn: null },
+    // optlist.h:724 NHOPTC(statushilites)
+    { name: 'statushilites', opttyp: CompOpt, idx: 174, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: null },
+    // optlist.h:727 NHOPTO("status highlight rules")
+    { name: 'status highlight rules', opttyp: OthrOpt, idx: 175, setwhere: SET_IN_GAME, initval: true, addr: null, optfn: null },
+    // optlist.h:734 NHOPTC(statuslines)
+    { name: 'statuslines', opttyp: CompOpt, idx: 176, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: null },
+    // optlist.h:740 NHOPTC(suppress_alert)
+    { name: 'suppress_alert', opttyp: CompOpt, idx: 177, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: null },
+    // optlist.h:743 NHOPTC(symset)
+    { name: 'symset', opttyp: CompOpt, idx: 178, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: null },
+    // optlist.h:746 NHOPTC(term_cols)
+    { name: 'term_cols', opttyp: CompOpt, idx: 179, setwhere: SET_IN_CONFIG, initval: false, addr: null, optfn: null },
+    // optlist.h:748 NHOPTC(term_rows)
+    { name: 'term_rows', opttyp: CompOpt, idx: 180, setwhere: SET_IN_CONFIG, initval: false, addr: null, optfn: null },
+    // optlist.h:750 NHOPTB(terrainstatus)
+    { name: 'terrainstatus', opttyp: BoolOpt, idx: 181, setwhere: SET_IN_GAME, initval: false, addr: { obj: 'flags', key: 'terrainstatus' }, optfn: null },
+    // optlist.h:753 NHOPTC(tile_file)
+    { name: 'tile_file', opttyp: CompOpt, idx: 182, setwhere: SET_GAMEVIEW, initval: false, addr: null, optfn: null },
+    // optlist.h:755 NHOPTC(tile_height)
+    { name: 'tile_height', opttyp: CompOpt, idx: 183, setwhere: SET_GAMEVIEW, initval: false, addr: null, optfn: null },
+    // optlist.h:757 NHOPTC(tile_width)
+    { name: 'tile_width', opttyp: CompOpt, idx: 184, setwhere: SET_GAMEVIEW, initval: false, addr: null, optfn: null },
+    // optlist.h:759 NHOPTB(tiled_map)
+    { name: 'tiled_map', opttyp: BoolOpt, idx: 185, setwhere: SET_IN_GAME, initval: false /* tiled_map_Def: no TILES_IN_GLYPHMAP */, addr: null /* C: &iflags.wc_tiled_map, no live field */, optfn: null },
+    // optlist.h:762 NHOPTB(time)
+    { name: 'time', opttyp: BoolOpt, idx: 186, setwhere: SET_IN_GAME, initval: false, addr: { obj: 'flags', key: 'time' }, optfn: null },
+    // optlist.h:766 NHOPTB(timed_delay)
+    { name: 'timed_delay', opttyp: BoolOpt, idx: 187, setwhere: SET_IN_GAME, initval: false, addr: null /* C: &flags.nap (macOS TIMED_DELAY build), no live field */, optfn: null },
+    // optlist.h:774 NHOPTB(tips)
+    { name: 'tips', opttyp: BoolOpt, idx: 188, setwhere: SET_IN_GAME, initval: true, addr: { obj: 'flags', key: 'tips' }, optfn: null },
+    // optlist.h:777 NHOPTB(tombstone)
+    { name: 'tombstone', opttyp: BoolOpt, idx: 189, setwhere: SET_IN_GAME, initval: true, addr: { obj: 'flags', key: 'tombstone' }, optfn: null },
+    // optlist.h:780 NHOPTB(toptenwin)
+    { name: 'toptenwin', opttyp: BoolOpt, idx: 190, setwhere: SET_IN_GAME, initval: false, addr: { obj: 'flags', key: 'toptenwin' }, optfn: null },
+    // optlist.h:783 NHOPTC(traps)
+    { name: 'traps', opttyp: CompOpt, idx: 191, setwhere: SET_IN_CONFIG, initval: false, addr: null, optfn: null },
+    // optlist.h:786 NHOPTB(travel)
+    { name: 'travel', opttyp: BoolOpt, idx: 192, setwhere: SET_IN_GAME, initval: true, addr: { obj: 'flags', key: 'travel' }, optfn: null },
+    // optlist.h:794 NHOPTB(travel_debug)
+    { name: 'travel_debug', opttyp: BoolOpt, idx: 193, setwhere: SET_WIZONLY, initval: false, addr: null /* C: &iflags.trav_debug, no live field */, optfn: null },
+    // optlist.h:798 NHOPTB(tutorial)
+    { name: 'tutorial', opttyp: BoolOpt, idx: 194, setwhere: SET_IN_CONFIG, initval: true, addr: { obj: 'flags', key: 'tutorial' }, optfn: null },
+    // optlist.h:801 NHOPTB(use_darkgray)
+    { name: 'use_darkgray', opttyp: BoolOpt, idx: 195, setwhere: SET_IN_CONFIG, initval: true, addr: { obj: 'iflags', key: 'wc2_darkgray' }, optfn: null },
+    // optlist.h:804 NHOPTB(use_inverse)
+    { name: 'use_inverse', opttyp: BoolOpt, idx: 196, setwhere: SET_IN_GAME, initval: true, addr: { obj: 'iflags', key: 'wc_inverse' }, optfn: null },
+    // optlist.h:807 NHOPTB(use_truecolor)
+    { name: 'use_truecolor', opttyp: BoolOpt, idx: 197, setwhere: SET_IN_CONFIG, initval: false, addr: { obj: 'iflags', key: 'use_truecolor' }, optfn: null },
+    // optlist.h:811 NHOPTC(vary_msgcount)
+    { name: 'vary_msgcount', opttyp: CompOpt, idx: 198, setwhere: SET_GAMEVIEW, initval: false, addr: null, optfn: null },
+    // optlist.h:813 NHOPTB(verbose)
+    { name: 'verbose', opttyp: BoolOpt, idx: 199, setwhere: SET_IN_GAME, initval: true, addr: { obj: 'flags', key: 'verbose' }, optfn: null },
+    // optlist.h:816 NHOPTC(versinfo)
+    { name: 'versinfo', opttyp: CompOpt, idx: 200, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: null },
+    // optlist.h:841 NHOPTB(voices)
+    { name: 'voices', opttyp: BoolOpt, idx: 201, setwhere: SET_GAMEVIEW, initval: false, addr: null /* C: &iflags.voices, no live field (no SND_LIB) */, optfn: null },
+    // optlist.h:850 NHOPTB(vt_tiledata)
+    { name: 'vt_tiledata', opttyp: BoolOpt, idx: 202, setwhere: SET_IN_CONFIG, initval: false, addr: null, optfn: null },
+    // optlist.h:859 NHOPTB(vt_sounddata)
+    { name: 'vt_sounddata', opttyp: BoolOpt, idx: 203, setwhere: SET_IN_CONFIG, initval: false, addr: null, optfn: null },
+    // optlist.h:863 NHOPTC(warnings)
+    { name: 'warnings', opttyp: CompOpt, idx: 204, setwhere: SET_IN_CONFIG, initval: false, addr: null, optfn: null },
+    // optlist.h:865 NHOPTB(weaponstatus)
+    { name: 'weaponstatus', opttyp: BoolOpt, idx: 205, setwhere: SET_IN_GAME, initval: false, addr: { obj: 'flags', key: 'weaponstatus' }, optfn: null },
+    // optlist.h:868 NHOPTC(whatis_coord)
+    { name: 'whatis_coord', opttyp: CompOpt, idx: 206, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: null },
+    // optlist.h:871 NHOPTC(whatis_filter)
+    { name: 'whatis_filter', opttyp: CompOpt, idx: 207, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: null },
+    // optlist.h:874 NHOPTB(whatis_menu)
+    { name: 'whatis_menu', opttyp: BoolOpt, idx: 208, setwhere: SET_IN_GAME, initval: false, addr: { obj: 'iflags', key: 'getloc_usemenu' } /* C: &iflags.getloc_usemenu; getpos.js reads this */, optfn: null },
+    // optlist.h:877 NHOPTB(whatis_moveskip)
+    { name: 'whatis_moveskip', opttyp: BoolOpt, idx: 209, setwhere: SET_IN_GAME, initval: false, addr: { obj: 'iflags', key: 'getloc_moveskip' } /* C: &iflags.getloc_moveskip; getpos.js reads this */, optfn: null },
+    // optlist.h:880 NHOPTC(windowborders)
+    { name: 'windowborders', opttyp: CompOpt, idx: 210, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: null },
+    // optlist.h:886 NHOPTC(windowcolors)
+    { name: 'windowcolors', opttyp: CompOpt, idx: 211, setwhere: SET_GAMEVIEW, initval: false, addr: null, optfn: null },
+    // optlist.h:890 NHOPTB(wizmgender)
+    { name: 'wizmgender', opttyp: BoolOpt, idx: 212, setwhere: SET_WIZONLY, initval: false, addr: { obj: 'iflags', key: 'wizmgender' }, optfn: null },
+    // optlist.h:893 NHOPTB(wizweight)
+    { name: 'wizweight', opttyp: BoolOpt, idx: 213, setwhere: SET_WIZONLY, initval: false, addr: { obj: 'iflags', key: 'wizweight' }, optfn: null },
+    // optlist.h:896 NHOPTB(wraptext)
+    { name: 'wraptext', opttyp: BoolOpt, idx: 214, setwhere: SET_IN_GAME, initval: false, addr: null /* C: &iflags.wc2_wraptext, no live field */, optfn: null },
+    // optlist.h:904 NHOPTP(cond_)
+    { name: 'cond_', opttyp: CompOpt, idx: 215, setwhere: SET_HIDDEN, initval: false, addr: null, optfn: null },
+    // optlist.h:906 NHOPTP(font)
+    { name: 'font', opttyp: CompOpt, idx: 216, setwhere: SET_HIDDEN, initval: false, addr: null, optfn: null },
+];
+
+/* C ref: options.c `:111` static boolean opt_set_in_config[OPTCOUNT],
+ * zero-init. Writers come with config/doset rows (named): `:640`
+ * parseoptions config match, `:5010` pfxfn_cond_ ([3/7] cond row),
+ * `:8438` optfn_o_status_cond, `:8670`/`:8940` doset menus. */
+const opt_set_in_config = new Array(OPTCOUNT).fill(false);
+/** C enum opt pfx_cond_ = 215 (optlist.h NHOPTP cond_ `:904–905`). */
+const PFX_COND_IDX = 215;
+
+/* C options.c `:83–88`: enum optn_result + enum requests (optfn dispatch
+ * codes; get_val/get_cnf_val select the value source in get_option_value). */
+const OPTN_SILENTERR = -1, OPTN_ERR = 0, OPTN_OK = 1;
+const REQ_DO_NOTHING = 0, REQ_DO_INIT = 1, REQ_DO_SET = 2, REQ_DO_HANDLER = 3,
+    REQ_GET_VAL = 4, REQ_GET_CNF_VAL = 5;
+/* C options.c empty_optstr (static char[1]) — optfn value arg. */
+const EMPTY_OPTSTR = '';
+
+/* C include/optlist.h NHOPT_* columns (n=negateok, d=dupeok, pfx, al) for the
+ * unix tty build — extracted via `cc -E -I nethack-c/upstream/include` on a
+ * probe with config.h + NHOPT_PARSE (217 rows; JS allopt order verified
+ * identical, name for name). Only the exceptional values are listed; the
+ * row defaults are negateok=true, dupeok=false, pfx=false, alias=null.
+ * `IBM_` (NHOPTP, MICRO-only) is absent on unix, so OPT_PFX has 2 entries.
+ * `customsymbols` self-alias is C's text (optlist.h `:262`). */
+const OPT_NEGATEOK_NO = new Set(['windowtype', 'playmode', 'name',
+    'align_status', 'altkeyhandling', 'autocompletions', 'autopickup exceptions',
+    'bind keys', 'BIOS', 'boulder', 'catname', 'crash_email', 'crash_name',
+    'crash_urlmax', 'dogname', 'dungeon', 'effects', 'fruit', 'glyph',
+    'horsename', 'menu_deselect_all', 'menu_deselect_page', 'menu_first_page',
+    'menu_invert_all', 'menu_invert_page', 'menu_last_page', 'menu_next_page',
+    'menu_previous_page', 'menu_search', 'menu_select_all', 'menu_select_page',
+    'menu_shift_left', 'menu_shift_right', 'menu colors', 'menuinvertmode',
+    'message types', 'monsters', 'mouse_support', 'number_pad', 'objects',
+    'packorder', 'petattr', 'pickup_burden', 'pickup_types', 'player_selection',
+    'rawio', 'roguesymset', 'scores', 'sortloot', 'soundlib',
+    'status condition fields', 'status highlight rules', 'statuslines',
+    'suppress_alert', 'symset', 'term_cols', 'term_rows', 'tile_file', 'traps',
+    'travel_debug', 'vary_msgcount', 'versinfo', 'warnings', 'windowcolors']);
+const OPT_DUPEOK_YES = new Set(['role', 'race', 'gender', 'alignment',
+    'font_map', 'font_menu', 'font_message', 'font_size_map', 'font_size_menu',
+    'font_size_message', 'font_size_status', 'font_size_text', 'font_status',
+    'font_text', 'glyph', 'hilite_status', 'paranoid_confirmation',
+    'statushilites', 'suppress_alert', 'windowcolors', 'cond_', 'font']);
+const OPT_PFX = new Set(['cond_', 'font']);
+const OPT_ALIAS = {
+    role: 'character', alignment: 'align', altkeyhandling: 'altkeyhandler',
+    blind: 'permablind', color: 'colour', customcolors: 'customcolours',
+    customsymbols: 'customsymbols', deaf: 'permadeaf', female: 'male',
+    menu_objsyms: 'use_menu_glyphs', paranoid_confirmation: 'prayconfirm',
+    pettype: 'pet', term_cols: 'termcolumns', use_truecolor: 'use_truecolour',
+};
+
+/* C options.c `:107`: static boolean duplicate, using_alias — reset at every
+ * parseoptions entry (recursion included), read by the duplicate complaint. */
+let duplicateOpt = false;
+let usingAliasOpt = false;
+
+/* C cfgfiles.c file-static `ignore_errors_on_unmatched` (default FALSE) with
+ * its setter/clearer `:2014–2018` and reader `config_unmatched_ignored`
+ * `:2020–2026` (extern.h:346). Only setter is rcfile_interface_options
+ * (unported); JS never sets it, so the reader is FALSE on every JS path —
+ * exactly C's value wherever parseoptions can run here. */
+let ignoreErrorsOnUnmatched = false;
+export function set_ignore_errors_on_unmatched() {
+    ignoreErrorsOnUnmatched = true; // C `:2014–2018`
+}
+export function clear_ignore_errors_on_unmatched() {
+    ignoreErrorsOnUnmatched = false; // C `:2014–2018`
+}
+export function config_unmatched_ignored() {
+    return ignoreErrorsOnUnmatched; // C `:2020–2026`
+}
+
+/* C ctype isspace over unsigned char — the option-text walks at `:530–533`
+ * and in length_without_val treat space/tab/newline/vertical-tab/form-feed/
+ * carriage-return as blank (C locale; no unicode folding). */
+function isOptSpace(ch) {
+    return ch === ' ' || ch === '\t' || ch === '\n' || ch === '\v'
+        || ch === '\f' || ch === '\r';
+}
+
+/* C hacklib strncmpi (NUL-terminated, ASCII case-fold) as used by the option
+ * matcher — compared through the live `lowc` import, so no new strncmpi
+ * symbol is introduced (insight/vault/write keep their local clones). Only
+ * the zero/nonzero distinction is observed, like C's `!strncmpi(...)`. */
+function optStrncasecmp(a, b, n) {
+    for (let k = 0; k < n; k++) {
+        const ca = k < a.length ? a[k] : '\0';
+        const cb = k < b.length ? b[k] : '\0';
+        const la = lowc(ca), lb = lowc(cb);
+        if (la !== lb) return la < lb ? -1 : 1;
+        if (ca === '\0') return 0;
+    }
+    return 0;
+}
+
+/* C options.c `length_without_val` `:6739–6758` (staticfn) — length of the
+ * option-name head: cut at the first ':' or '=' (whichever comes first),
+ * then back over blanks (the input may not have been mungspaced). */
+function length_without_val(userString, len) {
+    let p = userString.indexOf(':'); // C `:6743`
+    const q = userString.indexOf('=');
+    if (p < 0 || (q >= 0 && q < p)) p = q; // C `:6746–6747`
+    if (p >= 0) { // C `:6748`
+        while (p > 0 && isOptSpace(userString[p - 1])) p--; // C `:6752–6753`
+        len = p; // C `:6754`
+    }
+    return len;
+}
+
+/* C options.c `match_optname` `:6760–6771` (C global — also used by
+ * earlyarg.c, botl.c, cfgfiles.c) — proper leading-substring match with an
+ * optional `:value`/`=value` tail allowed. Exported for those callers. */
+export function match_optname(userString, optName, minLength, valAllowed) {
+    let len = userString.length; // C `:6764`
+    if (valAllowed) len = length_without_val(userString, len); // C `:6766–6767`
+    return len >= minLength // C `:6769–6770`
+        && optStrncasecmp(optName, userString, len) === 0;
+}
+
+/* C options.c `string_for_opt` `:6665–6684` (staticfn) — value tail after
+ * the first ':' (or '=' when it comes first); EMPTY_OPTSTR stands in for C's
+ * `empty_optstr`. The `:6678–6681` "Missing parameter" config_error_add is a
+ * named omission (map: no JS config-error sink). */
+function string_for_opt(opts, valOptional) {
+    let colon = opts.indexOf(':'); // C `:6669`
+    const equals = opts.indexOf('=');
+    if (colon < 0 || (equals >= 0 && equals < colon)) colon = equals; // C `:6671–6672`
+    if (colon < 0 || colon + 1 >= opts.length) { // C `:6674 !colon || !*++colon`
+        return EMPTY_OPTSTR;
+    }
+    return opts.slice(colon + 1); // C `:6683`
+}
+
+/* C options.c `bad_negation` `:6693–6700` (staticfn) — body is one
+ * config_error_add ("The %s option may not %sbe negated.", optname,
+ * with_parameter ? "both have a value and " : ""); named omission (map). */
+function bad_negation(_optname, _withParameter) {
+    // Named omission (map): config_error_add sink.
+}
+
+/* C options.c `determine_ambiguities` `:6703–6737` (staticfn) — pairwise
+ * common-prefix scan over the option names (sentinel excluded via SIZE-1 in
+ * C; JS has no sentinel row so every row is covered), minimum 3, clamped to
+ * the name length. C runs it from allopt_array_init (unported); JS computes
+ * it once ahead of the first match loop, which is the only reader. */
+let ambiguitiesComputed = false;
+function determine_ambiguities() {
+    if (ambiguitiesComputed) return;
+    ambiguitiesComputed = true;
+    const needed = new Array(allopt.length).fill(0); // C `:6707`
+    for (let i = 0; i < allopt.length; i++) { // C `:6714`
+        for (let j = 0; j < allopt.length; j++) { // C `:6715`
+            if (j === i) continue; // C `:6716–6717`
+            const p1 = allopt[i].name, p2 = allopt[j].name; // C `:6719–6720`
+            let k = 0, tmpneeded = 1; // C `:6721`
+            while (k < p1.length && k < p2.length // C `:6722`
+                && lowc(p1[k]) === lowc(p2[k])) {
+                ++tmpneeded; ++k;
+            }
+            if (tmpneeded > needed[i]) needed[i] = tmpneeded; // C `:6727–6728`
+            if (tmpneeded > needed[j]) needed[j] = tmpneeded; // C `:6729–6730`
+        }
+    }
+    for (let i = 0; i < allopt.length; i++) { // C `:6733`
+        const len = allopt[i].name.length; // C `:6734`
+        allopt[i].minmatch = (needed[i] < 3) ? 3 // C `:6735–6736`
+            : (needed[i] <= len) ? needed[i] : len;
+    }
+}
+
+/* C options.c `reset_duplicate_opt_detection` `:6773–6780` (C global —
+ * read_config_file's bracket, extern) — exported for that future caller.
+ * Per-row `dupdetected` starts undefined (C starts 0 via static init). */
+export function reset_duplicate_opt_detection() {
+    for (let k = 0; k < OPTCOUNT; ++k) allopt[k].dupdetected = 0; // C `:6777–6778`
+}
+
+/* C options.c `duplicate_opt_detection` `:6782–6788` (staticfn) — only
+ * counts during initial from-file parsing; returns the previous state
+ * (post-increment), so the first sighting is FALSE. Count storage matches
+ * C's increment; only truthiness is observed (`duplicate && !dupeok`). */
+function duplicate_opt_detection(optidx) {
+    if (game.go.opt_initial && game.go.opt_from_file) { // C `:6784`
+        // (C static init is 0; JS rows start undefined — `?? 0` is that init.)
+        const was = allopt[optidx].dupdetected ?? 0; // C `:6786` post-inc old value
+        allopt[optidx].dupdetected = was + 1;
+        return was !== 0;
+    }
+    return false; // C `:6787`
+}
+
+/* C options.c `complain_about_duplicate` `:6790–6807` (staticfn) — the
+ * MACOS9 early return is compiled out on unix; the body is one
+ * config_error_add ("%s option specified multiple times: %s%s" with
+ * "compound"/"boolean" folded exactly like C's `opttyp == CompOpt` ternary
+ * plus the " (via alias: %s)" tail); named omission (map). */
+function complain_about_duplicate(_optidx) {
+    // Named omission (map): config_error_add sink.
+}
+
+/**
+ * C ref: options.c parseoptions `:489–691` in C order (extern.h:2304).
+ * Whole comma-separated line when tinitial (right-to-left: split at the
+ * first comma, recurse on the tail, then handle the head); single option
+ * otherwise. Matching is name-prefix with per-option minmatch (alias loop
+ * second); the optfn dispatch arm is dormant — every JS allopt optfn is
+ * null, so C's `if (allopt[matchidx].optfn)` guard fails exactly like C
+ * with a null optfn. Live effects: comma recursion, negation folding,
+ * duplicate detection state, opt_set_in_config marking (fires once an optfn
+ * ships), and the S_ → parsesymbols/check_gold_symbol fallback (both live).
+ * Named omissions (map): config_error_add sink (6 sites), switch_symbols
+ * application, disregard/heed setters (rows read `disregarded`, never set
+ * here). Sync like C (no prompts in-body).
+ * Sole wired JS caller: itself (recursion `:519`); every other C caller is
+ * named in the map with its JS counterpart.
+ */
+export function parseoptions(opts, tinitial, tfromFile) {
+    let negated = false, gotMatch = false, pfxMatch = false; // C `:496`
+    let matchidx = -1, optresult = OPTN_ERR, retval = true; // C `:499`
+
+    duplicateOpt = false; // C `:502`
+    usingAliasOpt = false; // C `:503`
+    if (!game.go) game.go = {};
+    game.go.opt_initial = !!tinitial; // C `:504`
+    game.go.opt_from_file = !!tfromFile; // C `:505`
+
+    if (tinitial) { // C `:513`
+        const comma = String(opts).indexOf(','); // C `strchr(opts, ',')`
+        if (comma >= 0) { // C `:513 != 0`
+            const rest = String(opts).slice(comma + 1); // C `:514 *op++ = 0`
+            opts = String(opts).slice(0, comma);
+            if (!parseoptions(rest, game.go.opt_initial, // C `:519`
+                    game.go.opt_from_file))
+                retval = false; // C `:520`
+        }
+    }
+    opts = String(opts);
+    if (opts.length > BUFSZ / 2) { // C `:522`
+        // Named omission (map): config_error_add("Option too long, ...").
+        return false; // C `:526`
+    }
+
+    let start = 0; // C `:530–531`
+    while (start < opts.length && isOptSpace(opts[start])) start++;
+    let end = opts.length; // C `:532–533`
+    while (end > start && isOptSpace(opts[end - 1])) end--;
+    opts = opts.slice(start, end);
+
+    if (!opts) { // C `:535`
+        // Named omission (map): config_error_add("Empty statement").
+        return false; // C `:537`
+    }
+    negated = false; // C `:539`
+    for (;;) { // C `:540`
+        if (opts[0] === '!') { // C `*opts == '!'`
+            opts = opts.slice(1); negated = !negated; // C `:541–542`
+        } else if (optStrncasecmp(opts, 'no', 2) === 0) { // C `!strncmpi(opts, "no", 2)`
+            opts = opts.slice(opts[2] !== '-' ? 2 : 3); // C `:541`
+            negated = !negated; // C `:542`
+        } else break;
+    }
+    let optlen = opts.length; // C `:544`
+    const optlenWoVal = length_without_val(opts, optlen); // C `:545`
+    if (optlenWoVal < optlen) optlen = optlenWoVal; // C `:546–551`
+
+    determine_ambiguities(); // C: minmatch ready since allopt_array_init
+    for (let i = 0; i < OPTCOUNT; ++i) { // C `:555`
+        gotMatch = false; // C `:556`
+        const row = allopt[i];
+        if (OPT_PFX.has(row.name)) { // C `:560 allopt[i].pfx`
+            if (str_start_is(opts, row.name, true)) { // C `:561`
+                matchidx = i; // C `:562`
+                gotMatch = pfxMatch = true; // C `:563`
+            }
+        }
+        if (!gotMatch && row.name) // C `:580–582`
+            gotMatch = match_optname(opts, row.name, row.minmatch, true);
+        if (gotMatch) { // C `:583`
+            if (!OPT_PFX.has(row.name) && optlen < row.minmatch) { // C `:584`
+                // Named omission (map): config_error_add("Ambiguous option ...").
+                break; // C `:588` — matchidx stays -1, handled below like C
+            }
+            matchidx = i; // C `:590`
+            break; // C `:591`
+        }
+    }
+
+    if (!gotMatch) { // C `:594–599`
+        for (let i = 0; i < OPTCOUNT; ++i) { // C `:602`
+            const alias = OPT_ALIAS[allopt[i].name]; // C `:603 allopt[i].alias`
+            if (!alias) continue; // C `:603–604`
+            gotMatch = match_optname(opts, alias, alias.length, true); // C `:605–607`
+            if (gotMatch) { // C `:608`
+                matchidx = i; // C `:609`
+                usingAliasOpt = true; // C `:610`
+                break; // C `:611`
+            }
+        }
+    }
+
+    if (!game.program_state) game.program_state = {};
+    game.program_state.in_parseoptions = // C `:617`
+        (game.program_state.in_parseoptions ?? 0) + 1;
+
+    if (gotMatch && matchidx >= 0 && matchidx < OPTCOUNT // C `:619–620`
+        && !allopt[matchidx].disregarded) {
+        duplicateOpt = duplicate_opt_detection(matchidx); // C `:621`
+        if (duplicateOpt && !OPT_DUPEOK_YES.has(allopt[matchidx].name)) // C `:622`
+            complain_about_duplicate(matchidx); // C `:623`
+
+        if (negated && OPT_NEGATEOK_NO.has(allopt[matchidx].name)) { // C `:626`
+            bad_negation(allopt[matchidx].name, true); // C `:627`
+            return false; // C `:628 return optn_err (== FALSE)` — bypasses
+            // the `:644` decrement, so in_parseoptions stays elevated like C
+        }
+
+        if (allopt[matchidx].optfn) { // C `:635`
+            const op = string_for_opt(opts, true); // C `:636`
+            optresult = allopt[matchidx].optfn(allopt[matchidx].idx, // C `:637–638`
+                REQ_DO_SET, negated, opts, op);
+            if (optresult === OPTN_OK) // C `:639–640`
+                opt_set_in_config[matchidx] = true;
+        }
+    }
+
+    if (game.program_state.in_parseoptions > 0) // C `:644–645`
+        game.program_state.in_parseoptions--;
+
+    if (!gotMatch) { // C `:662–663`
+        if (opts.startsWith('S_') && parsesymbols(opts, PRIMARYSET)) { // C `:663`
+            // Named omission (map): switch_symbols(TRUE) application.
+            check_gold_symbol(); // C `:664`
+            optresult = OPTN_OK; // C `:666`
+        }
+    }
+
+    if (optresult === OPTN_SILENTERR // C `:670`
+        || (gotMatch && matchidx >= 0 && matchidx < OPTCOUNT // C `:671`
+            && allopt[matchidx].disregarded)
+        // (C reads allopt[-1] when the ambiguous `break` leaves matchidx at
+        // -1 — out-of-bounds in C; the range guard keeps the outcome: that
+        // path returns FALSE at the `got_match && optn_err` gate below.)
+        || (!gotMatch && config_unmatched_ignored())) // C `:672`
+        return false; // C `:673`
+    if (pfxMatch && optresult === OPTN_ERR) { // C `:674`
+        let pfxhead = opts; // C `:677 Snprintf(pfxbuf, ..., "%s", opts)`
+        const ci = pfxhead.indexOf(':'); // C `:678` (colon only, not '=')
+        if (ci >= 0) pfxhead = pfxhead.slice(0, ci); // C `:679`
+        void pfxhead;
+        // Named omission (map): config_error_add("bad option suffix ...").
+        return false; // C `:681`
+    }
+    if (gotMatch && optresult === OPTN_ERR) // C `:683–684`
+        return false;
+    if (optresult === OPTN_OK) // C `:685–686`
+        return retval;
+
+    // Named omission (map): config_error_add("Unknown option '%s'").
+    return false; // C `:689–690`
+}
+
+/**
+ * C ref: options.c get_option_value `:8481–8505` — read back one option's
+ * current value for #saveoptions (parent `:9712`, live call) and Lua
+ * get_config (nhlua.c `:683`, named: nhl_get_config unported). The static
+ * retbuf is folded into the return value; C NULL returns are null. BoolOpt
+ * arm (`:8489–8492`): live addr read, 'true'/'false'. CompOpt arm
+ * (`:8493–8501`): dormant — every allopt optfn is null (handlers unported),
+ * so the C `&& optfn` guard fails and it returns null exactly like C with a
+ * null optfn. Matches fall through like C (null-addr BoolOpt, OthrOpt).
+ */
+export function get_option_value(optname, cnfvalid) {
+    for (let i = 0; i < allopt.length && allopt[i].name; i++) { // C `:8487`
+        if (optname === allopt[i].name) { // C `:8488` strcmp
+            if (allopt[i].opttyp === BoolOpt && allopt[i].addr) { // C `:8489–8490`
+                const cur = !!((game[allopt[i].addr.obj] || {})[allopt[i].addr.key]);
+                return cur ? 'true' : 'false'; // C `:8491–8492` Sprintf
+            } else if (allopt[i].opttyp === CompOpt && allopt[i].optfn) { // C `:8493`
+                let reslt = OPTN_ERR; // C `:8494`
+                let retbuf = ''; // C static retbuf
+                reslt = allopt[i].optfn( // C `:8496–8498`
+                    allopt[i].idx, cnfvalid ? REQ_GET_CNF_VAL : REQ_GET_VAL,
+                    false, retbuf, EMPTY_OPTSTR);
+                if (reslt === OPTN_OK && retbuf.length > 0) return retbuf; // C `:8499–8500`
+                return null; // C `:8501`
+            }
+        }
+    }
+    return null; // C `:8503`
+}
 
 /**
  * C ref: options.c msgtype2name `:7690–7697` — first msgtype_names row with
@@ -3204,8 +4075,8 @@ export function all_options_autocomplete(sbuf) {
 }
 
 /* C saved_symbols chain (symbols.c savedsym_strbuf `:757–769`): entries
- * { which_set, name, val } in C prepend order. No producer yet (SYMBOLS=
- * parsesymbols unported) so this is always empty; the producer row fills it. */
+ * { which_set, name, val } in C prepend order. Producer is parsesymbols
+ * below ([campaign 5/7]); empty until an RC SYMBOLS=/S_ line parses. */
 const savedSymbols = [];
 
 /**
@@ -3221,19 +4092,375 @@ export function savedsym_strbuf(sbuf) {
 }
 
 /**
+ * C ref: options.c escapes `:6896–6966` (staticfn) — in-place C-escape
+ * decoder (`\n \t \b \r \\`, `^X`, decimal, `\o` octal, `\x` hex,
+ * `\M` meta bit); result never longer than input. JS strings are
+ * immutable, so this takes the input and returns the decoded string;
+ * the C `*tp++ = (char) cval` truncation is `& 0xff` (same low byte as
+ * display.js update_ov_* use for nhsym values). hexdd pairs from
+ * decl.c `:74`.
+ */
+function escapes(cp) {
+    const HEXDD = '00112233445566778899aAbBcCdDeEfF';
+    let tp = '';
+    let i = 0;
+    while (i < cp.length) {
+        // C `:6910–6912` \M must be followed by something for meta conv.
+        let meta = false;
+        if (cp[i] === '\\' && (cp[i + 1] === 'm' || cp[i + 1] === 'M')
+            && i + 2 < cp.length) {
+            meta = true;
+            i += 2;
+        }
+        let cval = 0, dcount = 0;
+        const nx = i + 1 < cp.length ? cp[i + 1] : '';
+        if ((cp[i] !== '\\' && cp[i] !== '^') || nx === '') {
+            // C `:6915–6916` simple character, or nothing left to escape.
+            cval = cp.charCodeAt(i);
+            i++;
+        } else if (cp[i] === '^') {
+            // C `:6917–6919` control-character syntax.
+            cval = cp.charCodeAt(i + 1) & 0x1f;
+            i += 2;
+        } else if (nx >= '0' && nx <= '9') {
+            // C `:6923–6926` decimal, up to 3 digits past the first.
+            i++;
+            for (;;) {
+                cval = cval * 10 + (cp.charCodeAt(i) - 48);
+                i++;
+                if (!(i < cp.length && cp[i] >= '0' && cp[i] <= '9'
+                    && ++dcount < 3)) break;
+            }
+        } else if ((nx === 'o' || nx === 'O') && i + 2 < cp.length
+            && cp[i + 2] >= '0' && cp[i + 2] <= '7') {
+            // C `:6928–6931` \o octal, up to 3 digits past the first.
+            i += 2;
+            for (;;) {
+                cval = cval * 8 + (cp.charCodeAt(i) - 48);
+                i++;
+                if (!(i < cp.length && cp[i] >= '0' && cp[i] <= '7'
+                    && ++dcount < 3)) break;
+            }
+        } else if ((nx === 'x' || nx === 'X') && i + 2 < cp.length
+            && HEXDD.indexOf(cp[i + 2]) !== -1) {
+            // C `:6933–6937` \x hex, up to 2 digits past the first
+            // ((dp - hexdd) / 2 truncates the pair index to the value).
+            i += 2;
+            for (;;) {
+                cval = cval * 16 + Math.trunc(HEXDD.indexOf(cp[i]) / 2);
+                i++;
+                if (i >= cp.length) break;
+                if (HEXDD.indexOf(cp[i]) === -1) break;
+                if (++dcount >= 2) break;
+            }
+        } else {
+            // C `:6939–6959` C-style character escapes, default = the char.
+            i++;
+            const e = cp[i];
+            if (e === '\\') cval = 92;
+            else if (e === 'n') cval = 10;
+            else if (e === 't') cval = 9;
+            else if (e === 'b') cval = 8;
+            else if (e === 'r') cval = 13;
+            else cval = cp.charCodeAt(i);
+            i++;
+        }
+        if (meta) cval |= 0x80; // C `:6961–6962`
+        tp += String.fromCharCode(cval & 0xff); // C `:6963`
+    }
+    return tp;
+}
+
+/**
+ * C ref: options.c sym_val `:9385–9426` — one display byte from a SYMBOLS
+ * value: empty/single char (`:9391–9394`, whitespace-only stays empty via
+ * C isspace), `'x'` / `'\\'` quotes (`:9395–9406`), else strip one closing
+ * quote and run escapes (`:9409–9417`); bare values go straight through
+ * escapes (`:9419–9423`). QBUFSZ truncation (`:9412`/`:9420`, const.js 128)
+ * via slice. Returns `(int) *buf (`:9425`): 0 when empty.
+ */
+export function sym_val(strval) {
+    strval = String(strval ?? '');
+    let buf = '';
+    if (strval.length < 2) {
+        if (strval.length && !' \t\n\v\f\r'.includes(strval[0])) buf = strval[0];
+    } else if (strval[0] === "'") {
+        if (strval.length === 3 && strval[2] === "'") {
+            buf = strval[1];
+        } else if (strval.length === 4 && strval[1] === '\\' && strval[3] === "'"
+            && '\'"\\'.includes(strval[2])) {
+            buf = strval[2];
+        } else {
+            const tmp = strval.slice(1, 1 + QBUFSZ - 1);
+            const p = tmp.lastIndexOf("'");
+            buf = p !== -1 ? escapes(tmp.slice(0, p)) : '';
+        }
+    } else {
+        buf = escapes(strval.slice(0, QBUFSZ - 1));
+    }
+    return buf.length ? buf.charCodeAt(0) : 0;
+}
+
+/* C symbols.c match_sym `:853–867` alternate spellings (phone key/button
+ * layout for the explosion names). */
+const SYM_ALTERNATES = [
+    ['S_armour', 'S_armor'],
+    ['S_explode1', 'S_expl_tl'],
+    ['S_explode2', 'S_expl_tc'], ['S_explode3', 'S_expl_tr'],
+    ['S_explode4', 'S_expl_ml'], ['S_explode5', 'S_expl_mc'],
+    ['S_explode6', 'S_expl_mr'], ['S_explode7', 'S_expl_bl'],
+    ['S_explode8', 'S_expl_bc'], ['S_explode9', 'S_expl_br'],
+];
+
+/* C strncmpi on NUL-terminated strings, ASCII-only fold like C tolower.
+ * match_sym calls it with len = cut position; len past the name compares
+ * buf chars against the name's NUL, so a match needs len === name length
+ * plus a case-insensitive prefix hit (the `len >= strlen` + strncmpi pair
+ * at `:885`/`:890`). */
+function symNameCiEq(a, b) {
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+        let ca = a.charCodeAt(i), cb = b.charCodeAt(i);
+        if (ca >= 65 && ca <= 90) ca |= 0x20;
+        if (cb >= 65 && cb <= 90) cb |= 0x20;
+        if (ca !== cb) return false;
+    }
+    return true;
+}
+
+/**
+ * C ref: symbols.c match_sym `:852–901` — resolve a config symbol name to
+ * its loadsyms row. G_ lines never match (`:871–873`); a trailing space
+ * before the cut is skipped (`:878–882`); the main run is a
+ * case-insensitive whole-name hit (`:884–888`), then the alternates table
+ * with an exact (`strcmp`) canonical re-resolve (`:889–899`). Returns
+ * { range, idx, name } — no symparse struct in JS (display.js
+ * update_ov_* take idx directly); null when nothing matches (`:900`).
+ * idx comes from the generated LOADSYMS triple (checked-in extractor).
+ */
+export function match_sym(buf) {
+    buf = String(buf ?? '');
+    // C `:871–873` G_ lines will never match here.
+    if ((buf[0] === 'G' || buf[0] === 'g') && buf[1] === '_') return null;
+    const p = buf.indexOf(':');
+    const q = buf.indexOf('=');
+    let cut = p;
+    if (p === -1 || (q !== -1 && q < p)) cut = q; // C `:876`
+    let len = buf.length;
+    if (cut !== -1) {
+        if (cut > 0 && buf[cut - 1] === ' ') cut--; // C `:880–881`
+        len = cut; // C `:882`
+    }
+    // C `:884–888` while (sp->range); array length terminates (no fencepost
+    // in LOADSYMS, per the generated header).
+    for (let i = 0; i < LOADSYMS.length && LOADSYMS[i][0]; i++) {
+        const name = LOADSYMS[i][2];
+        if (len === name.length && symNameCiEq(buf.slice(0, len), name)) {
+            return { range: LOADSYMS[i][0], idx: LOADSYMS[i][1], name };
+        }
+    }
+    // C `:889–899` alternates, then exact strcmp on the canonical name.
+    for (const [altnm, nm] of SYM_ALTERNATES) {
+        if (len === altnm.length && symNameCiEq(buf.slice(0, len), altnm)) {
+            for (let i = 0; i < LOADSYMS.length && LOADSYMS[i][0]; i++) {
+                if (nm === LOADSYMS[i][2]) {
+                    return {
+                        range: LOADSYMS[i][0], idx: LOADSYMS[i][1],
+                        name: LOADSYMS[i][2],
+                    };
+                }
+            }
+        }
+    }
+    return null;
+}
+
+/**
+ * C ref: symbols.c savedsym_free `:712–724` — free the whole saved_symbols
+ * chain (extern.h:3178). JS is GC'd: clearing the live savedSymbols
+ * registry is the equivalent effect. Exported for the RC-parse tests.
+ */
+export function savedsym_free() {
+    savedSymbols.length = 0;
+}
+
+/**
+ * C ref: symbols.c savedsym_add `:739–754` (staticfn) + savedsym_find
+ * `:726–737` — upsert { name, val } for which_set, prepending new nodes
+ * (C `tmp->next = saved_symbols`). Operates on the live savedSymbols
+ * registry the [campaign 1/7] parent added for savedsym_strbuf.
+ */
+function savedsym_add(name, val, which_set) {
+    const found = savedSymbols.find(
+        (e) => e.which_set === which_set && e.name === name
+    );
+    if (found) {
+        found.val = val; // C: free + dupstr
+    } else {
+        savedSymbols.unshift({ which_set, name, val }); // C: prepend
+    }
+}
+
+/* C symbols.c parsesymbols `:773–848` recursion core. C mutates one char
+ * buffer across the comma recursion (`*comma = '\0'`, then the tail parse
+ * may cut deeper cells the outer frame's strval still spans), so the
+ * buffer is a shared char array here, not substrings; NUL (`'\0'`) marks
+ * cut cells and `at()` reads past-end as NUL like C pointer reads. */
+function parsesymbolsSeg(buf, start, which_set) {
+    const NUL = '\0';
+    const at = (i) => (i < buf.length ? buf[i] : NUL);
+    // C `:781–800` first unquoted comma/colon scan (quoted ','/':' skipped
+    // at `:787–793`; `!*postch` break at `:786`).
+    let firstComma = -1, firstColon = -1;
+    for (let ch = start + 1; at(ch) !== NUL; ch++) {
+        if (at(ch + 1) === NUL) break;
+        if (at(ch) === ',') {
+            if (buf[ch - 1] === "'" && at(ch + 1) === "'") continue;
+            if (buf[ch - 1] === '\\') continue;
+        }
+        if (at(ch) === ':') {
+            if (buf[ch - 1] === "'" && at(ch + 1) === "'") continue;
+        }
+        if (at(ch) === ',' && firstComma === -1) firstComma = ch;
+        if (at(ch) === ':' && firstColon === -1) firstColon = ch;
+    }
+    if (firstComma !== -1) {
+        // C `:804–807` cut + recurse on the tail first.
+        buf[firstComma] = NUL;
+        if (!parsesymbolsSeg(buf, firstComma + 1, which_set)) return false;
+    }
+    // C `:810–819` S_sample:string — colon preferred, else first '='.
+    let svIdx = firstColon;
+    if (svIdx === -1) {
+        svIdx = -1;
+        for (let i = start; at(i) !== NUL; i++) {
+            if (at(i) === '=') { svIdx = i; break; }
+        }
+    }
+    if (svIdx === -1) return false;
+    buf[svIdx] = NUL;
+    const readSeg = (from) => {
+        let s = '';
+        for (let i = from; at(i) !== NUL; i++) s += at(i);
+        return s;
+    };
+    const symname = mungspaces(readSeg(start)); // C `:820–821`
+    const strval = mungspaces(readSeg(svIdx + 1)); // C `:822`
+    const symp = match_sym(symname); // C `:823`
+    let is_glyph = false;
+    if (!symp && symname[0] === 'G' && symname[1] === '_') { // C `:824–826`
+        is_glyph = match_glyph(symname); // bare: glyphs.c:458, named omit
+    }
+    if (!symp && !is_glyph) return false; // C `:829`
+    if (symp) { // C `:830`
+        if (symp.range && symp.range !== SYM_CONTROL) { // C `:830`
+            if (game.gs?.symset?.[which_set]?.handling === H_UTF8 // C `:833–835`
+                || (lowc(strval[0]) === 'u' && strval[1] === '+')) {
+                // C `:837` Snprintf + custom-map entries (bare: glyphs.c:112,
+                // named omit — the customization-write subsystem).
+                glyphrep_to_custom_map_entries(`${symname}:${strval}`);
+            } else { // C `:839–844`
+                const val = sym_val(strval);
+                if (which_set === ROGUESET) update_ov_rogue_symset(symp.idx, val);
+                else update_ov_primary_symset(symp.idx, val);
+            }
+        }
+    }
+    savedsym_add(symname, strval, which_set); // C `:847`
+    return true; // C `:848`
+}
+
+/**
+ * C ref: symbols.c parsesymbols `:773–848` [campaign 5/7] — parse one
+ * SYMBOLS/ROGUESYMBOLS value (or OPTIONS S_ item) into the override tables
+ * + the savedSymbols registry, in C order. Exported (C extern,
+ * extern.h:3180). Named omissions (map): match_glyph + the
+ * glyphrep_to_custom_map_entries customization path (G_ names, H_UTF8
+ * handling, u+ values) and the switch_symbols application step at the
+ * wired callers (JS reads ov_* lazily at render; reset_glyphmap stays
+ * untouched per the fortress guard).
+ */
+export function parsesymbols(opts, which_set) {
+    const buf = [...String(opts ?? '')];
+    return parsesymbolsSeg(buf, 0, which_set);
+}
+
+/**
+ * C ref: options.c all_options_conds `:9551–9591` [campaign 3/7] — gather
+ * non-default cond_xyz into one OPTIONS=cond_foo,!cond_bar entry, wrapped
+ * with backslash+newline past 75 columns (`:9564–9565`); defaults
+ * (cond_blind, !cond_glowhands, &c) excluded via opt_next_cond (`:9553`).
+ * C staticfn (`:9555`); exported like the sibling writer arms so the port
+ * stays testable. C NULL-empty (buf stays "OPTIONS=") appends nothing
+ * (`:9583–9589`). Plain-string concat is exact (no BUFSZ).
+ * Sole C caller options.c all_options_strbuf `:9729` (live below).
+ */
+export function all_options_conds(sbuf) {
+    let buf = ''; // C `:9562` buf[0] = '\0'
+    let idx = 0; // C `:9559`
+    let gotone = false; // C `:9560`
+    for (;;) {
+        const nextcond = opt_next_cond(idx); // C `:9563` while (opt_next_cond(...))
+        if (nextcond === null) break; // C FALSE past CONDITION_COUNT
+        if (idx === 0) {
+            buf = 'OPTIONS='; // C `:9566–9567`
+        } else if (buf.length + 1 + nextcond.length >= 75) { // C `:9568`
+            /* finish off previous line */ // C `:9569`
+            buf += ',\\\n'; // C `:9570` comma and backslash+newline
+            strbuf_append(sbuf, buf); // C `:9571`
+            /* indent continuation line */ // C `:9572`
+            buf = '        '; // C `:9573` Sprintf(buf, "%8s", " ") — 8 = strlen("OPTIONS=")
+        } else if (nextcond.length > 0 && gotone) { // C `:9574` nextcond[0] && gotone
+            buf += ','; // C `:9575`
+        }
+        if (nextcond.length > 0) { // C `:9577` nextcond[0]
+            gotone = true; // C `:9578`
+            buf += nextcond; // C `:9579`
+        }
+        ++idx; // C `:9581`
+    }
+    if (buf !== 'OPTIONS=') { // C `:9587` strcmp
+        buf += '\n'; // C `:9588`
+        strbuf_append(sbuf, buf); // C `:9589`
+    }
+}
+
+/**
+ * C ref: botl.c all_options_statushilites `:4477–4495` [campaign 6/7] —
+ * one OPTIONS=hilite_status line per gathered linestr, in store order
+ * (`:4487–4493`); gather/done pair brackets the walk (`:4482–4485`,
+ * `:4494`). The `%.*s` precision (`:4488–4490`) is BUFSZ minus the bound
+ * literal plus NUL minus one (= 230): plain slice is exact. Sole C caller
+ * options.c all_options_strbuf `:9741` (wired below); STATUS_HILITES is on
+ * per config.h `:616`, so the `#ifdef` arm is live C, not dead config.
+ * With no threshold producer or cond_hilites configured the store gathers
+ * empty and nothing appends — same dormant shape as the sibling writers.
+ */
+export function all_options_statushilites(sbuf) {
+    status_hilite_linestr_done(); // C `:4482`
+    let hlstr = status_hilite_linestr_gather(); // C `:4483–4485` gather + hlstr = status_hilite_str
+    while (hlstr) { // C `:4487`
+        strbuf_append(sbuf, // C `:4491`
+            `OPTIONS=hilite_status: ${hlstr.str.slice(0, BUFSZ - ('OPTIONS=hilite_status:  '.length + 1) - 1)}\n`); // C `:4488–4490`
+        hlstr = hlstr.next; // C `:4492`
+    }
+    status_hilite_linestr_done(); // C `:4494`
+}
+
+/**
  * C ref: options.c all_options_strbuf `:9678–9748` — serialize changed options
  * for #saveoptions. Header (`:9686–9689`, yyyymmddhhmmss(epoch) live); allopt
  * loop (`:9691–9721`: BoolOpt changed-vs-initval with obsolete/&flags.female
  * skip, CompOpt setwhere-gated get_option_value, OthrOpt skip); cond guard
- * (`:9727–9729`, named: all_options_conds); CHANGE_COLOR palette (`:9731–9733`,
+ * (`:9727–9729`, live all_options_conds [3/7]); CHANGE_COLOR palette (`:9731–9733`,
  * compiled out — named, no row); key binds / symsets / menucolors / msgtypes /
  * apes / autocomplete (`:9734–9739`, binds named, symsets live via savedSymbols,
  * rest live);
- * STATUS_HILITES (`:9740–9742`, on per config.h `:616`, named:
- * all_options_statushilites); WIZKIT tail (`:9744–9747`, game.wizkit live per
+ * STATUS_HILITES (`:9740–9742`, on per config.h `:616`, live [6/7]
+ * all_options_statushilites above); WIZKIT tail (`:9744–9747`, game.wizkit live per
  * files.js fopen_wizkit_file). Buffer note: C Snprintf(tmp, sizeof-1)+Strcat
  * "guaranteed to fit" — plain concat is exact in JS.
- * Only C caller cfgfiles.c do_write_config_file `:200` (named omission).
+ * Only C caller cfgfiles.c do_write_config_file `:200` (live js/cfgfiles.js [7/7]).
  */
 export function all_options_strbuf(sbuf) {
     strbuf_init(sbuf);
@@ -3266,15 +4493,15 @@ export function all_options_strbuf(sbuf) {
        so put them next; [pfx_cond_] will be set if any cond_Foo were
        present when RC file was read in or if player made any changes via
        status conditions menu; ignore opt_set_in_config[opt_o_status_cond] */
-    if (opt_set_in_config[PFX_COND_IDX]) all_options_conds(sbuf); // named: conds row
+    if (opt_set_in_config[PFX_COND_IDX]) all_options_conds(sbuf); // C `:9727–9729` cond guard (live [3/7])
     // CHANGE_COLOR all_options_palette `:9731–9733` compiled out (tty) — named, no row.
-    get_changed_key_binds(sbuf); // named: key-binds row
+    get_changed_key_binds(sbuf); // C `:9734` key binds (live [4/7], js/cmd.js)
     savedsym_strbuf(sbuf);
     all_options_menucolors(sbuf);
     all_options_msgtypes(sbuf);
     all_options_apes(sbuf);
     all_options_autocomplete(sbuf);
-    all_options_statushilites(sbuf); // named: hilites row (STATUS_HILITES on)
+    all_options_statushilites(sbuf); // C `:9740–9742` hilites (live [6/7], STATUS_HILITES on)
     const wizkit = game.wizkit || '';
     if (wizkit) strbuf_append(sbuf, `WIZKIT=${wizkit}\n`);
 }

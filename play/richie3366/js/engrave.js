@@ -59,7 +59,7 @@ import {
     objectNames, is_blade, is_boots,
 } from './objects.js';
 import {
-    DUST, ENGRAVE, BURN, MARK, ENGR_BLOOD, HEADSTONE, ICE,
+    DUST, ENGRAVE, BURN, MARK, ENGR_BLOOD, HEADSTONE, N_ENGRAVE, ICE,
     ROOM, GRAVE, IS_GRAVE, MM_NOMSG, COLNO, ROWNO,
     ACCESSIBLE, IS_FOUNTAIN, IS_AIR, IS_POOL, IS_LAVA,
     Never_mind, Is_airlevel, Is_waterlevel, P_RIDING, P_BASIC,
@@ -561,27 +561,54 @@ export async function read_engr_at(x, y) {
 }
 
 /**
- * C ref: engrave.c make_engr_at — place/replace engraving text.
- * Pristine/guardobjects mklev path partial; Elbereth player exercise wired.
+ * C ref: engrave.c make_engr_at `:407–457` — place/replace engraving text.
+ * Branch envelope: whole body — smem/havepristine sizing, replace-at,
+ * three text states, Elbereth guardobjects/exercise, time/type/sizes.
+ * JS extension: returns ep (mklev lua/des engraving handlers use it);
+ * C is void. Allocation arena (newengr/engr_text_space) is by design —
+ * JS strings need no arena; smem-derived engr_szeach/engr_alloc are kept
+ * on the record for save/restore sizing (`:453–454`, `:1554–1638`).
  */
 export function make_engr_at(x, y, text, pristine, e_time, e_type) {
+    // C `:414–415`: smem = strlen(s)+1 (s NONNULLARG3 — extern.h:1016).
+    const s = String(text ?? '');
+    let smem = s.length + 1;
+    // C `:416–422`: pristine sizing; havepristine iff pristine_s != NULL.
+    let havepristine = false;
+    if (pristine != null) {
+        const prmem = String(pristine).length + 1;
+        if (prmem > smem) smem = prmem;
+        havepristine = true;
+    }
+    // C `:423–424`: delete any engraving already at (x,y).
+    // del_engr no-ops on null, matching the `!= 0` guard.
     del_engr(engr_at(x, y));
-    const s = String(text || '');
-    const pristine_s = pristine != null ? String(pristine) : s;
+    // C `:426–431`: newengr(smem*3) + memset 0 + prepend + coords.
+    // eread/erevealed stay 0 here — C leaves them for the caller (`:455–456`).
     const ep = {
         nxt_engr: game.head_engr || null,
         engr_x: x,
         engr_y: y,
-        engr_txt: { actual_text: s, remembered_text: s, pristine_text: pristine_s },
+        // C `:432–434`: text-slot layout (actual/remembered/pristine).
+        engr_txt: { actual_text: s, remembered_text: s, pristine_text: s },
         engr_time: e_time || 0,
-        engr_type: (e_type > 0) ? e_type : rnd(HEADSTONE - 1),
+        // C `:452` (xint8): keep e_type, else random non-HEADSTONE type.
+        engr_type: (e_type > 0) ? e_type : rnd(N_ENGRAVE - 1),
         eread: 0,
         erevealed: 0,
         guardobjects: 0,
+        // C `:453–454`: per-state size + total allocation.
+        engr_szeach: smem,
+        engr_alloc: smem * 3,
     };
     game.head_engr = ep;
+    // C `:435–438`: every state starts as s; pristine overwritten only
+    // when the caller passed one (the `:433–434` loop covers pristine too
+    // when pristine_s == NULL, so defaulting to s above matches).
+    if (havepristine) ep.engr_txt.pristine_text = String(pristine);
+    // C `:439–447`: engraving "Elbereth" during level creation makes an
+    // old-style guard engraving; done by the player it exercises wisdom.
     if (s === 'Elbereth') {
-        // C: gi.in_mklev → guardobjects; else exercise wisdom
         if (game.in_mklev) ep.guardobjects = 1;
         else exercise(A_WIS, true);
     }

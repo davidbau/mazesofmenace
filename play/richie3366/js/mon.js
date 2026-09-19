@@ -154,7 +154,7 @@ function closed_door(x, y) {
 }
 
 /** C ref: mon.c mdistu — squared distance to hero. */
-function mdistu(mtmp) {
+export function mdistu(mtmp) {
     return dist2(mtmp.mx, mtmp.my, game.u.ux, game.u.uy);
 }
 

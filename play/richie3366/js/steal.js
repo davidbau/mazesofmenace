@@ -258,7 +258,7 @@ export async function remove_worn_item(obj, unchain_ball) {
         else if (obj === u.uarmc) await Cloak_off();
         else if (obj === u.uarmf) await Boots_off();
         else if (obj === u.uarmg) await Gloves_off();
-        else if (obj === u.uarmh) Helmet_off();
+        else if (obj === u.uarmh) await Helmet_off();
         else if (obj === u.uarms) Shield_off();
         else if (obj === u.uarmu) Shirt_off();
         else setworn(null, obj.owornmask & W_ARMOR);

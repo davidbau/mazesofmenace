@@ -539,7 +539,7 @@ function show_achievements_lines(final) {
             break;
         }
         default:
-            lines.push(`  [Unexpected achievement #${achidx}.]`);
+            lines.push(` [Unexpected achievement #${achidx}.]`);
             break;
         }
     }

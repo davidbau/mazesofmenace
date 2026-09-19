@@ -110,7 +110,7 @@
 // SPE_DRAIN_LIFE self-dir zapyourself !Drain_resistance + losexp
 // (D-1446; callee zap.c `:2817–2823` / exper.c losexp).
 // Named omissions: confused_book body;
-// learn lenses-speed / deadbook / faded-blank polish / check_unpaid;
+// learn lenses-speed / faded-blank polish / check_unpaid;
 // swap/sort; other spelleffects otyps (remaining peffects
 // mix/potionhit/potionbreathe);
 // #jump known_spell fallback;
@@ -122,38 +122,44 @@
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import {
-    flush_screen, pline, You_feel, impossible, canspotmon, tmp_at,
+    flush_screen, pline, You, Your, pline_The, You_feel, impossible, canspotmon, tmp_at,
     clear_nhwindow_message, canseemon, map_invisible, zapdir_to_glyph,
     nh_delay_output,
 } from './display.js';
-import { paint_corner_nhw_menu, dismiss_nhw_menu, discover_object, makeknown, near_capacity, update_inventory } from './invent.js';
+import { paint_corner_nhw_menu, dismiss_nhw_menu, discover_object, makeknown, near_capacity, update_inventory, observe_object } from './invent.js';
 import { yn_function } from './getline.js';
 import { ATR_INVERSE, NO_COLOR } from './terminal.js';
 import { weight, mksobj, delobj, noveltitle } from './mkobj.js';
 import { acurr, A_WIS, A_STR, A_INT, exercise } from './attrib.js';
 import { SPBOOK_CLASS, NODIR } from './objects.js';
-import { rnd, rn2, rn1, rnl, rn2_on_display_rng } from './rng.js';
-import { morehungry, poison_strdmg } from './eat.js';
-import { zapyourself, spell_damage_bonus, weffects, zhitm, resists_elec } from './zap.js';
+import { d, rnd, rn2, rn1, rnl, rn2_on_display_rng } from './rng.js';
+import { morehungry, poison_strdmg, sgn } from './eat.js';
+import { zapyourself, spell_damage_bonus, weffects, zhitm, resists_elec, unturn_dead } from './zap.js';
 import { tele } from './teleport.js';
 import { make_blinded } from './do.js';
 import { aggravate } from './wizard.js';
 import { make_confused, make_stunned, healup, make_slimed, peffects } from './potion.js';
 import { trycall, hcolor, hliquid, Hallucination, mon_nam, Monnam } from './do_name.js';
 import { an, makeplural } from './objnam.js';
-import { is_whirly, is_animal, eyecount } from './monsters.js';
-import { nomul, losehp, maybe_half_phys, fall_asleep } from './hack.js';
+import { is_whirly, is_animal, eyecount, mons, is_undead, is_vampshifter } from './monsters.js';
+import { nomul, losehp, maybe_half_phys, fall_asleep, You_hear, invocation_pos, On_stairs } from './hack.js';
 import { uhim } from './roles.js';
 import { erode_obj } from './trap.js';
 import { set_occupation } from './engrave.js';
-import { objdescr_is } from './apply.js';
+import { objdescr_is, mkundead } from './apply.js';
+import { tamedog } from './dog.js';
+import { monflee } from './monmove.js';
+import { makemon, set_malign } from './makemon.js';
+import { mkinvokearea } from './mklev.js';
+import { Soundeffect } from './sndprocs.js';
+import { se_faint_chime } from './generated/seffects_data.js';
 import { body_part } from './polyself.js';
 import { rndcurse, take_gold } from './sit.js';
 import { explode } from './explode.js';
 import { getdir } from './lock.js';
 import { getpos, getpos_sethilite } from './getpos.js';
 import { cansee } from './vision.js';
-import { m_at, wakeup } from './mon.js';
+import { m_at, wakeup, iter_mons, mdistu } from './mon.js';
 import { walk_path } from './dothrow.js';
 import { distmin } from './hacklib.js';
 import { livelog_printf } from './pline.js';
@@ -179,7 +185,9 @@ import {
     ECMD_TIME,
     ECMD_FAIL,
     nothing_happens,
+    something,
     EXT_ENCUMBER,
+    NO_MINVENT,
     NO_KILLER_PREFIX,
     TIMEOUT,
     ERODE_CORRODE,
@@ -215,7 +223,9 @@ import {
     HI_ZAP,
     HEAD,
     EYE,
+    SPINE,
     CLAIRVOYANT,
+    ACH_INVK,
     ACH_NOVL,
     LL_CONDUCT,
 } from './const.js';
@@ -299,6 +309,10 @@ const PM_FOG_CLOUD = monsterNames.indexOf('PM_FOG_CLOUD');
 const SPE_BLANK_PAPER = objectNames.indexOf('SPE_BLANK_PAPER');
 const SPE_NOVEL = objectNames.indexOf('SPE_NOVEL');
 const SPE_BOOK_OF_THE_DEAD = objectNames.indexOf('SPE_BOOK_OF_THE_DEAD');
+const CANDELABRUM_OF_INVOCATION = objectNames.indexOf('CANDELABRUM_OF_INVOCATION');
+const BELL_OF_OPENING = objectNames.indexOf('BELL_OF_OPENING');
+const PM_MASTER_LICH = monsterNames.indexOf('PM_MASTER_LICH');
+const PM_NALFESHNEE = monsterNames.indexOf('PM_NALFESHNEE');
 const QUARTERSTAFF = objectNames.indexOf('QUARTERSTAFF');
 const LENSES = objectNames.indexOf('LENSES');
 
@@ -696,12 +710,158 @@ function incrnknow(spell, x) {
 }
 
 /**
+ * C ref: spell.c deadbook_pacify_undead `:210–227` (staticfn) — pacify or
+ * tame a seen undead monster; a co-aligned one near the hero is tamed (or
+ * its tameness grows), anything else flees. Async because tamedog/monflee
+ * are async; iter_mons awaits its callback.
+ */
+async function deadbook_pacify_undead(mtmp) {
+    if ((is_undead(mtmp.data) || is_vampshifter(mtmp))
+        && cansee(mtmp.mx, mtmp.my)) {
+        mtmp.mpeaceful = 1;
+        const u = game.u || {};
+        if (sgn(mtmp.data?.maligntyp) === sgn(u.ualign?.type)
+            && mdistu(mtmp) < 4) {
+            if (mtmp.mtame) {
+                if ((mtmp.mtame | 0) < 20) mtmp.mtame++;
+            } else {
+                await tamedog(mtmp, null, true);
+            }
+        } else {
+            await monflee(mtmp, 0, false, true);
+        }
+    }
+}
+
+/**
+ * C ref: spell.c deadbook `:231–339` (staticfn) — Book of the Dead effects.
+ * At the invocation position (off the stairs): cursed book is unreadable;
+ * missing bell/menorah chills; a cursed relic fails the invocation;
+ * candelabrum (7 candles, lit) + recently-rung bell succeed (mkinvokearea,
+ * invoked + udemigod set, doom clock); anything else raises the dead.
+ * Elsewhere: cursed raises the dead, blessed pacifies undead, otherwise an
+ * ancestor omen. Sole C caller: learn() (spell.c:386).
+ * @param {object} book2 the book being read
+ * @returns {Promise<void>}
+ */
+async function deadbook(book2) {
+    const u = game.u || {};
+
+    await You('turn the pages of the Book of the Dead...');
+    makeknown(SPE_BOOK_OF_THE_DEAD);
+    observe_object(book2); /* in case blind now and hasn't been seen yet */
+    /* KMH -- Need ->known to avoid "_a_ Book of the Dead" */
+    book2.known = 1;
+
+    // C `goto raise_dead` (`:319`, `:331`) — one shared sequence for the
+    // botched-invocation arm and the cursed-book arm.
+    const raise_dead = async () => {
+        let mtmp = null;
+        await You('raised the dead!');
+        /* first maybe place a dangerous adversary */
+        if (!rn2(3)
+            && ((mtmp = makemon(mons(PM_MASTER_LICH), u.ux | 0, u.uy | 0,
+                NO_MINVENT)) != null
+                || (mtmp = makemon(mons(PM_NALFESHNEE), u.ux | 0, u.uy | 0,
+                    NO_MINVENT)) != null)) {
+            mtmp.mpeaceful = 0;
+            set_malign(mtmp);
+        }
+        /* next handle the affect on things you're carrying */
+        await unturn_dead(game.youmonst);
+        /* last place some monsters around you */
+        await mkundead({ x: u.ux | 0, y: u.uy | 0 }, true, NO_MINVENT);
+    };
+
+    if (invocation_pos(u.ux, u.uy) && !On_stairs(u.ux, u.uy)) {
+        const uhave = u.uhave || {};
+        let arti1_primed = false, arti2_primed = false,
+            arti_cursed = false;
+
+        if (book2.cursed) {
+            await pline_The('%s!',
+                Blind() ? 'Book seems to be ignoring you'
+                    : "runes appear scrambled.  You can't read them");
+            return;
+        }
+
+        if (!uhave.bell || !uhave.menorah) {
+            await pline('A chill runs down your %s.', body_part(SPINE));
+            if (!uhave.bell) {
+                Soundeffect(se_faint_chime, 30);
+                await You_hear('a faint chime...');
+            }
+            if (!uhave.menorah) {
+                await pline("Vlad's doppelganger is amused.");
+            }
+            return;
+        }
+
+        for (const otmp of game.invent || []) {
+            if (otmp.otyp === CANDELABRUM_OF_INVOCATION
+                && (otmp.spe | 0) === 7 && otmp.lamplit) {
+                if (!otmp.cursed) arti1_primed = true;
+                else arti_cursed = true;
+            }
+            if (otmp.otyp === BELL_OF_OPENING
+                && ((game.moves | 0) - (otmp.age | 0)) < 5) {
+                /* you rang it recently */
+                if (!otmp.cursed) arti2_primed = true;
+                else arti_cursed = true;
+            }
+        }
+
+        if (arti_cursed) {
+            await pline_The('invocation fails!');
+            /* this used to say "your artifacts" but the invocation tools
+               are not artifacts */
+            await pline('At least one of your relics is cursed...');
+        } else if (arti1_primed && arti2_primed) {
+            const soon = d(2, 6); /* time til next intervene() */
+
+            /* successful invocation */
+            await mkinvokearea();
+            if (!u.uevent) u.uevent = {};
+            u.uevent.invoked = 1;
+            record_achievement(ACH_INVK);
+            /* in case you haven't killed the Wizard yet, behave as if
+               you just did */
+            u.uevent.udemigod = 1; /* wizdeadorgone() */
+            if (!(u.udg_cnt | 0) || (u.udg_cnt | 0) > soon) {
+                u.udg_cnt = soon;
+            }
+        } else { /* at least one relic not prepared properly */
+            await You('have a feeling that %s is amiss...', something);
+            await raise_dead();
+        }
+        return;
+    }
+
+    /* when not an invocation situation */
+    if (book2.cursed) {
+        await raise_dead();
+    } else if (book2.blessed) {
+        await iter_mons(deadbook_pacify_undead);
+    } else {
+        switch (rn2(3)) {
+        case 0:
+            await Your('ancestors are annoyed with you!');
+            break;
+        case 1:
+            await pline_The('headstones in the cemetery begin to move!');
+            break;
+        default:
+            await pline("Oh my!  Your name appears in the book!");
+        }
+    }
+}
+
+/**
  * C ref: spell.c learn() — occupation while studying a spellbook.
  * Branch envelope: delay++ while nonzero; finish → learn/relearn spell
  * + makeknown; cursed_book on finish may destroy.
  * Named omissions: lenses rn2(2) faster read; Confusion→confused_book
- * + nomul remainder; SPE_BOOK_OF_THE_DEAD deadbook; faded-blank
- * spestudied rn2 polish; check_unpaid.
+ * + nomul remainder; faded-blank spestudied rn2 polish; check_unpaid.
  * @returns {Promise<number>} 1 = still busy, 0 = done
  */
 async function learn() {
@@ -731,9 +891,9 @@ async function learn() {
     exercise(A_WIS, true);
     let booktype = book.otyp | 0;
     if (booktype === SPE_BOOK_OF_THE_DEAD) {
-        // deadbook deferred
-        spbook.book = null;
-        spbook.o_id = 0;
+        // C spell.c `:385–388` — deadbook, then done; unlike the
+        // normal-book tail, C leaves spbook.book set here.
+        await deadbook(book);
         return 0;
     }
 

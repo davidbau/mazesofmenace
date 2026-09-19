@@ -32,7 +32,13 @@ import {
     ANY_INT, ANY_UINT, ANY_LONG, ANY_ULONG,
     ANY_IPTR, ANY_UPTR, ANY_LPTR, ANY_ULPTR,
     ANY_STR, ANY_MASK32,
-    MAXVALWIDTH,
+    MAXVALWIDTH, BUFSZ, CLR_MAX,
+    HL_UNDEF, HL_NONE, HL_BOLD, HL_DIM, HL_ITALIC, HL_ULINE, HL_BLINK, HL_INVERSE,
+    HL_ATTCLR_BOLD, HL_ATTCLR_DIM, HL_ATTCLR_ITALIC,
+    HL_ATTCLR_ULINE, HL_ATTCLR_BLINK, HL_ATTCLR_INVERSE,
+    EQ_VALUE, LT_VALUE, LE_VALUE, GE_VALUE, GT_VALUE, TXT_VALUE,
+    BL_TH_NONE, BL_TH_VAL_PERCENTAGE, BL_TH_VAL_ABSOLUTE, BL_TH_UPDOWN,
+    BL_TH_CONDITION, BL_TH_TEXTMATCH, BL_TH_ALWAYS_HILITE, BL_TH_CRITICALHP,
     Upolyd,
     BOTL_NSIZ, MAX_TYPE,
     A_CHAOTIC, A_NEUTRAL, NOT_HUNGRY, UNENCUMBERED,
@@ -52,7 +58,7 @@ import {
     BL_MASK_TERMILL, BL_MASK_TETHERED, BL_MASK_TRAPPED, BL_MASK_UNCONSC,
     BL_MASK_WOUNDEDL, BL_MASK_HOLDING,
 } from './const.js';
-import { NO_COLOR } from './terminal.js';
+import { NO_COLOR, ATR_NONE } from './terminal.js';
 import { newuexp } from './exper.js';
 import {
     A_STR, A_DEX, A_CON, A_INT, A_WIS, A_CHA,
@@ -70,7 +76,8 @@ import { weapon_type } from './weapon.js';
 import { is_sword, objectNames } from './objects.js';
 import { bimanual, is_weptool } from './wield.js';
 import { helm_simple_name } from './do_wear.js';
-import { upstart, strNsubst } from './hacklib.js';
+import { upstart, strNsubst, stripchars } from './hacklib.js';
+import { clr2colorname } from './artifact.js';
 import { humanoid, mons, is_flyer } from './monsters.js';
 import { Flying, Levitation } from './mhitu.js';
 import { mdlib_version_string } from './version.js';
@@ -662,6 +669,27 @@ export const condtests = [
     { c: bl_holding, useroption: 'holding', opt: OPT_IN, enabled: false, choice: false, test: false },
 ];
 
+/**
+ * C ref: botl.c opt_next_cond `:1456–1490` — value of the next cond_xyz
+ * option for #saveoptions (sole C caller options.c all_options_conds
+ * `:9563`, via extern.h `:291`). C writes into a char outbuf and returns
+ * boolean; JS folds the buffer into the return: null is C FALSE
+ * (`:1463–1464`, indx past CONDITION_COUNT), otherwise the cond string —
+ * possibly '' when the entry sits at its default (`:1462` pre-clear, the
+ * `:1466–1482` internal-order note kept as-is: no sorting). Non-default
+ * gate (`:1484–1488`): opt_in+enabled or opt_out+!enabled emits
+ * `[!]cond_<useroption>` (`:1486` enabled ? '' : '!').
+ */
+export function opt_next_cond(indx) {
+    if (indx >= CONDITION_COUNT) return null; // C `:1463–1464` FALSE
+    const ct = condtests[indx];
+    if ((ct.opt === OPT_IN && ct.enabled) // C `:1484`
+        || (ct.opt === OPT_OUT && !ct.enabled)) { // C `:1485`
+        return `${ct.enabled ? '' : '!'}cond_${ct.useroption}`; // C `:1486–1487`
+    }
+    return ''; // C `:1462` default value
+}
+
 // C botl.c:860-909 terrain_descr[] — indexed by iflags.terrain_typ;
 // MAX_TYPE (37) is "" ("skipped rather than overloaded"); entries past 38
 // are classify_terrain() pseudo-types, not levl[][].typ values.
@@ -1181,4 +1209,293 @@ export function bot_via_windowport() {
 
     // C :1277 request rendering.
     evaluate_and_notify_windowport(valset, idx);
+}
+
+// =======================================================================
+// C botl.c STATUS_HILITES store + linestr gather chain for the #saveoptions
+// writer all_options_statushilites (`:4477–4495`, js/options.js [campaign
+// 6/7]). STATUS_HILITES is compiled in (config.h:616), so every arm below
+// is live C. C file order is kept: condition_aliases (`:749`), split_clridx
+// (`:2576`), conditionbitmask2str (`:3141`), hlattr2attrname (`:3369`),
+// the linestr store (`:3403–3414`), add/done/countfield (`:3417–3474`),
+// gather_conditions (`:3488–3568`), gather (`:3570–3587`), status_hilite2str
+// (`:3590–3670`). The two C staticfns the extern writer calls (done, gather)
+// are exported like opt_next_cond above (C staticfn `:1456`, same fold);
+// the rest mirror staticfn (file-local). C `struct hilite_s` threshold
+// nodes are plain objects here: { rel, behavior, value: { a_int, a_ulong },
+// textmatch, coloridx, fld, next } — no producer is ported yet (threshold
+// chains stay null via init_blstats `:1772`, cond_hilites via game.gc), so
+// the store gathers empty, exactly like the sibling empty registries.
+// =======================================================================
+
+// C botl.c:749–777 condition_aliases[] (struct condmap { id, bitmask }) under
+// `#ifdef STATUS_HILITES` — short names for condition bitmask unions.
+const condition_aliases = [
+    { id: 'strangled', bitmask: BL_MASK_STRNGL }, // C :750
+    { id: 'all', bitmask: BL_MASK_BAREH | BL_MASK_BLIND | BL_MASK_BUSY // C :751–758
+        | BL_MASK_CONF | BL_MASK_DEAF | BL_MASK_ELF_IRON
+        | BL_MASK_FLY | BL_MASK_FOODPOIS | BL_MASK_GLOWHANDS
+        | BL_MASK_GRAB | BL_MASK_HALLU | BL_MASK_HELD
+        | BL_MASK_ICY | BL_MASK_INLAVA | BL_MASK_LEV
+        | BL_MASK_PARLYZ | BL_MASK_RIDE | BL_MASK_SLEEPING
+        | BL_MASK_SLIME | BL_MASK_SLIPPERY | BL_MASK_STONE
+        | BL_MASK_STRNGL | BL_MASK_STUN | BL_MASK_SUBMERGED
+        | BL_MASK_TERMILL | BL_MASK_TETHERED
+        | BL_MASK_TRAPPED | BL_MASK_UNCONSC
+        | BL_MASK_WOUNDEDL | BL_MASK_HOLDING },
+    { id: 'major_troubles', bitmask: BL_MASK_FOODPOIS | BL_MASK_GRAB | BL_MASK_INLAVA // C :759–761
+        | BL_MASK_SLIME | BL_MASK_STONE | BL_MASK_STRNGL
+        | BL_MASK_TERMILL },
+    { id: 'minor_troubles', bitmask: BL_MASK_BLIND | BL_MASK_CONF | BL_MASK_DEAF // C :762–764
+        | BL_MASK_HALLU | BL_MASK_PARLYZ | BL_MASK_SUBMERGED
+        | BL_MASK_STUN },
+    { id: 'movement', bitmask: BL_MASK_LEV | BL_MASK_FLY | BL_MASK_RIDE }, // C :765
+    { id: 'opt_in', bitmask: BL_MASK_BAREH | BL_MASK_BUSY | BL_MASK_GLOWHANDS // C :766–772
+        | BL_MASK_HELD | BL_MASK_ICY | BL_MASK_PARLYZ
+        | BL_MASK_SLEEPING | BL_MASK_SLIPPERY
+        | BL_MASK_SUBMERGED | BL_MASK_TETHERED
+        | BL_MASK_TRAPPED
+        | BL_MASK_UNCONSC | BL_MASK_WOUNDEDL
+        | BL_MASK_HOLDING },
+];
+
+// C botl.c:2576–2584 split_clridx() (staticfn) — low byte is the color,
+// high byte the attribute. C writes through two out-pointers; JS folds the
+// pair into the return (opt_next_cond precedent above).
+function split_clridx(idx) {
+    return [(idx | 0) & 0x00FF, ((idx | 0) >> 8) & 0x00FF]; // C `:2580–2582`
+}
+
+// C botl.c:3141–3170 conditionbitmask2str() (staticfn) — 'Blind+Conf' union
+// names, or the whole-union alias when one matches (`:3153–3166`). C
+// returns a static buffer (immediately copied by the caller); JS returns a
+// fresh string. eos() appends are plain concat.
+function conditionbitmask2str(ul) {
+    ul = ul >>> 0; // C unsigned long
+    if (!ul) return ''; // C `:3149–3150` empty buf
+    let alias = null; // C `:3146`
+    for (let i = 1; i < condition_aliases.length; i++) // C `:3153`
+        if ((condition_aliases[i].bitmask >>> 0) === ul) // C `:3154`
+            alias = condition_aliases[i].id;
+    let buf = '';
+    let first = true; // C `:3145`
+    for (let i = 0; i < conditions.length; i++) // C `:3158`
+        if ((conditions[i].mask & ul) !== 0) { // C `:3159`
+            buf += `${first ? '' : '+'}${conditions[i].text[0]}`; // C `:3160–3162`
+            first = false;
+        }
+    if (!first && alias) buf = alias; // C `:3165–3166`
+    return buf;
+}
+
+// C botl.c:3369–3399 hlattr2attrname() (staticfn) — 'bold+dim' style names,
+// 'normal' for HL_NONE (`:3377–3380`); NULL when attrib is 0 or buf missing
+// (`:3369`, `:3398`). C writes into the caller buffer when the name fits
+// (`:3394–3396`); JS returns the name (null when C would leave buf useless).
+function hlattr2attrname(attrib) {
+    attrib |= 0;
+    if (!attrib) return null; // C `:3371` !attrib → 0
+    if (attrib === HL_NONE) return 'normal'; // C `:3377–3380`
+    let attbuf = ''; // C `:3376`
+    let first = 0; // C `:3375`
+    if (attrib & HL_BOLD) attbuf += first++ ? '+bold' : 'bold'; // C `:3383–3384`
+    if (attrib & HL_DIM) attbuf += first++ ? '+dim' : 'dim'; // C `:3385–3386`
+    if (attrib & HL_ITALIC) attbuf += first++ ? '+italic' : 'italic'; // C `:3387–3388`
+    if (attrib & HL_ULINE) attbuf += first++ ? '+underline' : 'underline'; // C `:3389–3390`
+    if (attrib & HL_BLINK) attbuf += first++ ? '+blink' : 'blink'; // C `:3391–3392`
+    if (attrib & HL_INVERSE) attbuf += first++ ? '+inverse' : 'inverse'; // C `:3393–3394`
+    if (attbuf.length >= BUFSZ - 1) return null; // C `:3394–3396` no fit → buf unusable
+    return attbuf;
+}
+
+// C botl.c:3403–3414 — linestr store: `struct _status_hilite_line_str`
+// { id, fld, hl, mask, str[BUFSZ], next } plus the file statics (`:3413–3414`
+// "these don't need to be in 'struct g'"). Nodes are plain objects; str is
+// a JS string (C fixed buffer, always fits per the producers).
+let status_hilite_str = null; // C `:3413` = 0
+let status_hilite_str_id = 0; // C `:3414` = 0
+
+// C botl.c:3417–3445 status_hilite_linestr_add() (staticfn) — alloc +
+// zero (`:3424–3425`), tail-append (`:3437–3443`); BL_TITLE keeps spaces,
+// every other field strips them (`:3432–3435`).
+function status_hilite_linestr_add(fld, hl, mask, str) {
+    const tmp = { // C `:3424–3425` alloc + memset 0
+        id: ++status_hilite_str_id, // C `:3430`
+        fld, // C `:3431`
+        hl, // C `:3432`
+        mask: mask >>> 0, // C unsigned long
+        str: (fld === BL_TITLE) ? String(str ?? '') // C `:3433–3434` Strcpy
+            : stripchars('', ' ', str), // C `:3435` strip spaces
+        next: null, // C `:3427`
+    };
+    let nxt = status_hilite_str; // C `:3437`
+    if (nxt !== null) {
+        while (nxt.next) nxt = nxt.next; // C `:3438–3439`
+        nxt.next = tmp; // C `:3440`
+    } else {
+        status_hilite_str = tmp; // C `:3442`
+    }
+}
+
+// C botl.c:3448–3459 status_hilite_linestr_done() (staticfn) — free the whole
+// chain and zero the id (`:3450–3458`; GC frees here). Exported: the extern
+// #saveoptions writer (js/options.js) calls it like C `:4482`/`:4494`.
+export function status_hilite_linestr_done() {
+    status_hilite_str = null; // C `:3457`
+    status_hilite_str_id = 0; // C `:3458`
+}
+
+// C botl.c:3462–3474 status_hilite_linestr_countfield() (staticfn) —
+// BL_FLUSH counts every line (`:3465–3466`), else only fld matches
+// (`:3470–3471`). Only reader is count_status_hilites (`:3477–3485`, the
+// doset(options.c) helper — named omission, travels with the doset row).
+function status_hilite_linestr_countfield(fld) {
+    const countall = (fld === BL_FLUSH); // C `:3465`
+    let count = 0; // C `:3466`
+    for (let tmp = status_hilite_str; tmp; tmp = tmp.next) { // C `:3469`
+        if (countall || tmp.fld === fld) count++; // C `:3470–3471`
+    }
+    return count;
+}
+
+// C botl.c:3488–3568 status_hilite_linestr_gather_conditions() (staticfn) —
+// fold gc.cond_hilites[] into one linestr per distinct color+attr union:
+// first CLR_MAX slots are colors (`:3502–3506`), HL_ATTCLR_* slots are
+// attributes (`:3507–3518`, HL_NONE cleared at `:3519–3520`); same-union
+// conditions merge (`:3524–3530`), else take the first free slot
+// (`:3532–3539`); each union prints 'condition/Mask/color[&attr]'
+// (`:3555–3564`). Missing game.gc reads 0 (unconfigured hilites).
+function status_hilite_linestr_gather_conditions() {
+    const condmaps = []; // C `:3494` cond_maps[SIZE(conditions)], memset 0 `:3496–3497`
+    for (let i = 0; i < conditions.length; i++) condmaps.push({ bm: 0, clratr: 0 });
+    const condhilites = game.gc?.cond_hilites ?? []; // C decl.h `:228` [BL_ATTCLR_MAX]
+
+    for (let i = 0; i < conditions.length; i++) { // C `:3499`
+        let clr = NO_COLOR; // C `:3500`
+        let atr = HL_NONE; // C `:3501`
+        for (let j = 0; j < CLR_MAX; j++) // C `:3503`
+            if (((condhilites[j] ?? 0) & conditions[i].mask) !== 0) { // C `:3504`
+                clr = j; // C `:3505`
+                break;
+            }
+        if (((condhilites[HL_ATTCLR_BOLD] ?? 0) & conditions[i].mask) !== 0) atr |= HL_BOLD; // C `:3507–3508`
+        if (((condhilites[HL_ATTCLR_DIM] ?? 0) & conditions[i].mask) !== 0) atr |= HL_DIM; // C `:3509–3510`
+        if (((condhilites[HL_ATTCLR_ITALIC] ?? 0) & conditions[i].mask) !== 0) atr |= HL_ITALIC; // C `:3511–3512`
+        if (((condhilites[HL_ATTCLR_ULINE] ?? 0) & conditions[i].mask) !== 0) atr |= HL_ULINE; // C `:3513–3514`
+        if (((condhilites[HL_ATTCLR_BLINK] ?? 0) & conditions[i].mask) !== 0) atr |= HL_BLINK; // C `:3515–3516`
+        if (((condhilites[HL_ATTCLR_INVERSE] ?? 0) & conditions[i].mask) !== 0) atr |= HL_INVERSE; // C `:3517–3518`
+        if (atr !== HL_NONE) atr &= ~HL_NONE; // C `:3519–3520`
+
+        if (clr !== NO_COLOR || atr !== HL_NONE) { // C `:3522`
+            const ca = (clr | (atr << 8)) >>> 0; // C `:3523` unsigned int
+            let added = false; // C `:3524` added_condmap
+            for (let j = 0; j < conditions.length; j++) // C `:3526`
+                if (condmaps[j].clratr === ca) { // C `:3527`
+                    condmaps[j].bm |= conditions[i].mask; // C `:3528`
+                    added = true; // C `:3529`
+                    break;
+                }
+            if (!added) { // C `:3532`
+                for (let j = 0; j < conditions.length; j++) // C `:3533`
+                    if (!condmaps[j].bm) { // C `:3534`
+                        condmaps[j].bm = conditions[i].mask; // C `:3535`
+                        condmaps[j].clratr = ca; // C `:3536`
+                        break;
+                    }
+            }
+        }
+    }
+
+    for (let i = 0; i < conditions.length; i++) // C `:3543`
+        if (condmaps[i].bm) { // C `:3544`
+            const [clr, atr] = split_clridx(condmaps[i].clratr); // C `:3548`
+            if (clr !== NO_COLOR || atr !== HL_NONE) { // C `:3549`
+                let clrbuf = strNsubst(clr2colorname(clr), ' ', '-', 0); // C `:3555–3556`
+                const tmpattr = hlattr2attrname(atr); // C `:3557`
+                if (tmpattr) clrbuf += `&${tmpattr}`; // C `:3558–3559` Sprintf eos
+                const condbuf = `condition/${conditionbitmask2str(condmaps[i].bm)}/${clrbuf}`; // C `:3560–3561`
+                status_hilite_linestr_add(BL_CONDITION, null, condmaps[i].bm, condbuf); // C `:3562–3563`
+            }
+        }
+}
+
+// C botl.c:3570–3587 status_hilite_linestr_gather() (staticfn) — clear the
+// store (`:3575`), add one line per blstats threshold (`:3577–3582`), then
+// the condition unions (`:3585`). Exported for the extern writer; the C
+// `status_hilite_str` head read (`:4485`) is folded into the return
+// (opt_next_cond precedent). Unbuilt blstats reads empty (no thresholds).
+export function status_hilite_linestr_gather() {
+    status_hilite_linestr_done(); // C `:3575`
+
+    const bl0 = game.gb?.blstats?.[0]; // C `:3578` gb.blstats[0]
+    for (let i = 0; i < MAXBLSTATS; i++) { // C `:3577`
+        let hl = bl0?.[i]?.thresholds ?? null; // C `:3578`
+        while (hl) { // C `:3579`
+            status_hilite_linestr_add(i, hl, 0, status_hilite2str(hl)); // C `:3580`
+            hl = hl.next; // C `:3581`
+        }
+    }
+
+    status_hilite_linestr_gather_conditions(); // C `:3585`
+    return status_hilite_str;
+}
+
+// C botl.c:3590–3670 status_hilite2str() (staticfn) — 'field/behavior/color'
+// for one threshold (`:3665–3667`); NULL for a null rule (`:3600–3601`).
+// C returns a static buffer the caller copies at once (`:3580`); JS returns
+// a fresh string. impossible() arms (bad rel per behavior) leave behavebuf
+// empty: C impossible logs and returns (init_blstats precedent above), so
+// nothing observable is dropped. initblstats[].name is the JS field for C
+// initblstats[].fldname (`:112–143` mirror `:703–737`).
+function status_hilite2str(hl) {
+    if (!hl) return null; // C `:3600–3601`
+    let clr = NO_COLOR, attr = ATR_NONE; // C `:3593`
+    let behavebuf = ''; // C `:3604`
+    const op = (hl.rel === LT_VALUE) ? '<' // C `:3606–3611`
+        : (hl.rel === LE_VALUE) ? '<='
+        : (hl.rel === GT_VALUE) ? '>'
+        : (hl.rel === GE_VALUE) ? '>='
+        : (hl.rel === EQ_VALUE) ? '='
+        : null; // C `:3611` 0
+    switch (hl.behavior) { // C `:3613`
+    case BL_TH_VAL_PERCENTAGE: // C `:3614`
+        if (op) behavebuf = `${op}${hl.value?.a_int | 0}%`; // C `:3615–3616`
+        /* else C `:3617` impossible("hl->behavior=percentage, rel error") */
+        break;
+    case BL_TH_UPDOWN: // C `:3619`
+        if (hl.rel === LT_VALUE) behavebuf = 'down'; // C `:3620–3621`
+        else if (hl.rel === GT_VALUE) behavebuf = 'up'; // C `:3622–3623`
+        else if (hl.rel === EQ_VALUE) behavebuf = 'changed'; // C `:3624–3625`
+        /* else C `:3627` impossible("hl->behavior=updown, rel error") */
+        break;
+    case BL_TH_VAL_ABSOLUTE: // C `:3630`
+        if (op) behavebuf = `${op}${hl.value?.a_int | 0}`; // C `:3631–3632`
+        /* else C `:3633` impossible("hl->behavior=absolute, rel error") */
+        break;
+    case BL_TH_TEXTMATCH: // C `:3635`
+        if (hl.rel === TXT_VALUE && hl.textmatch?.[0]) behavebuf = `${hl.textmatch}`; // C `:3636–3637`
+        /* else C `:3639` impossible("hl->behavior=textmatch, rel or textmatch error") */
+        break;
+    case BL_TH_CONDITION: // C `:3641`
+        if (hl.rel === EQ_VALUE) behavebuf = `${conditionbitmask2str(hl.value?.a_ulong ?? 0)}`; // C `:3642–3643`
+        /* else C `:3645` impossible("hl->behavior=condition, rel error") */
+        break;
+    case BL_TH_ALWAYS_HILITE: // C `:3647–3648`
+        behavebuf = 'always';
+        break;
+    case BL_TH_CRITICALHP: // C `:3650–3651`
+        behavebuf = 'criticalhp';
+        break;
+    case BL_TH_NONE: // C `:3653–3654`
+    default: // C `:3655–3656`
+        break;
+    }
+
+    [clr, attr] = split_clridx(hl.coloridx | 0); // C `:3659`
+    let clrbuf = strNsubst(clr2colorname(clr), ' ', '-', 0); // C `:3660`
+    if (attr !== HL_UNDEF) { // C `:3661`
+        const tmpattr = hlattr2attrname(attr); // C `:3662`
+        if (tmpattr != null) clrbuf += `&${tmpattr}`; // C `:3662–3663`
+    }
+    return `${initblstats[hl.fld]?.name ?? ''}/${behavebuf}/${clrbuf}`; // C `:3665–3667`
 }

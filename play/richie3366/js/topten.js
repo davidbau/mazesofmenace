@@ -4,7 +4,7 @@
 import { game } from './gstate.js';
 import { vfsReadFile, vfsWriteFile } from './storage.js';
 import { yyyymmdd } from './calendar.js';
-import { depth } from './hacklib.js';
+import { deepest_lev_reached, depth } from './hacklib.js';
 import { genders, aligns, str2role, str2race } from './roles.js';
 import {
     BUFSZ, COLNO, VERSION_MAJOR, VERSION_MINOR, PATCHLEVEL,
@@ -45,18 +45,7 @@ function observable_depth(lev) {
     return depth(lev);
 }
 
-function deepest_lev_reached(noquest) {
-    let ret = 0;
-    const dungeons = game.dungeons || [];
-    for (let i = 0; i < dungeons.length; i++) {
-        if (noquest && i === (game.quest_dnum | 0)) continue;
-        const dlevel = dungeons[i]?.dunlev_ureached | 0;
-        if (!dlevel) continue;
-        const d = depth({ dnum: i, dlevel });
-        if (d > ret) ret = d;
-    }
-    return ret;
-}
+/* deepest_lev_reached: canonical import from hacklib.js (dungeon.c:1338–1371). */
 
 function newttentry() {
     return {

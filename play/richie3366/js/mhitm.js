@@ -15,7 +15,7 @@ import { dist2, isok } from './hacklib.js';
 import { resist_conflict, set_mon_data, on_fire, mhis, mhe, little_to_big, defended } from './mondata.js';
 import { MON_WEP, mon_wield_item, hitval, dmgval, possibly_unwield } from './weapon.js';
 import { arti_reflects, artifact_hit, permapoisoned, is_art } from './artifact.js';
-import { find_mac, which_armor, bypass_obj, is_flimsy } from './worn.js';
+import { find_mac, which_armor, bypass_obj, is_flimsy, extract_from_minvent } from './worn.js';
 import { update_monster_region } from './region.js';
 import { remove_worm, place_worm_tail_randomly, worm_known } from './worm.js';
 import { place_monster, remove_monster, dismount_steed, doorless_door } from './steed.js';
@@ -85,6 +85,7 @@ import {
     W_AMUL,
     W_SADDLE,
     DISMOUNT_KNOCKED,
+    DISMOUNT_POLY,
     Is_rogue_level,
     ERODE_NONE,
     ERODE_BURN,
@@ -120,7 +121,7 @@ import {
 import { findgold, stealarm, unstolenarm } from './steal.js';
 import { munslime, mon_adjust_speed, munstone } from './muse.js';
 import { Monnam, mon_nam, mon_nam_too, Adjmonnam, oname, pmname, x_monnam, hliquid, YMonnam, s_suffix, free_mgivenname, a_monnam, y_monnam, some_mon_nam, minimal_monnam } from './do_name.js';
-import { an, xname, makeplural, cxname, vtense, The, simpleonames } from './objnam.js';
+import { an, xname, makeplural, cxname, vtense, The, simpleonames, doname } from './objnam.js';
 import { mon_explodes } from './explode.js';
 import { makemon, newcham, pm_to_cham, is_home_elemental, clone_mon } from './makemon.js';
 import { stairway_find_type_dir } from './mklev.js';
@@ -137,8 +138,8 @@ import { mswings_verb, Conflict, unstuck } from './mhitu.js';
 import { mon_offmap, set_apparxy, mb_trapped } from './monmove.js';
 import { hurtle, mhurtle, will_hurtle } from './dothrow.js';
 import { make_stunned } from './potion.js';
-import { m_is_steadfast, can_blnd } from './uhitm.js';
-import { mintrap, acid_damage, minstapetrify } from './trap.js';
+import { m_is_steadfast, can_blnd, steal_it } from './uhitm.js';
+import { mintrap, acid_damage, minstapetrify, mselftouch } from './trap.js';
 import { breamm, spitmm, thrwmm } from './mthrowu.js';
 // C ref: mon.c mondead tail (D-row for data.md:358) — one block for the
 // death-tail family. ESM permits several import statements per module;
@@ -1272,6 +1273,79 @@ export async function mhitm_ad_slee(magr, mattk, mdef, mhm) {
         mdef.mstrategy = (mdef.mstrategy | 0) & ~STRAT_WAITFORU;
         await slept_slee_mm(mdef);
     }
+}
+
+/**
+ * C ref: uhitm.c mhitm_ad_sedu `:4623–4748` — uhitm (you→mon, `:4629–4632`)
+ * and mhitm (mon→mon, `:4693–4747`) arms in C order. uhitm: hero-as-attacker
+ * theft via steal_it, leftover damage zeroed. mhitm: cancelled attacker
+ * returns; the first minvent object (non-cursed when the attacker is tame)
+ * moves to the attacker — dismounting the hero's steed when it is the
+ * stolen saddle — with vis-gated names + "%s steals %s from %s!",
+ * WAITFORU cleared, mselftouch, defender-died → DEF_DIED (+AGR_DIED
+ * unless grow_up), nymph attacker rlocs away with a disappears pline
+ * when last seen. mhitu (mon→you, `:4633–4691`) arm lives in mhitu.js
+ * mhitm_ad_sedu_u (blnd/elec precedent).
+ * C callers: mhitm_ad_ssex uhitm `:4756` (via damageum AD_SSEX) + mhitm
+ * `:4775` (via mdamagem AD_SSEX below); mhitm_adtyping AD_SITM/AD_SEDU
+ * `:4799` (damageum_adtyping + mhitm_adtyping_u + mdamagem dispatch below).
+ */
+export async function mhitm_ad_sedu(magr, mattk, mdef, mhm) {
+    const pa = magr?.data;
+    if (is_youmonst(magr)) {
+        /* C `:4629–4632` uhitm (hero as attacker) */
+        await steal_it(mdef, mattk);
+        mhm.damage = 0;
+        return;
+    }
+    if (is_youmonst(mdef)) return; /* C `:4633–4691` mhitu: mhitu.js mhitm_ad_sedu_u */
+    /* C `:4693–4747` mhitm */
+    if (magr.mcan) return;
+    /* find an object to steal, non-cursed if magr is tame */
+    let obj = null;
+    for (let o = mdef?.minvent; o; o = o.nobj) {
+        if (!magr.mtame || !o.cursed) {
+            obj = o;
+            break;
+        }
+    }
+    if (obj) {
+        /* make a special x_monnam() call that never omits
+           the saddle, and save it for later messages */
+        const mdefnambuf = x_monnam(mdef, ARTICLE_THE, null, 0, false);
+        if (game.u?.usteed === mdef && obj === which_armor(mdef, W_SADDLE)) {
+            /* "You can no longer ride <steed>." */
+            await dismount_steed(DISMOUNT_POLY);
+        }
+        extract_from_minvent(mdef, obj, true, false);
+        /* add_to_minv() might free 'obj' [if it merges] */
+        let onambuf = '';
+        if (_mm_vis) onambuf = doname(obj);
+        void add_to_minv(magr, obj);
+        const buf = Monnam(magr);
+        if (_mm_vis && canseemon(mdef)) {
+            await pline(`${buf} steals ${onambuf} from ${mdefnambuf}!`);
+        }
+        await possibly_unwield(mdef, false);
+        mdef.mstrategy = (mdef.mstrategy | 0) & ~STRAT_WAITFORU;
+        await mselftouch(mdef, null, false);
+        if (deadmonster(mdef)) {
+            mhm.hitflags = M_ATTK_DEF_DIED
+                | ((await grow_up(magr, mdef)) ? 0 : M_ATTK_AGR_DIED);
+            mhm.done = true;
+            return;
+        }
+        if (pa?.mlet === 'S_NYMPH' && !(await tele_restrict(magr))) {
+            const couldspot = !!canspotmon(magr);
+            mhm.hitflags = M_ATTK_AGR_DONE;
+            await rloc(magr, RLOC_NOMSG);
+            /* TODO: use RLOC_MSG instead? */
+            if (_mm_vis && couldspot && !canspotmon(magr)) {
+                await pline(`${buf} suddenly disappears!`);
+            }
+        }
+    }
+    mhm.damage = 0;
 }
 
 /**
@@ -4234,6 +4308,30 @@ async function mdamagem(magr, mdef, mattk, mwep, dieroll) {
             return M_ATTK_DEF_DIED | (grew ? 0 : M_ATTK_AGR_DIED);
         }
         return (hitflags === M_ATTK_AGR_DIED) ? M_ATTK_AGR_DIED : M_ATTK_HIT;
+    }
+
+    // C: mhitm_adtyping → mhitm_ad_sedu for AD_SITM/AD_SEDU (uhitm.c:4799
+    // mhitm arm) + mhitm_ad_ssex → mhitm_ad_sedu for AD_SSEX (uhitm.c:4775
+    // mhitm arm; C sets no SYSOPT_SEDUCE gate there). Nymph/mon theft via
+    // the mhm arm; the arms always zero the leftover dice, so like AD_SAMU
+    // above the !damage arm returns hitflags after knockback — DEF_DIED
+    // (petrifying saddle-thief) still preempts via the HIT/DEF_DIED/offmap
+    // gate. uhitm/mhitu arms named in the callee.
+    if ((mattk.adtyp | 0) === AD_SITM || (mattk.adtyp | 0) === AD_SEDU
+        || (mattk.adtyp | 0) === AD_SSEX) {
+        const mhm = {
+            damage,
+            hitflags: M_ATTK_MISS,
+            done: false,
+        };
+        await mhitm_ad_sedu(magr, mattk, mdef, mhm);
+        // C mhitm.c:1061-1065 — knockback preempts damage on HIT/DEF_DIED/offmap
+        if (await mhitm_knockback(magr, mdef, mattk, mhm, !!mwep)
+            && (((mhm.hitflags & (M_ATTK_DEF_DIED | M_ATTK_HIT)) !== 0) || mon_offmap(mdef))) {
+            return mhm.hitflags;
+        }
+        if (mhm.done) return mhm.hitflags;
+        return mhm.hitflags | 0;
     }
 
     // C: mhitm_adtyping → mhitm_ad_sgld for AD_SGLD (uhitm.c:2790–2857

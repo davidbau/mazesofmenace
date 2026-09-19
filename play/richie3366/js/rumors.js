@@ -5,7 +5,7 @@
 import { rn2, rnd } from './rng.js';
 import { game } from './gstate.js';
 import { A_WIS, exercise } from './attrib.js';
-import { pline, verbalize, impossible } from './display.js';
+import { pline, verbalize, impossible, flush_topl_more } from './display.js';
 import { SetVoice, voice_oracle } from './sndprocs.js';
 import { Monnam } from './do_name.js';
 import { ynq, y_n } from './getline.js';
@@ -14,12 +14,15 @@ import { money_cnt, money2mon } from './shk.js';
 import { record_achievement } from './insight.js';
 import { more_experienced, newexplevel } from './exper.js';
 import { show_text_pages } from './pager.js';
-import { ACH_ORCL, ECMD_OK, ECMD_TIME, RUMORFILE } from './const.js';
+import { ACH_ORCL, ECMD_OK, ECMD_TIME, RUMORFILE, ENGRAVEFILE, EPITAPHFILE, BOGUSMONFILE } from './const.js';
 import {
     TRUE_RUMOR_BUF,
     FALSE_RUMOR_BUF,
     MD_PAD_RUMORS,
 } from './generated/rumors_data.js';
+import { ENGRAVE_BUF } from './generated/engrave_data.js';
+import { EPITAPH_BUF } from './generated/epitaph_data.js';
+import { BOGUSMON_BUF } from './generated/bogusmon_data.js';
 import { ORACLE_RECORDS } from './generated/oracles_data.js';
 
 export const BY_ORACLE = 0;
@@ -186,6 +189,175 @@ export async function outrumor(truth, mechanism) {
     // route through the "%s" arm so rumor text containing '%' is never
     // re-scanned (vpline no-'%' vs vsnprintf arms, pline.c:192-212).
     await pline('%s', line);
+}
+
+/**
+ * C ref: rumors.c couldnt_open_file `:769–782` (staticfn).
+ * Suppresses impossible()'s "saving and reloading might fix this" hint
+ * (unless the fuzzer escalates it) around the report, then restores it.
+ * Sync like C; impossible() floats un-awaited (getrumor precedent).
+ */
+function couldnt_open_file(filename) {
+    // C :772
+    if (!game.program_state) game.program_state = {};
+    const ps = game.program_state;
+    const save_something = ps.something_worth_saving;
+    // C :777-778 most likely the file is missing; the fuzzer escalates
+    if (!(game.iflags?.debug_fuzzer)) ps.something_worth_saving = 0;
+    // C :780
+    impossible("Can't open '%s' file.", filename);
+    // C :781
+    ps.something_worth_saving = save_something;
+}
+
+/**
+ * C ref: rumors.c `%06ld (%06lx)` stat formatting (`rumor_check` `:228–237`).
+ * Values here are embed-relative byte offsets (see rumor_check); small and
+ * non-negative, so zero-padded decimal + hex match C exactly.
+ */
+function fmt6d(n) {
+    return String(n).padStart(6, '0');
+}
+function fmt6x(n) {
+    return Number(n).toString(16).padStart(6, '0');
+}
+
+/**
+ * C ref: dlb_fgets line model over a Rule #2 embed buffer — one entry per
+ * `\\n`-terminated line, trailing terminator not an extra empty line.
+ */
+function splitEmbedLines(buf) {
+    const arr = String(buf).split('\n');
+    if (arr.length && arr[arr.length - 1] === '') arr.pop();
+    return arr;
+}
+
+/**
+ * C ref: rumors.c others_check `:307–408` (staticfn) — 5.0 audit helper for
+ * rumor_check(); shows the first two entries and the last of the
+ * engrave/epitaph/bogusmon file, counting the rest.
+ * `lines` is the shared text window (C `winid *winptr` out-param); the
+ * caller shows it once via show_text_pages.
+ */
+function others_check(ftype, fname, buf, lines) {
+    // C :319 dlb_fopen(fname, "r") — the embed always opens
+    if (buf) {
+        // C :321-328 create the window on first use; the create-fail
+        // impossible() arm has no JS counterpart (lines[] cannot fail) —
+        // named in the map
+        lines.push(''); // C :329
+        lines.push(ftype); // C :330
+        // C :331-354 the "don't edit" `#` comment-line validation arms have
+        // no JS counterpart: the extractors omit the plaintext header by
+        // design (extract-engrave.py) and validate structure at build time;
+        // the embed starts at the first entry — named in the map
+        const entries = splitEmbedLines(buf);
+        if (!entries.length) {
+            // C :356-362 first-non-comment-line-missing shape (unreachable:
+            // the embeds are non-empty constants)
+            lines.push(`others_check("${fname}"): can't read first non-comment line`);
+            return; // C :361 goto closeit (fclose is a no-op under embed)
+        }
+        // C :363-366 first line; the makedefs default entry
+        lines.push(xcrypt(entries[0]));
+        if (entries.length < 2) {
+            lines.push('(no second entry)'); // C :367-368
+            return; // C :400-401 closeit (fclose no-op)
+        }
+        // C :369-373 second entry
+        lines.push(xcrypt(entries[1]));
+        // C :374-379 count the rest, keeping the last decrypted line
+        let entrycount = 2;
+        let last = '';
+        for (let i = 2; i < entries.length; i++) {
+            entrycount++;
+            last = xcrypt(entries[i]); // C :378 (void) xcrypt(line, xbuf)
+        }
+        // C :380-382 count is 2 only when default + first ordinary are alone
+        if (entrycount === 2) {
+            lines.push('(only two entries)'); // C :383-384
+        } else {
+            // C :386-397 ellipsis (3+ more lines force --More-- on 24-line
+            // screens) then the already-decrypted last line
+            if (entrycount > 3) lines.push(' ...'); // C :394-395
+            lines.push(last); // C :396 xbuf already decrypted
+        }
+        // C :400-401 closeit: dlb_fclose — no-op under embed
+    } else {
+        // C :402-407 open failed (unreachable: non-empty constant); would
+        // not integrate with the text window
+        couldnt_open_file(fname);
+    }
+}
+
+/**
+ * C ref: rumors.c rumor_check `:196–302` — `#wizrumorcheck` ("verify each
+ * rumor access"): dumps the true/false section offsets and sizes plus the
+ * first and last decrypted rumor of each section, then others_check()es the
+ * engrave/epitaph/bogusmon files, all into one NHW_TEXT window.
+ * dlb file handles are Rule #2 embeds (getrumor precedent, D-2513): the
+ * section buffers ARE the file contents, so dlb_fopen always succeeds,
+ * init_rumors' header parse ran at build time (extract-rumors.py), and
+ * dlb_fclose is a no-op. Sizes equal C's byte-for-byte (same pad+xcrypt
+ * transform); START offsets are section-relative (the embed has no "don't
+ * edit" + header lines) while C's contiguity invariant is preserved
+ * (true_end == false_start). Async: pline/More flush + text window.
+ */
+export async function rumor_check() {
+    // C :199 tmpwin = WIN_ERR — the text window, shown once at the end
+    const lines = [];
+    // C :204 open gate (a previous try failed) + dlb_fopen (embed: opens)
+    if ((game.true_rumor_size ?? 0) >= 0) {
+        // C :208 rumor_buf[0] = '\0'
+        // C :209-214 first-use init_rumors() (`:84–107`: skip comment, parse
+        // the header line into start/size, end = start + size)
+        if ((game.true_rumor_size ?? 0) === 0) {
+            game.true_rumor_start = 0;
+            game.true_rumor_size = TRUE_RUMOR_BUF.length;
+            game.true_rumor_end = game.true_rumor_start + game.true_rumor_size; // C :99
+            // C :100 assert(true_end == false_start)
+            game.false_rumor_start = game.true_rumor_end;
+            game.false_rumor_size = FALSE_RUMOR_BUF.length;
+            game.false_rumor_end = game.false_rumor_start + game.false_rumor_size; // C :101
+            // C :103-106 + :210-213 init-failed `goto no_rumors`: unreachable
+            // (buffers are non-empty constants) — named in the map
+        }
+        // C :215 tmpwin = create_nhwindow(NHW_TEXT) — lines[] above
+        // C :228-231 T values line
+        lines.push(`T start=${fmt6d(game.true_rumor_start)} (${fmt6x(game.true_rumor_start)}), end=${fmt6d(game.true_rumor_end)} (${fmt6x(game.true_rumor_end)}), size=${fmt6d(game.true_rumor_size)} (${fmt6x(game.true_rumor_size)})`);
+        // C :232-237 F values line
+        lines.push(`F start=${fmt6d(game.false_rumor_start)} (${fmt6x(game.false_rumor_start)}), end=${fmt6d(game.false_rumor_end)} (${fmt6x(game.false_rumor_end)}), size=${fmt6d(game.false_rumor_size)} (${fmt6x(game.false_rumor_size)})`);
+        // C :246-253 first true rumor: seek to true start, ftell, fgets,
+        // strip newline, show `T %06ld` + decrypted line (padding kept —
+        // C does not unpadline here)
+        const trueLines = splitEmbedLines(TRUE_RUMOR_BUF);
+        lines.push(`T ${fmt6d(game.true_rumor_start)} ${xcrypt(trueLines[0])}`);
+        // C :254-260 find last true rumor: read while ftell < true end;
+        // the crossing line is the section's last — the embed split's tail
+        lines.push(`  ${''.padStart(6)} ${xcrypt(trueLines[trueLines.length - 1])}`); // C :259 `  %6s %s`
+        // C :262-269 first false rumor
+        const falseLines = splitEmbedLines(FALSE_RUMOR_BUF);
+        lines.push(`F ${fmt6d(game.false_rumor_start)} ${xcrypt(falseLines[0])}`);
+        // C :270-276 last false rumor
+        lines.push(`  ${''.padStart(6)} ${xcrypt(falseLines[falseLines.length - 1])}`);
+        // C :278 dlb_fclose — no-op under embed
+    } else {
+        // C no_rumors :279-285 — a previous attempt couldn't open the file
+        // or rejected its contents (first-open-failed couldnt_open_file arm
+        // `:287-290` unreachable under embed — named in the map)
+        await pline('rumors not accessible.');
+        // C :284 display_nhwindow(WIN_MESSAGE, TRUE) — flush pending --More--
+        await flush_topl_more();
+    }
+
+    // C :292-298 the epitaph/engraving/bogusmon check rides along (also in
+    // the no_rumors case, creating the window there)
+    others_check('Engravings:', ENGRAVEFILE, ENGRAVE_BUF, lines); // C :296
+    others_check('Epitaphs:', EPITAPHFILE, EPITAPH_BUF, lines); // C :297
+    others_check('Bogus monsters:', BOGUSMONFILE, BOGUSMON_BUF, lines); // C :298
+
+    // C :300-303 show + destroy the text window
+    if (lines.length > 0) await show_text_pages(lines);
 }
 
 /** C rumors.c init_oracles `:576–595`. Index 0 is special_oracle. */

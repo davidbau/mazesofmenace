@@ -11,7 +11,7 @@
 
 import { game } from './gstate.js';
 import { rn2, rnd, rn1, rne, rnz } from './rng.js';
-import { depth as depth_of_level, level_difficulty as level_difficulty_of, strsubst, strstri } from './hacklib.js';
+import { depth as depth_of_level, level_difficulty, strsubst, strstri } from './hacklib.js';
 import {
     RANDOM_CLASS,
     WEAPON_CLASS,
@@ -681,9 +681,7 @@ export async function maybe_adjust_light(obj, old_range) {
     }
 }
 
-function level_difficulty() {
-    return level_difficulty_of(game.u?.uz) || 1;
-}
+/* level_difficulty: canonical import from hacklib.js (dungeon.c:2026–2084). */
 
 function otypByName(name) {
     const i = objectNames.indexOf(name);
@@ -1550,8 +1548,10 @@ export function where_name(obj) {
  * rotating static ptrbuf. JS has no heap pointers: render the stable
  * identity the port uses in its place (obj o_id, monst m_id;
  * timeout.js fmt_timer_arg precedent), 0x-hex.
+ * Exported for light.c del_light_source / delete_ls not-found arms
+ * (D-2574; light.js already imports this module — no new edge).
  */
-function fmt_ptr(ptr) {
+export function fmt_ptr(ptr) {
     const id = (ptr?.o_id ?? ptr?.m_id ?? 0) | 0;
     return `0x${(id >>> 0).toString(16)}`;
 }

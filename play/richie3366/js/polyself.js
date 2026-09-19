@@ -1234,7 +1234,7 @@ async function break_armor() {
                 await pline(`Your ${hornbuf} ${vtense(hornbuf, 'pierce')} through ${yname(hornhelm)}.`);
             } else {
                 await pline(`Your ${helm_simple_name(hornhelm)} falls to the ${surface(u.ux, u.uy)}!`);
-                Helmet_off();
+                await Helmet_off();
                 await dropx(hornhelm);
             }
         }
@@ -1259,7 +1259,7 @@ async function break_armor() {
         const helm = u.uarmh;
         if (helm) {
             await pline(`Your ${helm_simple_name(helm)} falls to the ${surface(u.ux, u.uy)}!`);
-            Helmet_off();
+            await Helmet_off();
             await dropx(helm);
         }
     }

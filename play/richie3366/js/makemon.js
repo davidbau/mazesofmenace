@@ -5,7 +5,7 @@
 
 import { game } from './gstate.js';
 import { rn2, rnd, rn1, d } from './rng.js';
-import { depth as depth_of_level, level_difficulty as level_difficulty_of, upstart } from './hacklib.js';
+import { depth as depth_of_level, level_difficulty, upstart } from './hacklib.js';
 import { put_saddle_on_mon, can_saddle, place_monster, poly_steed } from './steed.js';
 import {
     m_dowear, which_armor, check_gear_next_turn, bypass_obj, mon_break_armor,
@@ -451,9 +451,7 @@ function Is_dragon_mail(obj) {
     return t >= GRAY_DRAGON_SCALE_MAIL && t <= YELLOW_DRAGON_SCALE_MAIL;
 }
 
-function level_difficulty() {
-    return level_difficulty_of(game.u?.uz) || 1;
-}
+/* level_difficulty: canonical import from hacklib.js (dungeon.c:2026–2084). */
 
 // C ref: mkobj.c next_ident — duplicated here to avoid mkobj↔makemon cycle
 function next_ident() {

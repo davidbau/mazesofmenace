@@ -29,12 +29,13 @@ import {
     D_NODOOR, D_ISOPEN, D_LOCKED, D_TRAPPED, DUST,
     IS_ROOM, isok, ESHK,
     HEALTHY_TIN, ROTTEN_TIN, HOMEMADE_TIN, SPINACH_TIN,
-    NON_PM, ismnum, In_mines, RLOC_NOMSG,
+    NON_PM, ismnum, In_mines, RLOC_NOMSG, ALL_TRAPS,
 } from './const.js';
-import { makemon, mkmonmoney, mongets, mkclass, neweshk } from './makemon.js';
+import { makemon, mkmonmoney, mongets, mkclass, neweshk, set_malign } from './makemon.js';
 import { mksobj_at, mkobj_at, obj_extract_self } from './mkobj.js';
 import {
     mons, monsterNames, vegetarian, is_rider, PM_LICHEN, PM_ACID_BLOB,
+    mon_learns_traps,
 } from './monsters.js';
 import { make_engr_at } from './engrave.js';
 import { cvt_sdoor_to_door } from './detect.js';
@@ -633,37 +634,55 @@ function stock_room_goodpos(sroom, rmno, sh, sx, sy) {
 }
 
 /**
- * C ref: shknam.c shkinit — :658-660 insurance rlocs the shk-spot
- * squatter (RLOC_NOMSG) before makemon.
+ * C ref: shknam.c shkinit `:628–692` (staticfn; sole C caller stock_room `:733`).
+ * File-local like C (only stock_room calls it; JS stock_room awaits it).
  */
 async function shkinit(shp, sroom) {
+    // C `:636`: place the shopkeeper in the given room.
     const pos = { x: 0, y: 0 };
     const sh = good_shopdoor(sroom, pos);
+    // C `:637–656`: sh<0 → return -1. The `#ifdef DEBUG` wizard
+    // impossible/pline/display_nhwindow block (`:638–655`) is compiled out
+    // in production (DEBUG undefined) — named omit, same return.
     if (sh < 0) return -1;
     const sx = pos.x;
     const sy = pos.y;
 
+    // C `:658–660`: insurance — relocate the shk-spot squatter before makemon.
     const blocker = m_at(sx, sy);
     if (blocker) await rloc(blocker, RLOC_NOMSG);
 
+    // C `:663–664`: initialize the shopkeeper monster structure; fail → -1.
     const shk = makemon(mons(PM_SHOPKEEPER), sx, sy, MM_ESHK);
     if (!shk) return -1;
 
+    // C `:665`: makemon(...,MM_ESHK) allocates eshk (`makemon.js:3300`);
+    // `|| neweshk` is dead insurance, never fires on success.
     const eshkp = ESHK(shk) || neweshk(shk);
+    // C `:666–668`: isshk=mpeaceful=1; set_malign; msleeping=0;
+    // mon_learns_traps(ALL_TRAPS) — we know all the traps already.
     shk.isshk = 1;
     shk.mpeaceful = 1;
+    set_malign(shk);
     shk.msleeping = 0;
-    shk.mtrapseen = ~0; // ALL_TRAPS
+    mon_learns_traps(shk, ALL_TRAPS);
+    // C `:669`: shoproom = (schar)((sroom - rooms) + ROOMOFFSET).
     eshkp.shoproom = game.level.rooms.indexOf(sroom) + ROOMOFFSET;
+    // C `:670–671`: resident + shoptype = room type.
     sroom.resident = shk;
     eshkp.shoptype = sroom.rtype;
+    // C `:672`: assign_level(&eshkp->shoplevel, &u.uz) — dungeon.c:1978
+    // equivalent-to-dest=source; inline copy (no single live export —
+    // dig/do/dungeon/potion each carry a file-local clone).
     eshkp.shoplevel = {
         dnum: game.u?.uz?.dnum | 0,
         dlevel: game.u?.uz?.dlevel | 0,
     };
+    // C `:673–675`: shd = doors[sh]; shk.x/y = birth spot.
     const door = game.level.doors[sh];
     eshkp.shd = { x: door?.x | 0, y: door?.y | 0 };
     eshkp.shk = { x: sx, y: sy };
+    // C `:676–680`: zeroed books; bill_p NULL; customer empty.
     eshkp.robbed = eshkp.credit = eshkp.debit = eshkp.loan = 0;
     eshkp.following = eshkp.surcharge = eshkp.dismiss_kops = false;
     eshkp.billct = eshkp.visitct = 0;
@@ -671,14 +690,20 @@ async function shkinit(shp, sroom) {
     eshkp.bill_p = null;
     eshkp.customer = '';
 
+    // C `:681`: initial capital.
     mkmonmoney(shk, 1000 + 30 * rnd(100));
+    // C `:682–683`: ring shops get a touchstone.
     if (shp.shknms === shkrings) mongets(shk, TOUCHSTONE);
+    // C `:684–687`: tool/wand (plus lucky ring/general) shops get charging.
     if (shp.shknms === shktools || shp.shknms === shkwands
         || (shp.shknms === shkrings && rn2(2))
         || (shp.shknms === shkgeneral && rn2(5))) {
         mongets(shk, SCR_CHARGING);
     }
+    // C `:688`: name the keeper.
     nameshk(shk, shp.shknms);
+
+    // C `:690`: return the door index.
     return sh;
 }
 

@@ -4,7 +4,8 @@
 // delete_levelfile (JSON analogue; no fs unlink);
 // clearlocks (JSON analogue; no POSIX signal).
 // fqname / init_nhfile / new_nhfile / free_nhfile / set_levelfile_name /
-// open_levelfile (JSON analogue; VFS stash probe, no POSIX open).
+// open_levelfile / create_levelfile (JSON analogue; VFS stash probe,
+// no POSIX open/creat).
 // Callers: allmain.c newgame after u_init_skills_discoveries (D-1192);
 // spell.c study_book SPE_NOVEL; sounds.c Death_quote live (D-1653).
 // Rule #2: VFS only — no fs / getenv / HOME fopen. Tribute text is
@@ -24,7 +25,7 @@ import { NUM_OBJECTS } from './generated/objects_data.js';
 import { NROFARTIFACTS } from './generated/artifacts_data.js';
 import {
     BUFSZ, MIGR_NOBREAK, MIGR_NOSCATTER, MIGR_WITH_HERO, WIZKIT_MAX,
-    LFILE_EXISTS, NHF_LEVELFILE, READING, COUNTING, LEVELPREFIX,
+    LFILE_EXISTS, NHF_LEVELFILE, READING, WRITING, COUNTING, LEVELPREFIX,
     PREFIX_COUNT, FQN_MAX_FILENAME, SF_UPTODATE, SF_OUTDATED,
     SF_CRITICAL_BYTE_COUNT_MISMATCH, SF_DM_IL32LLP64_ON_ILP32LL64,
     SF_DM_I32LP64_ON_ILP32LL64, SF_DM_ILP32LL64_ON_I32LP64,
@@ -36,7 +37,7 @@ import {
 import { datamodel, what_datamodel_is_this } from './version.js';
 import { rn2 } from './rng.js';
 import { mungspaces } from './getline.js';
-import { pline, putmsghistory, You_feel, impossible, flush_topl_more } from './display.js';
+import { pline, putmsghistory, You_feel, impossible, flush_topl_more, raw_printf } from './display.js';
 import { show_nhw_menu_text } from './pager.js';
 import { TRIBUTE_TEXT } from './generated/tribute_data.js';
 import { maxledgerno } from './dungeon.js';
@@ -475,7 +476,8 @@ export function clearlocks() {
 /* ---------- BEGIN LEVEL FILE HANDLING ----------- */
 /* C ref: files.c fqname `:354–393` / init_nhfile / new_nhfile `:496–504` /
  * free_nhfile / viable_nhfile `:549–581` / set_levelfile_name `:606–618` /
- * open_levelfile `:673–716`. Rule #2 throughout: no POSIX open/unlink —
+ * create_levelfile `:621–670` / open_levelfile `:673–716`.
+ * Rule #2 throughout: no POSIX open/unlink —
  * the "file" is the `game.level_info[lev]` stash slot, openable exactly
  * when `LFILE_EXISTS` is set. D-2472. */
 
@@ -731,6 +733,69 @@ export function open_levelfile(lev, errbuf) {
     return nhfp;
 }
 
+/**
+ * C ref: files.c create_levelfile `:621–670` — create the level file for
+ * writing into an NHFILE handle, or NULL with `errbuf` set. Write side of
+ * the level-file pair (`open_levelfile` `:673–716` above is the read side).
+ * JSON analogue (Contest Rule #2 — no POSIX creat): the "file" is the
+ * `game.level_info[lev]` stash slot, creatable exactly when the slot can
+ * be ensured (the VFS has no quota/dir-writable failure, so the
+ * creat-failure `Sprintf` arm is unreachable-but-present in C order).
+ * The handle keeps C's field values in C order; `fd` carries the level
+ * number as an opaque success token (same convention as `open_levelfile`
+ * above — C callers only bufon/savelev/close it in the still-unported
+ * `currentlevel_rewrite` / `restlevelfile` / `savestateinlock` wrappers,
+ * named in c-js-map/data.md).
+ * `errbuf` is the C `char errbuf[]`: a `{ s }` holder or null
+ * (`open_levelfile` convention above; all three C callers pass `whynot`,
+ * and C still guards `if (errbuf)`).
+ * Named omits: MICRO/WIN32 O_TRUNC open, MACOS9 maccreat, MSDOS/WIN32
+ * setmode (platform); FCMASK mode bits + POSIX errno (no POSIX creat
+ * under VFS — the message uses ENOENT like `open_levelfile`).
+ * @param {number} lev
+ * @param {{ s: string }|null} [errbuf]
+ * @returns {object|null}
+ */
+export function create_levelfile(lev, errbuf) {
+    const lv = lev | 0;
+    if (errbuf) errbuf.s = ''; /* C `:627` *errbuf = '\0' */
+    /* C `:628` set_levelfile_name(gl.lock, lev) — mutates gl.lock; JS stores back. */
+    game.lock = set_levelfile_name(game.lock ?? '', lv);
+    /* C `:629` fq_lock = fqname(gl.lock, LEVELPREFIX, 0) — kept in C order
+       for the prefix/impossible arms; the VFS probe below is positional
+       (stash slot), so fq_lock feeds no JS branch. */
+    const fq_lock = fqname(game.lock, LEVELPREFIX, 0);
+    void fq_lock;
+    const nhfp = new_nhfile(); /* C `:631` */
+    if (nhfp) {
+        nhfp.ftype = NHF_LEVELFILE; /* C `:633` */
+        nhfp.mode = WRITING; /* C `:634` */
+        nhfp.structlevel = true; /* C `:635` do set this TRUE for levelfiles */
+        nhfp.fieldlevel = false; /* C `:636` don't set this TRUE for levelfiles */
+        nhfp.addinfo = false; /* C `:637` */
+        nhfp.style.deflt = false; /* C `:638` */
+        nhfp.style.binary = true; /* C `:639` */
+        nhfp.fnidx = FNIDX_HISTORICAL; /* C `:640` historical */
+        nhfp.fd = -1; /* C `:641` */
+        nhfp.fpdef = null; /* C `:642` */
+        /* C `:643–655` MICRO/WIN32 open(O_WRONLY|O_CREAT|O_TRUNC|O_BINARY)
+           vs MACOS9 maccreat vs creat(fq_lock, FCMASK) — Rule #2
+           stash-slot analogue: ensuring the slot always succeeds (no
+           quota or dir-writable failure in VFS), so fd takes the level
+           token exactly like `open_levelfile` above. */
+        if (!game.level_info) game.level_info = [];
+        if (!game.level_info[lv]) game.level_info[lv] = { flags: 0 };
+        nhfp.fd = lv;
+        /* C `:657–662` */
+        if (nhfp.fd >= 0)
+            game.level_info[lv].flags = (game.level_info[lv].flags | 0) | LFILE_EXISTS;
+        else if (errbuf) /* failure explanation — unreachable under VFS */
+            errbuf.s = `Cannot create file "${game.lock}" for level ${lv} (errno ${ENOENT}).`;
+        /* C `:663–667` MSDOS/WIN32 setmode(fd, O_BINARY) — named omit (platform). */
+    }
+    return viable_nhfile(nhfp); /* C `:668–669` */
+}
+
 // ---------------------------------------------------------------------------
 // C ref: version.c savefile-validation family — check_version `:374–423`,
 // compare_critical_bytes `:763–822`, uptodate `:713–746`, validate
@@ -911,9 +976,10 @@ export async function check_version(version_data, filename, complain, utdflags) 
  * C `int *idx_1st_mismatch` → mutable `{ value }` holder or null.
  * Named omits: `:771` Sfi_char count feed and `:779–781` Sfi_uchar
  * cscbuf fill (no binary NHFILE read layer in JS — JSON VFS; Sfi_ arms
- * live as payload analogues at use sites, cf. getbones bones.js:484);
- * `:774–777` raw_printf (no pre-window stdout channel in dual-runtime
- * ESM — display.js:7749 raw_print/raw_printf omit).
+ * live as payload analogues at use sites, cf. getbones bones.js:484).
+ * `:774–777` raw_printf is live (display.js export, D-2573); only the
+ * pre-window text sink stays omit (no stdout channel in dual-runtime
+ * ESM — display.js:7749 vpline raw-path precedent).
  * @param {object} nhfp JS NHFILE handle (unread — feed omitted, cf. void)
  * @param {{ value: number }|null} idx_1st_mismatch
  * @param {number} utdflags
@@ -926,7 +992,14 @@ export function compare_critical_bytes(nhfp, idx_1st_mismatch, utdflags) {
     const quietly = (((utdflags | 0) & UTD_QUIETLY) !== 0); // `:768`
     let file_csc_count = 0; // `:771` — Sfi_char feed (named omit above)
     if (file_csc_count > cnt) { // `:772`
-        return SF_CRITICAL_BYTE_COUNT_MISMATCH; // `:778` (raw_printf omit)
+        // C `:774–777` — !quietly raw_printf (display.js export; the
+        // pre-window text sink stays a named omit; the Sfi_char feed omit
+        // above keeps file_csc_count 0 so this arm stays dead).
+        if (!quietly) {
+            raw_printf('critical byte counts do not match, file:%d, critical_sizes:%d.',
+                file_csc_count, CRITICAL_SIZES.length);
+        }
+        return SF_CRITICAL_BYTE_COUNT_MISMATCH; // `:778`
     }
     // `:779–781` — Sfi_uchar cscbuf fill loop (named omit above)
     for (let i = 1; i < cnt; i++) { // `:782`
@@ -965,8 +1038,8 @@ export function compare_critical_bytes(nhfp, idx_1st_mismatch, utdflags) {
  * read, check_version gate, in C order. The one C caller is validate
  * `:854` (ported below).
  * Named omits: `:725` Sfi_char indicate-format feed (indicator is
- * write-never-read in C); `:730–732` raw_printf mismatch message (same
- * omit as compare); `:735` Sfi_version_info (sfbase.c:348 sfiprocs/fnidx
+ * write-never-read in C); `:730–732` raw_printf mismatch message is live
+ * (display.js export, D-2573); `:735` Sfi_version_info (sfbase.c:348 sfiprocs/fnidx
  * binary dispatch — no JS home); `:740` wait_synch (winprocs.h:140 →
  * tty_wait_synch, no live JS port).
  * @param {object} nhfp JS NHFILE handle
@@ -988,8 +1061,11 @@ export async function uptodate(nhfp, name, utdflags) {
                                            utdflags | 0)) !== SF_UPTODATE) {
         if (sfstatus > 0 && idx_holder.value) { // `:728`
             if (!quietly) { // `:729`
-                // raw_printf omit (above): "comparison of critical bytes
-                // mismatched at %d (%s)." ucsize/nm of idx_holder.value
+                // C `:730–732` — raw_printf (display.js export; the
+                // pre-window text sink stays a named omit).
+                raw_printf('comparison of critical bytes mismatched at %d (%s).',
+                    CRITICAL_SIZES[idx_holder.value].ucsize,
+                    CRITICAL_SIZES[idx_holder.value].nm);
             }
         }
     }

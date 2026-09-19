@@ -512,6 +512,20 @@ export async function wiz_where() {
 }
 
 /**
+ * C ref: wizcmds.c wiz_rumor_check — #wizrumorcheck → rumor_check().
+ * Wizard gate mirrors the sibling wiz_* ports (C gates WIZMODECMD dispatch).
+ */
+export async function wiz_rumor_check() {
+    if (!(game.flags?.debug || game.flags?.wizard)) {
+        await pline("Unavailable command 'wizrumorcheck'.");
+        return ECMD_OK;
+    }
+    const { rumor_check } = await import('./rumors.js');
+    await rumor_check();
+    return ECMD_OK;
+}
+
+/**
  * C ref: wizcmds.c wiz_identify — #wizidentify / ^I.
  * Sets iflags.override_ID then display_inventory (wizid Debug Identify menu).
  * Named omissions: unavailcmd ecname_from_fn wording (generic Unavailable).

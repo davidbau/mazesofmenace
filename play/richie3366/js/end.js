@@ -7,7 +7,7 @@ import { game } from './gstate.js';
 // function decl in the shared SCC; call-time use only (no TDZ read).
 import { carrying } from './hack.js';
 import { rn2, d } from './rng.js';
-import { depth, strstri } from './hacklib.js';
+import { deepest_lev_reached, depth, strstri } from './hacklib.js';
 import {
     pline, flush_topl_more, bot, You_feel, clear_nhwindow_message,
     canspotmon, Hallucination, curs_on_u, newsym,
@@ -437,22 +437,7 @@ function money_cnt(invent) {
     return sum;
 }
 
-/**
- * C ref: dungeon.c deepest_lev_reached — max depth() over dunlev_ureached.
- * Quest exclusion (noquest) deferred — score path uses FALSE.
- */
-function deepest_lev_reached(noquest) {
-    let ret = 0;
-    const dungeons = game.dungeons || [];
-    for (let i = 0; i < dungeons.length; i++) {
-        if (noquest && i === (game.quest_dnum | 0)) continue;
-        const dlevel = dungeons[i]?.dunlev_ureached | 0;
-        if (!dlevel) continue;
-        const d = depth({ dnum: i, dlevel });
-        if (d > ret) ret = d;
-    }
-    return ret;
-}
+/* deepest_lev_reached: canonical import from hacklib.js (dungeon.c:1338–1371). */
 
 /**
  * C ref: end.c should_query_disclose_option.

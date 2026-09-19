@@ -3964,7 +3964,7 @@ function Hero_playnotes_bell(_instr, _notes, _vol) {}
  * around mm; optional corpse revive then makemon; graveyard flag.
  * Named omit: spell.c caller (same helper); revive visual polish.
  */
-async function mkundead(mm, revive_corpses, mm_flags) {
+export async function mkundead(mm, revive_corpses, mm_flags) {
     let cnt = Math.trunc(((level_difficulty(game.u?.uz) || 1) + 1) / 10) + rnd(5);
     while (cnt--) {
         const mdat = morguemon();

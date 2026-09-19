@@ -51,7 +51,7 @@ import { near_capacity, useup, useupall, hold_another_object, Blind, observe_obj
 import { PM_BARBARIAN, PM_MONK, PM_KNIGHT, PM_SAMURAI, PM_ARCHEOLOGIST, PM_WIZARD, PM_HUMAN, PM_HEALER, PM_ROGUE } from './generated/monsters_data.js';
 import {
     find_mac, get_mattk, make_corpse, monstone, mhitm_knockback, monkilled, mondead,
-    troll_baned, mhitm_ad_poly, mhitm_ad_slee, mhitm_ad_heal, mhitm_ad_blnd, mhitm_ad_ston, mhitm_ad_elec, could_seduce, failed_grab, shade_miss,
+    troll_baned, mhitm_ad_poly, mhitm_ad_slee, mhitm_ad_heal, mhitm_ad_blnd, mhitm_ad_ston, mhitm_ad_elec, mhitm_ad_sedu, could_seduce, failed_grab, shade_miss,
     shade_aware, paralyze_monst,
     mhitm_mgc_atk_negated, resists_poison_mm, erode_armor,
     AT_NONE, AT_WEAP, AT_KICK, AT_CLAW, AT_SPIT, AT_HUGS,
@@ -2085,7 +2085,7 @@ async function theft_petrifies(otmp) {
  * everything, else one item. Named: none new (theft_petrifies above is
  * the file's other staticfn).
  */
-async function steal_it(mdef, mattk) {
+export async function steal_it(mdef, mattk) {
     const u = game.u || {};
     let otmp = mdef?.minvent || null;
     if (!otmp || ((otmp.oclass | 0) === COIN_CLASS && !otmp.nobj)) {
@@ -2329,11 +2329,11 @@ async function damageum_adtyping(mattk, mdef, mhm) {
            roll (those are the mhitu `:4577–4586` arm). */
         mhm.damage = 0;
     } else if (adtyp === AD_SEDU || adtyp === AD_SSEX || adtyp === AD_SITM) {
-        /* C ref: uhitm.c mhitm_ad_sedu `:4629–4632` (AD_SSEX via
-           mhitm_ad_ssex `:4754–4758`) — uhitm (hero as attacker) arm:
-           steal_it, leftover d() zeroed. */
-        await steal_it(mdef, mattk);
-        mhm.damage = 0;
+        /* C ref: uhitm.c mhitm_adtyping `:4799` → mhitm_ad_sedu `:4629–4632`
+           (AD_SSEX via mhitm_ad_ssex `:4754–4758`) — uhitm (hero as
+           attacker) arm: steal_it, leftover d() zeroed. Routed through the
+           shared mhitm.js arm (poly precedent). */
+        await mhitm_ad_sedu(game.youmonst, mattk, mdef, mhm);
     } else if (adtyp === AD_SGLD) {
         await damageum_ad_sgld(mdef, mhm);
     } else if (adtyp === AD_CURS) {

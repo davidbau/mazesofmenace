@@ -652,7 +652,7 @@ export async function resurrect() {
             if (!cand.iswiz || mon_has_amulet(cand)) continue;
             let elapsed = (game.moves | 0) - (cand.mlstmv | 0);
             if (!(elapsed > 0)) continue;
-            mon_catchup_elapsed_time(cand, elapsed);
+            await mon_catchup_elapsed_time(cand, elapsed);
             if (elapsed >= LARGEST_INT) elapsed = LARGEST_INT - 1;
             elapsed = Math.trunc(elapsed / 50);
             if (cand.msleeping && rn2(elapsed + 1)) cand.msleeping = 0;

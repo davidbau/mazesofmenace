@@ -271,7 +271,7 @@ import {
     killed, xkilled, flash_hits_mon, m_is_steadfast, that_is_a_mimic,
     disguised_as_mon, disguised_as_non_mon,
 } from './uhitm.js';
-import { mon_nam, Monnam, noit_Monnam, christen_monst, hliquid, Hallucination, rndmonnam, free_oname } from './do_name.js';
+import { mon_nam, Monnam, a_monnam, noit_Monnam, christen_monst, hliquid, Hallucination, rndmonnam, free_oname } from './do_name.js';
 import { rnd_hallublast } from './mthrowu.js';
 import { finish_losehp_done, done } from './end.js';
 import {
@@ -347,7 +347,7 @@ import {
     TELEPAT, INTRINSIC, FAST, BOLT_LIM,
     LEFT_RING, RIGHT_RING,
     M_AP_TYPE, M_AP_NOTHING, M_AP_MONSTER, M_AP_OBJECT, M_AP_FURNITURE,
-    NON_PM, ismnum,
+    NON_PM, ismnum, G_GENOD,
     MIM_REVEAL, MIM_OMIT_WAIT, ANIMATE_SPELL,
     def_warnsyms, S_flashbeam,
     W_RING, W_ARMG, W_ARMH, W_ARMOR, W_SADDLE, W_ART, W_ARTI,
@@ -491,6 +491,15 @@ const PM_HEALER = monsterNames.indexOf('PM_HEALER');
 const PM_MONK = monsterNames.indexOf('PM_MONK');
 const PM_STONE_GOLEM = monsterNames.indexOf('PM_STONE_GOLEM');
 const PM_FLESH_GOLEM = monsterNames.indexOf('PM_FLESH_GOLEM');
+const PM_IRON_GOLEM = monsterNames.indexOf('PM_IRON_GOLEM');
+const PM_WOOD_GOLEM = monsterNames.indexOf('PM_WOOD_GOLEM');
+const PM_LEATHER_GOLEM = monsterNames.indexOf('PM_LEATHER_GOLEM');
+const PM_ROPE_GOLEM = monsterNames.indexOf('PM_ROPE_GOLEM');
+const PM_SKELETON = monsterNames.indexOf('PM_SKELETON');
+const PM_GOLD_GOLEM = monsterNames.indexOf('PM_GOLD_GOLEM');
+const PM_GLASS_GOLEM = monsterNames.indexOf('PM_GLASS_GOLEM');
+const PM_PAPER_GOLEM = monsterNames.indexOf('PM_PAPER_GOLEM');
+const PM_STRAW_GOLEM = monsterNames.indexOf('PM_STRAW_GOLEM');
 const PM_CROCODILE = monsterNames.indexOf('PM_CROCODILE');
 const PM_DEATH = monsterNames.indexOf('PM_DEATH');
 const PM_PESTILENCE = monsterNames.indexOf('PM_PESTILENCE');
@@ -500,6 +509,21 @@ const NC_SHOW_MSG = 0x01;
 /* C materials.h GEMSTONE=20 MINERAL=21 — stone_to_flesh_obj. */
 const MAT_GEMSTONE = 20;
 const MAT_MINERAL = 21;
+/* C objclass.h:14–35 material enum — create_polymon switch. */
+const MAT_FLESH = 4;
+const MAT_PAPER = 5;
+const MAT_CLOTH = 6;
+const MAT_LEATHER = 7;
+const MAT_WOOD = 8;
+const MAT_BONE = 9;
+const MAT_IRON = 11;
+const MAT_METAL = 12;
+const MAT_COPPER = 13;
+const MAT_SILVER = 14;
+const MAT_GOLD = 15;
+const MAT_PLATINUM = 16;
+const MAT_MITHRIL = 17;
+const MAT_GLASS = 19;
 /* C defsym.h PCHAR — stone_furniture_type mimic mappearance. */
 const S_VWALL = 1;
 const S_TRWALL = 11;
@@ -5515,6 +5539,102 @@ async function bhito(obj, otmp) {
 }
 
 /**
+ * C ref: zap.c create_polymon :1546–1633 (staticfn, so file-local like
+ * bhit_skiprange; only caller bhitpile :2485). Polymorph aftermath: skip a
+ * bypassed pile head, refuse a lone single object, map the zapped material
+ * to a golem (rn2(2) lithic fork; straw default), skip genocided mdat
+ * (makemon null → random monster), consume the pile toward the golem's
+ * cwt via polyuse, and pline the visible meld/arise.
+ */
+async function create_polymon(obj, okind) {
+    okind |= 0;
+    let mdat = null;
+    let pm_index;
+    let material;
+
+    /* C :1553–1561 — bypassed objects sit as a consecutive group at the
+     * pile head, which the !nexthere check below cannot see. */
+    if (game.context?.bypasses) {
+        while (obj && obj.bypass) obj = obj.nexthere;
+    }
+
+    /* C :1564–1565 — no golems from a single object. */
+    if (!obj || (!obj.nexthere && (obj.quan | 0) === 1)) return;
+
+    /* C :1568–1620 — material→golem table; some choices are arbitrary. */
+    switch (okind) {
+    case MAT_IRON:
+    case MAT_METAL:
+    case MAT_MITHRIL:
+        pm_index = PM_IRON_GOLEM;
+        material = 'metal ';
+        break;
+    case MAT_COPPER:
+    case MAT_SILVER:
+    case MAT_PLATINUM:
+    case MAT_GEMSTONE:
+    case MAT_MINERAL:
+        pm_index = rn2(2) ? PM_STONE_GOLEM : PM_CLAY_GOLEM;
+        material = 'lithic ';
+        break;
+    case 0:
+    case MAT_FLESH:
+        /* C: there is no flesh type, but all food is type 0. */
+        pm_index = PM_FLESH_GOLEM;
+        material = 'organic ';
+        break;
+    case MAT_WOOD:
+        pm_index = PM_WOOD_GOLEM;
+        material = 'wood ';
+        break;
+    case MAT_LEATHER:
+        pm_index = PM_LEATHER_GOLEM;
+        material = 'leather ';
+        break;
+    case MAT_CLOTH:
+        pm_index = PM_ROPE_GOLEM;
+        material = 'cloth ';
+        break;
+    case MAT_BONE:
+        pm_index = PM_SKELETON; /* nearest thing to "bone golem" */
+        material = 'bony ';
+        break;
+    case MAT_GOLD:
+        pm_index = PM_GOLD_GOLEM;
+        material = 'gold ';
+        break;
+    case MAT_GLASS:
+        pm_index = PM_GLASS_GOLEM;
+        material = 'glassy ';
+        break;
+    case MAT_PAPER:
+        pm_index = PM_PAPER_GOLEM;
+        material = 'paper ';
+        break;
+    default:
+        /* C: if all else fails... */
+        pm_index = PM_STRAW_GOLEM;
+        material = '';
+        break;
+    }
+
+    /* C :1622–1623 — genocided golem: random monster instead. */
+    if (((game.mvitals?.[pm_index]?.mvflags ?? 0) & G_GENOD) === 0)
+        mdat = mons(pm_index);
+
+    const mtmp = makemon(mdat, obj.ox | 0, obj.oy | 0, MM_NOMSG);
+    /* C :1627 — consume toward the golem's weight even when genocided. */
+    await polyuse(obj, okind, mons(pm_index)?.cwt | 0);
+
+    /* C :1628–1632 — visible meld/arise. */
+    if (mtmp && cansee(mtmp.mx | 0, mtmp.my | 0)) {
+        await pline(
+            `Some ${material}objects meld, and ${a_monnam(mtmp)} arises from the pile!`,
+        );
+    }
+}
+
+/**
  * C ref: zap.c bhitpile :2426–2500 — walk floor pile with fhito.
  * Head (:2436–2476) live: hidingunder/first init, WAN_STRIKING /
  * SPE_FORCE_BOLT STATUE_TRAP pre-activate + learnwand (the default
@@ -5522,8 +5642,8 @@ async function bhito(obj, otmp) {
  * otherwise operate on next_obj below the current statue), first=FALSE
  * when the pile head changed, hidingunder up/down skips in the walk,
  * maybe_unhide_at tail.
- * Named omit (tails, own rows): create_polymon after poly_zapped,
- * recreate_pile restack, fill_pit.
+ * Named omit (tails, own rows): recreate_pile restack, fill_pit
+ * (`create_polymon` live above).
  */
 export async function bhitpile(wand, fhito, tx, ty, zz) {
     let hitanything = 0;
@@ -5573,6 +5693,9 @@ export async function bhitpile(wand, fhito, tx, ty, zz) {
         hitanything += (await fhito(otmp, wand)) | 0;
         otmp = next_obj;
     }
+    /* C :2484–2485 — polymorph aftermath: a golem arises from the pile. */
+    if ((game._poly_zapped | 0) >= 0)
+        await create_polymon(objects_at(tx, ty), game._poly_zapped);
     /* C :2495–2497 — pile might have been destroyed or dispersed. */
     if (hidingunder) await maybe_unhide_at(tx, ty);
     return hitanything;

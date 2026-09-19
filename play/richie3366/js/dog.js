@@ -8,6 +8,7 @@ import { deliver_obj_to_mon } from './dokick.js';
 import {
     mons, NON_PM, is_human, is_covetous, is_demon,
     regenerates, M2_STALK, is_domestic, haseyes, humanoid,
+    carnivorous, herbivorous,
 } from './monsters.js';
 import {
     MM_EDOG, MM_IGNOREWATER, MM_NOMSG, MM_FEMALE, MM_MALE, NO_MINVENT,
@@ -39,7 +40,7 @@ import { christen_monst, Monnam, mon_pmname, s_suffix } from './do_name.js';
 import {
     monnear, m_at, see_monster_closeup, minliquid, restore_cham,
     wake_nearto, discard_minvent, mdrop_special_objs,
-    mon_leaving_level, m_into_limbo,
+    mon_leaving_level, m_into_limbo, healmon,
 } from './mon.js';
 import { mon_offmap } from './monmove.js';
 import {
@@ -1029,7 +1030,7 @@ async function mon_arrive_after_you(mtmp, when = After_you) {
     let wander = 0;
     if ((mtmp.mlstmv | 0) < moves - 1) {
         const nmv = (moves - 1) - (mtmp.mlstmv | 0);
-        mon_catchup_elapsed_time(mtmp, nmv);
+        await mon_catchup_elapsed_time(mtmp, nmv);
         wander = Math.min(nmv, 8) | 0;
     }
 
@@ -1226,17 +1227,36 @@ export async function losedogs() {
 const LARGEST_INT = 2147483647;
 
 /**
- * C ref: dog.c mon_catchup_elapsed_time — heal/status for time spent elsewhere.
- * Named omissions: full edog hungry→wild, leash impossible, regenerates path
- * polish; finish_meating mimic AP reset.
+ * C ref: dog.c mon_catchup_elapsed_time `:626–724` — heal/status for time
+ * spent off-level, in C order. Devel-only nmv guards (`:632–640`, compiled
+ * out in release): nmv < 0 → panic (loud throw per the lev_json.js
+ * precedent — `panic` itself is an unported own-row callee, end.js:978);
+ * nmv == 0 → impossible (awaited, display.js async), imv stays 0.
+ * mblinded/mfrozen/mfleetim go to 1 for the final movemon() decrement
+ * (`:645–659`); trapped/conf/stun rn2(imv+1) recovery (`:662–667`);
+ * meating → finish_meating (`:670–675`, dogmove.js sync) else decrement;
+ * mspec_used (`:676–679`); tameness wilder (`:682–690`, C-exact
+ * rn2(wilder) — JS rn2(0) returns 0); hungry-pet wild (`:694–702`: tame
+ * non-minion carni/herbi, moves > hungrytime+500 && mhp<3 or moves >
+ * hungrytime+750); leashed → impossible + m_unleash(FALSE) (`:704–709`,
+ * apply.js async); heal via live healmon (`:712–714`, mon.js sync,
+ * non-regen imv/20); set_mon_lastmove tail (`:715`, mon.c — mlstmv =
+ * moves, the update_mlstmv idiom). Async for impossible/m_unleash; all
+ * three C callers await. Named: none — every arm and callee live.
  */
-export function mon_catchup_elapsed_time(mtmp, nmv) {
+export async function mon_catchup_elapsed_time(mtmp, nmv) {
     if (!mtmp) return;
-    let imv = 0;
-    if (nmv >= LARGEST_INT) imv = LARGEST_INT - 1;
-    else imv = nmv | 0;
-    if (imv < 0) imv = 0;
+    let imv = 0; /* avoid zillions of casts and lint warnings */
+    /* C `:632–640` devel guards */
+    if (nmv < 0) throw new Error('mon_catchup_elapsed_time: catchup from future time?');
+    else if (nmv === 0) await impossible('catchup from now?');
+    if (nmv >= LARGEST_INT) /* paranoia */
+        imv = LARGEST_INT - 1;
+    else
+        imv = nmv | 0;
 
+    /* might stop being afraid, blind or frozen */
+    /* set to 1 and allow final decrement in movemon() */
     if (mtmp.mblinded) {
         if (imv >= (mtmp.mblinded | 0)) mtmp.mblinded = 1;
         else mtmp.mblinded = (mtmp.mblinded | 0) - imv;
@@ -1250,34 +1270,50 @@ export function mon_catchup_elapsed_time(mtmp, nmv) {
         else mtmp.mfleetim = (mtmp.mfleetim | 0) - imv;
     }
 
+    /* might recover from temporary trouble */
     if (mtmp.mtrapped && rn2(imv + 1) > 40 / 2) mtmp.mtrapped = 0;
     if (mtmp.mconf && rn2(imv + 1) > 50 / 2) mtmp.mconf = 0;
     if (mtmp.mstun && rn2(imv + 1) > 10 / 2) mtmp.mstun = 0;
 
+    /* might finish eating or be able to use special ability again */
     if (mtmp.meating) {
-        if (imv > (mtmp.meating | 0)) mtmp.meating = 0;
+        if (imv > (mtmp.meating | 0)) finish_meating(mtmp);
         else mtmp.meating = (mtmp.meating | 0) - imv;
     }
     if (imv > (mtmp.mspec_used | 0)) mtmp.mspec_used = 0;
     else mtmp.mspec_used = (mtmp.mspec_used | 0) - imv;
 
+    /* reduce tameness for every 150 moves you are separated */
     if (mtmp.mtame) {
         const wilder = Math.trunc((imv + 75) / 150);
-        if ((mtmp.mtame | 0) > wilder) mtmp.mtame = (mtmp.mtame | 0) - wilder;
-        else if ((mtmp.mtame | 0) > rn2(wilder || 1) && wilder > 0) mtmp.mtame = 0;
-        else if (wilder > 0) {
-            mtmp.mtame = 0;
-            mtmp.mpeaceful = 0;
-        }
+        if ((mtmp.mtame | 0) > wilder) mtmp.mtame = (mtmp.mtame | 0) - wilder; /* less tame */
+        else if ((mtmp.mtame | 0) > rn2(wilder)) mtmp.mtame = 0; /* untame */
+        else mtmp.mtame = mtmp.mpeaceful = 0; /* hostile! */
+    }
+    /* check to see if it would have died as a pet; if so, go wild instead
+     * of dying the next time we call dog_move()
+     */
+    if (mtmp.mtame && !mtmp.isminion
+        && (carnivorous(mtmp.data) || herbivorous(mtmp.data))) {
+        const hungrytime = EDOG(mtmp)?.hungrytime | 0;
+        const moves = game.moves | 0;
+        if ((moves > hungrytime + 500 && (mtmp.mhp | 0) < 3)
+            || moves > hungrytime + 750)
+            mtmp.mtame = mtmp.mpeaceful = 0;
     }
 
-    // C: healmon — recover lost HP; non-regen divides by 20
-    let heal = imv;
-    if (!regenerates(mtmp.data)) heal = Math.trunc(imv / 20);
-    const max = mtmp.mhpmax | 0;
-    if (max > 0) {
-        mtmp.mhp = Math.min(max, (mtmp.mhp | 0) + heal);
+    if (!mtmp.mtame && mtmp.mleashed) {
+        /* leashed monsters should always be with hero, consequently
+           never losing any time to be accounted for later */
+        await impossible('catching up for leashed monster?');
+        await m_unleash(mtmp, false);
     }
+
+    /* recover lost hit points */
+    if (!regenerates(mtmp.data)) imv = Math.trunc(imv / 20);
+    healmon(mtmp, imv, 0);
+
+    /* C `:715` set_mon_lastmove(mtmp) */
     mtmp.mlstmv = game.moves | 0;
 }
 

@@ -2673,7 +2673,7 @@ function objdescr_is(obj, descr) {
 }
 
 /** C util.h sgn — sign of n as -1/0/1. */
-function sgn(n) {
+export function sgn(n) {
     n |= 0;
     return n < 0 ? -1 : n > 0 ? 1 : 0;
 }

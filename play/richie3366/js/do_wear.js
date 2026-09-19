@@ -15,6 +15,7 @@ import { an, doname, the, xname, xprname, vtense, makeplural, makesingular, oten
 import { find_ac } from './u_init.js';
 import {
     A_STR, A_INT, A_WIS, A_CON, A_CHA, A_DEX, acurr, extremeattr, change_luck, Fast, Very_fast,
+    uchangealign,
 } from './attrib.js';
 import { nomul, unmul, stop_occupation, is_pool, is_lava } from './hack.js';
 import { retouch_object, set_artifact_intrinsic } from './artifact.js';
@@ -62,6 +63,7 @@ import {
     rightleftchars, RIGHT_HANDED,
     GETOBJ_EXCLUDE, GETOBJ_EXCLUDE_INACCESS, GETOBJ_DOWNPLAY, GETOBJ_SUGGEST,
     GETOBJ_NOFLAGS, Upolyd,
+    A_CURRENT, A_CG_HELM_OFF,
 } from './const.js';
 import { x_monnam, trycall, hcolor, hliquid } from './do_name.js';
 import { PM_CLERIC } from './generated/monsters_data.js';
@@ -750,14 +752,90 @@ export async function Armor_gone() {
     return 0;
 }
 
-/** C ref: do_wear.c Helmet_off — fedora luck; other magic helms deferred */
-export function Helmet_off() {
+/**
+ * C ref: do_wear.c Helmet_off `:518–564` — helm doff switch in C order.
+ * `:521` takeoff.mask clear precedes the switch (including the telepathy
+ * early return). FEDORA archaeologist luck `:524–527`; plain helms break
+ * `:528–533`; DUNCE_CAP botl `:534–536`; CORNUTHAUM CHA∓1 + botl unless
+ * cancelled_don `:537–542`; TELEPATHY/CAUTION setworn-then-see_monsters
+ * early return `:543–547` (skips the cancelled_don reset); BRILLIANCE
+ * adj_abon helm half `:3328–3335` inlined like Helmet_on (makeknown only
+ * when spe nonzero, botl always) unless cancelled_don `:548–551`;
+ * OPPOSITE_ALIGNMENT uchangealign (may drop/destroy uarmh) `:552–557`;
+ * default impossible `:558–559`; tail setworn + cancelled_don reset
+ * `:560–561`. Null helm keeps the old graceful clear (C dereferences uarmh).
+ * @returns {Promise<number>} 0
+ */
+export async function Helmet_off() {
     const u = game.u || {};
-    const helm = u.uarmh;
-    if (helm && helm.otyp === FEDORA && game.urole?.mnum === PM_ARCHEOLOGIST) {
-        change_luck(-1);
+    if (game.context?.takeoff) {
+        game.context.takeoff.mask =
+            (game.context.takeoff.mask | 0) & ~W_ARMH;
+    }
+    const helm = u.uarmh || null;
+    if (!helm) {
+        clear_worn(W_ARMH);
+        return 0;
+    }
+    switch (helm.otyp | 0) {
+    case FEDORA:
+        if (game.urole?.mnum === PM_ARCHEOLOGIST) {
+            change_luck(-1);
+        }
+        break;
+    case HELMET:
+    case DENTED_POT:
+    case ELVEN_LEATHER_HELM:
+    case DWARVISH_IRON_HELM:
+    case ORCISH_HELM:
+        break;
+    case DUNCE_CAP:
+        if (!game.flags) game.flags = {};
+        game.flags.botl = true;
+        break;
+    case CORNUTHAUM:
+        if (!game.context?.takeoff?.cancelled_don) {
+            if (!u.abon) u.abon = { a: [0, 0, 0, 0, 0, 0] };
+            u.abon.a[A_CHA] = (u.abon.a[A_CHA] || 0)
+                + ((game.urole?.mnum | 0) === PM_WIZARD ? -1 : 1);
+            if (!game.flags) game.flags = {};
+            game.flags.botl = true;
+        }
+        break;
+    case HELM_OF_TELEPATHY:
+    case HELM_OF_CAUTION:
+        /* C: ability must update (setworn) before see_monsters(); the
+           early return skips the cancelled_don reset below. */
+        clear_worn(W_ARMH);
+        see_monsters();
+        return 0;
+    case HELM_OF_BRILLIANCE:
+        if (!game.context?.takeoff?.cancelled_don) {
+            const delta = -(helm.spe | 0);
+            if (delta) {
+                makeknown(helm.otyp);
+                if (!u.abon) u.abon = { a: [0, 0, 0, 0, 0, 0] };
+                u.abon.a[A_INT] = (u.abon.a[A_INT] || 0) + delta;
+                u.abon.a[A_WIS] = (u.abon.a[A_WIS] || 0) + delta;
+            }
+            if (!game.flags) game.flags = {};
+            game.flags.botl = true;
+        }
+        break;
+    case HELM_OF_OPPOSITE_ALIGNMENT:
+        /* C: the alignment change can toggle off artifact properties —
+           uarmh may be dropped or destroyed; the tail clear is idempotent. */
+        await uchangealign(
+            u.ualignbase?.current ?? u.ualign?.type ?? 0, A_CG_HELM_OFF);
+        break;
+    default:
+        await impossible(`Unknown type of helmet (${helm.otyp | 0}).`);
+        break;
     }
     clear_worn(W_ARMH);
+    if (game.context?.takeoff) {
+        game.context.takeoff.cancelled_don = false;
+    }
     return 0;
 }
 
@@ -1429,7 +1507,7 @@ async function armoroff(otmp) {
     const u = game.u || {};
     if (otmp === u.uarm) await Armor_off();
     else if (otmp === u.uarmc) await Cloak_off();
-    else if (otmp === u.uarmh) Helmet_off();
+    else if (otmp === u.uarmh) await Helmet_off();
     else if (otmp === u.uarms) Shield_off();
     else if (otmp === u.uarmg) await Gloves_off();
     else if (otmp === u.uarmf) await Boots_off();
@@ -1911,7 +1989,7 @@ async function do_takeoff() {
         if (!(await cursed_blocks(otmp))) await Gloves_off();
     } else if (doff.what === WORN_HELMET) {
         otmp = u.uarmh;
-        if (!(await cursed_blocks(otmp))) Helmet_off();
+        if (!(await cursed_blocks(otmp))) await Helmet_off();
     } else if (doff.what === WORN_SHIELD) {
         otmp = u.uarms;
         if (!(await cursed_blocks(otmp))) Shield_off();
@@ -3558,7 +3636,7 @@ async function wornarm_destroyed(wornarm) {
     if (wornarm === u.uarmc) await Cloak_off();
     else if (wornarm === u.uarm) await Armor_off();
     else if (wornarm === u.uarmu) Shirt_off();
-    else if (wornarm === u.uarmh) Helmet_off();
+    else if (wornarm === u.uarmh) await Helmet_off();
     else if (wornarm === u.uarmg) await Gloves_off();
     else if (wornarm === u.uarmf) await Boots_off();
     else if (wornarm === u.uarms) Shield_off();

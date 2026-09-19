@@ -26,9 +26,10 @@ import {
     SPBOOK_CLASS,
     TOOL_CLASS,
     FOOD_CLASS,
+    VENOM_CLASS,
     is_poisonable,
 } from './objects.js';
-import { mksobj, mkobj, weight, curse, oc_merge_of, spot_stop_timers, set_corpsenm } from './mkobj.js';
+import { mksobj, mkobj, weight, curse, oc_merge_of, spot_stop_timers, set_corpsenm, rnd_class } from './mkobj.js';
 import { artifact_name, nartifact_exist, permapoisoned } from './artifact.js';
 import { is_quest_artifact } from './quest.js';
 import { oname, lookup_novel } from './do_name.js';
@@ -998,6 +999,101 @@ function readobjnam_preparse(d) {
 }
 
 /**
+ * C ref: objnam.c o_ranges[] `:3346–3365` — wishable subranges of objects
+ * (name → class + first..last type). Indices resolved once like
+ * ALT_SPELLINGS_RESOLVED above; C order kept.
+ */
+const O_RANGES = [
+    ['bag', TOOL_CLASS, 'SACK', 'BAG_OF_TRICKS'],
+    ['lamp', TOOL_CLASS, 'OIL_LAMP', 'MAGIC_LAMP'],
+    ['candle', TOOL_CLASS, 'TALLOW_CANDLE', 'WAX_CANDLE'],
+    ['horn', TOOL_CLASS, 'TOOLED_HORN', 'HORN_OF_PLENTY'],
+    ['shield', ARMOR_CLASS, 'SMALL_SHIELD', 'SHIELD_OF_REFLECTION'],
+    ['hat', ARMOR_CLASS, 'FEDORA', 'DUNCE_CAP'],
+    ['helm', ARMOR_CLASS, 'ELVEN_LEATHER_HELM', 'HELM_OF_TELEPATHY'],
+    ['gloves', ARMOR_CLASS, 'LEATHER_GLOVES', 'GAUNTLETS_OF_DEXTERITY'],
+    ['gauntlets', ARMOR_CLASS, 'LEATHER_GLOVES', 'GAUNTLETS_OF_DEXTERITY'],
+    ['boots', ARMOR_CLASS, 'LOW_BOOTS', 'LEVITATION_BOOTS'],
+    ['shoes', ARMOR_CLASS, 'LOW_BOOTS', 'IRON_SHOES'],
+    ['cloak', ARMOR_CLASS, 'MUMMY_WRAPPING', 'CLOAK_OF_DISPLACEMENT'],
+    ['shirt', ARMOR_CLASS, 'HAWAIIAN_SHIRT', 'T_SHIRT'],
+    ['dragon scales', ARMOR_CLASS, 'GRAY_DRAGON_SCALES', 'YELLOW_DRAGON_SCALES'],
+    ['dragon scale mail', ARMOR_CLASS, 'GRAY_DRAGON_SCALE_MAIL', 'YELLOW_DRAGON_SCALE_MAIL'],
+    ['sword', WEAPON_CLASS, 'SHORT_SWORD', 'KATANA'],
+    ['venom', VENOM_CLASS, 'BLINDING_VENOM', 'ACID_VENOM'],
+    ['gray stone', GEM_CLASS, 'LUCKSTONE', 'FLINT'],
+    ['grey stone', GEM_CLASS, 'LUCKSTONE', 'FLINT'],
+].map(([name, oclass, first, last]) => [name, oclass, objectNames.indexOf(first), objectNames.indexOf(last)]);
+// C ref: objclass.h `:181` + mon.c `:659` — glass gems are contiguous,
+// 9 kinds (mhitm.js breakage uses the same bounds).
+const FIRST_GLASS_GEM = objectNames.indexOf('WORTHLESS_WHITE_GLASS');
+const LAST_GLASS_GEM = objectNames.indexOf('WORTHLESS_VIOLET_GLASS');
+const NUM_GLASS_GEMS = LAST_GLASS_GEM - FIRST_GLASS_GEM + 1;
+
+/**
+ * C ref: objnam.c readobjnam_postparse2 `:4666–4724` (staticfn; sole C
+ * caller is readobjnam `retry:` `:4947–4955`). Return codes mirror C:
+ * 0 fall through, 1 goto srch, 2 goto typfnd, 3 return otmp
+ * (the switch's 4/5 arms are unreachable from this body).
+ * d.p is eos(d.bp) at entry (postparse1 `:4488`), so the BSTRCMPI
+ * checks below are plain suffix matches on d.bp.
+ */
+export function readobjnam_postparse2(d) {
+    // C `:4671–4675` — o_ranges exact match (grey-stone arms sit here so
+    // they win before the general " stone" strip below).
+    for (let i = 0; i < O_RANGES.length; i++) {
+        if (String(d.bp || '').toLowerCase() === O_RANGES[i][0]) { // C: strcmpi
+            d.typ = rnd_class(O_RANGES[i][2], O_RANGES[i][3]); // C: rnd_class
+            return 2; // C: goto typfnd
+        }
+    }
+
+    // C `:4677–4683` — trailing " stone" / " gem" → GEM_CLASS + srch.
+    if (bstrcmpi_end(d.bp, ' stone') || bstrcmpi_end(d.bp, ' gem')) { // C: BSTRCMPI
+        // C `:4680` — cut 4 (" gem") else 6 (" stone").
+        const bp = String(d.bp || '');
+        d.bp = bp.slice(0, bp.length - (bstrcmpi_end(bp, ' gem') ? 4 : 6));
+        d.oclass = GEM_CLASS;
+        d.dn = d.actualn = d.bp;
+        return 1; // C: goto srch
+    } else if (String(d.bp || '').toLowerCase() === 'looking glass') { // C `:4684–4685`
+        ; // C: empty arm — avoid the "* glass" false hit, fall to the tail
+    } else if (bstrcmpi_end(d.bp, ' glass') // C `:4686–4688` — BSTRCMPI + strcmpi
+               || String(d.bp || '').toLowerCase() === 'glass') {
+        let s = d.bp;
+
+        // C `:4690–4694` — "broken glass" is a non-existent item.
+        if ((d.broken | 0) || strstri(s, 'broken') !== null) {
+            d.otmp = null;
+            return 3; // C: return otmp
+        }
+        if (strncmpi_start(s, 'worthless ')) // C `:4696–4697`
+            s = s.slice(10);
+        if (strncmpi_start(s, 'piece of ')) // C `:4698–4699`
+            s = s.slice(9);
+        if (strncmpi_start(s, 'colored ')) // C `:4700–4701`
+            s = s.slice(8);
+        else if (strncmpi_start(s, 'coloured ')) // C `:4702–4703`
+            s = s.slice(9);
+        if (String(s).toLowerCase() === 'glass') { // C `:4704` — strcmpi
+            // C `:4705–4709` — bare "glass" → random color, 9 kinds.
+            d.typ = FIRST_GLASS_GEM + rn2(NUM_GLASS_GEMS);
+            if ((game.objects?.[d.typ]?.oc_class ?? 0) === GEM_CLASS) // C: objects[].oc_class
+                return 2; // C: goto typfnd
+            else
+                d.typ = 0; // C: somebody changed objects[]? punt
+        } else { // C `:4710–4716` — rebuild the canonical form for srch
+            d.bp = 'worthless piece of ' + s; // C: Strcpy(d->bp, tbuf)
+        }
+    }
+
+    d.actualn = d.bp; // C `:4719–4723` tail
+    if (!d.dn)
+        d.dn = d.actualn; // C: ex. "skull cap"
+    return 0;
+}
+
+/**
  * C ref: objnam.c readobjnam — wish subset for artifact / named armor / amulet.
  * Empty/NULL → `any` (D-0559); qualifier-only empty (blessed/rustproof/…) deferred.
  * Terrain wish is readobjnam_wish (D-1279 furniture; D-1289 traps;
@@ -1216,9 +1312,21 @@ export function readobjnam(bp, no_wish, missOut) {
         }
     }
 
-    // C: postparse1 wrp[] — "wand of polymorph" → WAND_CLASS + "polymorph"
+    // C: postparse1 wrp[] — "wand of polymorph" → WAND_CLASS + "polymorph".
+    // A class-word match is C `return 1` (goto srch): postparse2 never runs
+    // on that path, so its tail must not clobber the actualn set here.
+    let classWord = false;
     if (!d.typ && !d.oclass) {
-        readobjnam_parse_class_words(d);
+        classWord = readobjnam_parse_class_words(d);
+    }
+
+    // C ref: objnam.c readobjnam `retry:` `:4947–4955` — postparse2 runs in
+    // C position (postparse1 fall-through only, before the srch chain).
+    // Code 3 is `return otmp` (broken glass → null); 2 (typfnd) leaves
+    // d.typ set so the srch block below skips on its !d.typ gate; 0/1 run
+    // srch (1 carries the truncated bp + GEM_CLASS).
+    if (!d.typ && !classWord) {
+        if (readobjnam_postparse2(d) === 3) return d.otmp;
     }
 
     if (!d.typ) {

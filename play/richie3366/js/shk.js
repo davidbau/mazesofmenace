@@ -23,13 +23,11 @@
 //        mkobj.c dealloc_obj via obfree (D-1743).
 //        u_left_shop leave verbalize + choose_stairs (D-1733).
 //        shopper_financial_report / shop_debt (D-1740).
-// Named omissions: shk_fixes_damage in shk_move; allmain/bones
-// fix_shop_damage callers; holetime dig follow; angry
-// Displaced pline (shk path); following verbalize;
+// Named omissions: shk_fixes_damage in shk_move (`:4556`); allmain/bones
+// fix_shop_damage callers; holetime dig follow;
 // m_break_boulder; m_move_aggress; inhistemple callers; mapseen_temple;
-// m_canseeu for angry chase; ACH_SHOP mapseen;
+// ACH_SHOP mapseen;
 // remaining SetVoice pick_pick / kops / pay-bill;
-// shk_move Fast + sobj_at pickaxe (u_entered_shop doorway is D-1080);
 // mongone full;
 // mnearto full (door yank uses enexto/rloc; home_shk still coord set);
 // after_shk_move occupancy check_special_room (bill_p==-1000 producer);
@@ -62,7 +60,7 @@ import {
     OBJ_ONBILL,
     NO_ROOM, TEMPLE, RLOC_MSG, RLOC_NOMSG,
     DISPLACED, LOW_PM, Has_contents, Is_container, has_omid, OMID, MAXULEV, ECMD_OK, ECMD_TIME, ECMD_CANCEL,
-    EYE, M_AP_NOTHING, M_AP_MONSTER, M_AP_TYPE,
+    EYE, M_AP_NOTHING, M_AP_MONSTER, M_AP_TYPE, HAND,
     COST_CONTENTS, COST_SINGLEOBJ, COST_UNBLSS, COST_UNCURS, TELEPAT,
     MENU_TRADITIONAL, MENU_FULL,
     W_SWAPWEP, W_QUIVER, TT_PIT, MIGR_APPROX_XY, MON_FLOOR,
@@ -82,7 +80,7 @@ import {
     POT_WATER,
 } from './objects.js';
 import {
-    newsym, pline, Norep, verbalize, You_feel, docrt, flush_screen,
+    newsym, pline, Norep, verbalize, Your, You_feel, docrt, flush_screen,
     canspotmon, canseemon, sensemon, impossible, bot,
 } from './display.js';
 import { cansee, recalc_block_point } from './vision.js';
@@ -4129,89 +4127,135 @@ export async function move_special(mtmp, in_his_shop, appr, uondoor, avoid,
 }
 
 /**
- * C ref: shk.c shk_move — returns 1 moved, 0 didn't, -1 let m_move,
- * -2 died.
+ * C ref: shk.c shk_move `:4880–4993` — returns 1 moved, 0 didn't,
+ * -1 let m_move.
  */
 export async function shk_move(shkp) {
     const eshkp = ESHK(shkp);
     if (!eshkp) return 0;
 
-    const omx = shkp.mx;
-    const omy = shkp.my;
+    const omx = shkp.mx; // :4889
+    const omy = shkp.my; // :4890
     const u = game.u;
 
-    // C: inhishop → shk_fixes_damage (live repair; catchup is D-1178
-    // goto_level fix_shop_damage). Named omit here.
+    // C :4892-4893: inhishop → shk_fixes_damage (`:4556`). Named omit
+    // (map turns.md shk_move section; D-1178 shipped fix_shop_damage).
 
+    // C :4895: distu ≡ dist2 (hack.h:1531).
     const udist = dist2(omx, omy, u.ux, u.uy);
-    // C: udist < 3 && (data != GRID_BUG || same row/col)
+    // C :4895-4896: udist < 3 && (data != GRID_BUG || same row/col)
     if (udist < 3 && (shkp.mnum !== PM_GRID_BUG || omx === u.ux || omy === u.uy)) {
-        // resist_conflict stubbed false → Conflict always engages when set
-        if (ANGRY(shkp) || game.Conflict) {
-            await mattacku(shkp);
+        // C :4897: ANGRY || (Conflict && !resist_conflict)
+        if (ANGRY(shkp) || (game.Conflict && !resist_conflict(shkp))) {
+            if (Displaced()) // :4898
+                await Your("displaced image doesn't fool %s!", shkname(shkp)); // :4899
+            await mattacku(shkp); // :4900
             return 0;
         }
-        if (eshkp.following) {
-            // customer / followmsg verbalize / rile_shk deferred
-            if (udist < 2) return 0;
+        if (eshkp.following) { // :4903
+            const plname = game.plname || '';
+            // C :4904: strncmp(customer, plname, PL_NSIZ)
+            const customer = String(eshkp.customer ?? '').slice(0, PL_NSIZ);
+            if (customer !== plname.slice(0, PL_NSIZ)) {
+                if (!hero_deaf() && !muteshk(shkp)) { // :4905
+                    SetVoice(shkp, 0, 80, 0); // :4906
+                    await verbalize( // :4907-4908
+                        `${Hello(shkp)}, ${plname}!  I was looking for ${customer}.`,
+                    );
+                }
+                eshkp.following = 0; // :4910
+                return 0;
+            }
+            // C :4913: moves > followmsg + 4
+            if ((game.moves | 0) > ((game.flags?.followmsg | 0) + 4)) {
+                if (!hero_deaf() && !muteshk(shkp)) { // :4914
+                    SetVoice(shkp, 0, 80, 0); // :4915
+                    await verbalize( // :4916-4917
+                        `${Hello(shkp)}, ${plname}!  Didn't you forget to pay?`,
+                    );
+                } else { // :4918-4921
+                    const { mbodypart } = await import('./polyself.js');
+                    await pline(
+                        `${Shknam(shkp)} holds out ${noit_mhis(shkp)} upturned ${mbodypart(shkp, HAND)}.`,
+                    );
+                }
+                if (!game.flags) game.flags = {};
+                game.flags.followmsg = game.moves | 0; // :4923
+                if (!rn2(9)) { // :4924
+                    await pline( // :4925-4926
+                        `${Shknam(shkp)} doesn't like customers who don't pay.`,
+                    );
+                    rile_shk(shkp); // :4927 (file-local; C staticfn)
+                }
+            }
+            if (udist < 2) // :4930-4931
+                return 0;
         }
     }
 
-    let appr = 1;
-    let gtx = eshkp.shk?.x | 0;
-    let gty = eshkp.shk?.y | 0;
-    const satdoor = (gtx === omx && gty === omy);
+    let appr = 1; // :4935
+    let gtx = eshkp.shk?.x | 0; // :4936
+    let gty = eshkp.shk?.y | 0; // :4937
+    const satdoor = (gtx === omx && gty === omy); // :4938
     let uondoor = false;
     let avoid = false;
     let badinv = false;
 
-    const zHole = holetime();
+    // C :4939: following || (holetime >= 0 && z*z <= udist). (C :4940-4946:
+    // the distance check applies when following too, so m_move never walks
+    // a fenced-in shk out of the shop, stranding unpaid invent.)
+    const zHole = holetime(); // file-local mirror (no dig static cycle)
     if (eshkp.following || (zHole >= 0 && zHole * zHole <= udist)) {
-        if (udist > 4 && eshkp.following && !eshkp.billct) {
-            return -1; // leave it to m_move
+        if (udist > 4 && eshkp.following && !eshkp.billct) { // :4947
+            return -1; // :4948 leave it to m_move
         }
-        gtx = u.ux;
-        gty = u.uy;
-    } else if (ANGRY(shkp)) {
-        if (shkp.mcansee) {
-            gtx = u.ux;
-            gty = u.uy;
+        gtx = u.ux; // :4949
+        gty = u.uy; // :4950
+    } else if (ANGRY(shkp)) { // :4951
+        // C :4952: move towards the hero if the shk can see him
+        if (shkp.mcansee && m_canseeu(shkp)) { // :4953
+            gtx = u.ux; // :4954
+            gty = u.uy; // :4955
         }
-        avoid = false;
+        avoid = false; // :4957
     } else {
-        if (u.Invis || u.usteed) {
+        if (u.Invis || u.usteed) { // :4960-4961
             avoid = false;
         } else {
-            uondoor = u_at(eshkp.shd?.x | 0, eshkp.shd?.y | 0);
+            uondoor = u_at(eshkp.shd?.x | 0, eshkp.shd?.y | 0); // :4963
             if (uondoor) {
-                badinv = !!(carrying(PICK_AXE) || carrying(DWARVISH_MATTOCK));
-                // Fast + sobj_at pickaxe deferred
-                if (satdoor && badinv) return 0;
-                avoid = !badinv;
+                // C :4965-4967
+                badinv = !!(carrying(PICK_AXE) || carrying(DWARVISH_MATTOCK)
+                    || (Fast() && (sobj_at(PICK_AXE, u.ux, u.uy)
+                        || sobj_at(DWARVISH_MATTOCK, u.ux, u.uy))));
+                if (satdoor && badinv) // :4968-4969
+                    return 0;
+                avoid = !badinv; // :4970
             } else {
+                // C :4972: *u.ushops && distu(gtx,gty) > 8
                 const ushops = u.ushops || '';
-                avoid = !!(ushops && dist2(u.ux, u.uy, gtx, gty) > 8);
-                badinv = false;
+                avoid = !!(ushops && dist2(gtx, gty, u.ux, u.uy) > 8);
+                badinv = false; // :4973
             }
 
+            // C :4976-4977 GDIST(omx,omy) < 3
             const GDIST = (x, y) => dist2(x, y, gtx, gty);
             if (((!eshkp.robbed && !eshkp.billct && !eshkp.debit) || avoid)
                 && GDIST(omx, omy) < 3) {
-                if (!badinv && !onlineu(omx, omy)) return 0;
-                if (satdoor) {
-                    appr = 0;
-                    gtx = 0;
-                    gty = 0;
-                }
+                if (!badinv && !onlineu(omx, omy)) // :4978-4979
+                    return 0;
+                if (satdoor) // :4980-4981
+                    appr = gtx = gty = 0;
             }
         }
     }
 
-    const z = await move_special(
+    const z = await move_special( // :4987-4988
         shkp, inhishop(shkp), appr, uondoor, avoid, omx, omy, gtx, gty,
     );
-    // after_shk_move bill_p reset deferred
-    return z;
+    if (z > 0) // :4989
+        after_shk_move(shkp); // :4990 file-local; check_special_room stays map-named
+    return z; // :4992
 }
 
 import { gd_move as vault_gd_move, hidden_gold } from './vault.js';

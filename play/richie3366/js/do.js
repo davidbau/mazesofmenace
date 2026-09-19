@@ -11,7 +11,7 @@
 
 import { game } from './gstate.js';
 import { rn2, rnd, rn1, d } from './rng.js';
-import { depth, builds_up } from './hacklib.js';
+import { depth, builds_up, level_difficulty } from './hacklib.js';
 import {
     STAIRS, LADDER, ECMD_OK, ECMD_TIME, ECMD_FAIL, ECMD_CANCEL,
     W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU, W_ARMOR,
@@ -1418,7 +1418,7 @@ export async function getlev_catchup_monsters(elapsed) {
     for (const mtmp of list) {
         // C: if (!u.uz.dlevel || restoring==REST_LEVELS) continue
         if (!(u?.uz?.dlevel | 0) || restoring === REST_LEVELS) continue;
-        if (elapsed > 0) mon_catchup_elapsed_time(mtmp, elapsed);
+        if (elapsed > 0) await mon_catchup_elapsed_time(mtmp, elapsed);
         await restore_cham(mtmp);
         if (elapsed > 0 && elapsed > rnd(10)) hide_monst(mtmp);
     }
@@ -2088,10 +2088,9 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
             || In_quest(u.uz);
         livelog_printf(major ? LL_ACHIEVE : LL_DEBUG,
             'entered %s', describe_level(2));
-        // C: Role_if(PM_TOURIST) more_experienced(level_difficulty(), 0)
-        // level_difficulty ≈ depth(&u.uz) outside endgame/amulet/builds_up.
+        // C do.c:1962 — Role_if(PM_TOURIST) more_experienced(level_difficulty(), 0).
         if (game.urole?.mnum === PM_TOURIST) {
-            more_experienced(depth(u.uz) | 0, 0);
+            more_experienced(level_difficulty(u.uz) | 0, 0);
             await newexplevel();
         }
     }

@@ -222,7 +222,7 @@ export function glyphid_cache_status() {
 const MLET_ORDINAL = new Map();
 {
     let k = 0;
-    for (const [range, name] of LOADSYMS) {
+    for (const [range, , name] of LOADSYMS) {
         if (range === SYM_MON) MLET_ORDINAL.set(name, ++k);
     }
 }
@@ -446,7 +446,7 @@ export function parse_id(id, findwhat) {
                         const j = glyph - GLYPH_ZAP_OFF;
                         cmap = (j % 4) + S_vbeam;
                         const fixed = fix_glyphname(
-                            LOADSYMS[cmap + cmap_offset][1].slice(2));
+                            LOADSYMS[cmap + cmap_offset][2].slice(2));
                         b3 = PARSE_ZAP_TEXTS[Math.trunc(j / 4)]
                             + ' zap ' + fixed;
                         b2 = '';
@@ -472,7 +472,7 @@ export function parse_id(id, findwhat) {
                     }
                     if (!skip_base) {
                         if (cmap >= 0 && cmap < MAXPCHARS) {
-                            b3 = LOADSYMS[cmap + cmap_offset][1].slice(2);
+                            b3 = LOADSYMS[cmap + cmap_offset][2].slice(2);
                         }
                     }
                     b0 = 'G_' + b2 + b3 + b4;
@@ -509,7 +509,7 @@ export function parse_id(id, findwhat) {
     } else if (is_S) {
         /* cmap entries */
         for (let i = 0; i < cmap_count; ++i) {
-            if (strcmpi(LOADSYMS[i + cmap_offset][1].slice(2), id.slice(2)) === 0) {
+            if (strcmpi(LOADSYMS[i + cmap_offset][2].slice(2), id.slice(2)) === 0) {
                 findwhat.findtype = FIND_CMAP;
                 findwhat.val = i;
                 findwhat.loadsyms_offset = i + cmap_offset;
@@ -518,7 +518,7 @@ export function parse_id(id, findwhat) {
         }
         /* objclass entries */
         for (let i = 0; i < oc_count; ++i) {
-            if (strcmpi(LOADSYMS[i + oc_offset][1].slice(2), id.slice(2)) === 0) {
+            if (strcmpi(LOADSYMS[i + oc_offset][2].slice(2), id.slice(2)) === 0) {
                 findwhat.findtype = FIND_OC;
                 findwhat.val = i;
                 findwhat.loadsyms_offset = i + oc_offset;
@@ -527,7 +527,7 @@ export function parse_id(id, findwhat) {
         }
         /* permonst entries */
         for (let i = 0; i <= pm_count; ++i) {
-            if (strcmpi(LOADSYMS[i + pm_offset][1].slice(2), id.slice(2)) === 0) {
+            if (strcmpi(LOADSYMS[i + pm_offset][2].slice(2), id.slice(2)) === 0) {
                 findwhat.findtype = FIND_PM;
                 findwhat.val = i + 1; /* starts at 1 */
                 findwhat.loadsyms_offset = i + pm_offset;

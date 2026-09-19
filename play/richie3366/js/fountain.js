@@ -83,7 +83,7 @@ import { PM_KNIGHT, monsterNames } from './generated/monsters_data.js';
 import { A_MAX, A_WIS, A_CON, A_DEX, adjattrib, exercise, acurr } from './attrib.js';
 import { morehungry, poison_strdmg, vomit, newuhs } from './eat.js';
 import { losehp, in_town } from './hack.js';
-import { depth as depth_of_level, distmin } from './hacklib.js';
+import { distmin, level_difficulty } from './hacklib.js';
 import { monster_detect } from './detect.js';
 import { more_experienced, newexplevel } from './exper.js';
 import { makemon } from './makemon.js';
@@ -499,13 +499,6 @@ export async function drinksink() {
         break;
     }
     }
-}
-
-/**
- * C ref: fountain.c level_difficulty via depth(u.uz) (endgame/amulet deferred).
- */
-function level_difficulty() {
-    return depth_of_level(game.u?.uz) || 1;
 }
 
 /* C you.h mhe / mhis — re-exported from the single mondata.c

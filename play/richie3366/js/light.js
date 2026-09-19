@@ -5,7 +5,7 @@
 
 import { game } from './gstate.js';
 import {
-    COLNO, ROWNO, MAX_RADIUS, LS_MONSTER, LS_OBJECT, TEMP_LIT,
+    COLNO, ROWNO, MAX_RADIUS, LS_NONE, LS_MONSTER, LS_OBJECT, TEMP_LIT,
     OBJ_INVENT, OBJ_FLOOR, OBJ_MINVENT, OBJ_FREE,
 } from './const.js';
 import { circle_ptr, clear_path, vision_recalc } from './vision.js';
@@ -14,7 +14,7 @@ import {
     impossible,
 } from './display.js';
 import { dist2 } from './hacklib.js';
-import { place_object, obj_extract_self } from './mkobj.js';
+import { place_object, obj_extract_self, fmt_ptr } from './mkobj.js';
 import { simpleonames, otense, xname } from './objnam.js';
 import { monsterNames } from './monsters.js';
 import { ignitable, artifact_light, end_burn } from './timeout.js';
@@ -28,9 +28,12 @@ function pm(name) {
 
 const COULD_SEE = 0x1; // vision.js — avoid circular const export
 
-// C ref: light.c:41 — file-local like COULD_SEE above. LSF_SHOW is
+// C ref: light.c:41–43 — file-local like COULD_SEE above. LSF_SHOW is
 // per-recalc state, cleared up front in do_light_sources each call.
+// LSF_NEEDS_FIXUP marks an entry whose id is still an unrestored o_id
+// (save/restore; no JS producer sets it yet — lev_json relinks at load).
 const LSF_SHOW = 0x1;
+const LSF_NEEDS_FIXUP = 0x2;
 
 // C ref: mondata.h emits_light — range 1 for all current emitters.
 export function emits_light(ptr) {
@@ -76,14 +79,89 @@ export function new_light_source(x, y, range, type, id) {
     return new_light_core(x, y, range, type, id);
 }
 
-/** C ref: light.c del_light_source — by type + id identity. */
-export function del_light_source(type, id) {
-    const list = game.light_base;
-    if (!list?.length) return;
-    const idx = list.findIndex((ls) => ls.type === type && ls.id === id);
-    if (idx >= 0) {
-        list.splice(idx, 1);
+/**
+ * C ref: light.c delete_ls `:141–168` (staticfn → file-local, like
+ * new_light_core above) — unlink ls from the base list and drop it.
+ * Sync like C; the not-found impossible() stays fire-and-forget `void`
+ * (mkobj.js merge-wmask / mon.js replmon precedent — impossible can
+ * reach --More--, so awaiting would force the whole light path async).
+ */
+function delete_ls(ls) {
+    // C :146–155 — prev/curr unlink walk over gl.light_base.
+    const list = game.light_base || [];
+    let found = -1;
+    for (let i = 0; i < list.length; i++) {
+        if (list[i] === ls) { found = i; break; }
+    }
+    if (found >= 0) {
+        // C :156–161 — assert(curr == ls) + memset + free (JS splice lets
+        // the record GC) + gv.vision_full_recalc = 1.
+        list.splice(found, 1);
         game.vision_full_recalc = 1;
+    } else {
+        // C :162–164 — impossible("delete_ls not found, ls=%s", fmt_ptr).
+        void impossible('delete_ls not found, ls=%s', fmt_ptr(ls));
+    }
+}
+
+/**
+ * C ref: light.c del_light_source `:99–138` — find and delete the one
+ * light source keyed by (type, id). Restarted D-2574: the thin body was
+ * identity-only, missing the type switch, the LSF_NEEDS_FIXUP arm,
+ * delete_ls and both impossible arms (LS_OBJECT/LS_MONSTER are C-valued
+ * per vision.h now, so the LS_NONE arm is reachable). Sync like C.
+ */
+export function del_light_source(type, id) {
+    // C :103 — tmp_id = cg.zeroany (union; only the uint member is read).
+    // id arrives as the raw obj/mtmp (monst_to_any is identity, hack.js);
+    // unwrap an anything-shaped { a_obj / a_monst } handle when given.
+    const id_obj = id?.a_obj ?? id;
+    const id_monst = id?.a_monst ?? id;
+    const t = type | 0;
+    // C :108–124 — switch precomputes the fixup-compare key (partially
+    // restored entries compare by o_id, C :125–131).
+    let tmp_o_id = 0;
+    let want;
+    switch (t) {
+    case LS_NONE: // C :109–112
+        void impossible('del_light_source:type=none');
+        tmp_o_id = 0;
+        want = id_obj;
+        break;
+    case LS_OBJECT: // C :113–115
+        tmp_o_id = id_obj ? (id_obj.o_id | 0) : 0;
+        want = id_obj;
+        break;
+    case LS_MONSTER: // C :116–118
+        tmp_o_id = id_monst?.m_id | 0;
+        want = id_monst;
+        break;
+    default: // C :119–122
+        tmp_o_id = 0;
+        want = id_obj;
+        break;
+    }
+
+    // C :125–131 — linear scan: type must match, then pointer identity —
+    // or the o_id key when the entry still needs fixup.
+    let curr = null;
+    for (const cand of game.light_base || []) {
+        if ((cand.type | 0) !== t) // C :127–128
+            continue;
+        const key = (cand.flags & LSF_NEEDS_FIXUP) ? tmp_o_id : want; // C :129
+        const stored = (cand.flags & LSF_NEEDS_FIXUP)
+            ? (cand.id?.o_id ?? cand.id)
+            : cand.id;
+        if (stored === key) { // C :129–131
+            curr = cand;
+            break;
+        }
+    }
+    if (curr) { // C :132–134
+        delete_ls(curr);
+    } else { // C :135–137
+        void impossible('del_light_source: not found type=%d, id=%s',
+            t, fmt_ptr(id_obj));
     }
 }
 

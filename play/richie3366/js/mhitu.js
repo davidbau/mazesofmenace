@@ -35,7 +35,7 @@ import {
 } from './display.js';
 import { cansee, couldsee, vision_recalc, vision_off_newsym_gbuf } from './vision.js';
 import {
-    Monnam, mon_nam, pmname, hliquid, x_monnam, Hallucination,
+    Adjmonnam, Monnam, mon_nam, pmname, hliquid, x_monnam, Hallucination,
     noit_mon_nam, noit_Monnam, s_suffix, Ugender, m_monnam, Some_Monnam, Mgender,
 } from './do_name.js';
 import { MON_WEP, mon_wield_item, dmgval, hitval, drain_weapon_skill } from './weapon.js';
@@ -57,7 +57,7 @@ import { getyear, yyyymmdd, night, midnight } from './calendar.js';
 import { pluslvl, losexp } from './exper.js';
 import { mhe } from './fountain.js';
 import { rloc, tele_restrict, enexto, teleds, tele, unconscious } from './teleport.js';
-import { monflee, set_apparxy } from './monmove.js';
+import { locomotion, monflee, set_apparxy } from './monmove.js';
 import {
     is_orc, is_demon, is_were, is_human, is_animal, is_whirly, amorphous, unsolid,
     is_undead, is_vampshifter, mon_hates_blessings,
@@ -2178,12 +2178,11 @@ async function gulpmu(mtmp, mattk) {
 
 
 /**
- * C ref: uhitm.c mhitm_ad_sedu — mhitu (monster→you) arm only.
+ * C ref: uhitm.c mhitm_ad_sedu `:4633–4691` — mhitu (monster→you) arm.
  * Brag/remarks is pline_mon (D-1240); charm-fail stays pline.
- * Named omissions: uhitm steal_it; mhitm minvent steal;
- * Adjmonnam charm polish; animal locomotion flee pline.
+ * uhitm + mhitm arms live in mhitm.js mhitm_ad_sedu (blnd/elec precedent).
  */
-async function mhitm_ad_sedu(mtmp, mattk, mhm) {
+async function mhitm_ad_sedu_u(mtmp, mattk, mhm) {
     if (is_animal(mtmp.data)) {
         await hitmsg(mtmp, mattk);
         if (mtmp.mcan) return;
@@ -2211,7 +2210,7 @@ async function mhitm_ad_sedu(mtmp, mattk, mhm) {
             if (!Blind) {
                 const female = !!(game.flags?.female);
                 await pline(
-                    `${Monnam(mtmp)} tries to ${female ? 'charm' : 'seduce'} you, `
+                    `${Adjmonnam(mtmp, 'plain')} tries to ${female ? 'charm' : 'seduce'} you, `
                     + `but you seem ${female ? 'unaffected' : 'uninterested'}.`,
                 );
             }
@@ -2236,7 +2235,15 @@ async function mhitm_ad_sedu(mtmp, mattk, mhm) {
         if (!is_animal(mtmp.data) && !(await tele_restrict(mtmp))) {
             await rloc(mtmp, RLOC_MSG);
         }
-        // animal flee-with-buf pline deferred
+        if (is_animal(mtmp.data) && buf.value) {
+            // C uhitm.c mhitm_ad_sedu `:4683–4687`
+            if (canseemon(mtmp)) {
+                await pline_mon(
+                    mtmp,
+                    `${Monnam(mtmp)} tries to ${locomotion(mtmp.data, 'run')} away with ${buf.value}.`,
+                );
+            }
+        }
         await monflee(mtmp, 0, false, false);
         mhm.hitflags = M_ATTK_AGR_DONE;
         mhm.done = true;
@@ -2259,7 +2266,7 @@ async function mhitm_ad_ssex(mtmp, mattk, mhm) {
         }
         return;
     }
-    await mhitm_ad_sedu(mtmp, mattk, mhm);
+    await mhitm_ad_sedu_u(mtmp, mattk, mhm);
 }
 
 /**
@@ -3146,7 +3153,7 @@ async function mhitm_adtyping_u(mtmp, mattk, mhm) {
         break;
     case AD_SITM:
     case AD_SEDU:
-        await mhitm_ad_sedu(mtmp, mattk, mhm);
+        await mhitm_ad_sedu_u(mtmp, mattk, mhm);
         break;
     case AD_SSEX:
         await mhitm_ad_ssex(mtmp, mattk, mhm);
