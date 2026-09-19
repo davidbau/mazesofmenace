@@ -51,7 +51,7 @@ import { near_capacity, useup, useupall, hold_another_object, Blind, observe_obj
 import { PM_BARBARIAN, PM_MONK, PM_KNIGHT, PM_SAMURAI, PM_ARCHEOLOGIST, PM_WIZARD, PM_HUMAN, PM_HEALER, PM_ROGUE } from './generated/monsters_data.js';
 import {
     find_mac, get_mattk, make_corpse, monstone, mhitm_knockback, monkilled, mondead,
-    troll_baned, mhitm_ad_poly, mhitm_ad_slee, mhitm_ad_heal, could_seduce, failed_grab, shade_miss,
+    troll_baned, mhitm_ad_poly, mhitm_ad_slee, mhitm_ad_heal, mhitm_ad_blnd, mhitm_ad_ston, mhitm_ad_elec, could_seduce, failed_grab, shade_miss,
     shade_aware, paralyze_monst,
     mhitm_mgc_atk_negated, resists_poison_mm, erode_armor,
     AT_NONE, AT_WEAP, AT_KICK, AT_CLAW, AT_SPIT, AT_HUGS,
@@ -2352,6 +2352,24 @@ async function damageum_adtyping(mattk, mdef, mhm) {
            attacker) arm: resists_acid/defended zeroes the leftover
            d(), else the leftover stands (no mcan gate in C). */
         if (resists_acid(mdef) || defended(mdef, AD_ACID)) mhm.damage = 0;
+    } else if (adtyp === AD_BLND) {
+        /* C ref: uhitm.c mhitm_adtyping `:4802` → mhitm_ad_blnd `:2964–2975`
+           uhitm (hero as attacker) arm: can_blnd gate, !Blind "%s is
+           blinded.", mcansee=0, damage += mblinded (clamped 127) back
+           into mblinded, then damage=0. mhitu arm is mhitm_ad_blnd_u. */
+        await mhitm_ad_blnd(game.youmonst, mattk, mdef, mhm);
+    } else if (adtyp === AD_STON) {
+        /* C ref: uhitm.c mhitm_adtyping `:4796` → mhitm_ad_ston `:4209–4214`
+           uhitm (hero as attacker) arm: live munstone cure gate, else
+           minstapetrify, then damage=0. mhitu arm is mhitm_ad_ston_u. */
+        await mhitm_ad_ston(game.youmonst, mattk, mdef, mhm);
+    } else if (adtyp === AD_ELEC) {
+        /* C ref: uhitm.c mhitm_adtyping `:4794` → mhitm_ad_elec `:2688–2703`
+           uhitm (hero as attacker) arm: mgc-negate gate, !Blind "%s is
+           zapped!", resists_elec/defended zeroes the leftover after
+           golemheal+shield, else destroy_items adds the orig leftover.
+           mhitu arm is mhitm_ad_elec_u. */
+        await mhitm_ad_elec(game.youmonst, mattk, mdef, mhm);
     }
 }
 

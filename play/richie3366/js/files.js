@@ -19,15 +19,24 @@ import { observe_object } from './invent.js';
 import { inv_cnt } from './steal.js';
 import { hands_obj } from './weapon.js';
 import { COIN_CLASS, objectNames } from './objects.js';
-import { PM_CLERIC } from './generated/monsters_data.js';
+import { PM_CLERIC, NUMMONS } from './generated/monsters_data.js';
+import { NUM_OBJECTS } from './generated/objects_data.js';
+import { NROFARTIFACTS } from './generated/artifacts_data.js';
 import {
     BUFSZ, MIGR_NOBREAK, MIGR_NOSCATTER, MIGR_WITH_HERO, WIZKIT_MAX,
     LFILE_EXISTS, NHF_LEVELFILE, READING, COUNTING, LEVELPREFIX,
-    PREFIX_COUNT, FQN_MAX_FILENAME,
+    PREFIX_COUNT, FQN_MAX_FILENAME, SF_UPTODATE, SF_OUTDATED,
+    SF_CRITICAL_BYTE_COUNT_MISMATCH, SF_DM_IL32LLP64_ON_ILP32LL64,
+    SF_DM_I32LP64_ON_ILP32LL64, SF_DM_ILP32LL64_ON_I32LP64,
+    SF_DM_ILP32LL64_ON_IL32LLP64, SF_DM_I32LP64_ON_IL32LLP64,
+    SF_DM_IL32LLP64_ON_I32LP64, SF_DM_MISMATCH, UTD_CHECKSIZES,
+    UTD_CHECKFIELDCOUNTS, UTD_SKIP_SANITY1, UTD_WITHOUT_WAITSYNCH_PERFILE,
+    UTD_QUIETLY, WIN_ERR, SFCTOOL_BIT,
 } from './const.js';
+import { datamodel, what_datamodel_is_this } from './version.js';
 import { rn2 } from './rng.js';
 import { mungspaces } from './getline.js';
-import { pline, putmsghistory, You_feel, impossible } from './display.js';
+import { pline, putmsghistory, You_feel, impossible, flush_topl_more } from './display.js';
 import { show_nhw_menu_text } from './pager.js';
 import { TRIBUTE_TEXT } from './generated/tribute_data.js';
 import { maxledgerno } from './dungeon.js';
@@ -720,6 +729,303 @@ export function open_levelfile(lev, errbuf) {
     }
     nhfp = viable_nhfile(nhfp);
     return nhfp;
+}
+
+// ---------------------------------------------------------------------------
+// C ref: version.c savefile-validation family — check_version `:374–423`,
+// compare_critical_bytes `:763–822`, uptodate `:713–746`, validate
+// `:840–862`. JS home is files.js (the NHFILE-handle cluster above):
+// version.js must stay import-free (const.js:21 reads its COMMIT_NUMBER
+// at top level — D-1881), and these bodies need pline / impossible /
+// flush_topl_more plus the SF_/UTD_ consts. The pure datamodel helpers
+// stay in version.js (what_datamodel_is_this, imported above); files.js
+// consuming version.js adds no cycle (version.js imports nothing).
+// ---------------------------------------------------------------------------
+
+// C ref: date.c populate_nomakedefs + mdlib.c make_version `:248–296`,
+// contest resolutions (macOS recorder; VERSION_COMPATIBILITY undefined,
+// patchlevel.h:62; SCORE_ON_BOTL commented out, config.h:627).
+// version_number = incarnation `(5<<24)|(0<<16)|(0<<8)|EDITLEVEL` (0).
+const NOMAKEDEFS_VERSION_NUMBER = 0x05000000;
+// version_features: MAIL_STRUCTURES bit 6 (global.h:430, unconditional) +
+// color bit 17 (mdlib.c:270 "always") + INSURANCE bit 18 (config.h:435).
+const NOMAKEDEFS_VERSION_FEATURES = (1 << 6) | (1 << 17) | (1 << 18);
+// ignored_features = md_ignored_features() (mdlib.c:236–243):
+// SCORE_ON_BOTL bit 19 + SFCTOOL_BIT (global.h:615).
+const NOMAKEDEFS_IGNORED_FEATURES = (1 << 19) | SFCTOOL_BIT;
+// version_sanity1 = entity_count (mdlib.c:285–295):
+// (nartifacts<<24)|(NUM_OBJECTS<<12)|NUMMONS, live pinned generated counts.
+const NOMAKEDEFS_VERSION_SANITY1 =
+    (((NROFARTIFACTS << 24) | (NUM_OBJECTS << 12) | NUMMONS) >>> 0);
+
+// C ref: version.c critical_sizes `:546–664` — `{ ucsize, nm }` per row.
+// Sizes measured from the pinned headers with gcc (LP64: short=2 int=4
+// long=8 ll=8 ptr=8; probe in /tmp, not committed; cross-checks match
+// D-2530: trap=32 engr=64 damage=32 cemetery=184). SF_INCLUDE_SUBSTRUCTS
+// is defined nowhere in the tree, so the table ends at you_LO/HI plus
+// the 10 zero spares. you=2760 → LO 200, HI 10 (`:618–619`).
+const CRITICAL_SIZES = [
+    { ucsize: 0, nm: 'unused' }, // `:547`
+    { ucsize: 2, nm: 'short' },
+    { ucsize: 4, nm: 'int' },
+    { ucsize: 8, nm: 'long' },
+    { ucsize: 8, nm: 'long long' },
+    { ucsize: 8, nm: 'genericptr_t' },
+    { ucsize: 1, nm: 'aligntyp' },
+    { ucsize: 1, nm: 'boolean' },
+    { ucsize: 2, nm: 'coordxy' },
+    { ucsize: 2, nm: 'int16' },
+    { ucsize: 4, nm: 'int32' },
+    { ucsize: 8, nm: 'int64' },
+    { ucsize: 1, nm: 'schar' },
+    { ucsize: 8, nm: 'size_t' },
+    { ucsize: 1, nm: 'uchar' },
+    { ucsize: 2, nm: 'uint16' },
+    { ucsize: 4, nm: 'uint32' },
+    { ucsize: 8, nm: 'uint64' },
+    { ucsize: 8, nm: 'ulong' },
+    { ucsize: 4, nm: 'unsigned' },
+    { ucsize: 2, nm: 'ushort' },
+    { ucsize: 2, nm: 'xint16' },
+    { ucsize: 1, nm: 'xint8' },
+    { ucsize: 4, nm: 'struct arti_info' },
+    { ucsize: 8, nm: 'struct nhrect' },
+    { ucsize: 32, nm: 'struct branch' },
+    { ucsize: 40, nm: 'struct bubble' },
+    { ucsize: 184, nm: 'struct cemetery' },
+    { ucsize: 192, nm: 'struct context_info' },
+    { ucsize: 4, nm: 'struct nhcoord' },
+    { ucsize: 32, nm: 'struct damage' },
+    { ucsize: 16, nm: 'struct dest_area' },
+    { ucsize: 114, nm: 'struct dgn_topology' },
+    { ucsize: 92, nm: 'struct dungeon' },
+    { ucsize: 4, nm: 'struct d_level' },
+    { ucsize: 28, nm: 'struct ebones' },
+    { ucsize: 64, nm: 'struct edog' },
+    { ucsize: 128, nm: 'struct egd' },
+    { ucsize: 8, nm: 'struct emin' },
+    { ucsize: 64, nm: 'struct engr' },
+    { ucsize: 56, nm: 'struct epri' },
+    { ucsize: 96, nm: 'struct eshk' },
+    { ucsize: 48, nm: 'struct fe' },
+    { ucsize: 208, nm: 'struct flag' },
+    { ucsize: 48, nm: 'struct fruit' },
+    { ucsize: 32, nm: 'struct gamelog_line' },
+    { ucsize: 16, nm: 'struct kinfo' },
+    { ucsize: 16, nm: 'struct levelflags' },
+    { ucsize: 32, nm: 'struct ls_t' },
+    { ucsize: 1, nm: 'struct linfo' },
+    { ucsize: 4, nm: 'struct mapseen_feat' },
+    { ucsize: 4, nm: 'struct mapseen_flags' },
+    { ucsize: 4, nm: 'struct mapseen_rooms' },
+    { ucsize: 64, nm: 'struct mextra' },
+    { ucsize: 224, nm: 'struct mkroom' },
+    { ucsize: 192, nm: 'struct monst' },
+    { ucsize: 4, nm: 'struct mvitals' },
+    { ucsize: 112, nm: 'struct obj' },
+    { ucsize: 72, nm: 'struct objclass' },
+    { ucsize: 32, nm: 'struct oextra' },
+    { ucsize: 8, nm: 'struct q_score' },
+    { ucsize: 8, nm: 'struct rm' },
+    { ucsize: 8, nm: 'struct spell' },
+    { ucsize: 24, nm: 'struct stairway' },
+    { ucsize: 40, nm: 'struct s_level' },
+    { ucsize: 32, nm: 'struct trap' },
+    { ucsize: 24, nm: 'struct version_info' }, // `:615`
+    { ucsize: 8, nm: 'anything' },
+    { ucsize: 200, nm: 'you_LO' },
+    { ucsize: 10, nm: 'you_HI' },
+    { ucsize: 0, nm: '' },
+    { ucsize: 0, nm: '' },
+    { ucsize: 0, nm: '' },
+    { ucsize: 0, nm: '' },
+    { ucsize: 0, nm: '' },
+    { ucsize: 0, nm: '' },
+    { ucsize: 0, nm: '' },
+    { ucsize: 0, nm: '' },
+    { ucsize: 0, nm: '' },
+    { ucsize: 0, nm: '' }, // 10 spares `:621–630`
+];
+
+// C ref: version.c `:666` — file-scope `uchar cscbuf[SIZE(critical_sizes)]`
+// filled by the Sfi_uchar feed; zero-init, mutated in place like C.
+const CSCBUF = new Array(CRITICAL_SIZES.length).fill(0);
+
+/**
+ * C ref: version.c check_version `:374–423` — incarnation, feature-set
+ * and entity-count gates over the savefile's version_info, in C order.
+ * `:380–386` null-filename arm (EXTRA_SANITY_CHECKS is defined,
+ * config.h:637, so the impossible is live); `:388–391` SFCTOOL_BIT
+ * strip (+ converted_savefile_loaded, decl.h:223 instance_globals_c —
+ * neighboring gc fields live as game.*, cf. corpsenm_digested);
+ * `:392–407` incarnation gate (VERSION_COMPATIBILITY undefined,
+ * patchlevel.h:62, so the `:397` != arm); `:408–420` feature/sanity
+ * gate. `#ifndef SFCTOOL` complaint arms are live in the game build.
+ * @param {object} version_data { incarnation, feature_set, entity_count }
+ * @param {string|null} filename
+ * @param {boolean} complain
+ * @param {number} utdflags
+ * @returns {Promise<boolean>}
+ */
+export async function check_version(version_data, filename, complain, utdflags) {
+    if (filename == null) {
+        if (complain) {
+            await impossible("check_version() called with 'complain'=True but 'filename'=Null");
+        }
+        complain = false; /* C `:386` — complain needs filename for pline("%s") */
+    }
+    if (((version_data.feature_set | 0) & SFCTOOL_BIT) !== 0) { // `:388`
+        game.converted_savefile_loaded = true; // `:389`
+        version_data.feature_set = // `:390`
+            (((version_data.feature_set | 0) & ~SFCTOOL_BIT) >>> 0);
+    }
+    if ((version_data.incarnation >>> 0) !== NOMAKEDEFS_VERSION_NUMBER) { // `:397`
+        if (complain) { // `:401`
+            await pline('Version mismatch for file "%s".', filename); // `:402`
+            /* C `:403–404` — flush only when the message window exists;
+               game id with WIN_ERR default (allmain.js WIN_INVEN idiom). */
+            if ((game.WIN_MESSAGE ?? WIN_ERR) !== WIN_ERR) {
+                await flush_topl_more(); /* display_nhwindow(WIN_MESSAGE, TRUE) */
+            }
+        }
+        return false; // `:407`
+    } else if ((((version_data.feature_set | 0) & ~NOMAKEDEFS_IGNORED_FEATURES) >>> 0) // `:409–410`
+            !== (((NOMAKEDEFS_VERSION_FEATURES | 0) & ~NOMAKEDEFS_IGNORED_FEATURES) >>> 0)
+        || ((((utdflags | 0) & UTD_SKIP_SANITY1) === 0) // `:411–412`
+            && ((version_data.entity_count >>> 0) !== NOMAKEDEFS_VERSION_SANITY1))) {
+        if (complain) { // `:415`
+            await pline('Configuration incompatibility for file "%s".', filename); // `:416`
+            /* C `:417` has no WIN_ERR gate — unconditional display. */
+            await flush_topl_more(); /* display_nhwindow(WIN_MESSAGE, TRUE) */
+        }
+        return false; // `:420`
+    }
+    return true; // `:422`
+}
+
+/**
+ * C ref: version.c compare_critical_bytes `:763–822` — critical-size
+ * count gate, per-struct comparison loop with datamodel detection, in C
+ * order. SYNC: every live callee is sync (datamodel,
+ * what_datamodel_is_this); the byte feed is named below.
+ * C `int *idx_1st_mismatch` → mutable `{ value }` holder or null.
+ * Named omits: `:771` Sfi_char count feed and `:779–781` Sfi_uchar
+ * cscbuf fill (no binary NHFILE read layer in JS — JSON VFS; Sfi_ arms
+ * live as payload analogues at use sites, cf. getbones bones.js:484);
+ * `:774–777` raw_printf (no pre-window stdout channel in dual-runtime
+ * ESM — display.js:7749 raw_print/raw_printf omit).
+ * @param {object} nhfp JS NHFILE handle (unread — feed omitted, cf. void)
+ * @param {{ value: number }|null} idx_1st_mismatch
+ * @param {number} utdflags
+ * @returns {number} SF_* status
+ */
+export function compare_critical_bytes(nhfp, idx_1st_mismatch, utdflags) {
+    void nhfp;
+    const cnt = CRITICAL_SIZES.length; // `:765` SIZE(critical_sizes)
+    let dmmismatch = SF_DM_MISMATCH; // `:767`
+    const quietly = (((utdflags | 0) & UTD_QUIETLY) !== 0); // `:768`
+    let file_csc_count = 0; // `:771` — Sfi_char feed (named omit above)
+    if (file_csc_count > cnt) { // `:772`
+        return SF_CRITICAL_BYTE_COUNT_MISMATCH; // `:778` (raw_printf omit)
+    }
+    // `:779–781` — Sfi_uchar cscbuf fill loop (named omit above)
+    for (let i = 1; i < cnt; i++) { // `:782`
+        if ((CSCBUF[i] | 0) !== (CRITICAL_SIZES[i].ucsize | 0)) { // `:783`
+            const dm = datamodel(0); // `:784`
+            const dmfile = what_datamodel_is_this(0, // `:786–791`
+                CSCBUF[1] | 0, CSCBUF[2] | 0, CSCBUF[3] | 0,
+                CSCBUF[4] | 0, CSCBUF[5] | 0);
+            if (dmfile === 'IL32LLP64' && dm === 'ILP32LL64') { // `:793–795`
+                dmmismatch = SF_DM_IL32LLP64_ON_ILP32LL64;
+            } else if (dmfile === 'I32LP64' // `:796–799`
+                       && dm === 'ILP32LL64') {
+                dmmismatch = SF_DM_I32LP64_ON_ILP32LL64;
+            } else if (dmfile === 'ILP32LL64' // `:800–803`
+                       && dm === 'I32LP64') {
+                dmmismatch = SF_DM_ILP32LL64_ON_I32LP64;
+            } else if (dmfile === 'ILP32LL64' // `:804–807`
+                       && dm === 'IL32LLP64') {
+                dmmismatch = SF_DM_ILP32LL64_ON_IL32LLP64;
+            } else if (dmfile === 'I32LP64' // `:808–811`
+                       && dm === 'IL32LLP64') {
+                dmmismatch = SF_DM_I32LP64_ON_IL32LLP64;
+            } else if (dmfile === 'IL32LLP64' // `:812–815`
+                       && dm === 'I32LP64') {
+                dmmismatch = SF_DM_IL32LLP64_ON_I32LP64;
+            }
+            if (idx_1st_mismatch) idx_1st_mismatch.value = i; // `:817–818`
+            return dmmismatch; // `:819`
+        }
+    }
+    return SF_UPTODATE; // `:822` — everything matched
+}
+
+/**
+ * C ref: version.c uptodate `:713–746` — critical-bytes probe, version
+ * read, check_version gate, in C order. The one C caller is validate
+ * `:854` (ported below).
+ * Named omits: `:725` Sfi_char indicate-format feed (indicator is
+ * write-never-read in C); `:730–732` raw_printf mismatch message (same
+ * omit as compare); `:735` Sfi_version_info (sfbase.c:348 sfiprocs/fnidx
+ * binary dispatch — no JS home); `:740` wait_synch (winprocs.h:140 →
+ * tty_wait_synch, no live JS port).
+ * @param {object} nhfp JS NHFILE handle
+ * @param {string|null} name
+ * @param {number} utdflags
+ * @returns {Promise<number>} SF_* status
+ */
+export async function uptodate(nhfp, name, utdflags) {
+    /* C `:715–719` — SFCTOOL takes the extern vers_info; the game build
+       keeps the local struct (global.h version_info fields). */
+    const vers_info = { incarnation: 0, feature_set: 0, entity_count: 0 };
+    let indicator = 0;
+    void indicator;
+    let sfstatus = 0;
+    const idx_holder = { value: 0 }; // C `:721` int idx_1st_mismatch = 0
+    const quietly = (((utdflags | 0) & UTD_QUIETLY) !== 0); // `:722`
+    const verbose = (name != null); // C `:723` name ? TRUE : FALSE (pointer)
+    if ((sfstatus = compare_critical_bytes(nhfp, idx_holder, // `:726–727`
+                                           utdflags | 0)) !== SF_UPTODATE) {
+        if (sfstatus > 0 && idx_holder.value) { // `:728`
+            if (!quietly) { // `:729`
+                // raw_printf omit (above): "comparison of critical bytes
+                // mismatched at %d (%s)." ucsize/nm of idx_holder.value
+            }
+        }
+    }
+    // `:735` — Sfi_version_info feed (named omit above)
+    if (!(await check_version(vers_info, name, verbose, // `:737`
+                              utdflags | 0))) {
+        if (verbose) { // `:738`
+            if ((((utdflags | 0) & UTD_WITHOUT_WAITSYNCH_PERFILE)) === 0) { // `:739`
+                // `:740` — wait_synch() (named omit above)
+            }
+        }
+        return SF_OUTDATED; // `:743`
+    }
+    return sfstatus; // `:745`
+}
+
+/**
+ * C ref: version.c validate `:840–862` — utdflags assembly + uptodate.
+ * C callers: bones.c:663 (getbones — JS JSON analogue at bones.js:544,
+ * no validate call), files.c:1281/:1379 (unported load-save path),
+ * restore.c:892 (unported), sfctool.c:312 (savefile tool, not the game) —
+ * all named in the map; no live JS caller yet.
+ * @param {object} nhfp JS NHFILE handle
+ * @param {string|null} name
+ * @param {boolean} without_waitsynch_perfile
+ * @returns {Promise<number>} SF_* status
+ */
+export async function validate(nhfp, name, without_waitsynch_perfile) {
+    let utdflags = 0; // `:842`
+    /* C `:845–847` #ifdef SFCTOOL |= UTD_QUIETLY — compiled out in the
+       game build (named). */
+    if (nhfp.structlevel) utdflags |= UTD_CHECKSIZES; // `:848–849`
+    if (without_waitsynch_perfile) utdflags |= UTD_WITHOUT_WAITSYNCH_PERFILE; // `:850–851`
+    if (nhfp.fieldlevel) utdflags |= (UTD_CHECKFIELDCOUNTS | UTD_SKIP_SANITY1); // `:852–853`
+    const validsf = await uptodate(nhfp, name, utdflags); // `:854`
+    return validsf;
 }
 
 /**

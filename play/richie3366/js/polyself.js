@@ -58,7 +58,7 @@ import {
     losehp, nomul, is_pool, waterbody_name, On_stairs, in_rooms,
     monst_to_any,
 } from './hack.js';
-import { finish_losehp_done, done } from './end.js';
+import { finish_losehp_done, done, find_delayed_killer, dealloc_killer } from './end.js';
 import { steed_vs_stealth } from './steed.js';
 // polymon whole-body port deps (imports.mjs --can: all SAFE, hoisted fns,
 // no new cycle — pline/dig/pickup add no cycle at all).
@@ -72,7 +72,7 @@ import { expels } from './mhitu.js';
 import { set_utrap, reset_utrap, selftouch } from './trap.js';
 import { can_ride, dismount_steed } from './steed.js';
 // dogaze/dospinweb/rehumanize arms (imports.mjs --can: both SAFE, hoisted fns).
-import { couldsee } from './vision.js';
+import { couldsee, set_mimic_blocking } from './vision.js';
 import { emits_light, del_light_source } from './light.js';
 import {
     flaming, unsolid, amorphous, likes_lava, breathless, poly_when_stoned,
@@ -158,6 +158,7 @@ import {
     LOW_PM,
     Upolyd,
     DIED,
+    GENOCIDED,
     ECMD_OK,
     ECMD_TIME,
     MALE,
@@ -199,6 +200,7 @@ import {
     hidespinchars,
     ismnum,
     POLYMORPH_CONTROL,
+    POLYMORPH,
     UNCHANGING,
     I_SPECIAL,
     TT_PIT,
@@ -811,29 +813,51 @@ export async function uunstick() {
 }
 
 /**
- * C ref: polyself.c polyman — revert to original race form after newman.
- * Envelope: restore macurr/mamax; clear mh/mtimedone; set_uasmon; sticking
- * uunstick (D-2131); find_ac; newsym; pline; was_blind→make_blinded;
- * see_monsters.
+ * C ref: polyself.c ugenocided `:2265–2270` — True iff hero's role or race
+ * has been genocided (mvitals G_GENOD on either mnum; game.mvitals mirrors
+ * svm.mvitals per allmain.js:726).
+ * @returns {boolean}
+ */
+export function ugenocided() {
+    const mv = game.mvitals || [];
+    return !!(((mv[(game.urole?.mnum | 0)]?.mvflags | 0) & G_GENOD)
+        || ((mv[(game.urace?.mnum | 0)]?.mvflags | 0) & G_GENOD));
+}
+
+/**
+ * C ref: polyself.c polyman `:199–268` (C staticfn: same-file callers
+ * only — module-local here). Revert to original race form after newman
+ * (`:443`) / rehumanize (`:1395`): restore macurr/mamax; clear
+ * mh/mtimedone; set_uasmon; sticking uunstick (D-2131); find_ac; mimic
+ * stop; newsym; urgent pline; self-genocide done; See_invisible toggle;
+ * twoweapon drop; pit-timer reset; was_blind→make_blinded;
+ * check_strangling(TRUE); pool/lava spoteffects; see_monsters.
  * skinback(FALSE) `:217` (D-2262).
- * Named omissions: ugenocided; mimic/twoweapon;
- * strangling; pool spoteffects; retouch_equipment/selftouch.
  */
 async function polyman(fmt, arg) {
     const u = game.u || (game.u = {});
     const flags = game.flags || (game.flags = {});
     // C :200–201 — sticking reads the CURRENT (poly) form, before set_uasmon
     const sticking = !!(sticks(game.youmonst?.data) && u.ustuck && !u.uswallow);
-    // C: was_blind = !!Blind before set_uasmon clears FROMFORM Blind
+    // C :202 — U_AP_TYPE is youmonst.m_ap_type & mask (const.js M_AP_TYPE)
+    const wasMimicking = M_AP_TYPE(game.youmonst) !== M_AP_NOTHING;
+    // C :203–204 — was_blind = !!Blind, had_see_invis = !!See_invisible,
+    // both before set_uasmon clears the FROMFORM bits
     const wasBlind = !!(((u.HBlinded | 0) || (u.EBlinded | 0))
         && !(u.BBlinded | 0)) || !!u.uroleplay?.blind;
+    // C youprop.h See_invisible ≡ H || E (+ sticky flat, per-module idiom)
+    const hadSeeInvis = !!((u.HSee_invisible | 0) || (u.ESee_invisible | 0)
+        || u.See_invisible);
+    // C :206–211 — restore old attribs when reverting from poly'd
     if (Upolyd(u)) {
         u.acurr = copyAttrBundle(u.macurr);
         u.amax = copyAttrBundle(u.mamax);
         u.umonnum = u.umonster | 0;
         flags.female = !!u.mfemale;
     }
+    // C :212
     set_uasmon();
+    // C :214–217
     u.mh = 0;
     u.mhmax = 0;
     u.mtimedone = 0;
@@ -841,11 +865,47 @@ async function polyman(fmt, arg) {
     u.uundetected = 0;
     // C :220–221 — release the hold before the return-to-form pline
     if (sticking) await uunstick();
+    // C :222
     find_ac();
+    // C :223–227 — stop mimicking (multi < 0 ends the occupation first)
+    if (wasMimicking) {
+        if ((game.multi | 0) < 0) await unmul('');
+        if (game.youmonst) {
+            game.youmonst.m_ap_type = M_AP_NOTHING;
+            game.youmonst.mappearance = 0;
+        }
+    }
+    // C :229
     newsym(u.ux, u.uy);
-    // C urgent_pline(fmt, arg) — fmt has one %s; overrides WIN_STOP
-    await urgent_pline(String(fmt).replace('%s', arg));
-    // C: was_blind && !Blind → set_itimeout(HBlinded,1); make_blinded(0,TRUE)
+    // C :231 — fmt has one %s; urgent overrides WIN_STOP (display.js)
+    await urgent_pline(fmt, arg);
+    // C :234–247 — genocided self while poly'd (killer survives via
+    // the delayed POLYMORPH node; done returns only if lifesaved)
+    if (ugenocided()) {
+        /* intervening activity might have clobbered genocide info */
+        const kptr = find_delayed_killer(POLYMORPH);
+        if (!game.killer) game.killer = { name: '', format: 0 };
+        if (kptr && kptr.name) {
+            game.killer.format = kptr.format;
+            game.killer.name = kptr.name;
+        } else {
+            game.killer.format = KILLED_BY;
+            game.killer.name = 'self-genocide';
+        }
+        dealloc_killer(kptr);
+        await done(GENOCIDED);
+    }
+    // C :249–250 — See_invisible just toggled
+    const seeInvis = !!((u.HSee_invisible | 0) || (u.ESee_invisible | 0)
+        || u.See_invisible);
+    if (seeInvis !== hadSeeInvis) set_mimic_blocking();
+    // C :252–253 — new form cannot two-weapon
+    if (u.twoweap && !could_twoweap(game.youmonst?.data)) await untwoweapon();
+    // C :255–257 — time to escape resets
+    if ((u.utrap | 0) && ((u.utraptype | 0) === TT_PIT)) {
+        set_utrap(rn1(6, 2), TT_PIT);
+    }
+    // C :258–260 — reverting from eyeless (timeout.js:992 same shape)
     const nowBlind = !!(((u.HBlinded | 0) || (u.EBlinded | 0))
         && !(u.BBlinded | 0)) || !!u.uroleplay?.blind;
     if (wasBlind && !nowBlind) {
@@ -858,6 +918,15 @@ async function polyman(fmt, arg) {
             ((u.uprops[BLINDED].intrinsic | 0) & ~TIMEOUT) | (1 & TIMEOUT);
         await make_blinded(0, true);
     }
+    // C :261 — maybe resume strangling in the vulnerable new form
+    await check_strangling(true);
+    // C :263–264 — dbridge.c is_pool_or_lava ≡ is_pool || is_lava (trap.js:693)
+    const levitation = !!(((u.HLevitation | 0) || (u.ELevitation | 0))
+        && !((u.BLevitation | 0)));
+    if (!levitation && !u.ustuck && (is_pool(u.ux, u.uy) || is_lava(u.ux, u.uy))) {
+        await spoteffects(true);
+    }
+    // C :266
     see_monsters();
 }
 

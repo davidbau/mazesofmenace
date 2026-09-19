@@ -97,8 +97,7 @@
 // + bhitm spell_damage_bonus (D-1388; Knight questart dbldam named).
 // zap_map lateral drawbridge + bhit ZAPPED_WAND zap_map (D-1489);
 // Named omissions: zap_map uswallow pile;
-// draft_message
-// Rogue SDOOR; Invocation_lev vibrating-square "the";
+// Invocation_lev vibrating-square "the";
 // bhito opening chain / uchain unpunish is D-1481;
 // bhito poly-arm boxlock reset_pick is D-1483;
 // bhit doorlock WAN_STRIKING/SPE_FORCE_BOLT is D-1482;
@@ -267,7 +266,7 @@ import {
 import { ok_to_quest } from './quest.js';
 import { more_experienced, losexp, newexplevel } from './exper.js';
 import { obj_resists, is_quest_artifact } from './dogmove.js';
-import { zap_dig, fracture_rock, break_statue, bury_objs, unearth_objs } from './dig.js';
+import { zap_dig, fracture_rock, break_statue, bury_objs, unearth_objs, draft_message } from './dig.js';
 import {
     killed, xkilled, flash_hits_mon, m_is_steadfast, that_is_a_mimic,
     disguised_as_mon, disguised_as_non_mon,
@@ -1233,7 +1232,7 @@ export async function zap_over_floor(x, y, type, shopdamage, ignoremon, explodin
                 `${yourzap ? 'Your' : 'The'} ${zapverb} reveals a secret door.`,
             );
         } else if (Is_rogue_level(game.u?.uz)) {
-            await You_feel('a draft.');
+            await draft_message(false);
         }
     }
 
@@ -6024,7 +6023,7 @@ async function maybe_explode_trap(ttmp, otmp, learn) {
  * then !u.dz lateral drawbridge (D-1489; `:3685–3717`) then
  * WAN_PROBING terrain/trap (D-1444). Caller zap_updown down
  * (D-1444/D-1485) and bhit ZAPPED_WAND (D-1489 `:3919–3924`).
- * Named: draft_message Rogue SDOOR;
+ * C zap.c:3746 Rogue !cansee SDOOR → live dig.js draft_message(false);
  * Invocation_lev vibrating-square "the".
  */
 async function zap_map(x, y, obj) {
@@ -6140,8 +6139,9 @@ async function zap_map(x, y, obj) {
             if (cansee(x, y)) {
                 await pline('Probing reveals a secret door.');
                 learn.v = true;
+            } else if (Is_rogue_level(game.u?.uz)) {
+                await draft_message(false);
             }
-            /* Rogue !cansee draft_message named */
         } else if (ltyp === SCORR) {
             if (loc1) loc1.typ = CORR;
             recalc_block_point(x, y);

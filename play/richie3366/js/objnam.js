@@ -1458,11 +1458,17 @@ export function killer_xname(obj) {
 }
 
 /**
- * C ref: rumors.c CapitalMon / init_CapMons — capitalized type/title names
- * that take "the" (Archon, Oracle, Green-elf) vs pname uniques (Medusa).
+ * C ref: rumors.c CapitalMon / init_CapMons / free_CapMons — capitalized
+ * type/title names that take "the" (Archon, Oracle, Green-elf) vs pname
+ * uniques (Medusa).
+ *
+ * C rumors.c:56-58 keeps three file-static counters next to the list;
+ * CapMonSiz is CapMonstCnt+CapBogonCnt+1 (terminator) when non-zero.
+ * C:54-55 notes there is no need to put these into game state.
  */
 const BOGON_CODES = '-_+|=';
 let CapMons = null;
+let CapMonstCnt = 0, CapBogonCnt = 0, CapMonSiz = 0;
 
 /** C ref: hacklib.c xcrypt — involution; same as rumors.js. */
 function xcrypt_objnam(s) {
@@ -1488,38 +1494,105 @@ function bogon_is_pname_objnam(code) {
     return !!code && '-+='.includes(code);
 }
 
-/** C ref: rumors.c init_CapMons. */
+/**
+ * C ref: rumors.c free_CapMons `:938–954` — release the capitalized-name
+ * list. C frees the dupstr'd hallucination copies
+ * (`CapMons[CapMonstCnt .. CapMonSiz-2]`, :948-949) but not the mons[]
+ * literals, then the array itself (:950) and zeroes CapMonSiz (:952 —
+ * the counts keep their stale values until the next pass 1). JS strings
+ * are GC-managed, so only the list linkage is released here.
+ * Exported: C linkage is non-static; the only C caller outside init is
+ * save.c freedynamicdata `:1129` (named omission — save-freeing teardown
+ * has no JS counterpart, fortress guard).
+ */
+export function free_CapMons() {
+    if (CapMons) {
+        CapMons = null; // C :950 `free(CapMons), CapMons = 0`
+    }
+    CapMonSiz = 0; // C :952
+}
+
+/**
+ * C ref: rumors.c init_CapMons `:829–935` — one-time two-pass build of
+ * CapMons[]: non-unique monsters with a capitalized type name (Green-elf,
+ * Archon), uniques whose "name" is a title (Oracle), plus hallucinatory
+ * names in either category. Pass 1 counts, allocates, pass 2 populates;
+ * the first CapMonstCnt entries are mons[] literals, the next
+ * CapBogonCnt are hallucination copies, plus a trailing terminator.
+ */
 function init_CapMons() {
-    const list = [];
-    for (let mndx = LOW_PM; mndx < NUMMONS; mndx++) {
-        const mptr = mons(mndx);
-        if (!mptr) continue;
-        if ((mptr.geno & G_UNIQ) !== 0 && !the_unique_pm(mptr)) continue;
-        const names = pmnames[mndx];
-        if (!names) continue;
-        for (let mgend = MALE; mgend < NUM_MGENDERS; mgend++) {
-            const nam = names[mgend];
-            if (nam && nam[0] && nam[0] !== nam[0].toLowerCase()) list.push(nam);
+    // C :833 `dlb_fopen(BOGUSMONFILE, "r")` — the contest port embeds the
+    // data file at build time (D-0477, Rule #2: no runtime filesystem);
+    // a missing embed is C's NULL file handle.
+    const bogonfile = (typeof BOGUSMON_BUF === 'string')
+        ? String(BOGUSMON_BUF).split('\n') : null;
+
+    if (CapMons) // C :834-836 sanity precaution
+        free_CapMons();
+
+    // C :841 first pass counts, then allocates; second pass populates.
+    for (let pass = 1; pass <= 2; ++pass) {
+        // C :844-849 the first CapMonstCnt entries come from
+        // mons[].pmnames[], the next CapBogonCnt from 'bogusmons'.
+        CapMonstCnt = CapBogonCnt = 0;
+
+        // C :852-866 gather applicable actual monsters.
+        for (let mndx = LOW_PM; mndx < NUMMONS; ++mndx) {
+            const mptr = mons(mndx);
+            if (!mptr) continue; // JS guard: sparse table hole (C mons[] is dense)
+            if ((mptr.geno & G_UNIQ) !== 0 && !the_unique_pm(mptr)) // C :854-855
+                continue;
+            const names = pmnames[mndx];
+            if (!names) continue; // JS guard (C pmnames[] is dense)
+            for (let mgend = MALE; mgend < NUM_MGENDERS; ++mgend) { // C :857
+                const nam = names[mgend];
+                if (nam && nam[0] && nam[0] !== nam[0].toLowerCase()) { // C :859 `*nam != lowc(*nam)`
+                    if (pass === 2) // C :860-861
+                        CapMons[CapMonstCnt] = nam;
+                    ++CapMonstCnt; // C :862
+                }
+            }
+        }
+
+        // C :868-897 now gather applicable hallucinatory monsters.
+        if (bogonfile) { // C :871
+            // C :874-875 rewind (no-op for pass 1, essential for pass 2):
+            // the embed re-iterates from the first line each pass.
+            // C :876-877 skips the "don't edit" header line — the
+            // extractor already drops it from the embed.
+            for (let li = 0; li < bogonfile.length; ++li) {
+                const hline = bogonfile[li];
+                if (!hline) continue;
+                // C :882-884 strip newline (the split leaves none) then
+                // xcrypt + unpadline.
+                const xbuf = unpadline_objnam(xcrypt_objnam(hline));
+                if (!xbuf) continue; // C :885 empty decodes to no candidate
+                let code = '', startp = xbuf; // C :886 ordinary
+                if (BOGON_CODES.includes(xbuf[0])) { // C :885 `strchr(bogon_codes, xbuf[0])`
+                    code = xbuf[0]; // C :888 special
+                    startp = xbuf.slice(1);
+                }
+                if (startp && startp[0] !== startp[0].toLowerCase() // C :890
+                    && !bogon_is_pname_objnam(code)) { // C :890 `!bogon_is_pname(code)`
+                    if (pass === 2) // C :891-892
+                        CapMons[CapMonstCnt + CapBogonCnt] = startp; // C dupstr folded: JS strings are immutable
+                    ++CapBogonCnt; // C :893
+                }
+            }
+        }
+
+        // C :899-908 finish the current pass.
+        if (pass === 1) {
+            CapMonSiz = CapMonstCnt + CapBogonCnt + 1; // C :900 +1 terminator
+            CapMons = new Array(CapMonSiz); // C :901 alloc
+        } else { // pass === 2
+            // C :903-904 terminator; not strictly needed.
+            CapMons[CapMonSiz - 1] = null;
+            // C :906-907 dlb_fclose — no handle to close on an embed.
         }
     }
-    // C skips the plaintext don't-edit header; JS BOGUSMON_BUF already omits it.
-    const lines = String(BOGUSMON_BUF || '').split('\n');
-    for (const enc of lines) {
-        if (!enc) continue;
-        const xbuf = unpadline_objnam(xcrypt_objnam(enc));
-        if (!xbuf) continue;
-        let code = '';
-        let startp = xbuf;
-        if (BOGON_CODES.includes(xbuf[0])) {
-            code = xbuf[0];
-            startp = xbuf.slice(1);
-        }
-        if (startp && startp[0] !== startp[0].toLowerCase()
-            && !bogon_is_pname_objnam(code)) {
-            list.push(startp);
-        }
-    }
-    CapMons = list;
+    // C :913-932 `#ifdef DEBUG` wizard explicitdebug("CapMons") window
+    // dump — named: no DEBUGFILES/wizard-debug window layer in this port.
 }
 
 /**
@@ -1529,7 +1602,8 @@ export function CapitalMon(word) {
     if (!word || word[0] === word[0].toLowerCase()) return false;
     if (!CapMons) init_CapMons();
     const wln = word.length;
-    for (const nam of CapMons) {
+    for (let i = 0; i < CapMonSiz - 1; ++i) { // C rumors.c:806 (skips the terminator)
+        const nam = CapMons[i];
         const nln = nam.length;
         if (wln < nln) continue;
         if (word.slice(0, nln) !== nam) continue;

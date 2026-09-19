@@ -94,6 +94,9 @@ import {
     MSGTYP_NOREP,
     MSGTYP_NOSHOW,
     MSGTYP_STOP,
+    AUTOCOMPLETE,
+    AUTOCOMP_ADJ,
+    ROGUESET,
     HL_NONE,
     HL_BOLD,
     HL_DIM,
@@ -127,6 +130,7 @@ import {
     objectNames, objectNameStrs, objects,
 } from './objects.js';
 import { EXTCMDLIST, INTERNALCMD } from './generated/extcmdlist_data.js';
+import { yyyymmddhhmmss } from './calendar.js';
 import { getlin } from './getline.js';
 import { makesingular, fruit_from_name, makeplural } from './objnam.js';
 import { clr2colorname } from './artifact.js';
@@ -3061,4 +3065,216 @@ export async function doset_simple() {
 /** Map object oclass → default class symbol for autopick_testobj. */
 export function oclass_to_sym(oclass) {
     return OC_SYM[oclass] || '';
+}
+
+/* ===== C ref: options.c all_options_strbuf() family `:9678–9748` [campaign 1/7] =====
+ * #saveoptions writer (cfgfiles.c do_write_config_file `:165–211`, not yet
+ * ported — the only C caller, named omission below). Live in this commit:
+ * strbuf_* (strutil.c) + msgtypes / menucolors / apes / autocomplete arms
+ * (backing stores live in this file / game bags / generated EXTCMDLIST).
+ * Named omissions ship as campaign rows (map): get_option_value + the
+ * allopt[]/opt_set_in_config[] table, all_options_conds, get_changed_key_binds,
+ * all_options_statushilites (+ parsesymbols producer for savedSymbols).
+ * all_options_palette is compiled
+ * out (CHANGE_COLOR off for tty: windconf.h `:29` commented) — no row.
+ */
+
+/** C ref: hack.h strbuf_t — { len, str, buf[256] }; JS holds a plain string. */
+export function strbuf_init(sbuf) {
+    // strutil.c `:9–14` — str=NULL, len=0.
+    sbuf.str = null;
+    sbuf.len = 0;
+}
+
+/**
+ * C ref: strutil.c strbuf_append `:17–25` — reserve(len+1+strlen) then Strcat.
+ * JS strings carry no NUL; the accumulated string is exact.
+ */
+export function strbuf_append(sbuf, s) {
+    s = String(s);
+    strbuf_reserve(sbuf, s.length + 1 + (sbuf.str ? sbuf.str.length : 0));
+    sbuf.str = (sbuf.str ?? '') + s;
+}
+
+/**
+ * C ref: strutil.c strbuf_reserve `:28–44` — first use aliases buf[256]
+ * (len 256), growth books len+sizeof-buf and copies. Only booked capacity is
+ * unobservable; no copy needed for immutable JS strings.
+ */
+export function strbuf_reserve(sbuf, len) {
+    if (sbuf.str == null) {
+        sbuf.str = '';
+        sbuf.len = 256; // sizeof strbuf_t.buf
+    }
+    if (len > sbuf.len) sbuf.len = len + 256;
+}
+
+/** C ref: strutil.c strbuf_empty `:47–53` — free heap storage, re-init. */
+export function strbuf_empty(sbuf) {
+    strbuf_init(sbuf);
+}
+
+/** C ref: optlist.h `:19` enum OptType; global.h `:580–588` optset_restrictions. */
+const BoolOpt = 0, CompOpt = 1, OthrOpt = 2;
+const SET_IN_CONFIG = 1, SET_GAMEVIEW = 3, SET_IN_GAME = 4;
+
+/* C ref: options.c `:111` static boolean opt_set_in_config[OPTCOUNT=248], set at
+ * `:640` (config match) and `:5010`/`:8438` (cond prefix). The allopt registry
+ * row ships the table (optlist.h NHOPT_PARSE, OPTCOUNT 248); until then both
+ * are empty — no option counts as set-in-config, which is today's truth since
+ * nothing records it. allopt rows: { name, opttyp, addr: {obj,key} game-bag
+ * ref or null (C: boolean *addr), initval, setwhere, optfn } — addr follows the
+ * DOSET_BOOL_ADDR convention used by simple_bool_value in this file. */
+const allopt = [];
+const opt_set_in_config = [];
+/** C enum opt pfx_cond_ = 245 (optlist.h NHOPTP cond_ `:904–905`, 245 rows before it). */
+const PFX_COND_IDX = 245;
+
+/**
+ * C ref: options.c msgtype2name `:7690–7697` — first msgtype_names row with
+ * descr and matching msgtyp, else (char *)0.
+ */
+function msgtype2name(typ) {
+    for (const e of msgtype_names) {
+        if (e.descr && e.msgtyp === (typ | 0)) return e.name;
+    }
+    return null;
+}
+
+/**
+ * C ref: options.c all_options_msgtypes `:9628–9640` — one MSGTYPE= line per
+ * gp.plinemsg_types node (live list via msgtype_add in this file).
+ */
+export function all_options_msgtypes(sbuf) {
+    for (let tmp = gp.plinemsg_types; tmp; tmp = tmp.next) {
+        const mtype = msgtype2name(tmp.msgtype);
+        strbuf_append(sbuf, `MSGTYPE=${mtype} "${tmp.pattern}"\n`);
+    }
+}
+
+/**
+ * C ref: options.c all_options_menucolors `:9595–9625` — collect the
+ * gm.menu_colorings chain (live module list in this file, newest first like C
+ * prepends) then emit oldest-first. MENUCOLOR="orig"=color[&attr].
+ * C ATR_NONE=0 (wintype.h `:128`); attr2attrname/clr2colorname live.
+ */
+export function all_options_menucolors(sbuf) {
+    const ncolors = count_menucolors();
+    if (!ncolors) return;
+    // C: reverse the order (arr + descending loop).
+    const arr = [];
+    for (let tmp = menuColorings; tmp; tmp = tmp.next) arr.push(tmp);
+    for (let i = ncolors; i > 0; i--) {
+        const tmp = arr[i - 1];
+        const sattr = attr2attrname(tmp.attr);
+        const sclr = clr2colorname(tmp.color);
+        strbuf_append(
+            sbuf,
+            `MENUCOLOR="${tmp.origstr}"=${sclr}`
+                + `${tmp.attr !== 0 ? '&' : ''}${tmp.attr !== 0 ? sattr : ''}\n`
+        );
+    }
+}
+
+/**
+ * C ref: options.c all_options_apes `:9643–9654` — one autopickup_exception=
+ * line per ga.apelist node. Live shape game.apelist (pickup.js); no producer
+ * yet (AUTOPICKUP_EXCEPTION parse unported) so the list is always empty and
+ * this emits nothing. The ape-parse row must store pattern (C prints it).
+ */
+export function all_options_apes(sbuf) {
+    for (const ape of game.apelist ?? []) {
+        strbuf_append(sbuf, `autopickup_exception="${ape.grab ? '<' : '>'}${ape.pattern}"\n`);
+    }
+}
+
+/**
+ * C ref: cmd.c all_options_autocomplete `:3296–3308` — AUTOCOMPLETE=[!]name per
+ * extcmdlist row with AUTOCOMP_ADJ (generated EXTCMDLIST: txt/flags; C loops to
+ * the null terminator, JS exhausts the array).
+ */
+export function all_options_autocomplete(sbuf) {
+    for (const efp of EXTCMDLIST) {
+        if ((efp.flags & AUTOCOMP_ADJ) !== 0) {
+            strbuf_append(
+                sbuf, `AUTOCOMPLETE=${(efp.flags & AUTOCOMPLETE) ? '' : '!'}${efp.txt}\n`
+            );
+        }
+    }
+}
+
+/* C saved_symbols chain (symbols.c savedsym_strbuf `:757–769`): entries
+ * { which_set, name, val } in C prepend order. No producer yet (SYMBOLS=
+ * parsesymbols unported) so this is always empty; the producer row fills it. */
+const savedSymbols = [];
+
+/**
+ * C ref: symbols.c savedsym_strbuf `:757–769` — [ROGUE]SYMBOLS=name:val per
+ * saved_symbols node. ROGUESET live from const.js.
+ */
+export function savedsym_strbuf(sbuf) {
+    for (const tmp of savedSymbols) {
+        strbuf_append(
+            sbuf, `${tmp.which_set === ROGUESET ? 'ROGUE' : ''}SYMBOLS=${tmp.name}:${tmp.val}\n`
+        );
+    }
+}
+
+/**
+ * C ref: options.c all_options_strbuf `:9678–9748` — serialize changed options
+ * for #saveoptions. Header (`:9686–9689`, yyyymmddhhmmss(epoch) live); allopt
+ * loop (`:9691–9721`: BoolOpt changed-vs-initval with obsolete/&flags.female
+ * skip, CompOpt setwhere-gated get_option_value, OthrOpt skip); cond guard
+ * (`:9727–9729`, named: all_options_conds); CHANGE_COLOR palette (`:9731–9733`,
+ * compiled out — named, no row); key binds / symsets / menucolors / msgtypes /
+ * apes / autocomplete (`:9734–9739`, binds named, symsets live via savedSymbols,
+ * rest live);
+ * STATUS_HILITES (`:9740–9742`, on per config.h `:616`, named:
+ * all_options_statushilites); WIZKIT tail (`:9744–9747`, game.wizkit live per
+ * files.js fopen_wizkit_file). Buffer note: C Snprintf(tmp, sizeof-1)+Strcat
+ * "guaranteed to fit" — plain concat is exact in JS.
+ * Only C caller cfgfiles.c do_write_config_file `:200` (named omission).
+ */
+export function all_options_strbuf(sbuf) {
+    strbuf_init(sbuf);
+    strbuf_append(sbuf, `# NetHack config, saved ${yyyymmddhhmmss(0)}\n#\n`);
+
+    for (let i = 0; i < allopt.length && allopt[i].name; i++) {
+        const name = allopt[i].name;
+        if (!opt_set_in_config[i]) continue;
+        if (allopt[i].opttyp === BoolOpt) {
+            const addr = allopt[i].addr;
+            if (!addr || (addr.obj === 'flags' && addr.key === 'female')) continue; // C `:9698` switch-break = skip entry
+            if (!!((game[addr.obj] || {})[addr.key]) !== !!allopt[i].initval) {
+                const cur = !!((game[addr.obj] || {})[addr.key]);
+                strbuf_append(sbuf, `OPTIONS=${cur ? '' : '!'}${name}\n`);
+            }
+        } else if (allopt[i].opttyp === CompOpt) {
+            if (!(allopt[i].setwhere === SET_IN_CONFIG
+                || allopt[i].setwhere === SET_GAMEVIEW
+                || allopt[i].setwhere === SET_IN_GAME)) continue; // C `:9705` switch-break = skip entry
+            // C FIXME (options.c:get_option_value): menu_deselect_all &c menu
+            // control keys, term_cols, term_rows.
+            const buf2 = get_option_value(name, true);
+            if (buf2) strbuf_append(sbuf, `OPTIONS=${name}:${buf2}\n`);
+        } else {
+            // OthrOpt `:9718–9719` — break.
+        }
+    }
+
+    /* cond_xyz are closer to regular options than the other 'other opts'
+       so put them next; [pfx_cond_] will be set if any cond_Foo were
+       present when RC file was read in or if player made any changes via
+       status conditions menu; ignore opt_set_in_config[opt_o_status_cond] */
+    if (opt_set_in_config[PFX_COND_IDX]) all_options_conds(sbuf); // named: conds row
+    // CHANGE_COLOR all_options_palette `:9731–9733` compiled out (tty) — named, no row.
+    get_changed_key_binds(sbuf); // named: key-binds row
+    savedsym_strbuf(sbuf);
+    all_options_menucolors(sbuf);
+    all_options_msgtypes(sbuf);
+    all_options_apes(sbuf);
+    all_options_autocomplete(sbuf);
+    all_options_statushilites(sbuf); // named: hilites row (STATUS_HILITES on)
+    const wizkit = game.wizkit || '';
+    if (wizkit) strbuf_append(sbuf, `WIZKIT=${wizkit}\n`);
 }

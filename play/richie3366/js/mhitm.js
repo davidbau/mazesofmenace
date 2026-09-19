@@ -118,7 +118,7 @@ import {
     obj_extract_self, add_to_minv,
 } from './mkobj.js';
 import { findgold, stealarm, unstolenarm } from './steal.js';
-import { munslime, mon_adjust_speed } from './muse.js';
+import { munslime, mon_adjust_speed, munstone } from './muse.js';
 import { Monnam, mon_nam, mon_nam_too, Adjmonnam, oname, pmname, x_monnam, hliquid, YMonnam, s_suffix, free_mgivenname, a_monnam, y_monnam, some_mon_nam, minimal_monnam } from './do_name.js';
 import { an, xname, makeplural, cxname, vtense, The, simpleonames } from './objnam.js';
 import { mon_explodes } from './explode.js';
@@ -137,8 +137,8 @@ import { mswings_verb, Conflict, unstuck } from './mhitu.js';
 import { mon_offmap, set_apparxy, mb_trapped } from './monmove.js';
 import { hurtle, mhurtle, will_hurtle } from './dothrow.js';
 import { make_stunned } from './potion.js';
-import { m_is_steadfast } from './uhitm.js';
-import { mintrap, acid_damage } from './trap.js';
+import { m_is_steadfast, can_blnd } from './uhitm.js';
+import { mintrap, acid_damage, minstapetrify } from './trap.js';
 import { breamm, spitmm, thrwmm } from './mthrowu.js';
 // C ref: mon.c mondead tail (D-row for data.md:358) — one block for the
 // death-tail family. ESM permits several import statements per module;
@@ -816,10 +816,36 @@ function can_blnd_mm(magr, mdef, aatyp) {
 }
 
 /**
- * C ref: uhitm.c mhitm_ad_blnd mhitm arm :2986–3011.
+ * C ref: uhitm.c mhitm_ad_blnd `:2958–3012` — uhitm (you→mon, `:2964–2975`)
+ * and mhitm (mon→mon, `:2986–3011`) arms in C order. uhitm: can_blnd gate,
+ * !Blind "%s is blinded.", mcansee=0, damage += mblinded clamped to 127
+ * back into mblinded, then damage=0. mhitm: vis&&mcansee&&canspotmon
+ * "is blinded[ by <magr> radiance]" (Archon extra, seen only), fresh
+ * d(damn,damd)+mblinded clamped to 127, mcansee=0, clear WAITFORU;
  * gazemm Archon extra passes mhm=null; mdamagem leftover zeros dice.
+ * mhitu (mon→you, `:2976–2985`) arm lives in mhitu.js mhitm_ad_blnd_u
+ * (D-0926; Eyes-of-the-Overworld vision_clears named there).
+ * The mhitm arm keeps the file-local light-attack gate (magr mcan +
+ * resists_blnd_mm) that the live can_blnd export does not cover
+ * (mondata.c `:331–339`); the uhitm arm uses live can_blnd.
  */
-async function mhitm_ad_blnd(magr, mattk, mdef, mhm) {
+export async function mhitm_ad_blnd(magr, mattk, mdef, mhm) {
+    if (is_youmonst(magr)) {
+        /* C `:2964–2975` uhitm (hero as attacker) */
+        if (can_blnd(magr, mdef, mattk.aatyp | 0, null)) {
+            if (!Blind_slee() && (mdef.mcansee | 0)) {
+                await pline(`${Monnam(mdef)} is blinded.`);
+            }
+            mdef.mcansee = 0;
+            mhm.damage = (mhm.damage | 0) + (mdef.mblinded | 0);
+            if (mhm.damage > 127) mhm.damage = 127;
+            mdef.mblinded = mhm.damage;
+        }
+        mhm.damage = 0;
+        return;
+    }
+    if (is_youmonst(mdef)) return; /* C `:2976–2985` mhitu: mhitu.js mhitm_ad_blnd_u */
+    /* C `:2986–3011` mhitm */
     if (can_blnd_mm(magr, mdef, mattk?.aatyp)) {
         if (_mm_vis && (mdef.mcansee | 0) && canspotmon(mdef)) {
             let buf = `${Monnam(mdef)} is blinded`;
@@ -836,6 +862,63 @@ async function mhitm_ad_blnd(magr, mattk, mdef, mhm) {
         mdef.mstrategy = (mdef.mstrategy | 0) & ~STRAT_WAITFORU;
     }
     if (mhm) mhm.damage = 0;
+}
+
+/**
+ * C ref: uhitm.c mhitm_ad_elec `:2684–2739` — uhitm (you→mon, `:2688–2703`)
+ * and mhitm (mon→mon, `:2724–2738`) arms in C order. uhitm: mgc-negate
+ * gate, !Blind "%s is zapped!", resists_elec/defended zeroes the leftover
+ * after golemheal+shield, else destroy_items adds the orig leftover.
+ * mhitm: negate gate, vis+canseemon "%s gets zapped!", resists/defended
+ * zeroes the leftover after shield+golemheal (C order), else
+ * destroy_items adds the orig leftover. mhitu (mon→you, `:2704–2723`)
+ * arm lives in mhitu.js mhitm_ad_elec_u (hitmsg + Shock_resistance
+ * seesu/zero + (void) destroy_items on m_lev > rn2(20)).
+ */
+export async function mhitm_ad_elec(magr, mattk, mdef, mhm) {
+    void mattk;
+    const orig_dmg = mhm.damage | 0;
+    const { destroy_items } = await import('./zap.js');
+    if (is_youmonst(magr)) {
+        /* C `:2688–2703` uhitm (hero as attacker) */
+        if (await mhitm_mgc_atk_negated(magr, mdef, true)) {
+            mhm.damage = 0;
+            return;
+        }
+        if (!Blind_slee()) {
+            await pline(`${Monnam(mdef)} is zapped!`);
+        }
+        if (resists_elec(mdef) || defended(mdef, AD_ELEC)) {
+            if (!Blind_slee()) {
+                await pline(`The zap doesn't shock ${mon_nam(mdef)}!`);
+            }
+            await golemeffects_mm(mdef, AD_ELEC, mhm.damage | 0);
+            await shieldeff(mdef.mx, mdef.my);
+            mhm.damage = 0;
+        }
+        mhm.damage = (mhm.damage | 0)
+            + ((await destroy_items(mdef, AD_ELEC, orig_dmg)) | 0);
+        return;
+    }
+    if (is_youmonst(mdef)) return; /* C `:2704–2723` mhitu: mhitu.js mhitm_ad_elec_u */
+    /* C `:2724–2738` mhitm */
+    if (await mhitm_mgc_atk_negated(magr, mdef, true)) {
+        mhm.damage = 0;
+        return;
+    }
+    if (_mm_vis && canseemon(mdef)) {
+        await pline_mon(mdef, `${Monnam(mdef)} gets zapped!`);
+    }
+    if (resists_elec(mdef) || defended(mdef, AD_ELEC)) {
+        if (_mm_vis && canseemon(mdef)) {
+            await pline(`The zap doesn't shock ${mon_nam(mdef)}!`);
+        }
+        await shieldeff(mdef.mx, mdef.my);
+        await golemeffects_mm(mdef, AD_ELEC, mhm.damage | 0);
+        mhm.damage = 0;
+    }
+    mhm.damage = (mhm.damage | 0)
+        + ((await destroy_items(mdef, AD_ELEC, orig_dmg)) | 0);
 }
 
 /**
@@ -1407,11 +1490,22 @@ async function do_stone_mon(magr, mattk, mdef, mhm) {
 }
 
 /**
- * C ref: uhitm.c mhitm_ad_ston mhitm arm :4254–4261.
- * Cancelled keeps leftover d() from mdamagem. Else do_stone_mon.
- * uhitm munstone+minstapetrify and mhitu mhitm_ad_ston_u named.
+ * C ref: uhitm.c mhitm_ad_ston `:4203–4262` — uhitm (you→mon, `:4209–4214`)
+ * and mhitm (mon→mon, `:4254–4261`) arms in C order. uhitm: live munstone
+ * cure gate, else minstapetrify, then damage=0. mhitm: magr mcan gate,
+ * else do_stone_mon (cancelled keeps the mdamagem leftover d()).
+ * mhitu (mon→you, `:4215–4253`) arm lives in mhitu.js mhitm_ad_ston_u
+ * (hitmsg + !rn2(3) hiss/cough; !rn2(10)||NEW_MOON → do_stone_u).
  */
-async function mhitm_ad_ston(magr, mattk, mdef, mhm) {
+export async function mhitm_ad_ston(magr, mattk, mdef, mhm) {
+    if (is_youmonst(magr)) {
+        /* C `:4209–4214` uhitm (hero as attacker) */
+        if (!(await munstone(mdef, true))) await minstapetrify(mdef, true);
+        mhm.damage = 0;
+        return;
+    }
+    if (is_youmonst(mdef)) return; /* C `:4215–4253` mhitu: mhitu.js mhitm_ad_ston_u */
+    /* C `:4254–4261` mhitm */
     if (magr.mcan) return;
     await do_stone_mon(magr, mattk, mdef, mhm);
     if (mhm.done) return;
@@ -3921,6 +4015,41 @@ async function mdamagem(magr, mdef, mattk, mwep, dieroll) {
             done: false,
         };
         await mhitm_ad_ston(magr, mattk, mdef, mhm);
+        // C mhitm.c:1061-1065 — knockback preempts damage on HIT/DEF_DIED/offmap
+        if (await mhitm_knockback(magr, mdef, mattk, mhm, !!mwep)
+            && (((mhm.hitflags & (M_ATTK_DEF_DIED | M_ATTK_HIT)) !== 0) || mon_offmap(mdef))) {
+            return mhm.hitflags;
+        }
+        if (mhm.done) return mhm.hitflags;
+        damage = mhm.damage | 0;
+        hitflags = mhm.hitflags | 0;
+        if (!damage) return hitflags;
+        mdef.mhp -= damage;
+        if (mdef.mhp < 1) {
+            mdef.mhp = 0;
+            await mdamagem_monkilled(magr, mdef, mattk, mwep);
+            if ((mdef.mhp | 0) > 0) return hitflags; /* lifesaved */
+            if (hitflags === M_ATTK_AGR_DIED) {
+                return M_ATTK_DEF_DIED | M_ATTK_AGR_DIED;
+            }
+            const grew = await grow_up(magr, mdef);
+            return M_ATTK_DEF_DIED | (grew ? 0 : M_ATTK_AGR_DIED);
+        }
+        return (hitflags === M_ATTK_AGR_DIED) ? M_ATTK_AGR_DIED : M_ATTK_HIT;
+    }
+
+    // C: mhitm_adtyping → mhitm_ad_elec for AD_ELEC (uhitm.c:4794,
+    // mhitm arm :2724–2738). Negate gate, vis zapped pline,
+    // resists_elec/defended zeroes the leftover after shield+golemheal,
+    // else destroy_items adds the orig leftover. uhitm arm is the
+    // damageum_adtyping row; mhitu arm is mhitm_ad_elec_u (mhitu.js).
+    if ((mattk.adtyp | 0) === AD_ELEC) {
+        const mhm = {
+            damage,
+            hitflags: M_ATTK_MISS,
+            done: false,
+        };
+        await mhitm_ad_elec(magr, mattk, mdef, mhm);
         // C mhitm.c:1061-1065 — knockback preempts damage on HIT/DEF_DIED/offmap
         if (await mhitm_knockback(magr, mdef, mattk, mhm, !!mwep)
             && (((mhm.hitflags & (M_ATTK_DEF_DIED | M_ATTK_HIT)) !== 0) || mon_offmap(mdef))) {

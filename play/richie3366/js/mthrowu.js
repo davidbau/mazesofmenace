@@ -9,7 +9,7 @@ import {
     distmin, dist2, m_at, m_carrying, seemimic, setmangry, wake_nearto,
 } from './mon.js';
 import {
-    COLNO, ROWNO, BOLT_LIM, PET_MISSILE_RANGE2, IS_OBSTRUCTED, IS_DOOR,
+    COLNO, ROWNO, BOLT_LIM, MON_POLE_DIST, PET_MISSILE_RANGE2, IS_OBSTRUCTED, IS_DOOR,
     D_CLOSED, D_LOCKED, IRONBARS, IS_SINK,
     NEED_WEAPON, NEED_RANGED_WEAPON, SLT_ENCUMBER, Is_rogue_level, W_WEP,
     POTHIT_MONST_THROW, POTHIT_OTHER_THROW, LAVAWALL, IS_WATERWALL, Upolyd, M_AP_TYPE,
@@ -35,13 +35,14 @@ import {
 } from './weapon.js';
 import { find_mac, mondied, monkilled, shade_miss, AT_WEAP, AT_SPIT } from './mhitm.js';
 import { xkilled, can_blnd } from './uhitm.js';
+import { mswings_verb } from './mhitu.js';
 import { ammo_and_launcher, is_launcher, is_pole, mwelded } from './wield.js';
 import { acurr, acurrstr, A_DEX, A_STR, exercise, poisoned } from './attrib.js';
 import { calc_capacity, Blind } from './invent.js';
 import { losehp, nomul, maybe_half_phys, dissolve_bars, is_pool, is_lava, stop_occupation } from './hack.js';
 import { finish_losehp_done } from './end.js';
 import {
-    pline, pline_The, mon_visible, see_with_infrared, tmp_at, obj_glyph,
+    pline, pline_The, pline_mon, mon_visible, see_with_infrared, tmp_at, obj_glyph,
     nh_delay_output, newsym, canspotmon, impossible, set_msg_xy,
 } from './display.js';
 import { Monnam, mon_nam, s_suffix as s_suffix_ucatch, some_mon_nam, hliquid } from './do_name.js';
@@ -1442,10 +1443,8 @@ export async function thrwmm(mtmp, mtarg) {
 }
 
 /**
- * C ref: mthrowu.c thrwmu `:1175–1267` — select missile, line up, monshoot.
- * Polearm arm (`:1195–1240` is_pole/MON_POLE_DIST/couldsee/canseemon +
- * mswings_verb/dmgval/thitu) still named (own row when a falsifier fires).
- * Autoreturn always_toss arm (`:1241–1247`) live below.
+ * C ref: mthrowu.c thrwmu `:1175–1267` — select missile, polearm thrust,
+ * autoreturn toss, line up, monshoot.
  */
 export async function thrwmu(mtmp) {
     if (Is_rogue_level(game.u?.uz)) return;
@@ -1460,20 +1459,46 @@ export async function thrwmu(mtmp) {
 }
 
 async function thrwmu_body(mtmp) {
+    // C :1186–1191 — wield a ranged weapon first (mon_wield_item resets
+    // weapon_check as appropriate).
     if (mtmp.weapon_check === NEED_WEAPON || !MON_WEP(mtmp)) {
         mtmp.weapon_check = NEED_RANGED_WEAPON;
         if ((await mon_wield_item(mtmp)) !== 0) return;
     }
 
+    // C :1194–1196 — pick a weapon.
     const otmp = select_rwep(mtmp);
     if (!otmp) return;
 
-    // C mthrowu.c:1241-1247 — throw-and-return always tosses. Short-circuit
-    // order matches C: autoreturn_weapon first, then !mwelded; range gate
-    // before couldsee. (C's polearm `:1195` if-arm above this else-if stays
-    // deferred; AKLYS is never is_pole so the subset semantics match.)
+    // C :1198–1240 — polearm thrust (rang is dist2, squared: adjacent is
+    // <= 2, MON_POLE_DIST covers the knight's-move range). The polearm
+    // must be wielded; out of range or unseen means no attack at all.
+    // C :1183 — always_toss, set by the autoreturn arm below.
     let always_toss = false;
-    {
+    if (is_pole(otmp)) {
+        let dam, hitv;
+        if (otmp !== MON_WEP(mtmp)) return;
+        const rang = dist2(mtmp.mx, mtmp.my, mtmp.mux, mtmp.muy);
+        if (rang > MON_POLE_DIST || !couldsee(mtmp.mx, mtmp.my)) return;
+        if (canseemon(mtmp)) {
+            const onm = xname(otmp);
+            await pline_mon(mtmp, '%s %s %s.', Monnam(mtmp),
+                mswings_verb(otmp, rang <= 2),
+                obj_is_pname(otmp) ? the(onm) : an(onm));
+        }
+        dam = dmgval(otmp, game.youmonst);
+        hitv = 3 - distmin(game.u?.ux, game.u?.uy, mtmp.mx, mtmp.my);
+        if (hitv < -4) hitv = -4;
+        if (bigmonst(game.youmonst?.data)) hitv++;
+        hitv += 8 + (otmp.spe | 0);
+        if (dam < 1) dam = 1;
+        await thitu(hitv, maybe_half_phys(dam), { obj: otmp }, null);
+        await stop_occupation();
+        return;
+    // C :1241–1247 — throw-and-return always tosses. Short-circuit order
+    // matches C: autoreturn_weapon first, then !mwelded; range gate
+    // before couldsee.
+    } else {
         const arw = autoreturn_weapon(otmp);
         if (arw && !mwelded(otmp)) {
             const rang = dist2(mtmp.mx, mtmp.my, mtmp.mux, mtmp.muy);
@@ -1482,14 +1507,15 @@ async function thrwmu_body(mtmp) {
         }
     }
 
+    // C :1249–1259 — chase unless lined up; a retreating hero is only
+    // pelted while closing distance (URETREATING, mthrowu.c:18–19).
+    // !always_toss short-circuits before rn2, so a tethered weapon draws
+    // no BOLT_LIM retreat roll.
     const x = mtmp.mx;
     const y = mtmp.my;
     const u = game.u || {};
     const uretreating = distmin(u.ux, u.uy, x, y)
         > distmin(u.ux0 ?? u.ux, u.uy0 ?? u.uy, x, y);
-
-    // C :1255-1259 — !always_toss short-circuits before rn2, so a tethered
-    // AKLYS draws no BOLT_LIM retreat roll.
     if (!lined_up(mtmp)
         || (uretreating
             && (!always_toss
@@ -1497,6 +1523,7 @@ async function thrwmu_body(mtmp) {
         return;
     }
 
+    // C :1261–1263 — multishot shooting or throwing.
     const mwep = MON_WEP(mtmp);
     await monshoot(mtmp, otmp, mwep);
     nomul(0);

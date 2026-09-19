@@ -6,7 +6,7 @@
 
 import { game } from './gstate.js';
 import { rn2, rnd } from './rng.js';
-import { str_start_is, strstri } from './hacklib.js';
+import { str_start_is, strstri, strsubst } from './hacklib.js';
 import { ALT_SPELLINGS } from './generated/alt_spellings.js';
 import { LAST_REAL_GEM } from './generated/objects_data.js';
 import {
@@ -45,7 +45,7 @@ import {
 } from './monsters.js';
 import {
     ONAME_WISH, SPE_LIM,
-    MALE, FEMALE,
+    MALE, FEMALE, NEUTRAL,
     CORPSTAT_RANDOM, CORPSTAT_NEUTER, CORPSTAT_FEMALE, CORPSTAT_MALE,
     CORPSTAT_HISTORIC,
     FOUNTAIN, THRONE, SINK, ALTAR, TREE, IRONBARS, CLOUD,
@@ -706,6 +706,298 @@ export async function readobjnam_wish(bp, no_wish) {
 }
 
 /**
+ * C ref: objnam.c readobjnam_preparse `:3966–4175` (staticfn) — strip wish
+ * prefixes in C order, mutating d.bp/d.*. Returns 1 when bp is empty at
+ * entry (caller goes `any`), else 0. Short-circuit, RNG and mutation order
+ * kept: `wet` draws `3 + rn2(3)`, `moist` draws `rnd(2)`; gender words are
+ * deleted in place via case-sensitive `strsubst` (C `hacklib.c:536–550`,
+ * first occurrence only — so a capitalized `Female ` sets mgend but stays
+ * in the string); `corpse/statue/figurine of [a/an/the]` saves the pointer
+ * and backtracks after the loop.
+ */
+function readobjnam_preparse(d) {
+    let save_bp = null; // C `:3968` — char *save_bp = 0
+    let more_l = 0;
+    let res = 1; // C `:3969`
+
+    for (;;) { // C `:3971`
+        let l = 0;
+
+        if (!d.bp) // C `:3974` — !d->bp || !*d->bp
+            break;
+        res = 0; // C `:3976`
+        const s = d.bp;
+        const isDigit = (c) => c >= '0' && c <= '9';
+
+        if (strncmpi_start(s, 'an ')) { // C `:3978`
+            d.cnt = 1;
+            l = 3;
+        } else if (strncmpi_start(s, 'a ')) { // C `:3978`
+            d.cnt = 1;
+            l = 2;
+        } else if (strncmpi_start(s, 'the ')) { // C `:3980–3982`
+            ; /* just increment bp by l below */
+            l = 4;
+        } else if (!d.cnt && isDigit(s[0]) && s !== '0') { // C `:3983–3991`
+            const m = s.match(/^(\d+)/);
+            d.cnt = parseInt(m[1], 10); // C atoi
+            d.bp = s.slice(m[1].length).replace(/^ +/, '');
+            l = 0;
+        } else if (s[0] === '+' || s[0] === '-') { // C `:3992–3996`
+            d.spesgn = (s[0] === '+') ? 1 : -1;
+            const rest = s.slice(1);
+            const m = rest.match(/^(\d+)/);
+            d.spe = m ? parseInt(m[1], 10) : 0; // C atoi
+            d.bp = rest.slice(m ? m[1].length : 0).replace(/^ +/, '');
+            l = 0;
+        } else if (strncmpi_start(s, 'blessed ')) { // C `:3997–3999`
+            d.blessed = 1; d.uncursed = 0; d.iscursed = 0;
+            l = 8;
+        } else if (strncmpi_start(s, 'holy ')) { // C `:3997–3999`
+            d.blessed = 1; d.uncursed = 0; d.iscursed = 0;
+            l = 5;
+        } else if (strncmpi_start(s, 'cursed ')) { // C `:4000–4002`
+            d.iscursed = 1; d.blessed = 0; d.uncursed = 0;
+            l = 7;
+        } else if (strncmpi_start(s, 'unholy ')) { // C `:4000–4002`
+            d.iscursed = 1; d.blessed = 0; d.uncursed = 0;
+            l = 7;
+        } else if (strncmpi_start(s, 'uncursed ')) { // C `:4003–4004`
+            d.uncursed = 1; d.blessed = 0; d.iscursed = 0;
+            l = 9;
+        } else if (strncmpi_start(s, 'rustproof ')) { // C `:4005–4013`
+            d.erodeproof = 1;
+            l = 10;
+        } else if (strncmpi_start(s, 'erodeproof ')) { // C `:4005–4013`
+            d.erodeproof = 1;
+            l = 11;
+        } else if (strncmpi_start(s, 'corrodeproof ')) { // C `:4005–4013`
+            d.erodeproof = 1;
+            l = 13;
+        } else if (strncmpi_start(s, 'fixed ')) { // C `:4005–4013`
+            d.erodeproof = 1;
+            l = 6;
+        } else if (strncmpi_start(s, 'fireproof ')) { // C `:4005–4013`
+            d.erodeproof = 1;
+            l = 10;
+        } else if (strncmpi_start(s, 'rotproof ')) { // C `:4005–4013`
+            d.erodeproof = 1;
+            l = 9;
+        } else if (strncmpi_start(s, 'tempered ')) { // C `:4005–4013`
+            d.erodeproof = 1;
+            l = 9;
+        } else if (strncmpi_start(s, 'crackproof ')) { // C `:4005–4013`
+            d.erodeproof = 1;
+            l = 11;
+        } else if (strncmpi_start(s, 'lit ')) { // C `:4014–4016`
+            d.islit = 1;
+            l = 4;
+        } else if (strncmpi_start(s, 'burning ')) { // C `:4014–4016`
+            d.islit = 1;
+            l = 8;
+        } else if (strncmpi_start(s, 'unlit ')) { // C `:4017–4019`
+            d.islit = 0;
+            l = 6;
+        } else if (strncmpi_start(s, 'extinguished ')) { // C `:4017–4019`
+            d.islit = 0;
+            l = 13;
+        } else if (strncmpi_start(s, 'moist ')) {
+            /* C `:4022–4028` — "wet" and "moist" are only for towels;
+               "moist" arm (outer first disjunct, inner "wet" test false). */
+            d.wetness = rnd(2); // C `:4027` — 1..2
+            l = 6;
+        } else if (strncmpi_start(s, 'wet ')) { // C `:4022–4028`
+            d.wetness = 3 + rn2(3); // C `:4025` — 3..5
+            l = 4;
+        } else if (strncmpi_start(s, 'unlabeled ')) { // C `:4030–4033`
+            d.unlabeled = 1;
+            l = 10;
+        } else if (strncmpi_start(s, 'unlabelled ')) { // C `:4030–4033`
+            d.unlabeled = 1;
+            l = 11;
+        } else if (strncmpi_start(s, 'blank ')) { // C `:4030–4033`
+            d.unlabeled = 1;
+            l = 6;
+        } else if (strncmpi_start(s, 'poisoned ')) { // C `:4034–4035`
+            d.ispoisoned = 1;
+            l = 9;
+        } else if (strncmpi_start(s, 'trapped ')) {
+            /* C `:4038–4041` — recognized but honored only in wizard mode */
+            d.trapped = 0; // undo any previous "untrapped"
+            if (wizardMode()) d.trapped = 1;
+            l = 8;
+        } else if (strncmpi_start(s, 'untrapped ')) { // C `:4042–4043`
+            d.trapped = 2; // not trapped
+            l = 10;
+        } else if (strncmpi_start(s, 'locked ')) { // C `:4047–4049`
+            d.locked = 1; d.closed = 1;
+            d.unlocked = 0; d.broken = 0; d.open = 0; d.doorless = 0;
+            l = 7;
+        } else if (strncmpi_start(s, 'unlocked ')) { // C `:4050–4052`
+            d.unlocked = 1; d.closed = 1;
+            d.locked = 0; d.broken = 0; d.open = 0; d.doorless = 0;
+            l = 9;
+        } else if (strncmpi_start(s, 'broken ')) { // C `:4053–4056`
+            d.broken = 1;
+            d.locked = 0; d.unlocked = 0; d.open = 0; d.closed = 0;
+            d.doorless = 0;
+            l = 7;
+        } else if (strncmpi_start(s, 'open ')) { // C `:4057–4059`
+            d.open = 1;
+            d.closed = 0; d.locked = 0; d.broken = 0; d.doorless = 0;
+            l = 5;
+        } else if (strncmpi_start(s, 'closed ')) { // C `:4060–4062`
+            d.closed = 1;
+            d.open = 0; d.locked = 0; d.broken = 0; d.doorless = 0;
+            l = 7;
+        } else if (strncmpi_start(s, 'doorless ')) { // C `:4063–4065`
+            d.doorless = 1;
+            d.open = 0; d.closed = 0; d.locked = 0; d.unlocked = 0;
+            d.broken = 0;
+            l = 9;
+        } else if (strncmpi_start(s, 'looted ')) {
+            /* C `:4067–4071` — fountain/sink/throne/tree; disturbed grave
+               overloaded here though separate in struct rm */
+            d.looted = 1;
+            l = 7;
+        } else if (strncmpi_start(s, 'disturbed ')) { // C `:4067–4071`
+            d.looted = 1;
+            l = 10;
+        } else if (strncmpi_start(s, 'greased ')) { // C `:4072–4073`
+            d.isgreased = 1;
+            l = 8;
+        } else if (strncmpi_start(s, 'zombifying ')) { // C `:4074–4075`
+            d.zombify = 1; // C TRUE
+            l = 11;
+        } else if (strncmpi_start(s, 'very ')) { // C `:4076–4078`
+            /* very rusted very heavy iron ball */
+            d.very = 1;
+            l = 5;
+        } else if (strncmpi_start(s, 'thoroughly ')) { // C `:4079–4080`
+            d.very = 2;
+            l = 11;
+        } else if (strncmpi_start(s, 'rusty ')
+                || strncmpi_start(s, 'rusted ')
+                || strncmpi_start(s, 'burnt ')
+                || strncmpi_start(s, 'burned ')
+                || strncmpi_start(s, 'cracked ')) { // C `:4081–4087`
+            d.eroded = 1 + d.very;
+            d.very = 0;
+            if (strncmpi_start(s, 'rusty ')) l = 6;
+            else if (strncmpi_start(s, 'rusted ')) l = 7;
+            else if (strncmpi_start(s, 'burnt ')) l = 6;
+            else if (strncmpi_start(s, 'burned ')) l = 7;
+            else l = 8; // cracked
+        } else if (strncmpi_start(s, 'corroded ')
+                || strncmpi_start(s, 'rotted ')) { // C `:4088–4091`
+            d.eroded2 = 1 + d.very;
+            d.very = 0;
+            l = strncmpi_start(s, 'corroded ') ? 9 : 7;
+        } else if (strncmpi_start(s, 'partly eaten ')) { // C `:4092–4094`
+            d.halfeaten = 1;
+            l = 13;
+        } else if (strncmpi_start(s, 'partially eaten ')) { // C `:4092–4094`
+            d.halfeaten = 1;
+            l = 16;
+        } else if (strncmpi_start(s, 'historic ')) { // C `:4095–4096`
+            d.ishistoric = 1;
+            l = 9;
+        } else if (strncmpi_start(s, 'diluted ')) { // C `:4097–4098`
+            d.isdiluted = 1;
+            l = 8;
+        } else if (strncmpi_start(s, 'empty ')) { // C `:4099–4100`
+            d.contents = TIN_EMPTY;
+            l = 6;
+        } else if (strncmpi_start(s, 'small ')) { // C `:4101–4109`
+            /* "small" may be a monster-name word (mimic corpse); only a
+               glob size when followed by "glob" or containing " glob" */
+            l = 6;
+            if (!strncmpi_start(s.slice(l), 'glob')
+                && strstri(s.slice(l), ' glob') === null)
+                break;
+            d.gsize = 1;
+        } else if (strncmpi_start(s, 'medium ')) { // C `:4110–4116`
+            d.gsize = 2;
+            l = 7;
+        } else if (strncmpi_start(s, 'large ')) { // C `:4117–4124`
+            /* "large" may be a monster/object-name word (dog, box); same
+               glob guard as "small". "very large " had "very " peeled off
+               on a previous iteration. */
+            l = 6;
+            if (!strncmpi_start(s.slice(l), 'glob')
+                && strstri(s.slice(l), ' glob') === null)
+                break;
+            /* C: (d->very != 1) ? 3 : 4 — very is NOT reset here */
+            d.gsize = (d.very !== 1) ? 3 : 4;
+        } else if (strncmpi_start(s, 'real ')) { // C `:4125–4130`
+            /* accept "real Amulet of Yendor"; don't negate 'fake' here */
+            d.real = 1;
+            l = 5;
+        } else if (strncmpi_start(s, 'fake ')) { // C `:4131–4134`
+            d.fake = 1; d.real = 0;
+            l = 5;
+        } else if (strncmpi_start(s, 'female ')) { // C `:4136–4140`
+            d.mgend = FEMALE;
+            /* if after "corpse/statue/figurine of", remove from string */
+            if (save_bp !== null) {
+                const nb = strsubst(d.bp, 'female ', '');
+                // C edits the shared buffer in place: the saved prefix is
+                // untouched, the current tail shrinks.
+                save_bp = save_bp.slice(0, save_bp.length - d.bp.length) + nb;
+                d.bp = nb;
+                l = 0;
+            } else {
+                l = 7;
+            }
+        } else if (strncmpi_start(s, 'male ')) { // C `:4141–4144`
+            d.mgend = MALE;
+            if (save_bp !== null) {
+                const nb = strsubst(d.bp, 'male ', '');
+                save_bp = save_bp.slice(0, save_bp.length - d.bp.length) + nb;
+                d.bp = nb;
+                l = 0;
+            } else {
+                l = 5;
+            }
+        } else if (strncmpi_start(s, 'neuter ')) { // C `:4145–4149`
+            d.mgend = NEUTRAL;
+            if (save_bp !== null) {
+                const nb = strsubst(d.bp, 'neuter ', '');
+                save_bp = save_bp.slice(0, save_bp.length - d.bp.length) + nb;
+                d.bp = nb;
+                l = 0;
+            } else {
+                l = 7;
+            }
+        } else if (((strncmpi_start(s, 'corpse ') && (l = 7))
+                    || (strncmpi_start(s, 'statue ') && (l = 7))
+                    || (strncmpi_start(s, 'figurine ') && (l = 9)))
+                && strncmpi_start(s.slice(l), 'of ')) {
+            /* C `:4157–4166` — corpse/statue/figurine gender hack: accept
+               "statue of a female gnome ruler" by skipping "statue of [a ]"
+               now and backtracking to save_bp after the loop. */
+            more_l = 3;
+            save_bp = d.bp; // we'll backtrack to here later
+            l += more_l; more_l = 0;
+            if (strncmpi_start(s.slice(l), 'a ')) {
+                more_l = 2;
+            } else if (strncmpi_start(s.slice(l), 'an ')) {
+                more_l = 3;
+            } else if (strncmpi_start(s.slice(l), 'the ')) {
+                more_l = 4;
+            }
+            l += more_l;
+        } else { // C `:4167–4169`
+            break;
+        }
+        d.bp = d.bp.slice(l); // C `:4170` — d->bp += l (no-op when l = 0)
+    }
+    if (save_bp !== null) // C `:4172–4173`
+        d.bp = save_bp;
+    return res; // C `:4174`
+}
+
+/**
  * C ref: objnam.c readobjnam — wish subset for artifact / named armor / amulet.
  * Empty/NULL → `any` (D-0559); qualifier-only empty (blessed/rustproof/…) deferred.
  * Terrain wish is readobjnam_wish (D-1279 furniture; D-1289 traps;
@@ -769,91 +1061,25 @@ export function readobjnam(bp, no_wish, missOut) {
         closed: 0,
         doorless: 0,
         ispoisoned: 0,
+        // C ref: objnam.c readobjnam_init `:3936–3956` — preparse field
+        // defaults (whole-chain zero; zombify FALSE; wetness/gsize 0).
+        very: 0,
+        eroded: 0,
+        eroded2: 0,
+        erodeproof: 0,
+        unlabeled: 0,
+        ishistoric: 0,
+        isdiluted: 0,
+        isgreased: 0,
+        zombify: 0,
+        wetness: 0,
+        gsize: 0,
     };
 
-    for (;;) {
-        if (!d.bp) break;
-        let l = 0;
-        const s = d.bp;
-        if (/^an /i.test(s)) { d.cnt = 1; l = 3; }
-        else if (/^a /i.test(s)) { d.cnt = 1; l = 2; }
-        else if (/^the /i.test(s)) { l = 4; }
-        else if (!d.cnt && /^\d/.test(s) && s !== '0') {
-            const m = s.match(/^(\d+)/);
-            d.cnt = parseInt(m[1], 10);
-            d.bp = s.slice(m[1].length).replace(/^ +/, '');
-            continue;
-        } else if (s[0] === '+' || s[0] === '-') {
-            d.spesgn = s[0] === '+' ? 1 : -1;
-            d.bp = s.slice(1);
-            const m = d.bp.match(/^(\d+)/);
-            d.spe = m ? parseInt(m[1], 10) : 0;
-            d.bp = d.bp.slice(m ? m[1].length : 0).replace(/^ +/, '');
-            continue;
-        } else if (/^blessed /i.test(s) || /^holy /i.test(s)) {
-            d.blessed = 1; d.uncursed = 0; d.iscursed = 0;
-            l = /^blessed /i.test(s) ? 8 : 5;
-        } else if (/^cursed /i.test(s) || /^unholy /i.test(s)) {
-            d.iscursed = 1; d.blessed = 0; d.uncursed = 0;
-            l = 7;
-        } else if (/^uncursed /i.test(s)) {
-            d.uncursed = 1; d.blessed = 0; d.iscursed = 0;
-            l = 9;
-        } else if (/^partly eaten /i.test(s) || /^partially eaten /i.test(s)) {
-            /* C objnam.c readobjnam_preparse `:4092–4094` — halfeaten food. */
-            d.halfeaten = 1;
-            l = /^partly eaten /i.test(s) ? 13 : 16;
-        } else if (/^real /i.test(s)) {
-            /* C objnam.c readobjnam_preparse `:4125-4130` — "real Amulet";
-               fake is not negated here ("real fake amulet" stays fake). */
-            d.real = 1;
-            l = 5;
-        } else if (/^fake /i.test(s)) {
-            /* C `:4131-4133` — "fake Amulet of Yendor". */
-            d.fake = 1; d.real = 0;
-            l = 5;
-        } else if (/^poisoned /i.test(s)) {
-            /* C objnam.c readobjnam `:4034–4035` — before trapped. */
-            d.ispoisoned = 1;
-            l = 9;
-        } else if (/^trapped /i.test(s)) {
-            /* C :4038–4041 — honor trapped only in wizard mode */
-            d.trapped = 0;
-            if (wizardMode()) d.trapped = 1;
-            l = 8;
-        } else if (/^untrapped /i.test(s)) {
-            d.trapped = 2;
-            l = 10;
-        } else if (/^locked /i.test(s)) {
-            d.locked = 1; d.closed = 1;
-            d.unlocked = 0; d.broken = 0; d.open = 0; d.doorless = 0;
-            l = 7;
-        } else if (/^unlocked /i.test(s)) {
-            d.unlocked = 1; d.closed = 1;
-            d.locked = 0; d.broken = 0; d.open = 0; d.doorless = 0;
-            l = 9;
-        } else if (/^broken /i.test(s)) {
-            d.broken = 1;
-            d.locked = 0; d.unlocked = 0; d.open = 0; d.closed = 0;
-            d.doorless = 0;
-            l = 7;
-        } else if (/^open /i.test(s)) {
-            d.open = 1;
-            d.closed = 0; d.locked = 0; d.broken = 0; d.doorless = 0;
-            l = 5;
-        } else if (/^closed /i.test(s)) {
-            d.closed = 1;
-            d.open = 0; d.locked = 0; d.broken = 0; d.doorless = 0;
-            l = 7;
-        } else if (/^doorless /i.test(s)) {
-            d.doorless = 1;
-            d.open = 0; d.closed = 0; d.locked = 0; d.unlocked = 0;
-            d.broken = 0;
-            l = 9;
-        } else {
-            break;
-        }
-        if (l) d.bp = s.slice(l);
+    // C ref: objnam.c readobjnam `:4928` — preparse strips wish prefixes;
+    // nonzero (empty bp) goes `any` (C `goto any`).
+    if (readobjnam_preparse(d)) {
+        return readobjnam_any(d);
     }
     if (!d.cnt) d.cnt = 1;
 
@@ -1147,10 +1373,10 @@ export function readobjnam(bp, no_wish, missOut) {
     if (d.spe < -SPE_LIM) d.spe = -SPE_LIM;
     /* C ref: objnam.c readobjnam — set otmp->spe; may or may not use d.spe.
        d.contents/d.mgend/d.tvariety are parsed by the "tin of"/" of " arm
-       above (C `:4381–4397`); d.wetness/d.ishistoric are never parsed, so
-       they read as C defaults (0/0); d.ftype defaults to current_fruit
-       (C `:3958`) and the postparse3 fruit arm sets it to the wished
-       fruit's fid. */
+       above (C `:4381–4397`); d.wetness ("wet "/"moist ") and d.ishistoric
+       ("historic ") are parsed by readobjnam_preparse (`:4022–4028`,
+       `:4095–4096`); d.ftype defaults to current_fruit (C `:3958`) and the
+       postparse3 fruit arm sets it to the wished fruit's fid. */
     switch (d.typ) {
     case TIN:
         d.otmp.spe = 0; /* default: not spinach */
@@ -1193,8 +1419,7 @@ export function readobjnam(bp, no_wish, missOut) {
             d.otmp.spe = is_male(P) ? CORPSTAT_MALE
                 : is_female(P) ? CORPSTAT_FEMALE
                     : rn2(2) ? CORPSTAT_MALE : CORPSTAT_FEMALE;
-        /* C: d.ishistoric ("historic" wish prefix) — parsing deferred, always
-           C-default 0 here, so the HISTORIC bit never sets from wishes yet. */
+        /* C: d.ishistoric ("historic" wish prefix, preparse `:4095–4096`). */
         if (d.ishistoric && d.typ === STATUE)
             d.otmp.spe |= CORPSTAT_HISTORIC;
         break;
@@ -1253,8 +1478,8 @@ export function readobjnam(bp, no_wish, missOut) {
                 set_corpsenm(d.otmp, mntmp);
             }
             /* C zombify hatch timer (start_timer/rn1/obj_to_any) — deferred:
-               d.zombify is never parsed (always C-default FALSE) and JS has
-               no obj_to_any; named in c-js-map. */
+               d.zombify is parsed by readobjnam_preparse (`:4074–4075`) but
+               JS has no obj_to_any; named in c-js-map. */
             break;
         case EGG:
             mntmp = can_be_hatched(mntmp);

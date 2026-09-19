@@ -16,7 +16,7 @@ import { change_luck } from './attrib.js';
 import {
     FULL_MOON, OBJ_INVENT, OBJ_CONTAINED, OBJ_MIGRATING,
     ECMD_OK, BUFSZ, VISITED, LFILE_EXISTS, REST_CURRENT_LEVEL,
-    W_WEP, W_SWAPWEP, W_QUIVER,
+    W_WEP, W_SWAPWEP, W_QUIVER, PL_NSIZ,
 } from './const.js';
 import { objects_globals_init, objectNames } from './objects.js';
 import { nh_terminate_capture } from './topten.js';
@@ -58,11 +58,95 @@ import {
 export { serObj, serMon, serLevel, deserLevel, serTraps, deserTraps } from './lev_json.js';
 
 const SAVE_VFS_PREFIX = 'save/';
+// C ref: fnamesiz.h UNIX arm — SAVEX `save/99999.e` (sizeof 12),
+// SAVE_EXTENSION `""` (sizeof 1); INDEXT `.xxxxxx` (INDSIZE, sizeof 8).
+const SAVE_SAVEX_LEN = 'save/99999.e'.length + 1;
+const SAVE_EXTENSION_UNIX = '';
+const SAVE_INDEXT_LEN = '.xxxxxx'.length + 1;
+// C ref: fnamesiz.h:74 — SAVESIZE = PL_NSIZ + sizeof(SAVEX)
+// + sizeof(SAVE_EXTENSION) + INDSIZE (53 on the UNIX contest build).
+const SAVESIZE = PL_NSIZ + SAVE_SAVEX_LEN + (SAVE_EXTENSION_UNIX.length + 1) + SAVE_INDEXT_LEN;
 
-/** C ref: files.c set_savefile_name — contest uses plname under save/. */
-export function set_savefile_name(plname) {
-    const name = String(plname || game.plname || 'Hero').replace(/[/\\]/g, '_');
-    return `${SAVE_VFS_PREFIX}${name}`;
+/**
+ * C ref: sys/unix/unixunix.c:297 `regularize` — normalize a file-name
+ * suffix: `.`, `/` and ` ` each become `_`. The SYSV 14-character
+ * truncation arm (`#if defined(SYSV) && !defined(LINUX) &&
+ * !defined(__APPLE__)`) is compiled out on the contest targets
+ * (Linux/macOS/Chrome) — named, not ported.
+ */
+function regularize_save_suffix(s) {
+    return String(s).replace(/[. /]/g, '_');
+}
+
+/**
+ * C ref: files.c:1020–1123 `set_savefile_name` — UNIX contest build, in C
+ * order. Builds the save path from `game.plname` (C `svp.plname`) into
+ * `game.SAVEF` (C `gs.SAVEF`); the return is a JS convenience (C is void).
+ * @param {number} regularize_it C boolean — regularize the name suffix
+ * @returns {string} the new `game.SAVEF`
+ */
+export function set_savefile_name(regularize_it) {
+    // C :1022–1025 — `sfindicator`/`postappend` stay null on UNIX (only the
+    // VMS arm sets `postappend = ";1"`); the indicator/extension appends
+    // below are live null/empty-guarded no-ops keeping C short-circuit.
+    let regoffset = 0;
+    let overflow = 0;
+    let indicator_spot = 0; // 0=no indicator, 1=before ext, 2=after ext
+    const postappend = null;
+    const sfindicator = null;
+    // C :1030–1034 VMS arm (`[.save]%d%s`, regoffset 7, spot 1, `;1`) —
+    // compiled out without VMS — named, not ported.
+    // C :1036–1053 WIN32 arm (`fname_encode` `%`-quoting via okchars into
+    // tmp) — compiled out without WIN32; `fname_encode` has no JS
+    // counterpart by design — named, not cloned.
+    // C :1054–1057 UNIX arm (contest live).
+    const plname = String(game.plname || 'Hero');
+    // C :1055 `Sprintf(gs.SAVEF, "save/%d%s", (int) getuid(), svp.plname)` —
+    // contest adaptation (Rule #2): no POSIX uid in dual-runtime ESM and the
+    // VFS is single-user, so the uid digits are folded out and the path stays
+    // `save/<plname>` as before. Named in the map.
+    let SAVEF = `${SAVE_VFS_PREFIX}${plname}`;
+    regoffset = 5; // C :1056
+    indicator_spot = 2; // C :1057
+    // C :1059–1064 MSDOS arm (SAVEP + plname strncat) — compiled out — named.
+    // C :1065–1085 MICRO/AMIGA arm (SAVEP + 8-char/`bbs_id` truncation,
+    // regoffset = strlen(SAVEP)) — compiled out — named.
+    // C :1086–1087 — regularize the suffix only; regoffset skips `save/`,
+    // which itself contains a `/` that must survive.
+    if (regularize_it) {
+        SAVEF = SAVEF.slice(0, regoffset) + regularize_save_suffix(SAVEF.slice(regoffset));
+    }
+    // C :1088–1093 indicator spot 1 — `sfindicator` is null on UNIX: live
+    // guard, never fires, `overflow` stays 0.
+    if (indicator_spot === 1 && sfindicator && !overflow) {
+        if (SAVEF.length + sfindicator.length < SAVESIZE - 1) SAVEF += sfindicator;
+        else overflow = 2;
+    }
+    // C :1094–1104 SAVE_EXTENSION arm — `#ifdef SAVE_EXTENSION` is live, but
+    // the UNIX extension is `""`, so `strlen("") > 0` is false: live no-op
+    // (the `(0)` bracket keeps the `&& !overflow` explicit dead code, as in C).
+    if (SAVE_EXTENSION_UNIX.length > 0 && !overflow) {
+        if (SAVEF.length + SAVE_EXTENSION_UNIX.length < SAVESIZE - 1) {
+            SAVEF += SAVE_EXTENSION_UNIX;
+        } else overflow = 3;
+    }
+    // C :1105–1108 indicator spot 2 — `sfindicator` null: live guard, never fires.
+    if (indicator_spot === 2 && sfindicator && !overflow) {
+        if (SAVEF.length + sfindicator.length < SAVESIZE - 1) SAVEF += sfindicator;
+        else overflow = 4;
+    }
+    // C :1109–1115 postappend — null on UNIX: live guard, never fires.
+    if (postappend && !overflow) {
+        if (SAVEF.length + postappend.length < SAVESIZE - 1) SAVEF += postappend;
+        else overflow = 5;
+    }
+    // C :1116–1122 overflow `impossible("set_savefile_name() couldn't
+    // complete without overflow %d")` — inside `#if (NH_DEVEL_STATUS !=
+    // NH_STATUS_RELEASED)`; the contest pins RELEASED (patchlevel.h:33), so
+    // the arm is compiled out — named, not ported (also avoids the async
+    // display edge).
+    game.SAVEF = SAVEF;
+    return game.SAVEF;
 }
 
 function vfsPath(path) {
@@ -381,7 +465,9 @@ export function dosave0() {
     // C save.c:490–491 — dobjsfree before persisting when objs_deleted.
     dobjsfree();
 
-    const path = set_savefile_name(game.plname);
+    // C files.c analogue — SAVEF preset (regularized, TRUE) before the save write.
+    set_savefile_name(1);
+    const path = game.SAVEF;
     const currentLedger = ledger_no(u.uz);
     // goto_level only writes level_info[old] on leave; synthesize current
     // linfo flags + omoves (C savelev of the live floor).
@@ -630,7 +716,9 @@ async function inven_inuse(quietly) {
  * @returns {Promise<boolean>} true if a save was loaded
  */
 export async function try_restore_save() {
-    const path = set_savefile_name(game.plname);
+    // C files.c:1276 restore_saved_game `set_savefile_name(TRUE)` before fqname(SAVEF).
+    set_savefile_name(1);
+    const path = game.SAVEF;
     const raw = vfsReadFile(vfsPath(path));
     if (raw == null) return false;
 

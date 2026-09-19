@@ -60,7 +60,7 @@ import {
 import { set_occupation, can_reach_floor, del_engr_at, u_wipe_engr } from './engrave.js';
 import { wield_tool, welded } from './wield.js';
 import {
-    Fumbling, adjalign, acurr, A_STR, A_WIS, exercise,
+    Fumbling, adjalign, acurr, A_STR, A_INT, A_WIS, A_DEX, A_CON, A_CHA, exercise,
 } from './attrib.js';
 import { dbon, dmgval } from './weapon.js';
 import { depth } from './hacklib.js';
@@ -221,11 +221,48 @@ function digbeam_glyph() {
     return { ch: '*', color: CLR_WHITE, dec: false };
 }
 
-/** C ref: dig.c draft_message — Hallucination branches deferred. */
-async function draft_message(unexpected) {
-    if (game.u?.Hallucination) return;
-    if (unexpected) await You_feel('an unexpected draft.');
-    else await You_feel('a draft.');
+/** C: dig.c STRIDENT :1499 (from pray.c). */
+const STRIDENT = 4;
+
+/**
+ * C ref: dig.c draft_message :1504–1544 — whole body in C order.
+ * :1512–1524 unexpected arm (:1513–1514 plain «an unexpected draft»;
+ * :1515–1523 hallu «like you are %s» 4-F when any of the six ACURR
+ * attrs is < 6, else 1-A); :1525–1543 plain-draft arm (:1526–1528 plain
+ * «a draft»; :1529–1542 hallu draft_reaction[dridx] with
+ * dridx = rn1(2, 1 - sgn(type)) widened by rn1(3, sgn(type) - 1) when
+ * record < STRIDENT — Lawful 0..1, Neutral 1..2, Chaotic 2..3, all 0..3).
+ * Hallucination()/sgn() are the module-local helpers; ACURR(x) is the
+ * live attrib.js acurr(x) (attrib.h:24).
+ */
+export async function draft_message(unexpected) {
+    if (unexpected) {
+        if (!Hallucination()) {
+            await You_feel('an unexpected draft.');
+        } else {
+            await You_feel(
+                'like you are %s.',
+                (acurr(A_STR) < 6 || acurr(A_DEX) < 6
+                    || acurr(A_CON) < 6 || acurr(A_CHA) < 6
+                    || acurr(A_INT) < 6 || acurr(A_WIS) < 6) ? '4-F' : '1-A',
+            );
+        }
+    } else {
+        if (!Hallucination()) {
+            await You_feel('a draft.');
+        } else {
+            /* C: "marching" is deliberately ambiguous (drills vs protests) */
+            const draft_reaction = ['enlisting', 'marching', 'protesting', 'fleeing'];
+            const alignSgn = sgn(game.u?.ualign?.type | 0);
+            /* Lawful: 0..1, Neutral: 1..2, Chaotic: 2..3 */
+            let dridx = rn1(2, 1 - alignSgn);
+            if ((game.u?.ualign?.record | 0) < STRIDENT) {
+                /* L: +(0..2), N: +(-1..1), C: +(-2..0); all: 0..3 */
+                dridx += rn1(3, alignSgn - 1);
+            }
+            await You_feel('like %s.', draft_reaction[dridx]);
+        }
+    }
 }
 
 /**
@@ -987,7 +1024,7 @@ function rnd_treefruit_at(x, y) {
  * maze→ROOM / cavernous→CORR / else DOOR; pile&lt;5 boulder/rock or fruit.
  * Trap death runs the canonical `monmove.js` mb_trapped (wake_nearto,
  * mondied/lifesave, mon_learns_traps TRAPPED_DOOR).
- * Named omissions: Hallucination draft; Soundeffect; pay_for_damage.
+ * Named omissions: Soundeffect; pay_for_damage.
  */
 export async function mdig_tunnel(mtmp) {
     const pile = rnd(12);

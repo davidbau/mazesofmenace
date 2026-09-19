@@ -868,9 +868,10 @@ async function mhitm_ad_phys_u(mtmp, mattk, mhm) {
 }
 
 /**
- * C ref: uhitm.c mhitm_ad_elec mhitu branch (mdef == youmonst).
- * destroy_items body deferred when m_lev > rn2(20); gate always burns.
- * monstseesu / monstunseesu deferred.
+ * C ref: uhitm.c mhitm_ad_elec `:2704–2723` — mhitu (monster→you) arm.
+ * hitmsg, then the mhitm_mgc_atk_negated(TRUE) gate (negated → damage 0);
+ * "get zapped!", Shock_resistance seesu + zero else unseesu, m_lev >
+ * rn2(20) → (void) destroy_items (return discarded per C, cf. D-2425).
  */
 async function mhitm_ad_elec_u(mtmp, mattk, mhm) {
     const orig_dmg = mhm.damage;
@@ -882,12 +883,16 @@ async function mhitm_ad_elec_u(mtmp, mattk, mhm) {
             || u.EShock_resistance);
         if (Shock_resistance) {
             await pline("The zap doesn't shock you!");
+            monstseesu(M_SEEN_ELEC);
             mhm.damage = 0;
+        } else {
+            monstunseesu(M_SEEN_ELEC);
         }
-        // C: if ((int) magr->m_lev > rn2(20)) destroy_items(...)
+        // C: if ((int) magr->m_lev > rn2(20)) (void) destroy_items(...)
         if ((mtmp.m_lev | 0) > rn2(20)) {
-            // destroy_items(&youmonst, AD_ELEC, orig_dmg) body deferred
-            void orig_dmg;
+            const you = game.youmonst || { _youmonst: true };
+            // C: (void) — return discarded (cf. D-2425 cold_u residual)
+            await destroy_items(you, AD_ELEC, orig_dmg);
         }
     } else {
         mhm.damage = 0;
