@@ -19,8 +19,9 @@ import {
     should_displace, undesirable_disp, mon_offmap,
 } from './monmove.js';
 import { mattacku } from './mhitu.js';
-import { newsym, pline, canseemon, mon_visible, canspotmon, pline_mon, pline_xy, impossible, You_feel, glyph_is_object } from './display.js';
-import { doname, distant_name, vtense } from './objnam.js';
+import { newsym, pline, canseemon, mon_visible, canspotmon, pline_mon, pline_xy, impossible, You_feel, glyph_is_object, glyph_at, You, Your, more } from './display.js';
+import { doname, distant_name, vtense, an } from './objnam.js';
+import { defsym_explanation } from './uhitm.js';
 import { mpickobj, is_vampshifter } from './makemon.js';
 import { t_at } from './trap.js';
 import {
@@ -32,9 +33,11 @@ import {
     MAGIC_PORTAL, A_NONE,
     EPRI, EMIN, DIR_LEFT, DIR_RIGHT, DIR_LEFT2, DIR_RIGHT2,
     xdir, ydir, xytodir,
-    DISMOUNT_THROWN, W_ARMS,
+    DISMOUNT_THROWN, DISMOUNT_POLY, W_ARMS,
+    S_sink, something,
+    M_AP_FURNITURE, M_AP_OBJECT, M_AP_MONSTER, M_AP_TYPE,
 } from './const.js';
-import { FOOD_CLASS, BALL_CLASS, CHAIN_CLASS, ROCK_CLASS, COIN_CLASS, objectNames, is_pick } from './objects.js';
+import { FOOD_CLASS, BALL_CLASS, CHAIN_CLASS, ROCK_CLASS, COIN_CLASS, objectNames, is_pick, objectDescrs, objectNameStrs } from './objects.js';
 import {
     monsterNames, mons, carnivorous, herbivorous, vegan, acidic, poisonous,
     is_swimmer, likes_lava, throws_rocks, is_rider,
@@ -46,9 +49,9 @@ import {
 import { MON_WEP } from './weapon.js';
 import { which_armor } from './worn.js';
 import { m_cansee, couldsee, cansee, do_clear_area } from './vision.js';
-import { Monnam, noit_Monnam, y_monnam } from './do_name.js';
+import { Monnam, noit_Monnam, y_monnam, pmname, Mgender } from './do_name.js';
 import { gettrack } from './track.js';
-import { hero_conflict, resist_conflict } from './mondata.js';
+import { hero_conflict, resist_conflict, monsndx } from './mondata.js';
 import { is_pool, is_lava, stop_occupation } from './hack.js';
 import { m_unleash } from './apply.js';
 import { lose_guardian_angel } from './minion.js';
@@ -62,6 +65,14 @@ const PM_FLOATING_EYE = monsterNames.indexOf('PM_FLOATING_EYE');
 const PM_GELATINOUS_CUBE = monsterNames.indexOf('PM_GELATINOUS_CUBE');
 const PM_LIZARD = monsterNames.indexOf('PM_LIZARD');
 const PM_LONG_WORM = monsterNames.indexOf('PM_LONG_WORM');
+// C ref: dogmove.c qm[] — mimic shapes a meating pet may take.
+const PM_LITTLE_DOG = monsterNames.indexOf('PM_LITTLE_DOG');
+const PM_DOG = monsterNames.indexOf('PM_DOG');
+const PM_LARGE_DOG = monsterNames.indexOf('PM_LARGE_DOG');
+const PM_KITTEN = monsterNames.indexOf('PM_KITTEN');
+const PM_HOUSECAT = monsterNames.indexOf('PM_HOUSECAT');
+const PM_LARGE_CAT = monsterNames.indexOf('PM_LARGE_CAT');
+const PM_GIANT_RAT = monsterNames.indexOf('PM_GIANT_RAT');
 
 // C ref: dogmove.c `:10–12` — pet hunger clock (moves): hungry 300,
 // weak/confused 500, starve 750.
@@ -423,7 +434,7 @@ export async function dog_eat(mtmp, obj, x, y, devour) {
                 + (game.moves ?? 1) - (edog.droptime || 0)));
         if (edog.apport <= 0) edog.apport = 1;
     }
-    m_consume_obj(mtmp, obj);
+    await m_consume_obj(mtmp, obj);
     return (mtmp.mhp | 0) <= 0 ? 2 : 1;
 }
 
@@ -1413,8 +1424,8 @@ export function finish_meating(mtmp) {
  * C ref: dogmove.c:1460-1469 mnum_leashable — variation of leashable() that
  * takes a PM_ index (quickmimic leash-slack check); HIGH_PM is NUMMONS-1
  * per permonst.h:22. `| 0` int idiom; `||`/`&&` short-circuit so mons() is
- * never read out of range. Named: caller wiring — quickmimic unwired
- * (comment-only refs in js/dogmove.js and js/mon.js).
+ * never read out of range. Caller: quickmimic below (leash-slack check),
+ * wired from mon.c m_consume_obj via js/mon.js m_consume_obj.
  */
 export function mnum_leashable(mnum) {
     const m = mnum | 0;
@@ -1423,4 +1434,114 @@ export function mnum_leashable(mnum) {
             && (!nolimbs(mons(m)) || has_head(mons(m))))
         ? true
         : false;
+}
+
+// C ref: dogmove.c qm[] `:1429–1445` — mimic shapes a meating pet may take.
+// mndx 0 means any pet, mlet 0 means any symbol; JS mlet is the 'S_*'
+// string (dog.js compares `mtmp.data?.mlet === 'S_DOG'`), so the sink row
+// carries 'S_DOG' while the "any" rows carry 0. The last row (TRIPE_RATION)
+// is the trycnt-exhausted fallback (`SIZE(qm) - 1`).
+const qm = [
+    /* Things that some pets might be thinking about at the time */
+    { mndx: PM_LITTLE_DOG, mlet: 0, mappearance: PM_KITTEN, m_ap_type: M_AP_MONSTER },
+    { mndx: PM_DOG, mlet: 0, mappearance: PM_HOUSECAT, m_ap_type: M_AP_MONSTER },
+    { mndx: PM_LARGE_DOG, mlet: 0, mappearance: PM_LARGE_CAT, m_ap_type: M_AP_MONSTER },
+    { mndx: PM_KITTEN, mlet: 0, mappearance: PM_LITTLE_DOG, m_ap_type: M_AP_MONSTER },
+    { mndx: PM_HOUSECAT, mlet: 0, mappearance: PM_DOG, m_ap_type: M_AP_MONSTER },
+    { mndx: PM_LARGE_CAT, mlet: 0, mappearance: PM_LARGE_DOG, m_ap_type: M_AP_MONSTER },
+    { mndx: PM_HOUSECAT, mlet: 0, mappearance: PM_GIANT_RAT, m_ap_type: M_AP_MONSTER },
+    { mndx: 0, mlet: 'S_DOG', mappearance: S_sink, m_ap_type: M_AP_FURNITURE }, /* sorry, no fire hydrants */
+    { mndx: 0, mlet: 0, mappearance: TRIPE_RATION, m_ap_type: M_AP_OBJECT }, /* leave this at end */
+];
+
+/**
+ * C ref: dogmove.c quickmimic `:1472–1541` — a pet that ate a mimic corpse
+ * takes a mimic shape. Caller: mon.c m_consume_obj `:1447`
+ * (`js/mon.js` m_consume_obj, ispet && deadmimic).
+ *
+ * C order: Protection_from_shape_changers/meating guard, steed dismount,
+ * up-to-5 rn2 picks with same-mndx/same-mlet/any-shape breaks (tripe
+ * fallback on exhaustion), y_monnam buf + spotted/seeloc captured before
+ * the m_ap_type change, what-chain (furniture explanation, object descr,
+ * object name, monster pmname, something), newsym, leash-slack check,
+ * appear/sense message, WIN_MAP flush. Async only because the C message /
+ * dismount / unleash / flush callees are async in JS (Constitution §2);
+ * RNG (rn2) and glyph reads stay in C order.
+ */
+export async function quickmimic(mtmp) {
+    if (!mtmp) return;
+    const was_leashed = mtmp.mleashed;
+    const u = game.u || {};
+    // C: Protection_from_shape_changers (prop.h — H/E/intrinsic) or not
+    // eating (caller sets meating while the meal lasts).
+    if ((u.HProtection_from_shape_changers || u.EProtection_from_shape_changers
+            || u.Protection_from_shape_changers) || !mtmp.meating)
+        return;
+
+    /* with polymorph, the steed's equipment would be re-checked and its
+       saddle would come off, triggering DISMOUNT_FELL, but mimicking
+       doesn't impact monster's equipment; normally DISMOUNT_POLY is for
+       rider taking on an unsuitable shape, but its message works fine
+       for this and also avoids inflicting damage during forced dismount;
+       do this before changing so that dismount refers to original shape */
+    if (mtmp === u.usteed)
+        await dismount_steed(DISMOUNT_POLY);
+
+    let idx = 0, trycnt = 5;
+    do {
+        idx = rn2(qm.length);
+        if (qm[idx].mndx !== 0 && monsndx(mtmp.data) === qm[idx].mndx)
+            break;
+        if (qm[idx].mlet !== 0 && mtmp.data?.mlet === qm[idx].mlet)
+            break;
+        if (qm[idx].mndx === 0 && qm[idx].mlet === 0)
+            break;
+    } while (--trycnt > 0);
+    if (trycnt === 0)
+        idx = qm.length - 1;
+
+    const buf = y_monnam(mtmp); /* "your <pet>" or "the <mon>" or "Fang" */
+    const spotted = canspotmon(mtmp);
+    const seeloc = cansee(mtmp.mx, mtmp.my);
+
+    mtmp.m_ap_type = qm[idx].m_ap_type;
+    mtmp.mappearance = qm[idx].mappearance;
+
+    if (spotted || seeloc || canspotmon(mtmp)) {
+        const prev_glyph = glyph_at(mtmp.mx, mtmp.my);
+        // C what-chain: defsyms[].explanation (uhitm.js defsym_explanation),
+        // OBJ_DESCR(objects[]) / OBJ_NAME(objects[]) read through
+        // objects[otyp] (oc_descr_idx/oc_name_idx ≡ otyp in the extractor),
+        // pmname(&mons[], Mgender), else something.
+        const apType = M_AP_TYPE(mtmp);
+        const odescr = objectDescrs[mtmp.mappearance | 0] || null;
+        const oname = objectNameStrs[mtmp.mappearance | 0] || null;
+        const what = (apType === M_AP_FURNITURE)
+            ? defsym_explanation(mtmp.mappearance | 0)
+            : (apType === M_AP_OBJECT && odescr)
+              ? odescr
+              : (apType === M_AP_OBJECT && oname)
+                ? oname
+                : (apType === M_AP_MONSTER)
+                  ? pmname(mtmp.mappearance | 0, Mgender(mtmp))
+                  : something;
+
+        newsym(mtmp.mx, mtmp.my);
+        if (was_leashed
+            && (M_AP_TYPE(mtmp) !== M_AP_MONSTER
+                || !mnum_leashable(mtmp.mappearance | 0))) {
+            await Your('leash goes slack.');
+            await m_unleash(mtmp, false);
+        }
+        if (glyph_at(mtmp.mx, mtmp.my) !== prev_glyph)
+            await You('%s %s %s where %s was!',
+                seeloc ? 'see' : 'sense that',
+                (what !== something) ? an(what) : what,
+                seeloc ? 'appear' : 'has appeared', buf);
+        else
+            await You('sense that %s feels rather %s-ish.', buf, what);
+
+        // C: display_nhwindow(WIN_MAP, TRUE) — wait (detect.js:374 more() idiom).
+        await more();
+    }
 }

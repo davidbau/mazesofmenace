@@ -32,7 +32,7 @@ import {
     newsym, pline, pline_mon, pline_xy, urgent_pline, mon_visible, see_with_infrared,
     You_feel, unmap_object, glyph_is_invisible, tmp_at, nh_delay_output,
     obj_glyph, flush_topl_more, feel_newsym, canspotmon, map_invisible, under_water,
-    set_msg_xy, shieldeff, Hallucination, Norep, impossible,
+    set_msg_xy, shieldeff, Hallucination, Norep, impossible, You,
 } from './display.js';
 import { doname, an, the, The, xname, yname, cxname, makeplural, vtense, otense, simpleonames, ansimpleoname, safe_qbuf, gloves_simple_name, aobjnam, Yname2, Yobjnam2 } from './objnam.js';
 import {
@@ -51,7 +51,7 @@ import {
     likes_gems, mons, webmaker, throws_rocks,
     is_animal, mindless, haseyes,
     bigmonst, is_golem, is_mplayer, is_rider,
-    nohands, extra_nasty, acidic, poly_when_stoned, touch_petrifies,
+    nohands, extra_nasty, strongmonst, acidic, poly_when_stoned, touch_petrifies,
     resists_ston, MALE, FEMALE, NEUTRAL, nonliving, is_vampshifter,
     hides_under, metallivorous, is_neuter,
 } from './monsters.js';
@@ -146,7 +146,7 @@ import { polymon, body_part, mbodypart, float_vs_flight, Unchanging, polyself } 
 import { done } from './end.js';
 import { make_blinded, dropx, setnotworn } from './do.js';
 import { Soundeffect } from './sndprocs.js';
-import { se_loud_crash } from './generated/seffects_data.js';
+import { se_loud_crash, se_roar } from './generated/seffects_data.js';
 import { mon_adjust_speed } from './muse.js';
 import { m_dowear, extract_from_minvent, update_mon_extrinsics } from './worn.js';
 import { m_unleash, number_leashed, unleash_all, check_leash } from './apply.js';
@@ -4980,15 +4980,121 @@ async function mu_maybe_destroy_web(mtmp, domsg, trap) {
 }
 
 /**
- * C ref: trap.c trapeffect_web — monster branch; hero/steed/strength-tim deferred.
- * Sets mtrapped for ordinary monsters; giants/extra_nasty dragons/long worms
- * and listed huge species tear the web.
+ * C ref: trap.c:2106–2276 trapeffect_web — full body in C order.
+ * Hero arm: feeltrap, mu_maybe_destroy_web, webmaker walk, caught/lead/
+ * stumble message, set_utrap(1) then ACURR(A_STR) stuck-time ladder
+ * (mounted steed resolved via mintrap first); str>=69 tears the web.
+ * Monster arm: webmaker/destroy skips, owlbear-bugbear roar, huge-species
+ * tear list, S_GIANT/extra_nasty-dragon/long-worm default, forcetrap avoid.
  */
 async function trapeffect_web(mtmp, trap, trflags) {
     if (is_youmonst(mtmp)) {
-        // Hero web / steed / ACURR(A_STR) stuck-time deferred
+        // C :2116–2127 — NOWEBMSG/FORCETRAP|FAILEDUNTRAP/VIASITTING flags;
+        // steed article suppressed for a named steed outside hallucination.
+        const u = game.u || {};
+        // C passes &gy.youmonst; mtmp is the hero in this arm (or its
+        // dotrap _youmonst stand-in).
+        const youmonst = game.youmonst ?? mtmp;
+        const a_your = ['a', 'your'];
+        let webmsgok = (trflags & NOWEBMSG) === 0;
+        const forcetrap = ((trflags & FORCETRAP) !== 0
+            || (trflags & FAILEDUNTRAP) !== 0);
+        const viasitting = (trflags & VIASITTING) !== 0;
+        let steed_article = ARTICLE_THE;
+
+        /* suppress article in various steed messages when using its
+           name (which won't occur when hallucinating) */
+        if (u.usteed && has_mgivenname(u.usteed) && !Hallucination()) {
+            steed_article = ARTICLE_NONE;
+        }
+
+        feeltrap(trap);
+        if (await mu_maybe_destroy_web(youmonst, webmsgok, trap)) {
+            return Trap_Effect_Finished;
+        }
+        if (webmaker(youmonst?.data)) {
+            if (webmsgok) {
+                await pline(trap.madeby_u
+                    ? 'You take a walk on your web.'
+                    : 'There is a spider web here.');
+            }
+            return Trap_Effect_Finished;
+        }
+        if (webmsgok) {
+            let verbbuf;
+            if (forcetrap || viasitting) {
+                verbbuf = 'are caught by';
+            } else if (u.usteed) {
+                verbbuf = `lead ${x_monnam(u.usteed, steed_article, 'poor', SUPPRESS_SADDLE, false)} into`;
+            } else {
+                verbbuf = `${u_locomotion_verb('stumble')} into`;
+            }
+            await You('%s %s spider web!', verbbuf, a_your[trap.madeby_u ? 1 : 0]);
+        }
+
+        /* time will be adjusted below */
+        set_utrap(1, TT_WEB);
+
+        /* Time stuck in the web depends on your/steed's strength. */
+        {
+            let tim;
+            let str = acurr(A_STR);
+
+            /* If mounted, the steed gets trapped.  Use mintrap
+             * to do all the work.  If mtrapped is set as a result,
+             * unset it and set utrap instead.  In the case of a
+             * strongmonst and mintrap said it's trapped, use a
+             * short but non-zero trap time.  Otherwise, monsters
+             * have no specific strength, so use player strength.
+             * This gets skipped for webmsgok, which implies that
+             * the steed isn't a factor.
+             */
+            if (u.usteed && webmsgok) {
+                /* mtmp location might not be up to date */
+                u.usteed.mx = u.ux;
+                u.usteed.my = u.uy;
+
+                /* mintrap currently does not return Trap_Killed_Mon
+                   (mon died) for webs */
+                if (await mintrap(u.usteed, trflags) !== Trap_Effect_Finished) {
+                    u.usteed.mtrapped = 0;
+                    if (strongmonst(u.usteed.data)) {
+                        str = 17;
+                    }
+                } else {
+                    reset_utrap(false);
+                    return Trap_Effect_Finished;
+                }
+
+                webmsgok = false; /* mintrap printed the messages */
+            }
+            if (str <= 3) {
+                tim = rn1(6, 6);
+            } else if (str < 6) {
+                tim = rn1(6, 4);
+            } else if (str < 9) {
+                tim = rn1(4, 4);
+            } else if (str < 12) {
+                tim = rn1(4, 2);
+            } else if (str < 15) {
+                tim = rn1(2, 2);
+            } else if (str < 18) {
+                tim = rnd(2);
+            } else if (str < 69) {
+                tim = 1;
+            } else {
+                tim = 0;
+                if (webmsgok) {
+                    await You('tear through %s web!', a_your[trap.madeby_u ? 1 : 0]);
+                }
+                deltrap(trap);
+                newsym(u.ux, u.uy); /* get rid of trap symbol */
+            }
+            set_utrap(tim, TT_WEB);
+        }
         return Trap_Effect_Finished;
     }
+    // C :2204+ — monster in a web.
     const in_sight = canseemon(mtmp) || (mtmp === game.u?.usteed);
     const forcetrap = (trflags & FORCETRAP) !== 0;
     const mptr = mtmp.data;
@@ -5001,8 +5107,9 @@ async function trapeffect_web(mtmp, trap, trflags) {
     }
 
     let tear_web = false;
-    // C: owlbear/bugbear out of sight → hear roar + trap; else fall through
+    // C: owlbear/bugbear out of sight → roar + trap; else fall through
     if ((mndx === PM_OWLBEAR || mndx === PM_BUGBEAR) && !in_sight) {
+        Soundeffect(se_roar, 60);
         await You_hear('the roaring of a confused bear!');
         mtmp.mtrapped = 1;
         return Trap_Caught_Mon;
@@ -5019,13 +5126,13 @@ async function trapeffect_web(mtmp, trap, trflags) {
     } else {
         // C default (+ owlbear/bugbear in sight fallthrough)
         if (mptr?.mlet === 'S_GIANT'
+            /* exclude baby dragons and relatively short worms */
             || (mptr?.mlet === 'S_DRAGON' && extra_nasty(mptr))
             || (mtmp.wormno && count_wsegs(mtmp) > 5)) {
             tear_web = true;
         } else if (in_sight) {
-            await pline(
-                `${Monnam(mtmp)} is caught in ${a_your[trap.madeby_u ? 1 : 0]} spider web.`,
-            );
+            await pline_mon(mtmp,
+                `${Monnam(mtmp)} is caught in ${a_your[trap.madeby_u ? 1 : 0]} spider web.`);
             seetrap(trap);
         }
         mtmp.mtrapped = tear_web ? 0 : 1;
@@ -5033,17 +5140,15 @@ async function trapeffect_web(mtmp, trap, trflags) {
 
     if (tear_web) {
         if (in_sight) {
-            await pline(
-                `${Monnam(mtmp)} tears through ${a_your[trap.madeby_u ? 1 : 0]} spider web!`,
-            );
+            await pline_mon(mtmp,
+                `${Monnam(mtmp)} tears through ${a_your[trap.madeby_u ? 1 : 0]} spider web!`);
         }
         deltrap(trap);
         newsym(mtmp.mx, mtmp.my);
     } else if (forcetrap && !mtmp.mtrapped) {
         if (in_sight) {
-            await pline(
-                `${Monnam(mtmp)} avoids ${a_your[trap.madeby_u ? 1 : 0]} spider web!`,
-            );
+            await pline_mon(mtmp,
+                `${Monnam(mtmp)} avoids ${a_your[trap.madeby_u ? 1 : 0]} spider web!`);
             seetrap(trap);
         }
     }

@@ -229,6 +229,7 @@ import {
     obj_glyph, cmap_to_glyph, glyph_is_invisible, map_invisible, unmap_object,
     bot, set_msg_xy, impossible,
 } from './display.js';
+import { show_text_pages } from './pager.js';
 import { cansee, couldsee, vision_recalc } from './vision.js';
 import { readobjnam_wish, HANDS_OBJ, NOTHING_OBJ } from './readobjnam.js';
 import {
@@ -6799,6 +6800,68 @@ export async function mon_spell_hits_spot(_caster, adtyp, x, y) {
 }
 
 /**
+ * C ref: zap.c wishcmdassist :6165-6219 (staticfn; caller makewish :6349).
+ * Whole body in C order: the NHW_TEXT lines from wishinfo[] (+ the
+ * wishless-conduct line while u.uconduct.wishes is 0), the retry_info line
+ * (cardinal word for 0-5 tries left else "too many", " more" while
+ * triesleft < MAXWISHTRY, plur(triesleft)), retry_too, and the
+ * suppress-cmdassist line while iflags.cmdassist is on.
+ * C create/display/destroy_nhwindow maps to show_text_pages (pager.js —
+ * the NHW_TEXT path lock.js help_dir uses); the C `if (!win) return`
+ * early-out is the !game.nhDisplay guard.
+ */
+const WISHCMDASSIST_INFO = [
+    'Wish details:',
+    '',
+    'Enter the name of an object, such as "potion of monster detection",',
+    '"scroll labeled README", "elven mithril-coat", or "Grimtooth"',
+    '(without the quotes).',
+    '',
+    'For object types which come in stacks, you may specify a plural name',
+    'such as "potions of healing", or specify a count, such as "1000 gold',
+    'pieces", although that aspect of your wish might not be granted.',
+    '',
+    'You may also specify various prefix values which might be used to',
+    'modify the item, such as "uncursed" or "rustproof" or "+1".',
+    'Most modifiers shown when viewing your inventory can be specified.',
+    '',
+    "You may specify 'nothing' to explicitly decline this wish.",
+];
+
+/** C ref: hacklib.c plur — '' iff n == 1, else 's' (sibling-idiom local). */
+function plur(n) {
+    return (n | 0) === 1 ? '' : 's';
+}
+
+export async function wishcmdassist(triesleft) {
+    // C :6195-6196 — win = create_nhwindow(NHW_TEXT); without one, return.
+    if (!game.nhDisplay) return;
+    // C :6197-6198 — putstr each wishinfo[] line (SIZE - 1 skips the 0).
+    const lines = [...WISHCMDASSIST_INFO];
+    // C :6199-6200 — preserve-'wishless'-conduct line while no wish made.
+    if (!(game.u?.uconduct?.wishes | 0))
+        lines.push("Doing so will preserve 'wishless' conduct.");
+    lines.push('');
+    // C :6202-6207 — Sprintf(buf, retry_info, cardinal-or-too_many,
+    // " more" while triesleft < MAXWISHTRY, plur(triesleft)).
+    const CARDINALS = ['zero', 'one', 'two', 'three', 'four', 'five'];
+    const word = (triesleft >= 0 && triesleft < CARDINALS.length)
+        ? CARDINALS[triesleft | 0]
+        : 'too many';
+    lines.push(
+        `If you specify an unrecognized object name ${word}${triesleft < MAXWISHTRY ? ' more' : ''} time${plur(triesleft)},`
+    );
+    // C :6208-6209 — retry_too line, then a blank line.
+    lines.push('a randomly chosen item will be granted.');
+    lines.push('');
+    // C :6210-6213 — suppression hint while iflags.cmdassist is on.
+    if (game.iflags?.cmdassist)
+        lines.push('(Suppress this assistance with !cmdassist in your config file.)');
+    // C :6214-6215 — display_nhwindow(win, TRUE); destroy_nhwindow(win).
+    await show_text_pages(lines);
+}
+
+/**
  * C ref: zap.c wish_history_menu :6275-6309 (staticfn; caller makewish :6335).
  * Entire body is #ifdef DEBUG (menu of wish_history[] into buf); in the
  * production build it is a no-op and buf is never modified. JS keeps the
@@ -6811,7 +6874,8 @@ export function wish_history_menu(_buf) {
  * C ref: zap.c makewish — prompt + readobjnam + hold_another_object.
  * Terrain wish via readobjnam_wish → wizterrainwish traps (D-1289) +
  * door/wall (D-1290) + secret corridor (D-1304) + switch_terrain
- * (D-1279). Help / history still named; wish livelog arms live (D-1892).
+ * (D-1279). wishcmdassist help arm live; history still named;
+ * wish livelog arms live (D-1892).
  */
 export async function makewish() {
     // C zap.c:6323 — makewish clears resume_wish at entry (zap.c:6341 sets
@@ -6830,7 +6894,7 @@ export async function makewish() {
 
     for (;;) {
         let prompt = 'For what do you wish';
-        if (game.flags?.cmdassist && tries > 0) {
+        if (game.iflags?.cmdassist && tries > 0) {
             prompt += " (enter 'help' for assistance)";
         }
         prompt += '?';
@@ -6841,7 +6905,9 @@ export async function makewish() {
         }
         buf = String(buf).trim().replace(/\s+/g, ' ');
         if (/^help$/i.test(buf)) {
-            // wishcmdassist deferred
+            // C zap.c:6348-6351 — 'help' shows the assistance window,
+            // clears the line for EDIT_GETLIN, and retries the prompt.
+            await wishcmdassist(MAXWISHTRY - tries);
             buf = '';
             continue;
         }

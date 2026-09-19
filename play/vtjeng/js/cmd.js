@@ -1861,12 +1861,14 @@ export const ADMITTED_COMMANDS = Object.freeze([
 const ADMITTED_BOUNDARY = 'the repeated-command boundary admits only '
     + `${ADMITTED_COMMANDS.join(', ')}, a one-square walk, a shift-direction `
     + 'run, a ctrl-direction rush, or a byte bound to no command';
-// The count a command carries is refused separately, below, because parse()
-// admits the count before the command it modifies is even known.
+// Movement counts use the implemented MOVEMENTCMD dispatch and movement
+// repetition in allmain.c moveloop_core(). Keep other counted command paths
+// behind their existing boundary until their handler/re-entry contracts are
+// verified; the presence of the shared repeat loop does not establish those.
 const COUNTED_BOUNDARY = 'cmd.c parse() committed a count leaving gm.multi '
-    + 'above 0 before a row this port will not repeat, which allmain.c '
-    + 'moveloop_core():515-531 turns into a repeat of the command; that arm '
-    + 'is not ported';
+    + 'above 0 before a nonmovement row this port will not repeat, which '
+    + 'allmain.c moveloop_core():515-531 turns into a repeat of the command; '
+    + 'that nonmovement command path remains unsupported';
 // context.run values this boundary dispatches. cmd.c set_move_cmd() takes the
 // value from the command the key is bound to: 0 for do_move_<dir>, 1 for
 // do_run_<dir>, which the shift-direction keys use, and 3 for do_rush_<dir>
@@ -5450,12 +5452,15 @@ export async function rhack(key, state = game) {
                 state.multi,
                 state,
             );
-        } else if (state.multi > 0 && command !== null && command !== 'pay') {
+        } else if (state.multi > 0 && command !== null && command !== 'pay'
+            && !Object.hasOwn(MOVEMENT_INTENTS, command)) {
             // shk.c dopay:1755 clears multi before its first action, so pay
             // never reaches the repeated-command path refused here.
-            // Every other row leaves the count for moveloop_core():515-531 to
-            // repeat the command with, and that arm reaches lookaround() and
-            // svc.context.mv, neither of which this port drives from a count.
+            // cmd.c's MOVEMENTCMD rows are dispatched below even when gm.multi
+            // is positive; their domove() call is the source movement arm and
+            // is already wired here. Other rows leave the count for
+            // moveloop_core():527-530 to re-enter rhack(). Their individual
+            // repeated-command paths retain the existing refusal.
             // A key bound to no command is exempt: the bad-command path below
             // zeroes gm.multi itself, as cmd.c:3841 does.
             //

@@ -118,7 +118,8 @@ import {
     A_LAWFUL, ONAME_RANDOM, EMIN,
     MFAST, MAXMONNO, DF_NONE, u_at,
     BUFSZ, QBUFSZ, GPCOORDS_NONE, GPCOORDS_MAP,
-    thats_enough_tries, ismnum,
+    thats_enough_tries, ismnum, engulfing_u,
+    LOST_NONE, LOST_THROWN, LOST_DROPPED, LOST_STOLEN,
 } from './const.js';
 import {
     enexto, enexto_core, enexto_gpflags, goodpos, noteleport_level,
@@ -127,7 +128,7 @@ import {
 import {
     mksobj, mkobj, mkobj_at, weight, objects_at, curse, bless, is_crackable,
     set_corpsenm, stop_timer, add_to_container, add_to_minv, rnd_class,
-    carry_obj_effects, obj_extract_self, place_object,
+    carry_obj_effects, obj_extract_self, place_object, unknow_object,
 } from './mkobj.js';
 import { flooreffects } from './do.js';
 import { monst_to_any } from './hack.js';
@@ -165,10 +166,10 @@ import { ART_EXCALIBUR, ART_DEMONBANE } from './generated/artifacts_data.js';
 import { cansee, does_block, block_point } from './vision.js';
 import { newsym, Norep, canseemon, sensemon, canspotmon, pline, You, pline_mon, impossible, coord_desc, swallowed } from './display.js';
 import { mhidden_description } from './pager.js';
-import { emits_light, new_light_source, del_light_source } from './light.js';
+import { emits_light, new_light_source, del_light_source, obj_sheds_light, snuff_light_source } from './light.js';
 import { begin_burn } from './timeout.js';
-import { christen_monst, oname, x_monnam, noname_monnam, noit_mon_nam } from './do_name.js';
-import { vtense } from './objnam.js';
+import { christen_monst, oname, x_monnam, noname_monnam, noit_mon_nam, pmname, Mgender } from './do_name.js';
+import { vtense, simpleonames, Tobjnam } from './objnam.js';
 import { get_shop_item, shkname } from './shknam.js';
 import {
     get_wormno, initworm, count_wsegs, place_worm_tail_randomly,
@@ -181,7 +182,8 @@ import { expels, unstuck, digests } from './mhitu.js';
 import { mselftouch } from './trap.js';
 import { sticks } from './engrave.js';
 import { m_unleash, leashable } from './apply.js';
-import { update_inventory } from './invent.js';
+import { update_inventory, Blind, count_unpaid } from './invent.js';
+import { subfrombill, find_objowner } from './shk.js';
 import { set_apparxy, monflee, can_hide_under_obj, dochugw } from './monmove.js';
 import { cursed_object_at } from './dogmove.js';
 import { roles } from './roles.js';
@@ -2138,15 +2140,64 @@ export function peace_minded(ptr) {
     return !!rn2(16 + recClamp) && !!rn2(2 + Math.abs(mal));
 }
 
-// C ref: steal.c mpickobj — carry_obj_effects then add_to_minv
+/**
+ * C ref: steal.c mpickobj `:618–685` — monster takes an object into minvent.
+ * Returns add_to_minv's freed flag (1 when otmp merged and was freed).
+ * impossible/pline are fire-and-forget (sync file convention, cf. classmon).
+ * attacktype is the module-local mondata.h port below; AT_ENGL is `:1720`.
+ */
 export function mpickobj(mtmp, otmp) {
-    if (!otmp) return 1;
-    // C steal.c: thrown/kicked tracker must not place after minvent take
+    // C steal.c:620 — deferred until otmp is in mtmp's inventory
+    let snuff_otmp = false;
+
+    // C steal.c:622–631 — null / attached ball+chain guards
+    if (!otmp) {
+        impossible(`monster (${pmname(mtmp.data, Mgender(mtmp))}) taking or picking up nothing?`);
+        return 1;
+    } else if (otmp === game.u?.uball || otmp === game.u?.uchain) {
+        impossible(`monster (${pmname(mtmp.data, Mgender(mtmp))}) taking or picking up attached ${(otmp === game.u?.uchain) ? 'chain' : 'ball'} (${simpleonames(otmp)})?`);
+        return 0;
+    }
+    /* C steal.c:634–637 — acquiring a thrown/kicked object: the throwing
+       or kicking code shouldn't continue to track and place it */
     if (otmp === game.thrownobj) game.thrownobj = null;
     else if (otmp === game.kickedobj) game.kickedobj = null;
-    // C steal.c mpickobj — carry_obj_effects before add_to_minv
+    /* C steal.c:640–643 — an unpaid floor item leaves the shop bill when
+       a monster picks it up (Has_contents ≡ obj.h:334 cobj != NULL) */
+    if (otmp.unpaid || (otmp.cobj != null && count_unpaid(otmp.cobj))) {
+        subfrombill(otmp, find_objowner(otmp, otmp.ox, otmp.oy));
+    }
+    /* C steal.c:647–654 — no hidden light source inside the monster;
+       whirly (AT_ENGL) engulfers snuff it instead of shining through */
+    if (obj_sheds_light(otmp) && attacktype(mtmp.data, AT_ENGL)) {
+        /* C: probably a burning object you dropped or threw */
+        if (engulfing_u(mtmp) && !Blind())
+            pline(`${Tobjnam(otmp, 'go')} out.`);
+        snuff_otmp = true;
+    }
+    /* C steal.c:657 — mtmp takes possession; a later shop drop is shk-claimed */
+    otmp.no_charge = 0;
+    /* C steal.c:659–673 — non-pet handling only (pet pickup/drop churn
+       would make unknow_object too annoying) */
+    if (!mtmp.mtame) {
+        /* C: unseen monster loses hero-known info; engulfed/held-while-blind
+           counts as 'seen' by touch (canseemon covers it) */
+        if (!canseemon(mtmp) && mtmp !== game.u?.ustuck)
+            unknow_object(otmp);
+        /* C: thrown→stolen (autopickup pickup_stolen), dropped→forgotten */
+        if ((otmp.how_lost | 0) === LOST_THROWN)
+            otmp.how_lost = LOST_STOLEN;
+        else if ((otmp.how_lost | 0) === LOST_DROPPED)
+            otmp.how_lost = LOST_NONE;
+    }
+    /* C steal.c:675–678 — carrying effects BEFORE add_to_minv (which may
+       merge and free otmp, so object checks must come first) */
     carry_obj_effects(otmp);
-    return add_to_minv(mtmp, otmp);
+    const freed_otmp = add_to_minv(mtmp, otmp);
+    /* C steal.c:680–683 — deferred snuff, now that otmp is in inventory */
+    if (snuff_otmp)
+        snuff_light_source(mtmp.mx, mtmp.my);
+    return freed_otmp;
 }
 
 // C ref: makemon.c m_initthrow

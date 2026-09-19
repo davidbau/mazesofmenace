@@ -16,7 +16,7 @@ import {
 import { worm_known, worm_move } from './worm.js';
 import {
     Monnam, mon_nam, monverbself, Hallucination, x_monnam, trycall,
-    Some_Monnam, noit_mon_nam, s_suffix, hcolor,
+    Some_Monnam, noit_mon_nam, s_suffix, hcolor, rndmonnam, a_monnam,
 } from './do_name.js';
 import {
     doname, singular, an, xname, the, makeplural, ansimpleoname,
@@ -54,7 +54,7 @@ import {
 import { bcsign } from './rumors.js';
 import { enexto, migrate_to_level, tele_restrict, rloc,
     random_teleport_level, noteleport_level, tele, unconscious } from './teleport.js';
-import { makemon, mpickobj, newcham, rndmonst } from './makemon.js';
+import { makemon, mpickobj, newcham, rndmonst, set_malign } from './makemon.js';
 import {
     place_object, splitobj, unbless, objects_at, mksobj, weight,
     stackobj, unknow_object, obj_extract_self, add_to_container,
@@ -77,7 +77,7 @@ import {
     MIGR_LADDER_DOWN, MIGR_LADDER_UP, MIGR_SSTAIRS,
     In_endgame, In_sokoban, Is_container, ismnum, Is_rogue_level, Is_earthlevel,
     Can_dig_down, IS_FURNITURE, IS_DRAWBRIDGE, W_NONDIGGABLE,
-    PIT, HOLE, WEB, BEAR_TRAP, something,
+    PIT, HOLE, WEB, BEAR_TRAP, something, Something, AD_RBRE,
     ARTICLE_A, SUPPRESS_IT, SUPPRESS_INVISIBLE, SUPPRESS_SADDLE, AUGMENT_IT,
     PLNMSG_enum, NORMAL_SPEED, STRAT_WAITFORU, EDOG, STAIRS, LADDER, CORR, SCORR,
     is_hole, is_pit, Can_fall_thru, Is_botlevel, TELEP_TRAP, FIRE_TRAP, FORCETRAP, FORCEBUNGLE,
@@ -106,15 +106,15 @@ import { extract_from_minvent, which_armor, mon_set_minvis } from './worn.js';
 import { hard_helmet } from './do_wear.js';
 import { obfree, inhishop } from './shk.js';
 import { xkilled, killed, attacktype_fordmg } from './uhitm.js';
-import { mondead, mondied, monkilled, grow_up } from './mhitm.js';
+import { mondead, mondied, monkilled, grow_up, paralyze_monst } from './mhitm.js';
 import { dog_nutrition } from './dogmove.js';
 import { ART_ORB_OF_DETECTION } from './generated/artifacts_data.js';
 import { CLR_GREEN, CLR_BRIGHT_GREEN } from './terminal.js';
 import { explode } from './explode.js';
 import { fill_pit } from './dig.js';
 import { surface } from './sit.js';
-import { Soundeffect } from './sndprocs.js';
-import { se_bugle_playing_reveille, se_crash_through_floor } from './generated/seffects_data.js';
+import { Soundeffect, SetVoice } from './sndprocs.js';
+import { se_bugle_playing_reveille, se_crash_through_floor, se_zap_then_explosion } from './generated/seffects_data.js';
 import { awaken_soldiers } from './music.js';
 
 const POT_PARALYSIS = objectNames.indexOf('POT_PARALYSIS');
@@ -2274,71 +2274,110 @@ export function find_misc(mtmp) {
 }
 
 /**
- * C ref: muse.c precheck — milky/smoky potion occupant + cursed wand backfire.
- * Ghost/djinni spawn body partial (enexto + makemon + messages);
- * non-fatal wand backfire clears muse selection like C.
+ * C ref: muse.c precheck `:59–160` — whole body in C order: milky/smoky
+ * potion occupant (`:68–131`) + cursed wand backfire (`:133–159`).
+ * Callers: use_defensive `:805`, use_offensive `:1837` (non-potion only),
+ * use_misc `:2392` — all three wired below.
  */
 async function precheck(mon, obj) {
+    // C `:64–65` — no object, nothing to check.
     if (!obj) return 0;
+    // C `:66` — visibility snapshot before any message.
     const vis = cansee(mon.mx, mon.my);
 
+    // C `:68` — potion occupant arms.
     if (obj.oclass === POTION_CLASS) {
+        const empty = 'The potion turns out to be empty.';
+        // C `:73–101` — milky potion: ghost occupant.
         if (objdescr_is(obj, 'milky')) {
             const mv = game.mvitals?.[PM_GHOST];
-            if (!((mv?.mvflags ?? 0) & G_GONE)
-                && !rn2(POTION_OCCUPANT_CHANCE(mv?.born ?? 0))) {
+            if (!((mv?.mvflags ?? 0) & G_GONE) // C `:74`
+                && !rn2(POTION_OCCUPANT_CHANCE(mv?.born ?? 0))) { // C `:75`
                 const cc = { x: 0, y: 0 };
-                if (!enexto(cc, mon.mx, mon.my, mons(PM_GHOST))) return 0;
-                await mquaffmsg(mon, obj);
-                m_useup(mon, obj);
-                const mtmp = makemon(mons(PM_GHOST), cc.x, cc.y, MM_NOMSG);
-                if (!mtmp) {
-                    if (vis) await pline('The potion turns out to be empty.');
-                } else {
-                    if (vis) {
-                        await pline(
-                            `As ${mon_nam(mon)} opens the bottle, an enormous ghost emerges!`,
+                if (!enexto(cc, mon.mx, mon.my, mons(PM_GHOST))) return 0; // C `:76–77`
+                await mquaffmsg(mon, obj); // C `:78`
+                m_useup(mon, obj); // C `:79`
+                const mtmp = makemon(mons(PM_GHOST), cc.x, cc.y, MM_NOMSG); // C `:80`
+                if (!mtmp) { // C `:81`
+                    if (vis) await pline(empty); // C `:82–83` pline1
+                } else { // C `:84`
+                    if (vis) { // C `:85`
+                        await pline( // C `:86–91`
+                            'As %s opens the bottle, an enormous %s emerges!',
+                            mon_nam(mon),
+                            Hallucination() ? rndmonnam(null) : 'ghost',
                         );
-                        await pline(
-                            `${Monnam(mon)} is frightened to death, and unable to move.`,
+                        await pline( // C `:92–95` (one pline, split literals)
+                            '%s is frightened to death, and unable to move.',
+                            Monnam(mon),
                         );
                     }
-                    mon.mfrozen = (mon.mfrozen | 0) + 3;
-                    mon.mcanmove = 0;
+                    paralyze_monst(mon, 3); // C `:96`
                 }
-                return 2;
+                return 2; // C `:98`
             }
         }
-        if (objdescr_is(obj, 'smoky')
-            && !((game.mvitals?.[PM_DJINNI]?.mvflags ?? 0) & G_GONE)
-            && !rn2(POTION_OCCUPANT_CHANCE(game.mvitals?.[PM_DJINNI]?.born ?? 0))) {
-            // Djinni occupant — enexto/makemon/wish deferred; burn like empty
+        // C `:102–131` — smoky potion: djinni occupant.
+        if (objdescr_is(obj, 'smoky') // C `:102`
+            && !((game.mvitals?.[PM_DJINNI]?.mvflags ?? 0) & G_GONE) // C `:103`
+            && !rn2(POTION_OCCUPANT_CHANCE(game.mvitals?.[PM_DJINNI]?.born ?? 0))) { // C `:104`
             const cc = { x: 0, y: 0 };
-            if (!enexto(cc, mon.mx, mon.my, mons(PM_DJINNI))) return 0;
-            await mquaffmsg(mon, obj);
-            m_useup(mon, obj);
-            const mtmp = makemon(mons(PM_DJINNI), cc.x, cc.y, MM_NOMSG);
-            if (!mtmp) {
-                if (vis) await pline('The potion turns out to be empty.');
-            } else {
-                // verbalize / rn2(2) peaceful — named omission beyond makemon
-                if (!rn2(2)) {
-                    mtmp.mpeaceful = 1;
+            if (!enexto(cc, mon.mx, mon.my, mons(PM_DJINNI))) return 0; // C `:105–106`
+            await mquaffmsg(mon, obj); // C `:107`
+            m_useup(mon, obj); // C `:108`
+            const mtmp = makemon(mons(PM_DJINNI), cc.x, cc.y, MM_NOMSG); // C `:109`
+            if (!mtmp) { // C `:110`
+                if (vis) await pline(empty); // C `:111–112` pline1
+            } else { // C `:113`
+                if (vis) // C `:114`
+                    await pline_mon(mtmp, 'In a cloud of smoke, %s emerges!', a_monnam(mtmp)); // C `:115`
+                await pline('%s speaks.', vis ? Monnam(mtmp) : Something); // C `:116`
+                /* C `:117–118` — monsters can't wish for wands of death here. */
+                SetVoice(mtmp, 0, 80, 0); // C `:119`
+                if (rn2(2)) { // C `:120`
+                    await verbalize('You freed me!'); // C `:121`
+                    mtmp.mpeaceful = 1; // C `:122`
+                    set_malign(mtmp); // C `:123`
+                } else { // C `:124`
+                    await verbalize('It is about time.'); // C `:125`
+                    if (vis) // C `:126`
+                        await pline('%s vanishes.', Monnam(mtmp)); // C `:127`
+                    await mongone(mtmp); // C `:128`
                 }
             }
-            return 2;
+            return 2; // C `:130`
         }
     }
-    if (obj.oclass === WAND_CLASS && obj.cursed
-        && !rn2(WAND_BACKFIRE_CHANCE)) {
-        d((obj.spe | 0) + 2, 6);
-        const m = museState();
-        m.has_defense = 0;
-        m.has_offense = 0;
-        m.has_misc = 0;
-        return 0;
+    // C `:133–159` — cursed wand backfire.
+    if (obj.oclass === WAND_CLASS && obj.cursed // C `:133`
+        && !rn2(WAND_BACKFIRE_CHANCE)) { // C `:134`
+        const dam = d((obj.spe | 0) + 2, 6); // C `:135`
+
+        /* C `:136–138` — 3.6.1: no Deaf filter on either arm. */
+        if (vis) { // C `:139`
+            await pline_mon(mon, '%s zaps %s, which suddenly explodes!', // C `:140–141`
+                Monnam(mon), an(xname(obj)));
+        } else { // C `:142`
+            /* C `:143–144` — same near/far threshold as mzapwand(). */
+            const range = couldsee(mon.mx, mon.my) /* 9 or 5 */ // C `:145–146`
+                ? (BOLT_LIM + 1) : (BOLT_LIM - 3);
+            Soundeffect(se_zap_then_explosion, 100); // C `:148`
+            await You_hear( // C `:149–151` (You_hear takes text, not format)
+                `a zap and an explosion ${
+                    (mdistu(mon) <= range * range) ? 'nearby' : 'in the distance'}.`,
+            );
+        }
+        m_useup(mon, obj); // C `:153`
+        mon.mhp = (mon.mhp | 0) - dam; // C `:154`
+        if ((mon.mhp | 0) < 1) { // C `:155` DEADMONSTER
+            await monkilled(mon, '', AD_RBRE); // C `:156`
+            return 1; // C `:157`
+        }
+        const m = museState(); // C `:158` gm.m
+        m.has_defense = 0; m.has_offense = 0; m.has_misc = 0;
+        /* C `:159` comment — only one needed clearing, the rest harmless. */
     }
-    return 0;
+    return 0; // C `:160`
 }
 
 /**
@@ -2829,7 +2868,7 @@ export async function mon_adjust_speed(mon, adjust, obj) {
  * C ref: pickup.c removed_from_icebox — thaw age + corpse rot/revive.
  * Named omit: ice-troll get_mtraits data pointer identity vs mndx.
  */
-function removed_from_icebox(obj) {
+export function removed_from_icebox(obj) {
     if (!obj || age_is_relative(obj)) return;
     obj.age = (game.moves | 0) - (obj.age | 0);
     if ((obj.otyp | 0) === CORPSE) {

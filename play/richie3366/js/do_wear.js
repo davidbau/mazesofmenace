@@ -11,7 +11,7 @@ import {
     newsym, see_monsters, urgent_pline, impossible, Hallucination,
 } from './display.js';
 import { yn_function, paranoid_ynq } from './getline.js';
-import { an, doname, the, xname, xprname, vtense, makeplural, makesingular, otense, gloves_simple_name, obj_pmname_corpse, simpleonames, body_part_latebound, Tobjnam, Yname2, corpse_xname, killer_xname, arti_light_description } from './objnam.js';
+import { an, doname, the, xname, xprname, vtense, makeplural, makesingular, otense, gloves_simple_name, obj_pmname_corpse, simpleonames, body_part_latebound, Tobjnam, Yname2, corpse_xname, killer_xname, arti_light_description, set_doffing_predicates } from './objnam.js';
 import { find_ac } from './u_init.js';
 import {
     A_STR, A_INT, A_WIS, A_CON, A_CHA, A_DEX, acurr, extremeattr, change_luck, Fast, Very_fast,
@@ -3282,6 +3282,10 @@ function donning(otmp) {
     if (otmp === u.uarms) return af === Shield_on;
     return false;
 }
+
+// Late-bound into objnam.js doname_base ARMOR arm (top-level runs after the
+// objnam import above is complete, so the assignment never hits a TDZ).
+set_doffing_predicates(doffing, donning);
 
 /**
  * C ref: do_wear.c stop_donning — interrupt multi-turn armor don/doff.

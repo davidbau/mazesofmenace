@@ -679,9 +679,10 @@ async function you_sanity_check() {
  * C wizcmds.c sanity_check `:1459–1481`.
  * Envelope: sanity_no_check (^P/^R CMD_INSANE); in_sanity_check for
  * impossible(); you_sanity_check gold/invlet via check_invent_gold
- * ("invent"). Caller allmain.c moveloop_core when iflags.sanity_check
- * || debug_fuzzer (opt_in Off).
- * Named omit: obj/timer/mon/light/bc/trap/engraving/levl sanity;
+ * ("invent") then `bc_sanity_check` (`ball.c:1034–1102`, `:1476` —
+ * after light_sources, before trap). Caller allmain.c moveloop_core
+ * when iflags.sanity_check || debug_fuzzer (opt_in Off).
+ * Named omit: obj/timer/mon/light/trap/engraving/levl sanity;
  * check_wornmask_slots; dobjsfree / clear_bypasses / resume_wish.
  */
 export async function sanity_check() {
@@ -694,6 +695,10 @@ export async function sanity_check() {
     game.program_state.in_sanity_check =
         (game.program_state.in_sanity_check | 0) + 1;
     await you_sanity_check();
+    // C `:1472–1479` siblings obj/timer/mon/light stay named omits;
+    // bc_sanity_check is live (ball.js); trap/engraving/levl stay named.
+    const { bc_sanity_check } = await import('./ball.js');
+    await bc_sanity_check();
     game.program_state.in_sanity_check =
         (game.program_state.in_sanity_check | 0) - 1;
 }

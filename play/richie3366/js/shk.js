@@ -100,7 +100,8 @@ import { add_to_minv, mpickobj, makemon } from './makemon.js';
 import { acurr, acurrstr, A_CHA, A_WIS, adjalign, exercise, Fast } from './attrib.js';
 import { simpleonames, makeplural, xprname, set_shk_owns_prefix, obj_typename } from './objnam.js';
 import {
-    xname, doname, paydoname, set_doname_shop_suffix,
+    xname, doname, doname_base, DONAME_WITH_PRICE, paydoname,
+    set_doname_shop_suffix,
     ansimpleoname, thesimpleoname, append_wizweight_suffix,
     the, The, safe_qbuf,
 } from './objnam.js';
@@ -2967,23 +2968,32 @@ export function append_price_quote(buf, otyp) {
 }
 
 /**
- * C ref: objnam.c doname_base unpaid arm (is_unpaid → unpaid_cost).
- * Wired into plain doname via set_doname_shop_suffix(…, with_price ignored).
+ * C ref: objnam.c doname_base price arms (`:1652–1683`) — suppress/restoring
+ * skip, is_unpaid → unpaid_cost, plus the trailing pricequotes discovery
+ * append for plain doname. The for-sale arm is doname_with_price below.
  * Named omissions: contained_cost contents label path
  * still uses unpaid_cost amt without nested walk.
  */
-function append_doname_unpaid_suffix(obj, bp, _with_price) {
+function append_doname_unpaid_suffix(obj, bp, with_price) {
     if (game.iflags?.suppress_price || game.program_state?.restoring) {
         return bp;
     }
-    if (!is_unpaid(obj)) return bp;
-    const quotedprice = unpaid_cost(obj, COST_CONTENTS);
-    const pricebuf = `${quotedprice} ${currency(quotedprice)}`;
-    const label = obj.unpaid ? 'unpaid' : 'contents';
-    // C: record_price_quote(otyp, quotedprice / quan, TRUE)
-    const quan = (obj.quan | 0) || 1;
-    record_price_quote(obj.otyp, Math.trunc(quotedprice / quan), true);
-    return `${bp} (${label}, ${pricebuf})`;
+    if (is_unpaid(obj)) {
+        const quotedprice = unpaid_cost(obj, COST_CONTENTS);
+        const pricebuf = `${quotedprice} ${currency(quotedprice)}`;
+        const label = obj.unpaid ? 'unpaid' : 'contents';
+        // C: record_price_quote(otyp, quotedprice / quan, TRUE)
+        const quan = (obj.quan | 0) || 1;
+        record_price_quote(obj.otyp, Math.trunc(quotedprice / quan), true);
+        return `${bp} (${label}, ${pricebuf})`;
+    }
+    // C `:1682–1683` trailing else-if — plain doname only (with_price and
+    // unpaid take their own arms above and in doname_with_price).
+    if (!with_price && game.iflags?.pricequotes
+        && !game.objects?.[obj.otyp | 0]?.oc_name_known) {
+        return append_price_quote(bp, obj.otyp);
+    }
+    return bp;
 }
 
 /**
@@ -3042,7 +3052,9 @@ export function doname_with_price(obj) {
     if (!game.iflags) game.iflags = {};
     const save_wizweight = game.iflags.wizweight;
     game.iflags.wizweight = false;
-    let bp = doname(obj);
+    // C: doname_base(obj, DONAME_WITH_PRICE) — not doname(obj), so the
+    // trailing pricequotes arm stays off inside (it belongs to plain doname).
+    let bp = doname_base(obj, DONAME_WITH_PRICE);
     game.iflags.wizweight = save_wizweight;
     if (game.iflags.suppress_price || game.program_state?.restoring) {
         return append_wizweight_suffix(obj, bp, true);

@@ -337,6 +337,7 @@ const AD_SGLD = 20; /* steals gold (leprechaun) — monattk.h */
 const AD_TLPT = 23; /* teleports victim (quantum mechanic) — monattk.h */
 const AD_WERE = 29; /* confers lycanthropy — monattk.h */
 const AD_HEAL = 27; /* heals opponent's wounds (nurse) — monattk.h */
+const AD_LEGS = 17; /* damages legs (xan) — monattk.h */
 const AD_SLIM = 40; /* turns victim into green slime — monattk.h */
 const AD_SAMU = 252; /* steals quest artifact/Amulet (Wizard/nemesis) — monattk.h */
 const AD_DCAY = 34; /* decays organics (brown pudding) — monattk.h */
@@ -1320,6 +1321,25 @@ export async function mhitm_ad_were(magr, mattk, mdef, mhm) {
  */
 export async function mhitm_ad_heal(magr, mattk, mdef, mhm) {
     if (is_youmonst(mdef)) return;
+    await mhitm_ad_phys(magr, mattk, mdef, mhm);
+}
+
+/**
+ * C ref: uhitm.c mhitm_ad_legs `:4483–4489` — mhitm (mon→mon) arm.
+ * Cancelled attacker deals no damage; else delegates to mhitm_ad_phys;
+ * done propagates via mhm (caller checks).
+ * uhitm you-as-agr (`:4432–4444`) shares this shape (phys + done check;
+ * the `#if 0` ucancelled arm is dead in C).
+ * mhitu you-as-def (`:4445–4482`) is mhitm_ad_legs_u in mhitu.js (side
+ * rn2(2), steed/Lev/Fly reach fail, mcan nuzzle via pline_mon per D-1240,
+ * boots prick/scratch, set_wounded_legs + STR/DEX exercise).
+ */
+export async function mhitm_ad_legs(magr, mattk, mdef, mhm) {
+    if (is_youmonst(mdef)) return;
+    if (magr.mcan) {
+        mhm.damage = 0;
+        return;
+    }
     await mhitm_ad_phys(magr, mattk, mdef, mhm);
 }
 
@@ -4158,6 +4178,43 @@ async function mdamagem(magr, mdef, mattk, mwep, dieroll) {
         return (hitflags === M_ATTK_AGR_DIED) ? M_ATTK_AGR_DIED : M_ATTK_HIT;
     }
 
+    // C: mhitm_adtyping → mhitm_ad_legs for AD_LEGS (uhitm.c:4425–4489
+    // mhitm arm :4483–4489). Cancelled zeroes leftover, else delegates to
+    // mhitm_ad_phys (dieroll carried for artifact_hit, like AD_WERE);
+    // done propagates via mhm.
+    // mhitu xan-legs arm is mhitm_ad_legs_u (mhitu.js); the uhitm arm
+    // shares the phys shape (named in the callee).
+    if ((mattk.adtyp | 0) === AD_LEGS) {
+        const mhm = {
+            damage,
+            hitflags: M_ATTK_MISS,
+            done: false,
+            dieroll: dieroll | 0,
+        };
+        await mhitm_ad_legs(magr, mattk, mdef, mhm);
+        // C mhitm.c:1061-1065 — knockback preempts damage on HIT/DEF_DIED/offmap
+        if (await mhitm_knockback(magr, mdef, mattk, mhm, !!mwep)
+            && (((mhm.hitflags & (M_ATTK_DEF_DIED | M_ATTK_HIT)) !== 0) || mon_offmap(mdef))) {
+            return mhm.hitflags;
+        }
+        if (mhm.done) return mhm.hitflags;
+        damage = mhm.damage | 0;
+        hitflags = mhm.hitflags | 0;
+        if (!damage) return hitflags;
+        mdef.mhp -= damage;
+        if (mdef.mhp < 1) {
+            mdef.mhp = 0;
+            await mdamagem_monkilled(magr, mdef, mattk, mwep);
+            if ((mdef.mhp | 0) > 0) return hitflags; /* lifesaved */
+            if (hitflags === M_ATTK_AGR_DIED) {
+                return M_ATTK_DEF_DIED | M_ATTK_AGR_DIED;
+            }
+            const grew = await grow_up(magr, mdef);
+            return M_ATTK_DEF_DIED | (grew ? 0 : M_ATTK_AGR_DIED);
+        }
+        return (hitflags === M_ATTK_AGR_DIED) ? M_ATTK_AGR_DIED : M_ATTK_HIT;
+    }
+
     // C: mhitm_adtyping → mhitm_ad_heal for AD_HEAL (uhitm.c:4296–4385
     // mhitm arm :4379–4384). Delegates to mhitm_ad_phys (dieroll carried
     // for artifact_hit, like AD_WERE); done propagates via mhm.
@@ -4407,9 +4464,10 @@ async function mdamagem(magr, mdef, mattk, mwep, dieroll) {
 
 /**
  * C ref: uhitm.c shade_aware — boulder/ball/chain/mirror/garlic/silver.
- * Used only for the shade_miss noun ("attack" vs cxname).
+ * Used for the shade_miss noun ("attack" vs cxname) and by uhitm.js
+ * hmon_hitmon's do_hit shade guard (D-2486).
  */
-function shade_aware(obj) {
+export function shade_aware(obj) {
     if (!obj) return false;
     const otyp = obj.otyp | 0;
     if (otyp === BOULDER || otyp === HEAVY_IRON_BALL || otyp === IRON_CHAIN

@@ -50,8 +50,10 @@ import {
     A_LAWFUL, Has_contents, IS_ROOM, ACCESSIBLE, isok,
     GD_EATGOLD, GD_DESTROYGOLD, ARTICLE_A, FCSIZ,
     RLOC_NOMSG, RLOC_MSG, RLOC_ERR, FEMALE, MALE, IN_SIGHT, COULD_SEE,
+    NEED_HTH_WEAPON,
 } from './const.js';
-import { m_at, m_carrying, mnexto, mpickgold } from './mon.js';
+import { MON_WEP, mon_wield_item } from './weapon.js';
+import { m_at, m_carrying, mnexto, mpickgold, setmangry } from './mon.js';
 import { upstart, dist2 } from './hacklib.js';
 import { SetVoice } from './sndprocs.js';
 import { is_fainted } from './eat.js';
@@ -63,6 +65,7 @@ import { m_canseeu, mhe } from './mondata.js';
 import { objectNames } from './generated/objects_data.js';
 
 const PM_GUARD = monsterNames.indexOf('PM_GUARD');
+const PM_CROESUS = monsterNames.indexOf('PM_CROESUS');
 const TIN_WHISTLE = objectNames.indexOf('TIN_WHISTLE');
 const GOLD_PIECE = objectNames.indexOf('GOLD_PIECE');
 const ROCK = objectNames.indexOf('ROCK');
@@ -778,9 +781,29 @@ export async function invault() {
     }
 
     if (strcmpi(buf, 'Croesus') || strcmpi(buf, 'Kroisos')
-        || strcmpi(buf, 'Creosote')) {
-        // Croesus alive → leave; dead → angry (mon_wield deferred)
-        mongone_guard(guard);
+        || strcmpi(buf, 'Creosote')) { /* Discworld */
+        if (!((game.mvitals?.[PM_CROESUS]?.died | 0))) {
+            // Croesus alive → leave (C waves-goodbye/sorry dialogue omitted)
+            mongone_guard(guard);
+            return;
+        }
+        // C vault.c:526 — Croesus dead → the guard gets angry
+        await setmangry(guard, false);
+        if (Deaf()) {
+            if (!Blind()) {
+                await pline(
+                    `${noit_Monnam(guard)} mouths something and looks very angry!`,
+                );
+            }
+        } else {
+            SetVoice(guard, 0, 80, 0);
+            await verbalize("Back from the dead, are you?  I'll remedy that!");
+        }
+        /* don't want guard to waste next turn wielding a weapon */
+        if (!MON_WEP(guard)) {
+            guard.weapon_check = NEED_HTH_WEAPON;
+            await mon_wield_item(guard);
+        }
         return;
     }
 

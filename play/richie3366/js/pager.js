@@ -45,7 +45,8 @@ import {
 import { mon_at, defsym_explanation } from './uhitm.js';
 import { sobj_at, mksobj, mkobj, obj_stop_timers } from './mkobj.js';
 import {
-    doname, an, the, xname, singular, ansimpleoname, distant_name, simpleonames,
+    doname_vague_quan, an, the, xname, singular, ansimpleoname,
+    distant_name, simpleonames,
     makeplural, makesingular, fruit_from_name,
 } from './objnam.js';
 import { strstri, lcase } from './hacklib.js';
@@ -66,7 +67,7 @@ import { option_help_lines } from './options.js';
 import { dokeylist_lines, domenucontrols_lines } from './dokeylist.js';
 import { trapname, t_at, ice_descr } from './trap.js';
 import { trapped_chest_at, trapped_door_at } from './detect.js';
-import { costly_spot } from './shk.js';
+import { costly_spot, doname_with_price } from './shk.js';
 import { cmdq_pop, cmdq_clear, pmatch } from './cmd.js';
 import {
     objectNames, objectNameStrs, COIN_CLASS, def_oc_syms,
@@ -1794,7 +1795,8 @@ export function object_from_map(glyphotyp, x, y) {
 /**
  * C ref: pager.c look_at_object `:380–399`.
  * Callers: lookat / look_all / getpos auto_describe + brief_at (D-1547).
- * doname_with_price / doname_vague_quan named — doname stand-in.
+ * C `:390–391` picks doname_with_price when dknown, doname_vague_quan
+ * otherwise (farlook "some gold pieces").
  * Tree suffix named (needs is_treefruit for dangling vs stuck).
  */
 export function look_at_object(x, y, glyphotyp) {
@@ -1802,7 +1804,8 @@ export function look_at_object(x, y, glyphotyp) {
     let buf = 'something';
     if (otmp) {
         buf = ((otmp.otyp | 0) !== STRANGE_OBJECT)
-            ? distant_name(otmp, doname)
+            ? distant_name(otmp,
+                otmp.dknown ? doname_with_price : doname_vague_quan)
             : (objectNameStrs[STRANGE_OBJECT] || 'strange object');
         if (fakeobj) {
             // C: object_from_map set OBJ_FLOOR; never placed on fobj

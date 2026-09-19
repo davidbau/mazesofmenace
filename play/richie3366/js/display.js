@@ -228,7 +228,7 @@ const altar_unaligned = 0;
 const altar_chaotic = 1;
 const altar_neutral = 2;
 const altar_lawful = 3;
-const altar_other = 4;
+export const altar_other = 4;
 
 /**
  * C ref: display.h obj_is_piletop — floor top with nexthere (boulder
@@ -625,59 +625,59 @@ export function cmap_to_glyph(cmap_idx) {
 }
 
 /* C defsym.h PCHAR S_sw_tl is the first swallow cmap after S_goodpos. */
-const S_sw_tl = S_goodpos + 1;
+export const S_sw_tl = S_goodpos + 1;
 /* C sym.h enum cmap_symbols fencepost after S_expl_br. */
-const MAXPCHARS = S_expl_br + 1;
+export const MAXPCHARS = S_expl_br + 1;
 
 /** C display.h glyph_is_cmap_main — wall bank at GLYPH_CMAP_MAIN_OFF. */
-function glyph_is_cmap_main(glyph) {
+export function glyph_is_cmap_main(glyph) {
     const g = glyph | 0;
     return g >= GLYPH_CMAP_MAIN_OFF && g < (_GLYPH_WALL_SPAN + GLYPH_CMAP_MAIN_OFF);
 }
-function glyph_is_cmap_mines(glyph) {
+export function glyph_is_cmap_mines(glyph) {
     const g = glyph | 0;
     return g >= GLYPH_CMAP_MINES_OFF && g < (_GLYPH_WALL_SPAN + GLYPH_CMAP_MINES_OFF);
 }
-function glyph_is_cmap_gehennom(glyph) {
+export function glyph_is_cmap_gehennom(glyph) {
     const g = glyph | 0;
     return g >= GLYPH_CMAP_GEH_OFF && g < (_GLYPH_WALL_SPAN + GLYPH_CMAP_GEH_OFF);
 }
-function glyph_is_cmap_knox(glyph) {
+export function glyph_is_cmap_knox(glyph) {
     const g = glyph | 0;
     return g >= GLYPH_CMAP_KNOX_OFF && g < (_GLYPH_WALL_SPAN + GLYPH_CMAP_KNOX_OFF);
 }
-function glyph_is_cmap_sokoban(glyph) {
+export function glyph_is_cmap_sokoban(glyph) {
     const g = glyph | 0;
     return g >= GLYPH_CMAP_SOKO_OFF && g < (_GLYPH_WALL_SPAN + GLYPH_CMAP_SOKO_OFF);
 }
-function glyph_is_cmap_a(glyph) {
+export function glyph_is_cmap_a(glyph) {
     const g = glyph | 0;
     return g >= GLYPH_CMAP_A_OFF
         && g < (((S_brdnladder - S_ndoor) + 1) + GLYPH_CMAP_A_OFF);
 }
-function glyph_is_cmap_altar(glyph) {
+export function glyph_is_cmap_altar(glyph) {
     const g = glyph | 0;
     return g >= GLYPH_ALTAR_OFF && g < (5 + GLYPH_ALTAR_OFF);
 }
-function glyph_is_cmap_b(glyph) {
+export function glyph_is_cmap_b(glyph) {
     const g = glyph | 0;
     return g >= GLYPH_CMAP_B_OFF
         && g < ((S_arrow_trap + MAXTCHARS - S_grave) + GLYPH_CMAP_B_OFF);
 }
-function glyph_is_cmap_zap(glyph) {
+export function glyph_is_cmap_zap(glyph) {
     const g = glyph | 0;
     return g >= GLYPH_ZAP_OFF && g < ((NUM_ZAP << 2) + GLYPH_ZAP_OFF);
 }
-function glyph_is_cmap_c(glyph) {
+export function glyph_is_cmap_c(glyph) {
     const g = glyph | 0;
     return g >= GLYPH_CMAP_C_OFF
         && g < (((S_goodpos - S_digbeam) + 1) + GLYPH_CMAP_C_OFF);
 }
-function glyph_is_swallow(glyph) {
+export function glyph_is_swallow(glyph) {
     const g = glyph | 0;
     return g >= GLYPH_SWALLOW_OFF && g < ((NUMMONS << 3) + GLYPH_SWALLOW_OFF);
 }
-function glyph_is_explosion(glyph) {
+export function glyph_is_explosion(glyph) {
     const g = glyph | 0;
     return g >= GLYPH_EXPLODE_OFF && g < (MAXEXPCHARS + GLYPH_EXPLODE_FROSTY_OFF);
 }
@@ -887,6 +887,8 @@ export function glyph_is_object(glyph) {
 
 /**
  * C display.h glyph_to_obj `:902–913` — CORPSE / STATUE / peel obj banks.
+ * Normal piletop peels PILETOP_OFF (JS glyph_is_normal_object is OBJ-bank
+ * only, so the piletop arm is explicit here, same outcome as C).
  */
 export function glyph_to_obj(glyph) {
     if (glyph_is_body(glyph)) return CORPSE_OTYP;
@@ -894,6 +896,7 @@ export function glyph_to_obj(glyph) {
     const g = glyph_id(glyph);
     if (g == null) return NUM_OBJECTS;
     if (glyph_is_piletop_generic_obj(glyph)) return g - GLYPH_OBJ_PILETOP_OFF;
+    if (glyph_is_normal_piletop_obj(glyph)) return g - GLYPH_OBJ_PILETOP_OFF;
     if (glyph_is_normal_object(glyph)) return g - GLYPH_OBJ_OFF;
     return NUM_OBJECTS;
 }
@@ -913,6 +916,82 @@ export function glyph_to_mon(glyph) {
     if (glyph_is_ridden_female_monster(g)) return g - GLYPH_RIDDEN_FEM_OFF;
     if (glyph_is_ridden_male_monster(g)) return g - GLYPH_RIDDEN_MALE_OFF;
     return NUMMONS;
+}
+
+/** C display.h glyph_is_normal_piletop_obj — piletop bank at/after OFF. */
+export function glyph_is_normal_piletop_obj(glyph) {
+    const g = glyph_id(glyph);
+    return g != null && (g === GLYPH_OBJ_PILETOP_OFF
+        || (g > GLYPH_OBJ_PILETOP_OFF + FIRST_OBJECT - 1
+            && g < GLYPH_OBJ_PILETOP_OFF + NUM_OBJECTS));
+}
+
+/** C display.h glyph_is_body_piletop. */
+export function glyph_is_body_piletop(glyph) {
+    const g = glyph_id(glyph);
+    return g != null && g >= GLYPH_BODY_PILETOP_OFF
+        && g < GLYPH_BODY_PILETOP_OFF + NUMMONS;
+}
+
+/** C display.h glyph_to_body_corpsenm — NUMMONS off-bank. */
+export function glyph_to_body_corpsenm(glyph) {
+    const g = glyph_id(glyph);
+    if (g == null) return NUMMONS;
+    if (glyph_is_body_piletop(g)) return g - GLYPH_BODY_PILETOP_OFF;
+    return g - GLYPH_BODY_OFF;
+}
+
+/** C display.h glyph_is_male_statue_piletop. */
+export function glyph_is_male_statue_piletop(glyph) {
+    const g = glyph_id(glyph);
+    return g != null && g >= GLYPH_STATUE_MALE_PILETOP_OFF
+        && g < GLYPH_STATUE_MALE_PILETOP_OFF + NUMMONS;
+}
+
+/** C display.h glyph_is_fem_statue_piletop. */
+export function glyph_is_fem_statue_piletop(glyph) {
+    const g = glyph_id(glyph);
+    return g != null && g >= GLYPH_STATUE_FEM_PILETOP_OFF
+        && g < GLYPH_STATUE_FEM_PILETOP_OFF + NUMMONS;
+}
+
+/** C display.h glyph_is_fem_statue — bank or piletop. */
+export function glyph_is_fem_statue(glyph) {
+    const g = glyph_id(glyph);
+    return g != null && (
+        (g >= GLYPH_STATUE_FEM_OFF && g < GLYPH_STATUE_FEM_OFF + NUMMONS)
+        || glyph_is_fem_statue_piletop(glyph));
+}
+
+/** C display.h glyph_is_male_statue — bank or piletop. */
+export function glyph_is_male_statue(glyph) {
+    const g = glyph_id(glyph);
+    return g != null && (
+        (g >= GLYPH_STATUE_MALE_OFF && g < GLYPH_STATUE_MALE_OFF + NUMMONS)
+        || glyph_is_male_statue_piletop(glyph));
+}
+
+/** C display.h glyph_to_statue_corpsenm — NO_GLYPH off-bank. */
+export function glyph_to_statue_corpsenm(glyph) {
+    const g = glyph_id(glyph);
+    if (g == null) return NO_GLYPH;
+    if (glyph_is_fem_statue_piletop(glyph)) return g - GLYPH_STATUE_FEM_PILETOP_OFF;
+    if (glyph_is_male_statue_piletop(glyph)) return g - GLYPH_STATUE_MALE_PILETOP_OFF;
+    if (glyph_is_fem_statue(glyph)) return g - GLYPH_STATUE_FEM_OFF;
+    if (glyph_is_male_statue(glyph)) return g - GLYPH_STATUE_MALE_OFF;
+    return NO_GLYPH;
+}
+
+/** C display.h glyph_to_swallow — & 0x7 column, 0 off-bank. */
+export function glyph_to_swallow(glyph) {
+    if (!glyph_is_swallow(glyph)) return 0;
+    return ((glyph | 0) - GLYPH_SWALLOW_OFF) & 0x7;
+}
+
+/** C display.h glyph_to_explosion — blast-row peel, 0 off-bank. */
+export function glyph_to_explosion(glyph) {
+    if (!glyph_is_explosion(glyph)) return 0;
+    return ((glyph | 0) - GLYPH_EXPLODE_OFF) % (S_expl_br - S_expl_tl + 1);
 }
 
 function attach_glyph(g, glyph) {
@@ -5197,10 +5276,11 @@ export function see_monsters() {
     let new_warn_obj_cnt = 0;
     const warn_obj = (game.context?.warntype?.obj | 0) >>> 0;
     const warn_of_mon = Warn_of_mon();
+    // C `:1505–1518` — no position guard: every live, arrived monster is
+    // newsym'd (newsym itself no-ops off-map) and counts for Sting.
     for (const mon of game.fmon || []) {
         if (!mon || (mon.mhp != null && mon.mhp <= 0)) continue;
         if (((mon.mstate | 0) & MON_STILL_ARRIVING) !== 0) continue;
-        if (!mon.mx) continue;
         newsym(mon.mx, mon.my);
         if (mon.wormno) see_wsegs(mon);
         if (warn_of_mon
@@ -5213,7 +5293,9 @@ export function see_monsters() {
         if (_Sting_effects) _Sting_effects(new_warn_obj_cnt);
         game.warn_obj_cnt = new_warn_obj_cnt;
     }
-    if (!u?.usteed && u?.ux) newsym(u.ux, u.uy);
+    // C `:1527–1528` — no ux guard: when unmounted the hero cell is always
+    // newsym'd (newsym no-ops when the level is not ready).
+    if (!u?.usteed) newsym(u?.ux, u?.uy);
 }
 
 /**
@@ -6298,6 +6380,9 @@ function _buildScreenOutput() {
 // stay on the physical screen while level-change plines run and cls/more
 // can still paint --More-- on the stale map (Dlvl:N before redraw).
 let _delay_flushing = false;
+// C display.c flush_screen `:2227–2232` static reentrancy guard
+// (flush_screen->print_glyph->impossible->pline->flush_screen).
+let _flushing = false;
 
 // C flush_screen `:2241–2257` paints dirty spans with no blanket clear, but
 // menu/text overlays paint this same grid directly while flushes
@@ -6914,6 +6999,10 @@ export async function docorner(xmin, ymax, ystart = 0) {
 // row gated on gnew/framecolor (`:2241–2257`), then reset_glyph_bbox()
 // (`:2259`), curs() on the hero when asked, display_nhwindow(WIN_MAP).
 export async function flush_screen(mode) {
+    // C `:2220` — 5.0: no map, status or perm_invent output during
+    // save/restore or level creation (live same-module suppress_map_output,
+    // also used by newsym/show_glyph/feel_location).
+    if (suppress_map_output()) return;
     // Menu/text overlays paint the Terminal grid directly; don't clobber them.
     // C ref: invent display / NHW_MENU / NHW_TEXT stay until dismissed.
     // C process_menu_window MENU_SEARCH → tty_getlin: custompline writes
@@ -6937,16 +7026,33 @@ export async function flush_screen(mode) {
         _paintToplineOnly();
         return;
     }
-    const flags = game.flags || {};
-    // C display.c flush_screen: bot() else timebot() before map glyphs
-    if (flags.botl || flags.botlx) await bot();
-    else if (flags.time_botl) await timebot();
-    // Mid goto_level / getbones: keep stale map cells like C gbuf.
-    if (!game.level || game._stale_map_flush) {
-        _paintToplineAndStatus();
-        return;
+    // C `:2227–2232` — reentrancy guard: flush_screen->print_glyph->
+    // impossible->pline->flush_screen must not recurse (JS pline path
+    // at `:7802` calls back into flush_screen). Set synchronously so a
+    // reentrant call during an await below returns early, as in C.
+    if (_flushing) return;
+    _flushing = true;
+    // C `:2234–2238` HANGUPHANDLING (live: include/global.h:278) — return
+    // with the guard still set, exactly as C does (flushing is never
+    // cleared on this path; the game is hanging up).
+    if (game.program_state?.done_hup) return;
+    try {
+        const flags = game.flags || {};
+        // C display.c flush_screen: bot() else timebot() before map glyphs
+        if (flags.botl || flags.botlx) await bot();
+        else if (flags.time_botl) await timebot();
+        // Mid goto_level / getbones: keep stale map cells like C gbuf.
+        if (!game.level || game._stale_map_flush) {
+            _paintToplineAndStatus();
+            return;
+        }
+        // C `:2241–2265` span-gated map paint + reset_glyph_bbox +
+        // curs-on-hero + display_nhwindow(WIN_MAP) live in
+        // _buildScreenOutput (terminal-grid adaptation of print_glyph).
+        _buildScreenOutput();
+    } finally {
+        _flushing = false;
     }
-    _buildScreenOutput();
 }
 
 /**

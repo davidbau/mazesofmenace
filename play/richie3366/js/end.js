@@ -16,7 +16,7 @@ import { yn_function, paranoid_query } from './getline.js';
 import { show_text_pages, show_nhw_menu_text } from './pager.js';
 import { genl_outrip_lines } from './rip.js';
 import { Goodbye } from './roles.js';
-import { an, doname, xname, the as theArt, the_unique_obj, the_unique_pm } from './objnam.js';
+import { an, xname, the as theArt, the_unique_obj, the_unique_pm } from './objnam.js';
 import {
     COIN_CLASS, objectNameStrs, objects,
     AMULET_CLASS, GEM_CLASS, FIRST_REAL_GEM, LAST_REAL_GEM,
@@ -57,7 +57,7 @@ import { genders, aligns } from './roles.js';
 import { topten, nh_terminate_capture, raw_print_blanks } from './topten.js';
 import { objectNames } from './generated/objects_data.js';
 import { monsterNames, PM_TOURIST, LOW_PM } from './generated/monsters_data.js';
-import { paybill, money2mon, obfree } from './shk.js';
+import { paybill, money2mon, obfree, doname_with_price } from './shk.js';
 import { hidden_gold, paygd } from './vault.js';
 import { clearlocks } from './files.js';
 import { clearpriests } from './priest.js';
@@ -748,7 +748,8 @@ async function container_contents(list, identified, all_containers, reportempty)
                             obj.cknown = obj.lknown = 1;
                         }
                     }
-                    lines.push(`  ${doname(obj)}`);
+                    // C end.c:1647 — container_contents lists doname_with_price.
+                    lines.push(`  ${doname_with_price(obj)}`);
                 }
             } else {
                 lines.push("  Schroedinger's cat!");

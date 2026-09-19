@@ -110,8 +110,9 @@ import {
     select_newcham_form, validvamp, mgender_from_permonst, propagate,
 } from './makemon.js';
 import { mk_mplayer } from './mplayer.js';
-import { can_saddle, put_saddle_on_mon } from './steed.js';
-import { m_at, mnearto, mnexto, elemental_clog, seemimic, minliquid } from './mon.js';
+import { can_saddle, put_saddle_on_mon, remove_monster } from './steed.js';
+import { unplacebc_and_covet_placebc, lift_covet_and_placebc } from './ball.js';
+import { m_at, mnearto, mnexto, elemental_clog, seemimic, minliquid, dmonsfree } from './mon.js';
 import { enexto, rloc, goodpos, migrate_to_level } from './teleport.js';
 import { clear_wormdata, flip_worm_segs_horizontal, flip_worm_segs_vertical, remove_worm } from './worm.js';
 import { obj_resists } from './dogmove.js';
@@ -136,7 +137,7 @@ import { make_engr_at, make_grave, wipe_engr_at, random_engraving, del_engr_at, 
 import { cmd_from_ecname } from './dokeylist.js';
 import {
     find_level, dungeon_branch, at_dgn_entrance, insert_branch, get_level,
-    on_level, init_dungeons,
+    on_level, init_dungeons, Is_special, Invocation_lev,
 } from './dungeon.js';
 import { premap_detect } from './detect.js';
 import {
@@ -146,7 +147,7 @@ import {
 import { Norep, newsym, impossible, pline, You, flush_screen, nh_delay_output } from './display.js';
 import { buried_ball_to_punishment, fracture_rock } from './dig.js';
 import { obfree } from './shk.js';
-import { block_point, unblock_point, does_block } from './vision.js';
+import { block_point, unblock_point, does_block, recalc_block_point, vision_recalc } from './vision.js';
 import { emits_light, new_light_source, del_light_source } from './light.js';
 import { monst_to_any, is_pool, is_lava } from './hack.js';
 import { begin_burn } from './timeout.js';
@@ -1462,45 +1463,39 @@ function sp_level_coder_init_statics() {
 }
 
 /**
- * C ref: mkmaze.c makemaz — build protofile (rndlevs → rnd), load_special,
- * else maze fallback. Ported loaders: minefill, tut-1, tut-2, bigrm-2, bigrm-3,
- * bigrm-4, bigrm-5, bigrm-6, bigrm-7, bigrm-8, bigrm-9, bigrm-11, bigrm-12, Bar-strt, Bar-loca, Bar-fila,
- * Bar-filb, Bar-goal, Arc-strt, Arc-loca, Arc-fila, Arc-filb, Arc-goal, soko1-1,
- * soko1-2, soko2-1, soko2-2, soko3-1, soko3-2, soko4-1, soko4-2, tower1, tower2,
- * tower3, fire, air, water, astral, minend-1, minend-2, minend-3, minetn-1, minetn-2, minetn-3,
- * minetn-4, minetn-5, minetn-6, minetn-7, medusa-1, medusa-2, medusa-3, medusa-4, oracle, castle, valley,
- * sanctum, asmodeus, juiblex, baalz, orcus, wizard1–3, fakewiz1, fakewiz2,
- * Wiz-strt, Wiz-loca, Wiz-fila, Wiz-filb, Wiz-goal,
- * Pri-fila, Pri-filb, hellfill, minetn-1/2/3/4/5/6/7,
- * Kni-strt, Kni-loca, Kni-fila, Kni-filb, Kni-goal,
- * Rog-strt, Rog-loca, Rog-fila, Rog-filb, Rog-goal,
- * Val-strt, Val-loca, Val-fila, Val-filb, Val-goal,
- * Sam-strt, Sam-loca, Sam-fila, Sam-filb, Sam-goal,
- * Hea-strt, Hea-loca, Hea-fila, Hea-filb, Hea-goal,
- * Tou-strt, Tou-loca, Tou-fila, Tou-filb, Tou-goal,
- * Ran-strt, Ran-loca, Ran-goal, Ran-fila, Ran-filb,
- * Mon-strt, Mon-loca, Mon-goal, Mon-fila, Mon-filb,
- * Cav-strt, Cav-loca, Cav-goal, Cav-fila, Cav-filb, knox.
- * Named omissions:
- * hellfill rnd_hell_prefab; dmonsfree on the load_special path.
- * (populate_maze trap loop is live via mktrap below.)
+ * C ref: mkmaze.c makemaz `:1127-1223` — whole-body port in C order.
+ * `:1133-1157` protofile build: `*s` → `%s-%d` with `rnd(rndlevs)`;
+ * dungeon proto + `dunlev` (`dungeon.c:1325` returns dlevel) with an `rnd`
+ * suffix when `dunlevs_in_dungeon` (`dungeon.c:1332` returns num_dunlevs)
+ * exceeds 1. `:1160-1182` wizard SPLEVTYPE `getenv` override (named omit —
+ * no environment in scored ESM per Rule #2; wizard reads game.flags per
+ * D-0176). `:1184-1195` guarded block: `check_ransacked` ASSIGN
+ * (`mkmaze.c:707-711` orctown kludge), `Strcat` LEV_EXT (`global.h:34`
+ * ".lua"), `load_special` dispatch with `dmonsfree` (`mon.c`) on success,
+ * `impossible` WITH the extension on failure. `:1197-1222` mazification
+ * tail (`makemaz_maze_fallback` below; `coord mm` lives there).
+ * Named omissions: SPLEVTYPE getenv endpoint; `Is_branchlev` (no live
+ * export — same-file local); `load_special` file IO (bare-stem
+ * `load_special_proto` dispatch; extension kept for the message).
  */
 async function makemaz(s) {
     const g = game;
     const uz = g.u?.uz || { dnum: 0, dlevel: 1 };
-    const sp = (g.sp_levchn || []).find(s0 =>
-        (s0.dlevel?.dnum | 0) === (uz.dnum | 0)
-        && (s0.dlevel?.dlevel | 0) === (uz.dlevel | 0));
-    const dun = g.dungeons?.[uz.dnum | 0];
+    // C :1129 — s_level *sp = Is_special(&u.uz) (live dungeon.js export;
+    // on_level compares dnum+dlevel like the inline walk it replaces)
+    const sp = Is_special(uz);
     let protofile = '';
 
-    // C ref: mkmaze.c:1133-1157 — protofile construction
+    // C :1133-1139 — if (*s): rndlevs ? "%s-%d" : strcpy
     if (s && String(s).length) {
         if (sp && (sp.rndlevs | 0))
             protofile = `${s}-${rnd(sp.rndlevs | 0)}`;
         else
             protofile = String(s);
-    } else if (dun?.proto) {
+    // C :1140-1154 — else if (*(proto)): dunlevs_in_dungeon > 1 appends
+    // dunlev, with an rnd suffix when rndlevs; else rnd suffix or copy
+    } else if (g.dungeons?.[uz.dnum | 0]?.proto) {
+        const dun = g.dungeons[uz.dnum | 0];
         const nlev = dun.num_dunlevs | 0;
         const dlev = uz.dlevel | 0;
         if (nlev > 1) {
@@ -1514,57 +1509,76 @@ async function makemaz(s) {
             protofile = String(dun.proto);
         }
     }
+    // C :1156-1157 — else Strcpy(protofile, ""): stays ''.
 
-    // C: wizard SPLEVTYPE override deferred (getenv)
+    // C :1160-1182 — wizard SPLEVTYPE override via getenv (not nh_getenv),
+    // parsed as "level-choice,..." against the protofile stem up to '-'.
+    // Named omit: scored ESM has no environment (Rule #2), so the endpoint
+    // is always absent and the protofile built above stands as-is.
 
-    if (!protofile) {
-        // C ref: mkmaze.c:1197-1222 — no proto: straight to mazification
-        makemaz_maze_fallback();
-        return;
+    // C :1184-1195 — if (*protofile): ransack check, +LEV_EXT, load, mazify
+    if (protofile) {
+        // C mkmaze.c:707-711 — check_ransacked ASSIGNS (orctown is minetn-1)
+        g.ransacked = ((g.u?.uz?.dnum | 0) === (g.mines_dnum | 0) && protofile === 'minetn-1');
+        // C :1186 — Strcat(protofile, LEV_EXT); dispatch takes the bare
+        // stem while the message keeps the extension like C's call.
+        const levfile = `${protofile}.lua`;
+        // C :1187 — gi.in_mk_themerooms = FALSE
+        g.in_mk_themerooms = false;
+        // C :1188-1192 — if (load_special(protofile)): dmonsfree(); return
+        if (await load_special_proto(protofile)) {
+            dmonsfree();
+            return; // no mazification right now
+        }
+        // C :1194 — impossible WITH the extension, then fall to mazify
+        await impossible(`Couldn't load "${levfile}" - making a maze.`);
     }
 
-    // C: check_ransacked(protofile) — no RNG; orctown flag only
-    if ((uz.dnum | 0) === (g.mines_dnum | 0) && protofile === 'minetn-1')
-        g.ransacked = true;
-
-    g.in_mk_themerooms = false;
-    if (await load_special_proto(protofile)) {
-        // C: dmonsfree() after successful load_special (named omit, mon.c)
-        return;
-    }
-    // C ref: mkmaze.c:1194 — proto load failed: impossible, then mazify
-    impossible(`Couldn't load "${protofile}" - making a maze.`);
+    // C :1197-1222 — mazification tail (empty proto or failed load)
     makemaz_maze_fallback();
 }
 
 /**
- * C ref: mkmaze.c makemaz `:1197-1222` — maze fallback tail: is_maze_lev +
- * corrmaze roll, create_maze variant choice, wallification, stairs (or the
- * vibrating-square spot on Invocation_lev), branch placement, populate_maze.
+ * C ref: mkmaze.c makemaz `:1197-1222` — maze fallback tail in C order:
+ * `:1197` is_maze_lev = 1; `:1198` corrmaze = !rn2(3); `:1200-1204`
+ * !Invocation_lev && rn2(2) → create_maze(-1,-1,!rn2(5)), else
+ * create_maze(1,1,FALSE); `:1206-1207` wallification over gx/gy maxima when
+ * !corrmaze; `:1209-1210` mazexy + upstairs; `:1211-1216` downstairs, or the
+ * vibrating-square spot on Invocation_lev; `:1219` place_branch; `:1221`
+ * populate_maze. `coord mm` is C `:1130`.
  */
 function makemaz_maze_fallback() {
     const g = game;
     const mm = { x: 0, y: 0 };
+    // C :1197-1198 — svl.level.flags.is_maze_lev = 1; corrmaze = !rn2(3)
     g.level.flags.is_maze_lev = true;
     g.level.flags.corrmaze = rn2(3) === 0;
-    if (!Invocation_lev_mk(g.u?.uz) && rn2(2))
+    // C :1200-1204 — short-circuit: no rn2(2) burn on Invocation_lev
+    if (!Invocation_lev(g.u?.uz) && rn2(2))
         create_maze(-1, -1, rn2(5) === 0);
     else
         create_maze(1, 1, false);
+    // C :1206-1207 — wallification(2, 2, gx.x_maze_max, gy.y_maze_max)
     if (!g.level.flags.corrmaze)
         wallification(2, 2, maze_x_max(), maze_y_max());
+    // C :1209-1210 — mazexy(&mm); mkstairs up (NULL room, FALSE)
     mazexy(mm);
     mkstairs(mm.x, mm.y, 1, 0);
-    if (!Invocation_lev_mk(g.u?.uz)) {
+    if (!Invocation_lev(g.u?.uz)) {
+        // C :1211-1213 — second mazexy + downstairs
         mazexy(mm);
         mkstairs(mm.x, mm.y, 0, 0);
     } else { /* choose "vibrating square" location */
+        // C :1214-1216 — pick_vibrasquare_location + VIBRATING_SQUARE trap
         pick_vibrasquare_location();
         const ip = svi_inv_pos();
         maketrap(ip.x, ip.y, VIBRATING_SQUARE);
     }
     /* place branch stair or portal */
+    // C :1219 — place_branch(Is_branchlev(&u.uz), 0, 0); Is_branchlev has
+    // no live export, so the same-file local stands (named in the map).
     place_branch(is_branchlev(), 0, 0);
+    // C :1221 — populate_maze()
     populate_maze();
 }
 
@@ -16085,38 +16099,53 @@ function mk_bubble(x, y, n, gbxmin, gbymin, gbxmax, gbymax) {
 }
 
 /**
- * C ref: mkmaze.c movebubbles — water cons pickup + air edge clouds +
- * bubble drift (goto_level / moveloop). Async: bubble deposit reaches
- * mnearto/mnexto (pline-capable). Deposit runs inside mv_bubble
- * between paint and boing, matching C mv_bubble order.
- * Named omissions: Punished ball carry (unplacebc/lift_covet not live);
- * vision_recalc(2) (display-only).
+ * C ref: mkmaze.c movebubbles `:1539–1685` — portal setup, vision recalc,
+ * water cons pickup + fill, air repaint + edge clouds, alternate-direction
+ * drift, ball&chain lift, full-recalc flag, in C order. Async: impossible
+ * arms, the covet pair, and mv_bubble deposit (mnearto/mnexto) are
+ * pline-capable. Deposit runs inside mv_bubble between paint and boing,
+ * matching C mv_bubble order.
+ * Callers (both gate water/air like C): allmain.c:375 (moveloop EOT),
+ * do.c:1832 (goto_level arrival).
  */
 export async function movebubbles() {
     const g = game;
     const uz = g.u?.uz;
+    /* C body has no early return; both C call sites gate water/air, and
+     * this guard mirrors that gate (C `:1554–1684` below runs whole). */
     if (!Is_waterlevel(uz) && !Is_airlevel(uz)) return;
 
+    /* C `:1554–1555`: set up the portal the first time bubbles move. */
     if (!g.wportal)
         set_wportal();
 
-    // C vision_recalc(2) omitted: display-only (see map note).
+    /* C `:1557`: vision will be updated as bubbles move. */
+    vision_recalc(2);
 
     const bounds = g.waterlevel_bounds || {
         gbxmin: 4, gbymin: 2, gbxmax: 77, gbymax: 19,
     };
     const { gbxmin, gbymin, gbxmax, gbymax } = bounds;
 
-    /* C: water arm picks up everything inside of a bubble, then fills all
-     * bubble locations. Placed before the up-toggle: C scans with the
-     * pre-toggle direction. hero_bubble records the hero's bubble (last
-     * overlapping match wins) so maybe_adjust_hero_bubble gates rn2(2). */
+    /* C `:1551`: pin init with the other locals (function scope: the
+     * lift at `:1682` reads it after the water arm). */
+    let bcpin = 0;
+    /* C `:1559`: clear before the water scan (last overlapping match
+     * wins) so maybe_adjust_hero_bubble gates rn2(2) on a real find. */
     g.hero_bubble = null;
     if (Is_waterlevel(uz)) {
-        /* C: keep attached ball&chain separate — Punished arm named
-         * omission (unplacebc_and_covet_placebc not live). */
+        /* C `:1563–1564`: keep attached ball&chain separate from bubble
+         * objects. Punished ≡ uball != 0 (youprop.h:77). */
+        if (g.u?.uball)
+            bcpin = await unplacebc_and_covet_placebc();
+        /* C `:1569–1571`: scan with the pre-toggle direction; the toggle
+         * at `:1673` flips it for the drift that follows. */
         const upOld = !!g.movebubbles_up;
         for (let b = upOld ? g.bbubbles : g.ebubbles; b; b = upOld ? b.next : b.prev) {
+            /* C `:1572–1573`: a bubble carrying cons here is a bug
+             * (no live JS panic; impossible is the house stand-in). */
+            if (b.cons)
+                await impossible('movebubbles: cons != null');
             for (let i = 0, x = b.x | 0; i < (b.bm[0] | 0); i++, x++) {
                 for (let j = 0, y = b.y | 0; j < (b.bm[1] | 0); j++, y++) {
                     if (!((b.bm[j + 2] | 0) & (1 << i))) continue;
@@ -16124,13 +16153,13 @@ export async function movebubbles() {
                         await impossible('movebubbles: bad pos (%d,%d)', x, y);
                         continue;
                     }
-                    /* C: pick up objects (cons list rebuilt head-first). */
+                    /* C `:1582–1597`: pick up objects (cons list rebuilt
+                     * head-first via remove_object; JS obj_extract_self is
+                     * that floor arm — ball.js set_bc precedent). */
                     if (objects_at(x, y)) {
                         let olist = null;
                         for (let otmp = objects_at(x, y); otmp;) {
                             const nxt = otmp.nexthere;
-                            /* C mkobj.c remove_object: unlink floor chains,
-                             * boulder recalc, timed checks. */
                             obj_extract_self(otmp);
                             otmp.ox = otmp.oy = 0;
                             otmp.nexthere = olist;
@@ -16139,27 +16168,32 @@ export async function movebubbles() {
                         }
                         (b.cons || (b.cons = [])).unshift({ x, y, what: CONS_OBJ, list: olist });
                     }
-                    /* C: pick up monsters (worm segs via remove_worm). */
+                    /* C `:1598–1615`: pick up monsters — worm segs via
+                     * remove_worm, else rm.h remove_monster off the grid —
+                     * then newsym the old position and park at (0,0). */
                     const mon = m_at(x, y);
                     if (mon) {
                         (b.cons || (b.cons = [])).unshift({ x, y, what: CONS_MON, list: mon });
-                        if (mon.wormno) remove_worm(mon);
+                        if (mon.wormno)
+                            remove_worm(mon);
+                        else
+                            remove_monster(x, y);
                         newsym(x, y); /* clean up old position */
                         mon.mx = mon.my = 0;
                         mon.mstate = (mon.mstate | 0) | MON_BUBBLEMOVE;
                     }
-                    /* C: pick up hero (unless swallowed). */
+                    /* C `:1616–1626`: pick up hero (unless swallowed). */
                     if (!((g.u || {}).uswallow | 0) && u_at(x, y)) {
                         (b.cons || (b.cons = [])).unshift({ x, y, what: CONS_HERO, list: null });
                         g.hero_bubble = b;
                     }
-                    /* C: pick up traps. */
+                    /* C `:1627–1637`: pick up traps (stored, not removed). */
                     const btrap = t_at(x, y);
                     if (btrap) {
                         (b.cons || (b.cons = [])).unshift({ x, y, what: CONS_TRAP, list: btrap });
                     }
-                    /* C: levl[x][y] = water_pos (S_water glyph, WATER,
-                     * zeroed seenv/lit) then block_point. */
+                    /* C `:1644–1645`: levl[x][y] = water_pos (S_water
+                     * glyph, WATER, zeroed seenv/lit) then block_point. */
                     const loc = g.level.at(x, y);
                     if (loc) {
                         loc.remembered_glyph = { ch: '}', color: CLR_BRIGHT_BLUE, decgfx: false };
@@ -16172,8 +16206,9 @@ export async function movebubbles() {
             }
         }
     } else if (Is_airlevel(uz)) {
-        // C: levl[x][y] = air_pos — glyph S_cloud, typ AIR, lit 1
-        // (docrt paints lev->glyph for the whole map before vision).
+        /* C `:1653–1654`: levl[x][y] = air_pos — glyph S_cloud, typ AIR,
+         * lit 1 — then recalc_block_point per cell (docrt paints
+         * lev->glyph for the whole map before vision). */
         const airGlyph = { ch: '#', color: CLR_GRAY, decgfx: false };
         for (let x = 1; x <= COLNO - 1; x++) {
             for (let y = 0; y <= ROWNO - 1; y++) {
@@ -16182,28 +16217,38 @@ export async function movebubbles() {
                 loc.remembered_glyph = { ...airGlyph };
                 loc.typ = AIR;
                 loc.lit = true;
+                recalc_block_point(x, y);
+                /* C `:1655–1663`: break up the all-air/all-cloud
+                 * perimeter; CLOUD cells block. */
                 const xedge = x < gbxmin || x > gbxmax;
                 const yedge = y < gbymin || y > gbymax;
                 if (xedge || yedge) {
                     if (!rn2(xedge ? 3 : 5)) {
                         loc.typ = CLOUD;
+                        block_point(x, y);
                     }
                 }
             }
         }
     }
 
+    /* C `:1666–1673`: every second time traverse down, so overlapping
+     * cons junk does not all end up in the last bubble of the chain. */
     g.movebubbles_up = !g.movebubbles_up;
     const up = !!g.movebubbles_up;
-    // C: traverse bbubbles forward or ebubbles reverse on alternate turns
     for (let b = up ? g.bbubbles : g.ebubbles; b; b = up ? b.next : b.prev) {
+        /* C `:1675`: rx then ry (clang left-to-right). */
         const rx = rn2(3);
         const ry = rn2(3);
+        /* C `:1677–1679` (bounds ride as params; C uses file statics). */
         const mdx = b.dx + 1 - (!b.dx ? rx : (rx ? 1 : 0));
         const mdy = b.dy + 1 - (!b.dy ? ry : (ry ? 1 : 0));
         await mv_bubble(b, mdx, mdy, gbxmin, gbymin, gbxmax, gbymax, false);
     }
-    /* C: put attached ball&chain back — Punished arm named omission. */
+    /* C `:1682–1683`: put attached ball&chain back. */
+    if (Is_waterlevel(uz) && g.u?.uball)
+        await lift_covet_and_placebc(bcpin);
+    /* C `:1684`. */
     g.vision_full_recalc = 1;
 }
 
@@ -24177,6 +24222,15 @@ async function makelevel() {
         const loc_dlvl = loc_lev?.dlevel?.dlevel | 0;
         const suffix = ((g.u.uz.dlevel | 0) < loc_dlvl) ? 'a' : 'b';
         await makemaz(`${code}-fil${suffix}`);
+    } else if (
+        // C ref: mklev.c:1286-1289 — In_hell short-circuits before rn2(5).
+        // In_hell (dungeon.h) has no live export; hellish-flag read matches
+        // the do.js/trap.js clones and the mklev.js:1408 temperature arm.
+        !!(g.dungeons?.[g.u?.uz?.dnum | 0]?.flags?.hellish)
+        || (rn2(5) && g.u?.uz?.dnum === g.medusa_level?.dnum
+            && depth_of_level(g.u?.uz) > depth_of_level(g.medusa_level))
+    ) {
+        await makemaz('');
     } else {
         await makelevel_ordinary();
         return; // ordinary already runs fill_special + themerms_post + wallify
@@ -24193,13 +24247,8 @@ async function makelevel() {
 async function makelevel_ordinary() {
     const g = game;
 
-    // C ref: mklev.c:1286-1289 — hell or (rn2(5) && past medusa) → makemaz("")
-    // Burn Medusa rn2(5) only on the ordinary path when not In_hell.
-    const medusa = g.medusa_level;
-    if (rn2(5) && g.u?.uz?.dnum === medusa?.dnum
-        && depth_of_level(g.u?.uz) > depth_of_level(medusa)) {
-        // Would makemaz("") — deferred; continue ordinary for now
-    }
+    // C ref: mklev.c:1290-1299 — ordinary rooms; the :1286-1289 hell/medusa
+    // makemaz("") gate lives in makelevel above (it owns the rn2(5) burn).
 
     const isRogue = Is_rogue_level(g.u?.uz);
 

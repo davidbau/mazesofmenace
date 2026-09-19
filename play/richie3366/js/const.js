@@ -784,7 +784,13 @@ export const BL_HPMAX = (BL_HP + 1);
 export const BL_LEVELDESC = (BL_HPMAX + 1);
 export const BL_EXP = (BL_LEVELDESC + 1);
 export const BL_CONDITION = (BL_EXP + 1);
-export const BL_VERS = (BL_CONDITION + 1);
+// C botl.h:52-60 — BL_WEAPON/BL_ARMOR/BL_TERRAIN sit between BL_CONDITION
+// and BL_VERS (23..25; BL_VERS 26, MAXBLSTATS 27). The enum previously
+// ended at BL_VERS=23/MAXBLSTATS=24 with no code consumers.
+export const BL_WEAPON = (BL_CONDITION + 1);
+export const BL_ARMOR = (BL_WEAPON + 1);
+export const BL_TERRAIN = (BL_ARMOR + 1);
+export const BL_VERS = (BL_TERRAIN + 1);
 export const MAXBLSTATS = (BL_VERS + 1);
 export const NO_LTEQGT = -1;
 export const EQ_VALUE = (NO_LTEQGT + 1);

@@ -18,6 +18,7 @@ import {
     VENOM_CLASS,
     BALL_CLASS,
     CHAIN_CLASS,
+    NUM_OBJECTS,
     objectNames,
     objectNameStrs,
     objectDescrs,
@@ -55,6 +56,7 @@ import {
     M_AP_OBJECT,
     BUFSZ,
     MAX_ERODE,
+    GLIB,
 } from './const.js';
 import { currency } from './invent.js';
 
@@ -73,6 +75,9 @@ const T_SHIRT = objectNames.indexOf('T_SHIRT');
 const HAWAIIAN_SHIRT = objectNames.indexOf('HAWAIIAN_SHIRT');
 const ALCHEMY_SMOCK = objectNames.indexOf('ALCHEMY_SMOCK');
 const CANDY_BAR = objectNames.indexOf('CANDY_BAR');
+const TOWEL = objectNames.indexOf('TOWEL');
+const BAG_OF_TRICKS = objectNames.indexOf('BAG_OF_TRICKS');
+const HORN_OF_PLENTY = objectNames.indexOf('HORN_OF_PLENTY');
 
 /** C objnam.c PREFIX — bytes reserved ahead of xname buf for doname. */
 const XNAME_PREFIX = 80;
@@ -873,13 +878,19 @@ function pretty_base(obj) {
             dn = 'koto';
         let buf = '';
         // C: WEAPON_CLASS only — is_poisonable && opoisoned → "poisoned "
-        // before VENOM/TOOL fallthrough (lenses/towel would overwrite).
-        // Named omission: wet-towel moist/wet; ConcUpdate (buffer mgmt).
+        // before VENOM/TOOL fallthrough (lenses/towel overwrite it per the
+        // C note; the two are never simultaneously possible).
+        // Named omission: ConcUpdate (buffer mgmt).
         if (obj.oclass === WEAPON_CLASS
             && is_poisonable(obj) && obj.opoisoned) {
             buf = 'poisoned ';
         }
+        // C ref: objnam.c xname_flags `:705–707` — LENSES → "pair of ",
+        // else is_wet_towel (obj.h `:256`: TOWEL && spe > 0) → moist/wet.
         if (n === 'LENSES') buf = 'pair of ';
+        else if (obj.otyp === TOWEL && (obj.spe | 0) > 0) {
+            buf = ((obj.spe | 0) < 3) ? 'moist ' : 'wet ';
+        }
         if (!dknown) buf += dn;
         else if (nn) buf += actual;
         else if (un) buf = xcalled_xname(buf, dn, un);
@@ -893,6 +904,10 @@ function pretty_base(obj) {
                 const pm = obj_pmname_corpse(obj);
                 buf += ` of ${just_an(pm)}${pm}`;
             }
+        } else if (obj.otyp === TOWEL && (obj.spe | 0) > 0) {
+            // C `:719–723` — wizard sees the wetness count (" (%d)").
+            // `wizard` is `flags.debug` (append_wizweight_suffix idiom).
+            if (game.flags?.debug) buf += ` (${obj.spe | 0})`;
         }
         return buf;
     }
@@ -931,6 +946,18 @@ function pretty_base(obj) {
         else buf += dn;
         return buf;
     }
+    // C ref: objnam.c xname_flags COIN_CLASS/CHAIN_CLASS `:788–791` —
+    // Strcpy(buf, actualn): bare OBJ_NAME; quan pluralize is the wrapper's.
+    if (obj.oclass === COIN_CLASS || obj.oclass === CHAIN_CLASS) {
+        let actual = objectNameStrs[obj.otyp]
+            || PRETTY[n]
+            || (n ? n.toLowerCase().replace(/_/g, ' ') : 'object');
+        if (Role_if_samurai()) {
+            const jn = Japanese_item_name(obj.otyp, null);
+            if (jn) actual = jn;
+        }
+        return actual;
+    }
     // C ref: objnam.c xname_flags BALL_CLASS —
     // "%sheavy iron ball" with "very " when owt > oc_weight (punish levy).
     if (obj.oclass === BALL_CLASS) {
@@ -947,7 +974,7 @@ function pretty_base(obj) {
 }
 
 /**
- * C ref: objnam.c xname — base name with quan pluralization (doname subset).
+ * C ref: objnam.c xname `:575–578` — `return xname_flags(obj, CXN_NORMAL)`.
  * C xname_flags: observe_object when !Blind && !gd.distantname (D-0469).
  * Distant formatting must go through distant_name so the flag suppresses
  * discovery; map generic glyphs still observe via display.map_object.
@@ -955,75 +982,121 @@ function pretty_base(obj) {
  * corpse_xname (doname CXN_ARTICLE|CXN_NOCORPSE; D-1255).
  */
 export function xname(obj) {
+    return xname_flags(obj, CXN_NORMAL);
+}
+
+/**
+ * C ref: objnam.c xname_flags `:581–1029` — full object base-name
+ * formatter. The class switch lives in pretty_base() (same file, one arm
+ * per C case, cited per arm); buffer machinery (gx.xnamep = nextobuf(),
+ * PREFIX reservation, ConcUpdate/Concat truncation, eos overflow
+ * paniclog `:941–969, :1014–1029`) is by-design JS strings (named map).
+ * Samurai Japanese_item_name + harp→koto (`:607–626`) apply per arm;
+ * !actualn → generic/object? and !dn → actualn (`:627–631`) are the
+ * per-arm `|| actual` / `if (!dn) dn = actual` fallbacks; the default
+ * glorkum arm (`:933–937`) is unreachable for a valid oclass — the
+ * fallthrough base stands in and impossible() (async in JS) is named.
+ * SLIME_MOLD impossible() on a bad fruit index is likewise named
+ * (xname/doname are sync; precedent D-1511).
+ */
+export function xname_flags(obj, cxn_flags) {
     if (!obj) return 'something';
-    // C xname_flags: !nn && oc_uses_known && oc_unique → known=0 (article leak)
+    // C `:596` — pluralize on quan != 1 unless CXN_SINGULAR.
+    const singular = ((((cxn_flags | 0) & CXN_SINGULAR)) !== 0);
+    // C `:632–636` — !nn && oc_uses_known && oc_unique → known=0
+    // (article leak).
     clear_unique_known_leak(obj);
-    // C: Role_if(PM_CLERIC) → obj->bknown = 1 (bypass set_bknown / invent update)
+    // C `:637` — Role_if(PM_CLERIC) → obj->bknown = 1 (bypass set_bknown
+    // and its update_inventory()).
     if (Role_if(PM_CLERIC)) obj.bknown = 1;
-    // C: if (!Blind && !gd.distantname) observe_object(obj);
+    // C `:638` — if (!Blind && !gd.distantname) observe_object(obj);
     // Prop Blind — sticky u.Blind misses FROMFORM molds (D-0928 #1180).
     if (!Blind() && !(game.distantname | 0) && _xname_observe) {
         _xname_observe(obj);
     }
-    // C xname_flags `:661` (`:652–672`): maybe find a previously unseen
-    // artifact. Real obj->dknown, not the override_ID variant, so wizard
-    // ^I on a blind-picked artifact does not mark it found. After
-    // observe_object (which can set dknown), before obj_is_pname.
-    if (obj?.oartifact && obj?.dknown && _find_artifact) _find_artifact(obj);
-    const n = objectNames[obj.otyp];
-    if (n === 'CORPSE') {
-        let base = 'corpse';
-        if ((obj.quan || 1) !== 1) base = makeplural(base);
+    /* C `:640–650` — iflags.override_ID forces known=dknown=bknown=TRUE
+       and nn=1 for the switch below. Arms read the obj/ocl fields, so
+       stage the C locals there and restore afterwards (sync; finally).
+       find_artifact below still gates on the real obj->dknown per the
+       C comment, so capture it first. */
+    const realDknown = !!obj.dknown;
+    const ocl = game.objects?.[obj.otyp];
+    let savedID = null;
+    if ((game.iflags?.override_ID | 0) !== 0) {
+        savedID = {
+            known: obj.known, dknown: obj.dknown, bknown: obj.bknown,
+            nn: ocl ? ocl.oc_name_known : undefined,
+        };
+        obj.known = 1; obj.dknown = 1; obj.bknown = 1;
+        if (ocl) ocl.oc_name_known = 1;
+    }
+    try {
+        // C `:652–672` — maybe find a previously unseen artifact, gated
+        // on the real dknown (not the override_ID variant) so wizard-mode
+        // ^I on a blind-picked artifact does not mark it found. After
+        // observe_object (which can set dknown), before obj_is_pname.
+        if (obj?.oartifact && realDknown && _find_artifact) _find_artifact(obj);
+        const n = objectNames[obj.otyp];
+        if (n === 'CORPSE') {
+            let base = 'corpse';
+            if (!singular && (obj.quan || 1) !== 1) base = makeplural(base);
+            return base;
+        }
+        // C `:674–676` — obj_is_pname(obj) → goto nameit (bare ONAME, no
+        // base type / poisoned prefix / pluralize / gameover suffix).
+        // Partial-ID artifacts fall through to actualn + " named ONAME".
+        // Gameover disclosure (end.c possessions identified) takes this
+        // arm for every artifact with an oname (obj_is_pname skips ID).
+        if (obj_is_pname(obj) && has_oname(obj)) {
+            let nm = String(ONAME(obj) ?? '');
+            // C `:1004–1008` — downcase "The" in "<item> named The ..."
+            // then strip leading "the " (doname re-adds its own).
+            if (obj.oartifact && nm.slice(0, 4) === 'The ') nm = `t${nm.slice(1)}`;
+            if (nm.length >= 4 && nm.slice(0, 4).toLowerCase() === 'the ') {
+                nm = nm.slice(4);
+            }
+            return nm;
+        }
+        let base = pretty_base(obj);
+        /* C ROCK_CLASS `:814–823` — BOULDER && next_boulder==1 formats
+           "next boulder" then clears to 0. Overloaded corpsenm defaults
+           to NON_PM (-1); check ==1 not !=0. D-1294. */
+        if ((obj.otyp | 0) === BOULDER && (obj.next_boulder | 0) === 1) {
+            base = `next ${base}`;
+            obj.next_boulder = 0;
+        }
+        // C FOOD SLIME_MOLD `:765–773` — if (pluralize) singular then
+        // plural, then pluralize=FALSE (already-plural fname; D-1511).
+        if ((obj.otyp | 0) === SLIME_MOLD) {
+            if (!singular && (obj.quan || 1) !== 1) base = makeplural(makesingular(base));
+        } else if (!singular && (obj.quan || 1) !== 1) {
+            base = makeplural(base);
+        }
+        // C `:971–996` — gameover disclosure after pluralize, before oname.
+        base += xname_gameover_suffix(obj);
+        // C `:998–1009` — has_oname && dknown → " named " ONAME (+The fix).
+        const onameStr = obj.oextra?.oname;
+        if (onameStr && obj.dknown) {
+            const nameStart = base.length + ' named '.length;
+            base += ` named ${onameStr}`;
+            if (obj.oartifact && base.slice(nameStart, nameStart + 4) === 'The ') {
+                base = `${base.slice(0, nameStart)}t${base.slice(nameStart + 1)}`;
+            }
+        }
+        // C `:1011–1012` — strip leading "the " (doname_base
+        // artifact_name(bp) sees this pointer; D-1521 fake_arti).
+        if (base.length >= 4 && base.slice(0, 4).toLowerCase() === 'the ') {
+            base = base.slice(4);
+        }
         return base;
-    }
-    // C xname_flags `:663–664` — obj_is_pname(obj) → goto nameit (bare
-    // ONAME, no base type / poisoned prefix / pluralize / gameover suffix).
-    // Partial-ID artifacts fall through to actualn + " named ONAME" below.
-    // Gameover disclosure (end.c possessions identified) takes this arm for
-    // every artifact with an oname (obj_is_pname skips the ID gate).
-    if (obj_is_pname(obj) && has_oname(obj)) {
-        let nm = String(ONAME(obj) ?? '');
-        // C `:1004–1008` — downcase "The" in "<item> named The ..." then
-        // C `:1011–1012` — strip leading "the " (doname re-adds its own).
-        if (obj.oartifact && nm.slice(0, 4) === 'The ') nm = `t${nm.slice(1)}`;
-        if (nm.length >= 4 && nm.slice(0, 4).toLowerCase() === 'the ') {
-            nm = nm.slice(4);
-        }
-        return nm;
-    }
-    let base = pretty_base(obj);
-    /* C objnam.c xname ROCK_CLASS :814–823 — BOULDER && next_boulder==1
-       formats "next boulder" then clears to 0. Overloaded corpsenm
-       defaults to NON_PM (-1); check ==1 not !=0. D-1294. */
-    if ((obj.otyp | 0) === BOULDER && (obj.next_boulder | 0) === 1) {
-        base = `next ${base}`;
-        obj.next_boulder = 0;
-    }
-    // C xname_flags FOOD SLIME_MOLD: if (pluralize) singular then plural
-    // then pluralize=FALSE (already-plural fname; D-1511).
-    if ((obj.otyp | 0) === SLIME_MOLD) {
-        if ((obj.quan || 1) !== 1) base = makeplural(makesingular(base));
-    } else if ((obj.quan || 1) !== 1) {
-        base = makeplural(base);
-    }
-    // C xname_flags `:971–996` after pluralize, before has_oname
-    base += xname_gameover_suffix(obj);
-    // C xname_flags: has_oname && dknown → " named " ONAME
-    const onameStr = obj.oextra?.oname;
-    if (onameStr && obj.dknown) {
-        const nameStart = base.length + ' named '.length;
-        base += ` named ${onameStr}`;
-        /* C objnam.c:1006–1008 — downcase "The" in "<item> named The ..." */
-        if (obj.oartifact && base.slice(nameStart, nameStart + 4) === 'The ') {
-            base = `${base.slice(0, nameStart)}t${base.slice(nameStart + 1)}`;
+    } finally {
+        if (savedID) {
+            obj.known = savedID.known;
+            obj.dknown = savedID.dknown;
+            obj.bknown = savedID.bknown;
+            if (ocl && savedID.nn !== undefined) ocl.oc_name_known = savedID.nn;
         }
     }
-    // C xname_flags `:1011–1012` — doname_base artifact_name(bp) sees
-    // this stripped pointer (D-1521 fake_arti).
-    if (base.length >= 4 && base.slice(0, 4).toLowerCase() === 'the ') {
-        base = base.slice(4);
-    }
-    return base;
 }
 
 /**
@@ -1138,11 +1211,18 @@ export function obj_pmname_corpse(obj) {
 }
 
 /**
- * C ref: objnam.c corpse_xname — unique/pname possessive + adjective
- * placement (D-1234); glob OBJ_NAME (D-1255). CXN_SINGULAR / NO_PFX /
- * PFX_THE / ARTICLE / NOCORPSE.
+ * C ref: objnam.c corpse_xname `:1824–1920` — corpse/glob name with
+ * CXN_SINGULAR / NO_PFX / PFX_THE / ARTICLE / NOCORPSE (D-1234, D-1255).
+ * Buffer arms by design: C nextobuf/PREFIX + eos/Sprintf + releaseobuf
+ * are plain JS strings (D-2483 idiom). `s_suffix`/`type_is_pname`/
+ * `mungspaces` use the file-local copies (`s_suffix_objnam`,
+ * `type_is_pname_objnam`, `mungspaces_objnam` — bodies identical to the
+ * live do_name.js/getline.js exports; local to avoid a do_name/getline
+ * cycle: a static edge reorders cycle eval past shk.js:832 and TDZ-faults
+ * `let _shk_owns_prefix` at cohort startup — reverted, this iteration).
  */
 export function corpse_xname(obj, adjective, cxn_flags) {
+    // C :1830–1841: omndx + CXN flag decode (comments verbatim in C).
     const flags = cxn_flags | 0;
     const omndx = obj?.corpsenm;
     const ignore_quan = (flags & CXN_SINGULAR) !== 0;
@@ -1151,29 +1231,39 @@ export function corpse_xname(obj, adjective, cxn_flags) {
     let any_prefix = (flags & CXN_ARTICLE) !== 0;
     const omit_corpse = (flags & CXN_NOCORPSE) !== 0;
     let possessive = false;
-    const glob = objectNames[obj?.otyp] !== 'CORPSE' && !!obj?.globby;
+    // C :1841: glob = (otmp->otyp != CORPSE && otmp->globby)
+    const glob = (obj?.otyp | 0) !== CORPSE && !!obj?.globby;
 
     let mnam;
     if (glob) {
-        // C: OBJ_NAME(objects[otmp->otyp]) — "glob of <monster>"
+        // C :1843: mnam = OBJ_NAME(objects[otmp->otyp]) — "glob of <monster>"
         mnam = objectNameStrs[obj.otyp]
             || objectNames[obj.otyp]?.toLowerCase().replace(/_/g, ' ')
             || 'glob';
-    } else if (omndx == null || omndx < 0 || omndx === NON_PM) {
+    } else if (omndx == null || (omndx | 0) < 0 || omndx === NON_PM) {
+        // C :1844–1845: omndx == NON_PM (paranoia) → "thing"; the
+        // null/negative guard is JS null-safety for unset corpsenm.
         mnam = 'thing';
     } else {
+        // C :1847: mnam = obj_pmname(otmp) — do_name.c valid arm
+        // (gender-aware pmname + aligned-cleric remap); the impossible/
+        // glorkum-seeker fallback is map-named (unreachable for CORPSE).
         mnam = obj_pmname_corpse(obj);
         const ptr = mons(omndx);
+        // C :1848: unique or pname → s_suffix possessive
         if (the_unique_pm(ptr) || type_is_pname_objnam(ptr)) {
             mnam = s_suffix_objnam(mnam);
             possessive = true;
             if (type_is_pname_objnam(ptr)) {
+                // C :1852–1853: personal name like "Medusa" takes no article
                 no_prefix = true;
             } else if (the_unique_pm(ptr) && !no_prefix) {
+                // C :1856–1857: non-personal unique like "Oracle" takes "the"
                 the_prefix = true;
             }
         }
     }
+    // C :1860–1863: prefix mutual exclusion
     if (no_prefix) {
         the_prefix = false;
         any_prefix = false;
@@ -1181,30 +1271,45 @@ export function corpse_xname(obj, adjective, cxn_flags) {
         any_prefix = false;
     }
 
+    // C :1865–1872: *nambuf = '\0'; the_prefix forces "the " (never the(),
+    // which would treat capitalized uniques as pnames — C comment).
     let nambuf = the_prefix ? 'the ' : '';
+
+    // C :1874: !adjective || !*adjective — normal case "newt corpse".
+    // JS !adjective covers C NULL/"" plus do.c's 0-for-NULL idiom.
     if (!adjective) {
         nambuf += mnam;
     } else if (possessive) {
-        // C: Medusa's cursed partly eaten corpse
+        // C :1879: "Medusa's cursed partly eaten corpse"
         nambuf += `${mnam} ${adjective}`;
+        // C :1884: squeeze a trailing-space adjective
         nambuf = mungspaces_objnam(nambuf);
-        if (/^\d/.test(adjective)) any_prefix = false;
+        // C :1887: doname() count in the adjective → no article;
+        // C digit() is ASCII '0'–'9' (hacklib.c:62–65).
+        const c0 = String(adjective).charCodeAt(0);
+        if (c0 >= 48 && c0 <= 57) any_prefix = false;
     } else {
-        // C: cursed partly eaten troll corpse
+        // C :1881: "cursed partly eaten troll corpse"
         nambuf += `${adjective} ${mnam}`;
         nambuf = mungspaces_objnam(nambuf);
-        if (/^\d/.test(adjective)) any_prefix = false;
+        const c0 = String(adjective).charCodeAt(0);
+        if (c0 >= 48 && c0 <= 57) any_prefix = false;
     }
 
     if (glob) {
-        // C: omit_corpse doesn't apply; quantity is always 1
+        // C :1890: omit_corpse doesn't apply; quantity is always 1
     } else if (!omit_corpse) {
+        // C :1892–1897: Strcat " corpse"; plural appends "s" (not
+        // makeplural); quan > 1 clears any_prefix ("a newt corpses").
         nambuf += ' corpse';
-        if ((obj?.quan || 1) > 1 && !ignore_quan) {
+        if ((obj?.quan ?? 1) > 1 && !ignore_quan) {
             nambuf += 's';
             any_prefix = false;
         }
     }
+
+    // C :1902–1908: any_prefix → an(); releaseobuf(obufp) frees the an()
+    // buffer — by-design no-op in JS (GC strings, D-2483 idiom).
     if (any_prefix) nambuf = an(nambuf);
     return nambuf;
 }
@@ -1220,18 +1325,15 @@ export function cxname(obj) {
 }
 
 /**
- * C ref: objnam.c cxname_singular — ignore quantity (sortloot / loot_xname).
+ * C ref: objnam.c cxname_singular `:1934–1939` — like cxname but ignores
+ * quantity (sortloot / loot_xname): corpse via corpse_xname, else
+ * xname_flags(obj, CXN_SINGULAR). C never mutates quan for this.
  */
 export function cxname_singular(obj) {
     if (obj && objectNames[obj.otyp] === 'CORPSE') {
         return corpse_xname(obj, null, CXN_SINGULAR);
     }
-    if (!obj) return xname(obj);
-    const saveq = obj.quan;
-    obj.quan = 1;
-    const nam = xname(obj);
-    obj.quan = saveq;
-    return nam;
+    return xname_flags(obj, CXN_SINGULAR);
 }
 
 /** C ref: hacklib.c strstri — case-insensitive substring. */
@@ -2290,6 +2392,22 @@ export function set_noit_mon_nam(fn) {
 }
 
 /**
+ * Late-bound from do_wear.js — C do_wear.c doffing/donning for the
+ * doname_base ARMOR W_ARMOR arm. do_wear already imports objnam, so a
+ * static back-edge would pull do_name's eval-time set_y_monnam into
+ * objnam's partial window (TDZ); registration runs at do_wear top-level,
+ * which can land while this module is still partial (via invent).
+ * `var` (not `let`): hoisted so the early write is kept — the bare
+ * redeclaration below is a no-op and never clears it. Unset → plain
+ * "(being worn)".
+ */
+var _doffing_fn, _donning_fn;
+export function set_doffing_predicates(doffingFn, donningFn) {
+    _doffing_fn = doffingFn;
+    _donning_fn = donningFn;
+}
+
+/**
  * Late-bound from polyself.js — C objnam.c doname_base body_part(HAND).
  * Avoids static objnam↔polyself cycle (polyself already imports an).
  * Unset → C mbodypart null-data humanoid "hand".
@@ -2762,12 +2880,50 @@ export function append_wizmgender_suffix(obj, bp) {
 }
 
 /**
- * C ref: objnam.c doname() — invent-kit subset (Tourist/Rogue starter lines).
- * C doname_base starts with xname(obj), which forces cleric bknown before
- * the BUC prefix is read; JS doname uses pretty_base so apply the same force.
+ * C objnam.c `:1217–1219` — doname_base flag bits (file-local in C).
+ * DONAME_FOR_MENU is not used anywhere in C yet; its truncation arm is live.
+ */
+export const DONAME_WITH_PRICE = 1;
+export const DONAME_VAGUE_QUAN = 2;
+export const DONAME_FOR_MENU = 4;
+
+/** C youprop.h Glib ≡ u.uprops[GLIB].intrinsic (slippery-fingers gloves). */
+function Glib() {
+    return (((game.u?.uprops?.[GLIB]?.intrinsic) | 0) !== 0);
+}
+
+/**
+ * C ref: objnam.c doname `:1754–1756` — doname_base with no flags.
  */
 export function doname(obj) {
+    return doname_base(obj, 0);
+}
+
+/**
+ * C ref: objnam.c doname_vague_quan `:1768–1782` — "some" instead of a
+ * precise quantity when the pile hasn't been seen up close (farlook).
+ * C's TODO (a qknown flag overlaying cknown) stays a comment: no such
+ * field on either side.
+ */
+export function doname_vague_quan(obj) {
+    return doname_base(obj, DONAME_VAGUE_QUAN);
+}
+
+/**
+ * C ref: objnam.c doname_base `:1223–1751` — full object description.
+ * C doname_base starts with xname(obj), which forces cleric bknown before
+ * the BUC prefix is read; JS doname uses pretty_base so apply the same force.
+ * Buffer machinery (obuf/xnamep/eos/Concat/strprepend/releaseobuf/sitoa,
+ * D-2483 by-design JS strings) is plain concatenation; the once-only
+ * doname_full/paniclog overflow path is a named omit, the truncation live.
+ */
+export function doname_base(obj, doname_flags = 0) {
     if (!obj) return 'something';
+    const with_price = ((((doname_flags | 0) & DONAME_WITH_PRICE)) !== 0);
+    const vague_quan = ((((doname_flags | 0) & DONAME_VAGUE_QUAN)) !== 0);
+    const for_menu = ((((doname_flags | 0) & DONAME_FOR_MENU)) !== 0);
+    // C `:1255–1262` — iflags.override_ID forces all five ID flags.
+    const overrideID = !!game.iflags?.override_ID;
 
     // C doname_base → xname_flags clears unique known leak before article
     clear_unique_known_leak(obj);
@@ -2782,8 +2938,11 @@ export function doname(obj) {
     const oclass = obj.oclass;
     // C doname_base: switch (is_weptool(obj) ? WEAPON_CLASS : obj->oclass)
     const donameClass = is_weptool(obj) ? WEAPON_CLASS : oclass;
-    const known = !!obj.known;
-    const bknown = !!obj.bknown;
+    const known = !!(overrideID || obj.known);
+    const dknown = !!(overrideID || obj.dknown);
+    const cknown = !!(overrideID || obj.cknown);
+    const bknown = !!(overrideID || obj.bknown);
+    const lknown = !!(overrideID || obj.lknown);
     const quan = obj.quan || 1;
     const oname = objectNames[otyp];
     // C doname_base `:1247` — bp = xname(obj); pname artifacts arrive as
@@ -2825,7 +2984,7 @@ export function doname(obj) {
     // (D-1521). bp is xname: fname (+ ick) + optional " named ONAME" then
     // strip leading "the " (`:1011`). JS doname uses pretty_base so rebuild
     // that lookup here; named suffix is still appended after prefix.
-    const onameStrForArti = (obj.dknown && obj.oextra?.oname)
+    const onameStrForArti = (dknown && obj.oextra?.oname)
         ? String(obj.oextra.oname) : '';
     let bpForArti = onameStrForArti
         ? `${base} named ${onameStrForArti}` : base;
@@ -2860,7 +3019,8 @@ export function doname(obj) {
     // its adjective (CXN_ARTICLE|CXN_NOCORPSE; D-1255).
     let prefix = '';
     if (quan !== 1) {
-        prefix = `${quan} `;
+        // C `:1283–1289` — vague_quan without dknown prints "some ".
+        prefix = (dknown || !vague_quan) ? `${quan} ` : 'some ';
     } else if (oname === 'CORPSE') {
         // skip article — corpse_xname owns it
     } else if (force_the || obj_is_pname(obj) || the_unique_obj(obj)) {
@@ -2872,9 +3032,14 @@ export function doname(obj) {
         prefix = 'a ';
     }
 
-    // C: cknown + (Is_container || STATUE) + !Has_contents → "empty "
-    if (obj.cknown
-        && ((Is_container(obj) || oname === 'STATUE') && !Has_contents(obj))) {
+    // C `:1302–1316` — bag of tricks / horn of plenty print "empty " when
+    // spe==0 && !known (emptiness discovery never sets known); other
+    // containers and statues when cknown with no contents.
+    if (cknown
+        && (((otyp === BAG_OF_TRICKS || otyp === HORN_OF_PLENTY)
+            ? (((obj.spe | 0) === 0) && !known)
+            : ((Is_container(obj) || oname === 'STATUE')
+                && !Has_contents(obj))))) {
         prefix += 'empty ';
     }
 
@@ -2895,6 +3060,7 @@ export function doname(obj) {
                 || ((!known || !charged
                     || oclass === ARMOR_CLASS
                     || oclass === RING_CLASS)
+                    && oname !== 'SCR_MAIL'
                     && otyp !== FAKE_AMULET_OF_YENDOR
                     && otyp !== AMULET_OF_YENDOR
                     && !Role_if(PM_CLERIC));
@@ -2906,7 +3072,7 @@ export function doname(obj) {
     if (Is_box(obj) && obj.otrapped && obj.tknown && obj.dknown) {
         prefix += 'trapped ';
     }
-    if (obj.lknown && Is_box(obj)) {
+    if (lknown && Is_box(obj)) {
         if (obj.obroken) prefix += 'broken ';
         else if (obj.olocked) prefix += 'locked ';
         else prefix += 'unlocked ';
@@ -2996,7 +3162,7 @@ export function doname(obj) {
     // C: has_oname && dknown → " named Foo" — skipped for pname artifacts:
     // bp is already bare ONAME (xname goto nameit), not "<base> named ONAME".
     const onameStr = obj.oextra?.oname;
-    if (onameStr && obj.dknown && !isPname) {
+    if (onameStr && dknown && !isPname) {
         const nameStart = bp.length + ' named '.length;
         bp += ` named ${onameStr}`;
         /* C objnam.c:1006–1008 — downcase "The" in "<item> named The ..." */
@@ -3011,7 +3177,8 @@ export function doname(obj) {
     // C: doname_base — cknown && Has_contents → " containing %ld item%s"
     // invent.c count_contents(obj, FALSE, FALSE, TRUE, FALSE): separate
     // stacks, no nest. Inline to avoid invent↔objnam import cycle.
-    if (obj.cknown && Has_contents(obj)) {
+    // C `:1373` adds bpspaceleft > 0 — trivially true for JS strings.
+    if (cknown && Has_contents(obj)) {
         let itemcount = 0;
         for (let otmp = obj.cobj; otmp; otmp = otmp.nobj) itemcount += 1;
         bp += ` containing ${itemcount} item${itemcount !== 1 ? 's' : ''}`;
@@ -3068,10 +3235,27 @@ export function doname(obj) {
         bp += ' (lit)';
     }
 
-    if (oclass === ARMOR_CLASS && (obj.owornmask & W_ARMOR))
+    // C `:1387–1419` ARMOR_CLASS — uskin/doffing/donning variants, then the
+    // Glib slippery and lamplit artifact-light paren rewrites. C guards each
+    // rewrite on bp_eos[-1]==')' (truncation could drop the paren); JS
+    // strings never truncate so the paren is always present.
+    if (donameClass === ARMOR_CLASS && ((obj.owornmask | 0) & W_ARMOR) !== 0) {
+        const u = game.u || {};
+        const isDoffing = _doffing_fn ? !!_doffing_fn(obj) : false;
+        const isDonning = !isDoffing && _donning_fn
+            ? !!_donning_fn(obj) : false;
+        bp += (obj === u.uskin) ? ' (embedded in your skin)'
+            : isDoffing ? ' (being doffed)'
+            : isDonning ? ' (being donned)'
+            : ' (being worn)';
+        if (obj === u.uarmg && Glib()) bp = `${bp.slice(0, -1)}; slippery)`;
+        if (!Blind() && obj.lamplit && doname_artifact_light(obj)) {
+            bp = `${bp.slice(0, -1)}, ${arti_light_description(obj)} lit)`;
+        }
+    }
+    if (donameClass === AMULET_CLASS && ((obj.owornmask | 0) & W_AMUL) !== 0) {
         bp += ' (being worn)';
-    if (obj.owornmask & W_AMUL)
-        bp += ' (being worn)';
+    }
     // C doname_base RING_CLASS ring: + FOOD MEAT_RING goto ring —
     // " (on right " / " (on left " then body_part(HAND) + ")" (objnam.c:1492–1499).
     if (donameClass === RING_CLASS || isMeatRing) {
@@ -3169,9 +3353,21 @@ export function doname(obj) {
     if (known && donameClass === WAND_CLASS)
         bp += ` (${obj.recharged | 0}:${obj.spe | 0})`;
 
-    // C doname_base: is_unpaid → unpaid_cost suffix (D-0461); with_price=0
-    if (_doname_shop_suffix) bp = _doname_shop_suffix(obj, bp, false);
-    return append_wizweight_suffix(obj, bp, false);
+    // C `:1652–1683` price chain — suppress/restoring skip, then is_unpaid
+    // → unpaid_cost, else with_price → shop price, else pricequotes
+    // discovery append. Unpaid + trailing pricequotes ride the late-bound
+    // shk suffix (objnam↔shk cycle); the for-sale arm is shk.js
+    // doname_with_price calling doname_base with DONAME_WITH_PRICE.
+    // with_price rides along so the trailing arm fires for plain doname only.
+    if (_doname_shop_suffix) bp = _doname_shop_suffix(obj, bp, with_price);
+    // C `:1697–1709` — with_price rewrites a trailing ')' for the aum.
+    bp = append_wizweight_suffix(obj, bp, with_price);
+    // C `:1736–1745` menu truncation (offsetbp=4); the >BUFSZ-1 panic and the
+    // once-only doname_full/paniclog path are named omits (D-2483 strings).
+    if (bp.length + (for_menu ? 4 : 0) >= (BUFSZ - 1)) {
+        bp = bp.slice(0, BUFSZ - 1 - (for_menu ? 4 : 0));
+    }
+    return bp;
 }
 
 /**
@@ -3394,6 +3590,31 @@ export function simple_typename(otyp) {
     const pp = buf.indexOf(' (');
     if (pp >= 0) buf = buf.slice(0, pp);
     return buf;
+}
+
+/**
+ * C ref: objnam.c safe_typename `:311–330` — otyp forced fully
+ * discovered through simple_typename; out-of-range or nameless otyp
+ * yields `glorkum[N]` plus an impossible (C `nextobuf`/`Sprintf` need
+ * no buffer here: JS strings; sibling simple_typename idiom above).
+ * Caller `ball.c` bc_sanity_check `:1065` / `:1078`.
+ * Async: the glorkum arm awaits impossible (live `display.js`).
+ */
+export async function safe_typename(otyp) {
+    otyp |= 0;
+    if (otyp < STRANGE_OBJECT || otyp >= NUM_OBJECTS || !objectNames[otyp]) {
+        const res = `glorkum[${otyp}]`;
+        const { impossible } = await import('./display.js');
+        await impossible('safe_typename: %s', res);
+        return res;
+    }
+    // C: force it to be treated as fully discovered, then restore.
+    const ocl = game.objects?.[otyp];
+    const save_nameknown = ocl ? ocl.oc_name_known : undefined;
+    if (ocl) ocl.oc_name_known = 1;
+    const res = simple_typename(otyp);
+    if (ocl) ocl.oc_name_known = save_nameknown;
+    return res;
 }
 
 /**

@@ -1140,14 +1140,23 @@ async function rloc_post_move_msg(mtmp, x, y, state) {
 }
 
 /**
- * Place mon at (x,y) with rloc_to_core message order.
- * C ref: teleport.c rloc_to_flag.
+ * C ref: teleport.c rloc_to_core `:1644–1768` (staticfn) in C order.
+ * Same-cell return `:1658–1659`; vanish arm `:1661–1677`
+ * (rloc_pre_move_msg); pickup/remove/place/region/worm/ustuck/unhide/
+ * newsym/apparxy `:1679–1702` (rloc_to with deferred tail); dest-msg
+ * block `:1703–1737` (rloc_post_move_msg: set_msg_xy, APPEARMSG clear,
+ * together/telemsg/appear arms, wand makeknown); resident-shk angry
+ * `:1739–1741`, minvent shop bill `:1742–1759`, occupation `:1761–1763`,
+ * trapped mintrap `:1765–1767` (rloc_maybe_* helpers).
+ * Wrappers: C rloc_to `:1771–1774` is core(NOMSG) = silent rloc_to;
+ * C rloc_to_flag `:1776–1782`, rloc found_xy `:1893`, mtele_trap
+ * teledest `:1988` (RLOC_MSG) call here.
  */
-export async function rloc_to_flag(mtmp, x, y, rlocflags) {
-    if (!mtmp) return;
+export async function rloc_to_core(mtmp, x, y, rlocflags) {
+    if (!mtmp) return null;
     // C rloc_to_core: same-cell return before vanish/appear (1658–1659).
     if (x === (mtmp.mx | 0) && y === (mtmp.my | 0) && m_at(x, y) === mtmp) {
-        return;
+        return null; /* that was easy */
     }
     const state = await rloc_pre_move_msg(mtmp, x, y, rlocflags);
     // Defer shk angry until after appear pline (C rloc_to_core 1703 then 1739).
@@ -1159,6 +1168,15 @@ export async function rloc_to_flag(mtmp, x, y, rlocflags) {
         await rloc_maybe_occupation(mtmp);
         await rloc_maybe_mintrap(mtmp);
     }
+    return snap;
+}
+
+/**
+ * Place mon at (x,y) with rloc_to_core message order.
+ * C ref: teleport.c rloc_to_flag `:1776–1782` — thin wrapper over the core.
+ */
+export async function rloc_to_flag(mtmp, x, y, rlocflags) {
+    await rloc_to_core(mtmp, x, y, rlocflags);
 }
 
 /**
@@ -1344,8 +1362,8 @@ async function mvault_tele(mtmp) {
 /**
  * C ref: teleport.c mtele_trap — monster TELEP_TRAP.
  * Envelope: noteleport_level; teleport_pet; once → mvault_tele; else
- * teledest rloc_to if free; else rloc. Caller handles in_sight pline/seetrap.
- * Named omission: RLOC_MSG vanish text inside rloc_to_core.
+ * teledest rloc_to_core RLOC_MSG if free (`:1988` — vanish/appear
+ * delivered); else rloc RLOC_NONE. Caller handles in_sight pline/seetrap.
  */
 export async function mtele_trap(mtmp, trap) {
     if (!mtmp || !trap) return false;
@@ -1358,10 +1376,10 @@ export async function mtele_trap(mtmp, trap) {
         const dx = trap.teledest.x | 0;
         const dy = trap.teledest.y | 0;
         if (!(m_at(dx, dy) || u_at(dx, dy))) {
-            await rloc_to(mtmp, dx, dy);
+            await rloc_to_core(mtmp, dx, dy, RLOC_MSG);
         }
     } else {
-        rloc(mtmp, 0);
+        await rloc(mtmp, 0);
     }
     return true;
 }

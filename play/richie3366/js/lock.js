@@ -18,7 +18,7 @@ import {
     M_AP_FURNITURE, M_AP_OBJECT, FINGER, S_hcdoor, S_vcdoor,
     CMDQ_DIR, CMDQ_KEY, CQ_CANNED, CQ_REPEAT,
     xytodir, getdirInp, u_at,
-    CLICK_1, CLICK_2, N_DIRS, xdir, ydir, zdir,
+    CLICK_1, CLICK_2, N_DIRS, MV_WALK, xdir, ydir, zdir,
     NHKF_ESC, NHKF_GETDIR_SELF, NHKF_GETDIR_SELF2, NHKF_GETDIR_HELP,
     NHKF_GETDIR_MOUSE, NHKF_GETPOS_PICK, NHKF_GETPOS_PICK_Q,
     NHKF_GETPOS_PICK_O, NHKF_GETPOS_PICK_V,
@@ -56,7 +56,7 @@ import { mb_trapped } from './monmove.js';
 import { b_trapped, t_at } from './trap.js';
 import { currency, cmdq_add_key } from './invent.js';
 import { show_text_pages, dowhatdoes_core } from './pager.js';
-import { visctrl, cmdbind_get } from './dokeylist.js';
+import { visctrl, cmdbind_get, cmd_from_dir } from './dokeylist.js';
 import { getpos } from './getpos.js';
 import { highc } from './hacklib.js';
 import { doloot, container_at } from './pickup.js';
@@ -189,65 +189,88 @@ export function dxdy_moveok() {
 }
 
 /**
- * C ref: cmd.c show_direction_keys `:4121–4165` — hjkl/yubn grid for
- * help_dir. Default !num_pad letters (cmd_from_func named). centerchar
- * is '.' at getdir (not a prefix) or ' ' after a prefix key.
+ * C ref: cmd.c show_direction_keys `:4122–4165` (staticfn) — the grid
+ * help_dir `:4268` prints. C reads the live bindings with
+ * visctrl(cmd_from_func(do_move_*)); JS uses live cmd_from_dir(dir,
+ * MV_WALK) through visctrl — the same move_funcs row-0 table — so a
+ * rebound layout paints here exactly as in C. `lines` stands in for the
+ * NHW_TEXT window (C putstr(win, 0, …)); Sprintf layouts verbatim.
+ * `:4129–4130` falsy centerchar falls back to ' '.
+ * MOVE_WALK_ECNAMES index = C move_funcs rows 0..7 (dokeylist.js:161–164):
+ * 0 west, 1 northwest, 2 north, 3 northeast, 4 east, 5 southeast,
+ * 6 south, 7 southwest.
  */
-function help_dir_move_lines(centerchar, nodiag) {
+function show_direction_keys(lines, centerchar, nodiag) {
     const c = centerchar || ' ';
+    // C `:4135`/`4140`/`4144`/… visctrl(cmd_from_func(do_move_*)).
+    const key = (dir) => visctrl(cmd_from_dir(dir, MV_WALK));
     if (nodiag) {
-        return [
-            '             k   ',
-            '             |   ',
-            `          h- ${c} -l`,
-            '             |   ',
-            '             j   ',
-        ];
+        // C `:4133–4146` cardinal-only grid.
+        lines.push(`             ${key(2)}   `);
+        lines.push('             |   ');
+        lines.push(`          ${key(0)}- ${c} -${key(4)}`);
+        lines.push('             |   ');
+        lines.push(`             ${key(6)}   `);
+    } else {
+        // C `:4147–4164` full 8-way grid.
+        lines.push(`          ${key(1)}  ${key(2)}  ${key(3)}`);
+        lines.push('           \\ | / ');
+        lines.push(`          ${key(0)}- ${c} -${key(4)}`);
+        lines.push('           / | \\ ');
+        // C `:4158–4162` arg order southwest, south, southeast.
+        lines.push(`          ${key(7)}  ${key(6)}  ${key(5)}`);
     }
-    return [
-        '          y  k  u',
-        '           \\ | / ',
-        `          h- ${c} -l`,
-        '           / | \\ ',
-        '          b  j  n',
-    ];
 }
 
 /**
- * C ref: cmd.c help_dir `:4168–4296` — NHW_TEXT cmdassist for invalid
- * getdir / '?'. Prefix-key messages are #if 0 (nhUse). display_nhwindow
- * TEXT → dmore → xwaitforspace(quitchars) so only space/CR/LF/ESC
- * dismiss (NEED_MORE key-eating). Returns true if shown.
+ * C ref: cmd.c help_dir `:4171–4296` (staticfn) — NHW_TEXT cmdassist for
+ * an invalid getdir key or an explicit '?' at the direction prompt.
+ * display_nhwindow TEXT → show_text_pages (dmore → xwaitforspace, D-1806).
+ * Returns TRUE when the window was shown, FALSE with no window `:4234`.
  */
 async function help_dir(sym, spkey, msg) {
+    // C `:4178` wiz_only_list.
+    const WIZ_ONLY_LIST = 'EFGIVW';
+    // C `:4184–4185` prefixhandling = (spkey != gc.Cmd.spkeys[NHKF_ESC]).
+    // The sole C caller (getdir `:4101–4102`) always passes the ESC spkey
+    // so this is false there; compare against the live binding, not 27.
+    const prefixhandling = (spkey | 0) !== getdir_spkey(NHKF_ESC);
+    // C `:4189–4190` dothat for the prefix "to do that" wording.
+    const dothat = 'do that';
+    // C `:4193–4229` is #if 0 (nhUse(prefixhandling)): the bad-prefix buf
+    // arms are compiled out, so `*buf` at `:4239` is always empty and the
+    // msg arm below owns that branch. `how`/`viawindow` likewise unused.
+
+    // C `:4232–4234` create_nhwindow failure returns FALSE.
     const disp = game.nhDisplay;
     if (!disp) return false;
 
-    // C: prefixhandling = (spkey != gc.Cmd.spkeys[NHKF_ESC]); getdir
-    // always passes ESC so this is false.
-    const prefixhandling = (spkey | 0) !== 27;
-    const nodiag = (game.u?.umonnum | 0) === PM_GRID_BUG;
     const lines = [];
-
+    // C `:4239–4247` — *buf never set (see #if 0 above); msg arm only.
+    // C `:4242` Sprintf(buf, "cmdassist: %s", msg).
     if (msg) {
         lines.push(`cmdassist: ${msg}`);
         lines.push('');
     }
 
+    // C `:4249–4263` — the key looks like a ^X control command.
     const symch = (typeof sym === 'string' && sym.length)
         ? sym.charAt(0)
         : (typeof sym === 'number' && sym ? String.fromCharCode(sym) : '\0');
     const code = symch.charCodeAt(0);
-    // C hacklib.c letter: '@'..'Z' || 'a'..'z'; '[' is extra
+    // C hacklib.c letter `:69–73`: '@'..'Z' || 'a'..'z'; '[' is extra.
     const is_letter = (code >= 64 && code <= 90) || (code >= 97 && code <= 122);
     if (!prefixhandling && (is_letter || symch === '[')) {
+        // C `:4251–4252` sym = highc(sym) (@A-Z[); ctrl = (sym-'A')+1.
         const up = highc(symch);
         const upch = typeof up === 'string' ? up.charAt(0) : String.fromCharCode(up);
         const ctrl = (upch.charCodeAt(0) - 65) + 1;
+        // C `:4253–4254` dowhatdoes_core(ctrl, buf2), wiz_only gate.
         const explain = dowhatdoes_core(ctrl);
-        const wiz_only = 'EFGIVW'.includes(upch);
+        const wiz_only = WIZ_ONLY_LIST.includes(upch);
         const wizard = !!(game.flags?.debug || game.flags?.wizard || game.wizard);
         if (explain && (!wiz_only || wizard)) {
+            // C `:4255–4262` Are-you-trying + usage lines.
             const guide = wiz_only ? '' : ' as specified in the Guidebook';
             lines.push(`Are you trying to use ^${upch}${guide}?`);
             lines.push('');
@@ -259,27 +282,31 @@ async function help_dir(sym, spkey, msg) {
         }
     }
 
-    let valid = 'Valid direction keys';
-    if (prefixhandling) valid += ' to do that';
-    if (nodiag) valid += ' in your current form';
-    valid += ' are:';
-    lines.push(valid);
-    lines.push(...help_dir_move_lines(prefixhandling ? ' ' : '.', nodiag));
+    // C `:4265–4268` "Valid direction keys…" + show_direction_keys.
+    // NODIAG(u.umonnum) is hack.h PM_GRID_BUG-only (dxdy_moveok idiom).
+    const nodiag = (game.u?.umonnum | 0) === PM_GRID_BUG;
+    lines.push(`Valid direction keys${prefixhandling ? ' to ' + dothat : ''}${nodiag ? ' in your current form' : ''} are:`);
+    show_direction_keys(lines, !prefixhandling ? '.' : ' ', nodiag);
 
+    // C `:4270–4286` — up/down/self extras (prefix callers never reach
+    // here with m</m> but list them for m+invalid, `:4271–4274`).
     if (!prefixhandling) {
         lines.push('');
         lines.push('          <  up');
         lines.push('          >  down');
+        // C `:4277–4281` selfi = num_pad ? SELF2 : SELF; "…%4s…" visctrl.
         const numPad = !!(game.iflags?.num_pad || game.Cmd?.num_pad);
-        const selfvis = visctrl((numPad ? 's' : '.').charCodeAt(0));
+        const selfvis = visctrl(getdir_spkey(numPad ? NHKF_GETDIR_SELF2 : NHKF_GETDIR_SELF));
         lines.push(`       ${selfvis.padStart(4, ' ')}  direct at yourself`);
     }
 
+    // C `:4288–4293` — msg means unprompted: how to suppress.
     if (msg) {
         lines.push('');
         lines.push('(Suppress this message with !cmdassist in config file.)');
     }
 
+    // C `:4294–4296` display_nhwindow(win, FALSE), destroy, return TRUE.
     await show_text_pages(lines);
     return true;
 }

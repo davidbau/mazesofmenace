@@ -93,8 +93,8 @@
 // from angrygods.
 
 import { game } from './gstate.js';
-import { pline, urgent_pline, newsym, You_feel, verbalize, canspotmon, tmp_at, cmap_to_glyph, map_invisible, shieldeff, monsym } from './display.js';
-import { xname, makeplural, an, vtense, otense, otyp_is_charged, Yname2, Yobjnam2, doname } from './objnam.js';
+import { pline, You, Your, urgent_pline, newsym, You_feel, verbalize, canspotmon, tmp_at, cmap_to_glyph, map_invisible, shieldeff, monsym } from './display.js';
+import { xname, makeplural, an, vtense, otense, otyp_is_charged, Yname2, Yobjnam2, Tobjnam, doname } from './objnam.js';
 import {
     SCROLL_CLASS, SPBOOK_CLASS, COIN_CLASS, WEAPON_CLASS, GEM_CLASS,
     ARMOR_CLASS, BALL_CLASS, CHAIN_CLASS, WAND_CLASS, RING_CLASS, TOOL_CLASS,
@@ -104,6 +104,7 @@ import { weight, uncurse, curse, bless, blessorcurse, maybe_adjust_light, mkobj,
 import { A_WIS, A_STR, A_CON, exercise, adjalign } from './attrib.js';
 import {
     makeknown, getobj, identify_pack, near_capacity, update_inventory,
+    useup as useup_live,
 } from './invent.js';
 import { more_experienced } from './exper.js';
 import {
@@ -113,7 +114,7 @@ import { study_book, can_chant, losespells } from './spell.js';
 import { scrolltele, level_tele } from './teleport.js';
 import { trycall, hcolor, Monnam, mon_nam, s_suffix, hliquid } from './do_name.js';
 import { chwepon, is_weptool } from './wield.js';
-import { destroy_arm, disintegrate_arm, some_armor, setworn, hard_helmet } from './do_wear.js';
+import { destroy_arm, disintegrate_arm, some_armor, setworn, hard_helmet, Ring_gone, Ring_off, Ring_on } from './do_wear.js';
 import { dropy, flooreffects } from './do.js';
 import { placebc, set_bc, move_bc } from './ball.js';
 import { rn2, rnd, rn1, d } from './rng.js';
@@ -170,7 +171,7 @@ import { ART_SUNSWORD } from './generated/artifacts_data.js';
 import { readmail } from './mail.js';
 import { has_ceiling, avoid_ceiling } from './dungeon.js';
 import { explode } from './explode.js';
-import { burn_away_slime, artifact_light, arti_light_radius } from './timeout.js';
+import { burn_away_slime, artifact_light, arti_light_radius, end_burn } from './timeout.js';
 import { snuff_lit } from './apply.js';
 import { impact_arti_light } from './potion.js';
 
@@ -685,15 +686,7 @@ function Blind_read() {
     if (u.uroleplay?.blind) return true;
     return !!(((u.HBlinded | 0) || (u.EBlinded | 0)) && !(u.BBlinded | 0));
 }
-function Yobjnam2_read(obj, verb) {
-    const nam = xname(obj);
-    return `Your ${nam} ${vtense(nam, verb)}`;
-}
 function Yname2_read(obj) { return `Your ${xname(obj)}`; }
-function Tobjnam_read(obj, verb) {
-    const nam = xname(obj);
-    return `The ${nam} ${vtense(nam, verb)}`;
-}
 
 /** C ref: read.c stripspe :652–664 / p_glow1–3 :667–685. */
 async function stripspe(obj) {
@@ -701,27 +694,27 @@ async function stripspe(obj) {
         await pline(nothing_happens);
         return;
     }
-    await pline(`${Yobjnam2_read(obj, 'vibrate')} briefly.`);
-    const { costly_alteration } = await import('./shk.js');
+    /* order matters: message, shop handling, actual transformation */
+    await pline(`${Yobjnam2(obj, 'vibrate')} briefly.`);
     await costly_alteration(obj, COST_UNCHRG);
     obj.spe = 0;
     if ((obj.otyp | 0) === OIL_LAMP || (obj.otyp | 0) === BRASS_LANTERN) obj.age = 0;
 }
 async function p_glow1(otmp) {
-    await pline(`${Yobjnam2_read(otmp, Blind_read() ? 'vibrate' : 'glow')} briefly.`);
+    await pline(`${Yobjnam2(otmp, Blind_read() ? 'vibrate' : 'glow')} briefly.`);
 }
-async function p_glow2(otmp, color, feeble) {
+async function p_glow2(otmp, color) {
     const blind = Blind_read();
-    const glow = Yobjnam2_read(otmp, blind ? 'vibrate' : 'glow');
-    const extra = blind ? '' : ` ${hcolor(color)}`;
-    await pline(`${glow}${feeble ? ' feebly' : ''}${extra} for a moment.`);
+    await pline(
+        `${Yobjnam2(otmp, blind ? 'vibrate' : 'glow')}${blind ? '' : ' '}${blind ? '' : hcolor(color)} for a moment.`,
+    );
 }
 
 /** C read.c p_glow3 `:680–685` — feeble glow (wishing recharge). */
 async function p_glow3(otmp, color) {
     const blind = Blind_read();
     await pline(
-        `${Yobjnam2_read(otmp, blind ? 'vibrate' : 'glow')} feebly${blind ? '' : ' '}${blind ? '' : hcolor(color)} for a moment.`,
+        `${Yobjnam2(otmp, blind ? 'vibrate' : 'glow')} feebly${blind ? '' : ' '}${blind ? '' : hcolor(color)} for a moment.`,
     );
 }
 
@@ -816,7 +809,9 @@ export function charge_ok(obj) {
     return GETOBJ_EXCLUDE_SELECTABLE;
 }
 
-/** C read.c recharge :726–1008 — curse_bless -1/+1/0; cap_spe at end. */
+/** C read.c recharge :729–1008 — curse_bless -1/+1/0; cap_spe at end.
+ * Wand lim==1 glows via p_glow3; ring/tool arms use the live
+ * Yobjnam2/Yname2/Tobjnam/otense plus static Ring and shop helpers. */
 export async function recharge(obj, curse_bless) {
     if (!obj) return;
     const is_cursed = curse_bless < 0;
@@ -845,7 +840,7 @@ export async function recharge(obj, curse_bless) {
                 await wand_explode(obj, 1);
                 return;
             }
-            if (lim === 1) await p_glow2(obj, NH_BLUE, true);
+            if (lim === 1) await p_glow3(obj, NH_BLUE);
             else if ((obj.spe | 0) >= lim) await p_glow2(obj, NH_BLUE);
             else await p_glow1(obj);
         }
@@ -853,41 +848,33 @@ export async function recharge(obj, curse_bless) {
         const s = is_blessed ? rnd(3) : is_cursed ? -rnd(2) : 1;
         const u = game.u || {};
         const is_on = obj === u.uleft || obj === u.uright;
+        /* destruction depends on current state, not adjustment */
         if ((obj.spe | 0) > rn2(7) || (obj.spe | 0) <= -5) {
             await pline(
-                `${Yobjnam2_read(obj, 'pulsate')} momentarily, then ${vtense(xname(obj), 'explode')}!`,
+                `${Yobjnam2(obj, 'pulsate')} momentarily, then ${otense(obj, 'explode')}!`,
             );
-            if (is_on) {
-                const { Ring_gone } = await import('./do_wear.js');
-                await Ring_gone(obj);
-            }
+            if (is_on) await Ring_gone(obj);
             const dmg = rnd(3 * Math.abs(obj.spe | 0));
-            const { useup } = await import('./eat.js');
-            useup(obj);
+            useup_live(obj);
             obj = null;
             await explode_losehp(dmg, 'exploding ring');
         } else {
             await pline(
-                `${Yname2_read(obj)} spins ${s < 0 ? 'counter' : ''}clockwise for a moment.`,
+                `${Yname2(obj)} spins ${s < 0 ? 'counter' : ''}clockwise for a moment.`,
             );
-            if (s < 0) {
-                const { costly_alteration } = await import('./shk.js');
-                await costly_alteration(obj, COST_DECHNT);
-            }
+            if (s < 0) await costly_alteration(obj, COST_DECHNT);
+            /* cause attributes and/or properties to be updated */
             const mask = is_on ? (obj === u.uleft ? LEFT_RING : RIGHT_RING) : 0;
             if (is_on) {
-                const { Ring_off, Ring_on } = await import('./do_wear.js');
                 await Ring_off(obj);
-                obj.spe = (obj.spe | 0) + s;
+                obj.spe = (obj.spe | 0) + s; /* update the ring while it's off */
                 setworn(obj, mask);
                 await Ring_on(obj);
             } else {
                 obj.spe = (obj.spe | 0) + s;
             }
-            if (s > 0 && obj.unpaid) {
-                const { alter_cost } = await import('./shk.js');
-                alter_cost(obj, 0);
-            }
+            /* update shop bill to reflect new higher price */
+            if (s > 0 && obj.unpaid) alter_cost(obj, 0);
         }
     } else if (obj.oclass === TOOL_CLASS) {
         const rechrg = obj.recharged | 0;
@@ -906,9 +893,12 @@ export async function recharge(obj, curse_bless) {
             if (is_cursed) {
                 await stripspe(obj);
             } else if (rechrg && (obj.otyp | 0) === MAGIC_MARKER) {
-                obj.recharged = 1;
-                await pline((obj.spe | 0) < 3
-                    ? 'Your marker seems permanently dried out.' : nothing_happens);
+                /* previously recharged */
+                obj.recharged = 1; /* override increment done above */
+                if ((obj.spe | 0) < 3)
+                    await Your('marker seems permanently dried out.');
+                else
+                    await pline(nothing_happens);
             } else if (is_blessed) {
                 const n = rn1(16, 15);
                 const tot = (obj.spe | 0) + n;
@@ -926,8 +916,7 @@ export async function recharge(obj, curse_bless) {
             if (is_cursed) {
                 await stripspe(obj);
                 if (obj.lamplit) {
-                    if (!Blind_read()) await pline(`${Tobjnam_read(obj, 'go')} out!`);
-                    const { end_burn } = await import('./timeout.js');
+                    if (!Blind_read()) await pline(`${Tobjnam(obj, 'go')} out!`);
                     end_burn(obj, true);
                 }
             } else if (is_blessed) {
@@ -942,29 +931,31 @@ export async function recharge(obj, curse_bless) {
         case CRYSTAL_BALL:
             if ((obj.spe | 0) === -1) obj.spe = 0;
             if (is_cursed) {
+                /* cursed scroll removes charges and curses ball */
                 if (!obj.cursed) {
                     await p_glow2(obj, NH_BLACK);
-                    curse(obj);
+                    await curse(obj);
                 } else {
-                    await pline(`${Yobjnam2_read(obj, 'vibrate')} briefly.`);
+                    await pline(`${Yobjnam2(obj, 'vibrate')} briefly.`);
                 }
-                if ((obj.spe | 0) > 0) {
-                    const { costly_alteration } = await import('./shk.js');
-                    await costly_alteration(obj, COST_UNCHRG);
-                }
+                if ((obj.spe | 0) > 0) await costly_alteration(obj, COST_UNCHRG);
                 obj.spe = 0;
             } else if (is_blessed) {
+                /* blessed scroll sets charges to max and blesses ball */
                 obj.spe = 7;
                 await p_glow2(obj, !obj.blessed ? NH_LIGHT_BLUE : NH_BLUE);
-                if (!obj.blessed) bless(obj);
+                if (!obj.blessed) await bless(obj);
+                /* [shop price stays the same regardless of charges or BUC] */
             } else if ((obj.spe | 0) < 7 || obj.cursed) {
+                /* uncursed scroll increments charges and uncurses ball */
                 obj.spe = Math.min((obj.spe | 0) + rnd(2), 7);
                 if (!obj.cursed) await p_glow1(obj);
                 else {
                     await p_glow2(obj, NH_AMBER);
-                    uncurse(obj);
+                    await uncurse(obj);
                 }
             } else {
+                /* charges at max and ball not being uncursed */
                 await pline(nothing_happens);
             }
             break;
@@ -999,12 +990,15 @@ export async function recharge(obj, curse_bless) {
             }
             break;
         default:
-            await pline('You have a feeling of loss.');
+            /* C :955 not_chargable (shared with the non-TOOL else below) */
+            await You('have a feeling of loss.');
             break;
         }
     } else {
-        await pline('You have a feeling of loss.');
+        /* C :955 not_chargable */
+        await You('have a feeling of loss.');
     }
+    /* prevent enchantment from getting out of range */
     if (obj) cap_spe(obj);
 }
 

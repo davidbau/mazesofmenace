@@ -24,32 +24,35 @@ import {
     W_ARM, W_ARMC, W_ARMH, W_ARMU, W_ARMG, W_RINGL, W_RINGR, W_ARMF, W_AMUL, W_WEP,
     MON_EXPLODE, NO_MM_FLAGS, NO_TRAP_FLAGS, DISP_ALWAYS, DISP_END, STOMACH, DIED, NO_KILLER_PREFIX, ERODE_CORRODE, ERODE_BURN, EF_GREASE, EF_NONE,
     KILLED_BY_AN, PASSES_WALLS, SLOW_DIGESTION, MALE, FEMALE, MMOVE_DIED, CXN_ARTICLE,
-    ERODE_ROT, NO_NC_FLAGS, AD_CURS, EDOG, is_pit,
+    ERODE_ROT, NO_NC_FLAGS, AD_CURS, EDOG, is_pit, FACE, NEUTRAL, CXN_PFX_THE,
+    EXPL_FIERY, ismnum,
 } from './const.js';
 import {
     WEAPON_CLASS, ARMOR_CLASS, TOOL_CLASS, FOOD_CLASS, COIN_CLASS, RANDOM_CLASS, POTION_CLASS,
+    GEM_CLASS, SPBOOK_CLASS,
     objectNameStrs, objectNames,
 } from './objects.js';
 import { exercise, A_STR, A_DEX, A_WIS, A_CON, acurr, adjalign, change_luck, ALIGNLIM } from './attrib.js';
 import { overexertion, nomul, losehp, is_pool, maybe_half_phys } from './hack.js';
 import { ing_suffix, upstart } from './hacklib.js';
-import { pline, pline_mon, newsym, canseemon, canspotmon, sensemon, map_invisible, unmap_object, memory_glyph_is_invisible, glyph_is_invisible_id, flush_topl_more, You_feel, tmp_at, map_location, nh_delay_output, mon_glyph, shieldeff, impossible, see_monsters, hero_Blind_telepat } from './display.js';
+import { pline, pline_mon, newsym, canseemon, canspotmon, sensemon, map_invisible, unmap_object, memory_glyph_is_invisible, glyph_is_invisible_id, flush_topl_more, You_feel, tmp_at, map_location, nh_delay_output, mon_glyph, shieldeff, impossible, see_monsters, hero_Blind_telepat, You, Your, pline_The } from './display.js';
 import { cansee } from './vision.js';
 import {
     dmgval, hitval, P_SKILL, weapon_hit_bonus, martial_bonus,
     dbon, weapon_dam_bonus, use_skill, weapon_type,
     special_dmgval, silver_sears, MON_WEP, setmnotwielded, possibly_unwield,
+    is_wet_towel, dry_a_towel,
 } from './weapon.js';
 import {
     ammo_and_launcher, is_weptool, is_launcher, is_ammo, is_missile,
     is_pole, drop_uswapwep, uwepgone,
 } from './wield.js';
-import { near_capacity, useup, hold_another_object, Blind } from './invent.js';
+import { near_capacity, useup, useupall, hold_another_object, Blind, observe_object } from './invent.js';
 import { PM_BARBARIAN, PM_MONK, PM_KNIGHT, PM_SAMURAI, PM_ARCHEOLOGIST, PM_WIZARD, PM_HUMAN, PM_HEALER, PM_ROGUE } from './generated/monsters_data.js';
 import {
     find_mac, get_mattk, make_corpse, monstone, mhitm_knockback, monkilled, mondead,
     troll_baned, mhitm_ad_poly, mhitm_ad_slee, could_seduce, failed_grab, shade_miss,
-    paralyze_monst,
+    shade_aware, paralyze_monst,
     mhitm_mgc_atk_negated, resists_poison_mm, erode_armor,
     AT_NONE, AT_WEAP, AT_KICK, AT_CLAW, AT_SPIT, AT_HUGS,
     AT_TUCH, AT_BITE, AT_BUTT, AT_STNG, AT_MAGC, AT_TENT,
@@ -67,9 +70,11 @@ import {
     amorphous, noncorporeal, is_whirly, passes_walls, hates_silver, mon_hates_silver, humanoid,
     is_human, always_hostile, is_unicorn, slimeproof,
     MR_FIRE, MR_COLD, MR_ELEC, MR_ACID,
+    resists_ston, resists_acid, mon_hates_blessings,
 } from './monsters.js';
 import {
     mkobj, mksobj_at, place_object, stackobj, delobj, relobj_on_death, obj_extract_self,
+    weight, obj_stop_timers,
 } from './mkobj.js';
 import {
     monnear, record_mvitals_died, seemimic, wakeup, setmangry, dist2,
@@ -84,7 +89,7 @@ import { explode, mon_explodes, adtyp_to_expltype } from './explode.js';
 import { rehumanize, body_part, mbodypart, uunstick } from './polyself.js';
 import { mon_nam, Monnam, x_monnam, x_monnam_tame, Hallucination, type_is_pname, pmname, Mgender, a_monnam, safe_oname, s_suffix } from './do_name.js';
 import { artifact_hit, youmonst, is_art, artifact_exists, shade_glare, find_artifact } from './artifact.js';
-import { xname, vtense, The, An, an, singular, makeplural, cxname, simpleonames, otense, mshot_xname, Yobjnam2, doname, corpse_xname } from './objnam.js';
+import { xname, vtense, The, the, An, an, singular, makeplural, cxname, simpleonames, otense, mshot_xname, Yobjnam2, doname, corpse_xname, ysimple_name } from './objnam.js';
 import { abuse_dog, tamedog } from './dog.js';
 import { makemon, makemon_appear_msg, newcham, adj_lev, clone_mon, mpickobj } from './makemon.js';
 import { ndemon } from './minion.js';
@@ -98,10 +103,12 @@ import { m_unleash } from './apply.js';
 import { mhe, mhis } from './mondata.js';
 import { hard_helmet } from './do_wear.js';
 import { findgold, inv_cnt } from './steal.js';
-import { mselftouch, instapetrify, t_at } from './trap.js';
+import { mselftouch, instapetrify, minstapetrify, t_at } from './trap.js';
 import { merge_choice_invent } from './pickup.js';
 import { addinv } from './u_init.js';
 import { dropy, flooreffects } from './do.js';
+import { obfree } from './shk.js';
+import { breaktest, release_camera_demon } from './dothrow.js';
 import { munslime, mon_adjust_speed } from './muse.js';
 import { night } from './calendar.js';
 import { p_coaligned, ghod_hitsu } from './priest.js';
@@ -195,6 +202,17 @@ const HEAVY_IRON_BALL = objectNames.indexOf('HEAVY_IRON_BALL');
 const TOWEL = objectNames.indexOf('TOWEL');
 const CREAM_PIE = objectNames.indexOf('CREAM_PIE');
 const BLINDING_VENOM = objectNames.indexOf('BLINDING_VENOM');
+const MIRROR = objectNames.indexOf('MIRROR');
+const EXPENSIVE_CAMERA = objectNames.indexOf('EXPENSIVE_CAMERA');
+const EGG = objectNames.indexOf('EGG');
+const CLOVE_OF_GARLIC = objectNames.indexOf('CLOVE_OF_GARLIC');
+const ACID_VENOM = objectNames.indexOf('ACID_VENOM');
+const ROCK = objectNames.indexOf('ROCK');
+const IRON_CHAIN = objectNames.indexOf('IRON_CHAIN');
+const PM_PYROLISK = monsterNames.indexOf('PM_PYROLISK');
+// C objclass.h enum obj_material_types (cf. local IRON/METAL above)
+const VEGGY = 3;
+const PAPER = 5;
 const BOOMERANG = objectNames.indexOf('BOOMERANG');
 const KATANA = objectNames.indexOf('KATANA');
 const WAN_LIGHT = objectNames.indexOf('WAN_LIGHT');
@@ -1101,6 +1119,249 @@ async function hmon_hitmon_weapon_melee(mon, obj, ctx) {
 }
 
 /**
+ * C ref: uhitm.c hmon_hitmon_misc_obj :1119–1383 — damage dispatch for
+ * attacking with a non-weapon, non-potion object (D-2486). In C order:
+ * boulder/ball/chain (:1125), mirror (:1130), expensive camera (:1142),
+ * corpse (:1151), egg (:1186, useup_eggs macro :1178–1185), garlic
+ * (:1259), cream pie / blinding venom (:1265), acid venom (:1319),
+ * default weight/silver/blessed (:1343+).
+ *
+ * ctx mirrors the struct _hitmon_data fields this body reads/writes:
+ * in: thrown, mdat (defender data, C :1767), material (C :1774);
+ * out: dmg, hittxt, get_dmg_bonus, unarmed, doreturn, retval, dryit,
+ * silvermsg, silverobj. C's local `obj = 0` after useup is not
+ * propagated (caller keeps its reference, as the ranged arm below notes);
+ * useup/useupall/obfree still consume the object itself.
+ * Named: muse.c munstone :2884 (monster eats a cure; treat as FALSE, the
+ * mhitm.js do_stone_mon idiom) so petrify arms always minstapetrify;
+ * hmon_hitmon_msg_silver :1876 (silvermsg/silverobj set, no plumbing —
+ * same as the ranged arm); get_dmg_bonus consumers (recalc gate :1447,
+ * shade bump :1817 — pre-existing named, see hmon_hitmon_dmg_recalc);
+ * C's commented-out learn_egg_type (:1206) stays commented out.
+ * Caller: hmon_hitmon's non-weapon branch (C hmon_hitmon_do_hit :1429).
+ * The pie/venom arms are ported here in full, but hmon_hitmon's D-0693
+ * fast path serves those two otyps first on this call path.
+ */
+async function hmon_hitmon_misc_obj(mon, obj, ctx) {
+    const mdat = ctx.mdat ?? mon.data;
+    const thrown = ctx.thrown;
+    switch (obj.otyp) {
+    case BOULDER: /* 1d20 */
+    case HEAVY_IRON_BALL: /* 1d25 */
+    case IRON_CHAIN: /* 1d4+1 */
+        ctx.dmg = dmgval(obj, mon);
+        break;
+    case MIRROR: // C :1130–1141
+        if (breaktest(obj)) {
+            await You(`break ${ysimple_name(obj)}.  That's bad luck!`);
+            change_luck(-2);
+            useup(obj);
+            // C: obj = 0 (local); flags avoid obj==0 confusion below
+            ctx.unarmed = false;
+            ctx.get_dmg_bonus = false;
+            ctx.hittxt = true;
+        }
+        ctx.dmg = 1;
+        break;
+    case EXPENSIVE_CAMERA: // C :1142–1150
+        await You(`succeed in destroying ${ysimple_name(obj)}.  Congratulations!`);
+        await release_camera_demon(obj, game.u?.ux | 0, game.u?.uy | 0);
+        useup(obj);
+        ctx.doreturn = true;
+        ctx.retval = true;
+        return;
+        /*return TRUE;*/
+    case CORPSE: // C :1151–1176 (fixed by polder@cs.vu.nl)
+        if (touch_petrifies(mons(obj.corpsenm))) {
+            ctx.dmg = 1;
+            ctx.hittxt = true;
+            await You(`hit ${mon_nam(mon)} with ${corpse_xname(obj, null, (obj.dknown | 0) ? CXN_PFX_THE : CXN_ARTICLE)}.`);
+            observe_object(obj);
+            /* munstone named (see header): treat as FALSE */
+            await minstapetrify(mon, true);
+            if (resists_ston(mon)) break;
+            /* note: hp may be <= 0 even if munstoned==TRUE */
+            ctx.doreturn = true;
+            ctx.retval = (mon.mhp | 0) >= 1; /* !DEADMONSTER(mon) */
+            return;
+            /*return (boolean) !DEADMONSTER(mon);*/
+        /* C #if 0 arm stays disabled: } else if (touch_petrifies(mdat)) {
+           ; // maybe turn the corpse into a statue? */
+        }
+        ctx.dmg = ((ismnum(obj.corpsenm) ? (mons(obj.corpsenm)?.msize | 0) : 0)) + 1;
+        break;
+    case EGG: { // C :1186–1257
+        const cnt = obj.quan | 0;
+        // C useup_eggs macro :1178–1185 (scoped here like the #define/#undef)
+        const useup_eggs = () => {
+            if (thrown) obfree(obj, null);
+            else useupall(obj);
+            /* C sets its local o = 0 (now gone); caller keeps its ref */
+        };
+        ctx.dmg = 1; /* nominal physical damage */
+        ctx.get_dmg_bonus = false;
+        ctx.hittxt = true; /* message always given */
+        /* egg is always either used up or transformed, so next
+           hand-to-hand attack should yield a "bashing" mesg */
+        if (obj === game.u?.uwep && game.gu) game.gu.unweapon = true;
+        if ((obj.spe | 0) && ismnum(obj.corpsenm)) {
+            if (cnt < 5) change_luck(-cnt);
+            else change_luck(-5);
+        }
+        if (ismnum(obj.corpsenm)
+            && touch_petrifies(mons(obj.corpsenm))) {
+            /*learn_egg_type(obj->corpsenm);*/ /* commented out in C too */
+            const art = obj.known ? 'the' : cnt > 1 ? 'some' : 'a';
+            const nm = obj.known ? pmname(obj.corpsenm, NEUTRAL) : 'petrifying';
+            await pline(`Splat!  You hit ${mon_nam(mon)} with ${art} ${nm} egg${cnt !== 1 ? 's' : ''}!`);
+            obj.known = 1; /* (not much point...) */
+            useup_eggs();
+            /* munstone named (see header): treat as FALSE */
+            await minstapetrify(mon, true);
+            if (resists_ston(mon)) break;
+            ctx.doreturn = true;
+            ctx.retval = (mon.mhp | 0) >= 1; /* !DEADMONSTER(mon) */
+            return;
+            /*return (boolean) (!DEADMONSTER(mon));*/
+        } else { /* ordinary egg(s) */
+            const mnum = obj.corpsenm;
+            const eggp = (ismnum(mnum) && obj.known)
+                ? the(pmname(mnum, NEUTRAL))
+                : cnt > 1 ? 'some' : 'an';
+            await You(`hit ${mon_nam(mon)} with ${eggp} egg${cnt !== 1 ? 's' : ''}.`);
+            /* C stale_egg (obj.h:316): moves-age > 2*MAX_EGG_HATCH_TIME (200) */
+            if (touch_petrifies(mdat)
+                && !(((game.moves | 0) - (obj.age | 0)) > 2 * 200)) {
+                await pline_The(`egg${cnt !== 1 ? 's' : ''} ${cnt === 1 ? "isn't" : "aren't"} alive any more...`);
+                if (obj.timed) obj_stop_timers(obj);
+                obj.otyp = ROCK;
+                obj.oclass = GEM_CLASS;
+                obj.oartifact = 0;
+                obj.spe = 0;
+                obj.known = obj.dknown = obj.bknown = 0;
+                obj.owt = weight(obj);
+                if (thrown) place_object(obj, mon.mx, mon.my);
+            } else if (obj.corpsenm === PM_PYROLISK) {
+                useup_eggs();
+                await explode(mon.mx, mon.my, -11, d(3, 6), 0, EXPL_FIERY);
+                ctx.doreturn = true;
+                ctx.retval = (mon.mhp | 0) >= 1; /* !DEADMONSTER(mon) */
+                return;
+            } else {
+                await pline('Splat!');
+                useup_eggs();
+                exercise(A_WIS, false);
+            }
+        }
+        break;
+    }
+    case CLOVE_OF_GARLIC: /* no effect against demons */ // C :1259–1264
+        if (is_undead(mdat) || is_vampshifter(mon)) {
+            await monflee(mon, d(2, 4), false, true);
+        }
+        ctx.dmg = 1;
+        break;
+    case CREAM_PIE:
+    case BLINDING_VENOM: // C :1265–1317
+        mon.msleeping = 0;
+        if (can_blnd(game.youmonst || youmonst, mon,
+            (obj.otyp === BLINDING_VENOM) ? AT_SPIT : AT_WEAP, obj)) {
+            const Blind = !!(game.Blind || game.u?.Blind);
+            if (Blind) {
+                await pline(obj.otyp === CREAM_PIE ? 'Splat!' : 'Splash!');
+            } else if (obj.otyp === BLINDING_VENOM) {
+                await pline_The(`venom blinds ${mon_nam(mon)}${mon.mcansee ? '' : ' further'}!`);
+            } else {
+                let whom = mon_nam(mon);
+                let what = The(xname(obj));
+                if (!thrown && (obj.quan | 0) > 1) what = An(singular(obj, xname));
+                /* note: s_suffix returns a modifiable buffer */
+                if (haseyes(mdat) && (mdat?.mndx | 0) !== PM_FLOATING_EYE) {
+                    whom = `${s_suffix(whom)} ${mbodypart(mon, FACE)}`;
+                }
+                await pline(`${what} ${vtense(what, 'splash')} over ${whom}!`);
+            }
+            await setmangry(mon, true);
+            mon.mcansee = 0;
+            ctx.dmg = rn1(25, 21);
+            mon.mblinded = (((mon.mblinded | 0) + ctx.dmg) > 127)
+                ? 127 : ((mon.mblinded | 0) + ctx.dmg);
+        } else {
+            await pline(obj.otyp === CREAM_PIE ? 'Splat!' : 'Splash!');
+            await setmangry(mon, true);
+        }
+        {
+            const more_than_1 = (obj.quan | 0) > 1;
+            if (thrown) obfree(obj, null);
+            else useup(obj);
+            /* C: if (!more_than_1) obj = 0 (local); caller keeps its ref */
+            void more_than_1;
+        }
+        ctx.hittxt = true;
+        ctx.get_dmg_bonus = false;
+        ctx.dmg = 0;
+        break;
+    case ACID_VENOM: /* thrown (or spit) */ // C :1319–1341
+        if (resists_acid(mon)) {
+            await Your(`venom hits ${mon_nam(mon)} harmlessly.`);
+            ctx.dmg = 0;
+        } else {
+            await Your(`venom burns ${mon_nam(mon)}!`);
+            ctx.dmg = dmgval(obj, mon);
+        }
+        {
+            const more_than_1 = (obj.quan | 0) > 1;
+            if (thrown) obfree(obj, null);
+            else useup(obj);
+            /* C: if (!more_than_1) obj = 0 (local); caller keeps its ref */
+            void more_than_1;
+        }
+        ctx.hittxt = true;
+        ctx.get_dmg_bonus = false;
+        break;
+    default: { // C :1343–1382
+        const mat = game.objects?.[obj.otyp]?.oc_material | 0;
+        if ((mat === VEGGY || mat === PAPER) && obj.oclass !== SPBOOK_CLASS) {
+            /* vegetables (and similar) do no damage, because they
+               aren't rigid enough; paper objects also do no damage,
+               except for books */
+            ctx.dmg = 0;
+            ctx.get_dmg_bonus = false;
+            break;
+        }
+        /* non-weapons can damage because of their weight */
+        /* (but not too much) */
+        ctx.dmg = (((obj.owt | 0) + 99) / 100) | 0;
+        ctx.dmg = (ctx.dmg <= 1) ? 1 : rnd(ctx.dmg);
+        if (ctx.dmg > 6) ctx.dmg = 6;
+        /* wet towel has modest damage bonus beyond its weight,
+           based on its wetness */
+        if (is_wet_towel(obj)) {
+            const doubld = (mon.data?.mndx | 0) === PM_IRON_GOLEM;
+            /* wielded wet towel should probably use whip skill
+               (but not by setting objects[TOWEL].oc_skill==P_WHIP
+               because that would turn towel into a weptool);
+               due to low weight, tmp always starts at 1 here, and
+               due to wet towel's definition, obj->spe is 1..7 */
+            ctx.dmg += (obj.spe | 0) * (doubld ? 2 : 1);
+            ctx.dmg = rnd(ctx.dmg); /* wet towel damage not capped at 6 */
+            /* usually lose some wetness but defer doing so
+               until after hit message */
+            ctx.dryit = rn2((obj.spe | 0) + 1) > 0;
+        }
+        /* things like silver wands can arrive here so we
+           need another silver check; blessed check too */
+        if (ctx.material === SILVER && mon_hates_silver(mon)) {
+            ctx.dmg += rnd(20);
+            ctx.silvermsg = ctx.silverobj = true;
+        }
+        if (obj.blessed && mon_hates_blessings(mon)) ctx.dmg += rnd(4);
+        break;
+    }
+    }
+}
+
+/**
  * C ref: uhitm.c hmon_hitmon — inner damage routine (D-0693/D-1232/D-1384).
  * Thrown cream pie / blinding venom misc_obj arm (D-0693); melee weapon path.
  * troll_baned around killed (D-1232): set TRUE only, always reset after.
@@ -1160,6 +1421,7 @@ async function hmon_hitmon(mon, obj, thrown, _dieroll) {
     let use_weapon_skill = false;
     let train_weapon_skill = false;
     let hittxt = false;
+    let dryit = false; // C hmd.dryit :1790 (wet towel; applied at :1872)
     if (!obj) {
         // C hmon_hitmon_barehands :842–850 — shade dmg 0 then special_dmgval
         // (gloves/silver rings named). Else rnd(!martial_bonus() ? 2 : 4).
@@ -1241,8 +1503,41 @@ async function hmon_hitmon(mon, obj, thrown, _dieroll) {
             // dmg-zeroed → TRUE) skips recalc/pet/msg entirely.
             if (ctx.doreturn) return !!ctx.retval;
         }
-    } else {
+    } else if (obj.oclass === POTION_CLASS) {
+        // C hmon_hitmon_do_hit :1421–1424 — potions go to
+        // hmon_hitmon_potion, not misc_obj (that function is unported);
+        // keep the old dmgval behavior rather than misrouting them.
         dmg = dmgval(obj, mon);
+    } else if (obj.oclass === GEM_CLASS) {
+        // C hmon_hitmon_do_hit :1415–1418 — GEM_CLASS goes to the weapon
+        // path, not misc_obj; keep dmgval (no melee bonuses on this path).
+        dmg = dmgval(obj, mon);
+    } else if ((mon.data?.mndx | 0) === PM_SHADE && !shade_aware(obj)) {
+        // C hmon_hitmon_do_hit :1425–1428 — a shade unaware of the
+        // object takes no damage (the :1812 shade_miss below still runs).
+        dmg = 0;
+    } else {
+        // C hmon_hitmon_do_hit :1429 — non-weapon, non-potion damage.
+        const mctx = {
+            thrown,
+            mdat: mon.data, // C :1767
+            material: game.objects?.[obj.otyp]?.oc_material | 0, // C :1774
+            dmg: 0,
+            hittxt,
+            get_dmg_bonus: true, // C :1778 (consumers pre-existing named)
+            unarmed: false,
+            doreturn: false,
+            retval: true,
+            dryit: false,
+            silvermsg: false,
+            silverobj: false,
+        };
+        await hmon_hitmon_misc_obj(mon, obj, mctx);
+        // C: camera/corpse/egg doreturn skips recalc/pet/msg entirely.
+        if (mctx.doreturn) return !!mctx.retval;
+        dmg = mctx.dmg | 0;
+        hittxt = mctx.hittxt;
+        dryit = mctx.dryit;
     }
     // C: if (hmd.dmg > 0) hmon_hitmon_dmg_recalc — before stagger
     if (dmg > 0) {
@@ -1347,6 +1642,10 @@ async function hmon_hitmon(mon, obj, thrown, _dieroll) {
             );
         }
     }
+
+    // C uhitm.c hmon_hitmon :1872–1875 — dryit (wet towel loses wetness)
+    // after the hit message; dryit implies obj is still intact.
+    if (dryit) await dry_a_towel(obj, -1, true);
 
     if (destroyed) {
         // C uhitm.c hmon_hitmon :1906–1909 — TRUE only (not mhitm/hmonas

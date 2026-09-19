@@ -36,7 +36,7 @@ import {
     ACCFOOD, HMON_THROWN, HMON_KICKED, HMON_APPLIED, engulfing_u, STRAT_WAITMASK,
     M_AP_TYPE, M_AP_MONSTER, M_AP_NOTHING,
     BRK_FROM_INV, BRK_KNOWN2BREAK, BRK_KNOWN2NOTBREAK, BRK_KNOWN_OUTCOME,
-    ismnum, isok, u_at, MM_IGNOREWATER, MM_IGNORELAVA,
+    ismnum, isok, u_at, MM_IGNOREWATER, MM_IGNORELAVA, MM_NOMSG,
     HURTLING, FORCEBUNGLE, IRONBARS, Upolyd, FACE, HEAD, ARM, FOOT, STONING,
     TIMEOUT, WT_TO_DMG, POTHIT_HERO_THROW, Has_contents, NON_PM, LOW_PM,
     W_WEP, W_SWAPWEP, W_QUIVER, STR19, LOST_NONE, SLT_ENCUMBER, Is_airlevel,
@@ -59,7 +59,7 @@ import { acurr, acurrstr, A_CON, A_DEX, A_STR, change_luck, exercise, Fumbling }
 import {
     calc_capacity, fully_identify_obj, encumber_msg, getobj, prinv, cmdq_add_key,
 } from './invent.js';
-import { add_to_minv, mpickobj } from './makemon.js';
+import { add_to_minv, mpickobj, makemon, set_malign } from './makemon.js';
 import { finish_quest } from './quest.js';
 import { align_gname } from './roles.js';
 import { find_mac } from './mhitm.js';
@@ -74,11 +74,11 @@ import {
     monsterNames,
 } from './generated/monsters_data.js';
 import {
-    xname, killer_xname, singular, an, the, vtense, doname, thesimpleoname,
+    xname, killer_xname, singular, an, An, the, vtense, doname, thesimpleoname,
     makeplural, otense, mshot_xname,
 } from './objnam.js';
 import { m_at, wakeup, seemimic, wake_nearto, distmin, monnear, m_respond, setmangry } from './mon.js';
-import { mon_nam, Monnam, hliquid, Hallucination, Some_Monnam, x_monnam, pmname } from './do_name.js';
+import { mon_nam, Monnam, hliquid, Hallucination, Some_Monnam, x_monnam, pmname, rndmonnam } from './do_name.js';
 import { noit_mhim, NEUTRAL } from './mondata.js';
 import { which_armor } from './worn.js';
 import {
@@ -133,6 +133,8 @@ const GAUNTLETS_OF_DEXTERITY = objectNames.indexOf('GAUNTLETS_OF_DEXTERITY');
 const FAKE_AMULET_OF_YENDOR = objectNames.indexOf('FAKE_AMULET_OF_YENDOR');
 const AMULET_OF_YENDOR = objectNames.indexOf('AMULET_OF_YENDOR');
 const CORPSE = objectNames.indexOf('CORPSE');
+const PM_HOMUNCULUS = monsterNames.indexOf('PM_HOMUNCULUS');
+const PM_IMP = monsterNames.indexOf('PM_IMP');
 const SLING = objectNames.indexOf('SLING');
 const EUCALYPTUS_LEAF = objectNames.indexOf('EUCALYPTUS_LEAF');
 const KELP_FROND = objectNames.indexOf('KELP_FROND');
@@ -1223,8 +1225,28 @@ async function breakmsg(obj, in_view) {
 }
 
 /**
+ * C ref: dothrow.c release_camera_demon :2457–2472 — smashing an expensive
+ * camera may release a picture-painting demon (rn2(3); homunculus 2/3,
+ * else imp, via MM_NOMSG). Peaceful iff the camera is uncursed. D-2486.
+ * Callers: breakobj EXPENSIVE_CAMERA arm below (C :2523); uhitm.js
+ * hmon_hitmon_misc_obj camera arm (C uhitm.c:1142–1150).
+ */
+export async function release_camera_demon(obj, x, y) {
+    if (!rn2(3)) {
+        const mtmp = makemon(mons(rn2(3) ? PM_HOMUNCULUS : PM_IMP), x, y, MM_NOMSG);
+        if (mtmp) {
+            if (canspotmon(mtmp)) {
+                await pline(`${Hallucination() ? An(rndmonnam(null)) : 'The picture-painting demon'} is released!`);
+            }
+            mtmp.mpeaceful = !obj.cursed;
+            set_malign(mtmp);
+        }
+    }
+}
+
+/**
  * C ref: dothrow.c breakobj — side effects then delobj (non-fracture).
- * Named omit: crackable erode_obj; explode_oil; release_camera_demon;
+ * Named omit: crackable erode_obj; explode_oil;
  * pyrolisk explode; break_seq simultaneous make_angry polish.
  * @returns {Promise<number>} 1 if destroyed
  */
@@ -1251,7 +1273,7 @@ export async function breakobj(obj, x, y, hero_caused, from_invent) {
         }
         break;
     case EXPENSIVE_CAMERA:
-        // release_camera_demon deferred
+        await release_camera_demon(obj, x, y);
         break;
     case EGG:
         if (hero_caused && obj.spe && ismnum(obj.corpsenm)) {
