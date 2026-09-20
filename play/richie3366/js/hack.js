@@ -58,7 +58,8 @@ import { xname, the, The, makeplural, an, just_an } from './objnam.js';
 import { A_STR, A_CON, A_DEX, acurr, acurrstr, exercise, Fumbling, adjalign } from './attrib.js';
 import { objdescr_is } from './apply.js';
 import { rn2, rnd, rn1 } from './rng.js';
-import { ing_suffix } from './hacklib.js';
+import { ing_suffix, upstart } from './hacklib.js';
+import { visible_region_at, reg_damg } from './region.js';
 import { midnight } from './calendar.js';
 import {
     PM_GRID_BUG, PM_WIZARD, PM_ELF, PM_VALKYRIE, PM_SAMURAI,
@@ -1829,9 +1830,11 @@ export function waterbody_name(x, y) {
 }
 
 /**
- * C ref: hack.c u_locomotion — Lev/Fly capitalize path; poly locomotion deferred.
+ * C ref: hack.c u_locomotion `:1817–1829` — live export (C-home file).
+ * Lev/Fly return lowercase here; C capitalize path + locomotion(youmonst.data,
+ * def) poly fallback deferred (map-named).
  */
-function u_locomotion(defWord) {
+export function u_locomotion(defWord) {
     const u = game.u || {};
     if (u.Levitation) return 'float';
     if (u.Flying) return 'fly';
@@ -1943,35 +1946,15 @@ function Confusion_prop() {
     return !!((u.HConfusion | 0) || u.Confusion);
 }
 
-/** C hacklib.c upstart — capitalize first letter. */
-function upstart_word(str) {
-    const s = String(str ?? '');
-    if (!s) return s;
-    return s.charAt(0).toUpperCase() + s.slice(1);
-}
-
 /**
- * C region.c visible_region_at / reg_damg — local clones so hack.js
- * does not import region.js (region.js already imports hack.js).
- */
-function visible_region_at_xy(x, y) {
-    const regs = game.regions || [];
-    for (const reg of regs) {
-        if (!reg.visible || reg.ttl === -2) continue;
-        for (const r of reg.rects || []) {
-            if (x >= r.lx && x <= r.hx && y >= r.ly && y <= r.hy) return reg;
-        }
-    }
-    return null;
-}
-function reg_damg(reg) {
-    if (!reg || !reg.visible || reg.ttl === -2) return 0;
-    return reg.arg | 0;
-}
-
-/**
- * C ref: hack.c avoid_trap_andor_region — ParanoidTrap yn before a
- * viable step onto a tseen trap (or into a visible gas region).
+ * C ref: hack.c avoid_trap_andor_region `:2513–2582` in C order.
+ * Region arm `:2527–2552`: ParanoidTrap + !Blind/Stunned/Confusion/Hallu +
+ * m-prefix/run gate + visible_region_at new/old pair (damage-escalation
+ * only) + test_move, then upstart("%s into that %s cloud?") via
+ * paranoid_query; decline → nomul(0), move = 0, TRUE.
+ * Trap arm `:2553–2580`: ParanoidTrap + !Stunned/Confusion + m-prefix/run
+ * gate + tseen trap + test_move + immune_to_trap/Hallu gate, then
+ * "Really %s %s that %s?" via paranoid_query; decline stops the move.
  * Default paranoia_bits include PARANOID_TRAP, not PARANOID_CONFIRM,
  * so paranoid_query uses yn (not getlin "yes").
  * @returns {Promise<boolean>} true → stop moving
@@ -1983,20 +1966,21 @@ export async function avoid_trap_andor_region(x, y) {
     const ParanoidConfirm = (bits & PARANOID_CONFIRM) !== 0;
     const nopick = !!(game.context?.nopick);
     const running = !!(game.context?.run);
-    // C: skip m-prefix unless also running
+    // C :2530: skip m-prefix unless also running
     const wouldAsk = !nopick || running;
 
+    // C :2527–2552: visible gas-cloud region entry confirmation.
     if (ParanoidTrap && !Blind_prop() && !Stunned_prop() && !Confusion_prop()
         && !Hallucination() && wouldAsk) {
-        const newreg = visible_region_at_xy(x, y);
+        const newreg = visible_region_at(x, y);
         if (newreg) {
-            const oldreg = visible_region_at_xy(u.ux, u.uy);
+            const oldreg = visible_region_at(u.ux, u.uy);
             const newDmg = reg_damg(newreg);
             const oldDmg = oldreg ? reg_damg(oldreg) : 0;
             if ((!oldreg || (newDmg > 0 && oldDmg === 0))
                 && await test_move(u.ux | 0, u.uy | 0, u.dx | 0, u.dy | 0, TEST_MOVE)) {
                 const cloud = newDmg > 0 ? 'poison gas' : 'vapor';
-                const qbuf = upstart_word(
+                const qbuf = upstart(
                     `${u_locomotion('step')} into that ${cloud} cloud?`,
                 );
                 if (!(await paranoid_query(ParanoidConfirm, qbuf))) {
@@ -2008,6 +1992,7 @@ export async function avoid_trap_andor_region(x, y) {
         }
     }
 
+    // C :2553–2580: known-trap step confirmation.
     if (ParanoidTrap && !Stunned_prop() && !Confusion_prop() && wouldAsk) {
         const trap = t_at(x, y);
         if (trap && trap.tseen && await test_move(u.ux | 0, u.uy | 0, u.dx | 0, u.dy | 0, TEST_MOVE)
@@ -2015,7 +2000,10 @@ export async function avoid_trap_andor_region(x, y) {
                 || Hallucination())) {
             const traptype = Hallucination() ? rnd(TRAPNUM - 1) : (trap.ttyp | 0);
             const into = into_vs_onto(traptype);
-            const qbuf = `Really ${u_locomotion('step')} ${into ? 'into' : 'onto'} that ${trapname(traptype)}?`;
+            // C :2571: defsyms[trap_to_defsym(traptype)].explanation —
+            // trapname(..., TRUE) is the identical expression (override skips
+            // the Hallucination re-roll; traptype already holds C's rnd pick).
+            const qbuf = `Really ${u_locomotion('step')} ${into ? 'into' : 'onto'} that ${trapname(traptype, true)}?`;
             if (!(await paranoid_query(ParanoidConfirm, qbuf))) {
                 nomul(0);
                 if (game.context) game.context.move = 0;

@@ -1882,9 +1882,12 @@ function singplur_compound(str) {
 
 /**
  * C ref: objnam.c makesingular — wish/plural → canonical object name.
- * Compound via singplur_compound singularizes the head only; as_is;
- * one_off reverse; -ies/-ves/-es/-s. Named omissions: pronoun genders;
- * craft/mongoose; badman men→man; full Strcasecpy case polish.
+ * Compound via singplur_compound singularizes the head only; as_is +
+ * special_subjs + craft + slice/mongoose + badman-men keep
+ * (singplur_lookup `:2719–2762` singular arms); one_off reverse;
+ * -ies/-ves/-es/-s; men→man (badman gate); matzot/ae/eaux.
+ * Named omissions: pronoun they/them/their block; ia→ium
+ * (balactherium `:3149–3153`, own row); full Strcasecpy case polish.
  */
 export function makesingular(oldstr) {
     if (oldstr == null) return '';
@@ -1917,6 +1920,23 @@ export function makesingular(oldstr) {
             && bp[bp.length - sl.length - 1] === ' ')) {
             return bp + excess;
         }
+    }
+    /* C objnam.c singplur_lookup `:2732` — "craft" suffix stays as-is
+       (aircraft, hovercraft); bare "craft" (len 5) falls through. */
+    if (bp.length > 5 && eqCI(bp.slice(bp.length - 5), 'craft')) {
+        return bp + excess;
+    }
+    /* C `:2736–2743` — whole-word only (strcmpi, not suffix): "slice"
+       and "mongoose" stay (avoids the one_off lice/goose false hits
+       below); the singular arm performs no transform. */
+    if (eqCI(bp, 'slice') || eqCI(bp, 'mongoose')) {
+        return bp + excess;
+    }
+    /* C `:2758–2762` men arm — *men with a no_man prefix (abdomen,
+       specimen, omen) is already singular: keep, skip all stripping. */
+    if (bp.length > 2 && eqCI(bp.slice(bp.length - 3), 'men')
+        && badman(bp, false)) {
+        return bp + excess;
     }
 
     // C: singplur_lookup one_off reverse (plur → sing)
@@ -1975,8 +1995,9 @@ export function makesingular(oldstr) {
         return bp + excess;
     }
 
-    // C: men → man (badman defer — leave men as-is when badman)
-    if (/men$/i.test(bp) && bp.length >= 3) {
+    /* C `:3137–3140` (singplur_lookup `:2758–2762` men arm converse):
+       *men → *man unless badman (abdomen/specimen/omen kept above). */
+    if (/men$/i.test(bp) && bp.length >= 3 && !badman(bp, false)) {
         bp = bp.slice(0, -2) + (bp[bp.length - 2] === 'E' ? 'AN' : 'an');
         return bp + excess;
     }
@@ -2812,6 +2833,32 @@ export function simpleonames(obj) {
     // C `:2432` — if (obj->quan != 1L) makeplural(simpleoname)
     if (((obj.quan ?? 1) | 0) !== 1) return makeplural(base);
     return base;
+}
+
+/**
+ * C ref: objnam.c actualoname `:2488–2498` — minimal_xname with override_ID
+ * (iflags.override_ID=TRUE): true type name even when oc_name_known is
+ * unset. Mirrors C's save/force/restore on the oc table (`:1045–1052`):
+ * suppress oc_uname, force oc_name_known + dknown, xname a singular
+ * bknown-0 copy, restore, strip the cleric-forced "uncursed " prefix
+ * (`:1084–1086`).
+ * Named omissions: bareobj field subset (corpsenm/known/owt/AMULET known —
+ * dead arms for the scroll/call use-case; simpleonames above documents the
+ * same minimal_xname subset); SLIME_MOLD spe copy (pretty_base reads live
+ * spe); distant_name wrapper (identity for carried objects).
+ */
+export function actualoname(obj) {
+    const oc = game.objects?.[obj.otyp | 0];
+    const save_uname = oc ? oc.oc_uname : undefined;
+    const save_name_known = oc ? oc.oc_name_known : undefined;
+    const save_dknown = obj.dknown;
+    if (oc) { oc.oc_uname = 0; oc.oc_name_known = 1; }
+    obj.dknown = 1;
+    let res = xname({ ...obj, quan: 1, bknown: 0 });
+    obj.dknown = save_dknown;
+    if (oc) { oc.oc_uname = save_uname; oc.oc_name_known = save_name_known; }
+    if (res.startsWith('uncursed ')) res = res.slice('uncursed '.length);
+    return res;
 }
 
 /**

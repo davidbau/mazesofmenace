@@ -1,7 +1,8 @@
 // region.js — gas-cloud / NhRegion subset.
 // C ref: region.c create_region / add_rect_to_reg / create_gas_cloud /
 // make_gas_cloud / visible_region_at / any_visible_region /
-// clear_regions / run_regions / expire_gas_cloud /
+// clear_regions / rest_regions (+ reset_region_mids) / run_regions /
+// expire_gas_cloud /
 // in_out_region / m_in_out_region / update_monster_region /
 // inside_gas_cloud; region_danger / region_safety (pray);
 // read.c valid_cloud_pos.
@@ -52,6 +53,7 @@ import { Monnam } from './do_name.js';
 import { monstseesu, monstunseesu } from './mondata.js';
 import { dist2 } from './hacklib.js';
 import { level_mon_at } from './worm.js';
+import { lookup_bones_id } from './bones.js';
 
 const MAX_CLOUD_SIZE = 150;
 const INSIDE_GAS_CLOUD = 1; // JS inside_f tag (C callbacks[] uses 0)
@@ -642,10 +644,131 @@ function remove_region(reg) {
 /**
  * C ref: region.c clear_regions — free all NhRegions (mklev clear_level_structures;
  * rest_regions security wipe). Named omissions: free_region field teardown;
- * save_regions binary format (JS stashes the array on level_info).
+ * save_regions binary format (JS stashes the array on level_info;
+ * rest_regions below rebuilds live regions from the stash).
  */
 export function clear_regions() {
     game.regions = [];
+}
+
+/**
+ * C ref: nethack-c/upstream/src/region.c:928-941 reset_region_mids —
+ * bones-only (ghostly implied): remap each stored monster id through the
+ * getlev ghostly id map (restore.c add/lookup_id_mapping ⇔ bones.js
+ * record/lookup_bones_id), shrinking the list in place when a monster has
+ * no mapping (defunct/purged) — order doesn't matter. n_monst updated;
+ * max_monst keeps the stored count like C (never touched here). The JS
+ * array is truncated to n so contents-driven readers (mon_in_region)
+ * agree with n_monst.
+ */
+function reset_region_mids(reg) {
+    let n = reg.n_monst | 0;
+    const mids = reg.monsters || (reg.monsters = []);
+    let i = 0;
+    while (i < n) {
+        const nid = lookup_bones_id(mids[i]);
+        if (nid == null) {
+            /* shrink list to remove missing monster; order doesn't matter */
+            mids[i] = mids[--n];
+        } else {
+            /* move on to next monster */
+            mids[i] = nid;
+            ++i;
+        }
+    }
+    mids.length = n < 0 ? 0 : n;
+    reg.n_monst = n;
+}
+
+/**
+ * C ref: nethack-c/upstream/src/region.c:798-892 rest_regions — getlev
+ * restore (sole C caller restore.c:1225): security-wipe, then rebuild each
+ * live NhRegion from its record in C field order. Sfi_* binary decode ⇔
+ * stash-field copy (JS saves JSON per Constitution §1.6 — the binary
+ * save_regions format stays a named omission, data.md); alloc ⇔ fresh
+ * object literal (GC); n_regions/max_regions ⇔ game.regions.length.
+ * Installed directly (never add_region — C restores without its
+ * block/newsym/hero scan, like save does without re-blocking).
+ *
+ * ttl (`:862-864`): non-ghostly rebases on elapsed moves since the stash
+ * timestamp (save-time moves ⇔ stash omoves); ghostly (bones) ignores it.
+ * Missing ttl defaults to -1 (create_region "forever", never 0-dropped).
+ * Post-pass (`:879-891`, always live — SFCTOOL is a tool-only build):
+ * drop ttl==0 via remove_region (no expire_f callback yet, like C),
+ * else ghostly with monsters ⇒ reset_region_mids.
+ */
+export function rest_regions(stored, elapsed, ghostly) {
+    clear_regions(); /* Just for security — C :806 */
+    /* C :807-811: bones files ignore the timestamp (ghostly ⇒ 0 tick). */
+    const tick = ghostly ? 0 : (elapsed | 0);
+    for (const entry of stored || []) {
+        const s = (entry && typeof entry === 'object') ? entry : {};
+        /* C :818 bounding_box. */
+        const box = s.bounding_box || {};
+        const reg = {
+            bounding_box: {
+                lx: box.lx | 0, ly: box.ly | 0,
+                hx: box.hx | 0, hy: box.hy | 0,
+            },
+            /* C :819-826 nrects + rects. */
+            rects: [],
+            nrects: s.nrects | 0,
+            /* C :828-829 attach_2_u / attach_2_m. */
+            attach_2_u: !!s.attach_2_u,
+            attach_2_m: s.attach_2_m | 0,
+            /* C :830-847: length 0 ⇔ NULL (empty string restores as null). */
+            enter_msg: s.enter_msg ? String(s.enter_msg) : null,
+            leave_msg: s.leave_msg ? String(s.leave_msg) : null,
+            ttl: -1,
+            /* C :865-870 expire/can_enter/enter/can_leave/leave/inside. */
+            expire_f: s.expire_f | 0,
+            can_enter_f: s.can_enter_f | 0,
+            enter_f: s.enter_f | 0,
+            can_leave_f: s.can_leave_f | 0,
+            leave_f: s.leave_f | 0,
+            inside_f: s.inside_f | 0,
+            /* C :871 player_flags. */
+            player_flags: s.player_flags | 0,
+            monsters: null,
+            n_monst: 0,
+            max_monst: 0,
+            visible: false,
+            glyph: null,
+            arg: 0,
+        };
+        const srects = s.rects || [];
+        for (let j = 0; j < reg.nrects; j++) {
+            const sr = srects[j] || {};
+            reg.rects.push({
+                lx: sr.lx | 0, ly: sr.ly | 0,
+                hx: sr.hx | 0, hy: sr.hy | 0,
+            });
+        }
+        /* C :860-864 check for expired region — rebase, floor at 0. */
+        let ttl = (s.ttl == null ? -1 : s.ttl) | 0;
+        if (ttl >= 0) ttl = ttl > tick ? ttl - tick : 0;
+        reg.ttl = ttl;
+        if (ghostly) { /* C :872-875 settings pertained to old player */
+            clear_hero_inside(reg);
+            clear_heros_fault(reg);
+        }
+        /* C :876-884 n_monst + monsters + max_monst. */
+        const nMonst = s.n_monst | 0;
+        reg.monsters = nMonst > 0
+            ? (s.monsters || []).slice(0, nMonst).map((m) => m | 0)
+            : null;
+        reg.max_monst = nMonst;
+        reg.visible = !!s.visible; /* C :885 */
+        reg.glyph = s.glyph ?? null; /* C :886 (numeric cmap ⇔ tag named) */
+        reg.arg = s.arg ?? 0; /* C :887 Sfi_any */
+        game.regions.push(reg);
+    }
+    /* C :879-891 post-pass in reverse, no expire_f callback yet. */
+    for (let i = game.regions.length - 1; i >= 0; i--) {
+        const r = game.regions[i];
+        if ((r.ttl | 0) === 0) remove_region(r);
+        else if (ghostly && (r.n_monst | 0) > 0) reset_region_mids(r);
+    }
 }
 
 /**

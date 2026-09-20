@@ -1317,3 +1317,14 @@ export async function moveloop(resuming) {
 export function timet_delta(etim, stim) {
     return (Number(etim) || 0) - (Number(stim) || 0);
 }
+
+/**
+ * C ref: allmain.c timet_to_seconds `:987–993` — seconds since the epoch
+ * (`timet_delta(ttim, (time_t) 0)`; the Unix-cast comment is the rationale).
+ * Contest time values are unix seconds; the live timet_delta matches.
+ * @param {number} ttim
+ * @returns {number}
+ */
+export function timet_to_seconds(ttim) {
+    return timet_delta(ttim, 0);
+}

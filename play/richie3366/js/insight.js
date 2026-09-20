@@ -312,7 +312,7 @@ function ensure_uachieved() {
 }
 
 /** C ref: insight.c sokoban_in_play — ACH_SOKO in u.uachieved */
-function sokoban_in_play() {
+export function sokoban_in_play() {
     const ach = game.u?.uachieved;
     if (!ach) return false;
     for (let i = 0; ach[i]; i++) {

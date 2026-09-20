@@ -6,7 +6,7 @@
 import { game } from './gstate.js';
 import {
     COLNO, ROWNO, MAX_RADIUS, LS_NONE, LS_MONSTER, LS_OBJECT, TEMP_LIT,
-    OBJ_INVENT, OBJ_FLOOR, OBJ_MINVENT, OBJ_FREE,
+    OBJ_INVENT, OBJ_FLOOR, OBJ_MINVENT, OBJ_FREE, FM_EVERYWHERE,
 } from './const.js';
 import { circle_ptr, clear_path, vision_recalc } from './vision.js';
 import {
@@ -19,6 +19,9 @@ import { simpleonames, otense, xname } from './objnam.js';
 import { monsterNames } from './monsters.js';
 import { ignitable, artifact_light, end_burn } from './timeout.js';
 import { objectNames } from './objects.js';
+import { find_oid } from './shk.js';
+import { find_mid } from './mon.js';
+import { lookup_bones_id } from './bones.js';
 
 const MAGIC_LAMP = objectNames.indexOf('MAGIC_LAMP');
 
@@ -249,6 +252,72 @@ export function relight_monsters() {
         if (!mtmp || mtmp.mx <= 0) continue;
         const ct = emits_light(mtmp.data);
         if (ct > 0) new_light_source(mtmp.mx, mtmp.my, ct, LS_MONSTER, mtmp);
+    }
+}
+
+/**
+ * C ref: light.c relink_light_sources `:517–563` — after a restore, walk
+ * `gl.light_base` and re-point every entry still flagged LSF_NEEDS_FIXUP
+ * (its id is an unrestored o_id/m_id, C `:541` `a_uint`) at the live
+ * object/monster, then clear the flag. C callers restore.c `:726`
+ * (restgamestate, FALSE) and `:1300` (getlev, ghostly) — JS sites
+ * save.js `relinkGlobalTimersLights` + the two guard calls below.
+ * `throw` ≡ C `panic` (lev_json.js relink precedent); `nid` stays `| 0`
+ * for the id compares, `>>> 0` only for the C `%u` message text.
+ * Callees: live `find_oid` (shk.js) / `find_mid` (mon.js); the ghostly
+ * remap reads live `lookup_bones_id` (bones.js — the documented JS
+ * analogue of C `lookup_id_mapping`, restore.c:1484, whose bucket/list
+ * state is the bones id map; C obj-id mappings have no JS recorder yet,
+ * so the ghostly obj arm resolves through the mon table like the
+ * region.js reset_region_mids consumer).
+ * @param {boolean} ghostly  bones-load remap pass (always false on the
+ * save-file path; ghostly ⇔ bones → getlev_bones, which never installs
+ * lights — the arm stays for C order).
+ */
+export function relink_light_sources(ghostly) {
+    // C :538 — walk gl.light_base (JS: game.light_base array).
+    for (const ls of game.light_base || []) {
+        // C :539 — only entries still needing fixup.
+        if (!((ls.flags | 0) & LSF_NEEDS_FIXUP))
+            continue;
+        // C :540 — LS_OBJECT / LS_MONSTER only.
+        if ((ls.type | 0) === LS_OBJECT || (ls.type | 0) === LS_MONSTER) {
+            // C :541 — nid = ls->id.a_uint (JS: a flagged entry holds the
+            // bare numeric id, the deserLightList shape).
+            let nid = ls.id | 0;
+            // C :542–543 — ghostly bones remap; a miss is panic.
+            if (ghostly) {
+                const mapped = lookup_bones_id(nid);
+                if (mapped === null)
+                    throw new Error('relink_light_sources: no id mapping');
+                nid = mapped | 0;
+            }
+            // C :545.
+            let which = '\0';
+            if ((ls.type | 0) === LS_OBJECT) {
+                // C :546–548 — assign first, then NULL-check.
+                ls.id = find_oid(nid);
+                if (!ls.id)
+                    which = 'o';
+            } else {
+                // C :549–551 — find_mid(nid, FM_EVERYWHERE). JS find_mid
+                // searches fmon only (FM_MIGRATE/FM_MYDOGS named omit in
+                // mon.js); the flag is passed for C fidelity.
+                ls.id = find_mid(nid, FM_EVERYWHERE);
+                if (!ls.id)
+                    which = 'm';
+            }
+            // C :553–555 — a miss is panic.
+            if (which !== '\0')
+                throw new Error(
+                    `relink_light_sources: can't find ${which}_id ${nid >>> 0}`);
+        } else {
+            // C :556–557 — any other type is panic.
+            throw new Error(
+                `relink_light_sources: bad type (${(ls.type | 0)})`);
+        }
+        // C :559 — clear the fixup flag.
+        ls.flags = (ls.flags | 0) & ~LSF_NEEDS_FIXUP;
     }
 }
 

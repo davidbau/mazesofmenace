@@ -36,6 +36,7 @@ import {
     MENU_SHIFT_RIGHT,
     MENU_SHIFT_LEFT,
     MENU_ITEMFLAGS_SKIPINVERT,
+    MAX_MENU_MAPPED_CMDS,
     PICK_ONE,
     PICK_ANY,
     WIZKIT_MAX,
@@ -130,6 +131,7 @@ import {
     FOOD_CLASS, POTION_CLASS, SCROLL_CLASS, SPBOOK_CLASS, WAND_CLASS,
     COIN_CLASS, GEM_CLASS, ROCK_CLASS, BALL_CLASS, CHAIN_CLASS,
     objectNames, objectNameStrs, objects,
+    MAXOCLASSES, def_oc_syms,
 } from './objects.js';
 import { EXTCMDLIST, INTERNALCMD } from './generated/extcmdlist_data.js';
 import { LOADSYMS, SYM_CONTROL } from './generated/glyphsyms_data.js';
@@ -798,6 +800,190 @@ export const default_menu_cmd_info = [
     { name: 'menu_shift_right', cmd: MENU_SHIFT_RIGHT, desc: 'Pan current page to right (perm_invent only)' },
     { name: 'menu_shift_left', cmd: MENU_SHIFT_LEFT, desc: 'Pan current page to left (perm_invent only)' },
 ];
+
+/**
+ * C options.c `to_be_done[]` `:125` — get_val text for menu-command key
+ * options, which have no readable value (the bindings live in the menu map).
+ */
+const to_be_done = '(to be done)';
+
+/**
+ * C `Sprintf(retbuf, ...)` / `retbuf[0] = '\0'` at a get_val call site —
+ * C writes into the caller's char buffer, but JS strings are immutable, so
+ * `get_option_value` passes a `{ buf }` holder as `opts`. do_set callers
+ * pass the plain option string, which these arms only read.
+ */
+function set_optbuf(opts, s) {
+    if (opts && typeof opts === 'object' && typeof opts.buf === 'string')
+        opts.buf = s;
+}
+
+/**
+ * C options.c `check_misc_menu_command` `:694–706` (staticfn) — index into
+ * `default_menu_cmd_info` whose name matches the option head, else -1.
+ * C's second param is UNUSED; the match runs on `opts` only. The `:649–659`
+ * `parseoptions` call site is `#if 0` (dead in C) — no site.
+ */
+function check_misc_menu_command(opts, _op) {
+    for (let i = 0; i < default_menu_cmd_info.length; i++) { // C `:699`
+        const name_to_check = default_menu_cmd_info[i].name; // C `:700`
+        if (match_optname(opts, name_to_check, // C `:701–703`
+            name_to_check.length, true))
+            return i;
+    }
+    return -1; // C `:705`
+}
+
+/**
+ * C options.c `illegal_menu_cmd_key` `:8037–8057` (staticfn) — TRUE for NUL,
+ * CR/LF/ESC/space, digits, letters other than '@' (C `letter()` counts '@'
+ * as a letter; hacklib.c `:62–72`), and default object-class symbols.
+ * Both `config_error_add` arms are the named map sink (no JS config-error
+ * channel); the `visctrl` text belongs to those messages.
+ */
+function illegal_menu_cmd_key(c) {
+    c &= 0xff; // C uchar `:8038`
+    const ch = String.fromCharCode(c);
+    if (c === 0 || ch === '\r' || ch === '\n' || ch === '\x1b' // C `:8041–8042`
+        || ch === ' ' || (ch >= '0' && ch <= '9') // C digit `:8043`
+        || (((ch >= '@' && ch <= 'Z') || (ch >= 'a' && ch <= 'z')) // C letter
+            && ch !== '@')) { // C `:8043 c != '@'`
+        return true;
+    }
+    for (let j = 1; j < MAXOCLASSES; j++) // C `:8048`
+        if (c === def_oc_syms[j].sym.charCodeAt(0)) // C `:8049`
+            return true;
+    return false; // C `:8056`
+}
+
+/**
+ * C options.c `add_menu_cmd_alias` `:8080–8097` (C global, extern.h:2317) —
+ * append a from→to menu-key mapping. `game.mappedMenu` is the live
+ * `gm.mapped_menu_cmds` / `gm.mapped_menu_op` + `gn.n_menu_mapped` triple
+ * (decl.h `:638–639`/`:678`) read by `mapped_menu_strings` above; the count
+ * is `cmds.length` and the `:8094–8095` NUL writes need no equivalent.
+ * Single-character strings carry C `char` here.
+ */
+export function add_menu_cmd_alias(from_ch, to_ch) {
+    let m = game.mappedMenu;
+    if (!m || typeof m.cmds !== 'string' || typeof m.ops !== 'string')
+        m = game.mappedMenu = { cmds: '', ops: '' };
+    if (m.cmds.length >= MAX_MENU_MAPPED_CMDS) { // C `:8086`
+        pline('out of menu map space.'); // C `:8087`
+    } else {
+        m.cmds += String(from_ch)[0] ?? ''; // C `:8090`
+        m.ops += String(to_ch)[0] ?? ''; // C `:8091`
+        // C `:8092 n_menu_mapped++` is cmds.length now.
+    }
+}
+
+/**
+ * C options.c `spcfn_misc_menu_cmd` `:5452–5476` (staticfn) — do_set arm of
+ * the shared menu-command-key handler. The `:5462` assignment overwrites the
+ * incoming `op` with the value tail; `string_for_opt`'s missing-parameter
+ * arm is the named map omission. get_val/get_cnf_val both clear like C.
+ */
+function spcfn_misc_menu_cmd(midx, req, negated, opts, op) {
+    if (req === REQ_DO_INIT) { // C `:5454–5456`
+        return OPTN_OK;
+    }
+    if (req === REQ_DO_SET) { // C `:5457`
+        if (negated) { // C `:5458`
+            bad_negation(default_menu_cmd_info[midx].name, false); // C `:5459–5460`
+            return OPTN_ERR; // C `:5461`
+        } else if ((op = string_for_opt(opts, false)) !== EMPTY_OPTSTR) { // C `:5462`
+            const c = txt2key(op); // C `:5463`
+
+            if (illegal_menu_cmd_key(c)) // C `:5465`
+                return OPTN_ERR; // C `:5466`
+            add_menu_cmd_alias(String.fromCharCode(c & 0xff), // C `:5467`
+                default_menu_cmd_info[midx].cmd);
+        }
+        return OPTN_OK; // C `:5469`
+    }
+    if (req === REQ_GET_VAL || req === REQ_GET_CNF_VAL) { // C `:5471`
+        set_optbuf(opts, ''); // C `:5472 opts[0] = '\0'`
+        return OPTN_OK; // C `:5473`
+    }
+    return OPTN_OK; // C `:5475`
+}
+
+/**
+ * C options.c `shared_menu_optfn` `:2052–2074` (staticfn) — one body behind
+ * the 13 `optfn_menu_*` wrappers below (C `:2077–2177`; optlist.h NHOPTC
+ * attaches one wrapper per menu-command option name). do_init is a no-op;
+ * do_set resolves the menu-command index then delegates; get_val reports
+ * `to_be_done`; get_cnf_val clears. Exported: the allopt rows point at the
+ * wrappers, which call through here.
+ * Request/optn codes are the file's REQ_/OPTN_ consts (same values as the
+ * older do_init/do_set/get_val/get_cnf_val/optn_ok names above).
+ */
+export function shared_menu_optfn(_optidx, req, negated, opts, op) {
+    if (req === REQ_DO_INIT) { // C `:2056–2058`
+        return OPTN_OK;
+    }
+    if (req === REQ_DO_SET) { // C `:2059`
+        const res = check_misc_menu_command(opts, op); // C `:2060`
+
+        if (res < 0) // C `:2062`
+            return OPTN_ERR; // C `:2063`
+        return spcfn_misc_menu_cmd(res, req, negated, opts, op); // C `:2064`
+    }
+    if (req === REQ_GET_VAL) { // C `:2066`
+        set_optbuf(opts, to_be_done); // C `:2067 Sprintf(opts, "%s", to_be_done)`
+        return OPTN_OK; // C `:2068`
+    }
+    if (req === REQ_GET_CNF_VAL) { // C `:2069`
+        set_optbuf(opts, ''); // C `:2070 opts[0] = '\0'`
+        return OPTN_OK; // C `:2071`
+    }
+    return OPTN_OK; // C `:2073`
+}
+
+/**
+ * C options.c `optfn_menu_*` `:2077–2177` (staticfn) — one-line forwarders
+ * to `shared_menu_optfn`, in C order. Exported for the allopt table below
+ * (optlist.h NHOPTC wires each option name to its wrapper).
+ */
+export function optfn_menu_deselect_all(optidx, req, negated, opts, op) { // C `:2077–2082`
+    return shared_menu_optfn(optidx, req, negated, opts, op); // C `:2081`
+}
+export function optfn_menu_deselect_page(optidx, req, negated, opts, op) { // C `:2085–2090`
+    return shared_menu_optfn(optidx, req, negated, opts, op); // C `:2089`
+}
+export function optfn_menu_first_page(optidx, req, negated, opts, op) { // C `:2093–2098`
+    return shared_menu_optfn(optidx, req, negated, opts, op); // C `:2097`
+}
+export function optfn_menu_invert_all(optidx, req, negated, opts, op) { // C `:2101–2106`
+    return shared_menu_optfn(optidx, req, negated, opts, op); // C `:2105`
+}
+export function optfn_menu_invert_page(optidx, req, negated, opts, op) { // C `:2109–2114`
+    return shared_menu_optfn(optidx, req, negated, opts, op); // C `:2113`
+}
+export function optfn_menu_last_page(optidx, req, negated, opts, op) { // C `:2117–2122`
+    return shared_menu_optfn(optidx, req, negated, opts, op); // C `:2121`
+}
+export function optfn_menu_next_page(optidx, req, negated, opts, op) { // C `:2125–2130`
+    return shared_menu_optfn(optidx, req, negated, opts, op); // C `:2129`
+}
+export function optfn_menu_previous_page(optidx, req, negated, opts, op) { // C `:2133–2138`
+    return shared_menu_optfn(optidx, req, negated, opts, op); // C `:2137`
+}
+export function optfn_menu_search(optidx, req, negated, opts, op) { // C `:2141–2146`
+    return shared_menu_optfn(optidx, req, negated, opts, op); // C `:2145`
+}
+export function optfn_menu_select_all(optidx, req, negated, opts, op) { // C `:2149–2154`
+    return shared_menu_optfn(optidx, req, negated, opts, op); // C `:2153`
+}
+export function optfn_menu_select_page(optidx, req, negated, opts, op) { // C `:2157–2162`
+    return shared_menu_optfn(optidx, req, negated, opts, op); // C `:2161`
+}
+export function optfn_menu_shift_left(optidx, req, negated, opts, op) { // C `:2165–2170`
+    return shared_menu_optfn(optidx, req, negated, opts, op); // C `:2169`
+}
+export function optfn_menu_shift_right(optidx, req, negated, opts, op) { // C `:2173–2178`
+    return shared_menu_optfn(optidx, req, negated, opts, op); // C `:2177`
+}
 
 /**
  * C options.c doset `:8869–8872` / `:8846–8848` WC skip.
@@ -3358,37 +3544,37 @@ const allopt = [
     // optlist.h:430 NHOPTB(mention_walls)
     { name: 'mention_walls', opttyp: BoolOpt, idx: 89, setwhere: SET_IN_GAME, initval: false, addr: { obj: 'flags', key: 'mention_walls' }, optfn: null },
     // optlist.h:433 NHOPTC(menu_deselect_all)
-    { name: 'menu_deselect_all', opttyp: CompOpt, idx: 90, setwhere: SET_IN_CONFIG, initval: false, addr: null, optfn: null },
+    { name: 'menu_deselect_all', opttyp: CompOpt, idx: 90, setwhere: SET_IN_CONFIG, initval: false, addr: null, optfn: optfn_menu_deselect_all },
     // optlist.h:435 NHOPTC(menu_deselect_page)
-    { name: 'menu_deselect_page', opttyp: CompOpt, idx: 91, setwhere: SET_IN_CONFIG, initval: false, addr: null, optfn: null },
+    { name: 'menu_deselect_page', opttyp: CompOpt, idx: 91, setwhere: SET_IN_CONFIG, initval: false, addr: null, optfn: optfn_menu_deselect_page },
     // optlist.h:438 NHOPTC(menu_first_page)
-    { name: 'menu_first_page', opttyp: CompOpt, idx: 92, setwhere: SET_IN_CONFIG, initval: false, addr: null, optfn: null },
+    { name: 'menu_first_page', opttyp: CompOpt, idx: 92, setwhere: SET_IN_CONFIG, initval: false, addr: null, optfn: optfn_menu_first_page },
     // optlist.h:440 NHOPTC(menu_headings)
     { name: 'menu_headings', opttyp: CompOpt, idx: 93, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: null },
     // optlist.h:442 NHOPTC(menu_invert_all)
-    { name: 'menu_invert_all', opttyp: CompOpt, idx: 94, setwhere: SET_IN_CONFIG, initval: false, addr: null, optfn: null },
+    { name: 'menu_invert_all', opttyp: CompOpt, idx: 94, setwhere: SET_IN_CONFIG, initval: false, addr: null, optfn: optfn_menu_invert_all },
     // optlist.h:444 NHOPTC(menu_invert_page)
-    { name: 'menu_invert_page', opttyp: CompOpt, idx: 95, setwhere: SET_IN_CONFIG, initval: false, addr: null, optfn: null },
+    { name: 'menu_invert_page', opttyp: CompOpt, idx: 95, setwhere: SET_IN_CONFIG, initval: false, addr: null, optfn: optfn_menu_invert_page },
     // optlist.h:447 NHOPTC(menu_last_page)
-    { name: 'menu_last_page', opttyp: CompOpt, idx: 96, setwhere: SET_IN_CONFIG, initval: false, addr: null, optfn: null },
+    { name: 'menu_last_page', opttyp: CompOpt, idx: 96, setwhere: SET_IN_CONFIG, initval: false, addr: null, optfn: optfn_menu_last_page },
     // optlist.h:449 NHOPTC(menu_next_page)
-    { name: 'menu_next_page', opttyp: CompOpt, idx: 97, setwhere: SET_IN_CONFIG, initval: false, addr: null, optfn: null },
+    { name: 'menu_next_page', opttyp: CompOpt, idx: 97, setwhere: SET_IN_CONFIG, initval: false, addr: null, optfn: optfn_menu_next_page },
     // optlist.h:451 NHOPTC(menu_objsyms)
     { name: 'menu_objsyms', opttyp: CompOpt, idx: 98, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: null },
     // optlist.h:455 NHOPTB(menu_overlay)
     { name: 'menu_overlay', opttyp: BoolOpt, idx: 99, setwhere: SET_IN_GAME, initval: true, addr: { obj: 'iflags', key: 'menu_overlay' }, optfn: null },
     // optlist.h:463 NHOPTC(menu_previous_page)
-    { name: 'menu_previous_page', opttyp: CompOpt, idx: 100, setwhere: SET_IN_CONFIG, initval: false, addr: null, optfn: null },
+    { name: 'menu_previous_page', opttyp: CompOpt, idx: 100, setwhere: SET_IN_CONFIG, initval: false, addr: null, optfn: optfn_menu_previous_page },
     // optlist.h:465 NHOPTC(menu_search)
-    { name: 'menu_search', opttyp: CompOpt, idx: 101, setwhere: SET_IN_CONFIG, initval: false, addr: null, optfn: null },
+    { name: 'menu_search', opttyp: CompOpt, idx: 101, setwhere: SET_IN_CONFIG, initval: false, addr: null, optfn: optfn_menu_search },
     // optlist.h:467 NHOPTC(menu_select_all)
-    { name: 'menu_select_all', opttyp: CompOpt, idx: 102, setwhere: SET_IN_CONFIG, initval: false, addr: null, optfn: null },
+    { name: 'menu_select_all', opttyp: CompOpt, idx: 102, setwhere: SET_IN_CONFIG, initval: false, addr: null, optfn: optfn_menu_select_all },
     // optlist.h:469 NHOPTC(menu_select_page)
-    { name: 'menu_select_page', opttyp: CompOpt, idx: 103, setwhere: SET_IN_CONFIG, initval: false, addr: null, optfn: null },
+    { name: 'menu_select_page', opttyp: CompOpt, idx: 103, setwhere: SET_IN_CONFIG, initval: false, addr: null, optfn: optfn_menu_select_page },
     // optlist.h:472 NHOPTC(menu_shift_left)
-    { name: 'menu_shift_left', opttyp: CompOpt, idx: 104, setwhere: SET_IN_CONFIG, initval: false, addr: null, optfn: null },
+    { name: 'menu_shift_left', opttyp: CompOpt, idx: 104, setwhere: SET_IN_CONFIG, initval: false, addr: null, optfn: optfn_menu_shift_left },
     // optlist.h:474 NHOPTC(menu_shift_right)
-    { name: 'menu_shift_right', opttyp: CompOpt, idx: 105, setwhere: SET_IN_CONFIG, initval: false, addr: null, optfn: null },
+    { name: 'menu_shift_right', opttyp: CompOpt, idx: 105, setwhere: SET_IN_CONFIG, initval: false, addr: null, optfn: optfn_menu_shift_right },
     // optlist.h:476 NHOPTB(menu_tab_sep)
     { name: 'menu_tab_sep', opttyp: BoolOpt, idx: 106, setwhere: SET_WIZONLY, initval: false, addr: { obj: 'iflags', key: 'menu_tab_sep' } /* C: &iflags.menu_tab_sep */, optfn: null },
     // optlist.h:479 NHOPTB(menucolors)
@@ -3818,9 +4004,10 @@ function complain_about_duplicate(_optidx) {
  * Whole comma-separated line when tinitial (right-to-left: split at the
  * first comma, recurse on the tail, then handle the head); single option
  * otherwise. Matching is name-prefix with per-option minmatch (alias loop
- * second); the optfn dispatch arm is dormant — every JS allopt optfn is
- * null, so C's `if (allopt[matchidx].optfn)` guard fails exactly like C
- * with a null optfn. Live effects: comma recursion, negation folding,
+ * second); the optfn dispatch arm is live for the 13 menu-command options
+ * (shared_menu_optfn family) and dormant for the rest — every other JS
+ * allopt optfn is null, so C's `if (allopt[matchidx].optfn)` guard fails
+ * exactly like C with a null optfn. Live effects: comma recursion, negation folding,
  * duplicate detection state, opt_set_in_config marking (fires once an optfn
  * ships), and the S_ → parsesymbols/check_gold_symbol fallback (both live).
  * Named omissions (map): config_error_add sink (6 sites), switch_symbols
@@ -3980,9 +4167,11 @@ export function parseoptions(opts, tinitial, tfromFile) {
  * get_config (nhlua.c `:683`, named: nhl_get_config unported). The static
  * retbuf is folded into the return value; C NULL returns are null. BoolOpt
  * arm (`:8489–8492`): live addr read, 'true'/'false'. CompOpt arm
- * (`:8493–8501`): dormant — every allopt optfn is null (handlers unported),
- * so the C `&& optfn` guard fails and it returns null exactly like C with a
- * null optfn. Matches fall through like C (null-addr BoolOpt, OthrOpt).
+ * (`:8493–8501`): live for the 13 menu-command options (shared_menu_optfn
+ * family — get_val reports `(to be done)`); every other allopt optfn is
+ * null (handlers unported), so the C `&& optfn` guard fails and it returns
+ * null exactly like C with a null optfn. Matches fall through like C
+ * (null-addr BoolOpt, OthrOpt).
  */
 export function get_option_value(optname, cnfvalid) {
     for (let i = 0; i < allopt.length && allopt[i].name; i++) { // C `:8487`
@@ -3992,11 +4181,14 @@ export function get_option_value(optname, cnfvalid) {
                 return cur ? 'true' : 'false'; // C `:8491–8492` Sprintf
             } else if (allopt[i].opttyp === CompOpt && allopt[i].optfn) { // C `:8493`
                 let reslt = OPTN_ERR; // C `:8494`
-                let retbuf = ''; // C static retbuf
+                // C static retbuf `:8485` — C writes into the caller's char
+                // buffer; JS strings are immutable, so live optfns take a
+                // `{ buf }` holder as `opts` on get_val/get_cnf_val.
+                const holder = { buf: '' };
                 reslt = allopt[i].optfn( // C `:8496–8498`
                     allopt[i].idx, cnfvalid ? REQ_GET_CNF_VAL : REQ_GET_VAL,
-                    false, retbuf, EMPTY_OPTSTR);
-                if (reslt === OPTN_OK && retbuf.length > 0) return retbuf; // C `:8499–8500`
+                    false, holder, EMPTY_OPTSTR);
+                if (reslt === OPTN_OK && holder.buf.length > 0) return holder.buf; // C `:8499–8500`
                 return null; // C `:8501`
             }
         }

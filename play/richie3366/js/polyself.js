@@ -80,8 +80,10 @@ import {
 } from './monsters.js';
 import {
     TT_WEB, TT_BEARTRAP, TT_LAVA, TT_INFLOOR, TT_BURIEDBALL, DISMOUNT_POLY,
-    SICK_ALL, LL_CONDUCT, NECK, STRANGLED,
+    SICK_ALL, LL_CONDUCT, NECK, STRANGLED, PL_CSIZ,
 } from './const.js';
+// change_sex :287 callee (imports.mjs: IN-SCC, runtime-only call — no TDZ read).
+import { max_rank_sz } from './botl.js';
 import { livelog_printf } from './pline.js';
 import {
     make_stoned, make_sick, make_slimed, make_glib,
@@ -781,21 +783,38 @@ export function poly_gender() {
 }
 
 /**
- * C ref: polyself.c change_sex — flip flags.female / mfemale.
- * Named omissions: pl_character rename; amorous-demon set_uasmon.
- * Exported for eat.c eataccessory AMULET_OF_CHANGE.
+ * C ref: polyself.c change_sex `:273–303` — whole body in C order.
+ * C callers: do_wear.c:1008 (wired js/do_wear.js:2607), eat.c:2372
+ * (wired js/eat.js:3013), polyself.c:362 newlevels (wired below :968).
+ * No named omissions: max_rank_sz is live (botl.js); the `:296–300`
+ * succubus/incubus swap is `#if 0`-disabled in C, kept as a comment.
  */
 export function change_sex() {
     const u = game.u || (game.u = {});
     const flags = game.flags || (game.flags = {});
-    const ptr = game.youmonst?.data;
-    if (!Upolyd(u)
-        || (!is_male(ptr) && !is_female(ptr) && !is_neuter(ptr))) {
-        flags.female = !flags.female;
+    const ptr = game.youmonst?.data; // C: gy.youmonst.data
+    /* C :273-280 — !Upolyd check necessary because is_male() and
+     * is_female() may be true for certain roles */
+    if (!Upolyd(u) // C :281
+        || (!is_male(ptr) && !is_female(ptr) && !is_neuter(ptr))) { // C :282-283
+        flags.female = !flags.female; // C :284
     }
-    if (Upolyd(u)) u.mfemale = !u.mfemale;
-    if (!Upolyd(u)) u.umonnum = u.umonster | 0;
-    // PM_AMOROUS_DEMON arm deferred
+    if (Upolyd(u)) u.mfemale = !u.mfemale; // C :285-286 poly'd: also change saved sex
+    max_rank_sz(); // C :287 [this appears to be superfluous]
+    // C :288-291 — pl_character tracks the new sex's role name
+    // (C Strcpy into svp.pl_character[PL_CSIZ]; game.pl_character is its home)
+    if ((Upolyd(u) ? !!u.mfemale : !!flags.female) && game.urole?.name?.f) {
+        game.pl_character = String(game.urole.name.f).slice(0, PL_CSIZ - 1);
+    } else if (game.urole?.name?.m != null) {
+        game.pl_character = String(game.urole.name.m).slice(0, PL_CSIZ - 1);
+    }
+    if (!Upolyd(u)) { // C :292-293
+        u.umonnum = u.umonster | 0;
+    } else if ((u.umonnum | 0) === PM_AMOROUS_DEMON) { // C :294
+        flags.female = !flags.female; // C :295
+        // C :296-300 #if 0 — monster-type swap disabled with PM_AMOROUS_DEMON
+        set_uasmon(); // C :301
+    }
 }
 
 /**

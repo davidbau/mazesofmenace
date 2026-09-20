@@ -18,7 +18,7 @@ import {
     CROSSWALL, TUWALL, TDWALL, TLWALL, TRWALL,
     D_NODOOR, D_CLOSED, D_ISOPEN, D_LOCKED, D_TRAPPED, D_BROKEN,
     In_V_tower, Is_oracle_level, BURN, OBJ_CONTAINED, OBJ_FREE,
-    OROOM, VAULT, THEMEROOM, ROOMOFFSET, MAXNROFROOMS, SHARED, NO_ROOM,
+    OROOM, VAULT, THEMEROOM, ROOMOFFSET, MAXNROFROOMS, MAX_NESTED_ROOMS, SHARED, NO_ROOM,
     SDOOR, SCORR, IRONBARS, FOUNTAIN, SINK, ALTAR, GRAVE, DELPHI,
     SHOPBASE, COURT, ZOO, BEEHIVE, MORGUE, BARRACKS, SWAMP, TEMPLE,
     LEPREHALL, COCKNEST, ANTHOLE,
@@ -35,7 +35,7 @@ import {
     A_LAWFUL, A_NONE, Align2amask, Amask2align, AM_NONE, AM_LAWFUL, AM_NEUTRAL,
     AM_CHAOTIC, AM_MASK, AM_SHRINE, AM_SANCTUM,
     AM_SPLEV_CO, AM_SPLEV_NONCO, AM_SPLEV_RANDOM,
-    MM_EPRI, MM_EMIN, MM_ADJACENTOK, NO_MM_FLAGS,
+    MM_EPRI, MM_EMIN, MM_ADJACENTOK, MM_NOTAIL, MM_IGNOREWATER, NO_MM_FLAGS,
     N_DIRS, W_ARMC, RLOC_NOMSG,
     MON_BUBBLEMOVE, CONS_OBJ, CONS_MON, CONS_HERO, CONS_TRAP, u_at,
     FILL_LVFLAGS, STRAT_WAITFORU, NON_PM, ONAME_LEVEL_DEF,
@@ -68,6 +68,7 @@ import {
     LS_MONSTER, ismnum,
     S_dnstair,
     MM_ASLEEP, MM_NOCOUNTBIRTH, MM_NOMSG, IS_TREE, G_GENOD,
+    NO_NC_FLAGS, DEFAULT_INVENT, CUSTOM_INVENT, NO_INVENT,
     G_EXTINCT, MAXMONNO,
     MKTRAP_NOFLAGS,
     MKTRAP_SEEN,
@@ -95,7 +96,7 @@ import {
 } from './objects.js';
 import { shtypes, stock_room } from './shknam.js';
 import { setgemprobs } from './o_init.js';
-import { maketrap, t_at, undestroyable_trap, deltrap, reset_utrap, mintrap } from './trap.js';
+import { maketrap, t_at, undestroyable_trap, deltrap, reset_utrap, mintrap, set_levltyp } from './trap.js';
 import {
     mkobj, mksobj, mksobj_at, mksobj_migr_to_species, mkobj_at, mkgold,
     mkcorpstat, next_ident,
@@ -112,7 +113,7 @@ import {
 import { mk_mplayer } from './mplayer.js';
 import { can_saddle, put_saddle_on_mon, remove_monster } from './steed.js';
 import { unplacebc_and_covet_placebc, lift_covet_and_placebc } from './ball.js';
-import { m_at, mnearto, mnexto, elemental_clog, seemimic, minliquid, dmonsfree } from './mon.js';
+import { m_at, mnearto, mnexto, elemental_clog, seemimic, minliquid, dmonsfree, discard_minvent, mdrop_special_objs } from './mon.js';
 import { enexto, rloc, goodpos, migrate_to_level } from './teleport.js';
 import { clear_wormdata, flip_worm_segs_horizontal, flip_worm_segs_vertical, remove_worm } from './worm.js';
 import { obj_resists } from './dogmove.js';
@@ -127,7 +128,7 @@ import {
     passes_walls, noncorporeal, likes_fire,
     mon_learns_traps,
     resists_ston, poly_when_stoned,
-    is_vampshifter,
+    is_vampshifter, vampshifted,
 } from './monsters.js';
 import { name_to_monplus, name_to_mon, set_mon_data } from './mondata.js';
 import { fruit_from_name } from './objnam.js';
@@ -144,7 +145,7 @@ import {
     create_gas_cloud, create_gas_cloud_selection, clear_regions,
     clear_heros_fault,
 } from './region.js';
-import { Norep, newsym, impossible, pline, You, flush_screen, nh_delay_output } from './display.js';
+import { Norep, newsym, impossible, pline, You, flush_screen, nh_delay_output, monsym } from './display.js';
 import { buried_ball_to_punishment, fracture_rock } from './dig.js';
 import { obfree } from './shk.js';
 import { block_point, unblock_point, does_block, recalc_block_point, vision_recalc } from './vision.js';
@@ -1469,6 +1470,75 @@ function sp_level_coder_init_statics() {
 }
 
 /**
+ * C ref: sp_lev.c update_croom `:6323–6333` — whole-body port in C order.
+ * `:6326–6327` no coder → return; `:6329–6330` nonzero n_subroom → croom
+ * tracks tmproomlist[n_subroom-1]; `:6331–6332` else NULL. Reads the live
+ * coder (game.gc.coder ≡ C `gc.coder`, decl.h:294); `?? null` maps an
+ * out-of-range slot to C NULL. Called from sp_level_coder_init `:6358`
+ * (where it still sees the prior coder — NULL on first load) and, in C,
+ * the room/subroom writers (`:4091`, `:4110`, `:4133` — future rows).
+ */
+export function update_croom() {
+    const coder = game.gc?.coder ?? null; // C :6326 `if (!gc.coder) return`
+    if (!coder) return; // C :6327
+    if (coder.n_subroom) coder.croom = coder.tmproomlist[coder.n_subroom - 1] ?? null; // C :6329–6330
+    else coder.croom = null; // C :6331–6332
+}
+
+/**
+ * C ref: sp_lev.c sp_level_coder_init `:6336–6376` — whole-body port in C
+ * order. Struct shape per sp_lev.h:87–98 (`struct sp_coder`); statics per
+ * sp_lev.c:192–198. `alloc` (:6339) is a GC object literal (no live alloc
+ * export — allocation, not semantics). The `:6358` update_croom() call reads
+ * the prior game.gc.coder, not the local `coder` under construction, like C
+ * reads `gc.coder` before the caller assigns the return value.
+ */
+export function sp_level_coder_init() {
+    // C :6339 — coder = alloc(sizeof *coder)
+    const coder = {
+        premapped: false, // C :6341 — int, FALSE
+        solidify: false, // C :6342
+        check_inaccessibles: false, // C :6343
+        allow_flips: 3, // C :6344 — allow flipping level horiz/vert
+        croom: null, // C :6345
+        n_subroom: 1, // C :6346
+        lvl_is_joined: false, // C :6347
+        room_stack: 0, // C :6348
+        // C :6353–6356 — tmproomlist/failed_room over 0..MAX_NESTED_ROOMS
+        tmproomlist: new Array(MAX_NESTED_ROOMS + 1).fill(null),
+        failed_room: new Array(MAX_NESTED_ROOMS + 1).fill(false),
+    };
+    sp_level_coder_init_statics(); // C :6350–6351 splev_init_present/icedpools
+    update_croom(); // C :6358
+    // C :6360–6362 — container stack zero
+    for (let tmpi = 0; tmpi < MAX_CONTAINMENT; tmpi++) container_obj[tmpi] = null;
+    container_idx = 0;
+    invent_carrying_monster = null; // C :6364
+    game.SpLev_Map = new Set(); // C :6366 — memset SpLev_Map zero
+    // C :6368–6371 — svl.level.flags
+    const lf = game.level.flags;
+    lf.is_maze_lev = false; // C :6368 = 0
+    lf.temperature = game.dungeons?.[game.u?.uz?.dnum | 0]?.flags?.hellish ? 1 : 0; // C :6369 In_hell(&u.uz)
+    lf.rndmongen = true; // C :6370 = 1
+    lf.deathdrops = true; // C :6371 = 1
+    reset_xystart_size(); // C :6373
+    return coder; // C :6375
+}
+
+/**
+ * C ref: sp_lev.c create_des_coder `:6443–6448` — guarded coder install.
+ * Sole sp_level_coder_init caller in C (`:6447`); the guard re-fires every
+ * load because load_special frees + NULLs at give_up (`:6497–6499`, mirrored
+ * in load_special_proto's `finally`). Defensive create_des_coder() calls in
+ * the unported lspo_* writers (`:3090`, `:3222`, `:3583`, `:3764`, `:3848`,
+ * `:3898`, `:3943`, `:4030`, `:4159`) wire up with those rows.
+ */
+function create_des_coder() {
+    if (!game.gc) game.gc = {}; // C gc ≡ JS game.gc (cmd.js precedent)
+    if (!game.gc.coder) game.gc.coder = sp_level_coder_init(); // C :6446–6447
+}
+
+/**
  * C ref: mkmaze.c makemaz `:1127-1223` — whole-body port in C order.
  * `:1133-1157` protofile build: `*s` → `%s-%d` with `rnd(rndlevs)`;
  * dungeon proto + `dunlev` (`dungeon.c:1325` returns dlevel) with an `rnd`
@@ -1589,13 +1659,27 @@ function makemaz_maze_fallback() {
 }
 
 /**
+ * C ref: sp_lev.c load_special `:6454–6501` — entry creates the des coder
+ * (`:6459`), `give_up` frees it and NULLs it on every path (`:6497–6499`).
+ * The dispatch body below holds only the `load_lua` half (named omits:
+ * link/edge epilogue, wallification/flip/solidify/fixup/premap reads of the
+ * coder fields); the Free+NULL half lives in the `finally` here so the next
+ * level's create_des_coder guard re-inits fresh state exactly like C.
+ */
+async function load_special_proto(protofile) {
+    create_des_coder(); // C :6459 at load_special entry (full init inside)
+    try {
+        return await load_special_proto_body(protofile);
+    } finally {
+        if (game.gc) game.gc.coder = null; // C :6498–6499 Free + NULL
+    }
+}
+
+/**
  * C ref: sp_lev.c load_special — dispatch known JS-ported .lua specials.
  * @returns {boolean} true if loaded (C load_special success)
  */
-async function load_special_proto(protofile) {
-    // C ref: sp_lev.c create_des_coder / reset_xystart_size at load start
-    reset_xystart_size();
-    sp_level_coder_init_statics();
+async function load_special_proto_body(protofile) {
     if (protofile === 'minefill') {
         await load_minefill();
         return true;
@@ -19206,6 +19290,10 @@ function splev_create_monster_appear_fixup(mtmp, appear, appear_as) {
 
 // C ref: sp_lev.c — static container_obj[MAX_CONTAINMENT] / container_idx
 const MAX_CONTAINMENT = 10;
+// C ref: sp_lev.c:198 `static struct monst *invent_carrying_monster` —
+// the monster receiving CUSTOM_INVENT (lspo_monster `:2184`) or saddle
+// (create_object `:2318–2321`); reset per coder in sp_level_coder_init `:6364`.
+let invent_carrying_monster = null;
 let container_idx = 0;
 const container_obj = new Array(MAX_CONTAINMENT).fill(null);
 
@@ -19720,6 +19808,325 @@ export function l_create_object(o, contentsFn, croom = null) {
     if (typeof fn === 'function') fn(otmp);
     if ((tmp.containment & SP_OBJ_CONTAINER) !== 0) spo_pop_container();
     return otmp;
+}
+
+/**
+ * C ref: sp_lev.c get_table_align :3113–3128 (unpacked; not lua_State).
+ * 7-entry gtaligns table; absent defaults to "random" (C get_table_option
+ * dflt). Matched case-insensitively like the file's get_table_buc.
+ */
+function get_table_align_unpacked(align) {
+    switch (String(align ?? 'random').toLowerCase()) {
+        case 'noalign': return AM_NONE;
+        case 'law': return AM_LAWFUL;
+        case 'neutral': return AM_NEUTRAL;
+        case 'chaos': return AM_CHAOTIC;
+        case 'coaligned': return AM_SPLEV_CO;
+        case 'noncoaligned': return AM_SPLEV_NONCO;
+        default: return AM_SPLEV_RANDOM; // "random" + unknown
+    }
+}
+
+/**
+ * C ref: sp_lev.c get_table_boolean_opt(L, key, dflt) for unpacked tables —
+ * absent (null/undefined) yields dflt, which may be BOOL_RANDOM (-1);
+ * explicit booleans fold to 1/0; numbers pass through untouched so an
+ * explicit BOOL_RANDOM survives.
+ */
+function lspo_bool_opt(v, dflt) {
+    if (v == null) return dflt;
+    if (typeof v === 'boolean') return v ? 1 : 0;
+    return v | 0;
+}
+
+/**
+ * C ref: sp_lev.c lspo_monster :3326–3344 appear_as prefix parse (unpacked).
+ * "obj:"/"mon:"/"ter:" (C strncmp, case-sensitive) select M_AP_OBJECT /
+ * M_AP_MONSTER / M_AP_FURNITURE and strip the prefix; an unknown prefix
+ * throws like C nhl_error("Unknown appear_as type"). Absent → no disguise.
+ */
+function lspo_monster_appear(appear_as) {
+    if (appear_as == null) return { appear: 0, appear_as: '' };
+    const s = String(appear_as);
+    if (s.startsWith('obj:')) return { appear: M_AP_OBJECT, appear_as: s.slice(4) };
+    if (s.startsWith('mon:')) return { appear: M_AP_MONSTER, appear_as: s.slice(4) };
+    if (s.startsWith('ter:')) return { appear: M_AP_FURNITURE, appear_as: s.slice(4) };
+    throw new Error('Unknown appear_as type');
+}
+
+/**
+ * C ref: sp_lev.c lspo_monster string forms :3246–3295 (unpacked; not
+ * lua_State). A 1-char string is a class letter (id NON_PM); a longer one
+ * is a montype name (C find_montype — the gender rn2(2) burns once inside
+ * splev_create_monster, same position). arg2 is a coord table/[x,y] pair
+ * (:3264–3279 get_coord) or x with arg3 = y (:3280–3295 checkinteger);
+ * croom is JS-only (C reads gc.coder->croom).
+ */
+function lspo_monster_from_string(paramstr, arg2, arg3) {
+    let rx = -1, ry = -1;
+    let croom = null;
+    if (typeof arg2 === 'number' && typeof arg3 === 'number') {
+        rx = arg2 | 0;
+        ry = arg3 | 0;
+    } else if (arg2 != null && typeof arg2 === 'object') {
+        if (arg2.lx != null && arg2.ly != null && arg2.hx != null) {
+            croom = arg2;
+        } else {
+            const xy = get_coord_unpacked(arg2);
+            rx = xy.x;
+            ry = xy.y;
+            if (arg3 != null && typeof arg3 === 'object' && arg3.lx != null) {
+                croom = arg3;
+            }
+        }
+    } else if (arg3 != null && typeof arg3 === 'object' && arg3.lx != null) {
+        croom = arg3;
+    }
+    return { paramstr, rx, ry, croom };
+}
+
+/**
+ * C ref: sp_lev.c lspo_monster table form :3296–3380 (unpacked; not
+ * lua_State). Field defaults in C order — peaceful/asleep/name (:3300–3302),
+ * align (:3305), female/invisible/cancelled/revived/avenge/fleeing/blinded/
+ * paralyzed/stunned/confused/waiting/m_lev_adj (:3306–3317), mm-flags
+ * (:3314–3324 tail/group default true, adjacentok/ignorewater default
+ * false, countbirth default true), appear_as (:3326–3344), coord (:3346),
+ * montype (:3350), monclass (:3369), has_invent (:3371–3380; inventFn
+ * presence is the Lua "inventory" field). tmp.mndx resolves RNG-free via
+ * name_to_monplus; an unknown id throws like C nhl_error ("Unknown
+ * monster id"). The C find_montype gender rn2(2) replays once inside
+ * splev_create_monster from tmp.idName — normalize itself burns nothing.
+ */
+function lspo_monster_normalize_table(tmp, inventFn) {
+    tmp.peaceful = lspo_bool_opt(tmp.peaceful, BOOL_RANDOM);
+    tmp.asleep = lspo_bool_opt(tmp.asleep, BOOL_RANDOM);
+    if (tmp.name == null) tmp.name = null;
+    tmp.sp_amask = get_table_align_unpacked(tmp.align);
+    tmp.female = lspo_bool_opt(tmp.female, BOOL_RANDOM);
+    tmp.invis = lspo_bool_opt(tmp.invis, 0);
+    tmp.cancelled = lspo_bool_opt(tmp.cancelled, 0);
+    tmp.revived = lspo_bool_opt(tmp.revived, 0);
+    tmp.avenge = lspo_bool_opt(tmp.avenge, 0);
+    tmp.fleeing = tmp.fleeing | 0;
+    tmp.blinded = tmp.blinded | 0;
+    tmp.paralyzed = tmp.paralyzed | 0;
+    tmp.stunned = lspo_bool_opt(tmp.stunned, 0);
+    tmp.confused = lspo_bool_opt(tmp.confused, 0);
+    tmp.waiting = lspo_bool_opt(tmp.waiting, 0);
+    tmp.m_lev_adj = tmp.m_lev_adj | 0;
+    // C :3318 — seentraps stays 0 (TODO: trap-name list to bitfield).
+    tmp.keep_default_invent = lspo_bool_opt(tmp.keep_default_invent, -1);
+    let mm_flags = NO_MM_FLAGS;
+    if (!lspo_bool_opt(tmp.tail, 1)) mm_flags |= MM_NOTAIL;
+    if (!lspo_bool_opt(tmp.group, 1)) mm_flags |= MM_NOGRP;
+    if (lspo_bool_opt(tmp.adjacentok, 0)) mm_flags |= MM_ADJACENTOK;
+    if (lspo_bool_opt(tmp.ignorewater, 0)) mm_flags |= MM_IGNOREWATER;
+    if (!lspo_bool_opt(tmp.countbirth, 1)) mm_flags |= MM_NOCOUNTBIRTH;
+    tmp.mm_flags = mm_flags;
+    const ap = lspo_monster_appear(tmp.appear_as);
+    tmp.appear = ap.appear;
+    tmp.appear_as = ap.appear_as;
+    if (tmp.rx == null && tmp.ry == null) {
+        const xy = get_table_xy_or_coord(tmp);
+        tmp.rx = xy.x;
+        tmp.ry = xy.y;
+    }
+    if (tmp.rx == null) tmp.rx = -1;
+    if (tmp.ry == null) tmp.ry = -1;
+    tmp.idName = (tmp.id == null) ? null : String(tmp.id);
+    tmp.mndx = NON_PM;
+    if (tmp.idName != null) {
+        const mndx = name_to_monplus(tmp.idName, null, { gender: NEUTRAL });
+        if (!(mndx >= LOW_PM) || !(mndx < monsterNames.length)) {
+            throw new Error('Unknown monster id');
+        }
+        tmp.mndx = mndx;
+    }
+    tmp.classLetter = get_table_objclass_field(tmp);
+    if (tmp.mndx !== NON_PM && tmp.classLetter === -1) {
+        // C :3387–3388 — keys pm off id downstream, so the letter is
+        // unobservable; computed for C-order fidelity.
+        tmp.classLetter = monsym(mons(tmp.mndx)).charCodeAt(0);
+    }
+    let has_invent = DEFAULT_INVENT; // C :3240
+    if (inventFn != null) {
+        // C :3371–3375 — Lua "inventory" field non-nil overwrites DEFAULT.
+        has_invent = CUSTOM_INVENT;
+        if (tmp.keep_default_invent === 1) has_invent |= DEFAULT_INVENT;
+    } else if (tmp.keep_default_invent === 0) {
+        // C :3376–3380 — explicit false with no inventory means none.
+        has_invent = NO_INVENT;
+    }
+    tmp.has_invent = has_invent;
+}
+
+/**
+ * C ref: sp_lev.c lspo_monster :3214–3400 (unpacked; not lua_State) — the
+ * des.monster binding. String form delegates to splev_create_monster with
+ * C defaults (every other field at its :3223–3244 default, so all
+ * post-spawn arms no-op there). Table form normalizes via
+ * lspo_monster_normalize_table, spawns through splev_create_monster (the
+ * live C create_monster :1924–2190 dispatch: class/id resolution, sp_amask,
+ * location, occupancy, mk_roamer/mk_mplayer/makemon, appear fixup,
+ * peaceful/asleep/waiting), then applies the post-spawn arms C runs at
+ * :1994–:2186 in C order: christen (:1994), female (:2125, with the
+ * :3355–3367 mgend rule over the replayed burn outcome), cancelled/
+ * revived/avenge/stunned/confused/invis/blinded/paralyzed/fleeing
+ * (:2135–2159), waiting vampshifted newcham (:2160–2167), m_lev_adj clamp
+ * (:2168–2175), default-invent drop (:2176–2182), CUSTOM_INVENT global
+ * (:2183–2184), inventory function + spo_end_moninvent (:3392–3397;
+ * m_dowear awaited — D-2335 found the creation path RNG/message-free).
+ * inventFn is the Lua inventory function (cf. l_create_object contentsFn);
+ * croom is JS-only (C gc.coder->croom). Returns mtmp (null when the spot
+ * is outside croom, like splev_create_monster).
+ * C caller: Lua des.monster dispatch (decl sp_lev.c:147); JS has no Lua
+ * layer — live fills keep calling splev_create_monster directly.
+ * Named omits: seentraps trap list (C TODO :3318, stays 0); G_UNIQ
+ * extinct / G_GONE random (:1949–1953, pre-existing splev behavior);
+ * FURNITURE/OBJECT appear arms (:2016–2061, pre-existing splev fixup
+ * deferral); Lua stack juggling (lua_remove/pop) and GC Free (no JS
+ * analog; strings are GC values).
+ */
+export async function l_create_monster(o, arg2, croom = null) {
+    if (typeof o === 'string') {
+        // C :3246–3295 — every other field at its :3223–3244 default.
+        const parsed = lspo_monster_from_string(o, arg2, croom);
+        return splev_create_monster(parsed.paramstr, undefined, {
+            rx: parsed.rx, ry: parsed.ry, croom: parsed.croom ?? croom,
+        });
+    }
+    if (o == null || typeof o !== 'object') {
+        throw new TypeError('l_create_monster: table object expected');
+    }
+    const inventFn = (typeof arg2 === 'function') ? arg2 : null;
+    const room = croom;
+    const tmp = { ...o };
+    lspo_monster_normalize_table(tmp, inventFn);
+    const peacefulArg = (tmp.peaceful === BOOL_RANDOM) ? undefined : tmp.peaceful;
+    const opts = {
+        rx: tmp.rx, ry: tmp.ry, croom: room,
+        sp_amask: tmp.sp_amask, mm_flags: tmp.mm_flags,
+        appear: tmp.appear, appear_as: tmp.appear_as,
+        asleep: tmp.asleep, waiting: tmp.waiting,
+    };
+    let mtmp;
+    if (tmp.idName != null) {
+        mtmp = splev_create_monster(tmp.idName, peacefulArg, opts);
+    } else if (tmp.classLetter !== -1) {
+        mtmp = splev_create_monster(
+            String.fromCharCode(tmp.classLetter), peacefulArg, opts);
+    } else {
+        mtmp = splev_create_monster(null, peacefulArg, opts);
+    }
+    if (!mtmp) return null;
+    if (tmp.name != null) mtmp = christen_monst(mtmp, tmp.name); // C :1994–1995
+    // C :3355–3367 + :2125 — mgend is the replayed find_montype burn outcome.
+    const mgend = (tmp.mndx !== NON_PM) ? (mtmp.female | 0) : NEUTRAL;
+    let female = tmp.female;
+    const singleGender = tmp.mndx !== NON_PM
+        && (is_female(mons(tmp.mndx)) || is_male(mons(tmp.mndx)));
+    if (mgend !== NEUTRAL && (female === BOOL_RANDOM || singleGender)) female = mgend;
+    if (female === BOOL_RANDOM) female = 0;
+    mtmp.female = female;
+    if (tmp.cancelled) mtmp.mcan = 1; // C :2135–2136
+    if (tmp.revived) mtmp.mrevived = 1; // C :2137–2138
+    if (tmp.avenge) mtmp.mavenge = 1; // C :2139–2140
+    if (tmp.stunned) mtmp.mstun = 1; // C :2141–2142
+    if (tmp.confused) mtmp.mconf = 1; // C :2143–2144
+    if (tmp.invis) mtmp.minvis = mtmp.perminvis = 1; // C :2145–2147
+    if (tmp.blinded) { // C :2148–2151
+        mtmp.mcansee = 0;
+        mtmp.mblinded = (tmp.blinded % 127);
+    }
+    if (tmp.paralyzed) { // C :2152–2155
+        mtmp.mcanmove = 0;
+        mtmp.mfrozen = (tmp.paralyzed % 127);
+    }
+    if (tmp.fleeing) { // C :2156–2159
+        mtmp.mflee = 1;
+        mtmp.mfleetim = (tmp.fleeing % 127);
+    }
+    if (tmp.waiting && vampshifted(mtmp) && tmp.appear !== M_AP_MONSTER) {
+        newcham(mtmp, mons(mtmp.cham), NO_NC_FLAGS); // C :2162–2166
+    }
+    if (tmp.m_lev_adj) { // C :2168–2175
+        const leveled = (mtmp.m_lev | 0) + tmp.m_lev_adj;
+        mtmp.m_lev = leveled > 49 ? 49 : (leveled < 0 ? 0 : leveled);
+    }
+    if (!(tmp.has_invent & DEFAULT_INVENT)) { // C :2176–2182
+        await mdrop_special_objs(mtmp);
+        discard_minvent(mtmp, true);
+    }
+    if (tmp.has_invent & CUSTOM_INVENT) invent_carrying_monster = mtmp; // C :2183–2184
+    if ((tmp.has_invent & CUSTOM_INVENT) && typeof inventFn === 'function') {
+        // C :3392–3396 — Lua inventory function, then spo_end_moninvent.
+        await inventFn(mtmp);
+        if (invent_carrying_monster) await m_dowear(invent_carrying_monster, true); // C :3033–3034
+        invent_carrying_monster = null; // C :3035
+    }
+    return mtmp;
+}
+
+/**
+ * C ref: sp_lev.c create_altar :2446–2486 (unpacked; not lua_State).
+ * a = { rx/ry room-or-map-relative packed coord (-1,-1 random), x/y/coord
+ * keys, sp_amask int or align string, shrine int (-1 random) }.
+ * croom is JS-only (C gc.coder->croom). Returns {x,y}, or null when the
+ * cell refuses the altar (C set_levltyp FALSE → return).
+ * C caller: lspo_altar (sp_lev.c:4315, Lua binding — named omission, own
+ * row); live fills keep their hand-rolled altar paths (not rewired).
+ * set_levltyp is the live mkmaze.c export (trap.js) — its SDOOR→AIR and
+ * full count-scan arms are unobservable with newtyp ALTAR.
+ */
+export function splev_create_altar(a, croom = null) {
+    const t = { ...(a ?? {}) };
+    let rx = (t.rx != null) ? (t.rx | 0) : -1;
+    let ry = (t.ry != null) ? (t.ry | 0) : -1;
+    if (rx === -1 && ry === -1) {
+        const xy = get_table_xy_or_coord(t);
+        rx = xy.x;
+        ry = xy.y;
+    }
+    const sp_amask = (t.sp_amask != null)
+        ? (t.sp_amask | 0) : get_table_align_unpacked(t.align);
+    let shrine = (t.shrine != null) ? (t.shrine | 0) : -1;
+    let x, y;
+    let room = croom;
+    let croom_is_temple = true; // C :2449 boolean TRUE
+    if (room) {
+        // C :2454–2458 — get_free_room_loc(&x, &y, croom, coord).
+        const pos = (rx === -1 && ry === -1)
+            ? get_free_room_loc(room)
+            : get_free_room_loc_coord(room, rx, ry);
+        x = pos.x;
+        y = pos.y;
+        if ((room.rtype | 0) !== TEMPLE) croom_is_temple = false; // C :2456–2457
+    } else {
+        // C :2459–2464 — get_location_coord DRY, adopt TEMPLE room when found.
+        const pos = get_location_coord(DRY, null, rx, ry);
+        x = pos.x;
+        y = pos.y;
+        const found = in_rooms(x, y, TEMPLE);
+        if (found.length) {
+            room = game.level.rooms[found.charCodeAt(0) - ROOMOFFSET] ?? null;
+        } else {
+            croom_is_temple = false;
+        }
+    }
+    if (!set_levltyp(x, y, ALTAR)) return null; // C :2467–2468 existing features
+    const amask = sp_amask_to_amask(sp_amask); // C :2470
+    const loc = game.level.at(x, y);
+    if (loc) loc.altarmask = amask; // C :2470 (altarmask only — not flags)
+    if (shrine < 0) shrine = rn2(2); // C :2472–2473 random case
+    if (!croom_is_temple || !shrine) return { x, y }; // C :2475–2476
+    priestini(game.u?.uz, room, x, y, shrine > 1); // C :2479
+    if (loc) {
+        loc.altarmask = (loc.altarmask | 0) | AM_SHRINE; // C :2480
+        if (shrine === 2) loc.altarmask |= AM_SANCTUM; // C :2481–2483
+    }
+    if (game.level.flags) game.level.flags.has_temple = true; // C :2484
+    return { x, y };
 }
 
 /**

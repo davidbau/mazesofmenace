@@ -4,14 +4,28 @@
 import { game } from './gstate.js';
 import { vfsReadFile, vfsWriteFile } from './storage.js';
 import { yyyymmdd } from './calendar.js';
-import { deepest_lev_reached, depth, ordin } from './hacklib.js';
-import { genders, aligns, str2role, str2race } from './roles.js';
+import { deepest_lev_reached, depth, ordin, strNsubst, lcase } from './hacklib.js';
+import {
+    genders, aligns, roles, str2role, str2race,
+    rank_of, rank_to_xlev,
+} from './roles.js';
 import {
     BUFSZ, COLNO, VERSION_MAJOR, VERSION_MINOR, PATCHLEVEL,
     PERSMAX, POINTSMIN, ENTRYMAX, PERS_IS_UID,
     PANICKED,
+    ACH_UWIN, ACH_ASTR, ACH_ENDG, ACH_AMUL, ACH_INVK, ACH_BOOK,
+    ACH_BELL, ACH_CNDL, ACH_HELL, ACH_MEDU, ACH_MINE_PRIZE,
+    ACH_SOKO_PRIZE, ACH_ORCL, ACH_NOVL, ACH_MINE, ACH_TOWN, ACH_SHOP,
+    ACH_TMPL, ACH_SOKO, ACH_BGRM, ACH_TUNE,
+    ACH_RNK1, ACH_RNK2, ACH_RNK3, ACH_RNK4,
+    ACH_RNK5, ACH_RNK6, ACH_RNK7, ACH_RNK8,
 } from './const.js';
 import { ATR_BOLD, NO_COLOR } from './terminal.js';
+import { formatkiller } from './end.js';
+import { money_cnt } from './shk.js';
+import { hidden_gold } from './vault.js';
+import { num_genocides, sokoban_in_play } from './insight.js';
+import { timet_to_seconds } from './allmain.js';
 
 const NAMSZ = 10;
 const ROLESZ = 3;
@@ -81,14 +95,341 @@ function writeentry_line(tt) {
         + `${name},${tt.death}\n`;
 }
 
-function readentry_line(line) {
+/* XLOGFILE family (C topten.c:340–610, `#ifdef XLOGFILE` — defined in this
+ * build). C streams tab-separated `key=value` fields at FILE *rfile; there
+ * is no xlogfile VFS consumer (D-2585 names the `:702–718` append arm in
+ * topten()), so writexlentry builds and returns the full line (trailing
+ * `\n` included) instead of taking a FILE *. The out-param `char *buf`
+ * callees likewise return their string (JS strings are immutable).
+ * XLOG_SEP (`:343`) is '\t'. */
+
+/**
+ * C ref: topten.c writexlentry `:340–391` — whole body in C order.
+ * `:347–356` version/points/deathdnum/deathlev/maxlvl/hp/maxhp/deaths/
+ * deathdate/birthdate/uid (one Fprintf flush of buf[]); `:357–359`
+ * role/race/gender/align; `:360–364` formatkiller(how, FALSE) death (the
+ * ", while helpless" copy is formatkiller's incl_helpless arm, not taken
+ * here); `:365–367` multi<0 while= arm (multi_reason or "helpless");
+ * `:368–370` conduct/turns/achieve; `:371–372` achieveX; `:373–374`
+ * conductX (C reuses buf[] — sequential build here); `:375–378`
+ * realtime/starttime/endtime; `:379–381` gender0/align0 filecodes;
+ * `:382` flags; `:383–384` gold (invent + hidden); `:385–388`
+ * wish/arti-wish/bones/reroll counts; `:389` newline.
+ * @param {object} tt toptenentry shape (newttentry/readentry)
+ * @param {number} how death reason code
+ * @returns {string} the xlog line with trailing newline
+ */
+export function writexlentry(tt, how) {
+    const e = tt || {};
+    const u = game.u || {};
+    const flags = game.flags || {};
+    const SEP = '\t'; // C `:343` XLOG_SEP
+    // C `:347–356`
+    let line = `version=${e.ver_major}.${e.ver_minor}.${e.patchlevel}`
+        + `${SEP}points=${e.points | 0}`
+        + `${SEP}deathdnum=${e.deathdnum | 0}${SEP}deathlev=${e.deathlev | 0}`
+        + `${SEP}maxlvl=${e.maxlvl | 0}`
+        + `${SEP}hp=${e.hp | 0}${SEP}maxhp=${e.maxhp | 0}`
+        + `${SEP}deaths=${e.deaths | 0}`
+        + `${SEP}deathdate=${e.deathdate | 0}`
+        + `${SEP}birthdate=${e.birthdate | 0}${SEP}uid=${e.uid | 0}`;
+    // C `:357–359`
+    line += `${SEP}role=${e.plrole}${SEP}race=${e.plrace}`
+        + `${SEP}gender=${e.plgend}${SEP}align=${e.plalign}`;
+    // C `:360–364` — formatkiller(tmpbuf, sizeof tmpbuf, how, FALSE).
+    const tmpbuf = formatkiller(how, false);
+    line += `${SEP}name=${String(game.plname ?? '')}${SEP}death=${tmpbuf}`;
+    // C `:365–367` — gm.multi<0 while= arm.
+    if ((game.multi | 0) < 0) {
+        line += `${SEP}while=${game.multi_reason ? game.multi_reason : 'helpless'}`;
+    }
+    // C `:368–370` — svm.moves is game.moves.
+    line += `${SEP}conduct=0x${(encodeconduct() >>> 0).toString(16)}`
+        + `${SEP}turns=${game.moves | 0}`
+        + `${SEP}achieve=0x${(encodeachieve(false) >>> 0).toString(16)}`;
+    // C `:371–372` — encode_extended_achievements(achbuf).
+    line += `${SEP}achieveX=${encode_extended_achievements()}`;
+    // C `:373–374` — encode_extended_conducts(buf) (buf[] reuse).
+    line += `${SEP}conductX=${encode_extended_conducts()}`;
+    // C `:375–378`
+    const rt = game.urealtime || {};
+    line += `${SEP}realtime=${rt.realtime | 0}`
+        + `${SEP}starttime=${timet_to_seconds(game.ubirthday)}`
+        + `${SEP}endtime=${timet_to_seconds(rt.finish_time)}`;
+    // C `:379–381` — genders[flags.initgend] + aligns[1-u.ualignbase[A_ORIGINAL]].
+    const initgend = flags.initgend ? 1 : 0;
+    const wbOrig = u.ualignbase?.original ?? u.ualign?.type ?? 0;
+    line += `${SEP}gender0=${genders[initgend]?.filecode || (initgend ? 'Fem' : 'Mal')}`
+        + `${SEP}align0=${aligns[1 - wbOrig]?.filecode || 'Neu'}`;
+    // C `:382`
+    line += `${SEP}flags=0x${(encodexlogflags() >>> 0).toString(16)}`;
+    // C `:383–384` — gi.invent is the invent array; hidden_gold(TRUE).
+    line += `${SEP}gold=${(money_cnt(game.invent) + hidden_gold(true)) | 0}`;
+    // C `:385–388`
+    const uc = u.uconduct || {};
+    const urp = u.uroleplay || {};
+    line += `${SEP}wish_cnt=${uc.wishes | 0}`;
+    line += `${SEP}arti_wish_cnt=${uc.wisharti | 0}`;
+    line += `${SEP}bones=${urp.numbones | 0}`;
+    line += `${SEP}rerolls=${urp.numrerolls | 0}`;
+    // C `:389`
+    line += '\n';
+    return line;
+}
+
+/**
+ * C ref: topten.c encodexlogflags `:393–408` — wizard/discover/nobones/
+ * reroll bits 0–3. wizard/discover read flags the same way topten() does
+ * (`flags.debug||flags.wizard`, `flags.explore||flags.discover`).
+ * @returns {number}
+ */
+export function encodexlogflags() {
+    const flags = game.flags || {};
+    const u = game.u || {};
+    let e = 0;
+    if (flags.debug || flags.wizard) e |= 1 << 0; // C `:398` wizard
+    if (flags.explore || flags.discover) e |= 1 << 1; // C `:400` discover
+    if (!(u.uroleplay?.numbones | 0)) e |= 1 << 2; // C `:402`
+    if (u.uroleplay?.reroll) e |= 1 << 3; // C `:404`
+    return e | 0;
+}
+
+/**
+ * C ref: topten.c encodeconduct `:410–452` — kept-conduct bits 0–13.
+ * The sokoban bit (`:439–447`) is set only when sokoban is in play; the
+ * comment's post-processor caveat rides along unchanged.
+ * @returns {number}
+ */
+export function encodeconduct() {
+    const u = game.u || {};
+    const c = u.uconduct || {};
+    let e = 0;
+    if (!((c.food | 0))) e |= 1 << 0; // C `:415`
+    if (!((c.unvegan | 0))) e |= 1 << 1; // C `:417`
+    if (!((c.unvegetarian | 0))) e |= 1 << 2; // C `:419`
+    if (!((c.gnostic | 0))) e |= 1 << 3; // C `:421`
+    if (!((c.weaphit | 0))) e |= 1 << 4; // C `:423`
+    if (!((c.killer | 0))) e |= 1 << 5; // C `:425`
+    if (!((c.literate | 0))) e |= 1 << 6; // C `:427`
+    if (!((c.polypiles | 0))) e |= 1 << 7; // C `:429`
+    if (!((c.polyselfs | 0))) e |= 1 << 8; // C `:431`
+    if (!((c.wishes | 0))) e |= 1 << 9; // C `:433`
+    if (!((c.wisharti | 0))) e |= 1 << 10; // C `:435`
+    if (!num_genocides()) e |= 1 << 11; // C `:437`
+    if (!((c.sokocheat | 0)) && sokoban_in_play()) e |= 1 << 12; // C `:446–447`
+    if (!((c.pets | 0))) e |= 1 << 13; // C `:448`
+    return e | 0;
+}
+
+/**
+ * C ref: topten.c encodeachieve `:454–476` — u.uachieved bit packing.
+ * secondlong FALSE packs achievements 1..31 into bits 0..30, TRUE packs
+ * 32..62 the same way (offset 31); the signed-31-bit portability comment
+ * (`:461–468`) holds — JS bitwise ops are 32-bit, bit 30 is the top set.
+ * @param {boolean} secondlong
+ * @returns {number}
+ */
+export function encodeachieve(secondlong) {
+    const ach = game.u?.uachieved || [];
+    const offset = secondlong ? (32 - 1) : 0; // C `:469`
+    let r = 0;
+    for (let i = 0; ach[i]; ++i) { // C `:470` — 0-terminated list
+        const achidx = (ach[i] | 0) - offset; // C `:471`
+        if (achidx > 0 && achidx < 32) r |= 1 << (achidx - 1); // C `:472–473`
+    }
+    return r | 0;
+}
+
+/* C ref: topten.c add_achieveX `:478–488` — comma-join one name when the
+ * condition holds. C appends into char *buf; JS returns the new string. */
+function add_achieveX(buf, achievement, condition) {
+    if (!condition) return buf;
+    return buf !== '' ? `${buf},${achievement}` : String(achievement);
+}
+
+/**
+ * C ref: topten.c encode_extended_achievements `:490–581` — whole body in
+ * C order. Walks the 0-terminated u.uachieved list; negative entries use
+ * abs() for the switch but keep the sign for the rank male/female pick.
+ * The rank arm (`:565–572`) builds "attained_the_rank_of_<title>" via
+ * rank_of(rank_to_xlev(1..8), Role_switch=game.urole.mnum, achidx<0),
+ * spaces → underscores (strNsubst n=0: every match), lowercased.
+ * default: skip the entry (continue). Returns the comma-joined string.
+ * (ACH_BLND/ACH_NUDE have no C arm — they fall into default, as in C.)
+ * @returns {string}
+ */
+export function encode_extended_achievements() {
+    const ach = game.u?.uachieved || [];
+    let buf = ''; // C `:497` buf[0] = '\0'
+    for (let i = 0; ach[i]; i++) { // C `:498`
+        const achidx = ach[i] | 0; // C `:499`
+        const absidx = Math.abs(achidx); // C `:500` abs()
+        let achievement = null;
+        switch (absidx) { // C `:501`
+        case ACH_UWIN: // C `:502–504`
+            achievement = 'ascended';
+            break;
+        case ACH_ASTR: // C `:505–507`
+            achievement = 'entered_astral_plane';
+            break;
+        case ACH_ENDG: // C `:508–510`
+            achievement = 'entered_elemental_planes';
+            break;
+        case ACH_AMUL: // C `:511–513`
+            achievement = 'obtained_the_amulet_of_yendor';
+            break;
+        case ACH_INVK: // C `:514–516`
+            achievement = 'performed_the_invocation_ritual';
+            break;
+        case ACH_BOOK: // C `:517–519`
+            achievement = 'obtained_the_book_of_the_dead';
+            break;
+        case ACH_BELL: // C `:520–522`
+            achievement = 'obtained_the_bell_of_opening';
+            break;
+        case ACH_CNDL: // C `:523–525`
+            achievement = 'obtained_the_candelabrum_of_invocation';
+            break;
+        case ACH_HELL: // C `:526–528`
+            achievement = 'entered_gehennom';
+            break;
+        case ACH_MEDU: // C `:529–531`
+            achievement = 'defeated_medusa';
+            break;
+        case ACH_MINE_PRIZE: // C `:532–534`
+            achievement = 'obtained_the_luckstone_from_the_mines';
+            break;
+        case ACH_SOKO_PRIZE: // C `:535–537`
+            achievement = 'obtained_the_sokoban_prize';
+            break;
+        case ACH_ORCL: // C `:538–540`
+            achievement = 'consulted_the_oracle';
+            break;
+        case ACH_NOVL: // C `:541–543`
+            achievement = 'read_a_discworld_novel';
+            break;
+        case ACH_MINE: // C `:544–546`
+            achievement = 'entered_the_gnomish_mines';
+            break;
+        case ACH_TOWN: // C `:547–549`
+            achievement = 'entered_mine_town';
+            break;
+        case ACH_SHOP: // C `:550–552`
+            achievement = 'entered_a_shop';
+            break;
+        case ACH_TMPL: // C `:553–555`
+            achievement = 'entered_a_temple';
+            break;
+        case ACH_SOKO: // C `:556–558`
+            achievement = 'entered_sokoban';
+            break;
+        case ACH_BGRM: // C `:559–561`
+            achievement = 'entered_bigroom';
+            break;
+        case ACH_TUNE: // C `:562–564`
+            achievement = 'learned_castle_drawbridge_tune';
+            break;
+        /* C `:565` — rank 0 is the starting condition, not an
+         * achievement; 8 is Xp 30. */
+        case ACH_RNK1: case ACH_RNK2: case ACH_RNK3: case ACH_RNK4:
+        case ACH_RNK5: case ACH_RNK6: case ACH_RNK7: case ACH_RNK8: {
+            // C `:568–570` — Role_switch is gu.urole.mnum.
+            const rnk = 'attained_the_rank_of_'
+                + rank_of(
+                    rank_to_xlev(absidx - (ACH_RNK1 - 1)),
+                    game.urole?.mnum | 0,
+                    achidx < 0,
+                );
+            const underscored = strNsubst(rnk, ' ', '_', 0); // C `:571`
+            achievement = lcase(underscored); // C `:572`
+            break;
+        }
+        default:
+            continue; // C `:574–575`
+        }
+        buf = add_achieveX(buf, achievement, true); // C `:577`
+    }
+    return buf; // C `:580`
+}
+
+/**
+ * C ref: topten.c encode_extended_conducts `:583–610` — whole body in C
+ * order. "bonesless" reads !flags.bones; C defaults bones TRUE (unset in
+ * JS means enabled — bones.js:651 treats `=== false` as the off state —
+ * so the condition is `=== false`, not `!`, which would misread unset).
+ * The sokoban name is only eligible when sokoban is in play (`:599–600`).
+ * @returns {string}
+ */
+export function encode_extended_conducts() {
+    const u = game.u || {};
+    const c = u.uconduct || {};
+    const rp = u.uroleplay || {};
+    const flags = game.flags || {};
+    let buf = ''; // C `:586` buf[0] = '\0'
+    buf = add_achieveX(buf, 'foodless', !((c.food | 0))); // C `:587`
+    buf = add_achieveX(buf, 'vegan', !((c.unvegan | 0))); // C `:588`
+    buf = add_achieveX(buf, 'vegetarian', !((c.unvegetarian | 0))); // C `:589`
+    buf = add_achieveX(buf, 'atheist', !((c.gnostic | 0))); // C `:590`
+    buf = add_achieveX(buf, 'weaponless', !((c.weaphit | 0))); // C `:591`
+    buf = add_achieveX(buf, 'pacifist', !((c.killer | 0))); // C `:592`
+    buf = add_achieveX(buf, 'illiterate', !((c.literate | 0))); // C `:593`
+    buf = add_achieveX(buf, 'polyless', !((c.polypiles | 0))); // C `:594`
+    buf = add_achieveX(buf, 'polyselfless', !((c.polyselfs | 0))); // C `:595`
+    buf = add_achieveX(buf, 'wishless', !((c.wishes | 0))); // C `:596`
+    buf = add_achieveX(buf, 'artiwishless', !((c.wisharti | 0))); // C `:597`
+    buf = add_achieveX(buf, 'genocideless', !num_genocides()); // C `:598`
+    if (sokoban_in_play()) { // C `:599–600`
+        buf = add_achieveX(buf, 'sokoban', !((c.sokocheat | 0))); // C `:600`
+    }
+    buf = add_achieveX(buf, 'blind', !!rp.blind); // C `:601`
+    buf = add_achieveX(buf, 'deaf', !!rp.deaf); // C `:602`
+    buf = add_achieveX(buf, 'nudist', !!rp.nudist); // C `:603`
+    buf = add_achieveX(buf, 'pauper', !!rp.pauper); // C `:604`
+    buf = add_achieveX(buf, 'bonesless', flags.bones === false); // C `:605`
+    buf = add_achieveX(buf, 'petless', !((c.pets | 0))); // C `:606`
+    buf = add_achieveX(buf, 'unrerolled', !rp.reroll); // C `:607`
+    return buf; // C `:609`
+}
+
+/* SCANBUFSZ (C topten.c:59) — room for every string field at once, plus a
+   separating space or trailing newline and the string terminator. */
+const SCANBUFSZ = 4 * (ROLESZ + 1) + (NAMSZ + 1) + (DTHSZ + 1) + 1;
+
+/**
+ * C ref: topten.c readentry `:220–298` — whole body in C order.
+ *
+ * C streams (FILE *rfile, struct toptenentry *tt); the VFS record is
+ * already split into lines by read_record_entries, so one call parses one
+ * record line into a fresh (newttentry-zeroed) entry: `:238–245` fscanf of
+ * the 13 numeric fields (mismatch → points = 0); `:246–257` fgets of the
+ * remainder with the SCANBUFSZ implicit length limit (overlong remainder
+ * is cut at SCANBUFSZ-2 + newline); `:259–276` pre-3.3 fmt32 two-char
+ * role/gender + name,death with the str2role→roles filecode fixup and the
+ * Mal/Fem + "?" defaults; `:277–287` fmt33 six-field modern arm (fail →
+ * points = 0); `:293–297` Y2K birthdate/deathdate fixup.
+ *
+ * Live callees: newttentry (file-local), copynchars (file-local clone of
+ * hacklib.c:286 — fields never carry '\n' post-split, so the slice equals
+ * C's newline stop), str2role + roles[].filecode (roles.js, same module
+ * as the pre-existing edge — no new import edge).
+ * Named omissions: discardexcess (topten.c:207 — FILE-streaming only; a
+ * VFS line carries no excess past its newline, and every fail arm still
+ * sets points = 0); UPDATE_RECORD_IN_PLACE fpos (`:235–237`, VMS-only —
+ * no fpos field in this build; whole-record VFS writes per D-2585);
+ * NO_SCAN_BRACK fmts + nsb_unmung_line (`:225–233`, `:283–292` — ifdef
+ * never defined in this build; unmunging '|'→' ' would corrupt modern
+ * record text); alloc (GC — fresh object per call).
+ */
+export function readentry(line) {
     const tt = newttentry();
     if (!line || !String(line).trim()) {
         tt.points = 0;
         return tt;
     }
+    // C `:238–245` — fscanf(fmt, 13 fields) != TTFIELDS(13) → points = 0
+    // (C's discardexcess of the rest of the line is the named omit above).
     const m = String(line).match(
-        /^(\d+)\.(\d+)\.(\d+) (-?\d+) (-?\d+) (-?\d+) (-?\d+) (-?\d+) (-?\d+) (-?\d+) (-?\d+) (-?\d+) (-?\d+) (.+)$/,
+        /^(\d+)\.(\d+)\.(\d+) (-?\d+) (-?\d+) (-?\d+) (-?\d+) (-?\d+) (-?\d+) (-?\d+) (-?\d+) (-?\d+) (-?\d+) ?(.*)$/,
     );
     if (!m) {
         tt.points = 0;
@@ -107,20 +448,55 @@ function readentry_line(line) {
     tt.deathdate = +m[11];
     tt.birthdate = +m[12];
     tt.uid = +m[13];
-    const sm = m[14].match(/^(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+([^,]*),(.*)$/);
-    if (!sm) {
-        tt.points = 0;
-        return tt;
+    // C `:246–257` — fgets remainder into inbuf[SCANBUFSZ]; a remainder
+    // with no newline in SCANBUFSZ is cut at [SCANBUFSZ-2] + '\n' and the
+    // excess discarded (same named omit as discardexcess).
+    let inbuf = `${m[14] ?? ''}\n`;
+    if (inbuf.length > SCANBUFSZ - 1) inbuf = `${inbuf.slice(0, SCANBUFSZ - 2)}\n`;
+    // C `:259–276` — backwards-compatibility arm (ver < 3.3):
+    // fmt32 "%c%c %[^,],%[^\n]" (the two role/gender chars read via %c).
+    if (tt.ver_major < 3 || (tt.ver_major === 3 && tt.ver_minor < 3)) {
+        const om = inbuf.match(/^(.)(.) ([^,]*),([^\n]*)\n?$/);
+        if (om) {
+            // C `:264` — plrole[1] = plgend[1] = '\0' (one char each).
+            tt.plrole = om[1];
+            tt.plgend = om[2];
+            tt.name = copynchars(om[3], NAMSZ);
+            tt.death = copynchars(om[4], DTHSZ);
+        } else {
+            tt.points = 0;
+        }
+        // C `:267–276` — unconditional: re-truncate role, str2role fixup
+        // to roles[].filecode, race "?", gender Mal/Fem, align "?".
+        const i = str2role(tt.plrole);
+        if (i >= 0) tt.plrole = copynchars(roles[i].filecode, ROLESZ);
+        tt.plrace = '?';
+        tt.plgend = tt.plgend[0] === 'M' ? 'Mal' : 'Fem';
+        tt.plalign = '?';
+    } else {
+        // C `:277–287` — fmt33 "%s %s %s %s %[^,],%[^\n]"; fail → 0.
+        const sm = inbuf.match(/^(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+([^,]*),([^\n]*)\n?$/);
+        if (!sm) {
+            tt.points = 0;
+            return tt;
+        }
+        tt.plrole = copynchars(sm[1], ROLESZ);
+        tt.plrace = copynchars(sm[2], ROLESZ);
+        tt.plgend = copynchars(sm[3], ROLESZ);
+        tt.plalign = copynchars(sm[4], ROLESZ);
+        tt.name = copynchars(sm[5], NAMSZ);
+        tt.death = copynchars(sm[6], DTHSZ);
     }
-    tt.plrole = copynchars(sm[1], ROLESZ);
-    tt.plrace = copynchars(sm[2], ROLESZ);
-    tt.plgend = copynchars(sm[3], ROLESZ);
-    tt.plalign = copynchars(sm[4], ROLESZ);
-    tt.name = copynchars(sm[5], NAMSZ);
-    tt.death = copynchars(String(sm[6] || '').replace(/\r?\n$/, ''), DTHSZ);
-    if (tt.birthdate < 19000000) tt.birthdate += 19000000;
-    if (tt.deathdate < 19000000) tt.deathdate += 19000000;
+    // C `:293–297` — Y2K fixup on old score entries with points.
+    if (tt.points > 0) {
+        if (tt.birthdate < 19000000) tt.birthdate += 19000000;
+        if (tt.deathdate < 19000000) tt.deathdate += 19000000;
+    }
     return tt;
+}
+
+function readentry_line(line) {
+    return readentry(line);
 }
 
 function read_record_entries() {
@@ -129,7 +505,7 @@ function read_record_entries() {
     const entries = [];
     for (const line of String(raw).split('\n')) {
         if (!line) continue;
-        const tt = readentry_line(line);
+        const tt = readentry(line);
         entries.push(tt);
         if (!(tt.points > 0)) break;
     }
@@ -350,7 +726,7 @@ function outentry(rank, t1, so, emit) {
  *
  * Live callees: deepest_lev_reached + ordin (hacklib.js), yyyymmdd
  * (calendar.js), formatkiller (end.js, via deathStr), outheader/outentry +
- * newttentry/readentry/writeentry file-local analogues below, copynchars /
+ * newttentry/writeentry file-local analogues + exported readentry below, copynchars /
  * observable_depth pre-existing file-local clones.
  * Named omissions: LOGFILE/XLOGFILE append arms (`:702–718`, unix
  * config.h default — no VFS consumer reads logfile/xlogfile);
@@ -725,7 +1101,7 @@ export async function prscore(argc, argv) {
     raw_print('');
 
     // C :1279–1291 — read the whole record (readentry/newttentry mechanics
-    // live as read_record_entries/readentry_line above: same zeroed shape,
+    // live as read_record_entries/readentry above: same zeroed shape,
     // same points==0 terminator); note the first wanted entry.
     const tt_head = [];
     let match_found = false;

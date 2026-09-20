@@ -63,7 +63,7 @@ import {
 } from './display.js';
 import { yn_function, paranoid_ynq, y_n } from './getline.js';
 import { vision_recalc, vision_reset, recalc_block_point, cansee, couldsee } from './vision.js';
-import { clear_regions, in_out_region } from './region.js';
+import { clear_regions, in_out_region, rest_regions } from './region.js';
 import {
     stairway_at,
     stairway_find_from,
@@ -1772,8 +1772,12 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         game.ftrap = info.ftrap || null;
         game.stairs = info.stairs || null;
         game.head_engr = info.head_engr || null;
-        // C rest_regions — pre-stash levels omit regions → empty
-        game.regions = info.regions || [];
+        // C restore.c getlev `:1225` rest_regions — rebuild live regions
+        // from the stash (ttl rebased on elapsed moves, expired dropped);
+        // pre-stash levels omit regions → empty. Stash getlev is never
+        // ghostly (ghostly ⇔ bones file → bones.js getlev_bones, D-2639).
+        const elapsed = (game.moves | 0) - (info.omoves | 0);
+        rest_regions(info.regions || [], elapsed, false);
         if (info.updest) game.updest = { ...info.updest };
         if (info.dndest) game.dndest = { ...info.dndest };
         // C restore.c getlev — Sfi_schar lastseentyp after rest_levl
@@ -1795,7 +1799,6 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         // (clear_level_structures only runs on mklev, not stash restore).
         game.Sokoban = !!(game.level?.flags?.sokoban_rules
             || game.level?.flags?.sokoban);
-        const elapsed = (game.moves | 0) - (info.omoves | 0);
         getlev_place_monsters();
         await getlev_catchup_monsters(elapsed);
     }

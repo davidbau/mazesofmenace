@@ -33,6 +33,7 @@ import {
 } from './dungeon.js';
 import { rest_track } from './track.js';
 import { open_levelfile } from './files.js';
+import { rest_regions } from './region.js';
 import { restore_timers, restore_light_sources, run_timers, dobjsfree } from './mkobj.js';
 import { vision_reset } from './vision.js';
 import { setworn } from './do_wear.js';
@@ -58,6 +59,7 @@ import {
 } from './lev_json.js';
 
 export { serObj, serMon, serLevel, deserLevel, serTraps, deserTraps } from './lev_json.js';
+import { relink_light_sources } from './light.js';
 
 const SAVE_VFS_PREFIX = 'save/';
 // C ref: fnamesiz.h UNIX arm — SAVEX `save/99999.e` (sizeof 12),
@@ -867,7 +869,10 @@ export async function try_restore_save() {
     game.head_engr = info.head_engr;
     game.stairs = info.stairs;
     game.lastseentyp = info.lastseentyp;
-    game.regions = info.regions || [];
+    // C restore.c getlev `:1225` rest_regions — rebuild live regions from
+    // the save (ttl rebased on elapsed moves, expired dropped); save-file
+    // restore is never ghostly (ghostly ⇔ bones → getlev_bones, D-2639).
+    rest_regions(info.regions || [], (game.moves | 0) - (info.omoves | 0), false);
     if (info.updest) game.updest = { ...info.updest };
     if (info.dndest) game.dndest = { ...info.dndest };
     // C restore.c rest_bubbles after rest_regions
@@ -905,12 +910,22 @@ export async function try_restore_save() {
         migrating_mons: game.migrating_mons,
         mydogs: game.mydogs,
     });
+    // C restore.c restgamestate `:726` relink_light_sources(FALSE) in C
+    // order: every entry not still flagged LSF_NEEDS_FIXUP is skipped
+    // exactly like C `:539` (the blob relinker above already linked the
+    // globals, so this is a flag-gated guard today).
+    relink_light_sources(false);
 
     // C getlev rest_track / restore_timers / restore_light_sources
     // for the current ledger only (M2: other ledgers stay on stash).
     if (info.track) rest_track(info.track);
     restore_timers(info.timers);
     restore_light_sources(info.lights);
+    // C restore.c getlev `:1300` relink_light_sources(ghostly) in C order.
+    // Save-file restore is never ghostly (ghostly ⇔ bones → getlev_bones,
+    // which never installs lights — named omission); level entries arrive
+    // already linked by relinkLevelTimersLights, so flag-gated skip.
+    relink_light_sources(false);
 
     // C restore.c restgamestate `:720–722` after restnames:
     // restore_msghistory, restore_gamelog, restore_luadata.

@@ -5,7 +5,7 @@
 
 import { game } from './gstate.js';
 import { rn1, rn2, rnd } from './rng.js';
-import { MAXULEV, NATTK, LARGEST_INT, Upolyd, LL_MINORAC, KILLED_BY, DIED } from './const.js';
+import { MAXULEV, NATTK, LARGEST_INT, Upolyd, LL_MINORAC, KILLED_BY, DIED, MAGICAL_BREATHING } from './const.js';
 import { pline } from './display.js';
 import { acurr, A_WIS, newhp, adjabil, minuhpmax } from './attrib.js';
 import { resists_drli } from './zap.js';
@@ -13,7 +13,7 @@ import { monhp_per_lvl } from './makemon.js';
 import { rehumanize } from './polyself.js';
 import { find_mac } from './mhitm.js';
 import { NORMAL_SPEED } from './mon.js';
-import { extra_nasty } from './monsters.js';
+import { extra_nasty, amphibious } from './monsters.js';
 import { Goodbye, xlev_to_rank } from './roles.js';
 import {
     PM_CLERIC,
@@ -22,6 +22,7 @@ import {
     PM_KNIGHT,
     PM_BARBARIAN,
     PM_VALKYRIE,
+    monsterNames,
 } from './generated/monsters_data.js';
 import { achieve_rank, count_achievements, record_achievement } from './insight.js';
 import { livelog_printf } from './pline.js';
@@ -37,6 +38,26 @@ const AD_DRLI = 15;
 const AD_STON = 18;
 const AD_SLIM = 40;
 const AD_WRAP = 28;
+
+// C ref: exper.c:139 `mtmp->data == &mons[PM_MAIL_DAEMON]` — pointer compare
+// becomes the permonst mndx compare (monmove.js:1854 / mhitm.js:3586 shape).
+const PM_MAIL_DAEMON = monsterNames.indexOf('PM_MAIL_DAEMON');
+
+/**
+ * C ref: youprop.h:272 Amphibious = HMagical_breathing || EMagical_breathing
+ * || amphibious(youmonst.data). Macro expanded file-local (not exported) in
+ * the teleport.js:273 / mhitu.js:2453 uprop-read shape; used only by
+ * experience() :125 below.
+ */
+function Amphibious_hero() {
+    const u = game.u || {};
+    const prop = u.uprops?.[MAGICAL_BREATHING];
+    if ((u.HMagical_breathing | 0) || (u.EMagical_breathing | 0)
+        || (prop?.intrinsic | 0) || (prop?.extrinsic | 0)) {
+        return true;
+    }
+    return amphibious(game.youmonst?.data);
+}
 
 // C ref: exper.c newuexp()
 export function newuexp(lev) {
@@ -203,22 +224,26 @@ export async function pluslvl(incr) {
 }
 
 /**
- * C ref: exper.c experience(mtmp, nk) — XP awarded for killing mtmp.
- * Amphibious eel AD_WRAP +1000 and MAIL_DAEMON special deferred.
+ * C ref: exper.c experience(mtmp, nk) :85–166 — XP awarded for killing mtmp,
+ * in C order with per-arm cites. (Pre-existing guard: C takes NONNULLARG1
+ * and would deref; JS returns 1 on missing data.)
  */
 export function experience(mtmp, nk) {
-    const ptr = mtmp?.data;
+    const ptr = mtmp?.data; // C :87
     if (!ptr) return 1;
     const m_lev = mtmp.m_lev | 0;
-    let tmp = 1 + m_lev * m_lev;
+    let tmp = 1 + m_lev * m_lev; // C :90
+    // C :93–94 — higher AC gives extra experience.
     let i = find_mac(mtmp);
     if (i < 3) tmp += (7 - i) * (i < 0 ? 2 : 1);
 
+    // C :97–98 — very fast monsters give extra experience.
     const mmove = ptr.mmove | 0;
     if (mmove > NORMAL_SPEED) {
         tmp += mmove > Math.trunc((3 * NORMAL_SPEED) / 2) ? 5 : 3;
     }
 
+    // C :101–111 — each "special" attack type gives extra experience.
     const mattk = ptr.mattk || [];
     for (i = 0; i < NATTK; i++) {
         const tmp2 = mattk[i]?.aatyp | 0;
@@ -228,19 +253,29 @@ export function experience(mtmp, nk) {
             else tmp += 3;
         }
     }
+    // C :114–127 — each "special" damage type gives extra experience.
     for (i = 0; i < NATTK; i++) {
         const slot = mattk[i] || { adtyp: 0, damn: 0, damd: 0 };
         const tmp2 = slot.adtyp | 0;
         if (tmp2 > AD_PHYS && tmp2 < AD_BLND) tmp += 2 * m_lev;
         else if (tmp2 === AD_DRLI || tmp2 === AD_STON || tmp2 === AD_SLIM) tmp += 50;
         else if (tmp2 !== AD_PHYS) tmp += m_lev;
+        // C :123–124 — extra heavy damage bonus.
         if (((slot.damd | 0) * (slot.damn | 0)) > 23) tmp += m_lev;
-        // AD_WRAP + S_EEL + !Amphibious → +1000 deferred (named omission)
-        void AD_WRAP;
+        // C :125–126 — eel AD_WRAP is +1000 unless the hero is Amphibious.
+        // mlet is the 'S_EEL' string in JS (allmain.js:425 shape).
+        if (tmp2 === AD_WRAP && ptr.mlet === 'S_EEL' && !Amphibious_hero()) tmp += 1000;
     }
+    // C :130–131 — "extra nasty" monsters give even more.
     if (extra_nasty(ptr)) tmp += 7 * m_lev;
+    // C :134–135 — higher-level bonus.
     if (m_lev > 8) tmp += 50;
 
+    // C :137–141 — mail daemons put up no fight (MAIL_STRUCTURES is always
+    // on per global.h:430; uhitm.js:151 precedent).
+    if ((ptr?.mndx ?? -1) === PM_MAIL_DAEMON) tmp = 1;
+
+    // C :143–163 — repeated killings of "the same monster" scale down.
     if (mtmp.mrevived || mtmp.mcloned) {
         let tmp2 = 20;
         let nkLeft = nk | 0;
@@ -250,7 +285,7 @@ export function experience(mtmp, nk) {
             if (i & 1) tmp2 += 20;
         }
     }
-    return tmp;
+    return tmp; // C :165
 }
 
 /** C ref: exper.c more_experienced(exper, rexp) */

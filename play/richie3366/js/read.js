@@ -35,8 +35,8 @@
 // study_book novel / dull sleep (occupation learn D-0907);
 // SCR_BLANK_PAPER seffects; SCR_IDENTIFY SPE_IDENTIFY cast; menu_identify traditional
 // ggetobj; discover_artifact / learn_egg_type in fully_identify_obj;
-// SCR_DESTROY_ARMOR confused erodeproof / cursed vibrate+stun /
-// blessed getobj choice / disintegrate_cursed_armor; Rogue unblock_point
+// SCR_DESTROY_ARMOR live (D-2640: confused erodeproof / cursed vibrate+stun /
+// blessed getobj choice / disintegrate_cursed_armor); Rogue unblock_point
 // vs vision_recalc on blessed SDOOR; can_chant poly silent/
 // headless/buzz/burble;
 // SPE_REMOVE_CURSE seffects
@@ -69,8 +69,8 @@
 // study_book novel / dull sleep (occupation learn D-0907);
 // seffect_fire SCR_FIRE live; SCR_BLANK_PAPER; SCR_IDENTIFY SPE_IDENTIFY cast;
 // menu_identify traditional ggetobj; discover_artifact / learn_egg_type;
-// SCR_DESTROY_ARMOR confused erodeproof / cursed vibrate+stun /
-// blessed getobj choice / disintegrate_cursed_armor; Rogue unblock_point
+// SCR_DESTROY_ARMOR live (D-2640: confused erodeproof / cursed vibrate+stun /
+// blessed getobj choice / disintegrate_cursed_armor); Rogue unblock_point
 // vs vision_recalc on blessed SDOOR; can_chant poly silent/
 // headless/buzz/burble;
 // SPE_REMOVE_CURSE seffects
@@ -94,7 +94,7 @@
 
 import { game } from './gstate.js';
 import { pline, You, Your, urgent_pline, newsym, You_feel, verbalize, canspotmon, tmp_at, cmap_to_glyph, map_invisible, shieldeff, monsym } from './display.js';
-import { xname, makeplural, an, vtense, otense, otyp_is_charged, Yname2, Yobjnam2, Tobjnam, doname } from './objnam.js';
+import { xname, makeplural, an, vtense, otense, otyp_is_charged, Yname2, Yobjnam2, Tobjnam, doname, actualoname } from './objnam.js';
 import {
     SCROLL_CLASS, SPBOOK_CLASS, COIN_CLASS, WEAPON_CLASS, GEM_CLASS,
     ARMOR_CLASS, BALL_CLASS, CHAIN_CLASS, WAND_CLASS, RING_CLASS, TOOL_CLASS,
@@ -114,7 +114,7 @@ import { study_book, can_chant, losespells } from './spell.js';
 import { scrolltele, level_tele } from './teleport.js';
 import { trycall, hcolor, Monnam, mon_nam, s_suffix, hliquid } from './do_name.js';
 import { chwepon, is_weptool } from './wield.js';
-import { destroy_arm, disintegrate_arm, some_armor, setworn, hard_helmet, Ring_gone, Ring_off, Ring_on, adj_abon } from './do_wear.js';
+import { destroy_arm, disintegrate_arm, some_armor, any_worn_armor_ok, count_worn_armor, setworn, hard_helmet, Ring_gone, Ring_off, Ring_on, adj_abon } from './do_wear.js';
 import { dropy, flooreffects } from './do.js';
 import { placebc, set_bc, move_bc } from './ball.js';
 import { rn2, rnd, rn1, d } from './rng.js';
@@ -128,7 +128,7 @@ import {
     nothing_happens, G_GENOD, G_EXTINCT, UNCHANGING,
     GETOBJ_EXCLUDE, GETOBJ_DOWNPLAY, GETOBJ_SUGGEST, GETOBJ_PROMPT,
     GETOBJ_EXCLUDE_SELECTABLE, GETOBJ_ALLOWCNT,
-    LEFT_RING, RIGHT_RING, COST_UNCHRG, COST_DECHNT, COST_DEGRD, NOTELL,
+    LEFT_RING, RIGHT_RING, COST_UNCHRG, COST_DECHNT, COST_DEGRD, NOTELL, TIMEOUT,
     ALL_SPELLS, DISP_BEAM, DISP_END, S_goodpos, Never_mind,
     In_endgame, Is_earthlevel, IS_OBSTRUCTED, IS_AIR,
     EXPL_FIERY, PLNMSG_TOWER_OF_FLAME, M_SEEN_FIRE, u_at,
@@ -174,7 +174,7 @@ import { has_ceiling, avoid_ceiling } from './dungeon.js';
 import { explode } from './explode.js';
 import { burn_away_slime, artifact_light, arti_light_radius, end_burn } from './timeout.js';
 import { snuff_lit } from './apply.js';
-import { impact_arti_light } from './potion.js';
+import { impact_arti_light, make_stunned } from './potion.js';
 
 const SCR_MAGIC_MAPPING = objectNames.indexOf('SCR_MAGIC_MAPPING');
 const SPE_MAGIC_MAPPING = objectNames.indexOf('SPE_MAGIC_MAPPING');
@@ -1206,64 +1206,112 @@ async function strange_feeling_scroll(obj, txt) {
 }
 
 /**
- * C ref: read.c seffect_destroy_armor
- * Envelope: some_armor always; cursed → vibrate or disintegrate_arm;
- * uncursed non-confused → destroy_arm (or strange_feeling + STR/CON
- * exercise on fail). Named omissions: confused p_glow2 polish; cursed
- * vibrate adj_abon + make_stunned body; blessed getobj choice +
- * disintegrate_cursed_armor.
+ * C ref: read.c disintegrate_cursed_armor `:1293–1321` (staticfn) —
+ * gather every cursed worn piece (suit, cloak, helm, shield, gloves,
+ * boots, shirt) and disintegrate one at random.
+ * @returns {Promise<boolean>} true if a piece was disintegrated
+ */
+async function disintegrate_cursed_armor() {
+    const u = game.u || {};
+    const armors = [];
+    // C `:1301–1314` order: uarm, uarmc, uarmh, uarms, uarmg, uarmf, uarmu
+    if (u.uarm && u.uarm.cursed) armors.push(u.uarm);
+    if (u.uarmc && u.uarmc.cursed) armors.push(u.uarmc);
+    if (u.uarmh && u.uarmh.cursed) armors.push(u.uarmh);
+    if (u.uarms && u.uarms.cursed) armors.push(u.uarms);
+    if (u.uarmg && u.uarmg.cursed) armors.push(u.uarmg);
+    if (u.uarmf && u.uarmf.cursed) armors.push(u.uarmf);
+    if (u.uarmu && u.uarmu.cursed) armors.push(u.uarmu);
+    if (!armors.length) return false; // C `:1315–1316`
+    if (await disintegrate_arm(armors[rn2(armors.length)])) return true; // C `:1318`
+    return false; // C `:1320`
+}
+
+/**
+ * C ref: read.c seffect_destroy_armor `:1324–1396`.
+ * some_armor pick always; confused → bones-itch or erodeproof swap;
+ * cursed → vibrate+stun or disintegrate_arm; uncursed blessed with 2+
+ * worn pieces → getobj choice, blessed → disintegrate_cursed_armor,
+ * else destroy_arm or skin-itch. Every callee live (some_armor /
+ * any_worn_armor_ok / count_worn_armor / adj_abon / disintegrate_arm /
+ * destroy_arm do_wear.js; strange_feeling_scroll file-local ≡ potion.c
+ * strange_feeling via live detect.js strange_feeling; p_glow2 file-local;
+ * costly_alteration shk.js; Yobjnam2/an/actualoname objnam.js;
+ * make_stunned potion.js; getobj invent.js).
  * @returns {Promise<object|null>} sobj or null if strange_feeling used it up
  */
 // C staticfn, exported for the test pin (cf. D-2412 num_extinct/num_gone).
 export async function seffect_destroy_armor(sobj) {
-    // C: always picks some_armor first (may rn2(4) per extra worn slot)
-    const otmp = some_armor(null);
+    // C `:1328` — some_armor(&gy.youmonst); JS some_armor is hero-only
+    let otmp = some_armor(null);
     const scursed = !!sobj.cursed;
-    const confused = !!(game.u?.Confusion);
+    // C `:1331` — Confusion ≡ HConfusion (youprop.h, D-1048); OR the
+    // JS-side do_mapping screw flag like the sibling seffects
+    const u = game.u || {};
+    const confused = !!((u.HConfusion | 0) || (u.Confusion | 0));
 
-    if (confused) {
-        if (!otmp) {
+    if (confused) { // C `:1333–1352`
+        if (!otmp) { // C `:1334–1339`
             await strange_feeling_scroll(sobj, 'Your bones itch.');
             exercise(A_STR, false);
             exercise(A_CON, false);
-            return null;
+            return null; // C: *sobjp = 0 (useup ran inside strange_feeling)
         }
-        // Confused erodeproof toggle (p_glow2 deferred → plain pline)
-        const old_erodeproof = !!otmp.oerodeproof;
-        const new_erodeproof = scursed;
-        otmp.oerodeproof = 0;
-        await pline(`Your ${xname(otmp)} glows purple for a moment.`);
-        if (old_erodeproof && !new_erodeproof) {
+        const old_erodeproof = !!otmp.oerodeproof; // C `:1340`
+        const new_erodeproof = scursed; // C `:1341`
+        otmp.oerodeproof = 0; // C `:1342` for messages
+        await p_glow2(otmp, NH_PURPLE); // C `:1343`
+        if (old_erodeproof && !new_erodeproof) { // C `:1344–1348`
+            // restore old_erodeproof before shop charges
             otmp.oerodeproof = 1;
-            // costly_alteration COST_DEGRD deferred
+            await costly_alteration(otmp, COST_DEGRD);
         }
-        otmp.oerodeproof = new_erodeproof ? 1 : 0;
-        return sobj;
+        otmp.oerodeproof = new_erodeproof ? 1 : 0; // C `:1349`
+        return sobj; // C `:1350–1351` (scroll survives)
     }
 
-    if (scursed) {
-        if (otmp && otmp.cursed) {
-            await pline(`Your ${xname(otmp)} vibrates.`);
-            if ((otmp.spe | 0) >= -6) {
+    if (scursed) { // C `:1354–1371`
+        if (otmp && otmp.cursed) { // C `:1355–1364` armor and scroll cursed
+            await pline(`${Yobjnam2(otmp, 'vibrate')}.`); // C `:1357`
+            if ((otmp.spe | 0) >= -6) { // C `:1358–1361`
                 otmp.spe = (otmp.spe | 0) - 1;
-                // adj_abon deferred
+                adj_abon(otmp, -1);
             }
-            // make_stunned((HStun & TIMEOUT) + rn1(10,10)) deferred
-        } else if (await disintegrate_arm(otmp)) {
-            // C read.c:1380–1383: gk.known = TRUE; return (scroll survives)
+            // C `:1363` — (HStun & TIMEOUT) + rn1(10,10)
+            await make_stunned(((u.HStun | 0) & TIMEOUT) + rn1(10, 10), true);
+        } else if (await disintegrate_arm(otmp)) { // C `:1365–1369`
+            known = true; // C: gk.known = TRUE; return (scroll survives)
+            return sobj;
+        }
+    } else { // C `:1372–1395`
+        // C `:1373–1374` — sobj non-null here (the scroll being read)
+        const gets_choice = !!(otmp && sobj && sobj.blessed
+            && count_worn_armor() > 1);
+
+        if (gets_choice) { // C `:1376–1388`
+            if (!game.objects?.[(sobj.otyp | 0)]?.oc_name_known) // C `:1379`
+                await pline(`This is ${an(actualoname(sobj))}!`);
+            known = true; // C: gk.known = TRUE (`:1381`)
+            const atmp = await getobj('destroy', any_worn_armor_ok, GETOBJ_PROMPT); // C `:1382`
+            // check the return value, if user picked non-valid obj
+            if (any_worn_armor_ok(atmp) === GETOBJ_SUGGEST) // C `:1384–1385`
+                otmp = atmp;
+            if (await disintegrate_arm(otmp)) { // C `:1386–1389`
+                known = true;
+                return sobj;
+            }
+        } else if (sobj.blessed && await disintegrate_cursed_armor()) { // C `:1390`
+            known = true;
+            return sobj;
+        } else if (!(await destroy_arm())) { // C `:1392`
+            await strange_feeling_scroll(sobj, 'Your skin itches.');
+            exercise(A_STR, false);
+            exercise(A_CON, false);
+            return null; // C: *sobjp = 0 (useup ran inside strange_feeling)
+        } else { // C `:1394–1395`
             known = true;
         }
-        return sobj;
     }
-
-    // Uncursed: blessed choice / disintegrate_cursed deferred
-    if (!(await destroy_arm())) {
-        await strange_feeling_scroll(sobj, 'Your skin itches.');
-        exercise(A_STR, false);
-        exercise(A_CON, false);
-        return null;
-    }
-    known = true;
     return sobj;
 }
 

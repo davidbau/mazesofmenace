@@ -2497,8 +2497,8 @@ function equip_ok(obj, removing, accessory) {
  * C ref: do_wear.c any_worn_armor_ok `:3480–3485` — getobj callback for
  * blessed destroy-armor: suggest any worn armor, even if covered by
  * other armor.
- * Named omissions: caller wiring — read.c gets_choice getobj arm still
- * deferred (js/read.js seffect_destroy_armor).
+ * Caller wiring: read.c gets_choice getobj arm live
+ * (js/read.js seffect_destroy_armor, D-2640).
  * @param {object|null} obj
  * @returns {number} GETOBJ_SUGGEST or GETOBJ_EXCLUDE
  */
@@ -2510,8 +2510,8 @@ export function any_worn_armor_ok(obj) {
 /**
  * C ref: do_wear.c count_worn_armor `:3489–3502` — number of armor pieces
  * worn by hero (suit, cloak, helm, shield, gloves, boots, shirt).
- * Named omissions: caller wiring — read.c blessed gets_choice
- * `count_worn_armor() > 1` gate still deferred (js/read.js).
+ * Caller wiring: read.c blessed gets_choice
+ * `count_worn_armor() > 1` gate live (js/read.js, D-2640).
  * @returns {number} worn armor count
  */
 export function count_worn_armor() {

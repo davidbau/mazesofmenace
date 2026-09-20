@@ -35,6 +35,7 @@ import { sanitize_engravings } from './engrave.js';
 import { delete_convertedfile } from './files.js';
 import { mons, monsterNames, SPECIAL_PM } from './monsters.js';
 import { cant_revive } from './zap.js';
+import { rest_regions } from './region.js';
 
 const BONES_VFS_PREFIX = 'bones/';
 const SLIME_MOLD = objectNames.indexOf('SLIME_MOLD');
@@ -481,6 +482,29 @@ function remapObjChainIds(head) {
 }
 
 /**
+ * C ref: restore.c ghostly getlev id map (`gi.id_map` / `gn.n_ids_mapped`;
+ * `add_id_mapping` at restmonchn `:400–405`, `lookup_id_mapping` at
+ * reset_region_mids (region.c:934), `clear_id_mapping` at getlev start
+ * `:1068` and end `:1304`): old m_id → remapped m_id for this bones load.
+ * Recorded by remapMonChainIds, consumed by region.js reset_region_mids
+ * (returns the new id, null when unmapped — the boolean+out-param shape
+ * collapsed, same contract), cleared at both ends of getlev_bones like C.
+ * (C light.c:543 / timeout.c:2760 ghostly lookups have no JS restore
+ * counterpart yet — future rows, named here.)
+ */
+const bonesIdMap = new Map();
+export function record_bones_id(oldId, newId) {
+    bonesIdMap.set(oldId | 0, newId | 0);
+}
+export function lookup_bones_id(oldId) {
+    const nid = bonesIdMap.get(oldId | 0);
+    return nid === undefined ? null : nid;
+}
+export function clear_bones_ids() {
+    bonesIdMap.clear();
+}
+
+/**
  * C ref: restore.c restmonchn ghostly `:399–416` — next_ident per mon,
  * then propagate(mndx, TRUE, ghostly) on the true form (cham, else the
  * saved mnum == monsndx(data)); a species that can no longer be born
@@ -488,7 +512,10 @@ function remapObjChainIds(head) {
  */
 function remapMonChainIds(monsList) {
     for (const mtmp of monsList) {
-        mtmp.m_id = next_ident();
+        // C `:400-405`: nid = next_ident(); add_id_mapping(old, nid)
+        const nid = next_ident();
+        record_bones_id(mtmp.m_id, nid);
+        mtmp.m_id = nid;
         const mndx = (mtmp.cham == null || mtmp.cham === NON_PM)
             ? (mtmp.mnum | 0) : (mtmp.cham | 0);
         if (!propagate(mndx, true, true)) {
@@ -535,11 +562,13 @@ async function trickery(reason) {
  * restmonchn/restobjchn id remap + propagate + ghostfruit, peace/malign
  * reset for the new hero, install, rest_track, freefruitchn.
  * Named omissions: installing the blob's RANGE_LEVEL timers/lights,
- * regions and lastseentyp (C getlev restores them); shk residency peace;
- * hide_monst.
+ * lastseentyp (C getlev restores it); shk residency peace; hide_monst.
+ * Regions ARE restored (rest_regions ghostly arm below, D-2639).
  * @param {object} payload  bones VFS payload (top-level level blob)
  */
 function getlev_bones(payload) {
+    // C getlev ghostly `:1068` clear_id_mapping at start.
+    clear_bones_ids();
     // C getlev ghostly: go.oldfruit = loadfruitchn before restobjchn
     // so ghostfruit can remap SLIME_MOLD spe (D-1541).
     game.oldfruit = loadfruitchn(payload.fruitchn);
@@ -591,10 +620,16 @@ function getlev_bones(payload) {
     game.head_engr = info.head_engr;
     game.stairs = info.stairs;
     rebuildObjectsAt(info.fobj);
+    // C restore.c getlev `:1225` rest_regions ghostly — install the bones
+    // level's regions with no ttl decay (ghostly ⇒ tmstamp 0), old-player
+    // hero bits cleared, monster ids remapped (D-2639).
+    rest_regions(info.regions || [], 0, true);
     // C ref: restore.c getlev → rest_track (bones NHFILE includes utrack)
     rest_track(info.track);
     // C getlev ghostly: freefruitchn(oldfruit) after restobjchn / rest_track.
     game.oldfruit = null;
+    // C restore.c `:1304` clear_id_mapping at end of getlev.
+    clear_bones_ids();
 }
 
 /**

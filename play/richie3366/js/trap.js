@@ -858,7 +858,7 @@ function mkroll_launch(ttmp, x, y, otyp, ocount) {
  * Named omit: SDOOR→AIR arboreal; full count_level_features scan;
  * other callers keep their local analogs.
  */
-function set_levltyp(x, y, newtyp) {
+export function set_levltyp(x, y, newtyp) {
     if (!isok(x, y) || newtyp < STONE || newtyp >= MAX_TYPE) return false;
     const lev = game.level?.at?.(x, y);
     if (!lev) return false;

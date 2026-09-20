@@ -62,7 +62,7 @@ import {
     AUTOSELECT_SINGLE, FEEL_COCKATRICE, INCLUDE_VENOM,
     MENU_INVERT_ALL, MENU_SELECT_ALL, MENU_UNSELECT_ALL,
     MENU_ITEMFLAGS_NONE, MENU_ITEMFLAGS_SKIPINVERT, PICK_NONE, PICK_ONE,
-    PICK_ANY,
+    PICK_ANY, PARANOID_CONFIRM, PARANOID_AUTOALL,
     MENU_TRADITIONAL, MENU_COMBINATION, MENU_FULL,
     SHOPBASE,
     SLT_ENCUMBER, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER,
@@ -114,7 +114,7 @@ import {
     is_floater, is_swimmer, is_clinger, likes_lava, amphibious, grounded, is_flyer, breathless, hides_under,
 } from './monsters.js';
 import { welded, weldmsg, setuwep, setuswapwep, setuqwep } from './wield.js';
-import { yn_function, getlin } from './getline.js';
+import { yn_function, getlin, paranoid_ynq } from './getline.js';
 import { highc } from './hacklib.js';
 import { show_nhw_menu_text } from './pager.js';
 import { cansee } from './vision.js';
@@ -462,9 +462,16 @@ function count_categories(olist, qflags) {
  * C pickup.c query_category `:1225–1508`.
  * Branch envelope for menu_remarm: WORN_TYPES | ALL_TYPES | UNPAID_TYPES
  * | BUCX_TYPES, PICK_ANY. Single-class skip via count_categories.
- * CHOOSE_ALL rows when the flag is set; ParanoidAutoAll yn named omit
- * (verify_All stays false). INCLUDE_VENOM via inv_order_pack; menu_head_objsym
+ * CHOOSE_ALL rows when the flag is set (`:1316–1337`), with the
+ * ParanoidAutoAll verify_All flip (`:1326`) + A_first/A_second_hint
+ * once-only counters (`decl.h:167–168`, init `decl.c:193`) and the
+ * post-menu paranoid_ynq confirm (`:1455–1493`) + 'A'-alone rejection
+ * (`:1495–1501`). INCLUDE_VENOM via inv_order_pack; menu_head_objsym
  * live. PICK_ONE (dotypeinv D-1687) uses select_menu_pick_one.
+ * Menu arch: add_menu/add_menu_str ⇒ menu_pick line objects (D-2633);
+ * alloc/free pick_list ⇒ GC (no live alloc export); debugpline0 is
+ * compiled out. menu_loot's MENU_FULL call (`:3286`) routes through
+ * the local query_loot_category clone (own omissions, below) instead.
  *
  * @returns {Promise<{ a_int: number|string }[]>} empty if cancelled
  */
@@ -524,6 +531,8 @@ export async function query_category(qstr, olist, qflags, how) {
     const skip = MENU_ITEMFLAGS_SKIPINVERT;
     const none = MENU_ITEMFLAGS_NONE;
 
+    /* C `:1246` — verify_All inits FALSE; set in the CHOOSE_ALL arm. */
+    let verify_All = false;
     if ((qflags & CHOOSE_ALL) !== 0) {
         items.push({
             selectable: true,
@@ -535,11 +544,29 @@ export async function query_category(qstr, olist, qflags, how) {
                 : 'Auto-select every relevant item',
             itemflags: skip,
         });
-        if (game.iflags?.cmdassist !== false) {
-            items.push({
-                selectable: false,
-                text: '    (ignored unless some other choices are also picked)',
-            });
+        /* C `:1326–1337` — PICK_ANY + ParanoidAutoAll flips the hint:
+           without it 'A' alone is rejected ("ignored unless..."); with
+           it (+ show_a) 'A' alone implies 'a' ("if no other...").
+           ga counters (decl.h:167–168) show each hint once; cmdassist
+           forces it every time. add_menu_str ⇒ non-selectable row. */
+        verify_All = how === PICK_ANY
+            && (((game.flags?.paranoia_bits | 0) & PARANOID_AUTOALL) !== 0);
+        if (!verify_All) {
+            if (!(game.A_first_hint | 0) || game.iflags?.cmdassist !== false) {
+                items.push({
+                    selectable: false,
+                    text: '    (ignored unless some other choices are also picked)',
+                });
+            }
+            game.A_first_hint = (game.A_first_hint | 0) + 1;
+        } else if (show_a) {
+            if (!(game.A_second_hint | 0) || game.iflags?.cmdassist !== false) {
+                items.push({
+                    selectable: false,
+                    text: "    (if no other choices are picked, 'a' is implied)",
+                });
+            }
+            game.A_second_hint = (game.A_second_hint | 0) + 1;
         }
         items.push({ selectable: false, text: '' });
     }
@@ -658,8 +685,36 @@ export async function query_category(qstr, olist, qflags, how) {
     const picked = pickedAny;
     if (!picked.length) return [];
 
-    /* C: 'A' by itself without ParanoidAutoAll is rejected. */
-    if (picked.length === 1 && picked[0].a_int === 'A') {
+    /* C `:1455–1493` — ParanoidAutoAll confirm when 'A' was picked: yes
+       honors it; no drops it from the list (or converts a lone 'A' to
+       'a' when ALL_TYPES is offered, so the next menu offers all);
+       quit/ESC — and no-with-nothing-to-fall-back-to — cancels the
+       whole pick (free ⇒ GC). Only the first 'A' is examined, like C. */
+    if (verify_All) {
+        const ai = picked.findIndex((it) => it.a_int === 'A');
+        if (ai >= 0) {
+            /* C `:1460–1465` — ParanoidConfirm wants "yes"/"no" (quit
+               and ESC pass through); otherwise a plain y/n. */
+            const ParanoidConfirm = (((game.flags?.paranoia_bits | 0)
+                & PARANOID_CONFIRM) !== 0);
+            const c = await paranoid_ynq(
+                ParanoidConfirm, 'Really autoselect All?', true);
+            if (c === 'y') {
+                /* yes ⇒ honor Auto-select All */
+            } else if (c === 'n' && picked.length > 1) {
+                /* no ⇒ remove 'A' from the list */
+                picked.splice(ai, 1);
+            } else if (c === 'n' && (qflags & ALL_TYPES) !== 0) {
+                /* lone 'A' ⇒ convert to 'a' (ALL_TYPES_SELECTED) */
+                picked[0].a_int = ALL_TYPES_SELECTED;
+            } else {
+                /* quit | ESC ⇒ cancel, no Auto-select and no 2nd menu */
+                return [];
+            }
+        }
+    } else if (picked.length === 1 && picked[0].a_int === 'A') {
+        /* C `:1495–1501` — without paranoid_confirm:A a lone 'A' is
+           rejected (the menu text already warned it is ignored). */
         await pline('No relevant items selected.');
         return [];
     }
