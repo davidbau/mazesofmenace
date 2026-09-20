@@ -14,7 +14,7 @@ import { cansee, vision_recalc } from './vision.js';
 import { rn2, rnd, rn1, d } from './rng.js';
 import {
     place_object, splitobj, stackobj, delobj, is_crackable, sobj_at,
-    weight,
+    weight, unsplitobj,
 } from './mkobj.js';
 import {
     losehp, maybe_half_phys, nomul, impact_disturbs_zombies, finish_maybe_wail,
@@ -46,7 +46,7 @@ import {
     xdir, ydir, xytodir, N_DIRS, RIGHT_HANDED, IS_SINK, HI_WOOD, OBJ_MINVENT,
     DISP_FLASH, DISP_CHANGE, DISP_END, DISP_TETHER, BACKTRACK,
     ARTICLE_A, SUPPRESS_SADDLE, AUGMENT_IT, has_mgivenname, has_oname, RLOC_MSG,
-    W_ARMU, W_ARM, W_ARMC,
+    W_ARMU, W_ARM, W_ARMC, CXN_PFX_THE,
     ECMD_OK, ECMD_TIME, LARGEST_INT, CQ_CANNED,
     DEAF, SHOPBASE, Is_waterlevel,
     GETOBJ_EXCLUDE, GETOBJ_DOWNPLAY, GETOBJ_SUGGEST, GETOBJ_PROMPT,
@@ -55,29 +55,29 @@ import {
 import { obj_resists, dogfood } from './dogmove.js';
 import {
     ammo_and_launcher, is_ammo, is_missile, is_pole, doswapweapon, doquiver_core,
-    welded, setuwep, setuswapwep, setuqwep, set_twoweap, dowield,
+    welded, weldmsg, setuwep, setuswapwep, setuqwep, set_twoweap, dowield,
 } from './wield.js';
 import { acurr, acurrstr, A_CON, A_DEX, A_STR, change_luck, exercise, Fumbling } from './attrib.js';
 import {
     calc_capacity, fully_identify_obj, encumber_msg, getobj, prinv, cmdq_add_key,
 } from './invent.js';
 import { add_to_minv, mpickobj, makemon, set_malign } from './makemon.js';
-import { finish_quest } from './quest.js';
+import { finish_quest, is_quest_artifact } from './quest.js';
 import { align_gname } from './roles.js';
 import { find_mac } from './mhitm.js';
 import { digests } from './mhitu.js';
-import { hitval, weapon_hit_bonus, should_mulch_missile, dmgval, autoreturn_weapon } from './weapon.js';
+import { hitval, weapon_hit_bonus, should_mulch_missile, dmgval, autoreturn_weapon, multishot_class_bonus, is_wet_towel, dry_a_towel } from './weapon.js';
 import { spec_abon, artifact_hit, is_art } from './artifact.js';
 import { ART_MJOLLNIR } from './generated/artifacts_data.js';
 import {
-    PM_CAVE_DWELLER, PM_MONK, PM_RANGER, PM_ROGUE, PM_SAMURAI,
+    PM_MONK, PM_SAMURAI,
     PM_WIZARD, PM_HEALER, PM_TOURIST, PM_CLERIC, PM_VALKYRIE,
     PM_ELF, PM_ORC, PM_GNOME,
     monsterNames,
 } from './generated/monsters_data.js';
 import {
-    xname, killer_xname, singular, an, An, the, vtense, doname, thesimpleoname,
-    makeplural, otense, mshot_xname,
+    xname, killer_xname, singular, an, An, the, The, vtense, doname, thesimpleoname,
+    makeplural, otense, mshot_xname, corpse_xname,
 } from './objnam.js';
 import { m_at, wakeup, seemimic, wake_nearto, distmin, monnear, m_respond, setmangry } from './mon.js';
 import { mon_nam, Monnam, hliquid, Hallucination, Some_Monnam, x_monnam, pmname, rndmonnam } from './do_name.js';
@@ -133,6 +133,9 @@ const ROCK = objectNames.indexOf('ROCK');
 const FLINT = objectNames.indexOf('FLINT');
 const BULLWHIP = objectNames.indexOf('BULLWHIP');
 const ELVEN_BOW = objectNames.indexOf('ELVEN_BOW');
+const ELVEN_ARROW = objectNames.indexOf('ELVEN_ARROW');
+const ORCISH_BOW = objectNames.indexOf('ORCISH_BOW');
+const ORCISH_ARROW = objectNames.indexOf('ORCISH_ARROW');
 const YUMI = objectNames.indexOf('YUMI');
 const GAUNTLETS_OF_POWER = objectNames.indexOf('GAUNTLETS_OF_POWER');
 const GAUNTLETS_OF_FUMBLING = objectNames.indexOf('GAUNTLETS_OF_FUMBLING');
@@ -324,11 +327,6 @@ function befriend_with_obj(ptr, obj) {
     return true;
 }
 
-function The(str) {
-    const t = the(str);
-    return t ? t.charAt(0).toUpperCase() + t.slice(1) : t;
-}
-
 /**
  * C ref: zap.c miss — "The <missile> misses <mon>."
  * Local copy for tmiss (mthrowu miss is not exported).
@@ -432,16 +430,6 @@ function omon_adj(mon, obj, mon_notices) {
 
 function helpless_thit(mon) {
     return !!(mon.msleeping || !mon.mcanmove);
-}
-
-/**
- * C ref: questpgr.c is_quest_artifact — otmp->oartifact == gu.urole.questarti.
- * C compares raw; guard want!==0 so incomplete JS urole (questarti still 0
- * on some roles) cannot treat every non-artifact as the quest item.
- */
-function is_quest_artifact(obj) {
-    const want = game.urole?.questarti | 0;
-    return want !== 0 && (obj?.oartifact | 0) === want;
 }
 
 /**
@@ -813,38 +801,6 @@ function P_SKILL(type) {
 }
 
 /**
- * C ref: dothrow.c multishot_class_bonus — role volley extras.
- */
-function multishot_class_bonus(pm, ammo, launcher) {
-    let multishot = 0;
-    const skill = game.objects?.[ammo.otyp]?.oc_skill ?? 0;
-    switch (pm) {
-    case PM_CAVE_DWELLER:
-        if (skill === -P_SLING || skill === P_SPEAR) multishot++;
-        break;
-    case PM_MONK:
-        if (skill === -P_SHURIKEN) multishot++;
-        break;
-    case PM_RANGER:
-        if (skill !== P_DAGGER) multishot++;
-        break;
-    case PM_ROGUE:
-        if (skill === P_DAGGER) multishot++;
-        break;
-    case PM_SAMURAI:
-        if (ammo.otyp != null
-            && objectNames[ammo.otyp] === 'YA'
-            && launcher && objectNames[launcher.otyp] === 'YUMI') {
-            multishot++;
-        }
-        break;
-    default:
-        break;
-    }
-    return multishot;
-}
-
-/**
  * C hacklib.c ordin — 1st/2nd/3rd/11th (teen exception).
  */
 function ordin(n) {
@@ -999,58 +955,102 @@ export async function throw_gold(obj) {
 }
 
 /**
- * C ref: dothrow.c throw_obj — multishot + split + throwit.
- * getdir is done by caller (dofire/dothrow) matching JS input boundary;
- * C calls getdir inside throw_obj — same one prompt either way.
- * After coin gate: canletgo(obj, "throw") (`:118`); after self refuse:
- * u_wipe_engr(2) (D-1374; callee D-1051).
+ * C ref: dothrow.c throw_obj `:87–293`, restarted in C order.
+ * C `:96–100` getdir lives in the JS callers (dofire/dothrow prompt
+ * before calling; C prompts inside) — same one prompt either way.
+ * C `:274–292` unsplit_stack runs on every early return via the
+ * file-local closure below (C `goto unsplit_stack`).
  */
 export async function throw_obj(obj, shotlimit) {
     const u = game.u || {};
-    // C throw_obj :112 — non-quiver coins → throw_gold (swallow D-1302);
-    // quivered coins fall through to the m_shot loop below (D-2139):
-    // split one coin via splitobj/next_ident, freeinv, throwit, encumber.
-    // canletgo/Mjollnir/too-heavy/welded/wet-towel gates cannot refuse gold
-    // (do.c canletgo: worn-armor/uwep-welded/LOADSTONE/LEASH/SADDLE only).
-    if (obj.oclass === COIN_CLASS && obj !== (u.uquiver || null)) {
+    const uwep = u.uwep || null;
+    let res = ECMD_TIME; // C `:93`
+    // C `:94` — objsplit snapshot for the unsplit_stack epilogue
+    const save_osplit = { ...(game.context?.objsplit) };
+    const unsplit_stack = () => {
+        // C `:284–290` — rejoin only a stack this throw split
+        if (obj && obj !== (u.uquiver || null)
+            && ((obj.o_id | 0) === (save_osplit.parent_oid | 0)
+                || (obj.o_id | 0) === (save_osplit.child_oid | 0))) {
+            if (!game.context) game.context = {};
+            game.context.objsplit = save_osplit;
+            unsplitobj(obj);
+        }
+        return res;
+    };
+
+    // C `:112–116` — non-quiver coins → throw_gold (swallow D-1302);
+    // quivered coins fall through to the m_shot loop (D-2139).
+    // canletgo/Mjollnir/too-heavy/welded/wet-towel gates cannot refuse
+    // gold (do.c canletgo: worn-armor/uwep-welded/LOADSTONE/LEASH/SADDLE).
+    if ((obj.oclass | 0) === COIN_CLASS && obj !== (u.uquiver || null)) {
         return throw_gold(obj);
     }
 
-    // C dothrow.c:118 — canletgo(obj, "throw") before Mjollnir / too-heavy /
-    // self / wipe (C order: coin → canletgo → Mjollnir → too-heavy → self).
+    // C `:118` — canletgo(obj, "throw") before Mjollnir / too-heavy / self
     if (!(await canletgo(obj, 'throw'))) {
-        return ECMD_OK; // no time passes (unsplit_stack)
+        res = ECMD_OK; // no time passes
+        return unsplit_stack();
     }
-    // C ref: dothrow.c throw_obj — after getdir, self (dx=dy=dz=0) refuses
+    // C `:122–126` — Mjollnir must be wielded before it can be thrown
+    if (is_art(obj, ART_MJOLLNIR) && obj !== uwep) {
+        await pline(`${The(xname(obj))} must be wielded before it can be thrown.`);
+        res = ECMD_OK;
+        return unsplit_stack();
+    }
+    // C `:127–132` — too heavy: weak Mjollnir arm or a boulder the hero
+    // cannot lift (throws_rocks)
+    if ((is_art(obj, ART_MJOLLNIR) && acurr(A_STR) < STR19(25))
+        || ((obj.otyp | 0) === BOULDER
+            && !throws_rocks(game.youmonst?.data))) {
+        await pline("It's too heavy.");
+        res = ECMD_TIME;
+        return unsplit_stack();
+    }
+    // C `:133–137` — self (dx=dy=dz=0) refuses
     if (!(u.dx || 0) && !(u.dy || 0) && !(u.dz || 0)) {
-        await pline('You cannot throw an object at yourself.');
-        return 0; // ECMD_OK — no time
+        await You('cannot throw an object at yourself.');
+        res = ECMD_OK;
+        return unsplit_stack();
     }
-    /* C dothrow.c throw_obj `:138` — after self refuse, before petrify /
-       welded / wet-towel / multishot: u_wipe_engr(2). Callee D-1051;
-       no extra RNG with no engraving / HEADSTONE / BURN-on-stone /
-       Levitation. Mjollnir / too-heavy still named (C returns before
-       this wipe). D-1374. */
+    // C `:138` — after self refuse, before petrify / welded (D-1374)
     u_wipe_engr(2);
-    // C throw_obj :139–148 bare-hand cockatrice instapetrify + killer_xname
-    // named omit (throwit returning-missile :1747 is D-1346).
+    // C `:139–148` — bare-hand cockatrice corpse → instapetrify; C falls
+    // through afterwards (stone-golem poly returns from instapetrify)
+    if (!u.uarmg && (obj.otyp | 0) === CORPSE
+        && touch_petrifies(mons[obj.corpsenm | 0])
+        && !Stone_resistance_hero()) {
+        await You(`throw ${corpse_xname(obj, null, CXN_PFX_THE)} with your bare ${makeplural(body_part(HAND))}.`);
+        await instapetrify(`throwing ${killer_xname(obj)} bare-handed`);
+    }
+    // C `:149–153` — welded (weldmsg before the time charge)
+    if (welded(obj)) {
+        await weldmsg(obj);
+        res = ECMD_TIME;
+        return unsplit_stack();
+    }
+    // C `:154–155` — a wet towel dries a little on the throw
+    if (is_wet_towel(obj)) await dry_a_towel(obj, -1, false);
 
-    // C ref: dothrow.c:158–237 Multishot calculations
-    let multishot = 1;
-    const skill = game.objects?.[obj.otyp]?.oc_skill ?? 0;
-    const uwep = game.u?.uwep || null;
+    // C `:158–237` Multishot calculations (volley of up to N; default 1)
+    let multishot = 1; // C `:160`
+    const skill = game.objects?.[obj.otyp]?.oc_skill ?? 0; // C `:161`
     const quan = obj.quan || 1;
+    // C `:162–169` — stackable ammo with matching launcher (or stackable
+    // non-ammo weapon), hero neither confused nor stunned
     if (quan > 1
         && (is_ammo(obj) ? ammo_and_launcher(obj, uwep)
-            : obj.oclass === WEAPON_CLASS)
+            : (obj.oclass | 0) === WEAPON_CLASS)
         && !(game.u?.Confusion || game.u?.Stunned
             || game.Confusion || game.Stunned)) {
+        // C `:171–176` — weakmultishot: role/skill gating or poor dexterity
         const weakmultishot = Role_if(PM_WIZARD) || Role_if(PM_CLERIC)
             || (Role_if(PM_HEALER) && skill !== P_KNIFE)
             || (Role_if(PM_TOURIST) && skill !== -P_DART)
             || game.Fumbling || game.u?.Fumbling
             || acurr(A_DEX) <= 6;
 
+        // C `:179–188` — proficiency bonus (EXPERT falls into SKILLED)
         switch (P_SKILL(weapon_type(obj))) {
         case P_EXPERT:
             multishot++;
@@ -1061,83 +1061,96 @@ export async function throw_obj(obj, shotlimit) {
         default:
             break;
         }
+        // C `:190` — role volley extras (live weapon.js export, NINJA arm)
         multishot += multishot_class_bonus(game.urole?.mnum, obj, uwep);
 
+        // C `:193–220` — racial bow bonus, then quest-artifact launcher +1
         if (!weakmultishot) {
-            if (Race_if(PM_ELF)
-                && objectNames[obj.otyp] === 'ELVEN_ARROW'
-                && uwep && objectNames[uwep.otyp] === 'ELVEN_BOW') {
-                multishot++;
-            } else if (Race_if(PM_ORC)
-                && objectNames[obj.otyp] === 'ORCISH_ARROW'
-                && uwep && objectNames[uwep.otyp] === 'ORCISH_BOW') {
-                multishot++;
-            } else if (Race_if(PM_GNOME) && skill === -P_CROSSBOW) {
-                multishot++;
+            switch (game.urace?.mnum) { // C `:195` Race_switch
+            case PM_ELF: // C `:196–200`
+                if ((obj.otyp | 0) === ELVEN_ARROW && uwep
+                    && (uwep.otyp | 0) === ELVEN_BOW) multishot++;
+                break;
+            case PM_ORC: // C `:201–205`
+                if ((obj.otyp | 0) === ORCISH_ARROW && uwep
+                    && (uwep.otyp | 0) === ORCISH_BOW) multishot++;
+                break;
+            case PM_GNOME: // C `:206–210`
+                if (skill === -P_CROSSBOW) multishot++;
+                break;
+            default: // C `:211–214` HUMAN / DWARF — no bonus
+                break;
             }
-            // quest artifact launcher bonus deferred
+
+            // C `:216–220` — own quest artifact launcher with matching ammo
+            if (uwep && is_quest_artifact(uwep)
+                && ammo_and_launcher(obj, uwep)) ++multishot;
         }
 
+        // C `:222–226` — crossbows load slowly: weak arms fumble the volley
         if (multishot > 1 && skill === -P_CROSSBOW
-            && ammo_and_launcher(obj, uwep)) {
-            // ACURRSTR gate deferred — still roll rnd when multishot>1
+            && ammo_and_launcher(obj, uwep)
+            && acurrstr() < (Race_if(PM_GNOME) ? 16 : 18)) {
             multishot = rnd(multishot);
         }
 
+        // C `:228–233` — roll the volley, clamp to stack and shot limit
         multishot = rnd(multishot);
         if (multishot > quan) multishot = quan;
-        if (shotlimit > 0 && multishot > shotlimit) multishot = shotlimit;
-    } else {
-        // C: no volley path — still no rnd when quan==1 / no launcher
-        multishot = 1;
+        if ((shotlimit | 0) > 0 && multishot > shotlimit) multishot = shotlimit;
     }
 
+    // C `:238` — m_shot.s before the volley pline
     const shot = ammo_and_launcher(obj, uwep);
     if (!game.m_shot) game.m_shot = { i: 0, n: 0, o: 0, s: false };
-    // C throw_obj :240 — m_shot.s before volley pline
     game.m_shot.s = !!shot;
-    if (multishot > 1 || shotlimit > 0) {
-        // C ref: dothrow.c throw_obj — You("%s %d %s.", shoot|throw, n,
-        //   (n==1) ? singular(obj, xname) : xname(obj));
+    if (multishot > 1 || (shotlimit | 0) > 0) {
+        // C `:240–247` — You("%s %d %s.", shoot|throw, n, singular|xname)
         const name = (multishot === 1) ? singular(obj, xname) : xname(obj);
         await pline(`You ${shot ? 'shoot' : 'throw'} ${multishot} ${name}.`);
     }
 
-    // C throw_obj: wep_mask = obj->owornmask before the volley; AutoReturn
-    // reads this after freeinv has cleared the slot (D-1282).
+    // C `:249–252` — wep_mask = obj->owornmask before the volley; AutoReturn
+    // reads this after freeinv has cleared the slot (D-1282)
     const wep_mask = obj.owornmask || 0;
-    let oldslot = null;
-    game.m_shot.o = obj.otyp | 0;
-    game.m_shot.n = multishot;
+    let oldslot = null; // C `:250` oldslot = 0 (NULL)
+    game.m_shot.o = obj.otyp | 0; // C `:251`
+    game.m_shot.n = multishot; // C `:252`
     for (game.m_shot.i = 1; game.m_shot.i <= game.m_shot.n; game.m_shot.i++) {
-        const twoweap = !!game.u?.twoweap;
+        const twoweap = !!game.u?.twoweap; // C `:253`
+        // C `:254` assert(obj != NULL) — m_shot.i <= m_shot.n guarantees it
         let otmp;
-        if ((obj.quan || 1) > 1) {
+        if ((obj.quan || 1) > 1) { // C `:255–257` split one off the stack
             otmp = splitobj(obj, 1);
-            // C: freeinv(otmp) after split — child may sit on invent nobj chain
+            // C `:267` freeinv(otmp) after split — child may sit on the
+            // invent nobj chain
             if (otmp) freeinv(otmp);
-        } else {
+        } else { // C `:258–266` — last item leaves inventory
             otmp = obj;
-            const inv = game.invent || [];
-            const idx = inv.indexOf(otmp);
-            oldslot = (idx >= 0 && idx + 1 < inv.length) ? inv[idx + 1] : null;
-            if (otmp.owornmask) {
+            if (otmp.owornmask) { // C `:261` remove_worn_item(otmp, FALSE)
                 const { remove_worn_item } = await import('./steal.js');
                 await remove_worn_item(otmp, false);
             }
-            freeinv(otmp);
+            // JS invent is an array: oldslot is the array successor (C
+            // `:262` obj->nobj on the C nobj chain feeds addinv_before)
+            const inv = game.invent || [];
+            const idx = inv.indexOf(otmp);
+            oldslot = (idx >= 0 && idx + 1 < inv.length) ? inv[idx + 1] : null;
+            freeinv(otmp); // C `:267`
+            // C `:265` — obj leaves inventory; nothing left to unsplit below
             obj = null;
         }
         if (!otmp) break;
-        await throwit(otmp, wep_mask, twoweap, oldslot);
+        await throwit(otmp, wep_mask, twoweap, oldslot); // C `:268`
         const { encumber_msg } = await import('./invent.js');
-        await encumber_msg();
+        await encumber_msg(); // C `:269`
     }
+    // C `:271–273` — volley over, clear the m_shot feedback
     game.m_shot.n = 0;
     game.m_shot.i = 0;
-    game.m_shot.o = 0; // STRANGE_OBJECT
+    game.m_shot.o = 0; // STRANGE_OBJECT is otyp 0
     game.m_shot.s = false;
-    return 1;
+    return unsplit_stack(); // C `:293` return res via unsplit_stack
 }
 /** C ref: pline.c You_hear — acoustics; Unaware/Underwater deferred. */
 function Deaf() {
@@ -2153,10 +2166,10 @@ export async function boomhit(obj, dx, dy) {
  * tethered THROWN_TETHERED_WEAPON bhit + isqrt(arw->range) (D-1323).
  * thitmonst swallow vanish pline (D-1324).
  * throwit returning-missile losehp killer_xname (D-1346; C `:1747`).
- * Named omit: objsplit unsplit; throw_obj `:139–148` petrify killer_xname;
- * canletgo / Mjollnir / too-heavy / welded / wet-towel before-or-after
- * the D-1374 wipe; THROWN_WEAPON still uses the JS fly stand-in
- * (not zap.js bhit).
+ * Named omit: objsplit unsplit; throw_obj gates (canletgo / Mjollnir /
+ * too-heavy / `:139–148` petrify / welded / wet-towel / multishot extras /
+ * `:274–292` unsplit) are live in throw_obj above; THROWN_WEAPON still
+ * uses the JS fly stand-in (not zap.js bhit).
  */
 
 /**

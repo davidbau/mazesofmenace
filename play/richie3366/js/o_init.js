@@ -5,7 +5,7 @@
 
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
-import { pline, impossible, clear_nhwindow_message } from './display.js';
+import { pline, impossible, clear_nhwindow_message, raw_printf, tty_wait_synch } from './display.js';
 import { BUFSZ, ECMD_OK, MENU_TRADITIONAL, MENU_COMBINATION, MENU_PARTIAL } from './const.js';
 import { ATR_INVERSE } from './terminal.js';
 import { upstart } from './hacklib.js';
@@ -95,6 +95,13 @@ export function setgemprobs(dlev) {
         objects[first + j].oc_prob = 0;
     }
     first += j;
+    // C `:70–75` corrupt-gems guard (unreachable on real tables: first is
+    // bases[GEM]+at most 9, always <= LAST_REAL_GEM).
+    if (first > LAST_REAL_GEM || objects[first]?.oc_class !== GEM_CLASS
+        || objectNameStrs[objects[first]?.oc_name_idx] == null) {
+        raw_printf('Not enough gems? - first=%d j=%d LAST_GEM=%d', first, j, LAST_REAL_GEM);
+        tty_wait_synch(); // C wait_synch; floating like impossible() below
+    }
     for (j = first; j <= LAST_REAL_GEM; j++) {
         objects[j].oc_prob = Math.trunc((171 + j - first) / (LAST_REAL_GEM + 1 - first));
     }
@@ -239,6 +246,10 @@ function init_oclass_probs() {
         let sum = 0;
         for (let i = b[oclass]; i < b[oclass + 1]; i++) sum += objects[i].oc_prob;
         if (sum <= 0 && oclass !== ILLOBJ_CLASS && b[oclass] !== b[oclass + 1]) {
+            // C `:255–256` zero/negative-prob sanity message (unreachable on
+            // real tables); floating like undiscover_object's impossible().
+            impossible('%s (%d) probability total for oclass %d',
+                       !sum ? 'zero' : 'negative', sum, oclass);
             for (let i = b[oclass]; i < b[oclass + 1]; i++) {
                 objects[i].oc_prob = 1;
                 sum++;
@@ -248,45 +259,85 @@ function init_oclass_probs() {
     }
 }
 
-// C ref: o_init.c init_objects
+// C ref: o_init.c init_objects `:151–234` (whole body, C order).
+// objects_globals_init/artifacts_globals_init preamble is JS lifecycle
+// (builds game.objects); C starts with the bases loop.
 export function init_objects() {
     objects_globals_init();
     artifacts_globals_init();
     const objects = objs();
     const b = bases();
 
-    for (let i = 0; i <= MAXOCLASSES; i++) b[i] = 0;
+    // C `:156–162`: zero bases; generic objects must carry their class index.
+    for (let i = 0; i <= MAXOCLASSES; i++) {
+        b[i] = 0;
+        if (i > 0 && i < MAXOCLASSES && objects[i].oc_class !== i) {
+            // C `:159–161` panic(); JS has no sync abort, so throw with the
+            // C message (botl.js compare_blstats precedent).
+            throw new Error(`init_objects: class for generic object #${i} doesn't match (${objects[i].oc_class})`);
+        }
+    }
 
+    // C `:163–165`: initialize object descriptions.
     for (let i = 0; i < NUM_OBJECTS; i++) {
         objects[i].oc_name_idx = objects[i].oc_descr_idx = i;
     }
 
+    // C `:166–192`: init base per class; classes must ascend so that
+    // bases[class+1]-1 ends each class's range.
     let first = MAXOCLASSES;
     let prevoclass = -1;
     while (first < NUM_OBJECTS) {
         const oclass = objects[first].oc_class;
         if (oclass < prevoclass) {
-            throw new Error(`objects[${first}] class #${oclass} not in order`);
+            throw new Error(`objects[${first}] class #${oclass} not in order`); // C `:180` panic
         }
         let last = first + 1;
         while (last < NUM_OBJECTS && objects[last].oc_class === oclass) last++;
         b[oclass] = first;
 
-        if (oclass === GEM_CLASS) {
+        if (oclass === GEM_CLASS) { // C `:186–189`
             setgemprobs(null);
             randomize_gem_colors();
         }
         first = last;
         prevoclass = oclass;
     }
+    // C `:193–202`: extra entries let every class range read as
+    // bases[class]..bases[class+1]-1; [MAXOCLASSES+1] keeps doclassdisco
+    // from walking off the end at non-class MAXOCLASSES.
     b[MAXOCLASSES] = b[MAXOCLASSES + 1] = NUM_OBJECTS;
+    // C `:203–209`: no gaps — an emptied/unpopulated class inherits next.
     for (let last = MAXOCLASSES - 1; last >= 0; --last) {
         if (!b[last]) b[last] = b[last + 1];
     }
 
+    // C `:210–226`: oc_name_known sanity — a described object must not be
+    // pre-known and vice versa; repair and keep going.
+    for (let i = MAXOCLASSES; i < NUM_OBJECTS; ++i) {
+        const nmkn = objects[i].oc_name_known !== 0 ? 1 : 0; // C `:212`
+        // C `:215`: (!OBJ_DESCR) ^ nmkn — OBJ_DESCR is objectDescrs[descr_idx].
+        if ((!objectDescrs[objects[i].oc_descr_idx]) ^ nmkn) {
+            if (game.iflags?.sanity_check) { // C `:216`
+                // C `:217–221`; floating like undiscover_object's impossible().
+                impossible('obj #%d (%s) name is %s despite%s alternate description',
+                           i, objectNameStrs[objects[i].oc_name_idx],
+                           nmkn ? 'pre-known' : 'not known',
+                           nmkn ? '' : ' no');
+            }
+            /* repair the mistake and keep going */ // C `:223–224`
+            objects[i].oc_name_known = nmkn ? 0 : 1;
+        }
+    }
+    /* compute oclass_prob_totals */ // C `:227`
     init_oclass_probs();
+
+    /* shuffle descriptions */ // C `:230`
     shuffle_all();
-    objects[WAN_NOTHING].oc_dir = rn2(2) ? NODIR : IMMEDIATE;
+    // C `:231–233` shuffle_tiles() is #ifdef TILES_IN_GLYPHMAP-only, and JS
+    // has no glyphmap[]/tileidx machinery (display.js named omit) — same at
+    // the restnames `:434` restore site. Named omission, not a live arm.
+    objects[WAN_NOTHING].oc_dir = rn2(2) ? NODIR : IMMEDIATE; // C `:234`
 }
 
 /**

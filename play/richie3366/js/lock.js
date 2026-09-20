@@ -558,7 +558,7 @@ function nhgetch_to_dirsym(k) {
  * Queue-popped DIR/KEY skip the REPEAT record (goto got_dirsym).
  * readchar_queue (altmeta pushback) is empty in sessions — the
  * `:3985` gate reduces to in_doagain; nhgetch covers readchar
- * (readchar_core fuzzer/queue/pgetchar/nh_poskey named in map).
+ * (readchar_core whole body live in `js/cmd.js` D-2625).
  * @param {string|null|undefined} prompt
  * @returns {Promise<string>} dirsym
  */

@@ -2237,8 +2237,8 @@ function dunlevs_in_dungeon(lev) {
     return game.dungeons?.[lev?.dnum]?.num_dunlevs ?? 1;
 }
 
-/** C ref: dungeon.h Inhell — hellish dungeon flag. */
-function Inhell() {
+/** C ref: dungeon.h Inhell — hellish dungeon flag (dungeon.c In_hell). */
+export function Inhell() {
     return !!(game.dungeons?.[game.u?.uz?.dnum]?.flags?.hellish);
 }
 

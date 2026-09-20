@@ -7,6 +7,7 @@ import { game } from './gstate.js';
 import { rn2 } from './rng.js';
 import { nhgetch } from './input.js';
 import { paint_corner_nhw_menu, dismiss_chargen_nhw_menu } from './invent.js';
+import { impossible } from './display.js';
 import { an } from './objnam.js';
 import { s_suffix } from './do_name.js';
 import { strsubst, strstri } from './hacklib.js';
@@ -24,6 +25,13 @@ import {
     ROLE_ALIGNMASK,
     ROLE_GENDERS,
     ROLE_ALIGNS,
+    ROLE_MALE,
+    ROLE_FEMALE,
+    MH_HUMAN,
+    AM_LAWFUL,
+    AM_NEUTRAL,
+    AM_CHAOTIC,
+    RS_NAME,
     RS_ROLE,
     RS_RACE,
     RS_GENDER,
@@ -38,7 +46,7 @@ import {
 import { ATR_INVERSE, NO_COLOR } from './terminal.js';
 
 /** C: gr.rfilter — role/race/gend/align exclusion masks for chargen. */
-const rfilter = { roles: [], mask: 0 };
+export const rfilter = { roles: [], mask: 0 };
 
 function f() {
     return game.flags || (game.flags = {});
@@ -832,27 +840,122 @@ function aspect_header() {
     return `${game.plname} the ${aligns[ALGN].adj} ${genders[GEND].adj} ${races[RACE].adj} ${rolename}`;
 }
 
-/** C: role_menu_extra constrained line or pick-X / random / quit. */
-function menu_extra_lines(which, preselectRandom = false) {
+/**
+ * C ref: role.c role_menu_extra `:1816–1960` — constrained line or
+ * pick-X-first / filter / Random / Quit extra rows for the role, race,
+ * gender and alignment menus, in C order.
+ * C `add_menu`/`add_menu_str` target the open menu window; JS builds
+ * `{ text, key, value }` line objects for menu_pick (the setup_*menu entry
+ * protocol). `RS_menu_let[]` (`:1819–1825` — `= ? / " [`) letters inline.
+ * C `:1840–1844` RS_ROLE loop: C roles[] carries an UNDEFINED_ROLE
+ * terminator, so `SIZE(roles)-1` is JS `roles.length` (13, no terminator).
+ * C `:1834` RS_NAME leaves `f = 0`, so the label reads "Pick another name
+ * first" exactly like C. Bad-arg arm awaits live `display.js impossible`.
+ */
+export async function menu_extra_lines(which, preselectRandom = false) {
     const flags = f();
     const lines = [];
-    const r = flags.initrole;
-    const c = flags.initrace;
+    const r = flags.initrole; // C `:1829`
+    let c = flags.initrace; // C `:1830` (RS_RACE overrides it below)
 
-    if (which === ROLE_RANDOM) {
+    let what = null; // C `:1827`
+    let constrainer = null;
+    let forcedvalue = null;
+    let fsel = 0; // C names this local `f` (`:1828`)
+    let letter = null;
+    if (which === RS_NAME) { // C `:1834–1836`
+        what = 'name';
+        letter = '=';
+    } else if (which === RS_ROLE) { // C `:1837–1847`
+        what = 'role';
+        letter = '?';
+        fsel = r;
+        let i = 0;
+        for (; i < roles.length; ++i)
+            if (i !== fsel && !rfilter.roles[i]) break;
+        if (i === roles.length) {
+            constrainer = 'filter';
+            forcedvalue = 'role';
+        }
+    } else if (which === RS_RACE) { // C `:1848–1866`
+        what = 'race';
+        letter = '/';
+        fsel = flags.initrace;
+        c = ROLE_NONE; // C overrides the player's setting
+        if (r >= 0) {
+            const allowmask = roles[r].allow & ROLE_RACEMASK;
+            if (allowmask === MH_HUMAN) c = 0; // races[human]
+            if (c >= 0) {
+                constrainer = 'role';
+                forcedvalue = races[c].noun;
+            } else if (fsel >= 0 && ((allowmask & ~rfilter.mask) === races[fsel].selfmask)) {
+                // only one race choice left by user options: entry disabled
+                constrainer = 'filter';
+                forcedvalue = 'race';
+            }
+        }
+    } else if (which === RS_GENDER) { // C `:1867–1888`
+        what = 'gender';
+        letter = '"';
+        fsel = flags.initgend;
+        let gend = ROLE_NONE;
+        if (r >= 0) {
+            const allowmask = roles[r].allow & ROLE_GENDMASK;
+            if (allowmask === ROLE_MALE) gend = 0; // genders[male]
+            else if (allowmask === ROLE_FEMALE) gend = 1; // genders[female]
+            if (gend >= 0) {
+                constrainer = 'role';
+                forcedvalue = genders[gend].adj;
+            } else if (fsel >= 0 && ((allowmask & ~rfilter.mask) === genders[fsel].allow)) {
+                // only one gender choice left by user options: entry disabled
+                constrainer = 'filter';
+                forcedvalue = 'gender';
+            }
+        }
+    } else if (which === RS_ALGNMNT) { // C `:1889–1927`
+        what = 'alignment';
+        letter = '[';
+        fsel = flags.initalign;
+        let a = ROLE_NONE;
+        if (r >= 0) {
+            const allowmask = roles[r].allow & ROLE_ALIGNMASK;
+            if (allowmask === AM_LAWFUL) a = 0; // aligns[lawful]
+            else if (allowmask === AM_NEUTRAL) a = 1; // aligns[neutral]
+            else if (allowmask === AM_CHAOTIC) a = 2; // aligns[chaotic]
+            if (a >= 0) constrainer = 'role';
+        }
+        if (c >= 0 && !constrainer) {
+            const allowmask = races[c].allow & ROLE_ALIGNMASK;
+            if (allowmask === AM_LAWFUL) a = 0;
+            else if (allowmask === AM_NEUTRAL) a = 1;
+            else if (allowmask === AM_CHAOTIC) a = 2;
+            if (a >= 0) constrainer = 'race';
+        }
+        if (fsel >= 0 && !constrainer
+            && ((ROLE_ALIGNMASK & ~rfilter.mask) === aligns[fsel].allow)) {
+            // only one alignment choice left by user options: entry disabled
+            constrainer = 'filter';
+            forcedvalue = 'alignment';
+        }
+        if (a >= 0) forcedvalue = aligns[a].adj; // C `:1924`
+    }
+
+    if (constrainer) { // C `:1929–1933` — grayed-out choice, not selectable
         lines.push({
-            text: preselectRandom ? '* * Random' : '* - Random',
+            // C `Sprintf(buf, "%4s%s forces %s", "", constrainer, forcedvalue)`
+            text: `    ${constrainer} forces ${forcedvalue}`,
             attr: 0,
-            key: '*',
-            value: ROLE_RANDOM,
+            key: null,
+            value: 0,
         });
-        return lines;
-    }
-    if (which === ROLE_NONE) {
-        lines.push({ text: 'q - Quit', attr: 0, key: 'q', value: ROLE_NONE });
-        return lines;
-    }
-    if (which === RS_filter) {
+    } else if (what) { // C `:1934–1940`
+        lines.push({
+            text: `${letter} - Pick${fsel >= 0 ? ' another' : ''} ${what} first`,
+            attr: 0,
+            key: letter,
+            value: RS_menu_arg(which),
+        });
+    } else if (which === RS_filter) { // C `:1941–1946`
         const verb = gotrolefilter() ? 'Reset' : 'Set';
         lines.push({
             text: `~ - ${verb} role/race/&c filtering`,
@@ -860,89 +963,17 @@ function menu_extra_lines(which, preselectRandom = false) {
             key: '~',
             value: RS_menu_arg(RS_filter),
         });
-        return lines;
-    }
-
-    let constrainer = null;
-    let forcedvalue = null;
-    let what = null;
-    let letter = null;
-    if (which === RS_ROLE) {
-        what = 'role';
-        letter = '?';
-    } else if (which === RS_RACE) {
-        what = 'race';
-        letter = '/';
-        if (r >= 0) {
-            const allowmask = roles[r].allow & ROLE_RACEMASK;
-            if (allowmask === races[0].selfmask) {
-                constrainer = 'role';
-                forcedvalue = races[0].noun;
-            }
-        }
-    } else if (which === RS_GENDER) {
-        what = 'gender';
-        letter = '"';
-        if (r >= 0) {
-            const allowmask = roles[r].allow & ROLE_GENDMASK;
-            if (allowmask === genders[0].allow) {
-                constrainer = 'role';
-                forcedvalue = genders[0].adj;
-            } else if (allowmask === genders[1].allow) {
-                constrainer = 'role';
-                forcedvalue = genders[1].adj;
-            }
-        }
-    } else if (which === RS_ALGNMNT) {
-        what = 'alignment';
-        letter = '[';
-        if (r >= 0) {
-            const allowmask = roles[r].allow & ROLE_ALIGNMASK;
-            if (allowmask === aligns[0].allow) {
-                constrainer = 'role';
-                forcedvalue = aligns[0].adj;
-            } else if (allowmask === aligns[1].allow) {
-                constrainer = 'role';
-                forcedvalue = aligns[1].adj;
-            } else if (allowmask === aligns[2].allow) {
-                constrainer = 'role';
-                forcedvalue = aligns[2].adj;
-            }
-        }
-        if (c >= 0 && !constrainer) {
-            const allowmask = races[c].allow & ROLE_ALIGNMASK;
-            if (allowmask === aligns[0].allow) {
-                constrainer = 'race';
-                forcedvalue = aligns[0].adj;
-            } else if (allowmask === aligns[1].allow) {
-                constrainer = 'race';
-                forcedvalue = aligns[1].adj;
-            } else if (allowmask === aligns[2].allow) {
-                constrainer = 'race';
-                forcedvalue = aligns[2].adj;
-            }
-        }
-    }
-
-    if (constrainer) {
+    } else if (which === ROLE_RANDOM) { // C `:1947–1951`
         lines.push({
-            text: `    ${constrainer} forces ${forcedvalue}`,
+            text: preselectRandom ? '* * Random' : '* - Random',
             attr: 0,
-            key: null,
-            value: 0,
+            key: '*',
+            value: ROLE_RANDOM,
         });
-    } else if (what) {
-        const fset = which === RS_ROLE ? flags.initrole
-            : which === RS_RACE ? flags.initrace
-                : which === RS_GENDER ? flags.initgend
-                    : flags.initalign;
-        const label = `Pick${fset >= 0 ? ' another' : ''} ${what} first`;
-        lines.push({
-            text: `${letter} - ${label}`,
-            attr: 0,
-            key: letter,
-            value: RS_menu_arg(which),
-        });
+    } else if (which === ROLE_NONE) { // C `:1952–1956`
+        lines.push({ text: 'q - Quit', attr: 0, key: 'q', value: ROLE_NONE });
+    } else { // C `:1957–1958`
+        await impossible('role_menu_extra: bad arg (%d)', which);
     }
     return lines;
 }
@@ -1016,7 +1047,7 @@ async function pick_role_menu() {
         body.push({ text: `${e.key} - ${e.text}`, attr: 0 });
         choices.push({ key: e.key, value: e.value });
     }
-    for (const line of menu_extra_lines(ROLE_RANDOM, true)) {
+    for (const line of await menu_extra_lines(ROLE_RANDOM, true)) {
         body.push(line);
         if (line.key) choices.push({ key: line.key, value: line.value, preselected: true });
     }
@@ -1024,7 +1055,7 @@ async function pick_role_menu() {
     if (excess < 1 || excess > 2)
         body.push({ text: '', attr: 0 });
     for (const which of [RS_RACE, RS_GENDER, RS_ALGNMNT, RS_filter, ROLE_NONE]) {
-        for (const line of menu_extra_lines(which)) {
+        for (const line of await menu_extra_lines(which)) {
             body.push(line);
             if (line.key) choices.push({ key: line.key, value: line.value });
         }
@@ -1103,13 +1134,13 @@ async function pick_race_menu() {
             value: e.value,
         });
     }
-    for (const line of menu_extra_lines(ROLE_RANDOM, true)) {
+    for (const line of await menu_extra_lines(ROLE_RANDOM, true)) {
         body.push(line);
         if (line.key) choices.push({ key: line.key, value: line.value, preselected: true });
     }
     body.push({ text: '', attr: 0 });
     for (const which of [RS_ROLE, RS_GENDER, RS_ALGNMNT, RS_filter, ROLE_NONE]) {
-        for (const line of menu_extra_lines(which)) {
+        for (const line of await menu_extra_lines(which)) {
             body.push(line);
             if (line.key) choices.push({ key: line.key, value: line.value });
         }
@@ -1183,13 +1214,13 @@ async function pick_gend_menu() {
             value: e.value,
         });
     }
-    for (const line of menu_extra_lines(ROLE_RANDOM, true)) {
+    for (const line of await menu_extra_lines(ROLE_RANDOM, true)) {
         body.push(line);
         if (line.key) choices.push({ key: line.key, value: line.value, preselected: true });
     }
     body.push({ text: '', attr: 0 });
     for (const which of [RS_ROLE, RS_RACE, RS_ALGNMNT, RS_filter, ROLE_NONE]) {
-        for (const line of menu_extra_lines(which)) {
+        for (const line of await menu_extra_lines(which)) {
             body.push(line);
             if (line.key) choices.push({ key: line.key, value: line.value });
         }
@@ -1263,13 +1294,13 @@ async function pick_align_menu() {
             value: e.value,
         });
     }
-    for (const line of menu_extra_lines(ROLE_RANDOM, true)) {
+    for (const line of await menu_extra_lines(ROLE_RANDOM, true)) {
         body.push(line);
         if (line.key) choices.push({ key: line.key, value: line.value, preselected: true });
     }
     body.push({ text: '', attr: 0 });
     for (const which of [RS_ROLE, RS_RACE, RS_GENDER, RS_filter, ROLE_NONE]) {
-        for (const line of menu_extra_lines(which)) {
+        for (const line of await menu_extra_lines(which)) {
             body.push(line);
             if (line.key) choices.push({ key: line.key, value: line.value });
         }

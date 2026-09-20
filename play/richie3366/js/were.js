@@ -24,7 +24,8 @@ import { possibly_unwield } from './weapon.js';
 import { mon_break_armor } from './worn.js';
 import { set_uasmon, polymon, rehumanize } from './polyself.js';
 import { monster_nearby, You_hear } from './hack.js';
-import { wake_nearto } from './mon.js';
+import { wake_nearto, onscary, monnear } from './mon.js';
+import { monflee } from './monmove.js';
 import { Soundeffect } from './sndprocs.js';
 import { se_canine_howl } from './generated/seffects_data.js';
 import { an } from './objnam.js';
@@ -134,8 +135,8 @@ export function counter_were(pm) {
 
 /**
  * C ref: were.c new_were — flip human ↔ beast form.
- * Named omissions: monflee onscary
- * (svc.context.mon_moving + mux/muy scary near); Soundeffect.
+ * C tail `:133–137`: moving + hostile + onscary(mux,muy) + monnear →
+ * monflee(rn1(9,2), TRUE, TRUE). Named omissions: Soundeffect.
  * possibly_unwield is D-1744; mon_break_armor wired here D-1917
  * (canonical js/worn.js export, C :129 order before possibly_unwield).
  */
@@ -175,10 +176,22 @@ export function new_were(mon) {
     newsym(mon.mx, mon.my);
     // C :129 mon_break_armor(mon, FALSE) before possibly_unwield — same
     // sync-or-async chaining as newcham after_armor (D-1914): armor
-    // mutations run inline, message thunks flush first, then unwield.
-    // monflee onscary stays named.
+    // mutations run inline, message thunks flush first, then unwield,
+    // then the C :133–137 scared tail.
     const mba = mon_break_armor(mon, false);
-    const after_armor = () => possibly_unwield(mon, false);
+    const scared_tail = () => {
+        if (game.context?.mon_moving && !mon.mpeaceful
+            && onscary(mon.mux, mon.muy, mon)
+            && monnear(mon, mon.mux, mon.muy)) {
+            return monflee(mon, rn1(9, 2), true, true);
+        }
+        return null;
+    };
+    const after_armor = () => {
+        const r = possibly_unwield(mon, false);
+        if (r && typeof r.then === 'function') return r.then(scared_tail);
+        return scared_tail() ?? r;
+    };
     if (mba) return Promise.resolve(mba).then(after_armor);
     return after_armor();
 }

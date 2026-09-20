@@ -335,6 +335,33 @@ export function linedup(ax, ay, bx, by, boulderhandling = 0) {
 }
 
 /**
+ * C ref: mthrowu.c linedup_callback `:1294–1327` — walk (bx,by)→(ax,ay)
+ * in a straight orthogonal/diagonal line under BOLT_LIM, calling fnc per
+ * step. Stops FALSE on blocking_terrain, TRUE when fnc returns TRUE.
+ * Sets game._tbx/_tby like gt.tbx/gt.tby (read after a TRUE return).
+ */
+export function linedup_callback(ax, ay, bx, by, fnc) {
+    game._tbx = ax - bx; // C `:1305`
+    game._tby = ay - by;
+    // C `:1308–1311`: displacement aiming the monster at itself.
+    if (!game._tbx && !game._tby) return false;
+    // C `:1313–1315`: straight line, orthogonal or diagonal, under BOLT_LIM.
+    if ((!game._tbx || !game._tby || Math.abs(game._tbx) === Math.abs(game._tby))
+        && distmin(game._tbx, game._tby, 0, 0) < BOLT_LIM) {
+        const dx = sgn(ax - bx); // C `:1316`
+        const dy = sgn(ay - by);
+        do {
+            // C `:1317–1319`: <bx,by> converges with <ax,ay>.
+            bx += dx;
+            by += dy;
+            if (blocking_terrain(bx, by)) return false; // C `:1320–1321`
+            if (fnc(bx, by)) return true; // C `:1322–1323`
+        } while (bx !== ax || by !== ay); // C `:1324`
+    }
+    return false; // C `:1326`
+}
+
+/**
  * C ref: mthrowu.c:1375–1393 m_lined_up — line-of-fire vs mtarg.
  * Hero (`gy.youmonst`): mux/muy as-is (zeromonst 0 until set_apparxy),
  * Upolyd concealment `rn2(25)` short-circuit, boulderhandling 1|2.

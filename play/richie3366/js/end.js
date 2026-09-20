@@ -10,7 +10,7 @@ import { rn2, d } from './rng.js';
 import { deepest_lev_reached, depth, strstri } from './hacklib.js';
 import {
     pline, flush_topl_more, bot, You_feel, clear_nhwindow_message,
-    canspotmon, Hallucination, curs_on_u, newsym,
+    canspotmon, Hallucination, curs_on_u, newsym, impossible,
 } from './display.js';
 import { yn_function, paranoid_query } from './getline.js';
 import { show_text_pages, show_nhw_menu_text } from './pager.js';
@@ -1903,4 +1903,90 @@ export function dealloc_killer(kptr) {
         }
         prev = k;
     }
+}
+
+/* C `isspace((uchar) *p)` over the C locale — the six ASCII blanks
+ * (options.js `isOptSpace` precedent, same set; no unicode folding). */
+function isEndSpace(ch) {
+    return ch === ' ' || ch === '\t' || ch === '\n' || ch === '\v'
+        || ch === '\f' || ch === '\r';
+}
+
+/**
+ * C ref: end.c wordcount `:1793–1806` (staticfn, file-local here too).
+ * Counts whitespace-separated words; C advances its local `char *p`.
+ */
+function wordcount(p) {
+    let words = 0; // C `:1795`
+    let i = 0;
+    while (i < p.length) { // C `:1797` while (*p)
+        while (i < p.length && isEndSpace(p[i])) i++; // C `:1798–1799`
+        if (i < p.length) words++; // C `:1800–1801`
+        while (i < p.length && !isEndSpace(p[i])) i++; // C `:1802–1803`
+    }
+    return words; // C `:1805`
+}
+
+/**
+ * C ref: end.c bel_copy1 `:1809–1820` (staticfn, file-local here too).
+ * Appends the next whitespace-delimited word of the input to `out`.
+ * `st` ({ i }) stands in for C's `char **inp`: it skips leading blanks
+ * (`:1813–1814`), copies the word (`:1815–1816`), NUL-terminates
+ * (`:1817`, the returned string), and leaves the cursor past the word
+ * (`:1818`); the caller's `out += strlen(out)` (`:1812`) is the `out +`
+ * accumulation in the return value.
+ */
+function bel_copy1(str, st, out) {
+    let i = st.i;
+    while (i < str.length && isEndSpace(str[i])) i++;
+    let word = '';
+    while (i < str.length && !isEndSpace(str[i])) word += str[i++];
+    st.i = i;
+    return out + word;
+}
+
+/**
+ * C ref: end.c build_english_list `:1823–1859` in C order.
+ * Turns a blank-separated name list into English ("a", "a or b",
+ * "a, b, or c"). Async only because the case-0 arm awaits the live
+ * `impossible` (display.js; JS has no sync abort).
+ * Sole live-C caller: cfgfiles.c cnf_line_WIZARDS `:806` (SYSCF WIZARDS
+ * parsing has no JS counterpart yet — named omission, map); the other
+ * C call site, sys/unix/unixmain.c `:659`, is platform main (never
+ * ported — named omission, map). Consumers of the formatted list —
+ * end.c panic `:435`, pager.c docontact `:2728`, sys.c exit cleanup
+ * `:154` — likewise wait on the SYSCF omission.
+ * @returns {Promise<string>} the formatted list ('' when wordless, like C).
+ */
+export async function build_english_list(input) {
+    const p = String(input ?? ''); // C `:1826` char *p = in
+    // C `:1827–1832`: strlen + wordcount sizing + alloc(len + 1) +
+    // *out = '\0' — JS strings grow on append, so the sizing has no
+    // representable effect; only the word count is observed.
+    const st = { i: 0 };
+    let words = wordcount(p);
+    let out = '';
+
+    switch (words) { // C `:1834`
+    case 0: // C `:1835–1837`
+        await impossible('no words in list');
+        break;
+    case 1: // C `:1838–1840` "single"
+        out = bel_copy1(p, st, out);
+        break;
+    default: // C `:1841–1856`
+        if (words === 2) { // C `:1842–1845` "first or second"
+            out = bel_copy1(p, st, out);
+            out += ' '; // C `:1844` Strcat(out, " ")
+        } else { // C `:1845–1851` "first, second, or third"
+            do {
+                out = bel_copy1(p, st, out);
+                out += ', '; // C `:1848` Strcat(out, ", ")
+            } while (--words > 1); // C `:1849`
+        }
+        out += 'or '; // C `:1852` Strcat(out, "or ")
+        out = bel_copy1(p, st, out); // C `:1853`
+        break;
+    }
+    return out; // C `:1857`
 }

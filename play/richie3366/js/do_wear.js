@@ -36,6 +36,7 @@ import {
     is_worn_by_type, u_safe_from_fatal_corpse, st_corpse, st_petrifies,
     spoteffects,
 } from './pickup.js';
+import { equipment_is_inaccessible } from './apply.js';
 import { obj_resists } from './dogmove.js';
 import { toggle_blindness, dropx, canletgo, setnotworn } from './do.js';
 import { set_bc } from './ball.js';
@@ -2482,9 +2483,10 @@ function equip_ok(obj, removing, accessory) {
     if (obj.oclass === ARMOR_CLASS && !removing && !canwearobj_silent(obj)) {
         return GETOBJ_DOWNPLAY;
     }
-    /* C `:3438–3443` — removing inaccessible (cloak/suit/gloves). */
+    /* C `:3438–3443` — removing inaccessible (cloak/suit/gloves) via the
+       live do_wear.c inaccessible_equipment predicate (apply.js; D-2632). */
     if (removing && !game.item_action_in_progress) {
-        if (equip_inaccessible(obj, obj.oclass === RING_CLASS)) {
+        if (equipment_is_inaccessible(obj, obj.oclass === RING_CLASS)) {
             return GETOBJ_EXCLUDE_INACCESS;
         }
     }
@@ -2523,23 +2525,6 @@ export function count_worn_armor() {
     if (u.uarmf) ret++;
     if (u.uarmu) ret++;
     return ret;
-}
-
-/**
- * C do_wear.c inaccessible_equipment `:3340–3400` with verb=NULL.
- * Suit under cloak, shirt under suit/cloak, ring under gloves.
- * @param {object} obj
- * @param {boolean} only_if_known_cursed
- */
-function equip_inaccessible(obj, only_if_known_cursed) {
-    if (!obj || !obj.owornmask) return false;
-    const u = game.u || {};
-    const anycovering = !only_if_known_cursed;
-    const blocks = (x) => !!(x && (anycovering || (x.cursed && x.bknown)));
-    if (obj === u.uarm && blocks(u.uarmc)) return true;
-    if (obj === u.uarmu && (blocks(u.uarm) || blocks(u.uarmc))) return true;
-    if ((obj === u.uleft || obj === u.uright) && blocks(u.uarmg)) return true;
-    return false;
 }
 
 /** C do_wear.c wear_ok `:3464–3468`. */

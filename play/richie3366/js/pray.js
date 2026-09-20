@@ -296,7 +296,7 @@ function a_align(x, y) {
  * C ref: pray.c critically_low_hp — hp ≤ 5 or hp*divisor ≤ maxhp.
  * @param {boolean} only_if_injured
  */
-function critically_low_hp(only_if_injured) {
+export function critically_low_hp(only_if_injured) {
     const u = game.u || {};
     const polyd = Upolyd(u);
     let curhp = polyd ? (u.mh | 0) : (u.uhp | 0);

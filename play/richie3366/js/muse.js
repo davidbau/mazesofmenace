@@ -26,7 +26,7 @@ import {
     dist2, distmin, m_at, m_carrying, mongone, onscary, monnear,
     wakeup, wake_nearto,
 } from './mon.js';
-import { lined_up, m_throw } from './mthrowu.js';
+import { lined_up, linedup_callback, m_throw } from './mthrowu.js';
 import {
     is_animal, mindless, nohands, is_floater, needspick, nonliving,
     is_vampshifter, is_mercenary, monsterNames, mons, haseyes, mon_hates_silver,
@@ -56,7 +56,7 @@ import { enexto, migrate_to_level, tele_restrict, rloc,
     random_teleport_level, noteleport_level, tele, unconscious } from './teleport.js';
 import { makemon, mpickobj, newcham, rndmonst, set_malign } from './makemon.js';
 import {
-    place_object, splitobj, unbless, objects_at, mksobj, weight,
+    place_object, splitobj, unbless, objects_at, sobj_at, mksobj, weight,
     stackobj, unknow_object, obj_extract_self, add_to_container,
     start_corpse_timeout, get_mtraits, start_glob_timeout,
 } from './mkobj.js';
@@ -593,15 +593,32 @@ function mon_likes_objpile_at(mtmp, x, y) {
 }
 
 /**
- * C ref: muse.c m_use_undead_turning `:1299`.
- * Named omit: linedup_callback / linedup_chk_corpse floor-corpse ray.
+ * C ref: muse.c linedup_chk_corpse `:1293–1297` (staticfn) — floor-corpse
+ * predicate for the undead-turning ray below.
+ */
+function linedup_chk_corpse(x, y) {
+    return sobj_at(CORPSE, x, y) !== null;
+}
+
+/**
+ * C ref: muse.c m_use_undead_turning `:1299–1340`.
+ * Not necrophiliac (`:1309–1314` comment): corpses inside carried
+ * containers don't count until moved to open inventory; hero poly'd
+ * into undead is ignored — the wand is too weak for direct attack.
  */
 function m_use_undead_turning(mtmp, obj) {
-    const m = museState();
-    if ((obj.otyp | 0) !== WAN_UNDEAD_TURNING || (obj.spe | 0) <= 0) return;
-    if (carrying(CORPSE)) {
-        m.offensive = obj;
-        m.has_offense = MUSE_WAN_UNDEAD_TURNING;
+    const u = game.u || {};
+    const ax = u.ux + sgn(mtmp.mux - mtmp.mx) * 3; // C `:1302–1303`
+    const ay = u.uy + sgn(mtmp.muy - mtmp.my) * 3;
+    const bx = mtmp.mx, by = mtmp.my; // C `:1304`
+    if (!((obj.otyp | 0) === WAN_UNDEAD_TURNING && (obj.spe | 0) > 0)) return; // C `:1306–1307`
+    if (carrying(CORPSE) // C `:1315`
+        // C `:1333–1335`: corpse on the ground in a direct line from the
+        // monster to the hero, and up to 3 steps beyond.
+        || linedup_callback(ax, ay, bx, by, linedup_chk_corpse)) {
+        const m = museState();
+        m.offensive = obj; // C `:1337`
+        m.has_offense = MUSE_WAN_UNDEAD_TURNING; // C `:1338`
     }
 }
 

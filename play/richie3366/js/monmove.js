@@ -654,7 +654,7 @@ function perceives(ptr) {
  * Extrinsic from cloak: oc_oprop wiring deferred; match worn
  * CLOAK_OF_DISPLACEMENT (Ranger kit / displacement cloak).
  */
-function Displaced() {
+export function Displaced() {
     const u = game.u || {};
     if (u.HDisplaced || u.uprops?.[DISPLACED]?.intrinsic) return true;
     if (u.uprops?.[DISPLACED]?.extrinsic) return true;
@@ -1744,7 +1744,7 @@ export function sticks(ptr) {
  * C ref: monmove.c itsstuck — stuck grabber cannot walk away.
  * C pline_mon (D-1227); You_hear/You_see arms elsewhere stay pline.
  */
-async function itsstuck(mtmp) {
+export async function itsstuck(mtmp) {
     const u = game.u;
     if (sticks(game.youmonst?.data) && mtmp === u?.ustuck && !u?.uswallow) {
         await pline_mon(mtmp, `${Monnam(mtmp)} cannot escape from you!`);
@@ -2577,9 +2577,9 @@ export async function dochug(mtmp) {
  * door-feedback stub below (D-2102: the stub drops infrared, so an
  * infravision-seen bat at 3 squares read as unseen and stopped the search
  * before its bite). rloc_to_core calls this with chug FALSE
- * (teleport.c:1762, D-1170): no dochug, only the threat check. onscary
- * stubbed false (Elbereth / sanctuary deferred). makemon occupation
- * still named.
+ * (teleport.c:1762, D-1170): no dochug, only the threat check. mcanmove
+ * + !onscary(u.ux,u.uy) gate live via the mon.js export. makemon
+ * occupation still named.
  */
 export async function dochugw(mtmp, chug) {
     const x = mtmp.mx;
@@ -2595,8 +2595,7 @@ export async function dochugw(mtmp, chug) {
         && (!already_saw_mon || !couldsee(x, y)
             || dist2(x, y, game.u.ux, game.u.uy) > (BOLT_LIM + 1) * (BOLT_LIM + 1))
         && display_canspotmon(mtmp) && couldsee(mtmp.mx, mtmp.my)
-        && mtmp.mcanmove
-        // onscary(u.ux, u.uy, mtmp) deferred → treat as not scary
+        && mtmp.mcanmove && !onscary(game.u.ux, game.u.uy, mtmp)
     ) {
         await stop_occupation();
     }

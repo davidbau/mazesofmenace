@@ -133,6 +133,22 @@ export function engr_at(x, y) {
 }
 
 /**
+ * C ref: engrave.c sengr_at `:250–261` — is string s engraved at <x,y>?
+ * Case-insensitive whole-text match when strict (C strcmpi), substring
+ * otherwise (C strstri); HEADSTONE and future (engr_time > moves)
+ * engravings never match.
+ */
+export function sengr_at(s, x, y, strict) {
+    const ep = engr_at(x, y);
+    if (ep && ep.engr_type !== HEADSTONE && (ep.engr_time | 0) <= (game.moves | 0)) {
+        const hay = String(ep.engr_txt?.actual_text ?? ep.engr_txt ?? '').toLowerCase();
+        const want = String(s ?? '').toLowerCase();
+        if (strict ? hay === want : hay.includes(want)) return ep;
+    }
+    return null;
+}
+
+/**
  * C ref: engrave.c sanitize_engravings `:1496–1505` — bones engravings
  * may carry control characters from another game; sanitize_name each
  * actual text in place (JS strings: write back).

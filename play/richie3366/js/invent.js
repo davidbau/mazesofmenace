@@ -48,7 +48,7 @@
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import {
-    flush_screen, flush_topl_more, pline, docrt, status_line_2, message_menu,
+    flush_screen, flush_topl_more, pline, Your, docrt, status_line_2, message_menu,
     endgamelevelname, obj_glyph, suppress_map_output,
     putmsghistory, impossible, tty_nhbell, tty_wait_synch,
     clear_nhwindow_message, Hallucination, set_bot_disabled,
@@ -91,8 +91,10 @@ import {
     def_char_to_objclass,
     objectNames,
     objectNameStrs,
+    objectDescrs,
     objects,
     is_graystone,
+    POT_WATER,
 } from './objects.js';
 import { interesting_to_discover, disco_append_typename } from './o_init.js';
 import {
@@ -330,7 +332,7 @@ import {
     count_buc, count_justpicked, allow_category,
     query_category, query_objlist,
 } from './pickup.js';
-import { is_ammo } from './wield.js';
+import { is_ammo, is_pole } from './wield.js';
 import { is_wet_towel, can_advance } from './weapon.js';
 import { shield_simple_name } from './do_wear.js';
 import { learn_egg_type } from './timeout.js';
@@ -1117,11 +1119,78 @@ export async function encumber_msg() {
 }
 
 /**
- * C ref: invent.c loot_xname → objnam.c cxname_singular.
- * Diluted/towel/glob/oname/wizard deferred.
+ * C ref: invent.c loot_xname `:308–387` — sort-key name: suppress the
+ * xname prefixes that would perturb alphabetical order, call
+ * cxname_singular, restore the object, then append grouping suffixes.
+ * Callers sortloot_cmp `:490`/`:496` → js sortloot `:2265`/`:2266`
+ * (sortloot_cmp itself ships as its own Open row).
+ * `wizard` is flag.h:30 `flags.debug`; C Strcat into the cxname buffer
+ * is `+=` here (JS strings are values); TOWEL is the file-local
+ * OTYP_TOWEL index.
  */
 function loot_xname(obj) {
-    return cxname_singular(obj) || '';
+    if (!obj) return '';
+    // C `:320–325` — remember the object's current settings.
+    const save_odiluted = obj.odiluted | 0;
+    const save_blessed = obj.blessed | 0;
+    const save_cursed = obj.cursed | 0;
+    const save_spe = obj.spe | 0;
+    const save_owt = obj.owt | 0;
+    const save_oname = has_oname(obj) ? ONAME(obj) : null;
+    const save_debug = !!game.flags?.debug;
+    // C `:326–332` — suppress "diluted" for potions and "holy/unholy"
+    // for water; sortloot deals with them by other criteria than name.
+    if ((obj.oclass | 0) === POTION_CLASS) {
+        obj.odiluted = 0;
+        if ((obj.otyp | 0) === POT_WATER) obj.blessed = 0, obj.cursed = 0;
+    }
+    // C `:333–336` — "wet"/"moist towel" format as "towel" for grouping.
+    if ((obj.otyp | 0) === OTYP_TOWEL) obj.spe = 0;
+    // C `:337–340` — group globs by monster type: fresh-glob weight.
+    if (obj.globby) obj.owt = 20;
+    // C `:341–343` — suppress user-assigned name (never on artifacts).
+    if (save_oname && !obj.oartifact && obj.oextra) obj.oextra.oname = null;
+    // C `:344–350` — avoid wizard-mode formatting variations (paranoia:
+    // an xname panic must not write a normal-mode panic save file).
+    if (save_debug) {
+        if (game.program_state) game.program_state.something_worth_saving = 0;
+        if (game.flags) game.flags.debug = false;
+    }
+
+    // C `:352`
+    let res = cxname_singular(obj) || '';
+
+    // C `:354–357` — restore wizard state.
+    if (save_debug) {
+        if (game.flags) game.flags.debug = true;
+        if (game.program_state) game.program_state.something_worth_saving = 1;
+    }
+    // C `:358–363` — restore the object: potion flags.
+    if ((obj.oclass | 0) === POTION_CLASS) {
+        obj.odiluted = save_odiluted;
+        if ((obj.otyp | 0) === POT_WATER) {
+            obj.blessed = save_blessed, obj.cursed = save_cursed;
+        }
+    }
+    // C `:364–370` — restore spe first, then suffix wet-x / moist-y /
+    // dry-z regardless of spe-known state.
+    if ((obj.otyp | 0) === OTYP_TOWEL) {
+        obj.spe = save_spe;
+        res += is_wet_towel(obj) ? ((obj.spe | 0) >= 3 ? 'x' : 'y') : 'z';
+    }
+    // C `:371–382` — restore owt first, then suffix size a/b/c/d so
+    // same-type globs that failed to merge sort small-first.
+    if (obj.globby) {
+        obj.owt = save_owt;
+        res += (obj.owt | 0) <= 100 ? 'a'
+            : (obj.owt | 0) <= 300 ? 'b'
+            : (obj.owt | 0) <= 500 ? 'c' : 'd';
+    }
+    // C `:383–384` — restore user-assigned name.
+    if (save_oname && !obj.oartifact && obj.oextra) obj.oextra.oname = save_oname;
+
+    // C `:386`
+    return res;
 }
 
 /**
@@ -2016,14 +2085,324 @@ export async function feel_cockatrice(otmp, force_touch = false) {
     await instapetrify(`touching ${killer_xname(otmp)} bare-handed`);
 }
 
+// C invent.c loot_classify def_srt_order `:155` — sortloot class order
+// used when sortpack is off (differs from DEF_INV_ORDER, the inv_order
+// default used by the inventory display).
+const LOOT_DEF_SRT_ORDER = [
+    COIN_CLASS, AMULET_CLASS, RING_CLASS, WAND_CLASS, POTION_CLASS,
+    SCROLL_CLASS, SPBOOK_CLASS, GEM_CLASS, FOOD_CLASS, TOOL_CLASS,
+    WEAPON_CLASS, ARMOR_CLASS, ROCK_CLASS, BALL_CLASS, CHAIN_CLASS,
+];
+
+/** C invent.c loot_classify armcat `:160` — one-time init, persists across calls. */
+const loot_armcat = new Array(8).fill(0);
+
+// C objclass.h enum obj_armor_types — loot_classify's armcat order differs.
+const ARM_SUIT = 0;
+const ARM_SHIELD = 1;
+const ARM_HELM = 2;
+const ARM_GLOVES = 3;
+const ARM_BOOTS = 4;
+const ARM_CLOAK = 5;
+const ARM_SHIRT = 6;
+
+// C objclass.h `:19–21` — loot_classify GEM arm materials.
+const MAT_GLASS = 19;
+const MAT_GEMSTONE = 20;
+const MAT_MINERAL = 21;
+
+const OTYP_BAG_OF_TRICKS = objectNames.indexOf('BAG_OF_TRICKS');
+const OTYP_HORN_OF_PLENTY = objectNames.indexOf('HORN_OF_PLENTY');
+const OTYP_WOODEN_FLUTE = objectNames.indexOf('WOODEN_FLUTE');
+const OTYP_MAGIC_FLUTE = objectNames.indexOf('MAGIC_FLUTE');
+const OTYP_TOOLED_HORN = objectNames.indexOf('TOOLED_HORN');
+const OTYP_FROST_HORN = objectNames.indexOf('FROST_HORN');
+const OTYP_FIRE_HORN = objectNames.indexOf('FIRE_HORN');
+const OTYP_WOODEN_HARP = objectNames.indexOf('WOODEN_HARP');
+const OTYP_MAGIC_HARP = objectNames.indexOf('MAGIC_HARP');
+const OTYP_BUGLE = objectNames.indexOf('BUGLE');
+const OTYP_LEATHER_DRUM = objectNames.indexOf('LEATHER_DRUM');
+const OTYP_DRUM_OF_EARTHQUAKE = objectNames.indexOf('DRUM_OF_EARTHQUAKE');
+const OTYP_SLIME_MOLD = objectNames.indexOf('SLIME_MOLD');
+
+/**
+ * C ref: invent.c loot_classify `:149–305` — classify one object for
+ * sortloot_cmp: class order (`:174–180`, sortpack ? inv_order :
+ * def_srt_order; VENOM sorts after the listed classes), subclass
+ * (`:184–296`: armor armcat table, weapon skill groups, tool
+ * container/instrument groups, food kinds, gem material × seen ×
+ * discovered), discovery status (`:298–302`: unseen 1, undiscovered 2,
+ * named 3, discovered-or-undescribable 4) and inuse 0 (`:304`).
+ * Lower values sort first. observe_object runs when !Blind (`:171`,
+ * xname does this — wanted sooner); seen is read after it (`:172`).
+ * oc_armcat overloads oc_subtyp (guarded to 0–6, else 7) and JS stores
+ * it in oc_skill (`:197–202`); oc_skill likewise for weapons (`:204`).
+ * @param {object} sort_item Loot record (orderclass/subclass/disco/inuse)
+ * @param {object} obj game object
+ */
+export function loot_classify(sort_item, obj) {
+    const otyp = obj.otyp | 0;
+    const oclass = obj.oclass;
+    const oc = game.objects?.[otyp];
+    const discovered = !!oc?.oc_name_known;
+    if (!Blind()) observe_object(obj);
+    const seen = !!obj.dknown;
+    const classorder = sortpack_on() ? inv_order_classes() : LOOT_DEF_SRT_ORDER;
+    const ix = classorder.indexOf(oclass);
+    let k;
+    if (ix >= 0) k = ix + 1;
+    else k = classorder.length + 1 + (oclass !== VENOM_CLASS ? 1 : 0);
+    sort_item.orderclass = k;
+    switch (oclass) {
+    case ARMOR_CLASS:
+        if (!loot_armcat[7]) {
+            loot_armcat[ARM_HELM] = 1;
+            loot_armcat[ARM_GLOVES] = 2;
+            loot_armcat[ARM_BOOTS] = 3;
+            loot_armcat[ARM_SHIELD] = 4;
+            loot_armcat[ARM_CLOAK] = 5;
+            loot_armcat[ARM_SHIRT] = 6;
+            loot_armcat[ARM_SUIT] = 7;
+            loot_armcat[7] = 8;
+        }
+        k = oc?.oc_skill | 0;
+        if (k < 0 || k >= 7) k = 7;
+        k = loot_armcat[k];
+        break;
+    case WEAPON_CLASS:
+        k = oc?.oc_skill | 0;
+        k = (k < 0)
+            ? ((k >= -P_CROSSBOW && k <= -P_BOW) ? 1 : 3)
+            : ((k >= P_BOW && k <= P_CROSSBOW) ? 2
+                : (k === P_SPEAR || k === P_DAGGER || k === P_KNIFE) ? 4
+                : !is_pole(obj) ? 5 : 6);
+        break;
+    case TOOL_CLASS:
+        if (seen && discovered
+            && (otyp === OTYP_BAG_OF_TRICKS || otyp === OTYP_HORN_OF_PLENTY)) {
+            k = 2;
+        } else if (Is_container(obj)) {
+            k = 1;
+        } else {
+            switch (otyp) {
+            case OTYP_WOODEN_FLUTE:
+            case OTYP_MAGIC_FLUTE:
+            case OTYP_TOOLED_HORN:
+            case OTYP_FROST_HORN:
+            case OTYP_FIRE_HORN:
+            case OTYP_WOODEN_HARP:
+            case OTYP_MAGIC_HARP:
+            case OTYP_BUGLE:
+            case OTYP_LEATHER_DRUM:
+            case OTYP_DRUM_OF_EARTHQUAKE:
+            case OTYP_HORN_OF_PLENTY:
+                k = 3;
+                break;
+            default:
+                k = 4;
+                break;
+            }
+        }
+        break;
+    case FOOD_CLASS:
+        switch (otyp) {
+        case OTYP_SLIME_MOLD:
+            k = 1;
+            break;
+        case OTYP_TIN:
+            k = 3;
+            break;
+        case EGG:
+            k = 4;
+            break;
+        case OTYP_CORPSE:
+            k = 5;
+            break;
+        default:
+            k = obj.globby ? 6 : 2;
+            break;
+        }
+        break;
+    case GEM_CLASS:
+        switch (oc?.oc_material) {
+        case MAT_GEMSTONE:
+            k = !seen ? 1 : !discovered ? 2 : 3;
+            break;
+        case MAT_GLASS:
+            k = !seen ? 1 : !discovered ? 2 : 4;
+            break;
+        default:
+            k = !seen ? 5 : (otyp !== OTYP_ROCK) ? (!discovered ? 6 : 7) : 8;
+            break;
+        }
+        break;
+    default:
+        k = 1;
+        break;
+    }
+    sort_item.subclass = k;
+    const di = oc?.oc_descr_idx ?? otyp;
+    const hasDescr = !!(objectDescrs[di] || oc?.oc_descr);
+    k = !seen ? 1
+        : (discovered || !hasDescr) ? 4
+        : oc?.oc_uname ? 3
+        : 2;
+    sort_item.disco = k;
+    sort_item.inuse = 0;
+}
+
+// C ref: obj.h greatest_erosion — max(oeroded, oeroded2) as int.
+// File-local macro mirror (dig.js/lock.js/u_init.js/weapon.js precedent;
+// avoids an invent↔u_init import edge).
+function greatest_erosion(obj) {
+    const a = obj.oeroded | 0;
+    const b = obj.oeroded2 | 0;
+    return a > b ? a : b;
+}
+
+// C ref: decl.h:873 — gs.sortlootmode, extra input for sortloot_cmp().
+// sortloot() sets it around the sort and resets it after (invent.c:634/636).
+let sortlootmode = 0;
+
+/**
+ * C ref: invent.c sortloot_cmp `:403–547` — qsort comparator for sortloot().
+ * Reads the module sortlootmode (C gs.sortlootmode). Tie paths return the
+ * original-index difference directly (C `goto tiebreak` `:543–546`).
+ * dupstr/maybereleaseobuf are no-ops here: JS strings are immutable
+ * values, so the loot_xname result is already an owned copy and there is
+ * no static obuf to release.
+ */
+export function sortloot_cmp(sli1, sli2) {
+    const obj1 = sli1.obj;
+    const obj2 = sli2.obj;
+    let val1, val2;
+
+    /* in-use takes precedence over all others */ // :412
+    if ((sortlootmode & SORTLOOT_INUSE) !== 0) { // :413
+        /* Classify each object at most once no matter how many
+           comparisons it is involved in. */ // :414-416
+        if (!sli1.orderclass) inuse_classify(sli1, obj1); // :417-418
+        if (!sli2.orderclass) inuse_classify(sli2, obj2); // :419-420
+
+        val1 = sli1.inuse; // :422
+        val2 = sli2.inuse; // :423
+        if (val1 !== val2) return val2 - val1; /* bigger value comes before smaller */ // :424-425
+        /* neither item in use (or both are lit lamps/candles or both are
+           attached leashes; items using owornmask don't produce ties) */ // :426-428
+        return sli1.indx - sli2.indx; // tiebreak :543-546
+    }
+
+    /* order by object class unless we're doing by-invlet without sortpack */ // :430
+    if ((sortlootmode & (SORTLOOT_PACK | SORTLOOT_INVLET)) // :431
+        !== SORTLOOT_INVLET) { // :432
+        /* Classify each object at most once no matter how many
+           comparisons it is involved in. */ // :433-434
+        if (!sli1.orderclass) loot_classify(sli1, obj1); // :435-436
+        if (!sli2.orderclass) loot_classify(sli2, obj2); // :437-438
+
+        /* Sort by class. */ // :440
+        val1 = sli1.orderclass; // :441
+        val2 = sli2.orderclass; // :442
+        if (val1 !== val2) return val1 - val2; // :443-444
+
+        /* skip sub-classes when ordering by sortpack+invlet */ // :446
+        if ((sortlootmode & SORTLOOT_INVLET) === 0) { // :447
+            /* Class matches; sort by subclass. */ // :448
+            val1 = sli1.subclass; // :449
+            val2 = sli2.subclass; // :450
+            if (val1 !== val2) return val1 - val2; // :451-452
+
+            /* Class and subclass match; sort by discovery status:
+             * first unseen, then seen but not named or discovered,
+             * then named, lastly discovered. */ // :454-464
+            val1 = sli1.disco; // :465
+            val2 = sli2.disco; // :466
+            if (val1 !== val2) return val1 - val2; // :467-468
+        }
+    }
+
+    /* order by assigned inventory letter */ // :471
+    if ((sortlootmode & SORTLOOT_INVLET) !== 0) { // :472
+        val1 = invletter_value(obj1.invlet); // :473
+        val2 = invletter_value(obj2.invlet); // :474
+        if (val1 !== val2) return val1 - val2; // :475-476
+    }
+
+    if ((sortlootmode & SORTLOOT_LOOT) === 0) // :478
+        return sli1.indx - sli2.indx; // tiebreak :543-546
+
+    /*
+     * Sort object names in lexicographical order, ignoring quantity.
+     *
+     * Each obj gets formatted at most once (per sort) no matter how many
+     * comparisons it gets subjected to. // :481-486
+     */
+    if (!sli1.str) { // :487
+        // C: tmpstr = loot_xname(obj1); sli1->str = dupstr(tmpstr);
+        // maybereleaseobuf(tmpstr) — both no-ops per the doc comment. // :488-491
+        sli1.str = loot_xname(obj1);
+    }
+    if (!sli2.str) { // :493
+        sli2.str = loot_xname(obj2); // :494-497
+    }
+    // C: strcmpi = hacklib strncmpi A-Z fold; loot names are ASCII so
+    // lowercase ordering equals the C byte order. // :498-499
+    const nam1 = sli1.str.toLowerCase();
+    const nam2 = sli2.str.toLowerCase();
+    if (nam1 < nam2) return -1;
+    if (nam1 > nam2) return 1;
+
+    /* Sort by BUCX. */ // :501
+    val1 = obj1.bknown ? (obj1.blessed ? 3 : !obj1.cursed ? 2 : 1) : 0; // :502
+    val2 = obj2.bknown ? (obj2.blessed ? 3 : !obj2.cursed ? 2 : 1) : 0; // :503
+    if (val1 !== val2) return val2 - val1; /* bigger is better */ // :504
+
+    /* Sort by greasing.  This will put the objects in degreasing order. */ // :506
+    val1 = obj1.greased | 0; // :507
+    val2 = obj2.greased | 0; // :508
+    if (val1 !== val2) return val2 - val1; /* bigger is better */ // :509-510
+
+    /* Sort by erosion.  The effective amount is what matters. */ // :512
+    val1 = greatest_erosion(obj1); // :513
+    val2 = greatest_erosion(obj2); // :514
+    if (val1 !== val2) return val1 - val2; /* bigger is WORSE */ // :515-516
+
+    /* Sort by erodeproofing.  Map known-invulnerable to 1, and both
+       known-vulnerable and unknown-vulnerability to 0, because that's
+       how they're displayed. */ // :517-519
+    val1 = (obj1.rknown && obj1.oerodeproof) ? 1 : 0; // :520
+    val2 = (obj2.rknown && obj2.oerodeproof) ? 1 : 0; // :521
+    if (val1 !== val2) return val2 - val1; /* bigger is better */ // :522-523
+
+    /* Sort by enchantment.  Map unknown to -1000, which is comfortably
+       below the range of obj->spe.  oc_uses_known means that obj->known
+       matters, which usually indirectly means that obj->spe is relevant.
+       Lots of objects use obj->spe for some other purpose (see obj.h). */ // :525-529
+    if (game.objects?.[obj1.otyp]?.oc_uses_known // :530
+        /* exclude eggs (laid by you) and tins (homemade, pureed, &c) */ // :531
+        && obj1.oclass !== FOOD_CLASS) { // :532
+        val1 = obj1.known ? (obj1.spe | 0) : -1000; // :533
+        val2 = obj2.known ? (obj2.spe | 0) : -1000; // :534
+        if (val1 !== val2) return val2 - val1; /* bigger is better */ // :535-536
+    }
+
+    /* They're identical, as far as we're concerned.  We want
+       to force a deterministic order, and do so by producing a
+       stable sort: maintain the original order of equal items. */ // :544-546
+    return sli1.indx - sli2.indx;
+}
+
 /**
  * C ref: invent.c sortloot `:592–643` — Loot[] view; does not relink.
  * Branch envelope: SORTLOOT_PACK class + SORTLOOT_INVLET + SORTLOOT_LOOT
  * + SORTLOOT_INUSE (inuse_classify; bigger inuse first) + optional
  * filterfunc (display_pickinv is_inuse) + SORTLOOT_PETRIFY (keep
  * touch_petrifies CORPSE even when filterfunc rejects FOOD).
- * Named: subclass/disco/BUCX/erosion; loot_classify armor/weapon/tool
- * detail.
+ * sortloot_cmp `:403–547` is the in-file exported comparator (BUCX /
+ * grease / erosion / erodeproof / enchant tail live). The `#if 0` 3.6.0
+ * revamp direct caller (`:657–671`) is dead — never wired. Post-sort
+ * str free (`:638–640`) is GC. subclass/disco compares + loot_classify
+ * armor/weapon/tool container/instrument/food/gem detail live.
  * @param {object|object[]|null} olist nobj/nexthere head or invent Array
  * @param {number} mode SORTLOOT_* flags
  * @param {boolean} [by_nexthere=false]
@@ -2057,55 +2436,11 @@ export function sortloot(olist, mode, by_nexthere = false, filterfunc = null) {
     }
     if (!mode || items.length <= 1) return items;
 
-    // C: flags.sortpack ? flags.inv_order : def_srt_order — inv_order subset
-    const classorder = DEF_INV_ORDER;
-
-    items.sort((sli1, sli2) => {
-        const obj1 = sli1.obj;
-        const obj2 = sli2.obj;
-        // C sortloot_cmp: in-use takes precedence over all others
-        if ((mode & SORTLOOT_INUSE) !== 0) {
-            if (!sli1.orderclass) inuse_classify(sli1, obj1);
-            if (!sli2.orderclass) inuse_classify(sli2, obj2);
-            if (sli1.inuse !== sli2.inuse) {
-                return sli2.inuse - sli1.inuse;
-            }
-            return sli1.indx - sli2.indx;
-        }
-        // C: order by class unless SORTLOOT_INVLET alone
-        if ((mode & (SORTLOOT_PACK | SORTLOOT_INVLET)) !== SORTLOOT_INVLET) {
-            if (!sli1.orderclass) {
-                const ix = classorder.indexOf(obj1.oclass);
-                sli1.orderclass = ix >= 0 ? ix + 1 : classorder.length + 2;
-            }
-            if (!sli2.orderclass) {
-                const ix = classorder.indexOf(obj2.oclass);
-                sli2.orderclass = ix >= 0 ? ix + 1 : classorder.length + 2;
-            }
-            if (sli1.orderclass !== sli2.orderclass) {
-                return sli1.orderclass - sli2.orderclass;
-            }
-            // subclass / disco deferred (all ice-box corpses share FOOD/CORPSE)
-        }
-        // C: order by assigned inventory letter when SORTLOOT_INVLET
-        if (mode & SORTLOOT_INVLET) {
-            const v1 = invletter_value(obj1.invlet);
-            const v2 = invletter_value(obj2.invlet);
-            if (v1 !== v2) return v1 - v2;
-        }
-        if (mode & SORTLOOT_LOOT) {
-            if (!sli1.str) sli1.str = loot_xname(obj1);
-            if (!sli2.str) sli2.str = loot_xname(obj2);
-            // C strcmpi
-            const nam1 = sli1.str.toLowerCase();
-            const nam2 = sli2.str.toLowerCase();
-            if (nam1 < nam2) return -1;
-            if (nam1 > nam2) return 1;
-            // BUCX / grease / erosion deferred
-        }
-        // C tiebreak: stable by original index
-        return sli1.indx - sli2.indx;
-    });
+    // C sortloot `:634–640` — mode is extra input for sortloot_cmp via
+    // gs.sortlootmode; reset after the sort (str free is GC here).
+    sortlootmode = mode;
+    items.sort((sli1, sli2) => sortloot_cmp(sli1, sli2));
+    sortlootmode = 0;
     return items;
 }
 
@@ -8423,8 +8758,9 @@ async function getobj_filter_prompt(obj_ok, ctrlflags) {
 
 /**
  * C invent.c getobj `:1921–1922` — gi.in_doagain → readchar(), no yn
- * prompt. readchar_core fuzzer / readchar_queue / ALTMETA / click are
- * cmd.c named omits; nhgetch matches getdir_read_dirsym.
+ * prompt. readchar_core whole body is live (`js/cmd.js` D-2625 —
+ * fuzzer/queue/ALTMETA/click in C order); nhgetch matches
+ * getdir_read_dirsym.
  */
 async function getobj_readchar() {
     const key = await nhgetch();
@@ -8933,92 +9269,142 @@ export async function display_used_invlets(avoidlet = 0) {
 }
 
 /**
- * C invent.c doorganize_core `:5067–5286` — destination pick +
- * move/collect/swap/merge, plus nobj split from splitobj (adjust_split
- * / getobj ALLOWCNT). display_used_invlets is D-1591.
- * check_invent_gold dest `$` is D-1641. Named: invlet_constant truncate.
+ * C hacklib.c letter `:69–73` — '@'..'Z' + 'a'..'z' class as letters
+ * (doorganize_core's `:5171` dest-letter gate classifies '@' as one,
+ * then excludes it explicitly).
+ */
+function is_c_letter(ch) {
+    if (typeof ch !== 'string' || ch.length !== 1) return false;
+    const c = ch.charCodeAt(0);
+    return (0x40 <= c && c <= 0x5a) || (0x61 <= c && c <= 0x7a);
+}
+
+/**
+ * C invent.c doorganize_core `:5068–5286` — full #adjust destination pick
+ * + move/collect/swap/merge in C order. C callers: doorganize `:5003`,
+ * adjust_split `:5064` (both wired below). display_used_invlets is
+ * D-1591; check_invent_gold dest `$` is D-1641; adjust_split split-amount
+ * is D-1621; fixinv reassign is D-1655.
+ * Callee map: mergable/merged/unsplitobj/clear_splitobjs live (mkobj.js);
+ * inv_cnt live (steal.js); assigninvlet live (u_init.js); prinv/Your live
+ * (display.js); yn_function live (getline.js); display_used_invlets live
+ * (same file, D-1591); compactify → compactify_invlets (`:8086`,
+ * C invent.c `:1627`); reorder_invent → reorder_invent_adjust (`:8898`,
+ * C `:739`); extract_nobj → extract_invent (`:8888`, array-model unlink,
+ * C mkobj.c `:2596`); eos() → string concat; letter() → is_c_letter
+ * above (C hacklib.c `:69`).
  */
 async function doorganize_core(obj) {
+    // C `:5084–5086` — no 'from' object cancels.
     if (!obj) return ECMD_CANCEL;
 
-    // C `:5089` — gold 'from' only when check_invent_gold found a problem
+    // C `:5089–5090` — gold 'from' only when check_invent_gold found
+    // multiple '$' stacks and/or gold in some other slot (D-1641).
     const isgold = obj.oclass === COIN_CLASS;
 
-    // C `:5089–5096` — splitobj left parent.nobj==child, same invlet.
+    // C `:5092–5096` — splitobj() leaves parent.nobj == child with the
+    // same invlet; break at the FIRST predecessor even when invlets
+    // differ (then this is an ordinary adjust, splitting stays null).
     let splitting = null;
+    let bumped = null;
     for (const otmp of game.invent || []) {
-        if (otmp.nobj === obj && otmp.invlet === obj.invlet) {
-            splitting = otmp;
+        if (otmp.nobj === obj) {
+            if (otmp.invlet === obj.invlet) splitting = otmp;
             break;
         }
     }
 
-    // Build candidate destination letters (C lets[] then blank used + compactify)
+    // C `:5101–5113` — lets[] = '$' (gold 'from' only) + a-zA-Z;
+    // overflow '#' slot defaults off (`:5106–5112`).
     const letsArr = new Array(1 + INVLET_BASIC + 1).fill(' ');
     letsArr[0] = obj.oclass === COIN_CLASS ? GOLD_SYM_ADJ : ' ';
     for (let i = 0; i < 26; i++) letsArr[1 + i] = String.fromCharCode(97 + i);
     for (let i = 0; i < 26; i++) letsArr[27 + i] = String.fromCharCode(65 + i);
-    letsArr[1 + INVLET_BASIC] = ' '; // overflow slot off by default
-
+    letsArr[1 + INVLET_BASIC] = ' ';
+    let lets = letsArr.join('');
+    // C `:5109–5110` — floating invlets: truncate after the first open
+    // slot (a split leaves one extra stack, hence +1 vs +2).
+    if (!invlet_constant()) {
+        const nlet = inv_cnt(false);
+        if (nlet < INVLET_BASIC) lets = lets.slice(0, nlet + (splitting ? 1 : 2));
+    }
+    // C `:5114–5129` — blank letters in use except obj's own and mergable
+    // stacks; a NOINVSYM stack switches overflow on (writes past a `:5110`
+    // truncation stay past the NUL, so indices past it are dropped here).
+    const blankArr = lets.split('');
     for (const otmp of game.invent || []) {
         if (otmp === obj || mergable(otmp, obj)) continue;
-        const let_ = otmp.invlet;
-        if (let_ >= 'a' && let_ <= 'z') letsArr[1 + (let_.charCodeAt(0) - 97)] = ' ';
-        else if (let_ >= 'A' && let_ <= 'Z') {
-            letsArr[1 + (let_.charCodeAt(0) - 65) + 26] = ' ';
-        } else if (let_ === NOINVSYM) letsArr[1 + INVLET_BASIC] = NOINVSYM;
+        const used = otmp.invlet;
+        if (used >= 'a' && used <= 'z') {
+            const i = 1 + (used.charCodeAt(0) - 97);
+            if (i < blankArr.length) blankArr[i] = ' ';
+        } else if (used >= 'A' && used <= 'Z') {
+            const i = 1 + (used.charCodeAt(0) - 65) + 26;
+            if (i < blankArr.length) blankArr[i] = ' ';
+        } else if (used === NOINVSYM) {
+            if (1 + INVLET_BASIC < blankArr.length) blankArr[1 + INVLET_BASIC] = NOINVSYM;
+        }
     }
-
-    let lets = letsArr.filter((c) => c !== ' ').join('');
+    // C `:5131–5136` — compact blanks, dash runs over 5 via compactify.
+    lets = blankArr.filter((c) => c !== ' ').join('');
     if (lets.length > 5) lets = compactify_invlets(lets);
 
-    // C `:5137–5142` — "Split N" when nobj-split, else "Adjust letter"
-    let qbuf = splitting
-        ? `Split ${obj.quan}`
-        : 'Adjust letter';
-    qbuf += ` to what [${lets}]`;
-    if (game.invent?.length) qbuf += ' (? see used letters)';
-    qbuf += '?';
+    // C `:5138–5142` — "Split N" for an nobj-split, else "Adjust letter"
+    // (Sprintf(eos(qbuf)) append is concat in JS).
+    let qbuf = splitting ? `Split ${obj.quan}` : 'Adjust letter';
+    qbuf += ` to what [${lets}]${(game.invent || []).length ? ' (? see used letters)' : ''}?`;
 
+    // C `:5157–5162` noadjust: undo the getobj split, pline Never_mind
+    // unless a message was already shown (ever_mind).
     let ever_mind = false;
-    let let_;
     const noadjust = async () => {
         if (splitting) unsplitobj(obj);
         if (!ever_mind) await pline(Never_mind);
         return ECMD_OK;
     };
+    // C `:5143–5177` destination prompt loop (yn 4th arg TRUE = addcmdq,
+    // the JS default).
+    let let_;
     for (let trycnt = 1; ; ++trycnt) {
-        // C `:5143` — gold 'from' forces dest '$' (no yn_function)
+        // C `:5144` — gold 'from' forces dest '$' with no prompt.
         let_ = !isgold ? await yn_function(qbuf, null, '\0') : GOLD_SYM_ADJ;
+        // C `:5145–5151` — '?'/'*' lists used letters (split source as
+        // avoidlet); empty pick re-prompts, ESC cancels.
         if (let_ === '?' || let_ === '*') {
-            // C `:5144–5150` — splitting ? obj->invlet : 0
             let_ = await display_used_invlets(splitting ? obj.invlet : 0);
             if (!let_) continue;
             if (let_ === '\x1b') return noadjust();
         }
-        if (QUITCHARS.includes(let_)
-            || (splitting && let_ === obj.invlet)) {
+        // C `:5152–5162` — quit chars, or split-to-same-slot, cancel.
+        if (QUITCHARS.includes(let_) || (splitting && let_ === obj.invlet)) {
             return noadjust();
         }
+        // C `:5164–5168` — only gold may take the '$' slot.
         if (let_ === GOLD_SYM_ADJ && obj.oclass !== COIN_CLASS) {
             await pline(`Only gold coins may be moved into the '${GOLD_SYM_ADJ}' slot.`);
             ever_mind = true;
             return noadjust();
         }
-        const isLetter = /[a-zA-Z]/.test(let_) && let_ !== '@';
-        if (isLetter || (lets.includes(let_) && let_ !== '-')) break;
+        // C `:5169–5176` — letter() takes '@'..'Z'+'a'..'z'
+        // (is_c_letter), '@' excluded here; '-' only counts from the lets
+        // menu (compactify dash); five bad tries give up quietly.
+        if ((is_c_letter(let_) && let_ !== '@') || (lets.includes(let_) && let_ !== '-')) break;
         if (trycnt === 5) return noadjust();
         await pline('Select an inventory slot letter.');
     }
 
+    // C `:5179–5183` — same-slot adjust collects; split moves by default.
     const collect = let_ === obj.invlet;
     let adj_type = collect ? 'Collecting:'
         : !splitting ? 'Moving:'
             : 'Splitting:';
-    let bumped = null;
 
+    // C `:5185–5192` — extract by hand: freeinv/addinv would
+    // double-touch artifacts, douse lamps, lose luck, curse loadstones.
     extract_invent(obj);
 
+    // C `:5194–5259` — walk the pack for the 'to' slot (array snapshot,
+    // stale entries skipped — the JS array-model read of the nobj walk).
     const invSnap = [...(game.invent || [])];
     for (let i = 0; i < invSnap.length; ) {
         const otmp = invSnap[i];
@@ -9027,27 +9413,32 @@ async function doorganize_core(obj) {
             continue;
         }
         if (collect) {
+            // C `:5197–5211` — keep obj in its slot, merge other
+            // compatible stacks into it (a named 'from' only into
+            // unnamed or same-named candidates).
             if (names_ok_for_adjust_merge(otmp, obj) && invent_merged(otmp, obj)) {
                 obj = otmp;
                 extract_invent(obj);
-                // invent_merged removed obj (old); otmp survived then extracted
-                // refresh snap cursor: continue from same index with new invent order
                 invSnap.splice(0, invSnap.length, ...(game.invent || []));
                 i = 0;
                 continue;
             }
         } else if (otmp.invlet === let_) {
+            // C `:5212–5221` — 'to' slot merges when compatible.
             if (names_ok_for_adjust_merge(otmp, obj) && invent_merged(otmp, obj)) {
                 adj_type = 'Merging:';
                 obj = otmp;
                 extract_invent(obj);
                 break;
             }
+            // C `:5222–5228` — moving swaps letters with the occupant...
             if (!splitting) {
                 adj_type = 'Swapping:';
                 otmp.invlet = obj.invlet;
             } else {
-                // C `:5205–5239` — strip from-name, merge or bump / pack-full
+                // C `:5229–5259` — splitting: strip the 'from' name,
+                // merge or bump the occupant, or fail when the pack is
+                // full (undo the split first, no split-context reset).
                 const objname = invent_obj_name(obj);
                 if (objname && !obj.oartifact) {
                     if (!obj.oextra) obj.oextra = {};
@@ -9065,7 +9456,7 @@ async function doorganize_core(obj) {
                     extract_invent(obj);
                 } else if (inv_cnt(false) >= INVLET_BASIC) {
                     unsplitobj(obj);
-                    await pline('Your pack is too full.');
+                    await Your('pack is too full.');
                     return ECMD_OK;
                 } else {
                     bumped = otmp;
@@ -9077,18 +9468,24 @@ async function doorganize_core(obj) {
         i++;
     }
 
+    // C `:5261–5269` — inline addinv at the head of the pack, then sort
+    // (C links obj->nobj onto the head first).
     obj.invlet = let_;
-    obj.where = OBJ_INVENT;
     if (!game.invent) game.invent = [];
+    obj.nobj = game.invent[0] || null;
+    obj.where = OBJ_INVENT;
     game.invent.unshift(obj);
     reorder_invent_adjust();
     if (bumped) {
+        // C `:5270–5277` — the bumped occupant takes an open slot.
         assigninvlet(bumped);
+        bumped.nobj = game.invent[0] || null;
         bumped.where = OBJ_INVENT;
         game.invent.unshift(bumped);
         reorder_invent_adjust();
     }
 
+    // C `:5279–5285` — messages only after the pack is reestablished.
     await prinv_adjust(adj_type, obj);
     if (bumped) await prinv_adjust('Moving:', bumped);
     if (splitting) clear_splitobjs();

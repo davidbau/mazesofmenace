@@ -2471,7 +2471,7 @@ function BLevitation() {
  * Branch envelope: fountain-at-feet yn → dipfountain; sink-at-feet yn →
  * dipsink (D-1113); pool yn → wash_hands / water_damage (D-1128);
  * potion getobj → potion_dip mix (D-1457).
- * Deferred: m-prefix skip floor polish, inaccessible_equipment.
+ * Deferred: m-prefix skip floor polish.
  * Pool-dip acid boom rides live `water_damage` → `pot_acid_damage`
  * (trap.js; ER_DESTROYED deletes, `in_use` short-circuit per C).
  * @returns {number} ECMD_*
@@ -2490,7 +2490,11 @@ export async function dodip() {
 
     const obj = await getobj_dip(at_here);
     if (!obj) return ECMD_CANCEL;
-    // inaccessible_equipment deferred
+    // C `:2282` — EXCLUDE_INACCESS is pseudo-valid: a letter-picked covered
+    // item is returned by getobj so the caller presents the failure message
+    // (hack.h enum). Dynamic import: apply.js already imports potion.js.
+    const { inaccessible_equipment: inacc_dip } = await import('./apply.js');
+    if (await inacc_dip(obj, 'dip', false)) return ECMD_OK;
 
     const is_hands = obj === hands_obj;
     // C: is_hands || is_plural || pair_of → "them" (pair_of deferred)
@@ -2686,8 +2690,8 @@ async function getobj_dip_ok(word, inacc) {
  * potion first (already in CQ_CANNED), then the object to dip.
  * Ignores floor water. Caller iactions.c IA_DIP_OBJ.
  * Callee do_wear.c inaccessible_equipment via apply.js (dynamic;
- * apply.js already imports potion.js). Named omit: Eyes of Overworld
- * is_plural; dodip inaccessible (still named). INTERNALCMD extcmdlist
+ * apply.js already imports potion.js). dodip post-check wired D-2632.
+ * Named omit: Eyes of Overworld is_plural. INTERNALCMD extcmdlist
  * "altdip" is D-1537 (typed # unknown; canned CMDQ_EXTCMD).
  * @returns {number} ECMD_*
  */

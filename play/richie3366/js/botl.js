@@ -8,10 +8,10 @@
 // windowport itself (`status_update` == `*windowprocs.win_status_update`,
 // winprocs.h:186; caps WC2_RESET_STATUS/WC2_FLUSH_STATUS, winprocs.h:246/248)
 // has no JS registry yet, so per-field/RESET/FLUSH delivery is a named
-// omission (loud forwarder, never silent). Likewise the hilite-rule engine
-// (get_hilite botl.c:2364, hilite_reset_needed botl.c:2257) is named, not
-// stubbed: its result only feeds status_update, so nothing observable is
-// dropped while it is unwired.
+// omission (loud forwarder, never silent). The hilite-rule engine
+// (get_hilite botl.c:2364, live below; hilite_reset_needed botl.c:2257,
+// still named) feeds only status_update color + the hilite_rule cache, so
+// nothing observable is dropped while the dispatch stays unwired.
 //
 // Caller: C bot() (botl.c:253) calls evaluate_and_notify_windowport at
 // botl.c:1277 after filling gb.blstats. JS bot() (display.js:7148) renders
@@ -46,7 +46,7 @@ import {
     VI_NUMBER, VI_NAME, VI_BRANCH,
     SICK, SICK_VOMITABLE, SICK_NONVOMITABLE,
     STRANGLED, SLIMED, STONED, GLIB,
-    MALE, FEMALE, ICE,
+    MALE, FEMALE, ICE, LARGEST_INT,
     TT_LAVA, TT_BURIEDBALL,
     P_LANCE, P_QUARTERSTAFF, P_MORNING_STAR, P_POLEARMS, P_UNICORN_HORN,
     BL_MASK_BAREH, BL_MASK_BLIND, BL_MASK_BUSY, BL_MASK_CONF,
@@ -57,8 +57,9 @@ import {
     BL_MASK_STONE, BL_MASK_STRNGL, BL_MASK_STUN, BL_MASK_SUBMERGED,
     BL_MASK_TERMILL, BL_MASK_TETHERED, BL_MASK_TRAPPED, BL_MASK_UNCONSC,
     BL_MASK_WOUNDEDL, BL_MASK_HOLDING,
+    MENU_ITEMFLAGS_SKIPINVERT,
 } from './const.js';
-import { NO_COLOR, ATR_NONE } from './terminal.js';
+import { NO_COLOR, ATR_NONE, ATR_INVERSE } from './terminal.js';
 import { newuexp } from './exper.js';
 import {
     A_STR, A_DEX, A_CON, A_INT, A_WIS, A_CHA,
@@ -76,10 +77,11 @@ import { weapon_type } from './weapon.js';
 import { is_sword, objectNames } from './objects.js';
 import { bimanual, is_weptool } from './wield.js';
 import { helm_simple_name } from './do_wear.js';
-import { upstart, strNsubst, stripchars, str_start_is } from './hacklib.js';
+import { upstart, strNsubst, stripchars, str_start_is, fuzzymatch } from './hacklib.js';
 import { clr2colorname } from './artifact.js';
 import { humanoid, mons, is_flyer, NON_PM } from './monsters.js';
 import { Flying, Levitation } from './mhitu.js';
+import { critically_low_hp } from './pray.js';
 import { mdlib_version_string } from './version.js';
 import { WEAPON_CLASS, CLOAK_OF_PROTECTION } from './generated/objects_data.js';
 import {
@@ -383,10 +385,225 @@ function hilite_reset_needed(_prev, _moves) {
     throw new Error('named omit: hilite_reset_needed (botl.c:2257) not yet ported');
 }
 
-// C botl.c:2364 get_hilite() — status-highlight rule selection. Named omit:
-// result only feeds status_update color + hilite_rule cache below.
-function get_hilite(_idx, _fld, _vp, _chg, _pc) {
-    throw new Error('named omit: get_hilite (botl.c:2364) not yet ported');
+// C botl.c:2333-2344 — noneoftheabove(): whether a title rule's textmatch
+// is the 'none of the above' / polymorphed menu string. Same-file staticfn;
+// get_hilite's BL_TITLE arm (C :2545-2546) is its only caller.
+function noneoftheabove(hl_text) {
+    if (fuzzymatch(hl_text, 'none of the above', '" -_', true) // C :2338
+        || fuzzymatch(hl_text, '(polymorphed)', '"()', true) // C :2339
+        || fuzzymatch(hl_text, 'none of the above (polymorphed)', // C :2340-2341
+            '" -_()', true))
+        return true; // C :2342
+    return false; // C :2343
+}
+
+// C botl.c:2346-2370 — get_hilite(): rule selection over the field's
+// threshold chain. Inputs per the C header comment: actual value vp
+// (BL_TH_VAL_ABSOLUTE), chg down/up/same -1/1/0 (BL_TH_UPDOWN/change),
+// percentage pc of max (BL_TH_VAL_PERCENTAGE). Returns the rule or null;
+// the windowport color rides out through colorBox (`{ v }` holder mirroring
+// C `int *colorptr`). Callers: eval_notify_windowport_field (C :1597) and
+// exp_percent_changing (C :2117, not yet ported — named omit).
+// Rule nodes (`struct hilite_s`) use C field names: behavior/rel/value
+// (a_int/a_long)/textmatch/coloridx/next.
+function get_hilite(idx, fldidx, vp, chg, pc, colorBox) {
+    let rule = null; // C :2370 `rule = 0`
+    const value = vp; // C :2371 `(anything *) vp`
+    let txtstr;
+
+    // C :2374-2375 — out-of-range returns Null WITHOUT touching colorptr.
+    if (fldidx < 0 || fldidx >= MAXBLSTATS) return null;
+
+    // C botl.c:673 `#define has_hilite(i) (gb.blstats[0][(i)].thresholds)`,
+    // file-local, `#undef` at :2572 — inlined here.
+    const gbstats = game.gb?.blstats;
+    if (gbstats?.[0]?.[fldidx]?.thresholds) { // C :2377
+        let dt;
+        // C :2379-2380 — there are hilites set here; best-fit trackers.
+        let max_pc = -1, min_pc = 101; // C :2380
+        // C :2381-2383 — LARGEST_INT isn't INT_MAX; it fits within 16 bits
+        // but handles all 'int' status fields.
+        let max_ival = -LARGEST_INT, min_ival = LARGEST_INT; // C :2383
+        // C :2384-2386 — LONG_MAX bounds; JS doubles are exact to 2^53,
+        // far above any a_long status value, so MAX_SAFE_INTEGER is it.
+        let max_lval = -Number.MAX_SAFE_INTEGER, min_lval = Number.MAX_SAFE_INTEGER;
+        let exactmatch = false, updown = false, changed = false, // C :2387-2388
+            perc_or_abs = false, crit_hp = false;
+
+        // C :2390-2391 — min_/max_ track best fit over the chain.
+        for (let hl = gbstats[0][fldidx].thresholds; hl; hl = hl.next) {
+            dt = initblstats[fldidx].anytype; // C :2392, only for 'absolute'
+            // C :2393-2401 — a matched critical-hp rule ignores every other
+            // HP rule below (last critical one wins); otherwise regen's
+            // every-move +1 would pin an up/changed highlight inside the
+            // critical threshold.
+            if (crit_hp && hl.behavior !== BL_TH_CRITICALHP) continue; // C :2400
+            // C :2402-2406 — a matched temporary highlight beats all
+            // persistent ones, but updown rules still run for the last fit.
+            if ((updown || changed) && hl.behavior !== BL_TH_UPDOWN) continue; // C :2405
+            // C :2407-2410 — a matched percentage/absolute rule beats 'always'.
+            if (perc_or_abs && hl.behavior === BL_TH_ALWAYS_HILITE) continue; // C :2409
+
+            switch (hl.behavior) { // C :2412
+            case BL_TH_VAL_PERCENTAGE: // C :2413, always ANY_INT
+                if (hl.rel === EQ_VALUE && pc === hl.value.a_int) { // C :2414
+                    rule = hl;
+                    min_pc = max_pc = hl.value.a_int; // C :2416
+                    exactmatch = perc_or_abs = true; // C :2417
+                } else if (exactmatch) { // C :2418-2419
+                    ; // already found best fit, skip lt,ge,&c
+                } else if (hl.rel === LT_VALUE // C :2420-2422
+                           && (pc < hl.value.a_int)
+                           && (hl.value.a_int <= min_pc)) {
+                    rule = hl;
+                    min_pc = hl.value.a_int; // C :2424
+                    perc_or_abs = true; // C :2425
+                } else if (hl.rel === LE_VALUE // C :2426-2428
+                           && (pc <= hl.value.a_int)
+                           && (hl.value.a_int <= min_pc)) {
+                    rule = hl;
+                    min_pc = hl.value.a_int; // C :2430
+                    perc_or_abs = true; // C :2431
+                } else if (hl.rel === GT_VALUE // C :2432-2434
+                           && (pc > hl.value.a_int)
+                           && (hl.value.a_int >= max_pc)) {
+                    rule = hl;
+                    max_pc = hl.value.a_int; // C :2436
+                    perc_or_abs = true; // C :2437
+                } else if (hl.rel === GE_VALUE // C :2438-2440
+                           && (pc >= hl.value.a_int)
+                           && (hl.value.a_int >= max_pc)) {
+                    rule = hl;
+                    max_pc = hl.value.a_int; // C :2442
+                    perc_or_abs = true; // C :2443
+                }
+                break;
+            case BL_TH_UPDOWN: // C :2446, uses chg (set by caller), not dt
+                // C :2447-2448 — specific up/down beats general 'changed'
+                // regardless of rule order.
+                if (chg < 0 && hl.rel === LT_VALUE) { // C :2449
+                    rule = hl;
+                    updown = true; // C :2451
+                } else if (chg > 0 && hl.rel === GT_VALUE) { // C :2452
+                    rule = hl;
+                    updown = true; // C :2454
+                } else if (chg !== 0 && hl.rel === EQ_VALUE && !updown) { // C :2455
+                    rule = hl;
+                    changed = true; // C :2457
+                }
+                break;
+            case BL_TH_VAL_ABSOLUTE: // C :2460, either ANY_INT or ANY_LONG
+                // C :2461-2465 — int/long twins differ only in union field
+                // and min_/max_ names; keep them in step.
+                if (dt === ANY_INT) { // C :2466
+                    if (hl.rel === EQ_VALUE // C :2467-2468
+                        && hl.value.a_int === value.a_int) {
+                        rule = hl;
+                        min_ival = max_ival = hl.value.a_int; // C :2470
+                        exactmatch = perc_or_abs = true; // C :2471
+                    } else if (exactmatch) { // C :2472-2473
+                        ; // already found best fit, skip lt,ge,&c
+                    } else if (hl.rel === LT_VALUE // C :2474-2476
+                               && (value.a_int < hl.value.a_int)
+                               && (hl.value.a_int <= min_ival)) {
+                        rule = hl;
+                        min_ival = hl.value.a_int; // C :2478
+                        perc_or_abs = true; // C :2479
+                    } else if (hl.rel === LE_VALUE // C :2480-2482
+                               && (value.a_int <= hl.value.a_int)
+                               && (hl.value.a_int <= min_ival)) {
+                        rule = hl;
+                        min_ival = hl.value.a_int; // C :2484
+                        perc_or_abs = true; // C :2485
+                    } else if (hl.rel === GT_VALUE // C :2486-2488
+                               && (value.a_int > hl.value.a_int)
+                               && (hl.value.a_int >= max_ival)) {
+                        rule = hl;
+                        max_ival = hl.value.a_int; // C :2490
+                        perc_or_abs = true; // C :2491
+                    } else if (hl.rel === GE_VALUE // C :2492-2494
+                               && (value.a_int >= hl.value.a_int)
+                               && (hl.value.a_int >= max_ival)) {
+                        rule = hl;
+                        max_ival = hl.value.a_int; // C :2496
+                        perc_or_abs = true; // C :2497
+                    }
+                } else { // C :2499 ANY_LONG
+                    if (hl.rel === EQ_VALUE // C :2500-2501
+                        && hl.value.a_long === value.a_long) {
+                        rule = hl;
+                        min_lval = max_lval = hl.value.a_long; // C :2503
+                        exactmatch = perc_or_abs = true; // C :2504
+                    } else if (exactmatch) { // C :2505-2506
+                        ; // already found best fit, skip lt,ge,&c
+                    } else if (hl.rel === LT_VALUE // C :2507-2509
+                               && (value.a_long < hl.value.a_long)
+                               && (hl.value.a_long <= min_lval)) {
+                        rule = hl;
+                        min_lval = hl.value.a_long; // C :2511
+                        perc_or_abs = true; // C :2512
+                    } else if (hl.rel === LE_VALUE // C :2513-2515
+                               && (value.a_long <= hl.value.a_long)
+                               && (hl.value.a_long <= min_lval)) {
+                        rule = hl;
+                        min_lval = hl.value.a_long; // C :2517
+                        perc_or_abs = true; // C :2518
+                    } else if (hl.rel === GT_VALUE // C :2519-2521
+                               && (value.a_long > hl.value.a_long)
+                               && (hl.value.a_long >= max_lval)) {
+                        rule = hl;
+                        max_lval = hl.value.a_long; // C :2523
+                        perc_or_abs = true; // C :2524
+                    } else if (hl.rel === GE_VALUE // C :2525-2527
+                               && (value.a_long >= hl.value.a_long)
+                               && (hl.value.a_long >= max_lval)) {
+                        rule = hl;
+                        max_lval = hl.value.a_long; // C :2529
+                        perc_or_abs = true; // C :2530
+                    }
+                }
+                break;
+            case BL_TH_TEXTMATCH: // C :2534 ANY_STR
+                txtstr = gbstats[idx][fldidx].val; // C :2535
+                if (fldidx === BL_TITLE) {
+                    // C :2536-2538 — "<name> the <rank-title>", skip past
+                    // "<name> the ": strlen(plname) + sizeof(" the ") -
+                    // sizeof("") = len + 5 - 1 (svp.plname = game.plname,
+                    // botl.js:1020 precedent).
+                    txtstr = String(txtstr ?? '').slice((game.plname ?? '').length + 4);
+                }
+                if (hl.rel === TXT_VALUE && hl.textmatch && hl.textmatch[0]) { // C :2539
+                    if (fuzzymatch(hl.textmatch, txtstr, '" -_', true)) { // C :2540
+                        rule = hl;
+                        exactmatch = true; // C :2542
+                    } else if (exactmatch) { // C :2543-2544
+                        ; // already found best fit, skip "noneoftheabove"
+                    } else if (fldidx === BL_TITLE // C :2545-2546
+                               && Upolyd(game.u) && noneoftheabove(hl.textmatch)) {
+                        rule = hl; // C :2547
+                    }
+                }
+                break;
+            case BL_TH_ALWAYS_HILITE: // C :2551-2553
+                rule = hl;
+                break;
+            case BL_TH_CRITICALHP:
+                // C :2555 — pray.c:116, live js/pray.js export (no clone #2).
+                if (fldidx === BL_HP && critically_low_hp(false)) {
+                    rule = hl;
+                    crit_hp = true; // C :2557
+                    updown = changed = perc_or_abs = false; // C :2558
+                }
+                break;
+            case BL_TH_NONE: // C :2561-2562
+                break;
+            default: // C :2563-2564
+                break;
+            }
+        }
+    }
+    if (colorBox) colorBox.v = rule ? rule.coloridx : NO_COLOR; // C :2568
+    return rule; // C :2569
 }
 
 // C winprocs.h:186 (`#define status_update (*windowprocs.win_status_update)`)
@@ -473,7 +690,11 @@ export function eval_notify_windowport_field(fld, valsetlist, idx) {
                 // C :1607-1610 — an Xp-percentage-only change resets chg to
                 // the value comparison (or level-loss direction).
                 if (chg === 1 && fld === BL_XP) chg = compare_blstats(prev, curr); // C :1611
-                curr.hilite_rule = get_hilite(idx, fld, curr.a, chg, pc); // C :1613-1615
+                // C :1613-1615 — get_hilite writes the windowport color
+                // through `&color`; the `{ v }` holder mirrors the pointer.
+                const colorBox = { v: color };
+                curr.hilite_rule = get_hilite(idx, fld, curr.a, chg, pc, colorBox);
+                color = colorBox.v;
                 prev.hilite_rule = curr.hilite_rule; // C :1616
                 if (chg === 2) { // C :1617-1620
                     color = NO_COLOR; // C :1618
@@ -688,6 +909,125 @@ export function opt_next_cond(indx) {
         return `${ct.enabled ? '' : '!'}cond_${ct.useroption}`; // C `:1486–1487`
     }
     return ''; // C `:1462` default value
+}
+
+// C hacklib strcmpi — A-Z fold; useroption strings are ASCII so lowercase
+// ordering equals the C byte order (invent.js sortloot_cmp `:498–499`
+// precedent).
+function strcmpi_fold(a, b) {
+    const x = (a || '').toLowerCase();
+    const y = (b || '').toLowerCase();
+    if (x < y) return -1;
+    if (x > y) return 1;
+    return 0;
+}
+
+// C botl.c cond_cmp `:1332–1342` — qsort callback sorting condition
+// indices: conditions[] ranking ascending, useroption-alpha tiebreak.
+function cond_cmp(a, b) {
+    const c1 = conditions[a].ranking;
+    const c2 = conditions[b].ranking;
+    if (c1 !== c2) return c1 - c2; // C `:1338–1339`
+    return strcmpi_fold(condtests[a].useroption, condtests[b].useroption); // C `:1341`
+}
+
+// C botl.c menualpha_cmp `:1344–1351` — qsort callback sorting condition
+// indices alphabetically by useroption.
+function menualpha_cmp(a, b) {
+    return strcmpi_fold(condtests[a].useroption, condtests[b].useroption); // C `:1350`
+}
+
+/**
+ * C ref: botl.c cond_menu `:1376–1454` — status-conditions toggle menu.
+ * Toggles condtests[].enabled via a PICK_ANY menu (sort-change row first,
+ * then one row per condition, preselected when enabled); returns true iff
+ * any change was made. The create/start/select/destroy window layer maps
+ * to one select_menu_pick_any call (getpos_menu precedent); free(picks)
+ * and cg.zeroany have no JS carrier (a_int rides each row).
+ * C callers: options.c pfxfn_cond_ do_handler `:5032` ("not used" in C —
+ * no JS site); options.c optfn_o_status_cond do_handler `:8436–8439`
+ * (wired in js/options.js doset).
+ */
+export async function cond_menu() {
+    // options.js statically imports botl.js, so the menu layer comes in
+    // lazily here (mon_givit/eat.js + wiz_intrinsic precedents).
+    const { select_menu_pick_any } = await import('./options.js');
+    if (!game.gc) game.gc = {}; // C decl.h:223 instance_globals_c (cmd.js precedent)
+    const menutitle = ['alphabetically', 'by ranking']; // C `:1378–1380`
+    let changed = false; // C `:1390`
+    let showmenu = true; // C `:1389`
+    let idx = 0; // C `:1383`
+    let res = -1;
+    do {
+        const order = (game.gc.condmenu_sortorder | 0) ? 1 : 0; // C decl.h:229, init 0 `:1315`
+        const sequence = [];
+        for (let i = 0; i < CONDITION_COUNT; ++i) sequence.push(i); // C `:1392–1394`
+        // C `:1395–1397` qsort; useroptions are unique so no tie survives
+        // either comparator — the contest stable sort (Constitution §4)
+        // matches C on every input here.
+        sequence.sort(order ? cond_cmp : menualpha_cmp);
+        const raw = [
+            // C `:1422` end_menu prompt rides the title row (wiz_intrinsic precedent).
+            { text: 'Choose status conditions to toggle', selectable: false, attr: ATR_INVERSE },
+            { text: '', selectable: false },
+            // C `:1402–1408` sort-change row: any.a_int 1, 'S'
+            // accelerator, SKIPINVERT.
+            {
+                text: `change sort order from "${menutitle[order]}" to "${menutitle[1 - order]}"`,
+                selectable: true,
+                selector: 'S',
+                a_int: 1,
+                itemflags: MENU_ITEMFLAGS_SKIPINVERT,
+            },
+            // C `:1409–1411` add_menu_heading.
+            { text: `sorted ${menutitle[order]}`, selectable: false },
+        ];
+        for (let i = 0; i < condtests.length; i++) { // C `:1412` SIZE(condtests)
+            idx = sequence[i];
+            condtests[idx].choice = false; // C `:1417`
+            // C `:1413–1420` — `cond_%-14s`; every useroption is under 14
+            // chars so padEnd is exact (C never truncates either).
+            raw.push({
+                text: `cond_${condtests[idx].useroption.padEnd(14, ' ')}`,
+                selectable: true,
+                selected: !!condtests[idx].enabled, // C `:1419–1420` SELECTED
+                a_int: idx + 2, // C `:1416` avoid zero and the sort-change pick
+            });
+        }
+        // C `:1424–1427` select + destroy; cancelValue -1 tells ESC
+        // (C res -1, final loop skipped) apart from finish-empty (C res 0,
+        // final loop disables everything still unpicked).
+        const picked = await select_menu_pick_any(raw, { cancelValue: -1 });
+        res = picked === -1 ? -1 : picked.length;
+        showmenu = false; // C `:1427`
+        if (res > 0) { // C `:1428`
+            for (let i = 0; i < res; i++) { // C `:1429`
+                idx = (picked[i].a_int | 0); // C `:1430`
+                if (idx === 1) { // C `:1431–1435` sort change requested
+                    game.gc.condmenu_sortorder = 1 - order;
+                    showmenu = true;
+                    break; // C `:1435` for loop
+                }
+                idx -= 2; // C `:1437`
+                condtests[idx].choice = true; // C `:1438`
+            }
+            // C `:1441` free(picks) is GC here.
+        }
+    } while (showmenu); // C `:1443`
+    if (res >= 0) { // C `:1445`
+        for (let i = 0; i < CONDITION_COUNT; ++i) { // C `:1446`
+            if (!!condtests[i].enabled !== !!condtests[i].choice) { // C `:1447`
+                condtests[i].enabled = condtests[i].choice; // C `:1448`
+                // C `:1449` clears test on the leftover idx, not i.
+                condtests[idx].test = false;
+                // C `:1450` disp.botl (hack.js:2932 precedent sets both flags).
+                if (game.flags) game.flags.botl = true;
+                if (game.disp) game.disp.botl = true;
+                changed = true; // C `:1450`
+            }
+        }
+    }
+    return changed; // C `:1452`
 }
 
 // C botl.c:860-909 terrain_descr[] — indexed by iflags.terrain_typ;

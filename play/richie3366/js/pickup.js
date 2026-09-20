@@ -13,7 +13,7 @@ import {
 } from './mkobj.js';
 import {
     look_here, observe_object, dfeature_at, paint_corner_nhw_menu,
-    dismiss_nhw_menu, sortloot, update_inventory,
+    dismiss_nhw_menu, sortloot, update_inventory, encumber_msg,
     let_to_name, DEF_INV_ORDER, prinv, near_capacity, calc_capacity,
     max_capacity, compactify_invlets, getobj_take_count, getobj_apply_count,
     getobj_from_cmdq, getobj_display_pickinv, freeinv, display_inventory,
@@ -29,7 +29,7 @@ import {
 import {
     flush_screen, pline, newsym, newsym_force, docrt, bot, flush_topl_more, canseemon,
     canspotmon, Hallucination, clear_nhwindow_message, Norep, impossible,
-    sensemon, You, urgent_pline, pline_The,
+    sensemon, You, There, urgent_pline, pline_The,
 } from './display.js';
 import { addinv } from './u_init.js';
 import {
@@ -73,6 +73,7 @@ import {
     ARTICLE_A, ARTICLE_THE, RLOC_NOMSG, TIMEOUT, I_SPECIAL, FAILEDUNTRAP,
     NO_TRAP,
     MELT_ICE_AWAY, LEVITATION, WARNING, u_at, FUMBLING, PLNMSG_BACK_ON_GROUND,
+    PLNMSG_OBJNAM_ONLY,
     IS_GRAVE, W_SADDLE, SUPPRESS_SADDLE, ynqchars,
     P_RIDING, P_BASIC, Is_waterlevel, Is_airlevel, Upolyd, WWALKING, FLYING, SWIMMING,
     MAGICAL_BREATHING, DISMOUNT_FELL, DISMOUNT_GENERIC,
@@ -85,7 +86,7 @@ import {
 import { carried } from './eat.js';
 import { obj_is_burning } from './light.js';
 import { snuff_lit } from './apply.js';
-import { age_is_relative } from './timeout.js';
+import { age_is_relative, get_obj_location } from './timeout.js';
 import { livelog_printf } from './pline.js';
 import { uhis } from './roles.js';
 import {
@@ -104,6 +105,7 @@ import { ATR_INVERSE } from './terminal.js';
 import {
     addtobill, costly_spot, check_unpaid_usage, is_unpaid, doname_with_price,
     remote_burglary, shop_keeper, stolen_value, obfree, sellobj, sellobj_state,
+    money_cnt,
 } from './shk.js';
 import {
     nohands, nolimbs, M1_NOTAKE, touch_petrifies, poly_when_stoned, is_rider,
@@ -137,6 +139,9 @@ import {
 } from './lock.js';
 import { cmdq_add_ec } from './cmd.js';
 import { scatter } from './explode.js';
+import { doaltarobj, dropy } from './do.js';
+import { surface } from './sit.js';
+import { removed_from_icebox } from './muse.js';
 
 /** C ref: mondata.h notake — M1_NOTAKE. */
 function notake(ptr) {
@@ -987,33 +992,56 @@ export async function check_here(picked_some) {
 }
 
 /**
- * C ref: pickup.c pick_obj — extract from floor/minvent, addinv.
- * Shop robshop: temporary ushops → addtobill → restore; remote_burglary
- * when unpaid from outside the shop (D-1717).
- * Named omissions: engulfer minvent path (get_obj_location swallow).
+ * C ref: pickup.c pick_obj :1897–1942 — lift a floor/engulfer object into
+ * inventory with shop billing. Whole body in C order.
+ * :1900 fromfloor sampled before extract mutates where; :1901–1905 ox,oy
+ * via live get_obj_location (engulfer MINVENT → carrier mx,my; migrating
+ * carrier → 0,0; return ignored like C's (void) cast); :1907 robshop gate;
+ * :1908–1910 extract + newsym when fromfloor; :1921–1935 shop arm (fake
+ * ushops → addtobill sets unpaid → restore → recompute off restored
+ * ushops); :1937 addinv; :1938–1940 remote_burglary when robbed from
+ * outside the shop.
+ * JS engine: u.uball is the C global uball (module precedent :3102);
+ * addtobill/addinv/remote_burglary awaited (async engine, sync in C).
  */
 export async function pick_obj(otmp) {
-    if (!otmp) return otmp;
     const u = game.u;
-    const ox = otmp.ox | 0;
-    const oy = otmp.oy | 0;
-    const fromfloor = otmp.where === OBJ_FLOOR;
-    let robshop = !!(u && !u.uswallow && otmp !== u.uball && costly_spot(ox, oy));
+    // C :1900 — sampled before obj_extract_self mutates where.
+    const fromfloor = (otmp.where | 0) === OBJ_FLOOR;
+    // C :1901–1905 — (void) get_obj_location(otmp, &ox, &oy, 0).
+    const loc = get_obj_location(otmp, 0);
+    const ox = loc ? loc.x | 0 : 0;
+    const oy = loc ? loc.y | 0 : 0;
+    // C :1907 — robshop = (!u.uswallow && otmp != uball && costly_spot(ox, oy)).
+    let robshop = !u.uswallow && otmp !== u.uball && costly_spot(ox, oy);
 
+    // C :1908–1910
     obj_extract_self(otmp);
     if (fromfloor) newsym(ox, oy);
 
+    /* C :1912–1920 — for shop items, addinv() needs to be after
+       addtobill() (so that object merger can take otmp->unpaid into
+       account) but before remote_robbery() (which calls rob_shop() which
+       calls setpaid() after moving costs of unpaid items to shop debt). */
     if (robshop) {
+        // C :1924–1929 — addtobill cares about your location, not the
+        // object's (telekinesis/grappling hook); fake ushops for the call.
         const saveushops = u.ushops || '';
-        const fakeshop = in_rooms(ox, oy, SHOPBASE).charAt(0) || '';
+        const fakeshop = (in_rooms(ox, oy, SHOPBASE) || '').charAt(0) || '';
         u.ushops = fakeshop;
+        /* C :1931 — sets obj->unpaid if necessary */
         await addtobill(otmp, true, false, false);
         u.ushops = saveushops;
+        // C :1934 — robshop = otmp->unpaid && !strchr(u.ushops, *fakeshop)
+        // ('\0' shop char strchrs the terminator → false; '' models '\0').
         robshop = !!(otmp.unpaid && fakeshop && !saveushops.includes(fakeshop));
     }
 
+    // C :1937
     const result = await addinv(otmp);
+    /* C :1938–1940 — taking a shop item from outside the shop: shk notices. */
     if (robshop) await remote_burglary(ox, oy);
+
     return result;
 }
 
@@ -1047,14 +1075,6 @@ function GOLD_WT(n) {
 }
 function GOLD_CAPACITY(w, n) {
     return (Number(w) * -100) - (Number(n) + 50) - 1;
-}
-
-function money_cnt_invent() {
-    let n = 0;
-    for (const otmp of game.invent || []) {
-        if (otmp.oclass === COIN_CLASS) n += otmp.quan || 0;
-    }
-    return n;
 }
 
 function otense_pickup(obj, verb) {
@@ -1155,78 +1175,165 @@ export async function rider_corpse_revival(obj, remotely) {
 }
 
 /**
- * C ref: pickup.c carry_count — how many of obj can we lift.
- * Floor path only (container/delta_cwt named omit — pickup_object
- * always passes container NULL).
+ * C ref: pickup.c delta_cwt `:1544–1568` (staticfn) — how much the given
+ * container's carried weight drops when obj is removed from it. Non-BoH
+ * containers weigh contents at face value (`:1549–1550`); a Bag of Holding
+ * unlinks obj, re-weighs, and links it back (`:1560–1564`). C `panic` on a
+ * missing link aborts the game — JS throws with the C message (the
+ * botl.js compare_blstats convention: loud, never silent).
  */
-async function carry_count(obj, count, telekinesis, wts) {
-    const is_gold = obj.oclass === COIN_CLASS;
-    const savequan = obj.quan || 1;
-    const saveowt = obj.owt | 0;
-    const umoney = money_cnt_invent();
-    let iw = max_capacity();
-    let wt;
+function delta_cwt(container, obj) {
+    // C `:1549–1550` — ordinary containers: face-value contents weight
+    if ((container.otyp | 0) !== BAG_OF_HOLDING) return (obj.owt | 0);
+    const owt = (container.owt | 0);
+    let nwt = owt;
+    // C `:1552–1554` — find the object so that we can remove it
+    let prev = null;
+    let found = false;
+    for (let cur = container.cobj; cur; cur = cur.nobj) {
+        if (cur === obj) { found = true; break; }
+        prev = cur;
+    }
+    if (!found) {
+        throw new Error('delta_cwt: obj not inside container?'); // C `:1557–1558`
+    } else {
+        // C `:1560–1563` — temporarily remove, weigh, put back
+        if (prev) prev.nobj = obj.nobj;
+        else container.cobj = obj.nobj;
+        nwt = weight(container);
+        if (prev) prev.nobj = obj;
+        else container.cobj = obj; // C: obj->nobj is still valid
+    }
+    return owt - nwt; // C `:1565`
+}
 
+/**
+ * C ref: pickup.c carry_count `:1570–1701` (staticfn) — could we carry
+ * obj? if not, how many of them? Whole body in C order: provisional weigh
+ * with the carried-container delta and the merged-gold correction
+ * (`:1589–1601`); full-lift early return (`:1606–1607`); gold arms —
+ * plain GOLD_CAPACITY vs the carried-container 100-coin re-weigh loop
+ * (`:1610–1635`); stack lift loop (`:1636–1654`); single unliftable
+ * (`:1655–1656`); partial `You can only…` (`:1661–1682`); zero-lift
+ * `There…` (`:1685–1697`). Out-params ride the shared `wts` object
+ * (`before`/`after`); JS has no `int *` out-params.
+ */
+async function carry_count(obj, container, count, telekinesis, wts) {
+    const adjust_wt = !!(container && carried(container)); // C `:1576`
+    const is_gold = obj.oclass === COIN_CLASS; // C `:1577`
+    let wt, iw, ow, oow;
+    let qq;
+    let verb, prefx1, prefx2, suffx, obj_nambuf, where;
+
+    const savequan = obj.quan || 1; // C `:1584`
+    const saveowt = obj.owt | 0; // C `:1585`
+    const umoney = money_cnt(game.invent); // C `:1586`
+    iw = max_capacity(); // C `:1587`
+
+    // C `:1589–1591`
     if (count !== savequan) {
         obj.quan = count;
         obj.owt = weight(obj);
     }
-    wt = iw + (obj.owt | 0);
-    if (is_gold) {
+    wt = iw + (obj.owt | 0); // C `:1593`
+    if (adjust_wt) wt -= delta_cwt(container, obj); // C `:1594–1595`
+    /* This will go with silver+copper & new gold weight */
+    if (is_gold) /* merged gold might affect cumulative weight */ // C `:1596–1598`
         wt -= (GOLD_WT(umoney) + GOLD_WT(count) - GOLD_WT(umoney + count));
-    }
-    if (count !== savequan) {
+    if (count !== savequan) { // C `:1599–1601`
         obj.quan = savequan;
         obj.owt = saveowt;
     }
-    wts.before = iw;
-    wts.after = wt;
-    if (wt < 0) return count;
+    wts.before = iw; // C `:1603`
+    wts.after = wt; // C `:1604`
+    if (wt < 0) return count; // C `:1606–1607`
 
-    let qq;
-    if (is_gold) {
-        iw -= GOLD_WT(umoney) | 0;
-        qq = GOLD_CAPACITY(iw, umoney);
-        if (qq < 0) qq = 0;
-        else if (qq > count) qq = count;
-        wt = iw + GOLD_WT(umoney + qq);
-    } else if (count > 1 || count < (obj.quan || 1)) {
-        qq = 1;
-        for (; qq <= count; qq++) {
-            obj.quan = qq;
-            const ow = weight(obj);
-            obj.owt = ow;
-            if (iw + ow >= 0) break;
-            wt = iw + ow;
+    /* see how many we can lift */
+    if (is_gold) { // C `:1610`
+        iw -= GOLD_WT(umoney) | 0; // C `:1611`
+        if (!adjust_wt) {
+            qq = GOLD_CAPACITY(iw, umoney); // C `:1613`
+        } else {
+            // C `:1615–1628` — re-weigh each 100-coin boundary
+            oow = 0;
+            qq = 50 - (umoney % 100) - 1; // C `:1616`
+            if (qq < 0) qq += 100; // C `:1617–1618`
+            for (; qq <= count; qq += 100) { // C `:1619`
+                obj.quan = qq; // C `:1620`
+                obj.owt = GOLD_WT(qq); // C `:1621`
+                ow = GOLD_WT(umoney + qq); // C `:1622`
+                ow -= delta_cwt(container, obj); // C `:1623`
+                if (iw + ow >= 0) break; // C `:1624–1625`
+                oow = ow; // C `:1626`
+            }
+            iw -= oow; // C `:1628`
+            qq -= 100; // C `:1629`
         }
-        qq -= 1;
+        if (qq < 0) qq = 0; // C `:1631–1632`
+        else if (qq > count) qq = count; // C `:1633–1634`
+        wt = iw + GOLD_WT(umoney + qq); // C `:1635`
+    } else if (count > 1 || count < (obj.quan || 1)) { // C `:1636`
+        /*
+         * Ugh. Calc num to lift by changing the quan of the
+         * object and calling weight.
+         *
+         * This works for containers only because containers
+         * don't merge.  -dean
+         */
+        for (qq = 1; qq <= count; qq++) { // C `:1644`
+            obj.quan = qq; // C `:1645`
+            obj.owt = ow = weight(obj); // C `:1646`
+            if (adjust_wt) ow -= delta_cwt(container, obj); // C `:1647–1648`
+            if (iw + ow >= 0) break; // C `:1649–1650`
+            wt = iw + ow; // C `:1651`
+        }
+        --qq; // C `:1653`
     } else {
-        qq = 0;
+        /* there's only one, and we can't lift it */
+        qq = 0; // C `:1656`
     }
-    obj.quan = savequan;
-    obj.owt = saveowt;
+    obj.quan = savequan; // C `:1658`
+    obj.owt = saveowt; // C `:1659`
 
-    if (qq < count) {
-        const obj_nambuf = doname(obj);
-        const where = 'lying here';
-        const verb = telekinesis ? 'acquire' : 'lift';
-        if (qq > 0) {
-            await pline(
-                `You can only ${verb} ${qq === 1 ? 'one' : 'some'} of the ${obj_nambuf} ${where}.`,
-            );
-            wts.after = wt;
-            return qq;
+    if (qq < count) { // C `:1661`
+        /* some message will be given */
+        obj_nambuf = doname(obj); // C `:1663`
+        if (container) { // C `:1664–1666`
+            where = `in ${theArt(xname(container))}`;
+            verb = 'carry';
+        } else {
+            where = 'lying here'; // C `:1668`
+            verb = telekinesis ? 'acquire' : 'lift'; // C `:1669`
         }
-        const inventOrGold = (game.invent && game.invent.length) || umoney;
-        const prefx1 = inventOrGold ? 'you cannot ' : ((obj.quan || 1) === 1 ? 'it ' : 'even one ');
-        const prefx2 = inventOrGold ? '' : 'is too heavy for you to ';
-        const suffx = inventOrGold ? ' any more' : '';
-        await pline(
-            `There ${otense_pickup(obj, 'are')} ${obj_nambuf} here, but ${prefx1}${prefx2}${verb}${suffx}.`,
-        );
-        return 0;
+    } else {
+        /* lint suppression */
+        obj_nambuf = where = ''; // C `:1672`
+        verb = ''; // C `:1674`
     }
-    return qq;
+    /* we can carry qq of them */
+    if (qq > 0) { // C `:1677`
+        if (qq < count) // C `:1678`
+            await You('can only %s %s of the %s %s.', verb, // C `:1679–1680`
+                (qq === 1) ? 'one' : 'some', obj_nambuf, where);
+        wts.after = wt; // C `:1681`
+        return qq;
+    }
+
+    if (!container) where = 'here'; /* slightly shorter form */ // C `:1685–1686`
+    if (game.invent || umoney) { // C `:1687`
+        prefx1 = 'you cannot '; // C `:1688`
+        prefx2 = ''; // C `:1689`
+        suffx = ' any more'; // C `:1690`
+    } else {
+        prefx1 = ((obj.quan || 1) === 1) ? 'it ' : 'even one '; // C `:1692`
+        prefx2 = 'is too heavy for you to '; // C `:1693`
+        suffx = ''; // C `:1694`
+    }
+    await There('%s %s %s, but %s%s%s%s.', otense(obj, 'are'), obj_nambuf, // C `:1696–1697`
+        where, prefx1, prefx2, verb, suffx);
+
+    /* *wt_after = iw; */
+    return 0; // C `:1700`
 }
 
 /**
@@ -1237,8 +1344,8 @@ async function carry_count(obj, count, telekinesis, wts) {
  * telekinesis silent refuse else ynq Continue? (`lifting`/`removing`);
  * scare-scroll spe clear on floor refuse.
  * Sokoban boulder uses body_part(HAND) (latebound; polyself→do→pickup cycle).
- * Named omit: container carry_count delta_cwt (floor weights; carry_count
- * doc); shop no_charge merge_choice (merge_choice_invent doc).
+ * Named omit: shop no_charge merge_choice (merge_choice_invent doc).
+ * carry_count + delta_cwt whole body live (D-2617).
  * Callers: pickup_object `:1869` (container NULL); out_container `:2748`.
  */
 async function lift_object(obj, container, cntRef, telekinesis) {
@@ -1265,8 +1372,8 @@ async function lift_object(obj, container, cntRef, telekinesis) {
         );
         return -1;
     }
-    // C `:1739–1740`
-    cntRef.count = await carry_count(obj, cntRef.count, telekinesis, cntRef);
+    // C `:1736–1737` — container rides through for the delta_cwt arms
+    cntRef.count = await carry_count(obj, container, cntRef.count, telekinesis, cntRef);
     if (cntRef.count < 1) {
         result = -1; // C `:1741–1742` — nothing lifted (falls to scare arm)
     } else if (obj.oclass !== COIN_CLASS
@@ -1323,8 +1430,8 @@ async function lift_object(obj, container, cntRef, telekinesis) {
  * lift_object (D-1050); gold disp.botl; splitobj; pick_obj + prinv.
  * Named omissions: LOADSTONE no-split already honored; ghostly
  * fix_ghostly_obj; LOADSTONE/giant-boulder weight override (live in
- * lift_object); container carry_count delta_cwt; Death/Pestilence
- * revive suffixes.
+ * lift_object); carry_count + delta_cwt whole body live (D-2617);
+ * Death/Pestilence revive suffixes.
  */
 export async function pickup_object(obj, count, telekinesis) {
     if (!obj) return 0;
@@ -1353,7 +1460,8 @@ export async function pickup_object(obj, count, telekinesis) {
     } else if ((obj.otyp | 0) === SCR_SCARE_MONSTER) {
         const scareWts = { before: 0, after: 0 };
         // C scare carry_count always FALSE even on telekinesis pickup.
-        count = await carry_count(obj, count, false, scareWts);
+        // C `:1839–1841` — NULL container; count already quan-filled above.
+        count = await carry_count(obj, null, count, false, scareWts);
         if (count < 1) return -1;
         if (count > 0 && count < (obj.quan || 1)) obj = splitobj(obj, count);
         if (obj.blessed) {
@@ -2361,9 +2469,8 @@ async function use_container_traditional_prompt(
  * C ref: pickup.c out_container — remove one object from current_container
  * into invent. Branch envelope: gold weigh; lift_object `:2748` (encumbrance
  * / slot prompt says "removing"); split; extract; addinv + prinv; gold bot.
- * Named omissions: container carry_count `delta_cwt` (floor weights;
- * carry_count doc); artifact touch; fatal corpse; icebox; shop bill;
- * pick_pick.
+ * Named omissions: carry_count + `delta_cwt` whole body live (D-2617);
+ * artifact touch; fatal corpse; icebox; shop bill; pick_pick.
  * @returns {number} -1 stop, 1 removed, 0 not removed
  */
 async function out_container(obj) {
@@ -4816,97 +4923,196 @@ async function tipcontainer_checks(box, targetbox, allowempty) {
 }
 
 /**
- * C ref: pickup.c tipcontainer — `:3693–3760` gettarget menu first, then
- * tipcontainer_checks, then spill/transfer.
- * highdrop = !can_reach_floor(TRUE); swallowed clears it; then
- * how_lost LOST_DROPPED + hitfloor(TRUE) (D-1273).
- * Named omissions: bag-of-holding explode; ice-box thaw; shop billing;
- * altarizing doaltarobj; cursed mbag item-gone;
- * dropy terse comma-list; toss_up; subfrombill after floor shop BoT/horn;
- * targetbox shop-bill per-item addtobill.
- * SchroedingersBox is observe_quantum_cat before spill.
+ * C ref: pickup.c tipcontainer `:3688–3841` — whole body in C order.
+ * `:3691` hero-start ox/oy + get_obj_location stamp; `:3706` gettarget menu
+ * (cancelled returns); `:3722` maybeshopgoods snapshot; `:3724` source
+ * checks; `:3726–3728` destination checks (allowempty); `:3732–3735`
+ * highdrop/altarizing/cursed_mbag/loss; `:3736–3737` srcheld/dstheld;
+ * `:3739–3741` swallow clears + terse; `:3742` cknown; `:3748–3756` header;
+ * `:3758–3825` per-item loop (prefetch nobj; icebox thaw; cursed-mbag loss;
+ * per-item shop bill; targetbox transfer incl. BoH explosion; highdrop
+ * hitfloor; altar/doaltarobj else drop pline comma-list + dropy);
+ * `:3827–3828` loss bill; `:3829–3834` owt/encumber; `:3837–3838` inventory.
+ * C callers (all wired): `:3552` choose_tip_container_menu invent row,
+ * `:3614` dotip floor-container ynq arm, `:3630` dotip getobj container arm.
+ * get_obj_location_quantum is the file-local flags=0 equivalent (identical
+ * arms; timeout.js edge would join the pickup→trap→timeout→do→pickup
+ * cycle); hitfloor stays a dynamic dothrow.js import for the same reason;
+ * doaltarobj/dropy (do.js), surface (sit.js), removed_from_icebox (muse.js)
+ * are static (imports.mjs IN-SCC SAFE — hoisted, call-time read only).
+ * Named omissions: none — every arm and callee is live or file-local.
+ * Display sync (not in C): one newsym(ox, oy) after the loop; C leaves the
+ * redraw to dropy→dropz per item and the transfer arm moves no floor glyph.
  * @param {object} box
  */
 export async function tipcontainer(box) {
     if (!box) return;
-    const ox = (box.ox | 0) || (game.u?.ux | 0);
-    const oy = (box.oy | 0) || (game.u?.uy | 0);
-    // C tipcontainer `:3697-3699` — held box moves with hero; floor redundant.
+    const u = game.u || {};
+    // C `:3691` — ox/oy start at the hero; a locatable box overwrites them
+    // and stamps box->ox,oy (held moves with hero; floor is redundant).
+    let ox = u.ux | 0, oy = u.uy | 0;
     const bloc0 = get_obj_location_quantum(box);
     if (bloc0) {
-        box.ox = bloc0.x | 0;
-        box.oy = bloc0.y | 0;
+        ox = bloc0.x | 0;
+        oy = bloc0.y | 0;
+        box.ox = ox;
+        box.oy = oy;
     }
-    // C tipcontainer `:3706` — target menu before any checks, even when empty.
-    const { target: targetbox, cancelled } = await tipcontainer_gettarget(box);
-    if (cancelled) return;
+    // C `:3706` — target menu before any checks, even when empty.
+    let targetbox = null;
+    {
+        const picked = await tipcontainer_gettarget(box);
+        if (picked.cancelled) return;
+        targetbox = picked.target;
+    }
+    // C `:3722` — shop-goods snapshot before the checks run.
+    const maybeshopgoods = !carried(box)
+        && costly_spot(box.ox | 0, box.oy | 0);
     // C `:3724` — the source box must tip clean.
     if ((await tipcontainer_checks(box, targetbox, false)) !== TIPCHECK_OK) return;
-    // C `:3726-3728` — the destination must tip clean too (allowempty:
+    // C `:3726–3728` — the destination must tip clean too (allowempty:
     // an empty target is fine).
     if (targetbox
         && (await tipcontainer_checks(targetbox, null, true)) !== TIPCHECK_OK) return;
-    box.cknown = 1;
-    const u = game.u || {};
-    // C pickup.c:3732–3741 — highdrop = !can_reach_floor(TRUE);
-    // swallowed clears highdrop (and altarizing, still named).
+    // C `:3732–3735`.
     let highdrop = !can_reach_floor(true);
-    if (u.uswallow) highdrop = false;
-    const multi = !!(box.cobj?.nobj);
-    // C tipcontainer `:3748–3756` — targetbox header vs floor spill header.
-    // C: terse = !(highdrop || altarizing || costly_spot). Altar/shop
-    // named, so highdrop is the live terse-breaker. Non-highdrop keeps
-    // fortress colon + per-item doname (C comma-list still named).
+    const levtyp = game.level?.at?.(ox, oy)?.typ | 0;
+    let altarizing = IS_ALTAR(levtyp);
+    const cursed_mbag = !!(Is_mbag(box) && box.cursed);
+    let loss = 0;
+    // C `:3736–3737`.
+    const srcheld = carried(box);
+    const dstheld = !!(targetbox && carried(targetbox));
+    // C `:3739–3740` — swallowed clears both.
+    if (u.uswallow) {
+        highdrop = false;
+        altarizing = false;
+    }
+    // C `:3741`.
+    let terse = !(highdrop || altarizing || costly_spot(box.ox | 0, box.oy | 0));
+    // C `:3742`.
+    box.cknown = 1;
+    // C `:3748–3756` — targetbox header vs floor spill header.
     if (targetbox) {
         await pline(
-            `${box.cobj?.nobj ? 'Objects tumble' : 'An object tumbles'} into ${theArt(xname(targetbox))}.`,
+            '%s into %s.',
+            box.cobj?.nobj ? 'Objects tumble' : 'An object tumbles',
+            theArt(xname(targetbox)),
         );
     } else {
         await pline(
-            `${multi ? 'Objects spill' : 'An object spills'} out${
-                highdrop ? '.' : ':'
-            }`,
+            '%s out%c',
+            box.cobj?.nobj ? 'Objects spill' : 'An object spills',
+            terse ? ':' : '.',
         );
     }
-    if (targetbox) {
-        // C tipcontainer `:3796–3803` container-to-container arm:
-        // add_to_container per item (BoH explode/shop billing still named).
-        let nxt = box.cobj;
-        while (nxt) {
-            const otmp = nxt;
-            nxt = otmp.nobj;
-            obj_extract_self(otmp);
-            otmp.ox = box.ox | 0;
-            otmp.oy = box.oy | 0;
-            add_to_container(targetbox, otmp);
-        }
-        box.cobj = null;
-        if (typeof box.owt === 'number') box.owt = weight(box);
-        if (typeof targetbox.owt === 'number') targetbox.owt = weight(targetbox);
-        newsym(ox, oy);
-        return;
-    }
-    let next = box.cobj;
-    while (next) {
-        const otmp = next;
-        next = otmp.nobj;
+    // C iflags is always present; mirror it with one guarded handle.
+    const iflags = game.iflags ?? (game.iflags = {});
+    // C `:3758–3825` — nobj prefetched per item; the BoH arm stops the loop
+    // by clearing nobj so it exits 'normally'.
+    let nobj = null;
+    for (let otmp = box.cobj; otmp; otmp = nobj) {
+        nobj = otmp.nobj || null;
         obj_extract_self(otmp);
-        if (highdrop) {
-            // C pickup.c:3807–3810 — might break or fall down stairs;
-            // hitfloor handles altars itself.
-            otmp.ox = (box.ox | 0) || (u.ux | 0);
-            otmp.oy = (box.oy | 0) || (u.uy | 0);
+        otmp.ox = box.ox | 0;
+        otmp.oy = box.oy | 0;
+        if ((box.otyp | 0) === ICE_BOX) {
+            // C `:3764–3766` — resume rotting for corpses.
+            removed_from_icebox(otmp);
+        } else if (cursed_mbag && is_boh_item_gone()) {
+            // C `:3767–3772` — item vanishes; terse no longer appropriate.
+            loss += await mbag_item_gone(srcheld, otmp, false);
+            terse = false;
+            continue;
+        }
+        if (maybeshopgoods) {
+            // C `:3774–3777` — bill each item; doname runs price-suppressed.
+            await addtobill(otmp, false, false, true);
+            iflags.suppress_price = (iflags.suppress_price | 0) + 1;
+        }
+        if (targetbox) {
+            // C `:3780–3805` — container-to-container transfer.
+            if (Is_mbag(targetbox) && mbag_explodes(otmp, 0)) {
+                livelog_printf(
+                    LL_ACHIEVE,
+                    'just blew up %s bag of holding via tipping',
+                    uhis(),
+                );
+                await urgent_pline(
+                    'As %s %s inside, you are blasted by a magical explosion!',
+                    doname(otmp),
+                    otense(otmp, 'tumble'),
+                );
+                // C: a bag of holding going in blows up first, then the
+                // one it went into (targetbox is assumed carried, else
+                // shop-bill handling would be needed here).
+                if ((otmp.otyp | 0) === BAG_OF_HOLDING) {
+                    await do_boh_explosion(otmp, !srcheld);
+                }
+                obfree(otmp, null);
+                await do_boh_explosion(targetbox, !dstheld);
+                if (dstheld) {
+                    useup(targetbox);
+                } else {
+                    useupf(targetbox, targetbox.quan);
+                }
+                targetbox = null;
+                nobj = null;
+                losehp(d(6, 6), 'magical explosion', KILLED_BY_AN);
+            } else {
+                add_to_container(targetbox, otmp);
+            }
+        } else if (highdrop) {
+            // C `:3807–3810` — might break or fall down stairs; hitfloor
+            // handles altars itself.
             otmp.how_lost = LOST_DROPPED;
             const { hitfloor } = await import('./dothrow.js');
             await hitfloor(otmp, true);
         } else {
-            place_object(otmp, ox, oy);
-            await pline(`${doname(otmp)}.`);
+            // C `:3812–3823` — altar offering, verbose drop, or terse
+            // comma-list (doname; last_msg marks the uninterrupted run).
+            if (altarizing) {
+                await doaltarobj(otmp);
+            } else if (!terse) {
+                await pline(
+                    '%s %s to the %s.',
+                    Doname2(otmp),
+                    otense(otmp, 'drop'),
+                    surface(ox, oy),
+                );
+            } else {
+                await pline('%s%c', doname(otmp), nobj ? ',' : '.');
+                iflags.last_msg = PLNMSG_OBJNAM_ONLY;
+            }
+            otmp.how_lost = LOST_DROPPED;
+            await dropy(otmp);
+            if (iflags.last_msg !== PLNMSG_OBJNAM_ONLY) {
+                terse = false;
+            }
+        }
+        if (maybeshopgoods) {
+            iflags.suppress_price = (iflags.suppress_price | 0) - 1;
         }
     }
-    box.cobj = null;
-    if (typeof box.owt === 'number') box.owt = weight(box);
+    // C `:3827–3828` — magic bag lost some shop goods.
+    if (loss) {
+        await You('owe %ld %s for lost merchandise.', loss, currency(loss));
+    }
+    // C `:3829–3832` — mbag_item_gone() doesn't update these.
+    box.owt = weight(box);
+    if (targetbox) {
+        targetbox.owt = weight(targetbox);
+    }
+    // C `:3833–3834`.
+    if (srcheld || dstheld) {
+        await encumber_msg();
+    }
+    // Display sync (not in C): the spill site glyph changed.
     newsym(ox, oy);
+    // C `:3837–3838`.
+    if (srcheld || dstheld) {
+        update_inventory();
+    }
 }
 
 /**

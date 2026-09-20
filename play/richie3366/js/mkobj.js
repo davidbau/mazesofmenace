@@ -2813,39 +2813,55 @@ export function obj_absorb(p1, p2) {
 }
 
 /**
- * C ref: mkobj.c obj_meld — heavier absorbs lighter (floor+free special).
+ * C ref: mkobj.c:3768-3814 obj_meld — meld two globs, heavier absorbs
+ * lighter (floor+free special-case); refresh the vacated floor spot.
+ * C takes `struct obj **` pairs; JS uses {obj} holder pairs so the
+ * absorb can null the consumed holder like obj_absorb does.
+ * async: the ox display tail awaits maybe_unhide_at (monmove home) and
+ * the impossible() misuse arm (display home); both already top-level
+ * imported above, so no new cross-module edge.
  * @param {{obj: object|null}} p1
  * @param {{obj: object|null}} p2
- * @returns {object|null}
+ * @returns {Promise<object|null>}
  */
-export function obj_meld(p1, p2) {
-    const otmp1 = p1?.obj;
-    const otmp2 = p2?.obj;
-    if (!otmp1 || !otmp2 || otmp1 === otmp2) return otmp1 || otmp2 || null;
-    let ox = 0;
-    let oy = 0;
-    let result;
-    // C: unless (otmp2 floor && otmp1 free), prefer heavier otmp1
-    if (!((otmp2.where | 0) === OBJ_FLOOR && (otmp1.where | 0) === OBJ_FREE)
-        && ((otmp1.owt | 0) > (otmp2.owt | 0)
-            || ((otmp1.owt | 0) === (otmp2.owt | 0) && rn2(2)))) {
-        if ((otmp2.where | 0) === OBJ_FLOOR) {
-            ox = otmp2.ox | 0;
-            oy = otmp2.oy | 0;
+export async function obj_meld(p1, p2) {
+    let result = null; /* C :3771 `result = 0` */
+    let ox, oy; /* C :3772 coordinates for the glob that goes away */
+    if (p1 && p2) { /* C :3774 `if (obj1 && obj2)` — the holders, not objs */
+        const otmp1 = p1.obj; /* C :3775 */
+        const otmp2 = p2.obj; /* C :3776 */
+        if (otmp1 && otmp2 && otmp1 !== otmp2) { /* C :3777 */
+            ox = oy = 0; /* C :3778 */
+            /* C :3779-3788 FIXME comment: a free (mid-drop) glob melds
+               here without a full drop+flooreffects pass; shore/pool
+               melding likewise unhandled — ported as-is, no extra arm. */
+            if (!((otmp2.where | 0) === OBJ_FLOOR /* C :3789 */
+                    && (otmp1.where | 0) === OBJ_FREE)
+                && ((otmp1.owt | 0) > (otmp2.owt | 0) /* C :3791-3792 */
+                    || ((otmp1.owt | 0) === (otmp2.owt | 0) && rn2(2)))) {
+                if ((otmp2.where | 0) === OBJ_FLOOR) /* C :3793-3794 */
+                    ox = otmp2.ox | 0, oy = otmp2.oy | 0;
+                result = obj_absorb(p1, p2); /* C :3795 */
+            } else {
+                if ((otmp1.where | 0) === OBJ_FLOOR) /* C :3797-3798 */
+                    ox = otmp1.ox | 0, oy = otmp1.oy | 0;
+                result = obj_absorb(p2, p1); /* C :3799 */
+            }
+            /* C :3800-3802 callers ought to do this; bookkeeping, not display */
+            if (ox) { /* C :3803 */
+                if (cansee(ox, oy)) /* C :3804 */
+                    newsym(ox, oy); /* C :3805 */
+                /* C :3806-3808 a hides-under monster under the gone glob
+                   is forced out when nothing else hides it */
+                await maybe_unhide_at(ox, oy); /* C :3809 */
+            }
         }
-        result = obj_absorb(p1, p2);
+        /* C: null/same pointees skip everything and return NULL — result
+           stays null (the old body wrongly returned the surviving glob). */
     } else {
-        if ((otmp1.where | 0) === OBJ_FLOOR) {
-            ox = otmp1.ox | 0;
-            oy = otmp1.oy | 0;
-        }
-        result = obj_absorb(p2, p1);
+        await impossible('obj_meld: not called with two actual objects'); /* C :3811-3813 */
     }
-    if (ox) {
-        void import('./display.js').then(({ newsym }) => newsym(ox, oy));
-        // maybe_unhide_at deferred
-    }
-    return result;
+    return result; /* C :3814 */
 }
 
 /**

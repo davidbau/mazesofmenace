@@ -4039,39 +4039,67 @@ export async function fall_through(td, ftflags = 0) {
 }
 
 /**
- * C ref: trap.c trapeffect_hole — HOLE/TRAPDOOR hero + monster.
- * Hero: Can_fall_thru else seetrap and skip; else fall_through (D-0986).
- * Named omissions: Sokoban yank detail; impossible() on bad level.
+ * C ref: trap.c trapeffect_hole `:2013–2067` — HOLE/TRAPDOOR hero + monster.
+ * Hero: !Can_fall_thru → seetrap + impossible + Finished; else fall_through
+ * with TOOKPLUNGE (D-0986/D-1076). Monster: tt local; !Can_fall_thru →
+ * impossible + Finished; ungrounded / long-worm / huge → forcetrap message
+ * pair or Sokoban yank message, else Finished; tail → trapeffect_level_telep.
  */
 async function trapeffect_hole(mtmp, trap, trflags) {
+    // C trap.c `:2018–2024` — hero arm.
     if (is_youmonst(mtmp)) {
         if (!Can_fall_thru(game.u?.uz)) {
-            seetrap(trap);
-            return Trap_Effect_Finished;
+            seetrap(trap); /* normally done in fall_through */
+            await impossible('dotrap: %ss cannot exist on this level.',
+                trapname(trap.ttyp, true));
+            return Trap_Effect_Finished; /* don't activate it after all */
         }
         await fall_through(true, (trflags | 0) & TOOKPLUNGE);
         return Trap_Effect_Finished;
     }
+    // C trap.c `:2026–2031` — monster locals.
+    const tt = trap.ttyp;
     const mptr = mtmp.data;
+    const in_sight = canseemon(mtmp) || (mtmp === game.u?.usteed);
     const forcetrap = (trflags & FORCETRAP) !== 0;
     const Sokoban = !!(game.level?.flags?.sokoban || game.Sokoban);
     const inescapable = forcetrap || (Sokoban && !trap.madeby_u);
-    const in_sight = canseemon(mtmp) || (mtmp === game.u?.usteed);
 
+    // C trap.c `:2033–2036` — hole on a level nothing can fall through.
     if (!Can_fall_thru(game.u?.uz)) {
-        return Trap_Effect_Finished;
+        await impossible('mintrap: %ss cannot exist on this level.',
+            trapname(tt, true));
+        return Trap_Effect_Finished; /* don't activate it after all */
     }
-    if (!grounded(mptr)
-        || (mtmp.wormno && (mtmp.wormno | 0) > 5)
+    // C trap.c `:2037–2061` — too big / can't fall through.
+    if (!grounded(mptr) || (mtmp.wormno && count_wsegs(mtmp) > 5)
         || (mptr?.msize | 0) >= MZ_HUGE) {
         if (forcetrap && !Sokoban) {
-            if (in_sight) seetrap(trap);
+            /* openfallingtrap; not inescapable here */
+            if (in_sight) {
+                seetrap(trap);
+                if (tt === TRAPDOOR) {
+                    await pline_mon(mtmp,
+                        `A trap door opens, but ${mon_nam(mtmp)} doesn't fall through.`);
+                } else { /* (tt == HOLE) */
+                    await pline_mon(mtmp,
+                        `${Monnam(mtmp)} doesn't fall through the hole.`);
+                }
+            }
+            return Trap_Effect_Finished; /* inescapable = FALSE; */
+        }
+        if (inescapable) { /* sokoban hole */
+            if (in_sight) {
+                await pline_mon(mtmp,
+                    `${Monnam(mtmp)} seems to be yanked down!`);
+                seetrap(trap);
+            }
+        } else {
             return Trap_Effect_Finished;
         }
-        if (!inescapable) return Trap_Effect_Finished;
-        // Sokoban yank still falls through
     }
-    return await mlevel_tele_trap(mtmp, trap, forcetrap, in_sight ? 1 : 0);
+    // C trap.c `:2062` — faller goes through the level-teleport effect.
+    return trapeffect_level_telep(mtmp, trap, trflags);
 }
 
 /**

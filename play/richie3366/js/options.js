@@ -137,7 +137,7 @@ import { yyyymmddhhmmss } from './calendar.js';
 import { getlin, mungspaces } from './getline.js';
 import { makesingular, fruit_from_name, makeplural } from './objnam.js';
 import { clr2colorname } from './artifact.js';
-import { opt_next_cond, status_hilite_linestr_done, status_hilite_linestr_gather } from './botl.js';
+import { opt_next_cond, cond_menu, status_hilite_linestr_done, status_hilite_linestr_gather } from './botl.js';
 import { get_changed_key_binds } from './cmd.js';
 
 /** C ref: global.h PL_FSIZ — fruit name buffer. */
@@ -3053,11 +3053,14 @@ export async function doset() {
             await handler_perminv_mode();
         }
     }
-    // C options.c doset Othr rows → optfn do_handler; only menu colors
-    // has a live handler (handler_menu_colors, C `:8383`).
+    // C options.c doset Othr rows → optfn do_handler; menu colors
+    // (handler_menu_colors, C `:8383`) and status condition fields
+    // (cond_menu, C optfn_o_status_cond `:8436–8439`) have live handlers.
     for (const name of othrPicks) {
         if (name === 'menu colors') {
             await handler_menu_colors();
+        } else if (name === 'status condition fields') {
+            if (await cond_menu()) opt_set_in_config[PFX_COND_IDX] = true;
         }
     }
     // C options.c doset `:8973` reset_needed_visuals after picks.

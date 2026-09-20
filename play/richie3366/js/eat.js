@@ -1040,21 +1040,41 @@ function violated_vegetarian() {
     return false;
 }
 
-/** C ref: eat.c consume_oeaten — amt>0 → >>= amt; amt<0 → += amt (floor 1). */
+/** C ref: eat.c consume_oeaten `:3808–3872` — whole body in C order. */
 export function consume_oeaten(obj, amt) {
     if (!obj) return;
+    // C `:3810–3826`: 0-nutrition food can never be partly eaten — report
+    // the offender via impossible() and return WITHOUT touching oeaten.
     if (!obj_nutrition(obj)) {
-        obj.oeaten = 0;
-        return;
+        const otyp = obj.otyp | 0;
+        let itembuf;
+        if (otyp === CORPSE || otyp === EGG || otyp === TIN) { // C `:3814–3818`
+            const kind = otyp === CORPSE ? 'corpse' : otyp === EGG ? 'egg' : 'tin';
+            itembuf = `${kind} [${obj.corpsenm | 0}]`;
+        } else { // C `:3819–3821`
+            itembuf = `${otyp}`;
+        }
+        // C `:3822–3824`; sync fire-and-forget like do_wear.js setworn `:618`
+        // (impossible is async; every caller here is sync).
+        impossible('oeaten: attempting to set 0 nutrition food (%s) partially eaten', itembuf);
+        return; // C `:3825`
     }
-    if (amt > 0) {
-        obj.oeaten = (obj.oeaten | 0) >> amt;
-    } else if ((obj.oeaten | 0) > -amt) {
-        obj.oeaten = (obj.oeaten | 0) + amt;
-    } else {
-        obj.oeaten = 0;
+    // C `:3854–3863`: oeaten is unsigned (`:3849`) — `>>>` keeps the
+    // shift/add unsigned where `>>`/`|0` would sign-extend.
+    if (amt > 0) { // C `:3854–3856`: bit shift to divide the remaining food
+        obj.oeaten = (obj.oeaten >>> 0) >>> amt;
+    } else { // C `:3857–3863`: simple decrement; amt is negative so add it
+        if ((obj.oeaten >>> 0) > -amt) obj.oeaten = (obj.oeaten >>> 0) + amt;
+        else obj.oeaten = 0;
     }
-    if ((obj.oeaten | 0) === 0) obj.oeaten = 1;
+    // C `:3865–3871`: mustn't let partly-eaten drop to 0 (restores the item
+    // to untouched); clamp to no-bites-left, and when this is the meal in
+    // progress mark its counter done (`:3868–3869`, always true unless wishing).
+    if ((obj.oeaten >>> 0) === 0) {
+        if (game.context?.victual && obj === game.context.victual.piece)
+            game.context.victual.reqtime = game.context.victual.usedtime;
+        obj.oeaten = 1; /* smallest possible positive value */
+    }
 }
 
 /**

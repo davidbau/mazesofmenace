@@ -2,8 +2,9 @@
 // C ref: quest.c onquest / on_start / on_locate / on_goal / artitouch /
 //        quest_talk / leader_speaks / chat_with_leader / is_pure / expulsion.
 // Named omissions: locate_next beyond Bar/Arc/Pri/Wiz; chat_with_nemesis/guardian;
-// nemesis_speaks (quest_talk MS_NEMESIS arm); chat_with_leader got_thanks/questart/banished arms;
-// com_pager; livelog; exercise side-effects beyond call; full convert_arg
+// nemesis_speaks (quest_talk MS_NEMESIS arm); posthanks/banished pager texts
+// (calls live in chat_with_leader — miss no-ops after the C nhl_init shuffle);
+// exercise side-effects beyond call; full convert_arg
 // catalogue for assignquest; find_quest_artifact OBJ_INVENT/MIGRATING.
 // nexttime/othertime: Arc+Bar+Pri; goal_first: Arc+Bar+Pri+Kni+Sam,
 // goal_next: Arc+Bar+Pri+Kni (other-role goal_* miss then D-1662
@@ -15,12 +16,13 @@ import { game } from './gstate.js';
 import {
     In_quest, MIN_QUEST_ALIGN, MIN_QUEST_LEVEL,
     UTOTYPE_NONE, UTOTYPE_PORTAL, STRAT_WAITMASK,
-    OBJ_FLOOR, OBJ_MINVENT, OBJ_BURIED, DEAF,
+    OBJ_FLOOR, OBJ_MINVENT, OBJ_BURIED, DEAF, LL_ACHIEVE,
 } from './const.js';
 import { qt_pager, com_pager } from './questpgr.js';
+import { livelog_printf } from './pline.js';
 import { create_gas_cloud } from './region.js';
 import { pline, verbalize, canseemon } from './display.js';
-import { Monnam } from './do_name.js';
+import { Monnam, noit_mon_nam } from './do_name.js';
 import { SetVoice } from './sndprocs.js';
 import { angry_guards } from './mon.js';
 import { monsterNames } from './monsters.js';
@@ -314,8 +316,8 @@ function carrying(otyp) {
 /**
  * C ref: quest.c finish_quest — throw/kick catch or walk-up with the
  * quest artifact / unique / fake AoY. offeredit/hasamulet/offeredit2
- * qt_pager bodies still named (nhl shuffle live). chat_with_leader
- * got_thanks/questart callers still named.
+ * qt_pager bodies still named (nhl shuffle live). Called from
+ * chat_with_leader Rules 1/3 (`:297`/`:312`) + the throw/kick catch.
  */
 export async function finish_quest(obj) {
     const u = game.u || {};
@@ -360,47 +362,105 @@ export async function finish_quest(obj) {
 }
 
 /**
- * C ref: quest.c chat_with_leader — first-meet / purity / assign / badalign.
+ * C ref: quest.c chat_with_leader `:282–368` — the whole body in C order.
+ * Rule 0 cheater (`:287–289`); got_thanks finish_quest/posthanks (`:294–301`);
+ * questart invent scan + finish_quest (`:304–312`); got_quest encourage
+ * (`:315–316`); leader_first/next + met_leader/not_ready (`:322–327`);
+ * qstart_level portal gate (`:329–333`); badlevel (`:334–337`); banished
+ * com_pager + pissed_off + expulsion + livelog, gated on !pissed_off
+ * (`:338–348` — an already-pissed leader does nothing more); badalign
+ * (`:349–353`); assignquest + got_quest + livelog (`:354–366`).
+ * qt_pager/com_pager miss (posthanks/banished texts not yet extracted)
+ * is a no-op deliver — the calls still burn the C nhl_init shuffle.
+ * Callers: leader_speaks (`:390`) + quest_chat (`:476`).
  */
 async function chat_with_leader(mtmp) {
+    const u = game.u || {};
     const qs = game.quest_status || (game.quest_status = {});
-    if (!mtmp?.mpeaceful || qs.pissed_off) return;
+    if (!mtmp?.mpeaceful || qs.pissed_off) return; // :284
 
-    // cheater / got_thanks / questart arms deferred
-    if (qs.got_quest) {
-        await qt_pager('encourage');
-        return;
-    }
+    /* Rule 0: Cheater checks. */ // :287
+    if (u.uhave?.questart && !qs.met_nemesis) // :288
+        qs.cheater = true; // :289
 
-    if (!qs.met_leader) {
-        await qt_pager('leader_first');
-        qs.met_leader = true;
-        qs.not_ready = 0;
+    /* It is possible for you to get the amulet without completing
+     * the quest. If so, try to induce the player to quest. */
+    if (qs.got_thanks) { // :294
+        /* Rule 1: You've gone back with/without the amulet. */ // :295
+        if (u.uhave?.amulet || u.uhave_amulet) // :296
+            await finish_quest(null); // :297
+
+        /* Rule 2: You've gone back before going for the amulet. */ // :299
+        else // :300
+            await qt_pager('posthanks'); // :301
+
+    /* Rule 3: You've got the artifact and are back to return it. */ // :303
+    } else if (u.uhave?.questart) { // :304
+        // C walks gi.invent via nobj; JS invent is an array — same first
+        // is_quest_artifact hit, null when the artifact is not carried.
+        let otmp = null; // :305
+        for (const cand of game.invent || []) { // :307
+            if (is_quest_artifact(cand)) { // :308
+                otmp = cand; // :309
+                break; // :310
+            }
+        }
+
+        await finish_quest(otmp); // :312
+
+    /* Rule 4: You haven't got the artifact yet. */ // :314
+    } else if (qs.got_quest) { // :315
+        await qt_pager('encourage'); // :316
+
+    /* Rule 5: You aren't yet acceptable - or are you? */ // :318
     } else {
-        await qt_pager('leader_next');
-    }
+        let purity = 0; // :320
 
-    if (!on_level(game.u?.uz, game.qstart_level)) return;
+        if (!qs.met_leader) { // :322
+            await qt_pager('leader_first'); // :323
+            qs.met_leader = true; // :324
+            qs.not_ready = 0; // :325
+        } else // :326
+            await qt_pager('leader_next'); // :327
 
-    if (not_capable()) {
-        await qt_pager('badlevel');
-        exercise(A_WIS, true);
-        await expulsion(false);
-    } else {
-        const purity = await is_pure(true);
-        if (purity < 0) {
-            // banished com_pager + pissed_off deferred
-            qs.pissed_off = true;
-            await expulsion(false);
-        } else if (purity === 0) {
-            await qt_pager('badalign');
-            qs.not_ready = 1;
-            exercise(A_WIS, true);
-            await expulsion(false);
-        } else {
-            await qt_pager('assignquest');
-            exercise(A_WIS, true);
-            qs.got_quest = true;
+        /* the quest leader might have passed through the portal into
+           the regular dungeon; none of the remaining make sense there */
+        if (!on_level(game.u?.uz, game.qstart_level)) // :332
+            return;
+
+        if (not_capable()) { // :334
+            await qt_pager('badlevel'); // :335
+            exercise(A_WIS, true); // :336
+            await expulsion(false); // :337
+        } else if ((purity = await is_pure(true)) < 0) { // :338
+            if (!qs.pissed_off) { // :339
+                await com_pager('banished'); // :340
+                qs.pissed_off = true; // :341
+                await expulsion(false); // :342
+
+                /* being expelled is hardly an achievement but none of the
+                   other livelog classifications fit */
+                livelog_printf(LL_ACHIEVE, // :345
+                    '%s has expelled you from the quest', // :346
+                    noit_mon_nam(mtmp)); // :347
+            }
+        } else if (purity === 0) { // :349
+            await qt_pager('badalign'); // :350
+            qs.not_ready = 1; // :351
+            exercise(A_WIS, true); // :352
+            await expulsion(false); // :353
+        } else { /* You are worthy! */ // :354
+            await qt_pager('assignquest'); // :355
+            exercise(A_WIS, true); // :356
+            qs.got_quest = true; // :357
+
+            /* phrasing is a bit clumsy but allows #chronicle to provide a
+               clue to players who are reaching the quest for first time;
+               matters most for Home 1 that has stairs down which aren't
+               easily found */
+            livelog_printf(LL_ACHIEVE, // :363
+                '%s has granted access to proceed deeper into the quest', // :364
+                noit_mon_nam(mtmp)); // :365
         }
     }
 }

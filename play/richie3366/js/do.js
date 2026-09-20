@@ -858,7 +858,7 @@ export async function flooreffects(obj, x, y, verb) {
             await pudding_merge_message(globbyobj, otmp);
             const r1 = { obj: globbyobj };
             const r2 = { obj: otmp };
-            obj_meld(r1, r2);
+            await obj_meld(r1, r2);
             globbyobj = r1.obj;
         }
         res = !globbyobj;

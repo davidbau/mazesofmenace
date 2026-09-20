@@ -45,7 +45,7 @@ import {
 } from './display.js';
 import { gethungry, morehungry, is_fainted } from './eat.js';
 import { unconscious, enexto, goodpos, rloc_to } from './teleport.js';
-import { m_at, hideunder, seemimic, bad_rock, may_passwall, cant_squeeze_thru, minliquid } from './mon.js';
+import { m_at, hideunder, seemimic, bad_rock, may_passwall, cant_squeeze_thru, minliquid, onscary } from './mon.js';
 import { recalc_block_point } from './vision.js';
 import { is_hider, hides_under, throws_rocks, noncorporeal, metallivorous, mons, is_flyer, is_swimmer, verysmall, bigmonst, passes_bars, dmgtype, is_rider, amorphous, tunnels, needspick, is_floater, is_clinger, is_whirly } from './monsters.js';
 import {
@@ -1220,7 +1220,8 @@ export function noattacks(ptr) {
 
 /**
  * C ref: hack.c monster_nearby — adjacent hostile the hero can spot.
- * onscary stubbed false (Elbereth / sanctuary still deferred).
+ * C order: isok / u_at skip, m_at + M_AP filter, hallu-or-hostile,
+ * hider-undetected, helpless, !onscary(u.ux,u.uy) then canspotmon.
  */
 export function monster_nearby() {
     const u = game.u;
@@ -1236,7 +1237,8 @@ export function monster_nearby() {
             if (!(hallu || (!mtmp.mpeaceful && !noattacks(mtmp.data)))) continue;
             if (is_hider(mtmp.data) && mtmp.mundetected) continue;
             if (mtmp.msleeping || mtmp.mcanmove === 0) continue; // helpless
-            // onscary(u.ux, u.uy, mtmp) deferred
+            // C: scared monsters (Elbereth / scare scroll) are no threat
+            if (onscary(u.ux, u.uy, mtmp)) continue;
             // C: canspotmon(mtmp) — Blind still sensemon adjacent (D-0928)
             if (!canspotmon(mtmp)) continue;
             return true;

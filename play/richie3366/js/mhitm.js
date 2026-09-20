@@ -9,10 +9,10 @@ import {
     mtrapped_in_pit, LEVEL_SPECIFIC_NOCORPSE,
 } from './mon.js';
 import { game } from './gstate.js';
-import { pline, pline_mon, newsym, canspotmon, canseemon, map_invisible, unmap_object, memory_glyph_is_invisible, You_feel, flush_screen, verbalize, sensemon, shieldeff, mon_visible } from './display.js';
+import { pline, pline_mon, newsym, canspotmon, canseemon, map_invisible, unmap_object, memory_glyph_is_invisible, You_feel, flush_screen, flush_topl_more, verbalize, sensemon, shieldeff, mon_visible } from './display.js';
 import { cansee } from './vision.js';
 import { dist2, isok } from './hacklib.js';
-import { resist_conflict, set_mon_data, on_fire, mhis, mhe, little_to_big, defended } from './mondata.js';
+import { resist_conflict, set_mon_data, on_fire, mhis, mhe, little_to_big, defended, monsndx } from './mondata.js';
 import { MON_WEP, mon_wield_item, hitval, dmgval, possibly_unwield } from './weapon.js';
 import { arti_reflects, artifact_hit, permapoisoned, is_art } from './artifact.js';
 import { find_mac, which_armor, bypass_obj, is_flimsy, extract_from_minvent } from './worn.js';
@@ -60,10 +60,13 @@ import {
     ONAME_NO_FLAGS,
     G_GENOD,
     POLY_NOFLAGS,
+    ARTICLE_NONE,
     ARTICLE_A,
     SUPPRESS_NAME,
     SUPPRESS_IT,
     SUPPRESS_INVISIBLE,
+    SUPPRESS_HALLUCINATION,
+    SUPPRESS_SADDLE,
     TELL,
     RLOC_MSG,
     RLOC_NOMSG,
@@ -121,7 +124,7 @@ import {
 } from './mkobj.js';
 import { findgold, stealarm, unstolenarm } from './steal.js';
 import { munslime, mon_adjust_speed, munstone } from './muse.js';
-import { Monnam, mon_nam, mon_nam_too, Adjmonnam, oname, pmname, x_monnam, hliquid, YMonnam, s_suffix, free_mgivenname, a_monnam, y_monnam, some_mon_nam, minimal_monnam } from './do_name.js';
+import { Monnam, mon_nam, mon_nam_too, Adjmonnam, Amonnam, oname, pmname, x_monnam, hliquid, YMonnam, s_suffix, free_mgivenname, a_monnam, y_monnam, some_mon_nam, minimal_monnam } from './do_name.js';
 import { an, xname, makeplural, cxname, vtense, The, simpleonames, doname } from './objnam.js';
 import { mon_explodes } from './explode.js';
 import { makemon, newcham, pm_to_cham, is_home_elemental, clone_mon } from './makemon.js';
@@ -130,13 +133,13 @@ import { polyself } from './polyself.js';
 import { you_were, you_unwere, were_change } from './were.js';
 import { night } from './calendar.js';
 import { resists_drli } from './zap.js';
-import { rloc, tele_restrict, tele, goodpos, u_teleport_mon } from './teleport.js';
+import { rloc, tele_restrict, tele, goodpos, u_teleport_mon, enexto, rloc_to } from './teleport.js';
 import { m_unleash } from './apply.js';
 import { update_inventory } from './invent.js';
 import { bury_an_obj } from './dig.js';
 import { is_pole, is_weptool } from './wield.js';
-import { mswings_verb, Conflict, unstuck } from './mhitu.js';
-import { mon_offmap, set_apparxy, mb_trapped } from './monmove.js';
+import { mswings_verb, Conflict, unstuck, set_ustuck } from './mhitu.js';
+import { mon_offmap, set_apparxy, mb_trapped, itsstuck } from './monmove.js';
 import { hurtle, mhurtle, will_hurtle } from './dothrow.js';
 import { make_stunned } from './potion.js';
 import { m_is_steadfast, can_blnd, steal_it } from './uhitm.js';
@@ -169,6 +172,7 @@ import { shtypes } from './shknam.js';
 import { obfree, setpaid, discard_damage_owned_by } from './shk.js';
 import { search_special } from './sounds.js';
 import { closed_door, test_move } from './hack.js';
+import { surface } from './sit.js';
 import { emits_light, del_light_source } from './light.js';
 import { on_level } from './dungeon.js';
 import { clear_fcorr, parkguard } from './vault.js';
@@ -2936,7 +2940,7 @@ export async function make_corpse(mtmp, corpseflags = CORPSTAT_NONE) {
                 await pudding_merge_message(obj, otmp);
                 const r1 = { obj };
                 const r2 = { obj: otmp };
-                obj = obj_meld(r1, r2);
+                obj = await obj_meld(r1, r2);
             }
             free_mgivenname(mtmp);
             newsym(x, y);
@@ -3002,44 +3006,84 @@ export async function mon_to_stone(mtmp) {
 }
 
 /**
- * C ref: mon.c vamp_stone — vampshifter / stone-immune cham revert.
- * Await `newcham` so unleash/Elbereth finish before cham=NON_PM /
- * newsym (D-1648; C `:3804` NO_NC_FLAGS / `:3825` NC_SHOW_MSG still
- * flags 0). Named omissions: expels; closed_door enexto rloc;
- * set_mon_min_mhpmax polish; full lapidifying / rises plines;
- * display_nhwindow.
+ * C ref: mon.c vamp_stone `:3766–3830` — vampshifter / stone-immune cham
+ * revert instead of petrifying. C order: is_vampshifter gate `:3769` with
+ * cham snapshot `:3770`; inner gate `:3773–3775` (LOW_PM, not current
+ * form via monsndx, true form not genocided); lapidifying buf `:3779–3786`
+ * built BEFORE the transformation (x_monnam ARTICLE_NONE +
+ * SUPPRESS_SADDLE|SUPPRESS_HALLUCINATION|SUPPRESS_INVISIBLE|SUPPRESS_IT,
+ * amorphous "coalesces on the" / flyer "drops to the" / "writhes on the",
+ * surface at the snapshot coords); mcanmove/mfrozen `:3787–3788`;
+ * set_mon_min_mhpmax(mhpmax=max(m_lev+1,10)) + mhp restore `:3789–3790`;
+ * engulfing_u expels `:3792–3793`; amorphous closed_door enexto+rloc_to
+ * `:3794–3800`; canspotmon lapidifying pline + display_nhwindow `:3801–3804`;
+ * newcham NO_NC_FLAGS `:3804`; cham fixup `:3805–3808`; canspotmon rise
+ * pline `:3809–3813`; newsym `:3814`; sandestin arm `:3817–3828`
+ * (ismnum cham + MR_STONE → mcanmove/mfrozen, min-hpmax, newcham
+ * NC_SHOW_MSG, newsym); else TRUE `:3830`.
+ * Await newcham/expels/rloc_to/plines so unleash/Elbereth finish before
+ * cham=NON_PM / newsym (D-1648). display_nhwindow(WIN_MESSAGE, FALSE)
+ * reads as flush_topl_more (trap.js:1987 idiom — no JS export).
  * @returns {boolean} true if petrification should continue
  */
 export async function vamp_stone(mtmp) {
     if (!mtmp) return true;
     if (is_vampshifter(mtmp)) {
         const mndx = mtmp.cham ?? NON_PM;
-        const cur = mtmp.data?.mndx ?? NON_PM;
-        if (mndx >= LOW_PM && mndx !== cur
+        const x = mtmp.mx | 0, y = mtmp.my | 0;
+        /* C `:3773–3775` — only when shapeshifted away from the true form
+           whose mvitals are not genocided. */
+        if (mndx >= LOW_PM && mndx !== monsndx(mtmp.data)
             && !((game.mvitals?.[mndx]?.mvflags ?? 0) & G_GENOD)) {
+            /* C `:3779–3786` — format string before transformation. */
+            const buf = `The lapidifying ${x_monnam(
+                mtmp, ARTICLE_NONE, null,
+                SUPPRESS_SADDLE | SUPPRESS_HALLUCINATION
+                    | SUPPRESS_INVISIBLE | SUPPRESS_IT,
+                false,
+            )} ${amorphous(mtmp.data) ? 'coalesces on the'
+                : is_flyer(mtmp.data) ? 'drops to the'
+                : 'writhes on the'} ${surface(x, y)}`;
             mtmp.mcanmove = 1;
             mtmp.mfrozen = 0;
-            if ((mtmp.mhpmax | 0) < 10) mtmp.mhpmax = 10;
-            mtmp.mhp = mtmp.mhpmax | 0;
-            // expels / door-rloc deferred
-            await newcham(mtmp, mons(mndx), 0);
-            if ((mtmp.data?.mndx | 0) === (mndx | 0)) mtmp.cham = NON_PM;
+            set_mon_min_mhpmax(mtmp, 10); /* C `:3789` mhpmax=max(m_lev+1,10) */
+            mtmp.mhp = mtmp.mhpmax;
+            /* C `:3792–3793` — previously a fog cloud engulfing the hero. */
+            if (engulfing_u(mtmp)) await expels(mtmp, mtmp.data, false);
+            /* C `:3794–3800` — amorphous shift onto a closed door. */
+            if (amorphous(mtmp.data) && closed_door(mtmp.mx, mtmp.my)) {
+                const new_xy = { x: 0, y: 0 };
+                if (enexto(new_xy, mtmp.mx, mtmp.my, mons(mndx))) {
+                    await rloc_to(mtmp, new_xy.x, new_xy.y);
+                }
+            }
+            if (canspotmon(mtmp)) {
+                await pline_mon(mtmp, `${buf}!`);
+                await flush_topl_more(); /* C `:3803` display_nhwindow */
+            }
+            await newcham(mtmp, mons(mndx), NO_NC_FLAGS);
+            if (monsndx(mtmp.data) === (mndx | 0)) mtmp.cham = NON_PM;
             else mtmp.cham = mndx;
-            if (mtmp.mx > 0) newsym(mtmp.mx, mtmp.my);
-            return false;
+            if (canspotmon(mtmp)) {
+                await pline_mon(
+                    mtmp,
+                    `${Amonnam(mtmp)} rises from the ${surface(mtmp.mx, mtmp.my)} with renewed agility!`,
+                );
+            }
+            newsym(mtmp.mx, mtmp.my);
+            return false; /* didn't petrify */
         }
     } else if (ismnum(mtmp.cham)
         && ((mons(mtmp.cham)?.mresists | 0) & MR_STONE)) {
+        /* C `:3817–3828` — sandestins revert to innate shape. */
         mtmp.mcanmove = 1;
         mtmp.mfrozen = 0;
-        if ((mtmp.mhpmax | 0) < 10) mtmp.mhpmax = 10;
-        mtmp.mhp = mtmp.mhpmax | 0;
-        await newcham(mtmp, mons(mtmp.cham), 0); // NC_SHOW_MSG deferred
-        if (mtmp.mx > 0) newsym(mtmp.mx, mtmp.my);
-        return false;
+        set_mon_min_mhpmax(mtmp, 10);
+        mtmp.mhp = mtmp.mhpmax;
+        await newcham(mtmp, mons(mtmp.cham), NC_SHOW_MSG);
+        newsym(mtmp.mx, mtmp.my);
+        return false; /* didn't petrify */
     }
-    void amorphous;
-    void is_flyer;
     return true;
 }
 
@@ -5658,36 +5702,84 @@ export async function mattackm(magr, mdef) {
 }
 
 /**
- * C ref: mhitm.c fightm — Conflict-induced mon-vs-mon.
- * Always rolls resist_conflict first. ustuck/itsstuck release deferred.
+ * C ref: mhitm.c fightm `:105–172` — Conflict-induced mon-vs-mon.
  * Returns 1 if mtmp made an attack (movemon skips dochug); 0 otherwise.
+ * Async only because this port's pline/mattackm are async — C is sync
+ * throughout — so every arm keeps C order and C short-circuit.
  */
 export async function fightm(mtmp) {
+    const u = game.u || {};
+    // C `:110–111` — perhaps the monster will resist Conflict.
     if (resist_conflict(mtmp)) return 0;
 
-    // C: u.ustuck == mtmp → itsstuck / maybe release — deferred
+    // C `:112–116` — perhaps we're holding it (itsstuck plines via pline_mon).
+    if (u.ustuck === mtmp) {
+        if (await itsstuck(mtmp)) return 0;
+    }
+    // C `:117` — snapshot before the loop (mtmp may digest the hero after).
     const has_u_swallowed = engulfing_u(mtmp);
-    const fmon = game.fmon || [];
 
-    for (let i = 0; i < fmon.length; i++) {
-        const mon = fmon[i];
-        if (!mon || mon === mtmp || (mon.mhp | 0) < 1) continue;
-        if (!monnear(mtmp, mon.mx, mon.my)) continue;
-
-        // C: grabber release rn2(4) when mtmp == ustuck && !uswallow — deferred
-        const result = await mattackm(mtmp, mon);
-        if (result & M_ATTK_AGR_DIED) return 1;
-        if (has_u_swallowed) return 0;
-
-        // allow attacked monsters a chance to hit back
-        if ((result & (M_ATTK_HIT | M_ATTK_DEF_DIED)) === M_ATTK_HIT
-            && rn2(4)
-            && (mon.movement | 0) > rn2(NORMAL_SPEED)) {
-            if ((mon.movement | 0) > NORMAL_SPEED) mon.movement -= NORMAL_SPEED;
-            else mon.movement = 0;
-            await mattackm(mon, mtmp);
+    // C `:119–124` — walk the live chain with the next link captured up
+    // front (JS has no `struct monst *` out-link, so the live array index
+    // stands in for `mon->nmon`); a next link equal to mtmp is skipped past,
+    // since mtmp occurs exactly once in fmon.
+    for (let mon = (game.fmon || [])[0] ?? null, nmon = null; mon; mon = nmon) {
+        const live = game.fmon || [];
+        const at = live.indexOf(mon);
+        nmon = at < 0 ? null : (live[at + 1] ?? null);
+        if (nmon === mtmp) {
+            const jt = live.indexOf(mtmp);
+            nmon = jt < 0 ? null : (live[jt + 1] ?? null);
         }
-        return (result & M_ATTK_HIT) ? 1 : 0;
+        // C `:125–129` — ignore mtmp itself and the already-dead (fightm can
+        // run before cleanup, e.g. a bare-handed cockatrice attack);
+        // DEADMONSTER ≡ mhp < 1 (monst.h:214).
+        if (mon && mon !== mtmp && (mon.mhp | 0) >= 1) {
+            // C `:130`
+            if (monnear(mtmp, mon.mx, mon.my)) {
+                // C `:131–137` — grabbed hero: 1-in-4 release with pline,
+                // else break out of the loop (falls through to return 0).
+                if (!u.uswallow && mtmp === u.ustuck) {
+                    if (!rn2(4)) {
+                        set_ustuck(null);
+                        await pline(`${Monnam(mtmp)} releases you!`);
+                    } else {
+                        break;
+                    }
+                }
+
+                // C `:139–143` — mtmp can be killed; stamp the globals its
+                // attack reads (bhitpos `:379`, notonhead/failed_grab
+                // `:602`) before striking.
+                if (!game.bhitpos) game.bhitpos = {};
+                game.bhitpos.x = mon.mx;
+                game.bhitpos.y = mon.my;
+                game.notonhead = false;
+                const result = await mattackm(mtmp, mon);
+
+                // C `:145–146` — mtmp died.
+                if (result & M_ATTK_AGR_DIED) return 1;
+                // C `:147–151` — mtmp has the hero swallowed: report no
+                // attack so it can digest the hero.
+                if (has_u_swallowed) return 0;
+
+                // C `:153–164` — attacked monsters get a chance to hit back,
+                // primarily so conflict-resisters can respond.
+                if ((result & (M_ATTK_HIT | M_ATTK_DEF_DIED)) === M_ATTK_HIT
+                    && rn2(4) && (mon.movement | 0) > rn2(NORMAL_SPEED)) {
+                    if ((mon.movement | 0) > NORMAL_SPEED) mon.movement -= NORMAL_SPEED;
+                    else mon.movement = 0;
+                    if (!game.bhitpos) game.bhitpos = {};
+                    game.bhitpos.x = mtmp.mx;
+                    game.bhitpos.y = mtmp.my;
+                    game.notonhead = false;
+                    await mattackm(mon, mtmp); // C: (void) return attack
+                }
+
+                // C `:166`
+                return (result & M_ATTK_HIT) ? 1 : 0;
+            }
+        }
     }
     return 0;
 }

@@ -5,7 +5,7 @@
 
 import { game } from './gstate.js';
 import { rn2, rnd, d } from './rng.js';
-import { dochugw, m_everyturn_effect, monflee, can_hide_under_obj, can_fog, mon_offmap, accessible } from './monmove.js';
+import { dochugw, m_everyturn_effect, monflee, can_hide_under_obj, can_fog, mon_offmap, accessible, Displaced } from './monmove.js';
 import {
     COLNO, ROWNO, IS_OBSTRUCTED, IS_DOOR, IS_TREE, D_CLOSED, D_LOCKED, D_BROKEN,
     ALLOW_ROCK, ALLOW_DIG, Is_rogue_level, NOTONL, ALLOW_ALL, ALLOW_BARS,
@@ -57,7 +57,7 @@ import {
     objectNames, objectDescrs, ROCK_CLASS, SCROLL_CLASS,
 } from './generated/objects_data.js';
 import { PM_GRID_BUG, PM_TOURIST } from './generated/monsters_data.js';
-import { enexto, rloc_to, rloc, tele_restrict, noteleport_level, rloc_to_flag, migrate_to_level, rloco, control_mon_tele, goodpos } from './teleport.js';
+import { enexto, rloc_to, rloc, tele_restrict, noteleport_level, rloc_to_flag, migrate_to_level, rloco, control_mon_tele, goodpos, is_lminion, Inhell } from './teleport.js';
 import { may_dig, fill_pit } from './dig.js';
 import { newsym, pline, pline_mon, pline_The, verbalize, You_feel, sensemon, canseemon, canspotmon, impossible } from './display.js';
 import { online2, level_difficulty } from './hacklib.js';
@@ -67,14 +67,15 @@ import { Monnam, mon_nam, hliquid, pmname, mon_pmname, Mgender, s_suffix } from 
 import { cansee, couldsee, does_block, is_lightblocker_mappear, unblock_point, vision_recalc } from './vision.js';
 import { fightm, mondead, mondied, grow_up, mon_to_stone, monstone } from './mhitm.js';
 import { remove_monster, place_monster } from './steed.js';
-import { engr_at, del_engr_at } from './engrave.js';
+import { engr_at, del_engr_at, sengr_at } from './engrave.js';
 import { visible_region_at, is_poisoncloud_region } from './region.js';
 import { were_change } from './were.js';
 import {
     set_mimic_sym, newcham, pickvampshape, pm_to_cham, neweshk, newegd,
     newemin, newepri, newedog, freemcorpsenm, mpickobj, makemon, makemon_appear_msg,
 } from './makemon.js';
-import { in_your_sanctuary, p_coaligned, ghod_hitsu } from './priest.js';
+import { in_your_sanctuary, p_coaligned, ghod_hitsu, inhistemple } from './priest.js';
+import { inhishop } from './shk.js';
 import { in_rooms, is_pool, is_lava, disturb_buried_zombies, stop_occupation } from './hack.js';
 import { inv_weight, weight_cap } from './invent.js';
 import { maybe_m_dowear_special, extract_from_minvent, update_mon_extrinsics, mon_set_minvis, which_armor } from './worn.js';
@@ -347,47 +348,57 @@ export function m_poisongas_ok(mtmp) {
 }
 
 /**
- * C ref: monmove.c onscary — mfndpos Elbereth / scare-scroll / altar-vamp.
- * Named omissions: is_lminion; unique_corpstat human-resist; auditory
- * <0,0> only used from music; shopkeeper/priest own-shop temple resist;
- * sengr_at fuzzy match (exact "Elbereth"); Inhell (dungeon hellish).
+ * C ref: monmove.c onscary `:241–303` — does Elbereth/scroll/altar protection
+ * scare mtmp at <x,y>? C order: <0,0> is auditory (musical) scare, anything
+ * else magical (`:247`); iswiz / lawful minion / Angel / Rider immune
+ * (`:252–255`); magical scare repelled by S_HUMAN / unique (`:260–263`);
+ * shopkeeper / priest inside own shop / temple immune (`:267–271`);
+ * auditory TRUE (`:273–274`); altar scares vampire / vampshifter (`:277–279`);
+ * scare-monster scroll is its own power (`:283–285`); strict Elbereth
+ * sengr_at with hero / displaced image / guarded-object presence (`:297–300`)
+ * minus shk / gd / blind / peaceful / minotaur / hell / endgame (`:301–303`;
+ * Inhell is the hellish-dungeon flag per dungeon.c In_hell; vobj_at is
+ * objects_at per display.js:1458).
  */
 export function onscary(x, y, mtmp) {
+    /* C `:247`: <0,0> is used by musical scaring */
     const auditory_scare = (x === 0 && y === 0);
     const magical_scare = !auditory_scare;
     const ptr = mtmp?.data;
-    if (mtmp.iswiz || is_rider(ptr)
-        || (ptr?.mndx ?? mtmp.mnum) === PM_ANGEL) {
+    /* C `:252–255`: Rodney, lawful minions, Angels, the Riders */
+    if (mtmp?.iswiz || is_lminion(mtmp)
+        || (ptr?.mndx ?? mtmp?.mnum) === PM_ANGEL || is_rider(ptr)) {
         return false;
     }
-    // is_lminion / unique_corpstat / S_HUMAN magical resist deferred
-    if (magical_scare && ptr?.mlet === 'S_HUMAN') return false;
-    if ((mtmp.isshk /* && inhishop */) || (mtmp.ispriest /* && inhistemple */)) {
-        // own-shop / own-temple resist deferred → fall through
+    /* C `:260–263`: humans etc. + uniques resist magical scaring */
+    if (magical_scare && (ptr?.mlet === 'S_HUMAN' || unique_corpstat(ptr))) {
+        return false;
     }
+    /* C `:267–271`: shopkeepers / priests inside their own shop / temple */
+    if ((mtmp?.isshk && inhishop(mtmp))
+        || (mtmp?.ispriest && inhistemple(mtmp))) {
+        return false;
+    }
+    /* C `:273–274`: musical scaring ignores squares */
     if (auditory_scare) return true;
+    /* C `:277–279`: altar scares vampires even unwritten */
     const loc = game.level?.at(x, y);
     if (loc && IS_ALTAR(loc.typ)
         && (ptr?.mlet === 'S_VAMPIRE' || is_vampshifter(mtmp))) {
         return true;
     }
+    /* C `:283–285`: the scare-monster scroll is its own source of power */
     if (sobj_at(SCR_SCARE_MONSTER, x, y)) return true;
-    const ep = engr_at(x, y);
-    if (ep && String(ep.engr_txt || '') === 'Elbereth') {
-        const u = game.u || {};
-        const displaced = !!(u.HDisplaced || u.uprops?.[DISPLACED]?.intrinsic
-            || u.uprops?.[DISPLACED]?.extrinsic);
-        const hero_or_image = u_at(x, y)
-            || (displaced && mtmp.mux === x && mtmp.muy === y)
-            || (!!(ep.guardobjects) && !!objects_at(x, y));
-        if (hero_or_image
-            && !(mtmp.isshk || mtmp.isgd || !mtmp.mcansee || mtmp.mpeaceful
-                || (ptr?.mndx ?? mtmp.mnum) === PM_MINOTAUR
-                || In_endgame(u.uz))) {
-            return true;
-        }
-    }
-    return false;
+    /* C `:297–303`: written Elbereth guards the hero's / image's square */
+    const ep = sengr_at('Elbereth', x, y, true);
+    return !!(ep
+        && (u_at(x, y)
+            || (Displaced() && mtmp?.mux === x && mtmp?.muy === y)
+            || (ep.guardobjects && objects_at(x, y)))
+        && !(mtmp?.isshk || mtmp?.isgd || !mtmp?.mcansee
+            || mtmp?.mpeaceful
+            || (ptr?.mndx ?? mtmp?.mnum) === PM_MINOTAUR
+            || Inhell() || In_endgame(game.u?.uz)));
 }
 
 /** C ref: invent.c m_carrying — first matching otyp in minvent chain. */
@@ -1388,7 +1399,7 @@ async function qst_guardians_respond() {
  * peacefuls_respond when !mon_moving (`:4316–4317`, D-1772).
  * sengr_at strict (engrave.c:250–261) is inline via live engr_at —
  * teleport.js:175 keeps its own module-local clone, no second clone here.
- * onscary is the live same-module export (its own omissions pre-existing).
+ * onscary is the live same-module export (full C body).
  */
 export async function setmangry(mtmp, via_attack) {
     if (!mtmp) return;

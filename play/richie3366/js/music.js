@@ -42,7 +42,7 @@ import {
 import { dist2 } from './hacklib.js';
 import { Monnam, mon_nam, x_monnam } from './do_name.js';
 import { cansee, recalc_block_point, unblock_point } from './vision.js';
-import { m_at, wakeup, seemimic } from './mon.js';
+import { m_at, wakeup, seemimic, onscary } from './mon.js';
 import { maketrap, t_at, set_utrap, reset_utrap, deltrap, selftouch, mselftouch } from './trap.js';
 import {
     fillholetyp, liquid_flow,
@@ -201,18 +201,6 @@ function unique_corpstat(ptr) {
 function mdistu(mtmp) {
     const u = game.u;
     return dist2(mtmp.mx | 0, mtmp.my | 0, u.ux | 0, u.uy | 0);
-}
-
-/**
- * C ref: monmove.c onscary — <0,0> is auditory (musical) scare → TRUE
- * after wiz/lminion/angel/rider gate. Magical Elbereth/scroll arms deferred.
- */
-function onscary(x, y, mtmp) {
-    const auditory_scare = (x === 0 && y === 0);
-    // iswiz / is_lminion / PM_ANGEL / is_rider deferred → rare immunities
-    if (mtmp.iswiz) return false;
-    if (auditory_scare) return true;
-    return false;
 }
 
 /**

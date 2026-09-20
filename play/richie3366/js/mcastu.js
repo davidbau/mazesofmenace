@@ -53,7 +53,7 @@ import { burn_away_slime } from './timeout.js';
 // C ref: mhitu.c mdamageu — castmu FIRE/COLD/MAGM tail (imports.mjs: hoisted, cycle-safe).
 import { mdamageu } from './mhitu.js';
 import { Soundeffect } from './sndprocs.js';
-import { se_air_crackles } from './generated/seffects_data.js';
+import { se_air_crackles, se_bolt_of_lightning } from './generated/seffects_data.js';
 
 /** C ref: mondata.h perceives — M1_SEE_INVIS. */
 function perceives(ptr) {
@@ -497,8 +497,8 @@ async function mcast_destroy_armor() {
     }
 }
 
-/** C ref: mcastu.c mcast_weaken_you */
-async function mcast_weaken_you(mtmp) {
+/** C ref: mcastu.c mcast_weaken_you :466–487 — Antimagic shield vs m_lev-6 losestr (incoming dmg overwritten per C). */
+async function mcast_weaken_you(mtmp, dmg) {
     const u = game.u || {};
     if (Antimagic()) {
         await shieldeff(u.ux, u.uy);
@@ -506,7 +506,7 @@ async function mcast_weaken_you(mtmp) {
         await You_feel('momentarily weakened.');
     } else {
         await pline('You suddenly feel weaker!');
-        let dmg = (mtmp.m_lev | 0) - 6;
+        dmg = (mtmp.m_lev | 0) - 6;
         if (dmg < 1) dmg = 1;
         if (Half_spell_damage()) dmg = Math.trunc((dmg + 1) / 2);
         const kbuf = death_inflicted_by('strength loss', mtmp);
@@ -533,8 +533,8 @@ async function mcast_disappear(mtmp) {
     }
 }
 
-/** C ref: mcastu.c mcast_stun_you */
-async function mcast_stun_you() {
+/** C ref: mcastu.c mcast_stun_you :504–520 — Antimagic/Free_action shield vs d(DEX<12?6:4,4) stun (incoming dmg overwritten per C). */
+async function mcast_stun_you(dmg) {
     const u = game.u || {};
     if (Antimagic() || Free_action()) {
         await shieldeff(u.ux, u.uy);
@@ -543,26 +543,27 @@ async function mcast_stun_you() {
         await make_stunned(1, false);
     } else {
         await pline(Stunned() ? 'You struggle to keep your balance.' : 'You reel...');
-        let dmg = d(acurr(A_DEX) < 12 ? 6 : 4, 4);
+        dmg = d(acurr(A_DEX) < 12 ? 6 : 4, 4);
         if (Half_spell_damage()) dmg = Math.trunc((dmg + 1) / 2);
         await make_stunned(((u.HStun | 0) & TIMEOUT) + dmg, false);
         monstunseesu(M_SEEN_MAGR);
     }
 }
 
-/** C ref: mcastu.c mcast_geyser */
-function mcast_geyser() {
-    let dmg = d(8, 6);
+/** C ref: mcastu.c mcast_geyser :523–537 — pline + d(8,6) + Half_physical_damage (#if 0 water_damage omitted per C). */
+async function mcast_geyser(dmg) {
+    await pline('A sudden geyser slams into you from nowhere!');
+    dmg = d(8, 6);
     if (Half_physical_damage()) dmg = Math.trunc((dmg + 1) / 2);
     return dmg;
 }
 
-/** C ref: mcastu.c mcast_fire_pillar. Named: mon_spell_hits_spot. */
-async function mcast_fire_pillar() {
+/** C ref: mcastu.c mcast_fire_pillar :540–563 — pline + d(8,6) + Fire_resistance + Half_spell_damage + burn_away_slime + burnarmor + destroy_items + ignite_items + mon_spell_hits_spot (live zap.js). Incoming dmg overwritten per C. */
+async function mcast_fire_pillar(mtmp, dmg) {
     const u = game.u || {};
     await pline('A pillar of fire strikes all around you!');
     const orig_dmg = d(8, 6);
-    let dmg = orig_dmg;
+    dmg = orig_dmg;
     if (Fire_resistance()) {
         await shieldeff(u.ux, u.uy);
         monstseesu(M_SEEN_FIRE);
@@ -575,17 +576,20 @@ async function mcast_fire_pillar() {
     await burnarmor(youmonst_victim());
     await destroy_items(youmonst_victim(), AD_FIRE, orig_dmg);
     await ignite_items(game.invent);
+    /* burn up flammable items on the floor, melt ice terrain */
+    await mon_spell_hits_spot(mtmp, AD_FIRE, u.ux, u.uy);
     return dmg;
 }
 
-/** C ref: mcastu.c mcast_lightning. Named: mon_spell_hits_spot. */
-async function mcast_lightning() {
+/** C ref: mcastu.c mcast_lightning :566 — Soundeffect + pline + ureflects/Shock_resistance + Half_spell_damage + destroy_items + mon_spell_hits_spot (live zap.js) + flashburn. Incoming dmg overwritten per C. */
+async function mcast_lightning(mtmp, dmg) {
     const u = game.u || {};
+    Soundeffect(se_bolt_of_lightning, 80);
     await pline('A bolt of lightning strikes down at you from above!');
     const { ureflects } = await import('./mhitu.js');
     const reflects = await ureflects('It bounces off your %s%s.', '');
     const orig_dmg = d(8, 6);
-    let dmg = orig_dmg;
+    dmg = orig_dmg;
     if (reflects || Shock_resistance()) {
         await shieldeff(u.ux, u.uy);
         dmg = 0;
@@ -600,6 +604,10 @@ async function mcast_lightning() {
     }
     if (Half_spell_damage()) dmg = Math.trunc((dmg + 1) / 2);
     await destroy_items(youmonst_victim(), AD_ELEC, orig_dmg);
+    /* lightning might destroy iron bars if hero is on such a spot;
+       do this before maybe blinding the hero via flashburn() */
+    await mon_spell_hits_spot(mtmp, AD_ELEC, u.ux, u.uy);
+    /* blind hero; no effect if already blind */
     await flashburn(rnd(100), true);
     return dmg;
 }
@@ -718,7 +726,7 @@ async function m_cure_self(mtmp, dmg) {
     return dmg;
 }
 
-/** C ref: mcastu.c mcast_spell. Named: mon_spell_hits_spot. */
+/** C ref: mcastu.c mcast_spell :801–897 — guards + 20-arm switch in C order, then mdamageu on leftover dmg. FIRE_PILLAR/LIGHTNING mon_spell_hits_spot live (zap.js); LIGHTNING Soundeffect live (sndprocs.js). */
 async function mcast_spell(mtmp, dmg, spellnum) {
     if (dmg < 0) {
         await impossible(`monster cast spell (${spellnum}) with negative dmg (${dmg})?`);
@@ -745,11 +753,11 @@ async function mcast_spell(mtmp, dmg, spellnum) {
     case MCAST_DESTRY_ARMR:
         await mcast_destroy_armor(); dmg = 0; break;
     case MCAST_WEAKEN_YOU:
-        await mcast_weaken_you(mtmp); dmg = 0; break;
+        await mcast_weaken_you(mtmp, dmg); dmg = 0; break;
     case MCAST_DISAPPEAR:
         await mcast_disappear(mtmp); dmg = 0; break;
     case MCAST_STUN_YOU:
-        await mcast_stun_you(); dmg = 0; break;
+        await mcast_stun_you(dmg); dmg = 0; break;
     case MCAST_HASTE_SELF:
         await mon_adjust_speed(mtmp, 1, null); dmg = 0; break;
     case MCAST_CURE_SELF:
@@ -757,12 +765,11 @@ async function mcast_spell(mtmp, dmg, spellnum) {
     case MCAST_PSI_BOLT:
         dmg = await mcast_psi_bolt(dmg); break;
     case MCAST_GEYSER:
-        await pline('A sudden geyser slams into you from nowhere!');
-        dmg = mcast_geyser(); break;
+        dmg = await mcast_geyser(dmg); break;
     case MCAST_FIRE_PILLAR:
-        dmg = await mcast_fire_pillar(); break;
+        dmg = await mcast_fire_pillar(mtmp, dmg); break;
     case MCAST_LIGHTNING:
-        dmg = await mcast_lightning(); break;
+        dmg = await mcast_lightning(mtmp, dmg); break;
     case MCAST_INSECTS:
         await mcast_insects(mtmp); dmg = 0; break;
     case MCAST_BLIND_YOU:

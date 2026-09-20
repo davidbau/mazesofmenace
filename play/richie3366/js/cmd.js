@@ -24,13 +24,13 @@ import { COLNO, ROWNO, STONE, DOOR, CORR, ROOM, IRONBARS, TREE, SDOOR,
          IS_FOUNTAIN, IS_SINK, IS_THRONE, IS_ALTAR, IS_ROOM, IS_WATERWALL,
          ACCESSIBLE, isok, Upolyd, Is_container, CLICK_1,
          ECMD_OK, ECMD_TIME, ECMD_CANCEL, ECMD_FAIL, DOMOVE_RUSH, DOMOVE_WALK,
-         CMDQ_EXTCMD, CMDQ_KEY, CQ_CANNED, CQ_REPEAT,
+         CMDQ_EXTCMD, CMDQ_KEY, CMDQ_DIR, CMDQ_USER_INPUT, CQ_CANNED, CQ_REPEAT,
          IFBURIED, WIZMODECMD, NOFUZZERCMD, PREFIXCMD, MOVEMENTCMD,
          AUTOCOMPLETE, CMD_NOT_AVAILABLE, INTERNALCMD, GENERALCMD,
          CMD_M_PREFIX, CMD_gGF_PREFIX, CMD_INSANE, QBUFSZ,
          xdir, ydir, zdir, xytodir, N_DIRS, DIR_W, DIR_N, DIR_E, DIR_S,
          DIR_NW, DIR_NE, DIR_SE, DIR_SW,
-         MV_WALK, MV_RUN, MV_RUSH, commandInp,
+         MV_WALK, MV_RUN, MV_RUSH, commandInp, otherInp, getposInp,
          GFILTER_VIEW, GLOC_INTERESTING,
          M_AP_TYPE, M_AP_FURNITURE, M_AP_OBJECT, VIBRATING_SQUARE,
          PARANOID_TRAP, GP_ALLOW_U, NO_TRAP_FLAGS, FOOT, Something,
@@ -55,9 +55,10 @@ import { vision_recalc, couldsee, cansee } from './vision.js';
 import {
     ddoinv, dodiscovered, doattributes, dolook, doprgold, doprwep, doprarm,
     doprring, dopramulet, doprtool, doprinuse, doperminv, dotypeinv,
+    cmdq_add_key,
 } from './invent.js';
 import { dovspell, docast, num_spells } from './spell.js';
-import { doeat } from './eat.js';
+import { doeat, sgn } from './eat.js';
 import { dodrink } from './potion.js';
 import { dozap } from './zap.js';
 import { doread } from './read.js';
@@ -85,13 +86,14 @@ import { dowield, dowieldquiver, doswapweapon } from './wield.js';
 import { dowhatis, doquickwhatis, dohelp, dowhatdoes, doversion } from './pager.js';
 import { visctrl, key2txt, cmdbind_get, cmd_from_dir } from './dokeylist.js';
 import { an, doname, makeplural } from './objnam.js';
-import { m_monnam, mon_nam, YMonnam, Hallucination } from './do_name.js';
+import { m_monnam, mon_nam, YMonnam, Hallucination, docallcmd } from './do_name.js';
 import { spoteffects, dopickup, doloot, dotip } from './pickup.js';
 import { objects_at } from './mkobj.js';
 import { stairway_at, u_on_newpos, maybe_adjust_hero_bubble, selection_new, selection_getpoint, selection_setpoint } from './mklev.js';
 import { In_tutorial } from './dungeon.js';
 import { ATR_INVERSE } from './terminal.js';
 import { dopay } from './shk.js';
+import { dotalk } from './sounds.js';
 import { getpos, getpos_menu, gather_locs_interesting, auto_describe_text } from './getpos.js';
 import {
     nomul, moverock, boulder_at, swim_move_danger, trapmove,
@@ -209,6 +211,34 @@ export function cmdq_add_ec(q, fn, tab = null) {
         txt: tab?.txt || '',
         flags: tab?.flags | 0,
     });
+}
+
+/**
+ * C ref: cmd.c cmdq_add_dir(q, dx, dy, dz) `:294–311` — typ CMDQ_DIR.
+ * Same tail-append shape as cmdq_add_ec; consumed by getdir
+ * (lock.js getdir_read_dirsym reads dirx/diry/dirz).
+ * @param {number} q
+ * @param {number} dx
+ * @param {number} dy
+ * @param {number} dz
+ */
+export function cmdq_add_dir(q, dx, dy, dz) {
+    const name = cmdq_qname(q);
+    if (!game[name]) game[name] = [];
+    game[name].push({ typ: CMDQ_DIR, dirx: dx | 0, diry: dy | 0, dirz: dz | 0 });
+}
+
+/**
+ * C ref: cmd.c cmdq_add_userinput(q) `:316–331` — typ CMDQ_USER_INPUT.
+ * Same tail-append shape as cmdq_add_ec; lets getlin/getobj take live
+ * user input mid-queue (getline.js/invent.js USERINPUT arms; key '\0'
+ * matches the getline.js node shape).
+ * @param {number} q
+ */
+export function cmdq_add_userinput(q) {
+    const name = cmdq_qname(q);
+    if (!game[name]) game[name] = [];
+    game[name].push({ typ: CMDQ_USER_INPUT, key: '\0' });
 }
 
 /**
@@ -595,6 +625,171 @@ export function random_response(sz) {
     return out;
 }
 
+/**
+ * C ref: cmd.c readchar_queue `:153` — file-static pushback consumed by
+ * readchar_core (`:5221–5222`) and the ALTMETA second read (`:5255`).
+ * Upstream has no writer (these are the only read sites), so it is always
+ * empty here; the shape stays so a future pushback port has its home.
+ * JS string + cursor for C's `*readchar_queue++` pointer bump.
+ */
+let _readchar_queue = '';
+let _readchar_queue_pos = 0;
+
+/**
+ * C ref: cmd.c `*readchar_queue` — next queued byte, 0 when empty.
+ * charCodeAt out of range is NaN, and `NaN || 0` is 0, which mirrors the
+ * NUL terminator C sees at the end of its string.
+ * @returns {number}
+ */
+function readchar_queue_peek() {
+    return _readchar_queue.charCodeAt(_readchar_queue_pos) || 0;
+}
+
+/**
+ * C ref: cmd.c hangup `:5159–5181` (#ifdef HANGUPHANDLING — live via
+ * include/global.h:278; SAFERHANGUP live via unixconf.h:301;
+ * NOSAVEONHANGUP off). C order: exiting → in_moveloop=0,
+ * nhwindows_hangup, done_hup++, defer while in_moveloop with something
+ * worth saving, else end_of_input. Named: nhwindows_hangup (windowport
+ * teardown — same class as end_of_input's exit_nhwindows/clearlocks
+ * omits). Caller: readchar_core EOF arm (`:5245`).
+ * @param {number} [sig_unused] C signal-handler arg, unused
+ */
+export function hangup(sig_unused = 0) {
+    if (!game.program_state) game.program_state = {};
+    const ps = game.program_state;
+    if (ps.exiting)
+        ps.in_moveloop = 0;
+    ps.done_hup = (ps.done_hup | 0) + 1;
+    if (ps.in_moveloop && ps.something_worth_saving)
+        return;
+    end_of_input();
+}
+
+/**
+ * C ref: cmd.c click_to_cmd `:4905–4913` — stamp clicklook_cc, then queue
+ * the bound mouse-button command. Caller: readchar_core click arm
+ * (`:5264`). Named: bind_mousebtn (cmd.c:2624 — no JS port, so
+ * game.Cmd.mousebtn stays undefined and the queue arm is inert); the
+ * entry shape below (run + tab) matches cmdq_add_ec's live call shapes.
+ * @param {number} x
+ * @param {number} y
+ * @param {number} mod CLICK_1 / CLICK_2
+ */
+export function click_to_cmd(x, y, mod) {
+    if (!game.gc) game.gc = {};
+    game.gc.clicklook_cc = { x: x | 0, y: y | 0 };
+    const entry = game.Cmd?.mousebtn?.[(mod | 0) - 1];
+    if (entry)
+        cmdq_add_ec(CQ_CANNED, entry.run ?? entry, entry);
+}
+
+/**
+ * C ref: cmd.c readchar_core `:5213–5272` in C order. Async only because
+ * pgetchar / nhgetch await input (Constitution §2); C callers see a plain
+ * key read. Key codes are numbers (pgetchar/nhgetch convention); C's
+ * `(char)` return cast is a no-op on this range. parse/get_count/getpos/
+ * getdir appear only in the ALTMETA comment (`:5251–5254`), not as calls.
+ * @param {{ x: number, y: number, mod: number }} pos in/out mouse coords
+ * @returns {Promise<number>} key code (0 = click, handled via click_to_cmd)
+ */
+export async function readchar_core(pos) {
+    const EOF = -1; /* C stdio EOF */
+    const ESC = 27; /* '\033' */
+    let sym;
+
+    if (game.iflags?.debug_fuzzer) {
+        /* C `:5217–5220` — randomkey then goto readchar_done (the
+           input_state reset below still runs). */
+        sym = randomkey();
+    } else {
+        if (readchar_queue_peek()) /* C `:5221–5222` */
+            sym = _readchar_queue.charCodeAt(_readchar_queue_pos++);
+        else if (game.in_doagain) /* C `:5223–5224` */
+            sym = await pgetchar();
+        else /* C `:5225–5226` — nh_poskey is tty_nhgetch on unix
+                (wintty.c tty_nh_poskey: `i = tty_nhgetch()`; the WIN32CON
+                NUL/EOF→ESC map does not apply). input.js nhgetch is the
+                tty_nhgetch equivalent; mouse coords have no key-stream
+                source here (clicks arrive via cmdq/clicklook_cc), so pos
+                passes through. */
+            sym = await nh_poskey_read(pos);
+
+        /* C `:5228–5241` NR_OF_EOFS=20 (cmd.c:15); clearerr(stdin)
+           omitted — no stdio (C itself says omit if undefined). */
+        if (sym === EOF) {
+            let cnt = 20; /* NR_OF_EOFS */
+            do {
+                sym = await pgetchar();
+            } while (--cnt && sym === EOF);
+        }
+
+        if (sym === EOF) { /* C `:5243–5247` */
+            hangup(0);
+            sym = ESC;
+        } else if (sym === ESC /* C `:5248–5260` ALTMETA (unixconf.h:224) */
+                   && game.iflags?.altmeta
+                   && game.program_state?.input_state !== otherInp) {
+            /* C `:5255` — queue first, else blocking read. */
+            sym = readchar_queue_peek()
+                ? _readchar_queue.charCodeAt(_readchar_queue_pos++)
+                : await pgetchar();
+            if (sym === EOF || sym === 0) /* C `:5256–5257` */
+                sym = ESC;
+            else if (sym !== ESC) /* C `:5258–5259` force 8th bit on */
+                sym |= 0x80; /* C `0200` */
+        } else if (sym === 0) { /* C `:5261–5265` click event */
+            if (!game.gc) game.gc = {};
+            game.gc.clicklook_cc = { x: -1, y: -1 };
+            click_to_cmd(pos.x | 0, pos.y | 0, pos.mod | 0);
+        }
+    }
+
+    /* C readchar_done `:5267–5271` — the goto lands here, so the reset
+       runs on every path including the fuzzer arm; parse() sets it back
+       when it needs a non-ordinary next read. */
+    if (!game.program_state) game.program_state = {};
+    game.program_state.input_state = otherInp;
+    return sym | 0;
+}
+
+/**
+ * C ref: wintty.c tty_nh_poskey — `i = tty_nhgetch()`; input.js nhgetch
+ * is that equivalent. String-tolerant like lock.js nhgetch_to_dirsym
+ * (browser readKey may hand a string); pos passes through — see
+ * readchar_core.
+ * @param {{ x: number, y: number, mod: number }} pos
+ * @returns {Promise<number>} key code
+ */
+async function nh_poskey_read(pos) {
+    const k = await nhgetch();
+    return (typeof k === 'string') ? (k.length ? k.charCodeAt(0) : 0) : (k | 0);
+}
+
+/**
+ * C ref: cmd.c readchar `:5275–5284` — hero-position read for ordinary
+ * keys (x/y/mod only matter when nh_poskey reports a mouse click).
+ * This is C's first readchar_core call site (`:5282`).
+ * @returns {Promise<number>} key code
+ */
+export async function readchar() {
+    const pos = { x: game.u?.ux | 0, y: game.u?.uy | 0, mod: 0 };
+    return readchar_core(pos);
+}
+
+/**
+ * C ref: cmd.c readchar_poskey `:5286–5295` — getpos()'s mouse-aware read
+ * (input_state=getposInp, so ALTMETA treats `ESC c` as M-c for Alt+digit).
+ * This is C's second readchar_core call site (`:5293`).
+ * @param {{ x: number, y: number, mod: number }} pos
+ * @returns {Promise<number>} key code
+ */
+export async function readchar_poskey(pos) {
+    if (!game.program_state) game.program_state = {};
+    game.program_state.input_state = getposInp;
+    return readchar_core(pos);
+}
+
 const DOEXTLIST_HEADINGS = [
     'Extended Commands',
     'Debugging Extended Commands',
@@ -953,8 +1148,21 @@ async function rhack_dispatch_bound(key, prefix_seen, was_m_prefix) {
     return { done: true };
 }
 
-/* C ref: cmd.c enum menucmd — [t]herecmdmenu action ids */
+/* C ref: cmd.c enum menucmd `:4379–4418` — [t]herecmdmenu action ids */
 const MCMD_NOTHING = 0;
+const MCMD_OPEN_DOOR = 1;
+const MCMD_LOCK_DOOR = 2;
+const MCMD_UNTRAP_DOOR = 3;
+const MCMD_KICK_DOOR = 4;
+const MCMD_CLOSE_DOOR = 5;
+const MCMD_LOOK_TRAP = 7;
+const MCMD_UNTRAP_TRAP = 8;
+const MCMD_MOVE_DIR = 9;
+const MCMD_RIDE = 10;
+const MCMD_REMOVE_SADDLE = 11;
+const MCMD_APPLY_SADDLE = 12;
+const MCMD_TALK = 13;
+const MCMD_NAME = 14;
 const MCMD_QUAFF = 15;
 const MCMD_DIP = 16;
 const MCMD_SIT = 17;
@@ -970,11 +1178,20 @@ const MCMD_DROP = 26;
 const MCMD_REST = 27;
 const MCMD_LOOK_HERE = 28;
 const MCMD_LOOK_AT = 29;
+const MCMD_ATTACK_NEXT2U = 30;
 const MCMD_UNTRAP_HERE = 31;
 const MCMD_OFFER = 32;
 const MCMD_INVENTORY = 33;
 const MCMD_CAST_SPELL = 34;
+const MCMD_THROW_OBJ = 35;
+const MCMD_TRAVEL = 36;
 const MCMD_SEARCH = 6;
+
+/* C ref: act_on_act `:4698–4710` key chain + `:4749–4755` saddle (otyp ids). */
+const SKELETON_KEY_OTYP = objectNames.indexOf('SKELETON_KEY');
+const LOCK_PICK_OTYP = objectNames.indexOf('LOCK_PICK');
+const CREDIT_CARD_OTYP = objectNames.indexOf('CREDIT_CARD');
+const SADDLE_OTYP = objectNames.indexOf('SADDLE');
 
 /**
  * C ref: cmd.c act_on_act — self / here actions (queue CQ_CANNED).
@@ -1024,6 +1241,251 @@ function act_on_act_here(act) {
         // C: doclicklook via clicklook_cc — deferred with therecmdmenu
         break;
     default:
+        break;
+    }
+}
+
+/**
+ * C ref: cmd.c doclicklook `:5381–5392` (staticfn → module-local) — look at
+ * gc.clicklook_cc. Named: auto_describe (getpos.c:640) is not yet ported —
+ * lazy import from its 1:1 home, resolves when the callee lands.
+ * @returns {Promise<number>} ECMD_*
+ */
+async function doclicklook() {
+    const cc = game.gc?.clicklook_cc;
+    if (!cc || !isok(cc.x | 0, cc.y | 0)) return ECMD_OK; // `:5384–5385`
+    if (!game.context) game.context = {};
+    game.context.move = 0; // `:5387` svc.context.move = FALSE
+    const { auto_describe } = await import('./getpos.js'); // `:5388`
+    await auto_describe(cc.x | 0, cc.y | 0);
+    return ECMD_OK; // `:5390`
+}
+
+/* C ref: cmd.c move_funcs `:2070–2078` [MV_WALK] column — xytodir order. */
+const move_funcs_walk = [
+    do_move_west, do_move_northwest, do_move_north, do_move_northeast,
+    do_move_east, do_move_southeast, do_move_south, do_move_southwest,
+];
+
+/**
+ * C ref: cmd.c act_on_act `:4658–4838` (staticfn → module-local) — queue
+ * CQ_CANNED input for a [t]herecmdmenu action at adjacent (dx,dy).
+ * C order kept arm by arm; sgn clamp `:4666–4677` (live eat.js sgn ≡
+ * hacklib.c:650); MCMD_* ids are the cmd.c:4379 enum.
+ * Named: doidtrap (pager.c:2336) not yet ported — lazy import from its 1:1
+ * home, resolves when the callee lands. dountrap/dodip/dosit/doride/
+ * domonability/dosacrifice use the file's dynamic-import idiom (same as
+ * act_on_act_here) to avoid static cycles.
+ * C callers cmd.c:4880 (there_cmd_menu K==1 fast path) + :4892 (menu pick):
+ * JS there_cmd_menu below is self+common only (next2u/far builders not yet
+ * ported), so no wired caller yet — self picks keep act_on_act_here with
+ * its deliberate KEY/DIR omissions.
+ * @param {number} act MCMD_* action
+ * @param {number} dx delta to target (sgn-clamped unless throw/travel/look)
+ * @param {number} dy delta to target
+ */
+function act_on_act(act, dx, dy) {
+    let otmp = null; // `:4662`
+    let dir = 0; // `:4663`
+
+    /* a few there_cmd_menu_far() actions use dx,dy differently `:4665` */
+    switch (act) { // `:4666–4677`
+    case MCMD_THROW_OBJ:
+    case MCMD_TRAVEL:
+    case MCMD_LOOK_AT:
+        /* keep dx,dy as-is */
+        break;
+    default:
+        /* force dx and dy to be +1, 0, or -1 */
+        dx = sgn(dx);
+        dy = sgn(dy);
+        break;
+    }
+
+    switch (act) { // `:4679–4837`
+    case MCMD_TRAVEL: // `:4680–4688`
+        /* FIXME: explicit travel works even when flags.travelcmd is off */
+        if (!game.iflags) game.iflags = {};
+        if (!game.iflags.travelcc) game.iflags.travelcc = { x: 0, y: 0 };
+        game.iflags.travelcc.x = game.u.tx = game.u.ux + dx;
+        game.iflags.travelcc.y = game.u.ty = game.u.uy + dy;
+        cmdq_add_ec(CQ_CANNED, dotravel_target);
+        break;
+    case MCMD_THROW_OBJ: // `:4689–4693`
+        cmdq_add_ec(CQ_CANNED, dothrow);
+        cmdq_add_userinput(CQ_CANNED);
+        cmdq_add_dir(CQ_CANNED, dx, dy, 0);
+        break;
+    case MCMD_OPEN_DOOR: // `:4694–4697`
+        cmdq_add_ec(CQ_CANNED, doopen);
+        cmdq_add_dir(CQ_CANNED, dx, dy, 0);
+        break;
+    case MCMD_LOCK_DOOR: // `:4698–4710`
+        otmp = carrying(SKELETON_KEY_OTYP);
+        if (!otmp) otmp = carrying(LOCK_PICK_OTYP);
+        if (!otmp) otmp = carrying(CREDIT_CARD_OTYP);
+        if (otmp) {
+            cmdq_add_ec(CQ_CANNED, doapply);
+            cmdq_add_key(CQ_CANNED, otmp.invlet);
+            cmdq_add_dir(CQ_CANNED, dx, dy, 0);
+            cmdq_add_key(CQ_CANNED, 'y'); /* "Lock it?" */
+        }
+        break;
+    case MCMD_UNTRAP_DOOR: // `:4711–4714`
+        cmdq_add_ec(CQ_CANNED, async () => {
+            const { dountrap } = await import('./trap.js');
+            return dountrap();
+        });
+        cmdq_add_dir(CQ_CANNED, dx, dy, 0);
+        break;
+    case MCMD_KICK_DOOR: // `:4715–4718`
+        cmdq_add_ec(CQ_CANNED, dokick);
+        cmdq_add_dir(CQ_CANNED, dx, dy, 0);
+        break;
+    case MCMD_CLOSE_DOOR: // `:4719–4722`
+        cmdq_add_ec(CQ_CANNED, doclose);
+        cmdq_add_dir(CQ_CANNED, dx, dy, 0);
+        break;
+    case MCMD_SEARCH: // `:4723–4725`
+        cmdq_add_ec(CQ_CANNED, dosearch);
+        break;
+    case MCMD_LOOK_TRAP: // `:4726–4729`
+        cmdq_add_ec(CQ_CANNED, async () => {
+            const { doidtrap } = await import('./pager.js');
+            return doidtrap();
+        });
+        cmdq_add_dir(CQ_CANNED, dx, dy, 0);
+        break;
+    case MCMD_UNTRAP_TRAP: // `:4730–4733`
+        cmdq_add_ec(CQ_CANNED, async () => {
+            const { dountrap } = await import('./trap.js');
+            return dountrap();
+        });
+        cmdq_add_dir(CQ_CANNED, dx, dy, 0);
+        break;
+    case MCMD_MOVE_DIR: // `:4734–4737`
+        dir = xytodir(dx, dy);
+        cmdq_add_ec(CQ_CANNED, move_funcs_walk[dir]);
+        break;
+    case MCMD_RIDE: // `:4738–4741`
+        cmdq_add_ec(CQ_CANNED, async () => {
+            const { doride } = await import('./steed.js');
+            return doride();
+        });
+        cmdq_add_dir(CQ_CANNED, dx, dy, 0);
+        break;
+    case MCMD_REMOVE_SADDLE: // `:4742–4748`
+        /* m-prefix for #loot: skip any floor containers */
+        cmdq_add_ec(CQ_CANNED, do_reqmenu);
+        cmdq_add_ec(CQ_CANNED, doloot);
+        cmdq_add_dir(CQ_CANNED, dx, dy, 0);
+        cmdq_add_key(CQ_CANNED, 'y'); /* "Do you want to remove saddle? */
+        break;
+    case MCMD_APPLY_SADDLE: // `:4749–4755`
+        if ((otmp = carrying(SADDLE_OTYP)) != null) {
+            cmdq_add_ec(CQ_CANNED, doapply);
+            cmdq_add_key(CQ_CANNED, otmp.invlet);
+            cmdq_add_dir(CQ_CANNED, dx, dy, 0);
+        }
+        break;
+    case MCMD_ATTACK_NEXT2U: // `:4756–4759`
+        dir = xytodir(dx, dy);
+        cmdq_add_ec(CQ_CANNED, move_funcs_walk[dir]);
+        break;
+    case MCMD_TALK: // `:4760–4763`
+        cmdq_add_ec(CQ_CANNED, dotalk);
+        cmdq_add_dir(CQ_CANNED, dx, dy, 0);
+        break;
+    case MCMD_NAME: // `:4764–4768`
+        cmdq_add_ec(CQ_CANNED, docallcmd);
+        cmdq_add_key(CQ_CANNED, 'm'); /* name a monster */
+        cmdq_add_dir(CQ_CANNED, dx, dy, 0); /* getpos() uses u.ux+dx,u.uy+dy */
+        break;
+    case MCMD_QUAFF: // `:4769–4772`
+        cmdq_add_ec(CQ_CANNED, dodrink);
+        cmdq_add_key(CQ_CANNED, 'y'); /* "Drink from the fountain?" */
+        break;
+    case MCMD_DIP: // `:4773–4777`
+        cmdq_add_ec(CQ_CANNED, async () => {
+            const { dodip } = await import('./potion.js');
+            return dodip();
+        });
+        cmdq_add_userinput(CQ_CANNED);
+        cmdq_add_key(CQ_CANNED, 'y'); /* "Dip foo into the fountain?" */
+        break;
+    case MCMD_SIT: // `:4778–4780`
+        cmdq_add_ec(CQ_CANNED, async () => {
+            const { dosit } = await import('./sit.js');
+            return dosit();
+        });
+        break;
+    case MCMD_UP: // `:4781–4783`
+        cmdq_add_ec(CQ_CANNED, doup);
+        break;
+    case MCMD_DOWN: // `:4784–4786`
+        cmdq_add_ec(CQ_CANNED, dodown);
+        break;
+    case MCMD_DISMOUNT: // `:4787–4789`
+        cmdq_add_ec(CQ_CANNED, async () => {
+            const { doride } = await import('./steed.js');
+            return doride();
+        });
+        break;
+    case MCMD_MONABILITY: // `:4790–4792`
+        cmdq_add_ec(CQ_CANNED, async () => {
+            const { domonability } = await import('./polyself.js');
+            return domonability();
+        });
+        break;
+    case MCMD_PICKUP: // `:4793–4795`
+        cmdq_add_ec(CQ_CANNED, dopickup);
+        break;
+    case MCMD_LOOT: // `:4796–4798`
+        cmdq_add_ec(CQ_CANNED, doloot);
+        break;
+    case MCMD_TIP: // `:4799–4802`
+        cmdq_add_ec(CQ_CANNED, dotip);
+        cmdq_add_key(CQ_CANNED, 'y'); /* "There is foo here; tip it?" */
+        break;
+    case MCMD_EAT: // `:4803–4806`
+        cmdq_add_ec(CQ_CANNED, doeat);
+        cmdq_add_key(CQ_CANNED, 'y'); /* "There is foo here; eat it?" */
+        break;
+    case MCMD_DROP: // `:4807–4809`
+        cmdq_add_ec(CQ_CANNED, dodrop);
+        break;
+    case MCMD_INVENTORY: // `:4810–4812`
+        cmdq_add_ec(CQ_CANNED, ddoinv);
+        break;
+    case MCMD_REST: // `:4813–4815`
+        cmdq_add_ec(CQ_CANNED, donull);
+        break;
+    case MCMD_LOOK_HERE: // `:4816–4818`
+        cmdq_add_ec(CQ_CANNED, dolook);
+        break;
+    case MCMD_LOOK_AT: // `:4819–4823`
+        if (!game.gc) game.gc = {};
+        game.gc.clicklook_cc = { x: game.u.ux + dx, y: game.u.uy + dy };
+        cmdq_add_ec(CQ_CANNED, doclicklook);
+        break;
+    case MCMD_UNTRAP_HERE: // `:4824–4827`
+        cmdq_add_ec(CQ_CANNED, async () => {
+            const { dountrap } = await import('./trap.js');
+            return dountrap();
+        });
+        cmdq_add_dir(CQ_CANNED, 0, 0, 1);
+        break;
+    case MCMD_OFFER: // `:4828–4831`
+        cmdq_add_ec(CQ_CANNED, async () => {
+            const { dosacrifice } = await import('./pray.js');
+            return dosacrifice();
+        });
+        cmdq_add_userinput(CQ_CANNED);
+        break;
+    case MCMD_CAST_SPELL: // `:4832–4834`
+        cmdq_add_ec(CQ_CANNED, docast);
+        break;
+    default: // `:4835–4837`
         break;
     }
 }

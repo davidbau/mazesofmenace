@@ -237,23 +237,35 @@ function branch_val(bp) {
     return (a * (MAXDUNGEON + 1) * (MAXLEVEL + 1)) + b;
 }
 
-// C ref: dungeon.c insert_branch()
+// C ref: dungeon.c insert_branch() `:462–508` — whole-body port in C order.
+// svb.branches ⇔ g.branches (JS array; C next-chain surgery ⇔ splice).
+// `.next` stays null: no JS reader traverses branch.next, and save.js
+// JSON-copies branches, so a linked chain would duplicate/cycle on save.
 export function insert_branch(new_branch, extract_first) {
     const g = game;
     if (!g.branches) g.branches = [];
-    if (extract_first) {
+    if (extract_first) { // C :468–480
+        // C :469–472 identity scan (curr == new_branch ⇔ indexOf).
         const idx = g.branches.indexOf(new_branch);
-        if (idx >= 0) g.branches.splice(idx, 1);
+        // C :474–475 panic("insert_branch: not found"); throw ≡ C panic
+        // (botl.js compare_blstats precedent — JS has no sync abort).
+        if (idx < 0) throw new Error('insert_branch: not found');
+        g.branches.splice(idx, 1); // C :476–479 unlink (prev->next / head)
     }
-    new_branch.next = null;
+    new_branch.next = null; // C :481
+    // branch_val macro C :484–487; new_val C :494, prev_val C :493.
     const new_val = branch_val(new_branch);
+    let prev_val = -1;
     let insertAt = g.branches.length;
-    for (let i = 0; i < g.branches.length; i++) {
-        if (new_val <= branch_val(g.branches[i])) {
+    for (let i = 0; i < g.branches.length; i++) { // C :495–500
+        const curr_val = branch_val(g.branches[i]); // C :497
+        if (prev_val < new_val && new_val <= curr_val) { // C :498
             insertAt = i;
             break;
         }
+        prev_val = curr_val; // C :496 step
     }
+    // C :501–507 link (prev ? after-prev : head) ⇔ array splice.
     g.branches.splice(insertAt, 0, new_branch);
 }
 
