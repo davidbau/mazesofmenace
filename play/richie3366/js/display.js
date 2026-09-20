@@ -3043,7 +3043,12 @@ function wall_glyph_table() {
     return use_decgraphics() ? WALL_GLYPH_DEC : WALL_GLYPH_ASCII;
 }
 
-// C ref: display.c wall_matrix / cross_matrix
+// C ref: display.c wall_matrix / cross_matrix :3397-3450.
+// T-wall rows :3398-3401 (T_d 0, T_l 1, T_u 2, T_r 3); T columns
+// :3404-3414 (T_stone 0, T_tlcorn 1, T_trcorn 2, T_hwall 3, T_tdwall 4);
+// wall_matrix rows :3416-3421. Cross rows :3423-3429 (C_bl 0, C_tl 1,
+// C_tr 2, C_br 3); C columns :3431-3442 (C_trcorn 0, C_brcorn 1,
+// C_blcorn 2, C_tlwall 3, C_tuwall 4, C_crwall 5); cross_matrix :3444-3449.
 const T_STONE = 0, T_TLCORN = 1, T_TRCORN = 2, T_HWALL = 3, T_TDWALL = 4;
 const WALL_MATRIX = [
     [S_STONE, S_TLCORN, S_TRCORN, S_HWALL, S_TDWALL], // tdwall
@@ -3060,182 +3065,240 @@ const CROSS_MATRIX = [
 ];
 
 function only_sv(sv, bits) {
+    // C :3519: #define only(sv, bits) (((sv) & (bits)) && !((sv) & ~(bits)))
     return !!(sv & bits) && !(sv & ~bits);
 }
 
-// C ref: display.c wall_angle — seenv + wall_info → cmap index
+// C ref: display.c t_warn :3452-3498 (staticfn). Diagnostic only: maps the
+// wall type to a name (TUWALL/TLWALL/TRWALL/TDWALL, VWALL, HWALL,
+// TLCORNER/TRCORNER/BLCORNER/BRCORNER, default "unknown") and reports
+// `wall_angle: %s: case %d: seenv = 0x%x` (warn_str :3455) via
+// impossible(). No return-value effect. impossible() is async in JS, so
+// the report itself stays a cite — same convention as display_warning's
+// `// C: impossible(...)` below.
+function t_warn(lev) {
+    let wname;
+    switch (lev.typ) {
+    case TUWALL: wname = 'tuwall'; break;
+    case TLWALL: wname = 'tlwall'; break;
+    case TRWALL: wname = 'trwall'; break;
+    case TDWALL: wname = 'tdwall'; break;
+    case VWALL: wname = 'vwall'; break;
+    case HWALL: wname = 'hwall'; break;
+    case TLCORNER: wname = 'tlcorner'; break;
+    case TRCORNER: wname = 'trcorner'; break;
+    case BLCORNER: wname = 'blcorner'; break;
+    case BRCORNER: wname = 'brcorner'; break;
+    default: wname = 'unknown'; break;
+    }
+    // C :3495-3498: impossible(warn_str, wname, lev->wall_info & WM_MASK,
+    //               (unsigned int) lev->seenv);
+    // C returns void; the name is returned for debuggers only — callers
+    // ignore it, so there is no behavior change.
+    return wname;
+}
+
+// C ref: display.c wall_angle :3511-3787 (staticfn, decl :151) — seenv +
+// wall_info → cmap index. C order throughout; C `goto do_twall` (:3524,
+// :3528, :3532 → :3535) and `goto do_crwall` (:3708, :3712, :3716 → :3719)
+// are the do_twall / do_crwall helpers below; the `horiz:` label (:3628)
+// is wall_angle_hwall; the set_corner macro (:3647-3664) is set_corner.
 function wall_angle(lev) {
-    let seenv = (lev.seenv || 0) & 0xff;
+    let seenv = (lev.seenv || 0) & 0xff; // C :3514: seenv = lev->seenv & 0xff
     const mode = (lev.wall_info || 0) & WM_MASK;
 
-    switch (lev.typ) {
-    case TUWALL:
+    switch (lev.typ) { // C :3520
+    case TUWALL: // C :3521-3524: row = wall_matrix[T_u], rotate to tdwall
         seenv = ((seenv >> 4) | (seenv << 4)) & 0xff;
-        return do_twall(seenv, mode, WALL_MATRIX[2]);
-    case TLWALL:
+        return do_twall(lev, seenv, mode, WALL_MATRIX[2]); // T_u == 2
+    case TLWALL: // C :3525-3528: row = wall_matrix[T_l], rotate to tdwall
         seenv = ((seenv >> 2) | (seenv << 6)) & 0xff;
-        return do_twall(seenv, mode, WALL_MATRIX[1]);
-    case TRWALL:
+        return do_twall(lev, seenv, mode, WALL_MATRIX[1]); // T_l == 1
+    case TRWALL: // C :3529-3532: row = wall_matrix[T_r], rotate to tdwall
         seenv = ((seenv >> 6) | (seenv << 2)) & 0xff;
-        return do_twall(seenv, mode, WALL_MATRIX[3]);
-    case TDWALL:
-        return do_twall(seenv, mode, WALL_MATRIX[0]);
-    case SDOOR:
-        if (lev.horizontal) return wall_angle_hwall(seenv, mode);
+        return do_twall(lev, seenv, mode, WALL_MATRIX[3]); // T_r == 3
+    case TDWALL: // C :3533-3534: row = wall_matrix[T_d], no rotation
+        return do_twall(lev, seenv, mode, WALL_MATRIX[0]); // T_d == 0
+    case SDOOR: // C :3599-3607
+        // C :3600-3602: arboreal sdoor renders as tree before any wall logic.
+        if (lev.arboreal_sdoor) return S_TREE_CMAP; // C S_tree
+        if (lev.horizontal) return wall_angle_hwall(seenv, mode); // C :3604-3605 goto horiz
+        // C :3606-3607 FALLTHROUGH to VWALL.
         return wall_angle_vwall(seenv, mode);
-    case VWALL:
+    case VWALL: // C :3608-3623
         return wall_angle_vwall(seenv, mode);
-    case HWALL:
+    case HWALL: // C :3624-3645 via horiz: :3628
         return wall_angle_hwall(seenv, mode);
-    case TLCORNER:
+    case TLCORNER: // C :3666
         return set_corner(seenv, mode, S_TLCORN, SV3 | SV4 | SV5, SV4);
-    case TRCORNER:
+    case TRCORNER: // C :3669
         return set_corner(seenv, mode, S_TRCORN, SV5 | SV6 | SV7, SV6);
-    case BLCORNER:
+    case BLCORNER: // C :3672
         return set_corner(seenv, mode, S_BLCORN, SV1 | SV2 | SV3, SV2);
-    case BRCORNER:
+    case BRCORNER: // C :3675
         return set_corner(seenv, mode, S_BRCORN, SV7 | SV0 | SV1, SV0);
-    case CROSSWALL:
+    case CROSSWALL: // C :3678-3780
         return wall_angle_cross(seenv, mode);
     default:
+        // C :3782-3784: impossible("wall_angle: unexpected wall type %d", ...);
         return S_STONE;
     }
 }
 
-function do_twall(seenv, mode, row) {
+// C :3535 do_twall — the rotated-tdwall pattern match shared by all four
+// T walls (reached via goto); returns row[col] :3596-3597.
+function do_twall(lev, seenv, mode, row) {
     let col;
-    switch (mode) {
-    case 0:
-        if (seenv === SV4) col = T_TLCORN;
-        else if (seenv === SV6) col = T_TRCORN;
-        else if ((seenv & (SV3 | SV5 | SV7))
+    switch (mode) { // C :3536: switch (lev->wall_info & WM_MASK)
+    case 0: // C :3537-3551
+        if (seenv === SV4) col = T_TLCORN; // C :3538
+        else if (seenv === SV6) col = T_TRCORN; // C :3540
+        else if ((seenv & (SV3 | SV5 | SV7)) // C :3542-3544
             || ((seenv & SV4) && (seenv & SV6))) col = T_TDWALL;
-        else if (seenv & (SV0 | SV1 | SV2))
+        else if (seenv & (SV0 | SV1 | SV2)) // C :3545-3546
             col = (seenv & (SV4 | SV6) ? T_TDWALL : T_HWALL);
-        else col = T_STONE;
+        else { t_warn(lev); col = T_STONE; } // C :3548-3550
         break;
-    case WM_T_LONG:
-        if ((seenv & (SV3 | SV4)) && !(seenv & (SV5 | SV6 | SV7))) col = T_TLCORN;
-        else if ((seenv & (SV6 | SV7)) && !(seenv & (SV3 | SV4 | SV5))) col = T_TRCORN;
-        else if ((seenv & SV5)
+    case WM_T_LONG: // C :3552-3566
+        if ((seenv & (SV3 | SV4)) && !(seenv & (SV5 | SV6 | SV7))) col = T_TLCORN; // C :3553
+        else if ((seenv & (SV6 | SV7)) && !(seenv & (SV3 | SV4 | SV5))) col = T_TRCORN; // C :3555
+        else if ((seenv & SV5) // C :3557-3559
             || ((seenv & (SV3 | SV4)) && (seenv & (SV6 | SV7)))) col = T_TDWALL;
-        else col = T_STONE;
+        else { // C :3560-3565: only SV0|SV1|SV2
+            if (!only_sv(seenv, SV0 | SV1 | SV2)) t_warn(lev); // C :3563
+            col = T_STONE;
+        }
         break;
-    case WM_T_BL:
-        if (only_sv(seenv, SV4 | SV5)) col = T_TLCORN;
-        else if ((seenv & (SV0 | SV1 | SV2 | SV7)) && !(seenv & (SV3 | SV4 | SV5)))
+    case WM_T_BL: // C :3567-3577
+        if (only_sv(seenv, SV4 | SV5)) col = T_TLCORN; // C :3568
+        else if ((seenv & (SV0 | SV1 | SV2 | SV7)) && !(seenv & (SV3 | SV4 | SV5))) // C :3570
             col = T_HWALL;
-        else if (only_sv(seenv, SV6)) col = T_STONE;
-        else col = T_TDWALL;
+        else if (only_sv(seenv, SV6)) col = T_STONE; // C :3573
+        else col = T_TDWALL; // C :3575
         break;
-    case WM_T_BR:
-        if (only_sv(seenv, SV5 | SV6)) col = T_TRCORN;
-        else if ((seenv & (SV0 | SV1 | SV2 | SV3)) && !(seenv & (SV5 | SV6 | SV7)))
+    case WM_T_BR: // C :3578-3589
+        if (only_sv(seenv, SV5 | SV6)) col = T_TRCORN; // C :3579
+        else if ((seenv & (SV0 | SV1 | SV2 | SV3)) && !(seenv & (SV5 | SV6 | SV7))) // C :3581
             col = T_HWALL;
-        else if (only_sv(seenv, SV4)) col = T_STONE;
-        else col = T_TDWALL;
+        else if (only_sv(seenv, SV4)) col = T_STONE; // C :3584
+        else col = T_TDWALL; // C :3586
         break;
     default:
+        // C :3591-3593: impossible("wall_angle: unknown T wall mode %d", ...);
         col = T_STONE;
         break;
     }
     return row[col];
 }
 
+// C :3608-3623 VWALL arm (SDOOR falls through here :3606-3607).
+// C uses literal cases 1/2; WM_W_LEFT == 1, WM_W_RIGHT == 2.
 function wall_angle_vwall(seenv, mode) {
     switch (mode) {
-    case 0: return seenv ? S_VWALL : S_STONE;
-    case WM_W_LEFT:
+    case 0: return seenv ? S_VWALL : S_STONE; // C :3610-3612
+    case WM_W_LEFT: // C :3613: case 1
         return (seenv & (SV1 | SV2 | SV3 | SV4 | SV5)) ? S_VWALL : S_STONE;
-    case WM_W_RIGHT:
+    case WM_W_RIGHT: // C :3616: case 2
         return (seenv & (SV0 | SV1 | SV5 | SV6 | SV7)) ? S_VWALL : S_STONE;
+    // C :3620-3622: impossible("wall_angle: unknown vwall mode %d", ...);
     default: return S_STONE;
     }
 }
 
+// C :3624-3645 HWALL arm, entered at horiz: :3628.
 function wall_angle_hwall(seenv, mode) {
     switch (mode) {
-    case 0: return seenv ? S_HWALL : S_STONE;
-    case WM_W_TOP: // == WM_W_LEFT == 1
+    case 0: return seenv ? S_HWALL : S_STONE; // C :3630-3631
+    case WM_W_TOP: // C :3633: case 1 (== WM_W_LEFT == 1)
         return (seenv & (SV3 | SV4 | SV5 | SV6 | SV7)) ? S_HWALL : S_STONE;
-    case WM_W_RIGHT: // bottom == 2
+    case WM_W_RIGHT: // C :3636: case 2 (bottom == 2)
         return (seenv & (SV0 | SV1 | SV2 | SV3 | SV7)) ? S_HWALL : S_STONE;
+    // C :3640-3642: impossible("wall_angle: unknown hwall mode %d", ...);
     default: return S_STONE;
     }
 }
 
+// C :3647-3664 set_corner macro (idx/lev/which/outer/inner/name);
+// corners TLCORNER :3666, TRCORNER :3669, BLCORNER :3672, BRCORNER :3675.
 function set_corner(seenv, mode, which, outer, inner) {
     switch (mode) {
-    case 0: return which;
-    case WM_C_OUTER: return (seenv & outer) ? which : S_STONE;
-    case WM_C_INNER: return (seenv & ~inner) ? which : S_STONE;
+    case 0: return which; // C :3649-3651
+    case WM_C_OUTER: return (seenv & outer) ? which : S_STONE; // C :3652-3654
+    case WM_C_INNER: return (seenv & ~inner) ? which : S_STONE; // C :3655-3657
+    // C :3659-3662: impossible("wall_angle: unknown %s mode %d", ...);
     default: return S_STONE;
     }
 }
 
+// C :3678-3780 CROSSWALL arm. Mode-0 chain :3680-3703; single-quarter
+// rotations :3705-3719 (C_tl == 1, C_tr == 2, C_bl == 0, C_br == 3);
+// doubles :3753 (WM_X_TLBR), :3764 (WM_X_BLTR).
 function wall_angle_cross(seenv, mode) {
     let row;
     switch (mode) {
-    case 0:
-        if (seenv === SV0) return S_BRCORN;
-        if (seenv === SV2) return S_BLCORN;
-        if (seenv === SV4) return S_TLCORN;
-        if (seenv === SV6) return S_TRCORN;
-        if (!(seenv & ~(SV0 | SV1 | SV2))
+    case 0: // C :3680-3703
+        if (seenv === SV0) return S_BRCORN; // C :3681
+        if (seenv === SV2) return S_BLCORN; // C :3683
+        if (seenv === SV4) return S_TLCORN; // C :3685
+        if (seenv === SV6) return S_TRCORN; // C :3687
+        if (!(seenv & ~(SV0 | SV1 | SV2)) // C :3689-3691
             && ((seenv & SV1) || seenv === (SV0 | SV2))) return S_TUWALL;
-        if (!(seenv & ~(SV2 | SV3 | SV4))
+        if (!(seenv & ~(SV2 | SV3 | SV4)) // C :3692-3694
             && ((seenv & SV3) || seenv === (SV2 | SV4))) return S_TRWALL;
-        if (!(seenv & ~(SV4 | SV5 | SV6))
+        if (!(seenv & ~(SV4 | SV5 | SV6)) // C :3695-3697
             && ((seenv & SV5) || seenv === (SV4 | SV6))) return S_TDWALL;
-        if (!(seenv & ~(SV0 | SV6 | SV7))
+        if (!(seenv & ~(SV0 | SV6 | SV7)) // C :3698-3700
             && ((seenv & SV7) || seenv === (SV0 | SV6))) return S_TLWALL;
-        return S_CRWALL;
-    case WM_X_TL:
-        row = CROSS_MATRIX[1];
+        return S_CRWALL; // C :3702
+    case WM_X_TL: // C :3705-3708: row = cross_matrix[C_tl], rotate >>4
+        row = CROSS_MATRIX[1]; // C_tl == 1
         seenv = ((seenv >> 4) | (seenv << 4)) & 0xff;
         return do_crwall(seenv, row);
-    case WM_X_TR:
-        row = CROSS_MATRIX[2];
+    case WM_X_TR: // C :3709-3712: row = cross_matrix[C_tr], rotate >>6
+        row = CROSS_MATRIX[2]; // C_tr == 2
         seenv = ((seenv >> 6) | (seenv << 2)) & 0xff;
         return do_crwall(seenv, row);
-    case WM_X_BL:
-        row = CROSS_MATRIX[0];
+    case WM_X_BL: // C :3713-3716: row = cross_matrix[C_bl], rotate >>2
+        row = CROSS_MATRIX[0]; // C_bl == 0
         seenv = ((seenv >> 2) | (seenv << 6)) & 0xff;
         return do_crwall(seenv, row);
-    case WM_X_BR:
-        return do_crwall(seenv, CROSS_MATRIX[3]);
-    case WM_X_TLBR:
-        if (only_sv(seenv, SV1 | SV2 | SV3)) return S_BLCORN;
-        if (only_sv(seenv, SV5 | SV6 | SV7)) return S_TRCORN;
-        if (only_sv(seenv, SV0 | SV4)) return S_STONE;
-        return S_CRWALL;
-    case WM_X_BLTR:
-        if (only_sv(seenv, SV0 | SV1 | SV7)) return S_BRCORN;
-        if (only_sv(seenv, SV3 | SV4 | SV5)) return S_TLCORN;
-        if (only_sv(seenv, SV2 | SV6)) return S_STONE;
-        return S_CRWALL;
+    case WM_X_BR: // C :3717-3718: row = cross_matrix[C_br], no rotation
+        return do_crwall(seenv, CROSS_MATRIX[3]); // C_br == 3
+    case WM_X_TLBR: // C :3753-3762
+        if (only_sv(seenv, SV1 | SV2 | SV3)) return S_BLCORN; // C :3754
+        if (only_sv(seenv, SV5 | SV6 | SV7)) return S_TRCORN; // C :3756
+        if (only_sv(seenv, SV0 | SV4)) return S_STONE; // C :3758
+        return S_CRWALL; // C :3760
+    case WM_X_BLTR: // C :3764-3773
+        if (only_sv(seenv, SV0 | SV1 | SV7)) return S_BRCORN; // C :3765
+        if (only_sv(seenv, SV3 | SV4 | SV5)) return S_TLCORN; // C :3767
+        if (only_sv(seenv, SV2 | SV6)) return S_STONE; // C :3769
+        return S_CRWALL; // C :3771
     default:
+        // C :3775-3777: impossible("wall_angle: unknown crosswall mode");
         return S_STONE;
     }
 }
 
+// C :3719-3749 do_crwall — pattern match on the bottom-right-rotated vector.
 function do_crwall(seenv, row) {
-    if (seenv === SV4) return S_STONE;
-    seenv = seenv & ~SV4;
+    if (seenv === SV4) return S_STONE; // C :3720-3721
+    seenv = seenv & ~SV4; // C :3723 strip SV4
     let col;
-    if (seenv === SV0) col = C_BRCORN;
-    else if (seenv & (SV2 | SV3)) {
-        if (seenv & (SV5 | SV6 | SV7)) col = C_CRWALL;
-        else if (seenv & (SV0 | SV1)) col = C_TUWALL;
-        else col = C_BLCORN;
-    } else if (seenv & (SV5 | SV6)) {
-        if (seenv & (SV1 | SV2 | SV3)) col = C_CRWALL;
-        else if (seenv & (SV0 | SV7)) col = C_TLWALL;
-        else col = C_TRCORN;
-    } else if (seenv & SV1) col = (seenv & SV7) ? C_CRWALL : C_TUWALL;
-    else if (seenv & SV7) col = (seenv & SV1) ? C_CRWALL : C_TLWALL;
-    else col = C_CRWALL;
-    return row[col];
+    if (seenv === SV0) col = C_BRCORN; // C :3724-3725
+    else if (seenv & (SV2 | SV3)) { // C :3726-3732
+        if (seenv & (SV5 | SV6 | SV7)) col = C_CRWALL; // C :3727
+        else if (seenv & (SV0 | SV1)) col = C_TUWALL; // C :3729
+        else col = C_BLCORN; // C :3732
+    } else if (seenv & (SV5 | SV6)) { // C :3733-3739
+        if (seenv & (SV1 | SV2 | SV3)) col = C_CRWALL; // C :3734
+        else if (seenv & (SV0 | SV7)) col = C_TLWALL; // C :3736
+        else col = C_TRCORN; // C :3739
+    } else if (seenv & SV1) col = (seenv & SV7) ? C_CRWALL : C_TUWALL; // C :3740-3741
+    else if (seenv & SV7) col = (seenv & SV1) ? C_CRWALL : C_TLWALL; // C :3742-3743
+    // C :3745: impossible("wall_angle: bottom of crwall check");
+    else col = C_CRWALL; // C :3746
+    return row[col]; // C :3749
 }
 
 /** C display.h cmap_walls_to_glyph + display.c wallcolors[] / reset_glyphmap. */

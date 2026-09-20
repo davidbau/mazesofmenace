@@ -8,6 +8,8 @@
 // Level blob codec: js/lev_json.js (shared with bones.js).
 
 import { game } from './gstate.js';
+import { getnow } from './calendar.js';
+import { timet_delta } from './allmain.js';
 import { vfsReadFile, vfsWriteFile, vfsDeleteFile } from './storage.js';
 import { yn_function } from './getline.js';
 import { pline, docrt, getmsghistory, putmsghistory } from './display.js';
@@ -448,7 +450,7 @@ function restWornFromInvent(invent) {
 /**
  * C ref: save.c dosave0 — write current game to VFS (JSON subset of savelev).
  * Named omissions: binary NHFILE format; hangup arms; overwrite yn;
- * compress; uid/nhuuid/urealtime/wreserve; save_killers;
+ * compress; uid/nhuuid/wreserve; save_killers;
  * save_bc loose ball when swallowed.
  * mapseenchn cemetery JSON is save_dungeon/save_mapseen (D-1685);
  * current-level bonesinfo is savelev savecemetery.
@@ -478,6 +480,18 @@ export function dosave0() {
         flags: (prevCur.flags | 0) | VISITED | LFILE_EXISTS,
         omoves: game.moves | 0,
     };
+    // C save.c savegamestate `:282–284, :289–292` — fold the pending delta
+    // into realtime, persist realtime + start_timing, then refresh the
+    // live start to now for the next update.
+    const nowSave = getnow();
+    if (!game.urealtime) {
+        game.urealtime = { realtime: 0, start_timing: nowSave, finish_time: 0 };
+    }
+    game.urealtime.finish_time = nowSave;
+    game.urealtime.realtime = (game.urealtime.realtime | 0)
+        + timet_delta(nowSave, game.urealtime.start_timing | 0);
+    const savedStartTiming = game.urealtime.start_timing | 0;
+    game.urealtime.start_timing = nowSave;
     const payload = {
         version: 1,
         plname: game.plname,
@@ -546,6 +560,11 @@ export function dosave0() {
         _goldCount: game._goldCount | 0,
         _lastinvnr: game._lastinvnr | 0,
         datetime_saved: game.datetime || null,
+        // C save.c savegamestate `:289–290` — realtime + start_timing.
+        urealtime: {
+            realtime: game.urealtime.realtime | 0,
+            start_timing: savedStartTiming,
+        },
         uz: u.uz ? { ...u.uz } : { dnum: 0, dlevel: 1 },
         // C save.c save_msghistory `:1029–1056` after savenames;
         // save_gamelog `:236–262` after save_msghistory;
@@ -762,6 +781,19 @@ export async function try_restore_save() {
     game.context = { ...(payload.context || {}) };
     game.moves = payload.moves | 0;
     game.multi = payload.multi | 0;
+    // C restore.c `:618–625` — realtime from the save; start_timing is the
+    // saved value, then current time for the next realtime update.
+    if (payload.urealtime) {
+        game.urealtime = {
+            realtime: payload.urealtime.realtime | 0,
+            start_timing: payload.urealtime.start_timing | 0,
+            finish_time: 0,
+        };
+    }
+    if (!game.urealtime) {
+        game.urealtime = { realtime: 0, start_timing: 0, finish_time: 0 };
+    }
+    game.urealtime.start_timing = getnow();
     game.urole = payload.urole;
     game.urace = payload.urace;
     game.mvitals = payload.mvitals || [];

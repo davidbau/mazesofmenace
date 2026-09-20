@@ -8,7 +8,7 @@ import { dobjsfree, clear_splitobjs } from './mkobj.js';
 import { rhack, continue_run, run_active, continue_search, search_repeat_active, dolookaround, end_of_input } from './cmd.js';
 import {
     docrt, cls, bot, timebot, curs_on_u, flush_screen, pline, Norep,
-    flush_topl_more, see_monsters,
+    flush_topl_more, see_monsters, You,
     see_objects, see_traps, swallowed, Hallucination, Warn_of_mon,
     clear_glyph_buffer,
 } from './display.js';
@@ -61,7 +61,7 @@ import { run_regions, any_visible_region } from './region.js';
 import { m_everyturn_effect } from './monmove.js';
 import { tele } from './teleport.js';
 import { sink_into_lava } from './trap.js';
-import { polyself, set_uasmon } from './polyself.js';
+import { polyself, set_uasmon, uasmon_maxStr } from './polyself.js';
 import { you_were } from './were.js';
 import {
     UNENCUMBERED, SLT_ENCUMBER, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER,
@@ -584,7 +584,9 @@ function exerper() {
     }
 }
 
-/* exercise/abuse text — C attrib.c exertext[A_MAX][2] */
+/* Exercise/abuse text — C attrib.c exertext[A_MAX][2] `:588–595`.
+   Int/Cha are {0,0}: exercise never accumulates them, so the `:621–624`
+   `!ax → continue` below keeps those arms unreachable (C comment there). */
 const EXERTEXT = [
     ['exercising diligently', 'exercising properly'],           // Str
     [null, null],                                               // Int
@@ -595,62 +597,75 @@ const EXERTEXT = [
 ];
 
 /**
- * C ref: attrib.c exerchk — periodic exercise/abuse resolve.
- * Named omissions: Fixed_abil/Dunce via adjattrib.
+ * C ref: attrib.c exerchk `:598–677` — periodic exercise/abuse resolve,
+ * in C order. Caller: allmain.c:356 → moveloop below.
+ * Named omissions: debugpline1/0/2 (`:608`, `:614`, `:646–656`, `:676` —
+ * D_DEBUG-only, D-2586 precedent); exerper Clairvoyant/Regen/Monk arms +
+ * makeknown-credit (open D-1994); Fixed_abil/Dunce gate inside adjattrib.
  */
 async function exerchk() {
+    /* C `:602–604`: check out the periodic accumulations first. */
     exerper();
     const g = game;
     const moves = g.moves || 0;
     if (!g.context) g.context = {};
     // C: next_attrib_check defaults to 600 at newgame
     if (g.context.next_attrib_check == null) g.context.next_attrib_check = 600;
+    /* C `:607–612`: are we ready for a test? moves past the mark, not multi. */
     if (moves < g.context.next_attrib_check || (g.multi || 0)) return;
 
-    const AVAL = 50;
+    const AVAL = 50; // C `:486` tune value for exercise gains
     const u = g.u || {};
     if (!u.aexe) u.aexe = { a: [0, 0, 0, 0, 0, 0] };
     const race = g.urace || {};
 
-    for (let i = 0; i < A_MAX; ++i) {
-        let ax = u.aexe.a[i] || 0;
-        if (!ax) continue; // C: skip nextattrib when no exercise/abuse
+    for (let i = 0; i < A_MAX; ++i) { // C `:618`
+        let ax = u.aexe.a[i] || 0; // C `:620` ax = AEXE(i)
+        /* C `:621–624`: nothing to do if no exercise/abuse has occurred
+           (Int and Cha always fall into this category); ok to skip nextattrib. */
+        if (!ax) continue;
 
-        const mod_val = ax > 0 ? 1 : -1;
-        let lolim = race.attrmin?.[i] ?? 3;
-        let hilim = race.attrmax?.[i] ?? 18;
+        const mod_val = ax > 0 ? 1 : -1; // C `:626` sgn(ax): +1 or -1
+        /* C `:627–632`: lolim = ATTRMIN(i), hilim = ATTRMAX(i) capped at 18 —
+           ATTRMAX (attrib.h:43) takes the Upolyd-Str arm via uasmon_maxStr. */
+        const lolim = race.attrmin?.[i] ?? 3;
+        let hilim = (i === A_STR && Upolyd(u)) ? uasmon_maxStr() : (race.attrmax?.[i] ?? 18);
         if (hilim > 18) hilim = 18;
-        const abase = u.acurr?.a?.[i] ?? 0;
-        // C: goto nextattrib — still halves AEXE
+        const abase = u.acurr?.a?.[i] ?? 0; // C ABASE(i) (attrib.h:21)
+        /* C `:633–634`: no further effect for exercise at max / abuse at min.
+           C `:635–637`: can't exercise non-Wisdom while polymorphed.
+           Both goto nextattrib, which still halves AEXE below. */
         let skipChange = false;
         if ((ax < 0) ? (abase <= lolim) : (abase >= hilim)) {
             skipChange = true;
         } else if (Upolyd(u) && i !== A_WIS) {
             skipChange = true;
         } else {
-            // C: rn2(AVAL) > ((i != A_WIS) ? (abs(ax)*2/3) : abs(ax))
+            /* C `:648–659`: diminishing returns part III — don't always gain.
+               Wis treated specially for balance (MRS 92/10/28). */
             const thresh = (i !== A_WIS)
                 ? Math.trunc(Math.abs(ax) * 2 / 3)
                 : Math.abs(ax);
             if (rn2(AVAL) > thresh) skipChange = true;
         }
 
-        if (!skipChange) {
-            if (await adjattrib(i, mod_val, -1)) {
-                ax = 0;
-                u.aexe.a[i] = 0;
-                const phrase = EXERTEXT[i][mod_val > 0 ? 0 : 1];
-                if (phrase) {
-                    await pline(
-                        `You ${mod_val > 0 ? 'must have been' : "haven't been"} ${phrase}.`,
-                    );
-                }
-            }
+        if (!skipChange && (await adjattrib(i, mod_val, -1))) { // C `:661–662`
+            /* C `:663–665`: a real change zeroes the accumulation. */
+            ax = 0;
+            u.aexe.a[i] = 0;
+            /* C `:666–669`: print an explanation via You (Int/Cha null
+               arms unreachable — see EXERTEXT note above). */
+            await You(
+                '%s %s.',
+                mod_val > 0 ? 'must have been' : "haven't been",
+                EXERTEXT[i][mod_val > 0 ? 0 : 1],
+            );
         }
-        // C: AEXE(i) = (abs(ax) / 2) * mod_val
+        /* C nextattrib `:670–673`: halve (truncation toward zero, never
+           platform-dependent /=2 on negatives). */
         u.aexe.a[i] = Math.trunc(Math.abs(ax) / 2) * mod_val;
     }
-    // C: svc.context.next_attrib_check += rn1(200, 800);
+    /* C `:674–676`: schedule the next check. */
     g.context.next_attrib_check += rn1(200, 800);
 }
 

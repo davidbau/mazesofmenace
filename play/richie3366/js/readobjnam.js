@@ -35,7 +35,7 @@ import { is_quest_artifact } from './quest.js';
 import { oname, lookup_novel } from './do_name.js';
 import { name_to_mon, name_to_monplus } from './mondata.js';
 import { tin_variety_txt, set_tin_variety, obj_nutrition, consume_oeaten } from './eat.js';
-import { makesingular, makeplural, An, an } from './objnam.js';
+import { makesingular, makeplural, An, an, japanese_otyp_by_name } from './objnam.js';
 import { is_weptool, is_ammo, is_missile } from './wield.js';
 import { Is_candle } from './timeout.js';
 import { genus, dead_species, can_be_hatched } from './mon.js';
@@ -1094,6 +1094,152 @@ export function readobjnam_postparse2(d) {
 }
 
 /**
+ * C ref: objnam.c readobjnam_postparse3 `:4727–4899` (staticfn; sole C
+ * caller is readobjnam `srch:` `:4958–4967`). Return codes mirror C:
+ * 0 fall through, 2 goto typfnd, 6 goto retry (armor ` mail` appended).
+ * (Codes 1/3/4/5 belong to the postparse1/2 switch arms, unreachable here.)
+ */
+export function readobjnam_postparse3(d) {
+    // C `:4731–4747` — real gem names match exactly (and plain "tin" is a
+    // tin) with no RNG before srch.
+    if (!d.oclass && d.actualn) {
+        const glo = (game.bases && game.bases[GEM_CLASS]) | 0;
+        const want = String(d.actualn).toLowerCase();
+        for (let gi = glo; gi <= LAST_REAL_GEM; gi++) {
+            const zn = objectNameStrs[gi];
+            if (zn && want === String(zn).toLowerCase()) { // C: strcmpi
+                d.typ = gi;
+                return 2; // C: goto typfnd
+            }
+        }
+        // C `:4741–4746` — "tin of foo" was caught above, but plain "tin"
+        // has a random chance of yielding "tin wand" unless caught here.
+        if (want === 'tin') { // C: strcmpi
+            d.typ = TIN;
+            return 2; // C: goto typfnd
+        }
+    }
+
+    // C `:4749–4759` — the namedesc srch chain. The C `!=` pointer guards
+    // on dn/origbp are value comparisons here; a same-content redundant
+    // call draws nothing extra (namedesc draws `rn2` only on a hit, which
+    // short-circuits the `||` chain either way).
+    if ((((d.typ = rnd_otyp_by_namedesc(d.actualn, d.oclass, 1))
+          !== STRANGE_OBJECT))
+        || (d.dn !== d.actualn
+            && ((d.typ = rnd_otyp_by_namedesc(d.dn, d.oclass, 1))
+                !== STRANGE_OBJECT))
+        || (((d.typ = rnd_otyp_by_namedesc(d.un, d.oclass, 1)))
+            !== STRANGE_OBJECT)
+        || (d.origbp !== d.actualn
+            && ((d.typ = rnd_otyp_by_namedesc(d.origbp, d.oclass, 1))
+                !== STRANGE_OBJECT)))
+        return 2; // C: goto typfnd
+    d.typ = 0; // C `:4760`
+
+    // C `:4762–4772` — Japanese wish names (samurai vocabulary).
+    if (d.actualn) {
+        const jtyp = japanese_otyp_by_name(d.actualn); // C: strcmpi walk
+        if (jtyp) {
+            d.typ = jtyp;
+            return 2; // C: goto typfnd
+        }
+    }
+
+    // C `:4773–4781` — "armor" was stripped as a class word and nothing
+    // matched: append " mail" and retry (C `goto retry` re-runs postparse2)
+    // to catch "plate armor" / "yellow dragon scale armor".
+    if (d.oclass === ARMOR_CLASS && strstri(d.bp, 'mail') === null) {
+        // C: modifying bp's string is ok; random armor follows if this fails.
+        d.bp += ' mail'; // C: Strcat `:4779`
+        return 6; // C: goto retry
+    }
+
+    // C `:4782–4786` — bare "spinach" is a tin of spinach.
+    if (String(d.bp || '').toLowerCase() === 'spinach') { // C: strcmpi
+        d.contents = TIN_SPINACH;
+        d.typ = TIN;
+        return 2; // C: goto typfnd
+    }
+
+    // C `:4805–4870` — fruits are checked last so real object names win
+    // (the name table holds "fruit" since init, C options.c `:7341`, so the
+    // srch chain above cannot see it). Prefix matching is case-insensitive
+    // but the fruit-name match itself is case-sensitive strcmp, not
+    // wishymatch (C `:4801–4804` — "grapefruit" must not match "grape").
+    if (d.fruitbuf) {
+        let fp = d.fruitbuf;
+        let cntf = 0;
+        let blessedf = 0, iscursedf = 0, uncursedf = 0, halfeatenf = 0;
+        for (;;) {
+            if (!fp) break; // C `:4812–4813` also breaks on empty
+            const low = fp.toLowerCase();
+            let l = 0;
+            if (low.startsWith('an ')) { cntf = 1; l = 3; } // C `:4814–4815`
+            else if (low.startsWith('a ')) { cntf = 1; l = 2; } // C `:4814–4815`
+            else if (!cntf && fp[0] >= '0' && fp[0] <= '9') { // C `:4816–4822`
+                const m = fp.match(/^(\d+)/); // C: atoi + digit skip
+                cntf = parseInt(m[1], 10);
+                fp = fp.slice(m[1].length).replace(/^ +/, '');
+                continue;
+            } else if (low.startsWith('blessed ')) { blessedf = 1; l = 8; }
+            else if (low.startsWith('cursed ')) { iscursedf = 1; l = 7; }
+            else if (low.startsWith('uncursed ')) { uncursedf = 1; l = 9; }
+            else if (low.startsWith('partly eaten ')) { halfeatenf = 1; l = 13; }
+            else if (low.startsWith('partially eaten ')) { halfeatenf = 1; l = 16; }
+            else break;
+            fp = fp.slice(l);
+        }
+        for (let f = game.ffruit; f; f = f.nextf) { // C `:4841` gf.ffruit
+            let ftyp = 0; // C `:4843` 0=none, 1=exact, 2=singular, 3=plural
+            if (fp === f.fname) ftyp = 1; // C `:4845` strcmp, exact
+            else if (fp === makesingular(f.fname)) ftyp = 2; // C `:4847`
+            else if (fp === makeplural(f.fname)) ftyp = 3; // C `:4849`
+            if (ftyp) {
+                d.typ = SLIME_MOLD;
+                d.blessed = blessedf;
+                d.iscursed = iscursedf;
+                d.uncursed = uncursedf;
+                d.halfeaten = halfeatenf;
+                // C `:4861–4864` — singular/plural amount when not explicit.
+                if (ftyp === 2 && !cntf) cntf = 1;
+                else if (ftyp === 3 && !cntf) cntf = 2;
+                d.cnt = cntf;
+                d.ftype = f.fid;
+                return 2; // C: goto typfnd
+            }
+        }
+    }
+
+    // C `:4872–4881` — perhaps an artifact specified by name, not type.
+    if (!d.oclass && d.actualn) {
+        const out = { otyp: 0 };
+        const aname = artifact_name(d.actualn, out, true); // C: TRUE
+        if (aname) {
+            d.name = aname;
+            d.typ = out.otyp;
+            return 2; // C: goto typfnd
+        }
+    }
+
+    // C `:4883–4896` — got a class but no type: class-gated alternate
+    // spellings (postparse1's ungated loop already ran; bp may have changed
+    // under postparse2, e.g. the gem/glass arms).
+    if (d.oclass && !d.typ) {
+        for (let si = 0; si < ALT_SPELLINGS_RESOLVED.length; si++) {
+            if ((game.objects?.[ALT_SPELLINGS_RESOLVED[si][1]]?.oc_class ?? 0)
+                    === d.oclass // C: objects[as->ob].oc_class
+                && wishymatch(d.bp, ALT_SPELLINGS_RESOLVED[si][0], true)) {
+                d.typ = ALT_SPELLINGS_RESOLVED[si][1];
+                return 2; // C: goto typfnd
+            }
+        }
+    }
+
+    return 0;
+}
+
+/**
  * C ref: objnam.c readobjnam — wish subset for artifact / named armor / amulet.
  * Empty/NULL → `any` (D-0559); qualifier-only empty (blessed/rustproof/…) deferred.
  * Terrain wish is readobjnam_wish (D-1279 furniture; D-1289 traps;
@@ -1221,10 +1367,29 @@ export function readobjnam(bp, no_wish, missOut) {
         }
     }
 
+    // C ref: objnam.c readobjnam_postparse1 `:4399–4404` — "Find corpse
+    // type w/o of" skips six head words that are object names or rank
+    // titles, not monsters: "samurai sword" (not the samurai monster),
+    // "wizard lock" (not the wizard monster), "death wand" ('of
+    // inversion', not the Rider), "master key" (not the Master rank),
+    // "ninja-to" (not the ninja rank), "magenta" (not the mage rank).
+    // Without the "master key" guard a wish for the Master Key of Thievery
+    // truncates bp at the Monk rank title and never reaches artifact_name
+    // (D-2577 regression: scen-wish-Priest-92163 + scen-wish-Rogue-92221).
     {
         const rem = { rest: null };
-        if (d.mntmp < LOW_PM && d.bp.length > 2) {
-            const mndx = name_to_monplus(d.bp, rem);
+        const noMonScan = str_start_is(d.bp, 'samurai sword', true)
+            || str_start_is(d.bp, 'wizard lock', true)
+            || str_start_is(d.bp, 'death wand', true)
+            || str_start_is(d.bp, 'master key', true)
+            || str_start_is(d.bp, 'ninja-to', true)
+            || str_start_is(d.bp, 'magenta', true);
+        if (!noMonScan && d.mntmp < LOW_PM && d.bp.length > 2) {
+            // C objnam.c:4408 passes &d->mgend (init -1); write back even on
+            // NON_PM since name_to_monplus may still set matchgend.
+            const gbox = { gender: d.mgend };
+            const mndx = name_to_monplus(d.bp, rem, gbox);
+            d.mgend = gbox.gender;
             if (mndx >= LOW_PM) {
                 d.mntmp = mndx;
                 let rest = rem.rest || '';
@@ -1329,98 +1494,23 @@ export function readobjnam(bp, no_wish, missOut) {
         if (readobjnam_postparse2(d) === 3) return d.otmp;
     }
 
+    // C ref: objnam.c readobjnam `srch:` `:4958–4967` — postparse1's
+    // fall-through arrives with d.typ unset; actualn/dn default before srch.
     if (!d.typ) {
         if (!d.actualn) d.actualn = d.bp;
         if (!d.dn) d.dn = d.actualn;
 
-        // C ref: objnam.c readobjnam_postparse3 :4731-4747 — real gem names
-        // match exactly (and plain "tin" is a tin) with no RNG before srch.
-        if (!d.oclass && d.actualn) {
-            const glo = (game.bases && game.bases[GEM_CLASS]) | 0;
-            const want = d.actualn.toLowerCase();
-            for (let gi = glo; gi <= LAST_REAL_GEM; gi++) {
-                const zn = objectNameStrs[gi];
-                if (zn && want === zn.toLowerCase()) {
-                    d.typ = gi;
-                    break;
-                }
-            }
-            if (!d.typ && want === 'tin') d.typ = TIN;
-        }
-
-        // C: postparse3 — the srch chain runs only when nothing above
-        // resolved a type (C reaches `srch:` solely via goto srch); a
-        // gem-exact/tin hit above must skip these draws entirely.
-        if (!d.typ && d.actualn) {
-            let typ = rnd_otyp_by_namedesc(d.actualn, d.oclass, 1);
-            if (typ === STRANGE_OBJECT && d.dn !== d.actualn) {
-                typ = rnd_otyp_by_namedesc(d.dn, d.oclass, 1);
-            }
-            if (typ === STRANGE_OBJECT && d.un) {
-                typ = rnd_otyp_by_namedesc(d.un, d.oclass, 1);
-            }
-            if (typ === STRANGE_OBJECT && d.origbp !== d.actualn) {
-                typ = rnd_otyp_by_namedesc(d.origbp, d.oclass, 1);
-            }
-            if (typ !== STRANGE_OBJECT) d.typ = typ;
-        }
-
-        // C ref: objnam.c readobjnam_postparse3 `:4806–4868` — fruits are
-        // checked last so real object names win. A fruit match resolves
-        // draw-free to SLIME_MOLD (the name table holds "fruit" since
-        // init, C options.c `:7341`, so the srch chain above cannot see
-        // it). Prefix matching is case-insensitive but the fruit-name
-        // match itself is case-sensitive strcmp, not wishymatch.
-        if (!d.typ && d.fruitbuf) {
-            let fp = d.fruitbuf;
-            let cntf = 0;
-            let blessedf = 0, iscursedf = 0, uncursedf = 0, halfeatenf = 0;
-            for (;;) {
-                if (!fp) break;
-                const low = fp.toLowerCase();
-                let l = 0;
-                if (low.startsWith('an ')) { cntf = 1; l = 3; }
-                else if (low.startsWith('a ')) { cntf = 1; l = 2; }
-                else if (!cntf && fp[0] >= '0' && fp[0] <= '9') {
-                    const m = fp.match(/^(\d+)/);
-                    cntf = parseInt(m[1], 10);
-                    fp = fp.slice(m[1].length).replace(/^ +/, '');
-                    continue;
-                } else if (low.startsWith('blessed ')) { blessedf = 1; l = 8; }
-                else if (low.startsWith('cursed ')) { iscursedf = 1; l = 7; }
-                else if (low.startsWith('uncursed ')) { uncursedf = 1; l = 9; }
-                else if (low.startsWith('partly eaten ')) { halfeatenf = 1; l = 13; }
-                else if (low.startsWith('partially eaten ')) { halfeatenf = 1; l = 16; }
-                else break;
-                fp = fp.slice(l);
-            }
-            for (let f = game.ffruit; f; f = f.nextf) {
-                let ftyp = 0;
-                if (fp === f.fname) ftyp = 1;
-                else if (fp === makesingular(f.fname)) ftyp = 2;
-                else if (fp === makeplural(f.fname)) ftyp = 3;
-                if (ftyp) {
-                    d.typ = SLIME_MOLD;
-                    d.blessed = blessedf;
-                    d.iscursed = iscursedf;
-                    d.uncursed = uncursedf;
-                    d.halfeaten = halfeatenf;
-                    if (ftyp === 2 && !cntf) cntf = 1;
-                    else if (ftyp === 3 && !cntf) cntf = 2;
-                    d.cnt = cntf;
-                    d.ftype = f.fid;
-                    break;
-                }
-            }
-        }
-
-        if (!d.typ && !d.oclass && d.actualn) {
-            const out = { otyp: 0 };
-            const aname = artifact_name(d.actualn, out, true);
-            if (aname) {
-                d.name = aname;
-                d.typ = out.otyp;
-            }
+        // C `retry:` `:4947–4955` + `srch:` — the whole postparse3 body now
+        // lives in exported readobjnam_postparse3 (codes 0/2/6). Case 6
+        // (armor " mail" appended, `:4776–4780`) re-runs postparse2 on the
+        // extended bp, then srch again; the arm self-terminates (bp then
+        // contains "mail"). Case 2 leaves d.typ set (typfnd); 0 falls through.
+        for (;;) {
+            const rc3 = readobjnam_postparse3(d);
+            if (rc3 !== 6) break;
+            const rc2 = readobjnam_postparse2(d);
+            if (rc2 === 3) return d.otmp; // C retry-switch: return otmp
+            if (d.typ) break; // C retry-switch case 2 → typfnd (0/1 → srch)
         }
     }
 

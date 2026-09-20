@@ -4,7 +4,10 @@
 // mail_text/md_exclamations `:277–279`, mail.h MSG_*.
 //
 // Branch envelope: readmail (UNIX + DEF_MAILREADER arm, `:703–733`;
-// SIMPLE_MAIL undefined per unixconf.h) + newmail daemon delivery.
+// SIMPLE_MAIL undefined per unixconf.h) + read_simplemail (`:589–680`,
+// SIMPLE_MAIL/SERVER_ADMIN_MSG source-level body; both undefined per
+// unixconf.h:200/211, so C compiles neither it nor its callers) + newmail
+// daemon delivery.
 // Named omissions: MAILREADER child/execl subprocess + getmailstatus stat()
 // (Contest Rule #2: no subprocess/filesystem in scored js/); SIMPLE_MAIL /
 // AMS / VMS / !UNIX fake-junk-mail arms compiled out in this build;
@@ -14,8 +17,10 @@
 
 import { game } from './gstate.js';
 import {
-    flush_topl_more, verbalize, pline, newsym, flush_screen, nh_delay_output,
+    flush_topl_more, verbalize, pline, There, urgent_pline, newsym,
+    flush_screen, nh_delay_output,
 } from './display.js';
+import { vfsReadFile, vfsDeleteFile } from './storage.js';
 import { rn2 } from './rng.js';
 import { isok, dist2 } from './hacklib.js';
 import {
@@ -282,6 +287,104 @@ export async function readmail(otmp) {
     void otmp; // C ARGSUSED: struct obj *otmp UNUSED
     if (game.iflags?.debug_fuzzer) return;
     await flush_topl_more(); /* C: display_nhwindow(WIN_MESSAGE, FALSE) */
+}
+
+/**
+ * C mail.c read_simplemail `:589–680` — read `sender:message` lines from a
+ * mail spool file, one mail per line. Guarded in C by
+ * `#if defined(SIMPLE_MAIL) || defined(SERVER_ADMIN_MSG)` (`:586`); both
+ * are undefined per unixconf.h:200/211, so this build compiles neither the
+ * body nor its callers (`:696` ck_server_admin_msg adminmsg=TRUE,
+ * `:710` readmail adminmsg=FALSE — both inside the same ifdefs). The port
+ * below follows the SIMPLE_MAIL source-level body in C order so a
+ * SIMPLE_MAIL build's scroll-mail path has a live target; Rule #2 reads the
+ * spool through the storage VFS, never `fs` (fopen_wizkit_file precedent).
+ * Async only because There/pline/urgent_pline/flush can reach nhgetch; no
+ * physics is deferred or reordered.
+ */
+
+/* C `:615` while (fgets(curline, 128, mb)): fgets yields ≤127 chars per
+   call, cutting early after '\n' with the newline kept in the chunk, so a
+   long line arrives as several chunks. Split VFS text the same way. */
+function fgets128_chunks(text) {
+    const chunks = [];
+    let i = 0;
+    while (i < text.length) {
+        let end = Math.min(i + 127, text.length);
+        const nl = text.indexOf('\n', i);
+        if (nl >= 0 && nl < end) end = nl + 1;
+        chunks.push(text.slice(i, end));
+        i = end;
+    }
+    return chunks;
+}
+
+export async function read_simplemail(mbox, adminmsg) {
+    /* C `:591` fopen(mbox, "r") — VFS miss ≡ C fopen NULL. */
+    const text = vfsReadFile(mbox);
+    let seen_one_already = false; /* C `:593` */
+    /* C `:594–596` struct flock + `:601–606`/`:611–613` initial RDLCK: no JS
+       counterpart — the single-threaded game loop with an atomic VFS read
+       needs no advisory locking (named omit in the map). */
+    /* C `bail:` — _professionally_: skips fclose (C even leaks the FILE on
+       the mid-loop bail); nothing to close over VFS. */
+    const bail = async () => {
+        if (!adminmsg) await pline('It appears to be all gibberish.');
+    };
+    if (text == null) { /* C `:598–599` if (!mb) goto bail */
+        await bail();
+        return;
+    }
+    /* C `:607–613` "Allow this call to block": !adminmsg && blocking-lock
+       fails → bail. The lock always succeeds over VFS (see above), so the
+       gate never fires — the SIMPLE_MAIL lock-success path. */
+    for (const chunk of fgets128_chunks(String(text))) {
+        const curline = chunk;
+        if (!adminmsg) {
+            /* C `:622–627` unlock around There: lock no-op (see above). */
+            await There('is a%s message on this scroll.', /* C `:628–629` */
+                        seen_one_already ? 'nother' : '');
+        }
+        const colon = curline.indexOf(':'); /* C `:631` strchr(curline, ':') */
+        /* C `:632–634` no colon, or ':' + '\n' only (msglen < 3) → bail:
+           rest must hold ≥2 chars (message char + newline-or-tail). */
+        if (colon < 0 || curline.length - colon < 3) {
+            await bail();
+            return;
+        }
+        /* C `:636–638` split sender/message, kill the trailing newline (or
+           the chunk's last char when fgets split a long line or the file
+           lacks a final newline — slice(0, -1) does both verbatim). */
+        /* C `:636` *msg = '\0' ends the sender string here. */
+        const sender = curline.slice(0, colon);
+        const msg = chunk.slice(colon + 1, -1);
+        /* C `:641–643` punctuation the message lacks: msg[msglen - 2] is the
+           message's last char after the kill above. */
+        const endpunct = '.!?'.includes(msg[msg.length - 1]) ? '' : '.';
+        if (adminmsg) {
+            await urgent_pline( /* C `:645–648` */
+                'The voice of %s booms through the caverns:', sender);
+        } else {
+            await pline("This message is from '%s'.", sender); /* C `:650` */
+            await pline('It reads:'); /* C `:651` */
+        }
+        await pline('"%s"%s', msg, endpunct); /* C `:653` */
+        seen_one_already = true; /* C `:655` */
+        /* C `:656–662` re-lock: lock no-op (see above). */
+    }
+    /* C `:664–669` final unlock: lock no-op; `:670` fclose: nothing to
+       close over VFS. */
+    if (adminmsg) {
+        /* C `:671–672` display_nhwindow(WIN_MESSAGE, TRUE) — flush pending
+           --More-- (dig.js:1705 precedent). */
+        await flush_topl_more();
+    } else {
+        /* C `:673–674` unlink(mailbox) — the C global set by getmailstatus
+           (no JS counterpart, readmail D-1958 named omit); the only FALSE
+           caller passes mailbox itself as mbox, so the passed path doubles
+           as C's global. */
+        vfsDeleteFile(mbox);
+    }
 }
 
 /**

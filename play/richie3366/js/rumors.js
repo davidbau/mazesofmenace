@@ -14,7 +14,7 @@ import { money_cnt, money2mon } from './shk.js';
 import { record_achievement } from './insight.js';
 import { more_experienced, newexplevel } from './exper.js';
 import { show_text_pages } from './pager.js';
-import { ACH_ORCL, ECMD_OK, ECMD_TIME, RUMORFILE, ENGRAVEFILE, EPITAPHFILE, BOGUSMONFILE } from './const.js';
+import { ACH_ORCL, ECMD_OK, ECMD_TIME, RUMORFILE, ORACLEFILE, ENGRAVEFILE, EPITAPHFILE, BOGUSMONFILE } from './const.js';
 import {
     TRUE_RUMOR_BUF,
     FALSE_RUMOR_BUF,
@@ -360,44 +360,85 @@ export async function rumor_check() {
     if (lines.length > 0) await show_text_pages(lines);
 }
 
-/** C rumors.c init_oracles `:576–595`. Index 0 is special_oracle. */
+/** C rumors.c init_oracles `:576–595` (staticfn → module-local).
+ * C `:583` assumes a single call; `:584–585` skips the "don't edit" comment
+ * and count lines; `:586–592` sscans the count and reads `oracle_loc[]`
+ * file offsets. Rule #2 embed (D-0477): `scripts/extract-oracles.py` ran
+ * that parse at build time — `ORACLE_RECORDS[0]` is makedefs
+ * `special_oracle` (`util/makedefs.c:1400`, packed `:1468`), the rest follow
+ * in file order — so the deck holds ORACLE_RECORDS indices, same
+ * swap-remove role as the C offsets (save/rest below persists the live
+ * prefix). Index 0 is the special oracle.
+ */
 function init_oracles() {
-    const n = ORACLE_RECORDS.length | 0;
-    game.oracle_cnt = n;
-    game.oracle_loc = [];
-    for (let i = 0; i < n; i++) game.oracle_loc.push(i);
+    const n = ORACLE_RECORDS.length | 0; // C :586–587 cnt
+    game.oracle_cnt = n; // C :587 svo.oracle_cnt
+    game.oracle_loc = []; // C :588 alloc
+    for (let i = 0; i < n; i++) game.oracle_loc.push(i); // C :589–592
 }
 
-/** C rumors.c outoracle `:638–693`. Rule #2 embed. Save/rest is save_oracles/restore_oracles below. */
+/** C rumors.c outoracle `:638–693`. Rule #2 embed: ORACLEFILE lives in
+ * `js/generated/oracles_data.js` (`scripts/extract-oracles.py`; makedefs
+ * `do_oracles` packs each line xcrypt'd at `util/makedefs.c:1469/1500`),
+ * so dlb handles are infallible, `dlb_fseek` is an index lookup,
+ * `dlb_fclose` is a no-op (getrumor D-2513 precedent). Save/rest is
+ * save_oracles/restore_oracles below. Sole C caller `doconsult` `:755` →
+ * `js/rumors.js` doconsult below.
+ */
 export async function outoracle(special, delphi) {
+    // C `:647–650` early return: open failed before, or deck exhausted.
     if ((game.oracle_flg | 0) < 0
         || ((game.oracle_flg | 0) > 0 && (game.oracle_cnt | 0) === 0)) {
         return;
     }
-    if ((game.oracle_flg | 0) === 0) {
-        init_oracles();
-        game.oracle_flg = 1;
-        if ((game.oracle_cnt | 0) === 0) return;
+    // C `:652` dlb_fopen(ORACLEFILE, "r") — the embed always opens
+    // (ORACLE_RECORDS is a non-empty constant); the `:689–692` open-failed
+    // arm (couldnt_open_file + oracle_flg = -1) is unreachable — named here.
+    if (!ORACLE_RECORDS || ORACLE_RECORDS.length === 0) {
+        couldnt_open_file(ORACLEFILE); // C :690
+        game.oracle_flg = -1; // C :691 don't try to open it again
+        return;
     }
+    // C `:655–660` first call: init_oracles + oracle_flg = 1; an empty
+    // deck falls to close_oracles (`:687–688` fclose, no-op) → return.
+    if ((game.oracle_flg | 0) === 0) { // C :655
+        init_oracles(); // C :656
+        game.oracle_flg = 1; // C :657
+        if ((game.oracle_cnt | 0) === 0) return; // C :658–659 goto close
+    }
+    // C `:661–664` oracle_loc[0] is special, [1..cnt-1] normal; cnt <= 1
+    // with !special shouldn't happen → close_oracles → return.
     if ((game.oracle_cnt | 0) <= 1 && !special) return;
-
+    // C `:665` pick; rnd(cnt-1) is 1..cnt-1 so the special slot is skipped
+    // unless asked for; short-circuit draws nothing when special.
     const loc = game.oracle_loc;
-    let oracle_idx = special ? 0 : rnd((game.oracle_cnt | 0) - 1);
+    const oracle_idx = special ? 0 : rnd((game.oracle_cnt | 0) - 1);
+    // C `:666` dlb_fseek to oracle_loc[idx] — index lookup under the
+    // embed; snapshot before the swap below overwrites the slot.
     const recIdx = loc[oracle_idx] | 0;
+    // C `:667–668` move the last offset into this slot (swap-remove).
     if (!special) {
         loc[oracle_idx] = loc[--game.oracle_cnt];
     }
-    const rec = ORACLE_RECORDS[recIdx] || [];
+    // C `:670` create_nhwindow(NHW_TEXT) — lines[] shown once below.
     const lines = [];
+    // C `:671–677` header.
     if (delphi) {
-        lines.push(special
+        lines.push(special // C :672–675
             ? 'The Oracle scornfully takes all your gold and says:'
             : 'The Oracle meditates for a moment and then intones:');
     } else {
-        lines.push('The message reads:');
+        lines.push('The message reads:'); // C :677
     }
-    lines.push('');
+    lines.push(''); // C :678
+    // C `:680–684` read to the "---" terminator; `:681–682` strip '\n'
+    // (subsumed: the extractor split lines, no terminators stored);
+    // `:683` xcrypt decrypts (pack-time xcrypt inverted at build, same
+    // visible string); each line putstr'd in file order.
+    const rec = ORACLE_RECORDS[recIdx] || [];
     for (const row of rec) lines.push(row);
+    // C `:685–686` display + destroy → one text window; `:688` fclose
+    // (no-op under the embed).
     await show_text_pages(lines);
 }
 

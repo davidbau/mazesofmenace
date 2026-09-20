@@ -200,7 +200,7 @@ function rhack_cmd_insane(flags) {
  * @param {Function} fn
  * @param {{ txt?: string, flags?: number } | null} [tab]
  */
-function cmdq_add_ec(q, fn, tab = null) {
+export function cmdq_add_ec(q, fn, tab = null) {
     const name = cmdq_qname(q);
     if (!game[name]) game[name] = [];
     game[name].push({

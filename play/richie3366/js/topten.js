@@ -4,7 +4,7 @@
 import { game } from './gstate.js';
 import { vfsReadFile, vfsWriteFile } from './storage.js';
 import { yyyymmdd } from './calendar.js';
-import { deepest_lev_reached, depth } from './hacklib.js';
+import { deepest_lev_reached, depth, ordin } from './hacklib.js';
 import { genders, aligns, str2role, str2race } from './roles.js';
 import {
     BUFSZ, COLNO, VERSION_MAJOR, VERSION_MINOR, PATCHLEVEL,
@@ -342,29 +342,47 @@ function outentry(rank, t1, so, emit) {
 }
 
 /**
- * C ref: topten.c topten.
+ * C ref: topten.c topten `:628–926` — whole body in C order.
  * @param {number} how
  * @param {number} when  C time_t; yyyymmdd(when) deathdate (0 → getlt)
- * @param {string} deathStr formatkiller(how, TRUE) from caller (avoid cycle)
+ * @param {string} deathStr formatkiller(how, TRUE) from caller (avoid cycle;
+ * C `:694` runs formatkiller into the entry inline)
  *
- * Named omissions: LOGFILE/XLOGFILE; lock_file; toptenwin NHW_TEXT;
- * UPDATE_RECORD_IN_PLACE; hangup; full escape/ascend/quit
- * outentry arms; ordin() for rank>10 message.
+ * Live callees: deepest_lev_reached + ordin (hacklib.js), yyyymmdd
+ * (calendar.js), formatkiller (end.js, via deathStr), outheader/outentry +
+ * newttentry/readentry/writeentry file-local analogues below, copynchars /
+ * observable_depth pre-existing file-local clones.
+ * Named omissions: LOGFILE/XLOGFILE append arms (`:702–718`, unix
+ * config.h default — no VFS consumer reads logfile/xlogfile);
+ * lock_file/unlock_file/fopen_datafile (VFS read_record_entries/
+ * write_record_entries never lock or fail; a null record reads as the
+ * shipped-empty RECORD an installed C game always has, not the missing-file
+ * "Cannot open record file!" `:749` arm); toptenwin NHW_TEXT create/
+ * display/destroy (`:656`, showwin/destroywin — render_topten_lines is the
+ * !toptenwin raw panel); UPDATE_RECORD_IN_PLACE fpos mechanics (`:14` —
+ * VFS exact-write carries the same bytes, no fpos/sentinel/TRUNCATE);
+ * free_ttlist/dealloc_ttentry (GC); TOS restore_colors (platform ifdef).
  * (`prscore` lives in this file now, below.)
  */
 export function topten(how, when = 0, deathStr = '') {
+    // C `:652` — mid-panic: cut out topten entirely (alloc use).
     if (game.program_state?.panicking) return;
 
     const opt = sysopt();
     const done_stopprint = game.program_state?.done_stopprint | 0;
+    // C `:659–661` — HANGUPHANDLING is defined for UNIX, so HUP is live:
+    // every topten_print/raw_print below is gated on !done_hup
+    // (showwin/destroywin are not).
+    const hup_ok = !game.program_state?.done_hup;
     const flags = game.flags || {};
     const u = game.u || {};
 
-    // C: wizard || discover → raw message then goto showwin (no RECORD)
+    // C `:725–736` wizard||discover arm — message then goto showwin
+    // (RECORD never touched; `:656` toptenwin create is a named omit).
     const wizard = !!(flags.debug || flags.wizard);
     const discover = !!(flags.explore || flags.discover);
     if (wizard || discover) {
-        if (how !== PANICKED) {
+        if (how !== PANICKED && hup_ok) {
             const mode = wizard ? 'wizard' : 'discover';
             // C topten_print is not gated by done_stopprint; showwin is.
             render_topten_lines([
@@ -382,32 +400,39 @@ export function topten(how, when = 0, deathStr = '') {
     const end_around = flags.end_around != null ? (flags.end_around | 0) : 2;
     const end_own = !!flags.end_own;
 
+    // C `:670–699` — build the new entry (newttentry + zerott; version
+    // fields ride along from newttentry above, as *t0 = zerott keeps them).
     const t0 = newttentry();
-    t0.points = u.urexp | 0;
+    t0.points = u.urexp | 0; // C `:675`
     t0.deathdnum = u.uz?.dnum | 0;
+    // C `:679–684` comment — death level is reported in observable depth()
+    // terms, like the player sees on screen.
     t0.deathlev = observable_depth(u.uz);
     t0.maxlvl = deepest_lev_reached(true);
     t0.hp = u.uhp | 0;
     t0.maxhp = u.uhpmax | 0;
     t0.deaths = u.umortality | 0;
-    t0.uid = 0;
+    t0.uid = getuid(); // C `:639` — file-local getuid, always 0 here
     t0.plrole = copynchars(game.urole?.filecode || 'Tou', ROLESZ);
     t0.plrace = copynchars(game.urace?.filecode || 'Hum', ROLESZ);
     t0.plgend = copynchars(gender_filecode(), ROLESZ);
     t0.plalign = copynchars(align_filecode(), ROLESZ);
     t0.name = copynchars(game.plname || 'Player', NAMSZ);
     t0.death = copynchars(deathStr, DTHSZ);
-    t0.birthdate = yyyymmdd(0);
-    t0.deathdate = yyyymmdd(when || 0);
+    // C `:695` — birthdate is game-start time (u_init sets ubirthday).
+    t0.birthdate = yyyymmdd(game.ubirthday ?? 0);
+    t0.deathdate = yyyymmdd(when || 0); // C `:696`
 
     const outLines = [];
     const emit = (text, bold) => {
         outLines.push({ text, bold: !!bold });
     };
 
-    // C: HUP topten_print("") after fopen
-    emit('', false);
+    // C `:739–754` — lock RECORD + fopen "r" (VFS: infallible, named
+    // above). C `:754` HUP topten_print("") follows the open.
+    if (hup_ok) emit('', false);
 
+    // C `:757` — assure minimum number of points.
     if (t0.points < opt.pointsmin) t0.points = 0;
 
     const fileEntries = read_record_entries();
@@ -420,10 +445,15 @@ export function topten(how, when = 0, deathStr = '') {
     let rank = 1;
     let fi = 0;
 
+    // C `:760–814` — rank loop over readentry(rfile, t1). The list links
+    // (tprev/tt_head/tt_next with t0 spliced before t1) read here as array
+    // pushes in the same order; the occ-excess `continue` re-reads into the
+    // same t1 in C, which reads here as popping the pushed entry.
     for (;;) {
         const t1 = fi < fileEntries.length
             ? { ...fileEntries[fi++] }
             : newttentry();
+        // C `:765` — sub-minimum file points read as 0 (sentinel).
         if (t1.points < opt.pointsmin) t1.points = 0;
 
         if (rank0 < 0 && t1.points < t0.points) {
@@ -448,8 +478,11 @@ export function topten(how, when = 0, deathStr = '') {
             if (rank0 < 0) {
                 rank0 = 0;
                 rank1 = rank;
-                emit(`You didn't beat your previous score of ${t1.points} points.`, false);
-                emit('', false);
+                // C `:791–799` HUP pair.
+                if (hup_ok) {
+                    emit(`You didn't beat your previous score of ${t1.points} points.`, false);
+                    emit('', false);
+                }
             }
             if (occ_cnt < 0) {
                 flg++;
@@ -461,15 +494,22 @@ export function topten(how, when = 0, deathStr = '') {
         if (rank <= opt.entrymax) {
             rank++;
         }
+        // C `:811–814` caps the list with a zero-points sentinel; the
+        // array ends instead and the display loop below stops the same way.
         if (rank > opt.entrymax) break;
     }
 
+    // C `:815–842` — rewrite when flg. Non-UPDATE_RECORD_IN_PLACE C
+    // reopens RECORD "w" (the `:821–826` cannot-write arm is VFS-named);
+    // the in-place fpos/sentinel mechanics (`:14`, `:885–904`) collapse to
+    // one exact VFS write of the same rank-ordered bytes.
     if (flg) {
         if (!done_stopprint && rank0 > 0) {
             if (rank0 <= 10) emit('You made the top ten list!', false);
             else {
+                // C `:836–837` — ordin suffix: "the 13th place".
                 emit(
-                    `You reached the ${rank0} place on the top ${opt.entrymax} list.`,
+                    `You reached the ${rank0}${ordin(rank0)} place on the top ${opt.entrymax} list.`,
                     false,
                 );
             }
@@ -478,12 +518,15 @@ export function topten(how, when = 0, deathStr = '') {
         write_record_entries(tt_head);
     }
 
+    // C `:843–849`.
     const skip_scores = !end_top && !end_around && !end_own;
     if (rank0 === 0) rank0 = rank1;
     if (rank0 <= 0) rank0 = rank;
 
     if (!skip_scores && !done_stopprint) outheader(emit);
 
+    // C `:850–882` — display loop doubles as the record writer (in-place
+    // C writes rank >= rank0 here (`:854–856`); the VFS write above did).
     rank = 1;
     for (const t1 of tt_head) {
         if (!(t1.points > 0)) break;
@@ -509,12 +552,16 @@ export function topten(how, when = 0, deathStr = '') {
         }
         rank++;
     }
+    // C `:880–882` — t0 never made the visible list: show it alone.
     if (rank0 >= rank) {
         if (!skip_scores && !done_stopprint) outentry(0, t0, true, emit);
     }
 
-    void t0_used;
+    void t0_used; // C `:919` dealloc_ttentry is GC here
 
+    // C showwin `:908–917` — the !toptenwin path is a no-op `;`, so the
+    // collected panel goes out here; destroywin `:919–925` needs nothing
+    // (no window was created).
     if (!done_stopprint) render_topten_lines(outLines);
 }
 

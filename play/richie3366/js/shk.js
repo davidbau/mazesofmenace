@@ -23,8 +23,8 @@
 //        mkobj.c dealloc_obj via obfree (D-1743).
 //        u_left_shop leave verbalize + choose_stairs (D-1733).
 //        shopper_financial_report / shop_debt (D-1740).
-// Named omissions: shk_fixes_damage in shk_move (`:4556`); allmain/bones
-// fix_shop_damage callers; holetime dig follow;
+// Named omissions: allmain/bones fix_shop_damage callers;
+// holetime dig follow;
 // m_break_boulder; m_move_aggress; inhistemple callers; mapseen_temple;
 // ACH_SHOP mapseen;
 // remaining SetVoice pick_pick / kops / pay-bill;
@@ -50,11 +50,11 @@ import { game } from './gstate.js';
 import { rn2, rn1, rnd } from './rng.js';
 import { dist2, highc, online2, upstart, depth } from './hacklib.js';
 import { choose_stairs } from './wizard.js';
-import { in_rooms, stop_occupation } from './hack.js';
+import { in_rooms, stop_occupation, You_hear } from './hack.js';
 import {
     ESHK, EPRI, BEFORE, NOW, IS_ROOM, IS_DOOR, IS_WALL, ZAP_POS, NOTONL, u_at, isok,
     ROOMOFFSET, SHOPBASE, ACH_SHOP, SVALL, ROWNO, COLNO,
-    D_CLOSED, D_BROKEN, D_LOCKED, REPAIR_DELAY,
+    D_CLOSED, D_BROKEN, D_LOCKED, REPAIR_DELAY, BOLT_LIM,
     LANDMINE, BEAR_TRAP, HOLE, PIT, SPIKED_PIT,
     OBJ_MINVENT, OBJ_FLOOR, OBJ_CONTAINED, OBJ_INVENT, OBJ_FREE, OBJ_DELETED,
     OBJ_ONBILL,
@@ -87,7 +87,7 @@ import { cansee, recalc_block_point } from './vision.js';
 import { objectNames } from './generated/objects_data.js';
 import { mattacku } from './mhitu.js';
 import { PM_GRID_BUG, PM_TOURIST, PM_KNIGHT, PM_ROGUE } from './generated/monsters_data.js';
-import { se_mutter_imprecations } from './generated/seffects_data.js';
+import { se_mutter_imprecations, se_mutter_incantation } from './generated/seffects_data.js';
 import { Hello } from './roles.js';
 import { shtypes, shkname, Shknam, saleable, is_izchak } from './shknam.js';
 import {
@@ -1186,8 +1186,8 @@ export function shop_wall_dmg() {
 /**
  * C ref: shk.c add_damage — schedule shop repair; accumulate cost.
  * Door cells only schedule when they are a real shop entrance (shd).
- * Catchup repair is D-1178 `fix_shop_damage`. Live `shk_fixes_damage`
- * from `shk_move` still named.
+ * Catchup repair is D-1178 `fix_shop_damage`. Per-turn repair is
+ * `shk_fixes_damage` below (wired from `shk_move`).
  */
 export function add_damage(x, y, cost) {
     const lev = game.level?.at(x, y);
@@ -1557,6 +1557,53 @@ export async function fix_shop_damage() {
             damg = nextdamg;
         }
     }
+}
+
+/**
+ * C ref: shk.c find_damage `:4490–4506` — first repairable damage entry
+ * for shkp's shop, or null. C takes only shkp; deps carries m_at/t_at
+ * for the file-local repairable_damage convention (`:1263`).
+ */
+function find_damage(shkp, deps) {
+    let dam = game.level?.damagelist || null; // :4493 svl.level.damagelist
+    if (shk_impaired(shkp)) return null; // :4495-4496
+    while (dam) { // :4498
+        if (repairable_damage(dam, shkp, deps.m_at, deps.t_at)) return dam; // :4499-4500
+        dam = dam.next; // :4502
+    }
+    return null; // :4505
+}
+
+/**
+ * C ref: shk.c shk_fixes_damage `:4556–4577` — per-turn shop repair from
+ * shk_move (`:4892–4893` inhishop gate). Async: pline/You_hear await,
+ * repair_damage awaits. C is void; the (void) repair return is discarded
+ * and the damage struct is unlinked unconditionally (`:4574–4576`) —
+ * unlike fix_shop_damage, which unlinks only on nonzero repair.
+ */
+export async function shk_fixes_damage(shkp) {
+    // Deps follow the fix_shop_damage precedent: trap/lock/engrave stay
+    // dynamic (static-cycle convention); m_at re-imported the same way.
+    const { m_at } = await import('./mon.js'); // :4499 repairable_damage
+    const { t_at, deltrap, trapname } = await import('./trap.js');
+    const { picking_at } = await import('./lock.js');
+    const { del_engr_at } = await import('./engrave.js');
+    const deps = { m_at, t_at, deltrap, trapname, picking_at, del_engr_at };
+    const dam = find_damage(shkp, deps); // :4558
+    if (!dam) return; // :4561-4562
+    // :4564 mdistu <= (BOLT_LIM/2)^2; BOLT_LIM=8 so halves are exact.
+    // mdistu_mon is the file-local mdistu (`:1578-1586`).
+    const shk_closeby = mdistu_mon(shkp) <= (BOLT_LIM / 2) * (BOLT_LIM / 2);
+    if (canseemon(shkp)) { // :4566
+        await pline( // :4567-4568
+            `${Shknam(shkp)} whispers ${shk_closeby ? 'an incantation' : 'something'}.`,
+        );
+    } else if (!hero_deaf() && shk_closeby) { // :4569 !Deaf && closeby
+        Soundeffect(se_mutter_incantation, 100); // :4570
+        await You_hear('someone muttering an incantation.'); // :4571
+    }
+    await repair_damage(shkp, dam, false, deps); // :4574 (void), catchup FALSE
+    discard_damage_struct(dam); // :4576 unconditional
 }
 
 /** C shk.c angrytexts — Deaf pline ROLL_FROM. */
@@ -4138,8 +4185,8 @@ export async function shk_move(shkp) {
     const omy = shkp.my; // :4890
     const u = game.u;
 
-    // C :4892-4893: inhishop → shk_fixes_damage (`:4556`). Named omit
-    // (map turns.md shk_move section; D-1178 shipped fix_shop_damage).
+    // C :4892-4893: inhishop → shk_fixes_damage (`:4556`).
+    if (inhishop(shkp)) await shk_fixes_damage(shkp);
 
     // C :4895: distu ≡ dist2 (hack.h:1531).
     const udist = dist2(omx, omy, u.ux, u.uy);

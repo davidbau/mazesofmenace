@@ -65,7 +65,7 @@ import {
     acurr, get_strength_str,
 } from './attrib.js';
 import { describe_level, objnum_to_glyph, Hallucination } from './display.js';
-import { rank_of } from './roles.js';
+import { rank_of, roles } from './roles.js';
 import { money_cnt } from './shk.js';
 import { pmname } from './do_name.js';
 import { sticks } from './engrave.js';
@@ -76,9 +76,9 @@ import { weapon_type } from './weapon.js';
 import { is_sword, objectNames } from './objects.js';
 import { bimanual, is_weptool } from './wield.js';
 import { helm_simple_name } from './do_wear.js';
-import { upstart, strNsubst, stripchars } from './hacklib.js';
+import { upstart, strNsubst, stripchars, str_start_is } from './hacklib.js';
 import { clr2colorname } from './artifact.js';
-import { humanoid, mons, is_flyer } from './monsters.js';
+import { humanoid, mons, is_flyer, NON_PM } from './monsters.js';
 import { Flying, Levitation } from './mhitu.js';
 import { mdlib_version_string } from './version.js';
 import { WEAPON_CLASS, CLOAK_OF_PROTECTION } from './generated/objects_data.js';
@@ -788,6 +788,39 @@ function cond_cache_prepA() {
 function rank() {
     const u = game.u ?? {};
     return rank_of(u.ulevel | 0, game.urole?.mnum, !!(game.flags?.female));
+}
+
+/**
+ * C ref: botl.c title_to_mon `:367–399` — match a rank title prefix.
+ * Loops roles[] (sentinel: missing name.m), 9 rank slots each, male then
+ * female title, ASCII-caseblind prefix (str_start_is TRUE). Out-params are
+ * optional boxes ({ value }); the sole C caller (mondata.c:1075) passes
+ * only the length box. C roles[].rank is JS role.title (rank_of precedent).
+ * @param {string} str article-stripped, singularized input (already processed)
+ * @param {{value:number}|null} rankBox receives the 0–8 rank index
+ * @param {{value:number}|null} lenBox receives the matched title length
+ */
+export function title_to_mon(str, rankBox = null, lenBox = null) {
+    const s = String(str ?? '');
+    for (let i = 0; roles[i] && roles[i].name && roles[i].name.m; i++) {
+        const titles = roles[i].title || roles[i].rank || [];
+        for (let j = 0; j < 9; j++) {
+            const t = titles[j];
+            if (!t) continue;
+            if (t.m && str_start_is(s, t.m, true)) {
+                if (rankBox) rankBox.value = j;
+                if (lenBox) lenBox.value = t.m.length;
+                return roles[i].mnum;
+            }
+            if (t.f && str_start_is(s, t.f, true)) {
+                if (rankBox) rankBox.value = j;
+                if (lenBox) lenBox.value = t.f.length;
+                return roles[i].mnum;
+            }
+        }
+    }
+    if (lenBox) lenBox.value = 0;
+    return NON_PM;
 }
 
 // Otyp constants with no const.js export (invent.js objectNames.indexOf

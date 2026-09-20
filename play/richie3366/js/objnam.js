@@ -3632,6 +3632,23 @@ export function Japanese_item_name(otyp, ordinaryname = null) {
 }
 
 /**
+ * C ref: objnam.c readobjnam_postparse3 `:4762–4772` — resolve a wish name
+ * against Japanese_items[] (case-insensitive strcmpi walk, `j->item`
+ * terminator); the matching otyp, or 0 when no entry matches.
+ */
+export function japanese_otyp_by_name(name) {
+    if (!name) return 0;
+    const want = String(name).toLowerCase();
+    for (const [oname, jn] of JAPANESE_ITEMS) {
+        if (want === String(jn).toLowerCase()) {
+            const otyp = objectNames.indexOf(oname);
+            if (otyp >= 0) return otyp;
+        }
+    }
+    return 0;
+}
+
+/**
  * C ref: objnam.c obj_typename(otyp) — disco / identify class names.
  * Covers known + description append + Samurai Japanese_item_name.
  */

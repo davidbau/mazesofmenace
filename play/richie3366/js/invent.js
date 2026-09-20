@@ -58,13 +58,13 @@ import {
 import { xprname, an, the, just_an, vtense, doname, distant_name, Japanese_item_name, xname, cxname_singular, set_xname_observe, set_distant_cansee, ansimpleoname, simpleonames, set_not_fully_identified, makeplural, makesingular, body_part_latebound, corpse_xname, killer_xname } from './objnam.js';
 import { yn_function, getlin, mungspaces } from './getline.js';
 import { get_count, pmatchi, cmdq_pop, cmdq_clear } from './cmd.js';
-import { mergable, merged, is_damageable, stop_timer, splitobj, unsplitobj, clear_splitobjs, unknwn_contnr_contents, weight, delobj } from './mkobj.js';
-import { unpaid_cost, doinvbill, gem_learned, obfree, shopper_financial_report } from './shk.js';
+import { mergable, merged, is_damageable, stop_timer, splitobj, unsplitobj, clear_splitobjs, unknwn_contnr_contents, weight, delobj, curse } from './mkobj.js';
+import { unpaid_cost, doinvbill, gem_learned, obfree, shopper_financial_report, costly_spot } from './shk.js';
 import { hidden_gold } from './vault.js';
 import { setnotworn, dropy } from './do.js';
 import { s_suffix, a_monnam, pmname, x_monnam, hliquid } from './do_name.js';
 import { inv_cnt } from './steal.js';
-import { assigninvlet } from './u_init.js';
+import { assigninvlet, find_ac } from './u_init.js';
 import { cansee } from './vision.js';
 import {
     WEAPON_CLASS,
@@ -241,10 +241,10 @@ import {
 import { ATR_INVERSE, NO_COLOR } from './terminal.js';
 import {
     acurr, acurrstr, get_strength_str, exercise, Fumbling,
-    from_what, stone_luck,
+    from_what, stone_luck, set_moreluck,
     A_STR, A_INT, A_WIS, A_DEX, A_CON, A_CHA,
 } from './attrib.js';
-import { depth, ing_suffix, strstri, ordin, highc } from './hacklib.js';
+import { depth, ing_suffix, strstri, ordin, highc, lcase } from './hacklib.js';
 import { visctrl } from './dokeylist.js';
 import { select_menu_pick_any, hide_unhide_msgtypes } from './options.js';
 import { rn2 } from './rng.js';
@@ -276,6 +276,7 @@ import {
     Upolyd,
     BASICENLIGHTENMENT,
     MAGICENLIGHTENMENT,
+    ENL_GAMEINPROGRESS,
     ENL_GAMEOVERDEAD,
     TT_BURIEDBALL,
     TT_LAVA,
@@ -301,6 +302,7 @@ import {
     FIRE_RES, SHOCK_RES, TELEPAT, WARNING,
     DISPLACED, ANTIMAGIC, INVIS,
     G_GENOD,
+    AC_MAX,
     LOOKHERE_NOFLAGS,
     MSGTYP_MASK_REP_SHOW,
 } from './const.js';
@@ -321,13 +323,16 @@ import { visible_region_at, reg_damg } from './region.js';
 import { PM_SAMURAI, PM_MONK, PM_CLERIC, monsterNames } from './generated/monsters_data.js';
 import { humanoid, strongmonst, mons, touch_petrifies, poly_when_stoned, hides_under, haseyes, dmgtype, hates_silver, is_male, is_female, is_neuter, vampshifted, nonliving, weirdnonliving } from './monsters.js';
 import { hideunder } from './mon.js';
-import { set_artifact_intrinsic, undiscovered_artifact, discover_artifact } from './artifact.js';
+import { set_artifact_intrinsic, undiscovered_artifact, discover_artifact, confers_luck } from './artifact.js';
+import { is_quest_artifact } from './quest.js';
 import {
     askchain, add_valid_menu_class, collect_obj_classes,
     count_buc, count_justpicked, allow_category,
     query_category, query_objlist,
 } from './pickup.js';
 import { is_ammo } from './wield.js';
+import { is_wet_towel, can_advance } from './weapon.js';
+import { shield_simple_name } from './do_wear.js';
 import { learn_egg_type } from './timeout.js';
 
 // C monflag.h MZ_HUMAN ≡ MZ_MEDIUM
@@ -345,6 +350,7 @@ export function Blind() {
     return !!(((u.HBlinded | 0) || (u.EBlinded | 0)) && !(u.BBlinded | 0));
 }
 
+const OTYP_SHIELD_OF_REFLECTION = objectNames.indexOf('SHIELD_OF_REFLECTION');
 const OTYP_LEASH = objectNames.indexOf('LEASH');
 const OTYP_CORPSE = objectNames.indexOf('CORPSE');
 const OTYP_GOLD_PIECE = objectNames.indexOf('GOLD_PIECE');
@@ -2755,6 +2761,9 @@ const EGG = objectNames.indexOf('EGG');
 const STATUE = objectNames.indexOf('STATUE');
 const FIGURINE = objectNames.indexOf('FIGURINE');
 const LOADSTONE = objectNames.indexOf('LOADSTONE');
+const BELL_OF_OPENING = objectNames.indexOf('BELL_OF_OPENING');
+const CANDELABRUM_OF_INVOCATION = objectNames.indexOf('CANDELABRUM_OF_INVOCATION');
+const SPE_BOOK_OF_THE_DEAD = objectNames.indexOf('SPE_BOOK_OF_THE_DEAD');
 
 /** C ref: obj.h is_weptool — TOOL with oc_skill != P_NONE (named fallback). */
 function is_weptool_obj(obj) {
@@ -4289,24 +4298,59 @@ function one_characteristic_line(attrindx) {
 }
 
 /**
- * C ref: insight.c basics_enlightenment autopickup line.
- * pickup_types in JS is already the symbol string from .nethackrc
- * (C stores class indices and uses oc_to_str).
+ * C ref: insight.c basics_enlightenment `:804–822` — autopickup buf shared
+ * by the ^X overlay and the final disclosure paths (formats differ, C order
+ * doesn't). pickup_types in JS is already the symbol string from .nethackrc
+ * (C stores class indices and uses oc_to_str `:812`, so no mapping call).
+ * C default pickup_thrown is On (JS `!== false` matches).
  */
+export function basics_autopickup_buf(pickup, ocl, pickupThrown, shopDisabled, hasExceptions) {
+    if (!pickup) return 'off'; // C `:820–821`
+    let buf = 'on'; // C `:807`
+    if (shopDisabled) {
+        // C `:808–810` — shop inhibits autopickup, even pickup_thrown.
+        return buf + ', but temporarily disabled while inside the shop';
+    }
+    buf += ` for ${ocl ? `'${ocl}'` : 'all types'}`; // C `:812–814`
+    if (pickupThrown && ocl) buf += ' plus thrown'; // C `:815–816`
+    if (hasExceptions) buf += ', with exceptions'; // C `:817–818`
+    return buf;
+}
+
+/**
+ * C ref: insight.c basics_enlightenment `:772–777` — armor class value with
+ * the AC_MAX cap suffix (find_ac `:772` enforces the cap beforehand).
+ */
+export function basics_ac_buf(uac) {
+    const v = uac | 0;
+    let buf = String(v);
+    if (Math.abs(v) === AC_MAX) {
+        buf += `, the ${v < 0 ? 'best' : 'worst'} possible`;
+    }
+    return buf;
+}
+
+/**
+ * C ref: insight.c basics_enlightenment `:756–770` — Upolyd hit dice
+ * between energy and AC (status line shows "HD:0" for mlevel 0).
+ */
+export function basics_hitdice_buf(mlevel) {
+    const mlev = mlevel | 0;
+    if (mlev === 0) return '0 hit dice (actually 1/2)';
+    if (mlev === 1) return '1 hit die';
+    return `${mlev} hit dice`;
+}
+
 function autopickup_enlightenment_line() {
     const flags = game.flags || {};
-    let buf;
-    if (flags.pickup) {
-        const ocl = String(flags.pickup_types || '');
-        buf = 'on';
-        // costly_spot shop disable deferred
-        buf += ` for ${ocl ? `'${ocl}'` : 'all types'}`;
-        // C default pickup_thrown is On
-        if ((flags.pickup_thrown !== false) && ocl) buf += ' plus thrown';
-        // ga.apelist exceptions deferred
-    } else {
-        buf = 'off';
-    }
+    const u = game.u || {};
+    const buf = basics_autopickup_buf(
+        flags.pickup,
+        String(flags.pickup_types || ''),
+        flags.pickup_thrown !== false,
+        costly_spot(u.ux, u.uy),
+        game.apelist != null,
+    );
     return `  Autopickup is ${buf}.`;
 }
 
@@ -4423,7 +4467,8 @@ function insight_skill_level_name(skill) {
  * switch, returned through makesingular. P_NONE → OBJ_NAME specials /
  * globby "glob" / def_oc_syms[oclass].name. Named omissions: none in this
  * function (weapon_insight's wet-towel / shield-of-reflection arms live in
- * the enlightenment callers at status/final disclosure).
+ * weapon_insight() below, which also handles the an()/makeplural wield
+ * phrasing).
  */
 const OTYP_TIN = objectNames.indexOf('TIN');
 const OTYP_BOULDER = objectNames.indexOf('BOULDER');
@@ -4476,17 +4521,6 @@ export function weapon_descr(obj) {
         break;
     }
     return makesingular(descr);
-}
-
-/**
- * C ref: insight.c weapon_insight wield line — an(weapon_descr(uwep)).
- */
-function pretty_weapon_descr(obj) {
-    const what = weapon_descr(obj);
-    const quan = obj.quan || 1;
-    if (quan !== 1) return `${quan} ${what}s`;
-    const article = 'aeiou'.includes((what[0] || 'x').toLowerCase()) ? 'an' : 'a';
-    return `${article} ${what}`;
 }
 
 /**
@@ -5255,6 +5289,182 @@ function status_core_lines(final = 0, opts = {}) {
 }
 
 /**
+ * C ref: insight.c weapon_insight `:1270–1465` — current weapon(s) and
+ * corresponding skill level(s) inside status_enlightenment (`:1249`).
+ * Sole C caller is status_enlightenment; both JS builders (final
+ * disclosure in enlightenment() below, in-progress overlay in
+ * doattributes()) call this. Overlay (^X) lines need one extra leading
+ * space vs enlght_line, and keep the D-0347 COLNO `.` clip.
+ * @param {number} final ENL_GAMEINPROGRESS / GAMEOVERALIVE / GAMEOVERDEAD
+ * @param {{ overlay?: boolean }} opts
+ */
+export function weapon_insight(final = 0, opts = {}) {
+    const overlay = !!opts.overlay;
+    const u = game.u || {};
+    const You_ = 'You ';
+    const are = 'are ';
+    const were = 'were ';
+    const have = 'have ';
+    const had = 'had ';
+    const out = [];
+    // C enlght_line `:135–137` — " %s%s%s%s." + contractions (shared
+    // enlght_line_txt); overlay adds one more leading space (D-0347 clip).
+    const emit = (start, middle, end, ps = '') => {
+        let line = enlght_line_txt(start, middle, end, ps);
+        if (overlay) {
+            line = ` ${line}`;
+            if (line.length >= 80 && line.endsWith('.')) line = line.slice(0, -1);
+        }
+        out.push(line);
+    };
+    // C `:107` you_are / `:108` you_have over enl_msg `:105` (final tense).
+    const you_are = (attr, ps = '') => emit(You_, final ? were : are, attr, ps);
+    const you_have = (attr, ps = '') => emit(You_, final ? had : have, attr, ps);
+
+    const uwep = u.uwep || game.u?.uwep;
+    const twoweap = !!(u.twoweap || game.u?.twoweap);
+    // C `:1277–1305` — weaponless / two-weaponing / wield line.
+    if (!uwep) {
+        you_are(empty_handed(), '');
+    } else if (twoweap) {
+        you_are('wielding two weapons at once', '');
+    } else {
+        // C `:1294–1299` — skill-class descr, shield/towel specials.
+        let what = weapon_descr(uwep);
+        if ((uwep.otyp | 0) === OTYP_SHIELD_OF_REFLECTION) {
+            what = shield_simple_name(uwep);
+        } else if (is_wet_towel(uwep)) {
+            what = 'wet towel';
+        }
+        let buf;
+        // C `:1301–1303` — strcmpi armor/food/venom take "some", no article.
+        const wlow = (what || '').toLowerCase();
+        if (wlow === 'armor' || wlow === 'food' || wlow === 'venom') {
+            buf = `wielding some ${what}`;
+        } else {
+            // C `:1306–1308` — quan==1 an(), else bare makeplural().
+            buf = `wielding ${((uwep.quan ?? 1) === 1) ? an(what) : makeplural(what)}`;
+        }
+        you_are(buf, '');
+    }
+
+    // C `:1311` — skill applies unless P_NONE, or wielded ammo.
+    const wtype = weapon_type(uwep);
+    if (wtype !== P_NONE && (!uwep || !is_ammo(uwep))) {
+        let sklvlbuf;
+        const sklvl = insight_P_SKILL(wtype);
+        // C `:1315–1318` — restricted reads "no".
+        if (sklvl === P_ISRESTRICTED) sklvlbuf = 'no';
+        else sklvlbuf = lcase(insight_skill_level_name(wtype));
+        const hav = sklvl !== P_UNSKILLED && sklvl !== P_SKILLED;
+        let buf = `${sklvlbuf} ${hav ? 'skill with' : 'in'} ${skill_name(wtype)}`;
+
+        if (!twoweap) {
+            // C `:1325–1327` — enhance suffix before the have/are split.
+            if (can_advance(wtype, false)) {
+                buf += ` and ${!final ? 'can enhance' : 'could have enhanced'} that`;
+            }
+            if (hav) you_have(buf, '');
+            else you_are(buf, '');
+        } else {
+            // C `:1330–1339` — two-weapon skill reads.
+            const uswapwep = u.uswapwep || game.u?.uswapwep;
+            const wtype2 = weapon_type(uswapwep);
+            const sklvl2 = insight_P_SKILL(wtype2);
+            let twoskl = insight_P_SKILL(P_TWO_WEAPON_COMBAT);
+            const hav2 = sklvl2 !== P_UNSKILLED && sklvl2 !== P_SKILLED;
+            let twobuf;
+            // C `:1343–1350` — restricted two-weapon reads unskilled/"restricted".
+            if (twoskl === P_ISRESTRICTED) {
+                twoskl = P_UNSKILLED;
+                twobuf = 'restricted';
+            } else {
+                twobuf = lcase(insight_skill_level_name(P_TWO_WEAPON_COMBAT));
+            }
+
+            // C `:1352–1374` — primary vs two-weapon compare.
+            let pfx = '';
+            let sfx = '';
+            let also = '';
+            let also2 = '';
+            let also3 = null;
+            if (twoskl < sklvl) {
+                pfx = `Your skill in ${skill_name(wtype)} `;
+                sfx = ` limited by being ${twobuf} with two weapons`;
+                also = 'also ';
+            } else if (twoskl > sklvl) {
+                pfx = 'Your two weapon skill ';
+                // C `:1361–1365` — eos() appends are plain concat.
+                sfx = ' limited by ';
+                if (sklvl > P_ISRESTRICTED) sfx += `being ${sklvlbuf}`;
+                else sfx += 'having no skill';
+                sfx += ` with ${skill_name(wtype)}`;
+                also2 = 'also ';
+            } else {
+                buf += ' and two weapons';
+                also3 = 'also ';
+            }
+            if (pfx) emit(pfx, final ? 'was' : 'is', sfx, '');
+            else if (hav) you_have(buf, '');
+            else you_are(buf, '');
+
+            // C `:1379–1421` — secondary compare unless same skill.
+            if (wtype2 !== wtype) {
+                const sknambuf2 = skill_name(wtype2);
+                // C `:1381` — plain lcase (no restricted→"no" mapping here).
+                const sklvlbuf2 = lcase(insight_skill_level_name(wtype2));
+                let verb_present = 'is';
+                let verb_past = 'was';
+                pfx = '';
+                sfx = '';
+                buf = '';
+                if (twoskl < sklvl2) {
+                    pfx = `Your skill in ${sknambuf2} `;
+                    sfx = ` ${also}limited by being ${twobuf} with two weapons`;
+                } else if (twoskl > sklvl2) {
+                    pfx = 'Your two weapon skill ';
+                    sfx = ` ${also2}limited by `;
+                    if (sklvl2 > P_ISRESTRICTED) sfx += `being ${sklvlbuf2}`;
+                    else sfx += 'having no skill';
+                    sfx += ` with ${sknambuf2}`;
+                } else {
+                    buf = `${sklvlbuf2} ${hav2 ? 'skill with' : 'in'} ${sknambuf2}`;
+                    buf += ' and two weapons';
+                    if (also3) {
+                        pfx = 'You also ';
+                        sfx = ` ${buf}`;
+                        buf = '';
+                        verb_present = hav2 ? 'have' : 'are';
+                        verb_past = hav2 ? 'had' : 'were';
+                    }
+                }
+                if (pfx) emit(pfx, final ? verb_past : verb_present, sfx, '');
+                else if (hav2) you_have(buf, '');
+                else you_are(buf, '');
+            }
+
+            // C `:1423–1459` — enhance tips for primary/secondary/two-weapon.
+            const a1 = can_advance(wtype, false);
+            const a2 = (wtype2 !== wtype) ? can_advance(wtype2, false) : false;
+            const ab = can_advance(P_TWO_WEAPON_COMBAT, false);
+            if (a1 || a2 || ab) {
+                // C `:1432–1442` — 1/2/3-way "skills with …" phrasing.
+                let esfx = ` skill${((a1 | 0) + (a2 | 0) + (ab | 0) > 1) ? 's' : ''}`
+                    + ` with ${a1 ? skill_name(wtype) : ''}`;
+                esfx += (a1 && a2 && ab) ? ', '
+                    : (a1 && (a2 || ab)) ? ' and also with ' : '';
+                esfx += a2 ? skill_name(wtype2) : '';
+                esfx += (a1 && a2 && ab) ? ', and '
+                    : (a2 && ab) ? ' and also with ' : '';
+                esfx += ab ? 'two weapons' : '';
+                emit(You_, final ? 'could have enhanced' : 'can enhance', esfx, '');
+            }
+        }
+    }
+    return out;
+}
+
+/**
  * C ref: insight.c enlightenment — BASIC|MAGIC; final → putstr NHW_MENU
  * (--More-- pages), not ^X menu "(k of n)".
  * Named omissions: night/midnight; SCORE_ON_BOTL; most
@@ -5281,7 +5491,7 @@ export async function enlightenment(mode, final = 0) {
     const { show_nhw_menu_text } = await import('./pager.js');
     const { newuexp } = await import('./exper.js');
     const { Searching, Fast, Very_fast } = await import('./attrib.js');
-    const { piousness, N_times } = await import('./insight.js');
+    const { piousness, N_times, fmt_elapsed_time } = await import('./insight.js');
     const {
         BASICENLIGHTENMENT, MAGICENLIGHTENMENT, ENL_GAMEOVERDEAD,
     } = await import('./const.js');
@@ -5477,17 +5687,15 @@ export async function enlightenment(mode, final = 0) {
         lines.push(you_have(pwLine));
         // C insight.c:753-766 — Upolyd hit dice between energy and AC.
         if (Upolyd(u)) {
-            const mlev = mons(u.umonnum)?.mlevel | 0;
-            let hdBuf;
-            if (mlev === 0) hdBuf = '0 hit dice (actually 1/2)';
-            else if (mlev === 1) hdBuf = '1 hit die';
-            else hdBuf = `${mlev} hit dice`;
-            lines.push(you_have(hdBuf));
+            lines.push(you_have(basics_hitdice_buf(mons(u.umonnum)?.mlevel)));
         }
+        // C insight.c basics_enlightenment `:772–777` — find_ac enforces
+        // the AC_MAX cap before the value is read.
+        find_ac();
         lines.push(enlght_line_txt(
             'Your armor class ',
             final ? 'was ' : 'is ',
-            String(u.uac ?? 10),
+            basics_ac_buf(u.uac ?? 10),
             '',
         ));
         // C insight.c:787-808 — wallet + hidden_gold(final) continuation.
@@ -5526,23 +5734,8 @@ export async function enlightenment(mode, final = 0) {
         overlay: false,
         magic: !!(mode & MAGICENLIGHTENMENT),
     }));
-    const uwep = u.uwep || game.u?.uwep;
-    if (!uwep) {
-        lines.push(you_are(empty_handed()));
-    } else {
-        lines.push(you_are(`wielding ${pretty_weapon_descr(uwep)}`));
-    }
-    const wtype = weapon_type(uwep);
-    if (wtype !== P_NONE) {
-        const sklvl = insight_P_SKILL(wtype);
-        let sklvlbuf;
-        if (sklvl === P_ISRESTRICTED) sklvlbuf = 'no';
-        else sklvlbuf = insight_skill_level_name(wtype).toLowerCase();
-        const hav = sklvl !== P_UNSKILLED && sklvl !== P_SKILLED;
-        const buf = `${sklvlbuf} ${hav ? 'skill with' : 'in'} ${skill_name(wtype)}`;
-        if (hav) lines.push(you_have(buf));
-        else lines.push(you_are(buf));
-    }
+    // C ref: insight.c weapon_insight `:1270–1465` via status_enlightenment `:1249`.
+    lines.push(...weapon_insight(final));
     if (!wearing_armor()) {
         lines.push(you_are('not wearing any armor'));
     }
@@ -6048,10 +6241,12 @@ export async function enlightenment(mode, final = 0) {
             ));
         }
     }
+    // C insight.c:448-449 — (void) fmt_elapsed_time(buf, final); enl_msg
+    // ("Total elapsed playing time ", "is", "was", buf, "").
     lines.push(enlght_line_txt(
         'Total elapsed playing time ',
         final ? 'was' : 'is',
-        ' none',
+        fmt_elapsed_time(final),
         '',
     ));
 
@@ -6069,15 +6264,14 @@ function money_cnt_local() {
 
 function autopickup_enlightenment_line_final(final) {
     const flags = game.flags || {};
-    let buf;
-    if (flags.pickup) {
-        const ocl = String(flags.pickup_types || '');
-        buf = 'on';
-        buf += ` for ${ocl ? `'${ocl}'` : 'all types'}`;
-        if ((flags.pickup_thrown !== false) && ocl) buf += ' plus thrown';
-    } else {
-        buf = 'off';
-    }
+    const u = game.u || {};
+    const buf = basics_autopickup_buf(
+        flags.pickup,
+        String(flags.pickup_types || ''),
+        flags.pickup_thrown !== false,
+        costly_spot(u.ux, u.uy),
+        game.apelist != null,
+    );
     return enlght_line_txt('Autopickup ', final ? 'was ' : 'is ', buf, '');
 }
 
@@ -6159,7 +6353,6 @@ export async function doattributes(enl_mode = null) {
     const align = align_str(atype);
     const turns = game.moves | 0;
     const hand = (u.uhandedness === 1 /* LEFT_HANDED */) ? 'left' : 'right';
-    const gold = game._goldCount || 0;
     // C ref: insight.c background_enlightenment — gender only when
     // !name.f AND (both genders allowed OR innategend != initgend)
     const allowGend = (game.urole?.allow ?? 0) & ROLE_GENDMASK;
@@ -6185,12 +6378,26 @@ export async function doattributes(enl_mode = null) {
     }
     opposed += '.';
 
-    const wallet = gold
-        ? `  Your wallet contains ${gold} ${currency(gold)}.`
-        : '  Your wallet is empty.';
+    // C ref: insight.c basics_enlightenment `:779–802` — gold; like doprgold
+    // but without shop billing; includes container contents (hidden_gold).
+    // Overlay format keeps this builder's two-space prefix (final=0 → "is").
+    const umoney = money_cnt_local();
+    const hmoney = hidden_gold(0);
+    let wbuf = !umoney
+        ? '  Your wallet is empty'
+        : `  Your wallet contains ${umoney} ${currency(umoney)}`;
+    wbuf += !hmoney ? '.' : !umoney ? ', but' : ', and';
+    const wallet = wbuf;
+    // C `:797–801` — contained gold on its own continuation line.
+    const walletCont = hmoney
+        ? `  You have ${hmoney} ${umoney ? 'more' : currency(hmoney)} stashed away in your pack.`
+        : '';
 
-    const hp = u.uhp | 0;
-    const hpmax = u.uhpmax | 0;
+    // C insight.c basics_enlightenment `:732–744` — poly'd HP reads u.mh;
+    // negative HP shows 0; "all" only when max > 1.
+    let hp = Upolyd(u) ? (u.mh | 0) : (u.uhp | 0);
+    const hpmax = Upolyd(u) ? (u.mhmax | 0) : (u.uhpmax | 0);
+    if (hp < 0) hp = 0;
     const pw = u.uen | 0;
     const pwmax = u.uenmax | 0;
     // C ref: insight.c basics_enlightenment — hit / energy phrasing
@@ -6206,6 +6413,15 @@ export async function doattributes(enl_mode = null) {
     } else {
         pwLine = `${pw} out of ${pwmax} ${Power}`;
     }
+    // C insight.c basics_enlightenment `:756–770` — Upolyd hit dice between
+    // energy and AC (was missing on this path; final path already had it).
+    const hdLine = Upolyd(u)
+        ? basics_hitdice_buf(mons(u.umonnum)?.mlevel)
+        : '';
+    // C insight.c basics_enlightenment `:772–777` — find_ac enforces the
+    // AC_MAX cap before the value is read.
+    find_ac();
+    const acBuf = basics_ac_buf(u.uac ?? 10);
 
     // C ref: insight.c background_enlightenment — In_endgame /
     // Is_knox / quest dunlev / rogue / bigroom (D-2564 lands the last)
@@ -6318,8 +6534,10 @@ export async function doattributes(enl_mode = null) {
             ' Basics:',
             `  You have ${hpLine}.`,
             `  You have ${pwLine}.`,
-            `  Your armor class is ${u.uac ?? 10}.`,
+            ...(hdLine ? [`  You have ${hdLine}.`] : []),
+            `  Your armor class is ${acBuf}.`,
             wallet,
+            ...(walletCont ? [walletCont] : []),
             autopickup_enlightenment_line(),
             '',
             ' Characteristics:',
@@ -6336,108 +6554,9 @@ export async function doattributes(enl_mode = null) {
     // C ref: insight.c status_enlightenment — Deaf/Sleepy before hunger;
     // Sleepy needs magic || cause_known; wizard hunger/weight suffixes.
     lines.push(...status_core_lines(0, { overlay: true, magic }));
-    // C ref: insight.c weapon_insight — empty_handed / P_SKILL / skill_name
-    const uwep = u.uwep || game.u?.uwep;
-    if (!uwep) {
-        lines.push(`  You are ${empty_handed()}.`);
-    } else if (u.twoweap || game.u?.twoweap) {
-        lines.push('  You are wielding two weapons at once.');
-    } else {
-        const wname = pretty_weapon_descr(uwep);
-        lines.push(`  You are wielding ${wname}.`);
-    }
-    // C ref: insight.c weapon_insight skill lines; can_advance enhance suffix deferred.
-    const wtype = weapon_type(uwep);
-    if (wtype !== P_NONE) {
-        // ammo check deferred — start weapons rarely quiver-as-uwep
-        const sklvl = insight_P_SKILL(wtype);
-        let sklvlbuf;
-        if (sklvl === P_ISRESTRICTED) sklvlbuf = 'no';
-        else sklvlbuf = insight_skill_level_name(wtype).toLowerCase();
-        const hav = sklvl !== P_UNSKILLED && sklvl !== P_SKILLED;
-        let buf = `${sklvlbuf} ${hav ? 'skill with' : 'in'} ${skill_name(wtype)}`;
-        const twoweap = !!(u.twoweap || game.u?.twoweap);
-        if (!twoweap) {
-            if (hav) lines.push(`  You have ${buf}.`);
-            else lines.push(`  You are ${buf}.`);
-        } else {
-            // C: two-weapon comparison vs primary / uswapwep / P_TWO_WEAPON_COMBAT
-            const uswapwep = u.uswapwep || game.u?.uswapwep;
-            const wtype2 = weapon_type(uswapwep);
-            const sklvl2 = insight_P_SKILL(wtype2);
-            let twoskl = insight_P_SKILL(P_TWO_WEAPON_COMBAT);
-            let twobuf;
-            if (twoskl === P_ISRESTRICTED) {
-                twoskl = P_UNSKILLED;
-                twobuf = 'restricted';
-            } else {
-                twobuf = insight_skill_level_name(P_TWO_WEAPON_COMBAT).toLowerCase();
-            }
-            const hav2 = sklvl2 !== P_UNSKILLED && sklvl2 !== P_SKILLED;
-            let also = '';
-            let also2 = '';
-            let also3 = null;
-            // C enlght_line adds " %s%s%s%s." then menu pad; at COLNO the
-            // trailing '.' is clipped — bake two spaces and drop '.' at 80.
-            const enl = (body) => {
-                const withDot = `  ${body}.`;
-                return withDot.length >= 80 ? `  ${body}` : withDot;
-            };
-            if (twoskl < sklvl) {
-                lines.push(enl(
-                    `Your skill in ${skill_name(wtype)}`
-                    + ` is limited by being ${twobuf} with two weapons`,
-                ));
-                also = 'also ';
-            } else if (twoskl > sklvl) {
-                let lim = sklvl > P_ISRESTRICTED
-                    ? `being ${sklvlbuf}`
-                    : 'having no skill';
-                lines.push(enl(
-                    `Your two weapon skill is limited by ${lim}`
-                    + ` with ${skill_name(wtype)}`,
-                ));
-                also2 = 'also ';
-            } else {
-                buf += ' and two weapons';
-                also3 = 'also ';
-                if (hav) lines.push(enl(`You have ${buf}`));
-                else lines.push(enl(`You are ${buf}`));
-            }
-            if (wtype2 !== wtype) {
-                const sknambuf2 = skill_name(wtype2);
-                let sklvlbuf2;
-                if (sklvl2 === P_ISRESTRICTED) sklvlbuf2 = 'no';
-                else sklvlbuf2 = insight_skill_level_name(wtype2).toLowerCase();
-                if (twoskl < sklvl2) {
-                    lines.push(enl(
-                        `Your skill in ${sknambuf2}`
-                        + ` is ${also}limited by being ${twobuf} with two weapons`,
-                    ));
-                } else if (twoskl > sklvl2) {
-                    let lim = sklvl2 > P_ISRESTRICTED
-                        ? `being ${sklvlbuf2}`
-                        : 'having no skill';
-                    lines.push(enl(
-                        `Your two weapon skill is ${also2}limited by ${lim}`
-                        + ` with ${sknambuf2}`,
-                    ));
-                } else {
-                    let buf2 = `${sklvlbuf2} ${hav2 ? 'skill with' : 'in'} ${sknambuf2}`
-                        + ' and two weapons';
-                    if (also3) {
-                        const verb = hav2 ? 'have' : 'are';
-                        lines.push(enl(`You also ${verb} ${buf2}`));
-                    } else if (hav2) {
-                        lines.push(enl(`You have ${buf2}`));
-                    } else {
-                        lines.push(enl(`You are ${buf2}`));
-                    }
-                }
-            }
-            // can_advance primary/secondary/twoweap enhance tips deferred
-        }
-    }
+    // C ref: insight.c weapon_insight `:1270–1465` via status_enlightenment
+    // `:1249` — overlay (^X) is ENL_GAMEINPROGRESS, present tense.
+    lines.push(...weapon_insight(0, { overlay: true }));
     // C ref: insight.c status_enlightenment — report nudity after
     // weapon_insight (+ tux_penalty deferred).
     if (!wearing_armor()) {
@@ -6922,8 +7041,13 @@ export async function doattributes(enl_mode = null) {
                 )));
             }
         }
+        // C insight.c:448-449 via :2009-2018 — doattributes routes the
+        // in-progress (ENL_GAMEINPROGRESS) enlightenment through here, so
+        // the elapsed line is fmt_elapsed_time, not "none" (review 77 omit).
+        const { fmt_elapsed_time } = await import('./insight.js');
         lines.push(o(enlght_line_txt(
-            'Total elapsed playing time ', 'is', ' none', '',
+            'Total elapsed playing time ', 'is',
+            fmt_elapsed_time(ENL_GAMEINPROGRESS), '',
         )));
     }
 
@@ -7645,20 +7769,63 @@ export async function hold_another_object(obj, drop_fmt, drop_arg, hold_msg) {
 }
 
 /**
- * C ref: invent.c freeinv_core — figurine stop FIG_TRANSFORM; artifact
- * W_ART conferral off (D-1539; resists + PROTECT D-2378). inv_prop
- * arti_invoke on drop (`:880–885`) runs via async `revoke_invoked_property`
- * (D-2378), awaited by async W_ART-off envelopes (`dropx`, zap poly);
- * no-floor drops ride `finesse_ahriman` (own row). Named omit:
- * amulet/candelabrum/bell/book uhaves / questart; loadstone curse;
- * confers_luck set_moreluck; tin context.
+ * C ref: invent.c freeinv_core `:1356–1399` — invent-removal side effects in
+ * C order (restart of the D-1539 thin body, which kept only the W_ART +
+ * figurine arms). Sync like C: callers are sync freeinv (`:1407`) and zap
+ * poly (`:1911`), so async callees float un-awaited (Constitution §2.6;
+ * getrumor precedent for impossible, mplayer/mklev precedent for curse).
+ * inv_prop arti_invoke on drop (artifact.c `:880–885`) still runs via async
+ * `revoke_invoked_property` (D-2378), awaited by the async W_ART-off
+ * envelopes (`dropx`, zap poly) right after this call; no-floor drops ride
+ * `finesse_ahriman` (own row). Named omissions: none new.
  */
 export function freeinv_core(obj) {
     if (!obj) return;
-    // C invent.c:1377–1383 — oartifact → set_artifact_intrinsic(obj, 0, W_ART)
-    if (obj.oartifact) set_artifact_intrinsic(obj, false, W_ART);
-    if ((obj.otyp | 0) === FIGURINE && (obj.timed | 0)) {
+    const u = game.u || {};
+    if (obj.oclass === COIN_CLASS) { // C `:1358–1360` — gold: botl, return
+        if (game.flags) game.flags.botl = true;
+        if (game.disp) game.disp.botl = true;
+        return;
+    } else if ((obj.otyp | 0) === AMULET_OF_YENDOR) { // C `:1361–1364`
+        const uhave = u.uhave || (u.uhave = {});
+        if (!uhave.amulet) impossible("don't have amulet?");
+        uhave.amulet = 0;
+    } else if ((obj.otyp | 0) === CANDELABRUM_OF_INVOCATION) { // C `:1365–1368`
+        const uhave = u.uhave || (u.uhave = {});
+        if (!uhave.menorah) impossible("don't have candelabrum?");
+        uhave.menorah = 0;
+    } else if ((obj.otyp | 0) === BELL_OF_OPENING) { // C `:1369–1372`
+        const uhave = u.uhave || (u.uhave = {});
+        if (!uhave.bell) impossible("don't have silver bell?");
+        uhave.bell = 0;
+    } else if ((obj.otyp | 0) === SPE_BOOK_OF_THE_DEAD) { // C `:1373–1376`
+        const uhave = u.uhave || (u.uhave = {});
+        if (!uhave.book) impossible("don't have the book?");
+        uhave.book = 0;
+    } else if (obj.oartifact) { // C `:1377–1383`
+        if (is_quest_artifact(obj)) { // C `:1378–1382` — quest.js, live
+            const uhave = u.uhave || (u.uhave = {});
+            if (!uhave.questart) impossible("don't have quest artifact?");
+            uhave.questart = 0;
+        }
+        set_artifact_intrinsic(obj, false, W_ART); // C `:1383` — 0 = off
+    }
+    if ((obj.otyp | 0) === LOADSTONE) { // C `:1386–1387` — re-curse
+        // Async curse floats: every state flip precedes its first await and
+        // loadstones are never lamplit, so sync callers see C order.
+        curse(obj);
+    } else if (confers_luck(obj)) { // C `:1388–1390` — artifact.js, live
+        set_moreluck(); // C `:1389` — attrib.js, live
+        if (game.flags) game.flags.botl = true; // C `:1390` disp.botl
+        if (game.disp) game.disp.botl = true;
+    } else if ((obj.otyp | 0) === FIGURINE && (obj.timed | 0)) { // C `:1391–1392`
+        // C obj_to_any is identity in JS: timers key obj identity (mkobj.js).
         stop_timer(FIG_TRANSFORM, obj);
+    }
+    const tin = game.context?.tin; // C `:1395–1397` — tinning in progress
+    if (tin && obj === tin.tin) { // (game.context.tin per eat.js)
+        tin.tin = null; // C `(struct obj *) 0`
+        tin.o_id = 0;
     }
 }
 

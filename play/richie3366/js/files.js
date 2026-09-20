@@ -6,6 +6,8 @@
 // fqname / init_nhfile / new_nhfile / free_nhfile / set_levelfile_name /
 // open_levelfile / create_levelfile (JSON analogue; VFS stash probe,
 // no POSIX open/creat).
+// make_converted_name / contains_directory / delete_convertedfile
+// (external-conversion names; unlink named omit, Rule #2).
 // Callers: allmain.c newgame after u_init_skills_discoveries (D-1192);
 // spell.c study_book SPE_NOVEL; sounds.c Death_quote live (D-1653).
 // Rule #2: VFS only — no fs / getenv / HOME fopen. Tribute text is
@@ -38,7 +40,7 @@ import { datamodel, what_datamodel_is_this } from './version.js';
 import { rn2 } from './rng.js';
 import { mungspaces } from './getline.js';
 import { pline, putmsghistory, You_feel, impossible, flush_topl_more, raw_printf } from './display.js';
-import { show_nhw_menu_text } from './pager.js';
+import { show_nhw_menu_text, strip_newline } from './pager.js';
 import { TRIBUTE_TEXT } from './generated/tribute_data.js';
 import { maxledgerno } from './dungeon.js';
 
@@ -296,134 +298,167 @@ function choose_passage(passagecnt, oid) {
 }
 
 /**
- * C ref: files.c read_tribute. tribpassage 0 → choose_passage; else that
- * index. nowin_buf null → NHW_MENU putstr + putmsghistory; object
- * `{ s:'' }` → first line (Death_quote).
+ * C ref: files.c read_tribute `:3473–3645` — whole-body port in C order.
+ * tribpassage 0 → choose_passage (`:3553–3554`); else that index
+ * (`:3555–3556`). nowin_buf null → NHW_MENU putstr + putmsghistory
+ * (`:3599–3603`, `:3626–3636`); `{ s:'' }` holder → first line
+ * (`:3604–3607`, Death_quote `:3647–3653`).
+ * Named omits (map): dlb_fopen/fgets/fclose → Rule #2 TRIBUTE_TEXT embed
+ * (D-0477); debugpline3/debugpline1 compiled out; WIN_ERR create failure
+ * (`:3575–3576`) — window creation is infallible in JS; strncmpi/strcmpi →
+ * file-local tribute_ncmpi (hacklib.c `:716–734`); copynchars → file-local
+ * tribute_copynchars (hacklib.c `:286–297`); atoi → file-local
+ * tribute_atoi; Sprintf/Strcpy/strchr/strrchr → string ops (no arena).
  * @returns {Promise<boolean>} grasped
  */
 export async function read_tribute(
     tribsection, tribtitle, tribpassage, nowin_buf, bufsz, oid,
 ) {
-    const badtranslation = 'an incomprehensible foreign translation';
-    let grasped = false;
-    if (nowin_buf) nowin_buf.s = '';
+    const badtranslation = 'an incomprehensible foreign translation'; // `:3483`
+    let scope = 0; // `:3481`
+    let linect = 0, passagecnt = 0, targetpassage = 0; // `:3482`
+    let matchedsection = false, matchedtitle = false; // `:3484`
+    // C `:3485` `winid tribwin = WIN_ERR` — window creation is deferred to
+    // the cleanup display below (show_nhw_menu_text owns create/putstr/
+    // display/destroy); the `:3575–3576` WIN_ERR goto arm cannot fire.
+    let grasped = false; // `:3486`
+    let foundpassage = false; // `:3487`
+    let lastline = ''; // `:3479`, C `:3529` `*line = *lastline = '\0'`
+    const winLines = []; // C `:3601` putstr(tribwin, 0, line) accumulator
+    if (nowin_buf) nowin_buf.s = ''; // `:3489–3490` `*nowin_buf = '\0'`
 
-    if (!tribsection || !tribtitle) {
-        if (!nowin_buf) {
-            await pline(`It's ${badtranslation} of "${tribtitle}"!`);
+    /* check for mandatories (`:3492`) */
+    if (!tribsection || !tribtitle) { // `:3493`
+        if (!nowin_buf) { // `:3494`
+            await pline(`It's ${badtranslation} of "${tribtitle}"!`); // `:3495`
         }
-        return grasped;
+        return grasped; // `:3496`
     }
 
-    // C dlb_fopen(TRIBUTEFILE, "r") — Rule #2 embed, not disk.
+    /* C `:3499–3500` debugpline3 — compiled out (named omit). */
+
+    // C `:3502` dlb_fopen(TRIBUTEFILE, "r") — Rule #2 embed, not disk.
     const text = TRIBUTE_TEXT;
-    if (text == null || text === '') {
-        if (!nowin_buf) await You_feel('too overwhelmed to continue!');
-        return grasped;
+    if (text == null || text === '') { // `:3503` `if (!fp)`
+        /* this is actually an error - cannot open tribute file! (`:3504`) */
+        if (!nowin_buf) await You_feel('too overwhelmed to continue!'); // `:3505–3506`
+        return grasped; // `:3507`
     }
 
-    let scope = 0;
-    let passagecnt = 0;
-    let targetpassage = 0;
-    let matchedsection = false;
-    let matchedtitle = false;
-    let foundpassage = false;
-    let lastline = '';
-    const winLines = [];
-    const cap = ((bufsz | 0) > 0 ? (bufsz | 0) : BUFSZ) - 1;
+    /* Syntax comment `:3510–3527`: not case-sensitive; %section books /
+       %title booktitle (n) / %passage k / %e ends passage/book/section. */
 
-    const rawLines = String(text).split('\n');
-    if (rawLines.length && rawLines[rawLines.length - 1] === '') rawLines.pop();
-
-    let cleanup = false;
-    for (let li = 0; li < rawLines.length && !cleanup; li++) {
-        let line = rawLines[li];
-        if (line.endsWith('\r')) line = line.slice(0, -1);
-        const ch0 = line.length ? line.charAt(0) : '';
-        if (ch0 === '%') {
-            const rest = line.slice(1);
-            if (tribute_ncmpi(rest, 'section ', 8) === 0) {
-                const st = rest.slice(8); /* 9 from "%section " → rest[8] */
-                scope = SECTIONSCOPE;
-                matchedsection = tribute_ncmpi(st, tribsection, -1) === 0;
-            } else if (tribute_ncmpi(rest, 'title ', 6) === 0) {
-                let st = rest.slice(6);
-                const p1 = st.indexOf('(');
+    // C `:3529–3532`: init + `while (dlb_fgets(line, sizeof line, fp) != 0)`.
+    // The split keeps each line's '\n' so the live strip_newline runs
+    // exactly like C (trailing '\n' dropped, preceding '\r' swallowed).
+    const rawLines = String(text).split(/(?<=\n)/);
+    let cleanup = false; // `goto cleanup` (`:3576`, `:3582`, `:3607`)
+    for (let li = 0; li < rawLines.length && !cleanup; li++) { // `:3530`
+        linect++; // `:3531`
+        const line = strip_newline(rawLines[li]); // `:3532`
+        const ch0 = line.length ? line.charAt(0) : ''; // C `:3533` `line[0]` ('' ≡ '\0')
+        switch (ch0) { // `:3533` `switch (line[0])`
+        case '%': { // `:3534`
+            const rest = line.slice(1); // C `:3535–3580` `&line[1]`
+            if (tribute_ncmpi(rest, 'section ', 8) === 0) { // `:3535`
+                const st = rest.slice(8); /* 9 from "%section " (`:3536`) */
+                scope = SECTIONSCOPE; // `:3538`
+                matchedsection = tribute_ncmpi(st, tribsection, -1) === 0; // `:3539` strcmpi
+            } else if (tribute_ncmpi(rest, 'title ', 6) === 0) { // `:3540`
+                let st = rest.slice(6); /* 7 from "%title " (`:3541`) */
+                const p1 = st.indexOf('('); // `:3544` strchr '('
                 if (p1 >= 0) {
-                    let after = st.slice(p1 + 1);
-                    st = mungspaces(st.slice(0, p1));
-                    const p2 = after.indexOf(')');
+                    const after = st.slice(p1 + 1); // C `:3545` `*p1++ = '\0'`
+                    st = mungspaces(st.slice(0, p1)); // `:3546`
+                    const p2 = after.indexOf(')'); // `:3547` strchr ')'
                     if (p2 >= 0) {
-                        after = after.slice(0, p2);
-                        passagecnt = tribute_atoi(after);
-                        scope = TITLESCOPE;
-                        if (matchedsection && tribute_ncmpi(st, tribtitle, -1) === 0) {
-                            matchedtitle = true;
+                        passagecnt = tribute_atoi(after.slice(0, p2)); // `:3548–3549` atoi
+                        scope = TITLESCOPE; // `:3550`
+                        if (matchedsection && tribute_ncmpi(st, tribtitle, -1) === 0) { // `:3551` strcmpi
+                            matchedtitle = true; // `:3552`
                             const tp = tribpassage | 0;
-                            targetpassage = !tp
+                            targetpassage = !tp // `:3553–3556`
                                 ? choose_passage(passagecnt, oid >>> 0)
                                 : (tp <= passagecnt) ? tp : 0;
                         } else {
-                            matchedtitle = false;
+                            matchedtitle = false; // `:3557–3558`
                         }
                     }
                 }
-            } else if (tribute_ncmpi(rest, 'passage ', 8) === 0) {
-                const st = mungspaces(rest.slice(8));
-                const passagenum = tribute_atoi(st);
-                if (passagenum > 0 && passagenum <= passagecnt) {
-                    scope = PASSAGESCOPE;
-                    if (matchedtitle && passagenum === targetpassage) {
-                        foundpassage = true;
+            } else if (tribute_ncmpi(rest, 'passage ', 8) === 0) { // `:3562–3563`
+                const st = mungspaces(rest.slice(8)); /* 9 from "%passage " (`:3565`); `:3567` */
+                const passagenum = tribute_atoi(st); // `:3568` atoi
+                if (passagenum > 0 && passagenum <= passagecnt) { // `:3569`
+                    scope = PASSAGESCOPE; // `:3570`
+                    if (matchedtitle && passagenum === targetpassage) { // `:3571`
+                        foundpassage = true; // `:3572`
+                        // C `:3573–3577` create_nhwindow deferred (see above).
                     }
                 }
-            } else if (tribute_ncmpi(rest, 'e ', 2) === 0) {
-                if (foundpassage) {
-                    cleanup = true;
+            } else if (tribute_ncmpi(rest, 'e ', 2) === 0) { // `:3580`
+                if (foundpassage) { // `:3581`
+                    cleanup = true; // `goto cleanup` (`:3582`)
                     break;
                 }
-                if (scope === TITLESCOPE) matchedtitle = false;
-                if (scope === SECTIONSCOPE) matchedsection = false;
-                if (scope) --scope;
-            }
-        } else if (ch0 === '#') {
-            /* comment */
-        } else if (foundpassage) {
-            if (!nowin_buf) {
-                winLines.push(line);
-                if (line) lastline = line;
+                if (scope === TITLESCOPE) matchedtitle = false; // `:3583–3584`
+                if (scope === SECTIONSCOPE) matchedsection = false; // `:3585–3586`
+                if (scope) --scope; // `:3587–3588`
             } else {
-                nowin_buf.s = tribute_copynchars(line, cap);
-                cleanup = true;
-                break;
+                /* C `:3589–3591` debugpline1 bad-% — compiled out (named
+                   omit; linect above is kept for its message). */
             }
+            break; // `:3593`
+        }
+        case '#': // `:3594`
+            /* comment only, next! (`:3595`) */
+            break; // `:3596`
+        default: // `:3597`
+            if (foundpassage) { // `:3598`
+                if (!nowin_buf) { // `:3599`
+                    /* outputting multi-line passage to text window (`:3600`) */
+                    winLines.push(line); // `:3601` putstr(tribwin, 0, line)
+                    if (line) lastline = line; // `:3602–3603` Strcpy
+                } else {
+                    /* fetching one-line passage into buffer (`:3605`) */
+                    nowin_buf.s = tribute_copynchars(line, (bufsz | 0) - 1); // `:3606` bufsz - 1
+                    cleanup = true; // `goto cleanup` (`:3607`)
+                }
+            }
+            break;
         }
     }
 
-    if (nowin_buf) {
-        grasped = !!(nowin_buf.s);
-    } else {
+    /* C `:3613` cleanup: + `:3614` dlb_fclose — embed needs no close (Rule #2). */
+    if (nowin_buf) { // `:3615`
+        /* one-line buffer (`:3616`) */
+        grasped = !!nowin_buf.s; // `:3617` `*nowin_buf ? TRUE : FALSE`
+    } else { // `:3618`
+        // C `:3619` `tribwin != WIN_ERR` implies foundpassage; show only
+        // when a non-empty line was seen (`:3620–3623`).
         if (foundpassage && lastline) {
-            await show_nhw_menu_text(winLines);
-            if (lastline.includes('[')) {
-                lastline = mungspaces(lastline);
-            } else {
-                lastline = `[${tribtitle}, by Terry Pratchett]`;
+            await show_nhw_menu_text(winLines); // `:3626` display_nhwindow
+            /* put the final attribution line into message history,
+               analogous to the summary line from long quest messages
+               (`:3627–3628`) */
+            if (lastline.includes('[')) { // `:3629` strchr
+                lastline = mungspaces(lastline); // `:3630`
+            } else { // `:3631`
+                lastline = `[${tribtitle}, by Terry Pratchett]`; // `:3632` Sprintf
             }
-            const rb = lastline.lastIndexOf(']');
+            const rb = lastline.lastIndexOf(']'); // `:3633` strrchr
             if (rb >= 0) {
-                lastline = `${lastline.slice(0, rb)}; passage #${targetpassage}]`;
+                lastline = `${lastline.slice(0, rb)}; passage #${targetpassage}]`; // `:3634` Sprintf
             }
-            putmsghistory(lastline, false);
-            grasped = true;
+            putmsghistory(lastline, false); // `:3635`
+            grasped = true; // `:3636`
+            /* C `:3638` destroy_nhwindow — owned by show_nhw_menu_text. */
         }
-        if (!grasped) {
-            await pline(
-                `It seems to be ${badtranslation} of "${tribtitle}"!`,
-            );
+        if (!grasped) { // `:3640`
+            /* multi-line window, problem (`:3641`) */
+            await pline(`It seems to be ${badtranslation} of "${tribtitle}"!`); // `:3642`
         }
     }
-    return grasped;
+    return grasped; // `:3644`
 }
 
 /**
@@ -1117,5 +1152,104 @@ export async function Death_quote(buf, bufsz = BUFSZ) {
         'Death', 'Death Quotes', 0, holder,
         (bufsz | 0) || BUFSZ, death_oid,
     );
+}
+
+/* ---------- BEGIN EXTERNAL CONVERSION HANDLING ----------- */
+/* C ref: files.c make_converted_name `:2090–2153` + contains_directory
+ * `:2179–2191` + delete_convertedfile `:2156–2165`.
+ * Rule #2 throughout: the computed names only ever feed C `unlink` /
+ * `alloc`/`free`, which have no scored-ESM analogue (delete_levelfile /
+ * fqname precedent) — the strings are computed faithfully, never read
+ * from disk. */
+
+/** C config.h:447 (`#ifdef CHDIR`) HACKDIR — contest UNIX playground default. */
+const HACKDIR_PATH = '/usr/games/lib/nethackdir';
+
+/** C files.c:2056 — `static char *unconverted_filename` (game build;
+ * `#else SFCTOOL` externs named in the map). JS strings need no arena. */
+let unconverted_filename = null;
+/** C files.c:2056 — `static char *converted_filename` (same). */
+let converted_filename = null;
+
+/**
+ * C ref: files.c contains_directory `:2179–2191` (extern via extern.h:1130;
+ * sole C caller is make_converted_name `:2113`).
+ * Returns non-zero when s holds a directory separator, not just a filespec.
+ * @param {string} s
+ * @returns {boolean}
+ */
+export function contains_directory(s) {
+    const str = String(s ?? ''); // `:2181` slen/cp setup
+    for (let i = 0; i < str.length; i++) { // `:2183`
+        const ch = str[i]; // `:2184` *cp
+        if (ch === '\\' || ch === '/' || ch === ':') return true; // `:2185–2186`
+    }
+    return false; // `:2190`
+}
+
+/**
+ * C ref: files.c make_converted_name `:2090–2153` (staticfn boolean),
+ * in C order. Builds the `.exportascii` converted name beside the
+ * unconverted one for the external save converter.
+ * @param {string} filename
+ * @returns {boolean}
+ */
+export function make_converted_name(filename) {
+    let dir = null; // `:2092`
+    let needsep = false; // `:2093`
+
+    if (filename == null) return false; // `:2097–2098` !filename → FALSE
+
+    /* C `:2103–2106` free both previous names (JS GC — drop the refs). */
+    unconverted_filename = null;
+    converted_filename = null;
+
+    /* C `:2108–2110` `#ifndef SHORT_FILENAMES` ms-dos note — comment only. */
+
+    let ln = String(filename).length; // `:2112`
+    if (!contains_directory(filename)) { // `:2113`
+        /* C `:2114–2130` UNIX/WIN32 dir resolution:
+         * `nh_getenv("NETHACKDIR")` / `nh_getenv("HACKDIR")` (options.c:6848)
+         * — named omit: scored ESM has no process env (Rule #2 dual
+         * runtime; SHOPTYPE precedent). WIN32 `get_user_home_folder` +
+         * `\AppData\Local\NetHack\5.0\` suffix — named omit (platform).
+         * `#ifdef HACKDIR` compile-time fallback — live below. */
+        dir = HACKDIR_PATH; // `:2118–2120` HACKDIR arm
+        if (dir != null) { // `:2131`
+            /* C `:2132–2133` `finaldirchar = c_eos(dir); finaldirchar--`
+             * (hacklib.c:203); JS strings need no end-pointer helper —
+             * read the last char directly. */
+            const finaldirchar = dir[dir.length - 1];
+            if (finaldirchar !== '/' && finaldirchar !== '\\' // `:2134–2135`
+                && finaldirchar !== ':') {
+                needsep = true; // `:2136`
+                ln += 1; // `:2137`
+            }
+            ln += dir.length; // `:2139`
+        }
+    }
+    /* C `:2142–2145` alloc + Snprintf "%s%s%s" (JS: plain concat). */
+    unconverted_filename =
+        (dir ?? '') + ((dir && needsep) ? '/' : '') + String(filename);
+    const xtra = '.exportascii'; // `:2147`
+    ln += xtra.length; // `:2148`
+    /* C `:2149–2151` alloc + Strcpy + Strcat. */
+    converted_filename = unconverted_filename + xtra;
+    return true; // `:2152`
+}
+
+/**
+ * C ref: files.c delete_convertedfile `:2156–2165` — the sole C caller of
+ * make_converted_name (`:2160`).
+ * @param {string} basefilename
+ * @returns {number}
+ */
+export function delete_convertedfile(basefilename) {
+    if (!converted_filename) make_converted_name(basefilename); // `:2159–2160`
+    if (converted_filename) {
+        /* C `:2162` unlink(converted_filename) — named omit: no fs unlink
+         * in scored ESM (Rule #2; delete_levelfile precedent). */
+    }
+    return 0; // `:2164`
 }
 

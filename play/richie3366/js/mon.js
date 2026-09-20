@@ -1835,7 +1835,7 @@ async function mdrop_obj(mon, obj, verbosely) {
     // C: saddle removal last — it can throw the rider; extrinsics ran with
     // do_intrinsics=FALSE above, so refresh them here when still alive.
     if ((mon.mhp | 0) > 0 && unwornmask) {
-        update_mon_extrinsics(mon, obj, false, true);
+        await update_mon_extrinsics(mon, obj, false, true);
     }
 }
 

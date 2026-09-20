@@ -9,7 +9,7 @@ import { rn2, rnd, d } from './rng.js';
 import {
     objects_at, obj_extract_self, splitobj, weight, add_to_container,
     place_object, hornoplenty, unbless, mergable, delobj, set_corpsenm,
-    unsplitobj, spot_time_left, nxtobj,
+    unsplitobj, spot_time_left, nxtobj, stop_timer, set_bknown,
 } from './mkobj.js';
 import {
     look_here, observe_object, dfeature_at, paint_corner_nhw_menu,
@@ -20,20 +20,21 @@ import {
     splittable, will_feel_cockatrice, feel_cockatrice, is_worn,
     not_fully_identified,
     taking_off, count_unpaid, tally_BUCX, getobj, Blind, hold_another_object, currency,
+    makeknown, useup, useupf,
 } from './invent.js';
 import {
     nomul, check_special_room, set_uinwater, is_pool, is_lava, in_rooms, dosinkfall,
-    SURFACE_AT, switch_terrain, maybe_half_phys, waterbody_name,
+    SURFACE_AT, switch_terrain, maybe_half_phys, waterbody_name, losehp, carrying,
 } from './hack.js';
 import {
     flush_screen, pline, newsym, newsym_force, docrt, bot, flush_topl_more, canseemon,
     canspotmon, Hallucination, clear_nhwindow_message, Norep, impossible,
-    sensemon,
+    sensemon, You, urgent_pline, pline_The,
 } from './display.js';
 import { addinv } from './u_init.js';
 import {
     an, doname, Doname2, makesingular, xname, cxname, cxname_singular, xprname,
-    the as theArt, The, body_part_latebound, vtense,
+    the as theArt, The, body_part_latebound,
     safe_qbuf, ansimpleoname, otense, Tobjnam,
     yname as yname_objnam, Yname2,
     thesimpleoname as thesimpleoname_objnam,
@@ -65,7 +66,8 @@ import {
     MENU_TRADITIONAL, MENU_COMBINATION, MENU_FULL,
     SHOPBASE,
     SLT_ENCUMBER, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER,
-    AUTOUNLOCK_APPLY_KEY,
+    AUTOUNLOCK_APPLY_KEY, AUTOUNLOCK_UNTRAP, AUTOUNLOCK_FORCE,
+    CQ_CANNED, KILLED_BY_AN,
     nothing_seems_to_happen, nothing_happens, something, engulfing_u,
     HAND, FOOT, NO_MINVENT, MM_ADJACENTOK, MM_NOMSG, ONAME_NO_FLAGS,
     ARTICLE_A, ARTICLE_THE, RLOC_NOMSG, TIMEOUT, I_SPECIAL, FAILEDUNTRAP,
@@ -78,8 +80,19 @@ import {
 } from './const.js';
 import {
     t_at, dotrap, drown, lava_effects, instapetrify, float_down, ceiling,
-    back_on_ground, uteetering_at_seen_pit, uescaped_shaft,
+    back_on_ground, uteetering_at_seen_pit, uescaped_shaft, chest_trap,
 } from './trap.js';
+import { carried } from './eat.js';
+import { obj_is_burning } from './light.js';
+import { snuff_lit } from './apply.js';
+import { age_is_relative } from './timeout.js';
+import { livelog_printf } from './pline.js';
+import { uhis } from './roles.js';
+import {
+    SELL_NORMAL, SELL_DELIBERATE, SELL_DONTSELL,
+    ROT_CORPSE, REVIVE_MON, SHRINK_GLOB, LL_ACHIEVE,
+    OMONST, has_omonst,
+} from './const.js';
 import { nhgetch } from './input.js';
 import { m_at, mnexto, hideunder, ceiling_hider } from './mon.js';
 import { oclass_to_sym, regex_match, select_menu_pick_any, select_menu_pick_one } from './options.js';
@@ -90,11 +103,11 @@ import {
 import { ATR_INVERSE } from './terminal.js';
 import {
     addtobill, costly_spot, check_unpaid_usage, is_unpaid, doname_with_price,
-    remote_burglary, shop_keeper, stolen_value, obfree,
+    remote_burglary, shop_keeper, stolen_value, obfree, sellobj, sellobj_state,
 } from './shk.js';
 import {
     nohands, nolimbs, M1_NOTAKE, touch_petrifies, poly_when_stoned, is_rider,
-    mons,
+    mons, throws_rocks,
     monsterNames,
     is_floater, is_swimmer, is_clinger, likes_lava, amphibious, grounded, is_flyer, breathless, hides_under,
 } from './monsters.js';
@@ -119,7 +132,10 @@ import { is_ice } from './zap.js';
 import { incr_itimeout_HLevitation } from './potion.js';
 import { which_armor, extract_from_minvent } from './worn.js';
 import { unconscious } from './teleport.js';
-import { get_adjacent_loc } from './lock.js';
+import {
+    get_adjacent_loc, pick_lock, autokey, doforce, u_have_forceable_weapon,
+} from './lock.js';
+import { cmdq_add_ec } from './cmd.js';
 import { scatter } from './explode.js';
 
 /** C ref: mondata.h notake — M1_NOTAKE. */
@@ -151,6 +167,7 @@ const CORPSE = objectNames.indexOf('CORPSE');
 const SCR_SCARE_MONSTER = objectNames.indexOf('SCR_SCARE_MONSTER');
 const LOADSTONE = objectNames.indexOf('LOADSTONE');
 const BOULDER = objectNames.indexOf('BOULDER');
+const GOLD_PIECE = objectNames.indexOf('GOLD_PIECE');
 const ICE_BOX = objectNames.indexOf('ICE_BOX');
 const STATUE = objectNames.indexOf('STATUE');
 const AMULET_OF_YENDOR = objectNames.indexOf('AMULET_OF_YENDOR');
@@ -158,6 +175,8 @@ const CANDELABRUM_OF_INVOCATION = objectNames.indexOf('CANDELABRUM_OF_INVOCATION
 const BELL_OF_OPENING = objectNames.indexOf('BELL_OF_OPENING');
 const SPE_BOOK_OF_THE_DEAD = objectNames.indexOf('SPE_BOOK_OF_THE_DEAD');
 const LEASH = objectNames.indexOf('LEASH');
+const WAN_CANCELLATION = objectNames.indexOf('WAN_CANCELLATION');
+const PM_ICE_TROLL = monsterNames.indexOf('PM_ICE_TROLL');
 const GOLD_SYM = '$';
 const PM_STONE_GOLEM = monsterNames.indexOf('PM_STONE_GOLEM');
 const PM_HOUSECAT = monsterNames.indexOf('PM_HOUSECAT');
@@ -1211,14 +1230,20 @@ async function carry_count(obj, count, telekinesis, wts) {
 }
 
 /**
- * C ref: pickup.c lift_object — willing/able to carry. telekinesis
- * skips the ynq Continue? and refuses when encumbrance would rise.
+ * C ref: pickup.c lift_object `:1705–1795` — able and willing to carry obj.
+ * Branch envelope (C order): Sokoban boulder refuse; LOADSTONE /
+ * giant-boulder weight override (lift regardless while a slot is free);
+ * carry_count; 52-slot refuse with gold exception; encumbrance rise →
+ * telekinesis silent refuse else ynq Continue? (`lifting`/`removing`);
+ * scare-scroll spe clear on floor refuse.
  * Sokoban boulder uses body_part(HAND) (latebound; polyself→do→pickup cycle).
- * Named omit: LOADSTONE/giant-boulder weight override; container path;
- * shop no_charge merge_choice.
+ * Named omit: container carry_count delta_cwt (floor weights; carry_count
+ * doc); shop no_charge merge_choice (merge_choice_invent doc).
+ * Callers: pickup_object `:1869` (container NULL); out_container `:2748`.
  */
-async function lift_object(obj, cntRef, telekinesis) {
-    // C: #define Sokoban svl.level.flags.sokoban_rules — not In_sokoban.
+async function lift_object(obj, container, cntRef, telekinesis) {
+    let result;
+    // C `:1714–1718`: #define Sokoban svl.level.flags.sokoban_rules.
     const Sokoban = !!(game.level?.flags?.sokoban_rules || game.Sokoban);
     if ((obj.otyp | 0) === BOULDER && Sokoban) {
         await pline(
@@ -1226,42 +1251,69 @@ async function lift_object(obj, cntRef, telekinesis) {
         );
         return -1;
     }
-    cntRef.count = await carry_count(obj, cntRef.count, telekinesis, cntRef);
-    if (cntRef.count < 1) return -1;
-    if (obj.oclass !== COIN_CLASS
-        && inv_cnt(false) >= INVLET_BASIC
-        && !merge_choice_invent(obj)) {
-        await pline('Your knapsack cannot accommodate any more items.');
+    // C `:1719–1737`: override weight consideration for loadstone picked up
+    // by anybody and for boulder picked up by a hero poly'd into a giant;
+    // override slot availability iff not already carrying one.
+    if ((obj.otyp | 0) === LOADSTONE
+        || ((obj.otyp | 0) === BOULDER && throws_rocks(game.youmonst?.data))) {
+        if (inv_cnt(false) < INVLET_BASIC || !carrying(obj.otyp | 0)
+            || merge_choice_invent(obj)) {
+            return 1; // C `:1726` — lift regardless of current situation
+        }
+        await pline(
+            `You are carrying too much stuff to pick up ${(obj.quan || 1) === 1 ? 'another' : 'more'} ${xname(obj)}.`,
+        );
         return -1;
     }
-    let result = 1;
-    let prev_encumbr = near_capacity();
-    const burden = flags_pickup_burden();
-    if (prev_encumbr < burden) prev_encumbr = burden;
-    const next_encumbr = calc_capacity(cntRef.after - cntRef.before);
-    if (next_encumbr > prev_encumbr) {
-        if (telekinesis) {
-            result = 0;
-        } else {
-            const pfx = next_encumbr >= EXT_ENCUMBER ? overloadpfx
-                : next_encumbr >= HVY_ENCUMBER ? nearloadpfx
-                    : next_encumbr >= MOD_ENCUMBER ? moderateloadpfx
-                        : slightloadpfx;
-            const savequan = obj.quan;
-            obj.quan = cntRef.count;
-            // C: Sprintf prefix then safe_qbuf(qbuf, qbuf, ".  Continue?",
-            // doname, ansimpleoname, something). Container "removing" named.
-            let qbuf = `${pfx} lifting `;
-            qbuf = safe_qbuf(qbuf, qbuf, '.  Continue?', obj, doname,
-                ansimpleoname, something);
-            obj.quan = savequan;
-            const ans = await yn_function(qbuf, 'ynq', 'q');
-            if (ans === 'q') result = -1;
-            else if (ans === 'n') result = 0;
-            clear_nhwindow_message();
+    // C `:1739–1740`
+    cntRef.count = await carry_count(obj, cntRef.count, telekinesis, cntRef);
+    if (cntRef.count < 1) {
+        result = -1; // C `:1741–1742` — nothing lifted (falls to scare arm)
+    } else if (obj.oclass !== COIN_CLASS
+               && inv_cnt(false) >= INVLET_BASIC
+               && !merge_choice_invent(obj)) {
+        // C `:1743–1756`: gold here varies the message; caller and
+        // grandcaller can't skip-then-gold, so refuse with a hint instead.
+        const exceptGold = nxtobj(obj, GOLD_PIECE, (obj.where | 0) === OBJ_FLOOR)
+            ? ' (except gold)'
+            : '';
+        await pline(`Your knapsack cannot accommodate any more items${exceptGold}.`);
+        result = -1; // C `:1755` — nothing lifted
+    } else {
+        result = 1;
+        // C `:1757–1760`
+        let prev_encumbr = near_capacity();
+        const burden = flags_pickup_burden();
+        if (prev_encumbr < burden) prev_encumbr = burden;
+        const next_encumbr = calc_capacity(cntRef.after - cntRef.before);
+        if (next_encumbr > prev_encumbr) {
+            if (telekinesis) {
+                result = 0; // C `:1762–1763` — don't lift
+            } else {
+                // C `:1765–1786`: Sprintf prefix then safe_qbuf(qbuf, qbuf,
+                // ".  Continue?", doname, ansimpleoname, something).
+                const pfx = next_encumbr >= EXT_ENCUMBER ? overloadpfx
+                    : next_encumbr >= HVY_ENCUMBER ? nearloadpfx
+                        : next_encumbr >= MOD_ENCUMBER ? moderateloadpfx
+                            : slightloadpfx;
+                const savequan = obj.quan;
+                obj.quan = cntRef.count;
+                let qbuf = `${pfx} ${!container ? 'lifting' : 'removing'} `;
+                qbuf = safe_qbuf(qbuf, qbuf, '.  Continue?', obj, doname,
+                    ansimpleoname, something);
+                obj.quan = savequan;
+                // C `:1775–1783` ynq: 'q' quit, 'n' don't lift, 'y' lifts.
+                const ans = await yn_function(qbuf, 'ynq', 'q');
+                if (ans === 'q') result = -1;
+                else if (ans === 'n') result = 0;
+                clear_nhwindow_message(); // C `:1784` WIN_MESSAGE
+            }
         }
     }
-    if ((obj.otyp | 0) === SCR_SCARE_MONSTER && result <= 0) obj.spe = 0;
+    // C `:1791–1792`
+    if ((obj.otyp | 0) === SCR_SCARE_MONSTER && result <= 0 && !container) {
+        obj.spe = 0;
+    }
     return result;
 }
 
@@ -1270,8 +1322,9 @@ async function lift_object(obj, cntRef, telekinesis) {
  * Branch envelope: observe_object; telekinesis through corpse/scare/
  * lift_object (D-1050); gold disp.botl; splitobj; pick_obj + prinv.
  * Named omissions: LOADSTONE no-split already honored; ghostly
- * fix_ghostly_obj; LOADSTONE/giant-boulder weight override;
- * container carry_count; Death/Pestilence revive suffixes.
+ * fix_ghostly_obj; LOADSTONE/giant-boulder weight override (live in
+ * lift_object); container carry_count delta_cwt; Death/Pestilence
+ * revive suffixes.
  */
 export async function pickup_object(obj, count, telekinesis) {
     if (!obj) return 0;
@@ -1318,8 +1371,9 @@ export async function pickup_object(obj, count, telekinesis) {
         }
     }
 
+    // C `:1869` lift_object(obj, NULL, &count, telekinesis).
     const lifted = { count, before: 0, after: 0 };
-    const res = await lift_object(obj, lifted, remotely);
+    const res = await lift_object(obj, null, lifted, remotely);
     if (res <= 0) return res;
     count = lifted.count;
 
@@ -2305,19 +2359,29 @@ async function use_container_traditional_prompt(
 
 /**
  * C ref: pickup.c out_container — remove one object from current_container
- * into invent. Branch envelope: gold / ordinary; lift always ok. Named
- * omissions: container `lift_object`/`delta_cwt` (floor path is D-1050);
- * artifact touch; fatal corpse; split count; icebox; shop bill; pick_pick.
+ * into invent. Branch envelope: gold weigh; lift_object `:2748` (encumbrance
+ * / slot prompt says "removing"); split; extract; addinv + prinv; gold bot.
+ * Named omissions: container carry_count `delta_cwt` (floor weights;
+ * carry_count doc); artifact touch; fatal corpse; icebox; shop bill;
+ * pick_pick.
  * @returns {number} -1 stop, 1 removed, 0 not removed
  */
 async function out_container(obj) {
     if (!obj || !game._current_container) return -1;
+    const container = game._current_container;
     const is_gold = obj.oclass === COIN_CLASS;
     if (is_gold) obj.owt = weight(obj);
 
-    // lift_object deferred — always allow
+    // C `:2747–2751` lift_object(obj, current_container, &count, FALSE);
+    // split unless the lifted count covers the stack (never for LOADSTONE).
     // C: count before addinv merge (gold may grow; prinv total_of needs it)
-    const count = obj.quan || 1;
+    const lifted = { count: obj.quan || 1, before: 0, after: 0 };
+    const res = await lift_object(obj, container, lifted, false);
+    if (res <= 0) return res;
+    const count = lifted.count;
+    if ((obj.quan || 1) !== count && (obj.otyp | 0) !== LOADSTONE) {
+        obj = splitobj(obj, count);
+    }
     obj_extract_self(obj);
     game._current_container.owt = weight(game._current_container);
 
@@ -2903,64 +2967,100 @@ export async function boh_loss(container, held) {
 }
 
 /**
- * C ref: pickup.c in_container — move invent obj into current_container.
- * Envelope: early refusals + uwep/uswapwep/uquiver; freeinv; put pline.
- * Named omissions: snuff_lit; shop sellobj; icebox age/timers;
- * mbag explosion; botl gold-only polish beyond _goldCount.
+ * C ref: pickup.c Is_mbag — obj.h:339 BAG_OF_HOLDING || BAG_OF_TRICKS.
+ */
+function Is_mbag(obj) {
+    const t = obj?.otyp | 0;
+    return t === BAG_OF_HOLDING || t === BAG_OF_TRICKS;
+}
+
+/**
+ * C ref: pickup.c mbag_explodes `:2488–2509` (staticfn) — explosion odds
+ * 1/1, 2/2, 3/4, 4/8 … over nesting depth, recursing into contents.
+ */
+function mbag_explodes(obj, depthin) {
+    if (!obj) return false;
+    const t = obj.otyp | 0;
+    /* these won't cause an explosion when they're empty — C `:2491–2493` */
+    if ((t === WAN_CANCELLATION || t === BAG_OF_TRICKS) && (obj.spe | 0) <= 0)
+        return false;
+    /* odds: 1/1, 2/2, 3/4 … capped at 1<<7 — C `:2496–2497` */
+    if ((Is_mbag(obj) || t === WAN_CANCELLATION)
+        && rn2(1 << (depthin > 7 ? 7 : depthin)) <= depthin)
+        return true;
+    if (Has_contents(obj)) { // C `:2498–2504`
+        for (let otmp = obj.cobj; otmp; otmp = otmp.nobj)
+            if (mbag_explodes(otmp, depthin + 1)) return true;
+    }
+    return false; // C `:2505–2508`
+}
+
+/**
+ * C ref: pickup.c in_container `:2558–2712` — move invent obj into
+ * gc.current_container (JS: game._current_container). Every arm in C order.
+ * Named omissions: none — every arm and callee live (C `panic` on a lost
+ * floor bag surfaces as `impossible`: no live panic export, display.js:7747;
+ * C `obj_to_any` timer cookie is the JS obj itself: mkobj.js stop_timer
+ * takes obj; C `something` is const.js).
  * @returns {Promise<number>} 1 stashed, 0 refused, -1 stop
  */
 async function in_container(obj) {
-    const cont = game._current_container;
-    if (!cont) return 0;
-    if (!obj) return 0;
-    const u = game.u || {};
-    if (obj === u.uball || obj === u.uchain) {
-        await pline('You must be kidding.');
+    // C `:2560` — floor_container is read before freeinv() mutates invent.
+    const floor_container = !carried(game._current_container);
+    let was_unpaid = false;
+    if (!game._current_container) { // C `:2564–2567`
+        await impossible('<in> no gc.current_container?');
         return 0;
     }
-    if (obj === cont) {
+    if (!obj) return 0;
+    const cont = game._current_container;
+    const u = game.u || {};
+    if (obj === u.uball || obj === u.uchain) { // C `:2568`
+        await You('must be kidding.');
+        return 0;
+    }
+    if (obj === cont) { // C `:2571`
         await pline('That would be an interesting topological exercise.');
         return 0;
     }
-    if ((obj.owornmask || 0) & (W_ARMOR | W_ACCESSORY)) {
-        const ice = (cont.otyp | 0) === ICE_BOX;
+    if ((obj.owornmask | 0) & (W_ARMOR | W_ACCESSORY)) { // C `:2574–2576`
         await Norep(
-            `You cannot ${ice ? 'refrigerate' : 'stash'} something you are wearing.`,
+            'You cannot %s %s you are wearing.',
+            (cont.otyp | 0) === ICE_BOX ? 'refrigerate' : 'stash', something,
         );
         return 0;
     }
-    if ((obj.otyp | 0) === LOADSTONE && obj.cursed) {
-        obj.bknown = 1;
-        const s = (obj.quan || 1) !== 1 ? 's' : '';
-        await pline(`The stone${s} won't leave your person.`);
+    if ((obj.otyp | 0) === LOADSTONE && obj.cursed) { // C `:2577–2580`
+        set_bknown(obj, 1);
+        await pline_The(
+            "stone%s won't leave your person.",
+            (obj.quan | 0) !== 1 ? 's' : '',
+        );
         return 0;
     }
-    if ((obj.otyp | 0) === AMULET_OF_YENDOR
+    if ((obj.otyp | 0) === AMULET_OF_YENDOR // C `:2582–2590`
         || (obj.otyp | 0) === CANDELABRUM_OF_INVOCATION
         || (obj.otyp | 0) === BELL_OF_OPENING
         || (obj.otyp | 0) === SPE_BOOK_OF_THE_DEAD) {
-        await pline(
-            `${The(xname(obj))} cannot be confined in such trappings.`,
-        );
+        await pline('%s cannot be confined in such trappings.', The(xname(obj)));
         return 0;
     }
-    if ((obj.otyp | 0) === LEASH && obj.leashmon) {
-        const nam = xname(obj);
-        await pline(
-            `${The(nam)} ${vtense(nam, 'are')} attached to your pet.`,
-        );
+    if ((obj.otyp | 0) === LEASH && (obj.leashmon | 0) !== 0) { // C `:2591–2593`
+        await pline('%s attached to your pet.', Tobjnam(obj, 'are'));
         return 0;
     }
-    if (obj === u.uwep) {
+    if (obj === u.uwep) { // C `:2595–2605`
         if (welded(obj)) {
             await weldmsg(obj);
             return 0;
         }
         setuwep(null);
-        if (u.uwep) return 0;
-    } else if (obj === u.uswapwep) {
+        /* C: this uwep check is obsolete (3.0 Firebrand) — unwielded, died,
+           rewielded by life-saving. */
+        if (game.u?.uwep) return 0;
+    } else if (obj === u.uswapwep) { // C `:2606–2608`
         setuswapwep(null);
-    } else if (obj === u.uquiver) {
+    } else if (obj === u.uquiver) { // C `:2609–2611`
         setuqwep(null);
     }
 
@@ -2974,25 +3074,112 @@ async function in_container(obj) {
         return 0;
     }
 
-    const is_gold = obj.oclass === COIN_CLASS;
-    if (is_gold) {
+    freeinv(obj); // C `:2624`
+    /* JS display cache only (no C counterpart): C invent.c freeinv_core sets
+       disp.botl for gold and C bot() recounts invent; JS botl `$:` reads
+       game._goldCount (do.js freeinv_drop precedent), so writers decrement
+       it when gold leaves invent. */
+    if ((obj.oclass | 0) === COIN_CLASS) {
         game._goldCount = Math.max(0, (game._goldCount || 0) - (obj.quan || 0));
-        if (game.botl != null) game.botl = 1;
-        if (game.flags) game.flags.botl = true;
+        if (!game.flags) game.flags = {};
+        game.flags.botl = true;
     }
 
-    freeinv(obj);
-    // C: snuff_lit / sellobj / icebox age / mbag_explodes named.
+    if (obj_is_burning(obj)) // C `:2626–2627` (this used to be part of freeinv)
+        await snuff_lit(obj);
 
-    if (game._current_container) {
-        await pline(
-            `You put ${doname(obj)} into ${theArt(xname(cont))}.`,
+    if (floor_container && costly_spot(u.ux, u.uy)) { // C `:2629–2643`
+        /* defer gold until after put-in message */
+        if ((obj.oclass | 0) !== COIN_CLASS) {
+            /* sellobj() will take an unpaid item off the shop bill */
+            was_unpaid = !!obj.unpaid; // C `:2633`
+            if (game.sellobj_first) { // C `:2634–2640`
+                /* don't sell when putting the item into your own container,
+                   but handle billing correctly */
+                sellobj_state(cont.no_charge ? SELL_DONTSELL : SELL_DELIBERATE);
+                game.sellobj_first = false;
+            }
+            await sellobj(obj, u.ux, u.uy); // C `:2641`
+        }
+    }
+    if ((cont.otyp | 0) === ICE_BOX && !age_is_relative(obj)) { // C `:2644–2657`
+        obj.age = (game.moves | 0) - (obj.age | 0); /* actual age */
+        /* stop any corpse timeouts when frozen */
+        if ((obj.otyp | 0) === CORPSE) {
+            if (obj.timed) { // C `:2649–2651`
+                stop_timer(ROT_CORPSE, obj);
+                stop_timer(REVIVE_MON, obj);
+            }
+            /* a cancelled ice troll corpse unfreezes uncancelled */
+            if ((obj.corpsenm | 0) === PM_ICE_TROLL && has_omonst(obj)) // C `:2653–2654`
+                OMONST(obj).mcan = 0;
+        } else if (obj.globby && obj.timed) { // C `:2655–2656`
+            stop_timer(SHRINK_GLOB, obj);
+        }
+    } else if (Is_mbag(cont) && mbag_explodes(obj, 0)) { // C `:2658–2693`
+        livelog_printf(LL_ACHIEVE, 'just blew up %s bag of holding', uhis()); // C `:2659`
+        /* explicitly mention what item is triggering the explosion */
+        await urgent_pline( // C `:2661–2663`
+            'As you put %s inside, you are blasted by a magical explosion!',
+            doname(obj),
         );
-        add_to_container(cont, obj);
-        cont.owt = weight(cont);
+        /* did not actually insert obj yet */
+        if (was_unpaid) // C `:2665–2666`
+            await addtobill(obj, false, false, true);
+        if ((obj.otyp | 0) === BAG_OF_HOLDING) // C `:2667–2668`
+            await do_boh_explosion(obj, (obj.where | 0) === OBJ_FLOOR);
+        obfree(obj, null); // C `:2669` ((struct obj *)0)
+        /* carried shop goods are flagged unpaid and obfree() handles the
+           bill; floor goods need billing before deletion (non-shop items
+           are flagged no_charge) — C `:2670–2678` */
+        if (floor_container && costly_spot(cont.ox, cont.oy)) { // C `:2673–2674`
+            const save_no_charge = cont.no_charge;
+            await addtobill(cont, false, false, false); // C `:2678`
+            /* addtobill() clears no_charge; set it back so useupf()
+               doesn't double bill — C `:2679–2681` */
+            cont.no_charge = save_no_charge;
+        }
+        await do_boh_explosion(cont, floor_container); // C `:2683`
+
+        if (!floor_container) { // C `:2685–2686`
+            useup(cont);
+        } else if (obj_here_bag(cont, u.ux, u.uy)) { // C `:2687–2688`
+            useupf(cont, cont.quan);
+        } else { // C `:2690` (no live panic export — impossible)
+            await impossible('in_container:  bag not found.');
+        }
+
+        await losehp(d(6, 6), 'magical explosion', KILLED_BY_AN); // C `:2692`
+        game._current_container = null; /* baggone = TRUE; */ // C `:2693`
     }
-    await bot();
-    return game._current_container ? 1 : -1;
+
+    if (game._current_container) { // C `:2695–2704`
+        /* Strcpy(buf, the(...)): JS strings need no obuf guard. */
+        await You('put %s into %s.', doname(obj), theArt(xname(cont))); // C `:2696–2698`
+
+        /* gold in container always needs to be added to credit */
+        if (floor_container && (obj.oclass | 0) === COIN_CLASS) // C `:2701–2702`
+            await sellobj(obj, cont.ox, cont.oy);
+        add_to_container(cont, obj); // C `:2703`
+        cont.owt = weight(cont); // C `:2704`
+    }
+    /* C `:2706–2709` — gold needs this, and freeinv() many lines above may
+     * hide encumbrance from the status, so always update status now. */
+    await bot(); // C `:2710`
+    return game._current_container ? 1 : -1; // C `:2711`
+}
+
+/**
+ * C ref: mkobj.c obj_here — object present at the (x,y) floor pile, as used
+ * by in_container `:2687`. The eat.js:2513 local clone is not exported, so
+ * the 5-line scan is inlined here rather than adding clone #2.
+ */
+function obj_here_bag(bag, x, y) {
+    if (!bag) return false;
+    for (let o = objects_at(x, y); o; o = o.nexthere) {
+        if (o === bag) return true;
+    }
+    return false;
 }
 
 /**
@@ -3790,6 +3977,9 @@ export async function use_container(obj, held = false, more_containers = false) 
 
     // C: ga.abort_looting = FALSE at entry.
     game.abort_looting = false;
+    // C pickup.c:2985 — gs.sellobj_first = TRUE; in_container() consumes it
+    // on the first shop-floor put-in (one sellobj_state call).
+    game.sellobj_first = true;
 
     // C: if (!u_handsy()) return ECMD_OK;
     if (!(await u_handsy())) return ECMD_OK;
@@ -3950,13 +4140,16 @@ export async function use_container(obj, held = false, more_containers = false) 
     // Skip when mbag explosion cleared current_container.
     if (used && game._current_container) game._current_container.cknown = 1;
 
+    // C pickup.c:3219 — sellobj_state(SELL_NORMAL) in case in_container()
+    // set DELIBERATE/DONTSELL on a shop-floor put-in.
+    sellobj_state(SELL_NORMAL);
     game._current_container = null;
     void held;
     return used;
 }
 
 /**
- * C ref: pickup.c do_loot_cont — floor container; locked → autounlock.
+ * C ref: pickup.c do_loot_cont `:2088–2162` — one floor container for #loot.
  * cindex/ccount (1..N) → use_container more_containers (cindex < ccount).
  * @param {object} cobj
  * @param {number} [cindex=1]
@@ -3964,35 +4157,72 @@ export async function use_container(obj, held = false, more_containers = false) 
  * @returns {Promise<number>} ECMD_*
  */
 async function do_loot_cont(cobj, cindex = 1, ccount = 1) {
-    if (!cobj) return ECMD_OK;
-    if (cobj.olocked) {
-        let res = ECMD_OK;
-        if (cobj.lknown)
-            await pline(`${upstart(theArt(xname(cobj)))} is locked.`);
-        else
-            await pline(`Hmmm, ${theArt(xname(cobj))} turns out to be locked.`);
-        cobj.lknown = 1;
+    // C `:2095` — cobj = *cobjp.
+    if (!cobj) return ECMD_OK; // C `:2095–2096`
+    if (cobj.olocked) { // C `:2097`
+        let res = ECMD_OK; // C `:2098`
+        // C `:2100–2105` — the #if 0 floor-pile "It is/Hmmm locked" copy is
+        // compiled out upstream; only the live pair below runs.
+        if (cobj.lknown) // C `:2106`
+            await pline(`${upstart(theArt(xname(cobj)))} is locked.`); // C `:2107` The(xname)
+        else // C `:2108`
+            await pline(`Hmmm, ${theArt(xname(cobj))} turns out to be locked.`); // C `:2109` the(xname)
+        cobj.lknown = 1; // C `:2110`
 
         if (!game.flags) game.flags = {};
-        const au = game.flags.autounlock ?? AUTOUNLOCK_APPLY_KEY;
+        const au = game.flags.autounlock ?? AUTOUNLOCK_APPLY_KEY; // C `:2112`
         if (au) {
-            const ox = cobj.ox | 0;
-            const oy = cobj.oy | 0;
+            const ox = cobj.ox | 0; // C `:2114`
+            const oy = cobj.oy | 0; // C `:2114`
+
+            // C `:2116–2117` — u.dz = 0 (#loot isn't a move command).
             if (game.u) game.u.dz = 0;
-            // C: APPLY_KEY | UNTRAP arm; UNTRAP / FORCE deferred
-            if ((au & AUTOUNLOCK_APPLY_KEY) !== 0) {
-                const { pick_lock, autokey } = await import('./lock.js');
-                const unlocktool = autokey(true);
-                if (unlocktool) {
-                    const pl = await pick_lock(unlocktool, ox, oy, cobj);
-                    if (pl) res = ECMD_TIME;
-                    return res;
+            // C `:2118–2123` — APPLY_KEY arm sets up unlocktool (kept even
+            // when untrap runs first); UNTRAP arm passes a null tool.
+            let unlocktool = 0;
+            if ((au & AUTOUNLOCK_APPLY_KEY) !== 0) unlocktool = autokey(true);
+            if (unlocktool || (au & AUTOUNLOCK_UNTRAP) !== 0) {
+                // C `:2124` — ox/oy passed to avoid a direction prompt.
+                if (await pick_lock(unlocktool, ox, oy, cobj)) res = ECMD_TIME; // C `:2125–2126`
+                // C `:2127–2134` — untrap/unlock may trigger a trap that
+                // destroys cobj; rescan the floor pile to find out.
+                let stillthere = false;
+                for (let otmp = objects_at(ox, oy); otmp; otmp = otmp.nexthere) {
+                    if (otmp === cobj) { stillthere = true; break; }
                 }
+                if (!stillthere) cobj = null; // C `:2133–2134` — *cobjp = 0
+                return res; // C `:2135`
+            }
+            // C `:2137–2139` — single box + forceable weapon queues #force
+            // (res is still ECMD_OK here; the check mirrors C order).
+            if ((au & AUTOUNLOCK_FORCE) !== 0
+                && res !== ECMD_TIME
+                && ccount === 1 && u_have_forceable_weapon()) {
+                // C `:2140–2141` — doforce asks for confirmation.
+                cmdq_add_ec(CQ_CANNED, doforce); // C `:2142`
+                game.abort_looting = true; // C `:2143`
             }
         }
-        return res;
+        return res; // C `:2146`
     }
-    // C: use_container(cobjp, FALSE, (boolean) (cindex < ccount))
+    cobj.lknown = 1; // C `:2148` — floor container needs no update_inventory()
+
+    if ((cobj.otyp | 0) === BAG_OF_TRICKS) { // C `:2150`
+        await You(`carefully open ${theArt(xname(cobj))}...`); // C `:2153`
+        await pline('It develops a huge set of teeth and bites you!'); // C `:2154`
+        const tmp = rnd(10); // C `:2155`
+        losehp(maybe_half_phys(tmp), 'carnivorous bag', KILLED_BY_AN); // C `:2156`
+        if (game._losehp_needs_done || game.program_state?.gameover) {
+            // C done() is noreturn; ECMD_TIME is this arm's value.
+            const { finish_losehp_done } = await import('./end.js');
+            await finish_losehp_done();
+            return ECMD_TIME;
+        }
+        makeknown(BAG_OF_TRICKS); // C `:2157`
+        game.abort_looting = true; // C `:2158`
+        return ECMD_TIME; // C `:2159`
+    }
+    // C `:2161` — use_container(cobjp, FALSE, (cindex < ccount)).
     return use_container(cobj, false, cindex < ccount);
 }
 
@@ -4187,8 +4417,9 @@ export async function doloot() {
 
 /**
  * C ref: pickup.c doloot_core `:2178–2346` — lootcont then lootmon.
- * Named omissions: Confusion reverse_loot; AUTOUNLOCK_FORCE;
+ * Named omissions: Confusion reverse_loot;
  * PICK_ANY @ invert / pages / >26 containers.
+ * (AUTOUNLOCK_FORCE lives in do_loot_cont `:2137–2144`, wired.)
  */
 async function doloot_core() {
     const u = game.u;
@@ -4451,60 +4682,93 @@ async function tipcontainer_gettarget(box) {
     return { target: otmp, cancelled: false };
 }
 
+// C ref: pickup.c tipcontainer_checks `:3680-3684` — TIPCHECK_foo enum,
+// file-local in C, so module-local here.
+const TIPCHECK_OK = 0;
+const TIPCHECK_LOCKED = 1;
+const TIPCHECK_TRAPPED = 2;
+const TIPCHECK_CANNOT = 3;
+const TIPCHECK_EMPTY = 4;
+
 /**
- * C ref: pickup.c tipcontainer — `:3693–3760` gettarget menu first, then
- * tipcontainer_checks, then spill/transfer.
- * highdrop = !can_reach_floor(TRUE); swallowed clears it; then
- * how_lost LOST_DROPPED + hitfloor(TRUE) (D-1273).
- * Named omissions: bag-of-holding explode; ice-box thaw; shop billing;
- * altarizing doaltarobj; cursed mbag item-gone; otrapped chest_trap;
- * dropy terse comma-list; toss_up; subfrombill after floor shop BoT/horn;
- * targetbox shop-bill per-item addtobill.
- * SchroedingersBox is observe_quantum_cat before spill.
- * @param {object} box
+ * C ref: pickup.c tipcontainer_checks `:3954-4055` — whole body in C order.
+ * Pre-tip validation for #tip: BoT-target apply, lknown discovery, locked,
+ * trapped, bag-or-horn emptying, quantum-cat, empty arms.
+ * Callers (both wired in tipcontainer below): `:3724` source box with
+ * allowempty FALSE, `:3726-3728` destination with allowempty TRUE.
+ * Returns TIPCHECK_OK (tip it), LOCKED, TRAPPED, CANNOT (already done:
+ * BoT-target applied or bag/horn emptied) or EMPTY.
+ * chest_trap joins the existing trap.js edge (no new edge); carried is the
+ * live eat.js export (imports.mjs IN-SCC verdict SAFE — hoisted function,
+ * call-time read only); get_obj_location_quantum is the file-local flags=0
+ * equivalent (identical arms: invent/floor/minvent, else null), so no new
+ * timeout.js edge. bagotricks stays a dynamic apply.js import (static edge
+ * would join the apply cycle). The quantum-cat message inlines Shk_Your's
+ * carried rule (no second Shk_Your function).
+ * Named omit: subfrombill after floor shop bag/horn (`:4029-4030`).
+ * @param {object} box container the player wants to tip
+ * @param {object|null} targetbox destination (horn of plenty)
+ * @param {boolean} allowempty TIPCHECK_OK instead of TIPCHECK_EMPTY when empty
+ * @returns {Promise<number>} TIPCHECK_* value
  */
-export async function tipcontainer(box) {
-    if (!box) return;
-    const ox = (box.ox | 0) || (game.u?.ux | 0);
-    const oy = (box.oy | 0) || (game.u?.uy | 0);
-    // C tipcontainer `:3706` — target menu before any checks, even when empty.
-    const { target: targetbox, cancelled } = await tipcontainer_gettarget(box);
-    if (cancelled) return;
-    // C pickup.c tipcontainer_checks `:3961-3966` — undiscovered BoT as the
-    // destination: apply it once (bagotricks) before tipping the source box.
-    // Known BoT never reaches here (excluded from the target menu above).
+async function tipcontainer_checks(box, targetbox, allowempty) {
+    // C `:3962-3966` — undiscovered bag of tricks as the destination: apply
+    // it once before even trying to tip the source box (D-2354: this arm
+    // runs before the lknown/lock/trap checks; review 1320 ACCEPT).
+    // Known BoT never reaches here (excluded from the target menu).
     if (targetbox && (targetbox.otyp | 0) === BAG_OF_TRICKS) {
+        const seencount = { n: 0 };
         const { bagotricks } = await import('./apply.js');
-        await bagotricks(targetbox, false, { n: 0 });
-        return; // C TIPCHECK_CANNOT — already done
+        await bagotricks(targetbox, false, seencount);
+        return TIPCHECK_CANNOT;
     }
-    // C tipcontainer_checks: discover lock, refuse locked/empty
-    if (!box.lknown) box.lknown = 1;
+    // C `:3972-3976` — discovering the lock jumps the gun on the
+    // inventory display when carried.
+    if (!box.lknown) {
+        box.lknown = 1;
+        if (carried(box)) update_inventory();
+    }
+    // C `:3978-3980`.
     if (box.olocked) {
         await pline(`${upstart(thesimpleoname(box))} is locked.`);
-        return;
+        return TIPCHECK_LOCKED;
     }
-    // C tipcontainer_checks: BAG_OF_TRICKS / HORN_OF_PLENTY empty via apply
-    if ((BAG_OF_TRICKS >= 0 && box.otyp === BAG_OF_TRICKS)
-        || (HORN_OF_PLENTY >= 0 && box.otyp === HORN_OF_PLENTY)) {
-        const bag = box.otyp === BAG_OF_TRICKS;
-        const oldSpe = box.spe | 0;
-        const maybeshopgoods = box.where !== OBJ_INVENT
-            && costly_spot(box.ox | 0, box.oy | 0);
-        const u = game.u || {};
-        let bx = u.ux | 0;
-        let by = u.uy | 0;
-        if (box.where === OBJ_FLOOR) {
-            bx = box.ox | 0;
-            by = box.oy | 0;
+    // C `:3982-3992` — not reaching inside but still handling it: the trap
+    // fires, and the turn is used even when it fails (multi >= 0 means
+    // the blast did not paralyze the hero).
+    if (box.otrapped) {
+        await chest_trap(box, HAND, false);
+        if ((game.multi | 0) >= 0) {
+            nomul(-1);
+            game.multi_reason = 'tipping a container';
+            game.nomovemsg = '';
         }
-        box.ox = bx;
-        box.oy = by;
+        return TIPCHECK_TRAPPED;
+    }
+    // C `:3993-4032` — bag of tricks / horn of plenty: apply until empty.
+    if ((box.otyp | 0) === BAG_OF_TRICKS || (box.otyp | 0) === HORN_OF_PLENTY) {
+        let res = TIPCHECK_OK;
+        const bag = (box.otyp | 0) === BAG_OF_TRICKS;
+        const oldSpe = box.spe | 0;
+        let seen = 0;
+        let totseen = 0;
+        // C: maybeshopgoods reads box->ox,oy before the location update below.
+        const maybeshopgoods = !carried(box)
+            && costly_spot(box.ox | 0, box.oy | 0);
+        // C `:4001-4003` — the horn's destination must itself tip clean.
+        if (targetbox
+            && (res = await tipcontainer_checks(targetbox, null, true)) !== TIPCHECK_OK) {
+            return res;
+        }
+        // C `:4005-4006` — a held box moves with the hero; floor is redundant.
+        const bloc = get_obj_location_quantum(box);
+        if (bloc) {
+            box.ox = bloc.x | 0;
+            box.oy = bloc.y | 0;
+        }
         if (maybeshopgoods && !box.no_charge) {
             await addtobill(box, false, false, true);
         }
-        let seen = 0;
-        let totseen = 0;
         do {
             if (bag) {
                 const seencount = { n: seen };
@@ -4515,37 +4779,73 @@ export async function tipcontainer(box) {
             } else if (!(await hornoplenty(box, true, targetbox))) {
                 break;
             }
+            // C re-adds stale seen on horn iterations (0 here — defined).
             totseen += seen;
         } while ((box.spe | 0) > 0);
+        // C `:4023-4028` — check_unpaid wants a non-zero charge count.
         if ((box.spe | 0) < oldSpe) {
             if (bag && !totseen) await pline(nothing_seems_to_happen);
-            // C pickup.c: check_unpaid wants a non-zero charge count
             box.spe = oldSpe;
             await check_unpaid_usage(box, true);
-            box.spe = 0;
+            box.spe = 0; // empty
             box.cknown = 1;
         }
-        return; // C TIPCHECK_CANNOT — already emptied
+        return TIPCHECK_CANNOT; // C: actually means 'already done'
     }
+    // C `:4034-4045` — Schroedinger's box: observe before empty/spill. A live
+    // cat leaves no contents (TIPCHECK_EMPTY); a corpse stays (TIPCHECK_OK).
     if (SchroedingersBox(box)) {
-        // C pickup.c:4034–4045 — observe before empty/spill; live cat
-        // leaves no cobj → "Your/The box is now empty." (TIPCHECK_EMPTY).
+        let empty_it = false;
         await observe_quantum_cat(box, true, true);
         if (!Has_contents(box)) {
-            const carried = box.where === OBJ_INVENT
-                || (game.invent || []).includes(box);
-            await pline(`${carried ? 'Your' : 'The'} box is now empty.`);
-            box.cknown = 1;
-            return;
+            // C: Shk_Your — 'Your ' when carried, 'The ' otherwise.
+            await pline(`${carried(box) ? 'Your' : 'The'} box is now empty.`);
+        } else {
+            empty_it = true; // holds cat corpse
         }
         box.cknown = 1;
-        // dead cat: corpse remains; fall through to spill
+        return (empty_it || allowempty) ? TIPCHECK_OK : TIPCHECK_EMPTY;
     }
-    if (!Has_contents(box)) {
+    // C `:4047-4051`.
+    if (!allowempty && !Has_contents(box)) {
         box.cknown = 1;
         await pline(`${upstart(thesimpleoname(box))} is empty.`);
-        return;
+        return TIPCHECK_EMPTY;
     }
+    return TIPCHECK_OK;
+}
+
+/**
+ * C ref: pickup.c tipcontainer — `:3693–3760` gettarget menu first, then
+ * tipcontainer_checks, then spill/transfer.
+ * highdrop = !can_reach_floor(TRUE); swallowed clears it; then
+ * how_lost LOST_DROPPED + hitfloor(TRUE) (D-1273).
+ * Named omissions: bag-of-holding explode; ice-box thaw; shop billing;
+ * altarizing doaltarobj; cursed mbag item-gone;
+ * dropy terse comma-list; toss_up; subfrombill after floor shop BoT/horn;
+ * targetbox shop-bill per-item addtobill.
+ * SchroedingersBox is observe_quantum_cat before spill.
+ * @param {object} box
+ */
+export async function tipcontainer(box) {
+    if (!box) return;
+    const ox = (box.ox | 0) || (game.u?.ux | 0);
+    const oy = (box.oy | 0) || (game.u?.uy | 0);
+    // C tipcontainer `:3697-3699` — held box moves with hero; floor redundant.
+    const bloc0 = get_obj_location_quantum(box);
+    if (bloc0) {
+        box.ox = bloc0.x | 0;
+        box.oy = bloc0.y | 0;
+    }
+    // C tipcontainer `:3706` — target menu before any checks, even when empty.
+    const { target: targetbox, cancelled } = await tipcontainer_gettarget(box);
+    if (cancelled) return;
+    // C `:3724` — the source box must tip clean.
+    if ((await tipcontainer_checks(box, targetbox, false)) !== TIPCHECK_OK) return;
+    // C `:3726-3728` — the destination must tip clean too (allowempty:
+    // an empty target is fine).
+    if (targetbox
+        && (await tipcontainer_checks(targetbox, null, true)) !== TIPCHECK_OK) return;
     box.cknown = 1;
     const u = game.u || {};
     // C pickup.c:3732–3741 — highdrop = !can_reach_floor(TRUE);

@@ -26,6 +26,8 @@ import {
     KILLED_BY_AN, PASSES_WALLS, SLOW_DIGESTION, MALE, FEMALE, MMOVE_DIED, CXN_ARTICLE,
     ERODE_ROT, NO_NC_FLAGS, AD_CURS, EDOG, is_pit, FACE, NEUTRAL, CXN_PFX_THE,
     EXPL_FIERY, ismnum,
+    isok, xytodir, xdir, ydir,
+    DIR_LEFT, DIR_RIGHT, DIR_LEFT2, DIR_RIGHT2, DIR_ERR,
 } from './const.js';
 import {
     WEAPON_CLASS, ARMOR_CLASS, TOOL_CLASS, FOOD_CLASS, COIN_CLASS, RANDOM_CLASS, POTION_CLASS,
@@ -35,7 +37,7 @@ import {
 import { exercise, A_STR, A_DEX, A_WIS, A_CON, acurr, adjalign, change_luck, ALIGNLIM } from './attrib.js';
 import { overexertion, nomul, losehp, is_pool, maybe_half_phys } from './hack.js';
 import { ing_suffix, upstart } from './hacklib.js';
-import { pline, pline_mon, newsym, canseemon, canspotmon, sensemon, map_invisible, unmap_object, memory_glyph_is_invisible, glyph_is_invisible_id, flush_topl_more, You_feel, tmp_at, map_location, nh_delay_output, mon_glyph, shieldeff, impossible, see_monsters, hero_Blind_telepat, You, Your, pline_The } from './display.js';
+import { pline, pline_mon, newsym, canseemon, canspotmon, sensemon, map_invisible, unmap_object, unmap_invisible, memory_glyph_is_invisible, glyph_is_invisible_id, flush_topl_more, You_feel, tmp_at, map_location, nh_delay_output, mon_glyph, shieldeff, impossible, see_monsters, hero_Blind_telepat, You, Your, pline_The } from './display.js';
 import { cansee } from './vision.js';
 import {
     dmgval, hitval, P_SKILL, weapon_hit_bonus, martial_bonus,
@@ -51,7 +53,7 @@ import { near_capacity, useup, useupall, hold_another_object, Blind, observe_obj
 import { PM_BARBARIAN, PM_MONK, PM_KNIGHT, PM_SAMURAI, PM_ARCHEOLOGIST, PM_WIZARD, PM_HUMAN, PM_HEALER, PM_ROGUE } from './generated/monsters_data.js';
 import {
     find_mac, get_mattk, make_corpse, monstone, mhitm_knockback, monkilled, mondead,
-    troll_baned, mhitm_ad_poly, mhitm_ad_slee, mhitm_ad_heal, mhitm_ad_blnd, mhitm_ad_ston, mhitm_ad_elec, mhitm_ad_sedu, could_seduce, failed_grab, shade_miss,
+    troll_baned, mhitm_ad_poly, mhitm_ad_slee, mhitm_ad_heal, mhitm_ad_blnd, mhitm_ad_ston, mhitm_ad_elec, mhitm_ad_sedu, mhitm_ad_tlpt, mhitm_ad_rust, could_seduce, failed_grab, shade_miss,
     shade_aware, paralyze_monst,
     mhitm_mgc_atk_negated, resists_poison_mm, erode_armor,
     AT_NONE, AT_WEAP, AT_KICK, AT_CLAW, AT_SPIT, AT_HUGS,
@@ -80,7 +82,7 @@ import {
     monnear, record_mvitals_died, seemimic, wakeup, setmangry, dist2,
     wake_nearto, m_carrying, healmon, zombie_maker, zombie_form,
     mtrapped_in_pit, LEVEL_SPECIFIC_NOCORPSE, unique_corpstat,
-    iter_mons, anger_quest_guardians,
+    iter_mons, anger_quest_guardians, NODIAG,
 } from './mon.js';
 import { monflee, m_move, accessible } from './monmove.js';
 import { livelog_printf } from './pline.js';
@@ -88,7 +90,7 @@ import { experience, more_experienced, newexplevel } from './exper.js';
 import { explode, mon_explodes, adtyp_to_expltype } from './explode.js';
 import { rehumanize, body_part, mbodypart, uunstick } from './polyself.js';
 import { mon_nam, Monnam, x_monnam, x_monnam_tame, Hallucination, type_is_pname, pmname, Mgender, a_monnam, safe_oname, s_suffix } from './do_name.js';
-import { artifact_hit, youmonst, is_art, artifact_exists, shade_glare, find_artifact } from './artifact.js';
+import { artifact_hit, youmonst, is_art, artifact_exists, shade_glare, find_artifact, u_wield_art } from './artifact.js';
 import { xname, vtense, The, the, An, an, singular, makeplural, cxname, simpleonames, otense, mshot_xname, Yobjnam2, doname, corpse_xname, ysimple_name } from './objnam.js';
 import { abuse_dog, tamedog } from './dog.js';
 import { makemon, makemon_appear_msg, newcham, adj_lev, clone_mon, mpickobj } from './makemon.js';
@@ -99,8 +101,9 @@ import { which_armor, is_flimsy, extract_from_minvent } from './worn.js';
 import { obj_resists } from './dogmove.js';
 import { u_wipe_engr } from './engrave.js';
 import { cutworm } from './worm.js';
-import { m_unleash } from './apply.js';
-import { mhe, mhis, defended } from './mondata.js';
+import { m_unleash, objdescr_is } from './apply.js';
+import { mhe, mhis, defended, resists_blnd } from './mondata.js';
+import { Unaware } from './eat.js';
 import { hard_helmet } from './do_wear.js';
 import { findgold, inv_cnt } from './steal.js';
 import { mselftouch, instapetrify, minstapetrify, t_at } from './trap.js';
@@ -168,6 +171,7 @@ const AD_DGST = 26;
 const AD_WRAP = 28;
 const AD_ENCH = 41;
 const AD_CORR = 42;
+const AD_TLPT = 23; /* teleports victim (quantum mechanic) — monattk.h */
 const AD_SGLD = 20; /* steals gold (leprechaun) — monattk.h */
 const AD_DCAY = 34; /* decays organics (brown pudding) — monattk.h */
 const AD_SLIM = 40; /* turns victim into green slime — monattk.h */
@@ -203,6 +207,7 @@ const HEAVY_IRON_BALL = objectNames.indexOf('HEAVY_IRON_BALL');
 const TOWEL = objectNames.indexOf('TOWEL');
 const CREAM_PIE = objectNames.indexOf('CREAM_PIE');
 const BLINDING_VENOM = objectNames.indexOf('BLINDING_VENOM');
+const POT_BLINDNESS = objectNames.indexOf('POT_BLINDNESS');
 const MIRROR = objectNames.indexOf('MIRROR');
 const EXPENSIVE_CAMERA = objectNames.indexOf('EXPENSIVE_CAMERA');
 const EGG = objectNames.indexOf('EGG');
@@ -308,30 +313,104 @@ export function m_is_steadfast(mtmp) {
 }
 
 /**
- * C ref: mondata.c can_blnd — cream pie / blinding venom AT_WEAP|AT_SPIT subset
- * plus AT_ENGL sleep gate for gulpum (D-1264).
- * Named omissions: mon_perma_blind; raven-vs-raven; Blindfolded/ublindf you
- * arms; visored helmet scan; other aatyp (gaze/claw).
+ * C ref: mondata.c can_blnd :305–398, in C order — the whole body.
+ * `:313` decls; `:316–317` no-eyes gate; `:320–321` perma-blind gate
+ * (monst.h:253 `!mcansee && !mblinded`, inlined); `:327–328`
+ * raven-vs-raven; `:330–339` light arm (magr mcan + !resists_blnd);
+ * `:341–364` WEAP/SPIT/NONE obj arm (cream pie Blindfolded gate, venom
+ * ublindf/ucreamed gate + visor, blindness potion no-defense TRUE, other
+ * objs FALSE; hero-swallowed gate); `:366–372` ENGL arm (you:
+ * Blindfolded||Unaware||ucreamed; monster: sleeping); `:374–382` CLAW
+ * arm (you ublindf incl. lenses; hero-swallowed; visor);
+ * `:384–389` TUCH/STNG arm (magr mcan); `:394–396` visor tail over hero
+ * invent / monster minvent (W_ARMH + "visored helmet"); `:398` TRUE.
+ * Blindfolded ≡ EBlinded (youprop.h:96); ublindf ≡ game.u.ublindf
+ * (decl.h:96 worn face cover); Unaware ← eat.js (youprop.h:399).
+ * Restarted from the D-1264 thin subset (cream/venom + ENGL sleep only).
  */
 export function can_blnd(magr, mdef, aatyp, obj) {
+    const u = game.u || {};
+    const is_you = mdef === game.youmonst; // C :313
+    let check_visor = false; // C :313
+    // C :316–317 — no eyes protect against all attacks for now
     if (!haseyes(mdef?.data)) return false;
-    const is_you = mdef === game.youmonst;
-    if (aatyp === AT_WEAP || aatyp === AT_SPIT || aatyp === AT_NONE) {
-        const otyp = obj?.otyp | 0;
-        if (otyp === CREAM_PIE) {
-            // Blindfolded you-defense deferred
-            void is_you;
-        } else if (otyp === BLINDING_VENOM) {
-            // ublindf / ucreamed / visor deferred
-            void is_you;
+    // C :320–321 — permanently blinded already: deed done (monst.h:253)
+    if (!is_you && !(mdef.mcansee | 0) && !(mdef.mblinded | 0)) return false;
+    // C :327–328 — crow will not pluck out the eye of another crow
+    const raven = mons(monsterNames.indexOf('PM_RAVEN'));
+    if (magr && raven && magr.data === raven && mdef.data === raven) {
+        return false;
+    }
+    switch (aatyp | 0) { // C :330
+    case AT_EXPL:
+    case AT_BOOM:
+    case AT_GAZE:
+    case AT_MAGC:
+    case AT_BREA: // C :335 — assumed to be lightning
+        // C :337–339 — light-based attacks may be cancelled or resisted
+        if (magr && magr.mcan) return false;
+        return !resists_blnd(mdef);
+    case AT_WEAP:
+    case AT_SPIT:
+    case AT_NONE:
+        // C :343–354 — an object is used (thrown/spit/other)
+        if (obj && (obj.otyp | 0) === CREAM_PIE) {
+            if (is_you && (u.EBlinded | 0)) return false; // C :344–346
+        } else if (obj && (obj.otyp | 0) === BLINDING_VENOM) {
+            // C :347–351 — all ublindf, including LENSES, protect
+            if (is_you && (u.ublindf || (u.ucreamed | 0))) return false;
+            check_visor = true;
+        } else if (obj && (obj.otyp | 0) === POT_BLINDNESS) {
+            return true; // C :352–353 — no defense
         } else {
+            return false; // C :354 — other objects cannot blind yet
+        }
+        // C :356–357 — can't affect eyes while inside monster
+        if (magr === game.youmonst && u.uswallow) return false;
+        break;
+    case AT_ENGL:
+        // C :367–368
+        if (is_you && ((u.EBlinded | 0) || Unaware() || (u.ucreamed | 0))) {
             return false;
         }
-        if (magr === game.youmonst && game.u?.uswallow) return false;
-        return true;
+        // C :369–370
+        if (!is_you && mdef.msleeping) return false;
+        break;
+    case AT_CLAW:
+        // C :375–377 — e.g. raven: all ublindf, including LENSES, protect
+        if (is_you && u.ublindf) return false;
+        // C :378–379 — can't affect eyes while inside monster
+        if (magr === game.youmonst && u.uswallow) return false;
+        check_visor = true;
+        break;
+    case AT_TUCH:
+    case AT_STNG:
+        // C :386–387 — some physical blind-inducing attacks can cancel
+        if (magr && magr.mcan) return false;
+        break;
+    default:
+        break;
     }
-    if (aatyp === AT_ENGL) return !(!is_you && mdef.msleeping);
-    return true;
+    // C :394–396 — visor check, only when an arm set check_visor
+    if (check_visor) {
+        if (is_you) {
+            // hero: game.invent array (+ uarmh alias — worn helm may not
+            // be in the array in JS; mhitu.js visored_helmet_worn pattern)
+            for (const o of game.invent || []) {
+                if ((((o?.owornmask | 0) & W_ARMH) !== 0)
+                    && objdescr_is(o, 'visored helmet')) return false;
+            }
+            const helm = u.uarmh;
+            if (helm && (((helm.owornmask | 0) & W_ARMH) !== 0)
+                && objdescr_is(helm, 'visored helmet')) return false;
+        } else {
+            for (let o = mdef?.minvent; o; o = o.nobj) {
+                if ((((o.owornmask | 0) & W_ARMH) !== 0)
+                    && objdescr_is(o, 'visored helmet')) return false;
+            }
+        }
+    }
+    return true; // C :398
 }
 
 /** C ref: zap.c exclam — punctuation by damage force. */
@@ -663,9 +742,10 @@ async function xkilled_treasure_drop(mtmp, mdat, x, y, nomsg) {
  * corpse_chance → make_corpse, wasinside museum + spoteffects, newsym,
  * cleanup (murder/peaceful/unicorn luck), experience, quest/priest/tame/
  * peaceful adjalign arms, malign. C `#if 0` HARDFOUGHT livelog stays out.
- * Named omissions: mhitm_ad_rust + mhitm_ad_fire uhitm arms (C callers
- * `:2294`/`:2547`, enclosing C functions unported) and wiz_kill
- * (`wizcmds.c:315`, unported) — own coverage rows.
+ * Named omissions: mhitm_ad_fire uhitm arm (C caller `:2547`, enclosing
+ * C function unported; mhitm_ad_rust uhitm `:2294` now live via
+ * damageum_adtyping AD_RUST) and wiz_kill (`wizcmds.c:315`,
+ * unported) — own coverage rows.
  */
 export async function xkilled(mtmp, xkill_flags = XKILL_GIVEMSG) {
     // C `:3485–3498` — flag unpack; sad_feeling saved and always cleared
@@ -2370,6 +2450,21 @@ async function damageum_adtyping(mattk, mdef, mhm) {
            golemheal+shield, else destroy_items adds the orig leftover.
            mhitu arm is mhitm_ad_elec_u. */
         await mhitm_ad_elec(game.youmonst, mattk, mdef, mhm);
+    } else if (adtyp === AD_TLPT) {
+        /* C ref: uhitm.c mhitm_adtyping `:4801` → mhitm_ad_tlpt `:2864–2883`
+           uhitm (hero as attacker) arm: damage floor 1, mgc-negate gate,
+           u_teleport_mon + disappears pline, leftover clamped below mhp.
+           Routed through the shared mhitm.js arm (elec precedent);
+           mhitu arm is mhitm_ad_tlpt_u in mhitu.js. */
+        await mhitm_ad_tlpt(game.youmonst, mattk, mdef, mhm);
+    } else if (adtyp === AD_RUST) {
+        /* C ref: uhitm.c mhitm_adtyping `:4805` → mhitm_ad_rust `:2286–2298`
+           uhitm (hero as attacker) arm: iron-golem defender gets the
+           ungated "%s falls|starts to fall to pieces!" + xkilled(NOMSG)
+           with hitflags |= DEF_DIED, then erode_armor(RUST); leftover
+           dice zeroed either way. Routed through the shared mhitm.js
+           arm (elec precedent); mhitu arm is mhitm_ad_rust_u in mhitu.js. */
+        await mhitm_ad_rust(game.youmonst, mattk, mdef, mhm);
     }
 }
 
@@ -2813,8 +2908,81 @@ function double_punch() {
 let gt_twohits = 0;
 
 /**
+ * C ref: uhitm.c hitum_cleave `:651–731` (staticfn) — Cleaver attacks three
+ * spots: adjacent to the primary, the primary, adjacent on the other side.
+ * Swings alternate directions via the file-static clockwise flag (C order:
+ * pre-adjust by two so the loop's first step lands next to the primary,
+ * then step one per attack). Each attack is find_roll_to_hit +
+ * mon_maybe_unparalyze + rnd(20) + known_hitum + passive with bhitpos /
+ * notonhead set like do_attack; the loop breaks when the weapon is gone,
+ * the hero is paralyzed (multi < 0), or life-saving fired (umortality
+ * rose). bhitpos / notonhead are restored; returns FALSE when the primary
+ * target died, TRUE otherwise (hitum's malive shape).
+ */
+let hitum_cleave_clockwise = false;
+
+async function hitum_cleave(target, uattk) {
+    const u = game.u || {};
+    /* find the direction toward primary target */
+    let i = xytodir(u.dx | 0, u.dy | 0);
+    if (i === DIR_ERR) {
+        await impossible('hitum_cleave: unknown target direction [%d,%d,%d]?',
+            u.dx | 0, u.dy | 0, u.dz | 0);
+        return true; /* target hasn't been killed */
+    }
+    /* adjust by two so the loop's step lands next to the primary first */
+    i = hitum_cleave_clockwise ? DIR_LEFT2(i) : DIR_RIGHT2(i);
+    const umort = u.umortality | 0; /* used to detect life-saving */
+    const save_bhitpos = { x: game.bhitpos?.x | 0, y: game.bhitpos?.y | 0 };
+    const save_notonhead = !!game.notonhead;
+    const x = u.ux | 0, y = u.uy | 0;
+
+    for (let count = 3; count > 0; --count) {
+        const attknum = { v: 0 };
+        const armorpenalty = { v: 0 };
+        /* ++i, wrap 8 to 0 /or/ --i, wrap -1 to 7 */
+        i = hitum_cleave_clockwise ? DIR_RIGHT(i) : DIR_LEFT(i);
+        const tx = x + xdir[i], ty = y + ydir[i];
+        if (!isok(tx, ty))
+            continue;
+        const mtmp = m_at(tx, ty);
+        if (!mtmp) {
+            if (memory_glyph_is_invisible(game.level?.at?.(tx, ty)))
+                unmap_invisible(tx, ty);
+            continue;
+        }
+        const tmp = await find_roll_to_hit(
+            mtmp, uattk.aatyp, u.uwep || null, attknum, armorpenalty);
+        mon_maybe_unparalyze(mtmp);
+        const dieroll = rnd(20);
+        const mhit = { v: tmp > dieroll ? 1 : 0 };
+        /* normally set by do_attack() */
+        if (!game.bhitpos) game.bhitpos = {};
+        game.bhitpos.x = tx; game.bhitpos.y = ty;
+        game.notonhead = ((mtmp.mx | 0) !== tx || (mtmp.my | 0) !== ty);
+        await known_hitum(
+            mtmp, u.uwep || null, mhit, tmp, armorpenalty.v, uattk, dieroll);
+        await passive(mtmp, u.uwep || null, !!mhit.v,
+            (mtmp.mhp | 0) >= 1, AT_WEAP, !u.uwep);
+        /* stop if weapon is gone or hero got paralyzed or killed
+           (and then life-saved) by passive counter-attack */
+        if (!u.uwep || (game.multi | 0) < 0 || (u.umortality | 0) > umort)
+            break;
+    }
+    /* set up for next time */
+    hitum_cleave_clockwise = !hitum_cleave_clockwise; /* alternate */
+    if (!game.bhitpos) game.bhitpos = {};
+    game.bhitpos.x = save_bhitpos.x;
+    game.bhitpos.y = save_bhitpos.y;
+    game.notonhead = save_notonhead;
+    /* FALSE if primary target died, TRUE otherwise; a non-Null entry
+       target stays non-Null even if *target died */
+    return !(target && (target.mhp | 0) < 1);
+}
+
+/**
  * C ref: uhitm.c hitum — find_roll_to_hit, rnd(20), known_hitum, passive;
- *         twoweapon / double_punch second swing. Cleaver hitum_cleave deferred.
+ *         twoweapon / double_punch second swing.
  */
 async function hitum(mon, uattk) {
     const u = game.u || {};
@@ -2827,7 +2995,12 @@ async function hitum(mon, uattk) {
     const y = (u.uy | 0) + (u.dy | 0);
     const oldumort = u.umortality | 0;
 
-    // Cleaver: u_wield_art(ART_CLEAVER) && !twoweap → hitum_cleave deferred
+    /* Cleaver attacks three spots, 'mon' and one on either side of 'mon';
+       it can't be part of dual-wielding but we guard against that anyway;
+       cleave return value reflects status of primary target ('mon') */
+    if (u_wield_art(ART_CLEAVER) && !u.twoweap
+        && !u.uswallow && !u.ustuck && !NODIAG(u.umonnum | 0))
+        return await hitum_cleave(mon, uattk);
 
     // 0: single; 1: first of two — hmon copies into hmd.twohits
     gt_twohits = (uwep ? !!u.twoweap : double_punch()) ? 1 : 0;
@@ -2939,33 +3112,16 @@ function set_ustuck(mtmp) {
 }
 
 /**
- * C ref: mhitm.c failed_grab — unsolid / notonhead grab miss (no RNG).
- * hmonas magr is always youmonst so the vis||youmonst arm always plines.
- * Named omit: some_mon_nam tail (s_suffix(mon_nam)+" tail" like mhitm).
+ * C ref: mhitm.c failed_grab `:597–640` with magr = youmonst (uhitm.c
+ * `:5652–5779` callers). Thin delegate to the canonical `mhitm.js` export:
+ * with magr fixed to youmonst the `:612–613` message gate is always true
+ * and magrnam is always "Your", so behavior is identical — including the
+ * `:626–632` s_suffix(some_mon_nam)+" tail" arm the inline body here
+ * used to approximate with mon_nam. Kept as a named symbol for the
+ * hugs/ENGL callers (map).
  */
 async function failed_grab_you(mdef, mattk) {
-    if (!(unsolid(mdef?.data) || game.notonhead)
-        || !((mattk.aatyp | 0) === AT_HUGS
-            || (mattk.adtyp | 0) === AD_WRAP
-            || (mattk.adtyp | 0) === AD_STCK
-            || (mattk.adtyp | 0) === AD_DGST)) {
-        return false;
-    }
-    const verb = (mattk.adtyp | 0) === AD_DGST ? 'gulp'
-        : (mattk.adtyp | 0) === AD_STCK ? 'adhere' : 'grab';
-    let mdefnam;
-    if (!game.notonhead) {
-        mdefnam = mon_nam(mdef);
-    } else {
-        const n = mon_nam(mdef);
-        mdefnam = `${/s$/i.test(n) ? `${n}'` : `${n}'s`} tail`;
-    }
-    await pline(
-        `Your ${verb} attempt ${
-            game.notonhead ? 'fails to hold' : 'passes right through'
-        } ${mdefnam}!`,
-    );
-    return true;
+    return failed_grab(game.youmonst, mdef, mattk);
 }
 
 /**

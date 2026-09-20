@@ -73,7 +73,7 @@ import { set_utrap, reset_utrap, selftouch } from './trap.js';
 import { can_ride, dismount_steed } from './steed.js';
 // dogaze/dospinweb/rehumanize arms (imports.mjs --can: both SAFE, hoisted fns).
 import { couldsee, set_mimic_blocking } from './vision.js';
-import { emits_light, del_light_source } from './light.js';
+import { emits_light, del_light_source, new_light_source } from './light.js';
 import {
     flaming, unsolid, amorphous, likes_lava, breathless, poly_when_stoned,
     is_swimmer, MZ_HUGE,
@@ -606,8 +606,9 @@ function character_race(mndx) {
 
 /**
  * C ref: polyself.c uasmon_maxStr — race attrmax STR for current umonnum.
+ * Exported for attrib.h ATTRMAX's Upolyd-Str arm (attrib.c exerchk `:629`).
  */
-function uasmon_maxStr() {
+export function uasmon_maxStr() {
     let mndx = game.u?.umonnum | 0;
     const ptr = mons(mndx);
     if (is_orc(ptr)) {
@@ -1774,9 +1775,9 @@ export async function skinback(silently) {
  * wizard own-role rehumanize; were do_shift; draconian do_merge into
  * uskin; post-loop draconian/isvamp gotos. The C gotos are flattened
  * into `target` (the label control jumps to).
- * Named omissions: made_change light-source bookkeeping (JS
- * do_light_sources has no hero arm like C get_mon_location, so a
- * youmonst LS_MONSTER source would be misplaced).
+ * Live: made_change light-source bookkeeping (`:720–730` + `:497`
+ * old_light capture, `:581` rehumanize zeroing) via live
+ * emits_light/new_light_source/del_light_source.
  * @param {number} [psflags=POLY_NOFLAGS]
  */
 export async function polyself(psflags = 0) {
@@ -1816,6 +1817,9 @@ export async function polyself(psflags = 0) {
         }
     }
 
+    // C polyself.c:497 — old_light = emits_light(youmonst.data) at entry,
+    // after the Unchanging / system-shock gates above, before any change.
+    let old_light = emits_light(game.youmonst?.data) | 0;
     let mntmp = NON_PM;
     // C :500–504 — POLY_REVERT: back to the vampshifter's base form, as a
     // monster poly with no control prompt.
@@ -1914,8 +1918,9 @@ export async function polyself(psflags = 0) {
                             && !strstri(buf, 'aligned')))) {
                     // C :570–582 — wizard mode: own role while poly'd reverts
                     // without newman()'s chance of level or sex change.
-                    // (C's `old_light = 0` belongs to the omitted light arm.)
+                    // C :581 — rehumanize() extinguishes u-as-mon light.
                     await rehumanize();
+                    old_light = 0;
                     target = 'made_change';
                 } else if (iswere && (were_beastie(mntmp) === u.ulycn
                     || mntmp === counter_were(u.ulycn)
@@ -2072,7 +2077,23 @@ export async function polyself(psflags = 0) {
             game.sex_change_ok = (game.sex_change_ok | 0) - 1;
         }
     }
-    // C made_change `:720–730` — light-source bookkeeping named omission.
+    // C made_change `:720–730` — light-source bookkeeping: compare the
+    // entry form's emits_light against the new form's; del the stale
+    // youmonst LS_MONSTER entry, then attach the new one (range bumped
+    // 1→2, else undetectable). Runs on every non-early-return path above
+    // (do_merge/do_shift/do_vampyr via polymon/newman, the random funnel,
+    // and the wizard-rehumanize arm with old_light already zeroed).
+    const new_light_raw = emits_light(game.youmonst?.data) | 0; // C :721
+    if (old_light !== new_light_raw) { // C :722
+        if (old_light) // C :723–724
+            del_light_source(LS_MONSTER, monst_to_any(game.youmonst));
+        let new_light = new_light_raw;
+        if (new_light === 1) // C :725–726
+            ++new_light; /* otherwise it's undetectable */
+        if (new_light) // C :727–729
+            new_light_source(u.ux | 0, u.uy | 0, new_light, LS_MONSTER,
+                monst_to_any(game.youmonst));
+    }
 }
 
 /**

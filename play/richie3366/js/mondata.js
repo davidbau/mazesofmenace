@@ -9,13 +9,13 @@ import { rnd, rn2 } from './rng.js';
 import { acurr, A_CHA } from './attrib.js';
 import { objectNames, ARMOR_CLASS, WEAPON_CLASS } from './objects.js';
 import {
-    monsterNames, pmnames, NON_PM, LOW_PM, mons,
+    monsterNames, pmnames, NON_PM, LOW_PM, NUMMONS, mons,
     MALE, FEMALE, NEUTRAL, NUM_MGENDERS,
     M1_SEE_INVIS,
     is_human, is_elf, is_dwarf, is_gnome, is_orc, is_giant, is_golem,
     is_mind_flayer, is_minion, is_demon, is_undead, is_rider,
     is_unicorn, is_longworm,
-    breathless, dmgtype, verysmall, has_head,
+    breathless, dmgtype, verysmall, has_head, haseyes,
     is_neuter, humanoid, G_UNIQ,
 } from './monsters.js';
 import {
@@ -25,6 +25,7 @@ import {
     ANTIMAGIC, FIRE_RES, COLD_RES, SLEEP_RES, DISINT_RES, POISON_RES,
     SHOCK_RES, ACID_RES, REFLECTING,
     W_ARM, W_ARMOR, W_ACCESSORY, W_WEP, W_SWAPWEP,
+    BLND_RES,
 } from './const.js';
 import { defends, defends_when_carried, Is_dragon_armor } from './artifact.js';
 import { MON_WEP } from './weapon.js';
@@ -34,7 +35,11 @@ import { mon_msound } from './sounds.js';
 import { makesingular } from './objnam.js';
 import { genders } from './roles.js';
 import { type_is_pname } from './do_name.js';
-import { canspotmon, Hallucination } from './display.js';
+import { canspotmon, Hallucination, impossible } from './display.js';
+import { Blind } from './invent.js';
+import { Unaware } from './eat.js';
+import { dmgtype_fromattack, AT_EXPL, AT_GAZE, AD_BLND } from './mhitm.js';
+import { title_to_mon } from './botl.js';
 
 const RIN_CONFLICT = objectNames.indexOf('RIN_CONFLICT');
 /** C monflag.h MS_SILENT / MS_BUZZ. */
@@ -193,6 +198,75 @@ export function resists_magm(mon) {
         for (let it = mon.minvent; it; it = it.nobj) {
             if (grants(it)) return true;
         }
+    }
+    return false;
+}
+
+/**
+ * C ref: mondata.c resists_blnd_by_arti :275–298 — wielded artifact with
+ * defends(AD_BLND) (Sunsword); then the whole invent/minvent chain for
+ * defends_when_carried(AD_BLND). C :293–298 `#if 0` Eyes of the Overworld
+ * arm is omitted upstream (no carry property; worn blocks without
+ * resisting) — no JS.
+ * Caller: resists_blnd below.
+ */
+export function resists_blnd_by_arti(mon) {
+    const u = game.u || {};
+    const isYou = mon === game.youmonst;
+    // C :281–283 — wielded magical equipment (uwep hero / MON_WEP monster)
+    let o = isYou ? (u.uwep || null) : MON_WEP(mon);
+    if (o && o.oartifact && defends(AD_BLND, o)) return true;
+    // C :284–286 — worn-or-carried scan (hero: invent array; monster chain)
+    if (isYou) {
+        for (const it of game.invent || []) {
+            if (defends_when_carried(AD_BLND, it)) return true;
+        }
+    } else {
+        for (let it = mon?.minvent; it; it = it.nobj) {
+            if (defends_when_carried(AD_BLND, it)) return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * C ref: mondata.c resists_blnd :247–272, in C order — hero arm
+ * `:251` Blind||Unaware; monster arm `:252–256` mblinded||!mcansee||
+ * !haseyes||msleeping (temporary sleep sets mfrozen, uncheckable — C
+ * comment); `:258–260` yellow light / Archon / dust-vortex-cobra-raven
+ * exclusions via dmgtype AD_BLND AT_EXPL/AT_GAZE; `:262–263` Sunsword
+ * via resists_blnd_by_arti; `:265–269` hero Blnd_resist catchall with
+ * the upstream impossible() (data inconsistency, kept: it is C output).
+ * Canonical port; the species-only file-local subsets in mhitm.js
+ * (resists_blnd_mm), mhitu.js (resists_blnd_you), detect.js and trap.js
+ * predate it (drift, named in the map).
+ * Caller: can_blnd light-attack arm (uhitm.js).
+ */
+export function resists_blnd(mon) {
+    const ptr = mon?.data;
+    const isYou = mon === game.youmonst;
+    // C :251–256
+    if (isYou
+        ? (Blind() || Unaware())
+        : ((mon.mblinded | 0) || !(mon.mcansee | 0) || !haseyes(ptr)
+            || (mon.msleeping | 0))) {
+        return true;
+    }
+    // C :258–260
+    if (dmgtype_fromattack(ptr, AD_BLND, AT_EXPL)
+        || dmgtype_fromattack(ptr, AD_BLND, AT_GAZE)) {
+        return true;
+    }
+    // C :262–263
+    if (resists_blnd_by_arti(mon)) return true;
+    // C :265–269 — catchall
+    const u = game.u || {};
+    if (isYou
+        && (((u.HBlnd_resist | 0) || (u.uprops?.[BLND_RES]?.intrinsic | 0)
+            || (u.EBlnd_resist | 0)
+            || (u.uprops?.[BLND_RES]?.extrinsic | 0)))) {
+        impossible("'Blnd_resist' but not resists_blnd()?");
+        return true;
     }
     return false;
 }
@@ -391,101 +465,183 @@ export function same_race(pm1, pm2) {
     return false;
 }
 
+/**
+ * C ref: mondata.c name_to_monplus `:937–999` alt_spl table — alternate
+ * spellings scanned before pmnames (grey/gray, mindflayer, aligned/high
+ * priest(ess), master-*, outdated names, hyphenates, irregular plurals).
+ * `pm` is the monsterNames label (index resolved at scan time);
+ * `gender` is the C genderhint (MALE / FEMALE / NEUTRAL).
+ */
 const ALT_NAMES = [
-    // C ref: mondata.c name_to_monplus alt_spl — grey↔gray dragons (+ genderhint)
-    { name: 'grey dragon', mndx: () => monsterNames.indexOf('PM_GRAY_DRAGON'), gender: NEUTRAL },
-    { name: 'baby grey dragon', mndx: () => monsterNames.indexOf('PM_BABY_GRAY_DRAGON'), gender: NEUTRAL },
+    // C `:937–943` alternate spellings
+    { name: 'grey dragon', pm: 'PM_GRAY_DRAGON', gender: NEUTRAL },
+    { name: 'baby grey dragon', pm: 'PM_BABY_GRAY_DRAGON', gender: NEUTRAL },
+    { name: 'grey unicorn', pm: 'PM_GRAY_UNICORN', gender: NEUTRAL },
+    { name: 'grey ooze', pm: 'PM_GRAY_OOZE', gender: NEUTRAL },
+    { name: 'gray-elf', pm: 'PM_GREY_ELF', gender: NEUTRAL },
+    { name: 'mindflayer', pm: 'PM_MIND_FLAYER', gender: NEUTRAL },
+    { name: 'master mindflayer', pm: 'PM_MASTER_MIND_FLAYER', gender: NEUTRAL },
+    // C `:944–950` aligned/high priests (separate genders, one type)
+    { name: 'aligned priest', pm: 'PM_ALIGNED_CLERIC', gender: MALE },
+    { name: 'aligned priestess', pm: 'PM_ALIGNED_CLERIC', gender: FEMALE },
+    { name: 'high priest', pm: 'PM_HIGH_CLERIC', gender: MALE },
+    { name: 'high priestess', pm: 'PM_HIGH_CLERIC', gender: FEMALE },
+    // C `:951–952` inappropriate singularization by the -ves fix above
+    { name: 'master of thief', pm: 'PM_MASTER_OF_THIEVES', gender: NEUTRAL },
+    // C `:953–958` misspellings (avoid falling back to rank-title prefix)
+    { name: 'master thief', pm: 'PM_MASTER_OF_THIEVES', gender: NEUTRAL },
+    { name: 'master of assassin', pm: 'PM_MASTER_ASSASSIN', gender: NEUTRAL },
+    { name: 'master-lich', pm: 'PM_MASTER_LICH', gender: NEUTRAL },
+    { name: 'masterlich', pm: 'PM_MASTER_LICH', gender: NEUTRAL },
+    // C `:959–962` outdated names
+    { name: 'invisible stalker', pm: 'PM_STALKER', gender: NEUTRAL },
+    { name: 'high-elf', pm: 'PM_ELVEN_MONARCH', gender: NEUTRAL },
+    // C `:963–970` other misspellings or incorrect words
+    { name: 'wood-elf', pm: 'PM_WOODLAND_ELF', gender: NEUTRAL },
+    { name: 'wood elf', pm: 'PM_WOODLAND_ELF', gender: NEUTRAL },
+    { name: 'woodland nymph', pm: 'PM_WOOD_NYMPH', gender: NEUTRAL },
+    { name: 'halfling', pm: 'PM_HOBBIT', gender: NEUTRAL },
+    { name: 'genie', pm: 'PM_DJINNI', gender: NEUTRAL },
+    // C `:971–976` duplicate-name workaround prefixes
+    { name: 'human wererat', pm: 'PM_HUMAN_WERERAT', gender: NEUTRAL },
+    { name: 'human werejackal', pm: 'PM_HUMAN_WEREJACKAL', gender: NEUTRAL },
+    { name: 'human werewolf', pm: 'PM_HUMAN_WEREWOLF', gender: NEUTRAL },
+    // C `:977–979` for completeness
+    { name: 'rat wererat', pm: 'PM_WERERAT', gender: NEUTRAL },
+    { name: 'jackal werejackal', pm: 'PM_WEREJACKAL', gender: NEUTRAL },
+    { name: 'wolf werewolf', pm: 'PM_WEREWOLF', gender: NEUTRAL },
+    // C `:980–993` hyphenated names
+    { name: 'ki rin', pm: 'PM_KI_RIN', gender: NEUTRAL },
+    { name: 'kirin', pm: 'PM_KI_RIN', gender: NEUTRAL },
+    { name: 'uruk hai', pm: 'PM_URUK_HAI', gender: NEUTRAL },
+    { name: 'orc captain', pm: 'PM_ORC_CAPTAIN', gender: NEUTRAL },
+    { name: 'woodland elf', pm: 'PM_WOODLAND_ELF', gender: NEUTRAL },
+    { name: 'green elf', pm: 'PM_GREEN_ELF', gender: NEUTRAL },
+    { name: 'grey elf', pm: 'PM_GREY_ELF', gender: NEUTRAL },
+    { name: 'gray elf', pm: 'PM_GREY_ELF', gender: NEUTRAL },
+    { name: 'elf lady', pm: 'PM_ELF_NOBLE', gender: FEMALE },
+    { name: 'elf lord', pm: 'PM_ELF_NOBLE', gender: MALE },
+    { name: 'elf noble', pm: 'PM_ELF_NOBLE', gender: NEUTRAL },
+    { name: 'olog hai', pm: 'PM_OLOG_HAI', gender: NEUTRAL },
+    { name: 'arch lich', pm: 'PM_ARCH_LICH', gender: NEUTRAL },
+    { name: 'archlich', pm: 'PM_ARCH_LICH', gender: NEUTRAL },
+    // C `:994–999` irregular plurals
+    { name: 'incubi', pm: 'PM_AMOROUS_DEMON', gender: MALE },
+    { name: 'succubi', pm: 'PM_AMOROUS_DEMON', gender: FEMALE },
+    { name: 'violet fungi', pm: 'PM_VIOLET_FUNGUS', gender: NEUTRAL },
+    { name: 'homunculi', pm: 'PM_HOMUNCULUS', gender: NEUTRAL },
+    { name: 'baluchitheria', pm: 'PM_BALUCHITHERIUM', gender: NEUTRAL },
+    { name: 'lurkers above', pm: 'PM_LURKER_ABOVE', gender: NEUTRAL },
+    { name: 'cavemen', pm: 'PM_CAVE_DWELLER', gender: MALE },
+    { name: 'cavewomen', pm: 'PM_CAVE_DWELLER', gender: FEMALE },
+    { name: 'watchmen', pm: 'PM_WATCHMAN', gender: NEUTRAL },
+    { name: 'djinn', pm: 'PM_DJINNI', gender: NEUTRAL },
+    { name: 'mumakil', pm: 'PM_MUMAK', gender: NEUTRAL },
+    { name: 'erinyes', pm: 'PM_ERINYS', gender: NEUTRAL },
 ];
 
 /**
- * C ref: mondata.c name_to_monplus — longest match on pmnames[MALE..NEUTRAL].
- * remainder_p: { rest: string } optional out for unmatched suffix.
- * gender_name_var: { gender: number } optional in/out (C int*); init to
- *   NEUTRAL or -1. Matching a MALE/FEMALE pmname updates it; a NEUTRAL
- *   match only updates when incoming gender is -1.
+ * C ref: mondata.c name_to_monplus `:893–1085` — longest monster-name
+ * match on the input front, tolerating trailing text ("ettin zombie
+ * corpse"), longest-name-wins ("ettin zombie" over "ettin"), and
+ * s/es/'s/plural suffixes. remainder_p ({ rest }) takes the unmatched
+ * tail as an in_str offset (C `:1009`, `:1077`); gender_name_var
+ * ({ gender }, init -1 per objnam.c:3947) takes the match gender, with
+ * the neuter no-override rule (C `:1078–1083`).
  */
 export function name_to_monplus(in_str, remainder_p = null, gender_name_var = null) {
-    if (remainder_p) remainder_p.rest = null;
-    if (!in_str) return NON_PM;
+    if (remainder_p) remainder_p.rest = null; // C `:915–916`
+    if (!in_str) return NON_PM; // house guard (C NONNULLARG1)
 
-    let str = in_str;
-    if (str.toLowerCase().startsWith('a ')) str = str.slice(2);
-    else if (str.toLowerCase().startsWith('an ')) str = str.slice(3);
-    else if (str.toLowerCase().startsWith('the ')) str = str.slice(4);
+    // C `:918–925` buf copy + article strip (case-SENSITIVE strncmp)
+    const inStr = String(in_str);
+    let skip = 0;
+    if (inStr.startsWith('a ')) skip = 2;
+    else if (inStr.startsWith('an ')) skip = 3;
+    else if (inStr.startsWith('the ')) skip = 4;
+    let str = inStr.slice(skip);
+    let slow = str.toLowerCase();
 
-    const lower = str.toLowerCase();
-    const slen = str.length;
-    let best = NON_PM;
-    let bestLen = 0;
-    let bestRest = null;
-    let matchgend = -1;
-    let exactMatch = false;
+    // C `:930–940` plural pre-fixes (mutate + truncate, then recompute slen)
+    const vort = slow.indexOf('vortices'); // C strstri
+    if (vort >= 0) {
+        str = str.slice(0, vort + 4) + 'ex'; // C Strcpy(s + 4, "ex")
+        slow = str.toLowerCase();
+    } else if (str.length > 3 && slow.endsWith('ies') // beware "priest"/"zombies"
+               && !(str.length >= 7 && slow.endsWith('zombies'))) {
+        str = str.slice(0, str.length - 3) + 'y'; // C Strcpy(term - 3, "y")
+        slow = str.toLowerCase();
+    } else if (str.length > 3 && slow.endsWith('ves')) {
+        str = str.slice(0, str.length - 3) + 'f'; // C Strcpy(term - 3, "f")
+        slow = str.toLowerCase();
+    }
+    const slen = str.length; // C `:942` length recomputed
 
-    const tryMatch = (cand, mndx, gend) => {
-        if (mndx < LOW_PM && mndx !== 0) return;
-        if (mndx < 0 || !cand) return;
-        const cl = cand.toLowerCase();
-        const mLen = cand.length;
-        if (mLen <= bestLen) return;
-        if (!lower.startsWith(cl)) return;
-        const after = str.slice(mLen);
-        // C: exact, or space / plural / possessive boundary
-        if (after.length === 0) {
-            bestLen = mLen;
-            best = mndx;
-            bestRest = after;
-            matchgend = gend;
-            exactMatch = true;
-            return;
-        }
-        const al = after.toLowerCase();
-        if (after[0] === ' '
-            || al === 's' || al.startsWith('s ')
-            || al === "'" || al.startsWith("' ")
-            || al === "'s" || al.startsWith("'s ")
-            || al === 'es' || al.startsWith('es ')) {
-            bestLen = mLen;
-            best = mndx;
-            bestRest = after;
-            matchgend = gend;
-        }
-    };
-
-    // C alt_spl table first (returns immediately on hit)
+    // C `:1001–1017` alt_spl scan — first prefix hit with a word boundary
+    // (end, space, possessive) wins and returns immediately
     for (const alt of ALT_NAMES) {
-        const mndx = alt.mndx();
-        const cand = alt.name;
-        const cl = cand.toLowerCase();
-        if (!lower.startsWith(cl)) continue;
-        const after = str.slice(cand.length);
-        if (after.length === 0 || after[0] === ' ' || after[0] === "'") {
-            if (remainder_p) remainder_p.rest = after;
-            if (gender_name_var) gender_name_var.gender = alt.gender;
+        const mndx = monsterNames.indexOf(alt.pm);
+        if (mndx < LOW_PM) continue;
+        const len = alt.name.length;
+        if (!slow.startsWith(alt.name)) continue;
+        const after = str[len];
+        if (after === undefined || after === ' ' || after === "'") { // C `:1007`
+            if (remainder_p) remainder_p.rest = inStr.slice(skip + len); // C `:1009–1010`
+            if (gender_name_var) gender_name_var.gender = alt.gender; // C `:1011–1012`
             return mndx;
         }
     }
 
-    for (let i = 0; i < monsterNames.length; i++) {
-        const names = pmnames[i];
-        if (!names) continue;
-        for (let mgend = MALE; mgend < NUM_MGENDERS; mgend++) {
-            tryMatch(names[mgend], i, mgend);
-            if (exactMatch) break;
-        }
-        if (exactMatch) break;
-    }
-
-    if (best >= LOW_PM || best === 0) {
-        if (remainder_p) remainder_p.rest = bestRest ?? '';
-        if (gender_name_var && matchgend !== -1) {
-            // C: don't override with neuter if caller already has male/female
-            if (gender_name_var.gender === -1 || matchgend !== NEUTRAL) {
-                gender_name_var.gender = matchgend;
+    // C `:1019–1069` pmnames scan — strictly-longer match replaces
+    // (ties keep the lowest index/gender); exact match breaks both loops
+    let mntmp = NON_PM; // C `:906`
+    let len = 0;
+    let matchgend = -1; // C `:911`
+    let exact_match = false; // C `:913`
+    for (let i = LOW_PM; i < NUMMONS && !exact_match; i++) { // C `:1019` + `:1067–1068`
+        const entry = pmnames[i];
+        if (!entry) continue;
+        for (let mgend = MALE; mgend < NUM_MGENDERS; mgend++) { // C `:1020`
+            const cand = entry[mgend];
+            if (!cand) continue; // C `:1022–1023`
+            const mLen = cand.length;
+            if (mLen <= len) continue; // C `:1027` m_i_len > len
+            if (!slow.startsWith(cand.toLowerCase())) continue; // C `:1028` strncmpi
+            if (mLen === slen) { // C `:1029–1035` exact match
+                mntmp = i;
+                len = mLen;
+                matchgend = mgend;
+                exact_match = true;
+                break;
+            }
+            // C `:1036–1054` prefix with space/plural/possessive boundary
+            const tail = slow.slice(mLen);
+            if (slen > mLen
+                && (tail[0] === ' '
+                    || tail === 's' || tail.startsWith('s ')
+                    || tail === "'" || tail.startsWith("' ")
+                    || tail === "'s" || tail.startsWith("'s ")
+                    || tail === 'es' || tail.startsWith('es '))) {
+                mntmp = i;
+                len = mLen;
+                matchgend = mgend;
             }
         }
-        return best;
     }
-    return NON_PM;
+    // C `:1073–1075` rank-title fallback (FIXME: propagates no gender)
+    if (mntmp === NON_PM) {
+        const lenBox = { value: 0 };
+        mntmp = title_to_mon(str, null, lenBox);
+        len = lenBox.value;
+    }
+    if (len && remainder_p) // C `:1076–1077`
+        remainder_p.rest = inStr.slice(skip + len);
+    if (gender_name_var && matchgend !== -1) { // C `:1078–1083`
+        // don't override with neuter if caller already specified male/female
+        if (gender_name_var.gender === -1 || matchgend !== NEUTRAL)
+            gender_name_var.gender = matchgend;
+    }
+    return mntmp;
 }
 
 /** C ref: mondata.c name_to_mon */

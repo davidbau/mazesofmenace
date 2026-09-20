@@ -59,6 +59,7 @@ import { MON_WEP } from './weapon.js';
 import { m_useup } from './mthrowu.js';
 import { cloak_simple_name } from './do_wear.js';
 import { can_saddle, can_ride, dismount_steed } from './steed.js';
+import { mon_adjust_speed } from './muse.js';
 import { instapetrify } from './trap.js';
 import { You_hear } from './hack.js';
 
@@ -131,7 +132,8 @@ function is_suit(obj) {
 function is_cloak(obj) {
     return obj?.oclass === ARMOR_CLASS && armcat(obj) === ARM_CLOAK;
 }
-function is_shield(obj) {
+/** C ref: obj.h is_shield `:280–282` — ARMOR_CLASS with oc_armcat ARM_SHIELD. */
+export function is_shield(obj) {
     return obj?.oclass === ARMOR_CLASS && armcat(obj) === ARM_SHIELD;
 }
 function is_helmet(obj) {
@@ -150,8 +152,8 @@ export function is_flimsy(otmp) {
     return mat <= LEATHER || (otmp?.otyp | 0) === RUBBER_HOSE;
 }
 
-/** C ref: obj.h is_elven_armor */
-function is_elven_armor(otmp) {
+/** C ref: obj.h is_elven_armor `:299–302` */
+export function is_elven_armor(otmp) {
     const t = otmp?.otyp | 0;
     return t === ELVEN_LEATHER_HELM || t === ELVEN_MITHRIL_COAT
         || t === ELVEN_CLOAK || t === ELVEN_SHIELD || t === ELVEN_BOOTS;
@@ -686,101 +688,105 @@ export function racial_exception(mon, obj) {
 }
 
 /**
- * Local FAST boots speed sync — avoids worn↔muse↔makemon cycle.
- * Mirrors muse.js mon_adjust_speed adjust==0 boots arm.
- */
-function sync_mon_speed_from_boots(mon) {
-    let boots = null;
-    for (let otmp = mon.minvent; otmp; otmp = otmp.nobj) {
-        if (otmp.owornmask && (otmp.otyp | 0) === SPEED_BOOTS) {
-            boots = otmp;
-            break;
-        }
-    }
-    mon.mspeed = boots ? MFAST : (mon.permspeed | 0);
-}
-
-/**
- * C ref: worn.c update_mon_extrinsics — on/off armor properties for mon.
- * Named omissions: artifact_light vision; steed saddle dismount; silent
- * newsym polish when invis toggles mid-message path; full mon_adjust_speed
- * adjust≠0 arms (SPEED_BOOTS wear uses local boots sync).
+ * C ref: worn.c update_mon_extrinsics `:579–712` — armor put on or taken
+ * off; might be magical variety. Delivers the whole body in C order:
+ * unseen snapshot (`:591`); early maybe_blocks when neither oprop nor
+ * altprop (`:592–593`); again-loop over which then altwhich (`:595`,
+ * `:688–690`); on-switch (`:597–632`) / off-switch (`:634–683`);
+ * w_blocks INVIS (`:697–704`); saddle-off-steed dismount (`:706–707`);
+ * visibility newsym (`:709–711`).
+ * FAST arms (`:601–607`, `:638–644`) call the live muse.js
+ * mon_adjust_speed(mon, 0, obj) under the C in_mklev guard (imports.mjs:
+ * hoisted, cycle-safe). Its sync prefix applies the boots recheck
+ * immediately in C order; only the pline tail is async — it is returned
+ * so async callers can await exact C order, sync callers float the
+ * same-tick tail. Same for the dismount arm (live steed.js
+ * dismount_steed). Stays a sync-through `function` so the 6 C callers'
+ * state effects keep C order whether awaited or floated.
+ * altprop is the C `:572–575` macro verbatim (alchemy smock dual
+ * poison/acid pass; dragon-scale TODO is C's own note).
  */
 export function update_mon_extrinsics(mon, obj, on, silently) {
-    if (!mon || !obj) return;
-    let which = game.objects?.[obj.otyp]?.oc_oprop | 0;
-    let altwhich = altprop(obj);
-    const unseen = !canseemon(mon);
+    if (!mon || !obj) return undefined;
+    let which = game.objects?.[obj.otyp]?.oc_oprop | 0; // C `:588`
+    const altwhich = altprop(obj); // C `:589` (`:572–575` macro)
+    const unseen = !canseemon(mon); // C `:591`
+    let tail = null;
 
-    if (!which && !altwhich) {
-        maybe_blocks(mon, obj, on, silently, unseen);
-        return;
-    }
+    if (!which && !altwhich) // C `:592–593` goto maybe_blocks
+        return update_mon_maybe_blocks(mon, obj, on, silently, unseen, tail);
 
-    while (true) {
+    while (true) { // C `again:` `:595`
         if (on) {
-            switch (which) {
-            case INVIS:
-                mon.minvis = mon.invis_blkd ? 0 : 1;
+            switch (which) { // C `:597–632`
+            case INVIS: // C `:598–599`
+                mon.minvis = !mon.invis_blkd;
                 break;
-            case FAST: {
-                const save = game.in_mklev;
+            case FAST: { // C `:601–607`
+                const save_in_mklev = game.in_mklev;
                 if (silently) game.in_mklev = true;
-                sync_mon_speed_from_boots(mon);
-                game.in_mklev = save;
+                tail = mon_adjust_speed(mon, 0, obj);
+                game.in_mklev = save_in_mklev;
                 break;
             }
-            case ANTIMAGIC:
+            case ANTIMAGIC: // C `:610–612` handled elsewhere
             case REFLECTING:
             case PROTECTION:
-            case CLAIRVOYANT:
+                break;
+            case CLAIRVOYANT: // C `:614–616` no effect for monsters
             case STEALTH:
             case TELEPAT:
-            case LEVITATION:
+                break;
+            case LEVITATION: // C `:618–620` should-have-effect, unimplemented
             case FLYING:
             case WWALKING:
-            case DISPLACED:
+                break;
+            case DISPLACED: // C `:622–624` maybe-should, don't
             case FUMBLING:
             case JUMPING:
                 break;
-            default:
+            default: // C `:629–630`
                 mon.mextrinsics = (mon.mextrinsics | 0) | res_to_mr(which);
                 break;
             }
         } else {
-            switch (which) {
-            case INVIS:
-                mon.minvis = mon.perminvis ? 1 : 0;
+            switch (which) { // C `:634–683`
+            case INVIS: // C `:635–637`
+                mon.minvis = mon.perminvis;
                 break;
-            case FAST: {
-                const save = game.in_mklev;
+            case FAST: { // C `:638–644`
+                const save_in_mklev = game.in_mklev;
                 if (silently) game.in_mklev = true;
-                sync_mon_speed_from_boots(mon);
-                game.in_mklev = save;
+                tail = mon_adjust_speed(mon, 0, obj);
+                game.in_mklev = save_in_mklev;
                 break;
             }
-            case FIRE_RES:
-            case COLD_RES:
-            case SLEEP_RES:
+            case FIRE_RES: // C `:646–680` rescan worn gear for an
+            case COLD_RES: // alternate source (smock dual pass `:655–676`
+            case SLEEP_RES: // comment); clear only when none confers it
             case DISINT_RES:
             case SHOCK_RES:
             case POISON_RES:
             case ACID_RES:
             case STONE_RES: {
-                const mask = res_to_mr(which);
-                let otmp;
+                const mask = res_to_mr(which); // C `:667`
+                let otmp; // C `:669–677`
                 for (otmp = mon.minvent; otmp; otmp = otmp.nobj) {
-                    if (otmp === obj || !otmp.owornmask) continue;
-                    if ((game.objects?.[otmp.otyp]?.oc_oprop | 0) === which) break;
-                    if (altprop(otmp) === which) break;
+                    if (otmp === obj || !otmp.owornmask) continue; // C `:669`
+                    if ((game.objects?.[otmp.otyp]?.oc_oprop | 0) === which) break; // C `:671–672`
+                    if (altprop(otmp) === which) break; // C `:675–676`
                 }
-                if (!otmp) mon.mextrinsics = (mon.mextrinsics | 0) & ~mask;
+                if (!otmp) // C `:678–679`
+                    mon.mextrinsics = (mon.mextrinsics | 0) & ~mask;
                 break;
             }
-            default:
+            default: // C `:681–682`
                 break;
             }
         }
+        // C `:686–690` smock/apron second pass; FAST is never an altwhich
+        // (altprop is nonzero only for ALCHEMY_SMOCK → poison/acid), so at
+        // most one FAST tail exists and plain assignment keeps C order.
         if (altwhich && which !== altwhich) {
             which = altwhich;
             continue;
@@ -788,21 +794,33 @@ export function update_mon_extrinsics(mon, obj, on, silently) {
         break;
     }
 
-    maybe_blocks(mon, obj, on, silently, unseen);
+    return update_mon_maybe_blocks(mon, obj, on, silently, unseen, tail);
 }
 
-function maybe_blocks(mon, obj, on, silently, unseen) {
-    switch (w_blocks(obj, ~0)) {
-    case INVIS:
+/**
+ * C ref: worn.c update_mon_extrinsics `:693–711` (maybe_blocks label).
+ * owornmask was cleared by the caller (`:694–696`), so the blanket ~0L
+ * mask stands in for the worn slot. Returns the floated async tail (speed
+ * pline and/or steed dismount) for async callers to await.
+ */
+function update_mon_maybe_blocks(mon, obj, on, silently, unseen, tail) {
+    switch (w_blocks(obj, ~0)) { // C `:697` (~0L ≡ all-bit mask)
+    case INVIS: // C `:698–701`
         mon.invis_blkd = on ? 1 : 0;
-        mon.minvis = on ? 0 : (mon.perminvis ? 1 : 0);
+        mon.minvis = on ? 0 : mon.perminvis;
         break;
-    default:
+    default: // C `:702–703`
         break;
     }
-    if (!silently && (unseen !== !canseemon(mon))) {
+
+    if (!on && mon === game.u?.usteed && (obj.otyp | 0) === SADDLE) // C `:706–707`
+        tail = tail ? tail.then(() => dismount_steed(DISMOUNT_FELL)) : dismount_steed(DISMOUNT_FELL);
+
+    /* C `:709–710` if couldn't see it but now can, or vice versa */
+    if (!silently && (unseen !== !canseemon(mon))) // C `:710–711`
         newsym(mon.mx, mon.my);
-    }
+
+    return tail ?? undefined;
 }
 
 /**
@@ -929,7 +947,7 @@ async function m_dowear_type(mon, flag, creation, racialexception) {
     }
 
     if (old) {
-        update_mon_extrinsics(mon, old, false, creation);
+        await update_mon_extrinsics(mon, old, false, creation);
 
         /* owornmask was cleared above but artifact_light() expects it */
         old.owornmask = oldmask;
@@ -957,7 +975,7 @@ async function m_dowear_type(mon, flag, creation, racialexception) {
             }
         }
     }
-    update_mon_extrinsics(mon, best, true, creation);
+    await update_mon_extrinsics(mon, best, true, creation);
     /* if couldn't see it but now can, or vice versa */
     if (!creation && (sawmon ^ canseemon(mon))) {
         if (mon.minvis && !game.u?.See_invisible) {

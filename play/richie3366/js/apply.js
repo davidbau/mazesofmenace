@@ -7,13 +7,14 @@ import {
     flush_screen, flush_topl_more, pline, pline_mon, canseemon, canspotmon, newsym,
     map_invisible, unmap_invisible, glyph_is_invisible, You_feel, sensemon,
     verbalize, mon_visible, tp_sensemon, see_with_infrared, tmp_at,
-    set_msg_xy, bot, impossible,
+    set_msg_xy, bot, impossible, You, You_cant, There, pline_The,
+    map_object, obj_glyph, glyph_at, feel_newsym,
 } from './display.js';
-import { cansee, couldsee, howmonseen } from './vision.js';
+import { cansee, couldsee, howmonseen, unblock_point, recalc_block_point } from './vision.js';
 import {
     TOOL_CLASS, WAND_CLASS, SPBOOK_CLASS, WEAPON_CLASS, POTION_CLASS,
     COIN_CLASS, GEM_CLASS, FOOD_CLASS, RING_CLASS, RANDOM_CLASS,
-    objectNames, objectNameStrs, objectDescrs, is_axe, objects,
+    objectNames, objectNameStrs, objectDescrs, is_axe, is_boots, objects,
 } from './objects.js';
 import {
     P_AXE, P_PICK_AXE, P_POLEARMS, P_LANCE, P_NONE, P_BASIC, P_SKILLED,
@@ -21,7 +22,7 @@ import {
     ECMD_OK, ECMD_TIME, ECMD_CANCEL, ECMD_FAIL, nothing_happens, nothing_seems_to_happen,
     FACE, FOOT, FINGER, TIMEOUT, BLINDED, SICK, HALLUC, VOMITING, CONFUSION,
     STUNNED, DEAF, STRANGLED, SICK_NONVOMITABLE, SICK_ALL,
-    OBJ_FREE, OBJ_INVENT, OBJ_FLOOR, isok, SDOOR, SCORR,
+    OBJ_FREE, OBJ_INVENT, OBJ_FLOOR, isok, SDOOR, SCORR, CORR,
     COLNO, ROWNO, DOOR, D_CLOSED, D_LOCKED, D_ISOPEN, ZAP_POS, MAXULEV, WEAK,
     M_AP_TYPE, M_AP_OBJECT, M_AP_FURNITURE, M_AP_MONSTER, M_AP_NOTHING,
     ACCESSIBLE, IS_STWALL, IS_DOOR, IS_FURNITURE, IS_OBSTRUCTED, IS_WATERWALL,
@@ -30,7 +31,8 @@ import {
     EXT_ENCUMBER, COST_DSTROY, COST_DEGRD, HEAD, HAND, NOSE, NON_PM,
     KILLED_BY, NO_KILLER_PREFIX, W_WEP, STATUE_TRAP,
     EXPL_MAGICAL, EXPL_FIERY, EXPL_FROSTY, PARANOID_BREAKWAND,
-    RLOC_NOMSG, RLOC_MSG, RLOC_NONE, XKILL_NOMSG, ARTICLE_NONE,
+    RLOC_NOMSG, RLOC_MSG, RLOC_NONE, XKILL_NOMSG, ARTICLE_NONE, ARTICLE_A,
+    SUPPRESS_IT, SUPPRESS_INVISIBLE, Is_stronghold, REVIVE_MON, u_at, Has_contents,
     SUPPRESS_SADDLE, has_mgivenname, has_mcorpsenm, MCORPSENM,
     PLNMSG_enum, NO_TRAP_FLAGS, Is_airlevel, Is_waterlevel,
     LANDMINE, BEAR_TRAP, FORCEBUNGLE, SHOPBASE, P_RIDING, NO_MM_FLAGS,
@@ -57,26 +59,28 @@ import {
     nohands, haseyes, humanoid, is_demon, is_vampire, is_vampshifter,
     likes_gems, M1_SEE_INVIS, monsterNames, mons, throws_rocks, passes_walls,
     unsolid, nolimbs, has_head, breathless, is_floater, is_flyer, amorphous,
-    hides_under, MZ_SMALL, M1_SLITHY,
+    hides_under, MZ_SMALL, MZ_TINY, M1_SLITHY, is_whirly, is_female, is_male,
     PM_ARCHEOLOGIST, PM_GNOME, bigmonst, verysmall, strongmonst,
     touch_petrifies, poly_when_stoned, is_rider,
 } from './monsters.js';
-import { can_blow, little_to_big, big_to_little, hero_conflict } from './mondata.js';
+import { can_blow, little_to_big, big_to_little, hero_conflict, pronoun_gender, PRONOUN_NO_IT } from './mondata.js';
 import { wield_tool, welded, is_pole, mwelded } from './wield.js';
 import {
-    splitobj, unsplitobj, delobj, objects_at, sobj_at, unbless, attach_egg_hatch_timeout, kill_egg,
+    splitobj, unsplitobj, delobj, objects_at, sobj_at, nxtobj, unbless, attach_egg_hatch_timeout, kill_egg,
     obj_extract_self, place_object, stackobj, weight, mksobj, stop_timer,
-    start_timer, hornoplenty, spot_stop_timers,
+    start_timer, hornoplenty, spot_stop_timers, get_mtraits, obj_has_timer,
+    init_dummyobj,
 } from './mkobj.js';
-import { xname, the, The, makeplural, vtense, doname, an, singular, cxname, thesimpleoname, simpleonames, yname, shk_your, Tobjnam, gloves_simple_name, otense } from './objnam.js';
+import { xname, the, The, makeplural, vtense, doname, an, singular, cxname, thesimpleoname, simpleonames, simple_typename, yname, shk_your, Tobjnam, gloves_simple_name, otense } from './objnam.js';
 import { obj_resists } from './dogmove.js';
 import { acurr, A_CHA, A_STR, A_DEX, A_CON, change_luck, Fumbling } from './attrib.js';
-import { Monnam, mon_nam, x_monnam, y_monnam, Hallucination, a_monnam, Amonnam, monverbself, l_monnam } from './do_name.js';
+import { Monnam, mon_nam, x_monnam, y_monnam, Hallucination, a_monnam, Amonnam, monverbself, l_monnam, type_is_pname, pmname, Mgender } from './do_name.js';
 import { monflee } from './monmove.js';
-import { nomul, confdir, losehp, maybe_half_phys, is_pool, is_lava, overexertion, in_rooms } from './hack.js';
+import { nomul, confdir, losehp, maybe_half_phys, is_pool, is_lava, overexertion, in_rooms, You_hear } from './hack.js';
 import { getpos, getpos_sethilite } from './getpos.js';
 import { walk_path, thitmonst, hurtle } from './dothrow.js';
-import { uhim, uhis } from './roles.js';
+import { uhim, uhis, genders } from './roles.js';
+import { PM_HEALER } from './generated/monsters_data.js';
 import { is_art, retouch_object } from './artifact.js';
 import { ART_SNICKERSNEE } from './generated/artifacts_data.js';
 import { P_SKILL, weapon_type, dbon, MON_WEP, is_wet_towel, dry_a_towel, hands_obj, possibly_unwield, setmnotwielded } from './weapon.js';
@@ -101,17 +105,17 @@ import {
 import { digests, set_ustuck } from './mhitu.js';
 import { growl, yelp, whimper, mon_msound } from './sounds.js';
 import { Soundeffect } from './sndprocs.js';
-import { se_wall_of_force } from './generated/seffects_data.js';
+import { se_wall_of_force, se_faint_splashing, se_heart_beat, se_typing_noise, se_hollow_sound, se_crackling_of_hellfire } from './generated/seffects_data.js';
 import { vault_summon_gd } from './vault.js';
 import { fill_pit, buried_ball_to_freedom } from './dig.js';
 import {
     mintrap, Trap_Killed_Mon, reset_utrap, instapetrify, t_at,
-    activate_statue_trap, maketrap, feeltrap, dotrap, trapname,
+    activate_statue_trap, maketrap, feeltrap, dotrap, trapname, obj_pmname,
 } from './trap.js';
 import { begin_burn, end_burn, Is_candle, obj_merge_light_sources,
     get_obj_location } from './timeout.js';
 import { show_transient_light, transient_light_cleanup } from './light.js';
-import { set_occupation, u_wipe_engr } from './engrave.js';
+import { set_occupation, u_wipe_engr, freehand, can_reach_floor, cant_reach_floor } from './engrave.js';
 import { makemon, mkclass } from './makemon.js';
 import { make_familiar } from './dog.js';
 import { addinv, addinv_nomerge } from './u_init.js';
@@ -120,14 +124,14 @@ import {
     make_glib, Glib, make_sick, make_confused, make_stunned, make_vomiting,
     make_hallucinated, make_deaf, djinni_from_bottle,
 } from './potion.js';
-import { Blindf_on, Blindf_off, cursed_check, fingers_or_gloves } from './do_wear.js';
+import { Blindf_on, Blindf_off, cursed_check, fingers_or_gloves, is_gloves } from './do_wear.js';
 import {
     dropx, setnotworn, fire_damage, make_blinded, revive_corpse,
     obj_no_longer_held,
 } from './do.js';
 import { polymon, mbodypart, body_part } from './polyself.js';
 import { unpunish } from './read.js';
-import { findit, openit } from './detect.js';
+import { findit, openit, cvt_sdoor_to_door } from './detect.js';
 import { surface } from './sit.js';
 import { level_difficulty } from './hacklib.js';
 import { mon_adjust_speed } from './muse.js';
@@ -340,125 +344,295 @@ function apply_ok(obj) {
  * apply_lets/apply_prompt_lets/apply_has_downplay (charCode-free sortloot
  * SORTLOOT_INVLET + DOWNPLAY altlets now live in getobj_filter_prompt). */
 
+/* C ref: apply.c hollow_str `:312` — secret door/passage reveal line. */
+const HOLLOW_STR = 'a hollow sound. This must be a secret %s!';
+
 /**
- * C ref: apply.c use_stethoscope — one free use per hero_seq; '.' → ustatusline.
- * Adjacent: isok / m_at (mundetected + mappearance seemimic + mstatusline) /
- * empty → "hear nothing special", return res (D-0735 / D-0738).
- * Deferred: swallow/steed/dz/cursed heartbeat rn2(2), confdir `:379`
- * self-call (getdir `:4115–4116` tail now live via getdir, D-2430),
- * Deaf/nohands/freehand gates, SDOOR/SCORR hollow reveal, its_dead,
- * slime-mold fruit names, full defsyms furniture explanations,
- * mstatusline ailment/wizard-tame arms.
+ * C ref: apply.c its_dead `:198–310` (staticfn → module-local; sole
+ * callers: use_stethoscope `:365` + `:467`) — floor corpse/statue report.
+ * sobj_at uppermost-of-pile rule, can_reach_floor tiny-statue filter,
+ * Hallucination "dead, Jim" (resp=ECMD_TIME), Healer reviver scan +
+ * Blind glyph map_object, statue person/creature vs obj_pmname+The with
+ * Healer trap/contents grade. resp is the C `int *` out-param holder.
+ */
+async function its_dead(rx, ry, resp) {
+    let buf;
+    let corpse = sobj_at(CORPSE, rx, ry);
+    let statue = sobj_at(STATUE, rx, ry);
+
+    if (!can_reach_floor(true)) { /* C `:209` levitation or unskilled riding */
+        corpse = null; /* C: can't reach corpse on floor */
+        /* C: tiny statues unreachable (fightable tiny monsters aside) */
+        while (statue && (mons(statue.corpsenm | 0)?.msize | 0) === MZ_TINY) {
+            statue = nxtobj(statue, STATUE, true);
+        }
+    }
+    /* C `:216–222` — corpse+statue present: the uppermost one wins */
+    if (corpse && statue) {
+        if (nxtobj(statue, CORPSE, true) === corpse) {
+            corpse = null; /* corpse follows statue; ignore it */
+        } else {
+            statue = null; /* corpse precedes statue; ignore statue */
+        }
+    }
+    const more_corpses = corpse && nxtobj(corpse, CORPSE, true);
+
+    /* C `:224` additional messages from jyoung@apanix.apana.org.au */
+    if (!corpse && !statue) {
+        ; /* nothing to do */
+    } else if (Hallucination()) {
+        if (!corpse) {
+            /* it's a statue */
+            buf = "You're both stoned";
+        } else if ((corpse.quan | 0) === 1 && !more_corpses) {
+            let gndr = 2; /* neuter: "it" */
+            const mtmp = get_mtraits(corpse, false);
+            /* C: most corpses don't retain sex — generic pronoun */
+            if (mtmp) {
+                gndr = pronoun_gender(mtmp, PRONOUN_NO_IT);
+            } else {
+                const mptr = mons(corpse.corpsenm | 0);
+                if (is_female(mptr)) gndr = 1;
+                else if (is_male(mptr)) gndr = 0;
+            }
+            buf = `${genders[gndr].he}'s dead`; /* "he"/"she"/"it" */
+            buf = buf.charAt(0).toUpperCase() + buf.slice(1); /* C highc */
+        } else { /* plural */
+            buf = "They're dead";
+        }
+        /* C `:250` variations on "He's dead, Jim." (Star Trek's Dr McCoy) */
+        await You_hear(`a voice say, "${buf}, Jim."`);
+        resp.v = ECMD_TIME;
+        return true;
+    } else if (corpse) {
+        const here = u_at(rx, ry);
+        const one = (corpse.quan | 0) === 1 && !more_corpses;
+        let reviver = false;
+        const visglyph = glyph_at(rx, ry);
+        const corpseglyph = obj_glyph(corpse); /* C obj_to_glyph(corpse, rn2) */
+        if (Blind() && visglyph !== corpseglyph) map_object(corpse, true);
+        if (Role_if(PM_HEALER)) {
+            /* C `:268–276` ok to reset `corpse`; done with it */
+            do {
+                if (obj_has_timer(corpse, REVIVE_MON)) reviver = true;
+                else corpse = nxtobj(corpse, CORPSE, true);
+            } while (corpse && !reviver);
+        }
+        await You(
+            'determine that %s unfortunate being%s %s%s dead.',
+            one ? (here ? 'this' : 'that') : (here ? 'these' : 'those'),
+            one ? '' : 's',
+            one ? 'is' : 'are',
+            reviver ? ' mostly' : '',
+        );
+        return true;
+    } else { /* statue */
+        let what;
+        let how;
+        const mptr = mons(statue.corpsenm | 0);
+        if (Blind()) { /* C: ignore statue->dknown; always set */
+            buf = `${u_at(rx, ry) ? 'This' : 'That'} `
+                + `${humanoid(mptr) ? 'person' : 'creature'}`;
+            what = buf;
+        } else {
+            what = obj_pmname(statue);
+            if (!type_is_pname(mptr)) what = The(what);
+        }
+        how = 'fine';
+        if (Role_if(PM_HEALER)) {
+            const ttmp = t_at(rx, ry);
+            if (ttmp && (ttmp.ttyp | 0) === STATUE_TRAP) how = 'extraordinary';
+            else if (Has_contents(statue)) how = 'remarkable';
+        }
+        await pline('%s is in %s health for a statue.', what, how);
+        return true;
+    }
+    return false; /* no corpse or statue */
+}
+
+/**
+ * C ref: apply.c use_stethoscope `:318–470` — nohands/Deaf/freehand gates,
+ * getdir (ECMD_CANCEL), one free use per hero_seq (else ECMD_TIME), steed/
+ * swallow/dz/cursed-heartbeat arms, confdir + self ustatusline, isok typing
+ * noise (ECMD_OK), m_at (mundetected/mappearance seemimic/mstatusline +
+ * map_invisible), unmap_invisible, SDOOR/SCORR hollow reveal, its_dead tail
+ * (C `You`, not `You_hear`, on "hear nothing special"). Caller
+ * apply.c:4328 wired js/apply.js doapply STETHOSCOPE (res > 0).
+ * Named omissions: M_AP_FURNITURE defsyms[].explanation (no JS defsyms
+ * table — keeps C default 'thing'; map-named).
  * @returns {number} 1 = ECMD_TIME, 0 = ECMD_OK, -1 = ECMD_CANCEL
  */
-async function use_stethoscope(_obj) {
-    if (!(await getdir(null))) return -1; // ECMD_CANCEL
+async function use_stethoscope(obj) {
+    const u = game.u || {};
+    /* C `:323–327` — interference is an entry initializer: its rn2 burns
+       before the gates below (C short-circuit order kept). */
+    const interference = u.uswallow && is_whirly(u.ustuck?.data)
+        && !rn2(Role_if(PM_HEALER) ? 10 : 3);
 
-    // C: first use this hero_seq is free; another use costs the turn
+    if (nohands(game.youmonst?.data)) {
+        await You('have no hands!'); /* C: not `body_part(HAND)' */
+        return ECMD_OK;
+    } else if (Deaf_hero()) {
+        await You_cant('hear anything!');
+        return ECMD_OK;
+    } else if (!freehand()) {
+        await You('have no free %s.', body_part(HAND));
+        return ECMD_OK;
+    }
+    if (!(await getdir(null))) return ECMD_CANCEL;
+
+    /* C `:344–345` — first use this hero_seq is free, another costs the turn */
     if (!game.context) game.context = {};
     if (game.hero_seq == null) game.hero_seq = ((game.moves || 1) | 0) << 3;
     const seq = game.hero_seq;
-    // C: res = (hero_seq == stethoscope_seq) ? ECMD_TIME : ECMD_OK
-    const res = seq === (game.context.stethoscope_seq ?? 0) ? ECMD_TIME : ECMD_OK;
+    let res = seq === (game.context.stethoscope_seq ?? 0) ? ECMD_TIME : ECMD_OK;
     game.context.stethoscope_seq = seq;
 
-    // C apply.c:379 self-call deferred (not Confused at starter); the
-    // getdir `:4115–4116` tail above already drew (D-2430).
-    const dx = game.u.dx | 0;
-    const dy = game.u.dy | 0;
-    if (!dx && !dy) {
+    if (!game._bhitpos) game._bhitpos = { x: 0, y: 0 };
+    game._bhitpos.x = u.ux; game._bhitpos.y = u.uy; /* C `:347` tentative */
+    game.bhitpos = game._bhitpos;
+    game.notonhead = !!u.uswallow; /* C `:348` */
+    if (u.usteed && (u.dz | 0) > 0) {
+        if (interference) {
+            await pline('%s interferes.', Monnam(u.ustuck));
+            await mstatusline(u.ustuck);
+        } else {
+            await mstatusline(u.usteed);
+        }
+        return res;
+    } else if (u.uswallow && ((u.dx | 0) || (u.dy | 0) || (u.dz | 0))) {
+        await mstatusline(u.ustuck);
+        return res;
+    } else if (u.uswallow && interference) {
+        await pline('%s interferes.', Monnam(u.ustuck));
+        await mstatusline(u.ustuck);
+        return res;
+    } else if (u.dz | 0) {
+        if (u.uinwater) {
+            Soundeffect(se_faint_splashing, 35);
+            await You_hear('faint splashing.');
+        } else if ((u.dz | 0) < 0 || !can_reach_floor(true)) {
+            await cant_reach_floor(u.ux, u.uy, (u.dz | 0) < 0, true, false);
+        } else {
+            const resp = { v: res };
+            if (await its_dead(u.ux, u.uy, resp)) {
+                res = resp.v;
+                ; /* message already given */
+            } else if (Is_stronghold(u.uz)) {
+                Soundeffect(se_crackling_of_hellfire, 35);
+                await You_hear('the crackling of hellfire.');
+            } else {
+                await pline_The('%s seems healthy enough.', surface(u.ux, u.uy));
+            }
+        }
+        return res;
+    } else if ((obj?.cursed | 0) && !rn2(2)) {
+        Soundeffect(se_heart_beat, 100);
+        await You_hear('your heart beat.');
+        return res;
+    }
+    confdir(false);
+    if (!(u.dx | 0) && !(u.dy | 0)) {
         await ustatusline();
         return res;
     }
 
-    // C: rx = u.ux + u.dx; ry = u.uy + u.dy
-    const rx = (game.u.ux | 0) + dx;
-    const ry = (game.u.uy | 0) + dy;
+    /* C `:385–386` */
+    const rx = (u.ux | 0) + (u.dx | 0);
+    const ry = (u.uy | 0) + (u.dy | 0);
     if (!isok(rx, ry)) {
-        // C: You_hear("a faint typing noise."); return ECMD_OK
-        await pline('You hear a faint typing noise.');
+        Soundeffect(se_typing_noise, 100);
+        await You_hear('a faint typing noise.');
         return ECMD_OK;
     }
-
-    // C: m_at(rx,ry) → mundetected / mappearance seemimic / mstatusline
     const mtmp = m_at(rx, ry);
     if (mtmp) {
-        const mnm = a_monnam(mtmp);
+        const mnm = x_monnam(mtmp, ARTICLE_A, null,
+            SUPPRESS_IT | SUPPRESS_INVISIBLE, false);
+
+        /* C `:392` gb.bhitpos needed by mstatusline() iff long worm */
+        game._bhitpos.x = rx; game._bhitpos.y = ry;
+        game.notonhead = ((mtmp.mx | 0) !== (rx | 0)
+            || (mtmp.my | 0) !== (ry | 0));
 
         if (mtmp.mundetected) {
             if (!canspotmon(mtmp)) {
-                await pline(`There is ${mnm} hidden there.`);
+                await There('is %s hidden there.', mnm);
             }
             mtmp.mundetected = 0;
-            if (mtmp.mx > 0) newsym(mtmp.mx, mtmp.my);
-        } else if (mtmp.mappearance || M_AP_TYPE(mtmp)) {
+            newsym(mtmp.mx, mtmp.my);
+        } else if (mtmp.mappearance) {
             let what = 'thing';
             let use_plural = false;
-            const ap = M_AP_TYPE(mtmp);
-            if (ap === M_AP_OBJECT) {
-                const otyp = mtmp.mappearance | 0;
-                // C: SLIME_MOLD + has_mcorpsenm → dummy.spe = MCORPSENM
-                // then simpleonames (fruit name, not "slime mold").
-                if (otyp === SLIME_MOLD && has_mcorpsenm(mtmp)) {
-                    what = simpleonames({
-                        otyp,
-                        spe: MCORPSENM(mtmp),
-                        quan: 1,
-                    });
-                } else {
-                    what = simple_typename_steth(otyp);
+            switch (M_AP_TYPE(mtmp)) {
+            case M_AP_OBJECT:
+                /* FIXME? C: should probably use object_from_map() here */
+                {
+                    const odummy = init_dummyobj({}, mtmp.mappearance | 0, 1);
+                    /* C: simple_typename() yields "fruit" for named fruit;
+                       we want '//' or ';' view: "slime mold"/"grape"/
+                       "slice of pizza" */
+                    if (odummy.otyp === SLIME_MOLD && has_mcorpsenm(mtmp)) {
+                        odummy.spe = MCORPSENM(mtmp);
+                        what = simpleonames(odummy);
+                    } else {
+                        what = simple_typename(odummy.otyp);
+                    }
+                    use_plural = is_boots(odummy) || is_gloves(odummy)
+                        || odummy.otyp === LENSES;
                 }
-                const on = objectNames[otyp] || '';
-                use_plural = on.includes('BOOTS') || on.includes('GLOVES')
-                    || otyp === LENSES;
-            } else if (ap === M_AP_MONSTER) {
-                const ptr = mons(mtmp.mappearance | 0);
-                const raw = ptr?.name || 'monster';
-                what = String(raw).replace(/^PM_/, '').replace(/_/g, ' ').toLowerCase();
-            } else if (ap === M_AP_FURNITURE) {
-                // defsyms[].explanation deferred
+                break;
+            case M_AP_MONSTER: /* ignore Hallucination here */
+                what = pmname(mons(mtmp.mappearance | 0), Mgender(mtmp));
+                break;
+            case M_AP_FURNITURE:
+                /* Named omit (map): defsyms[mappearance].explanation —
+                   no JS defsyms table; keeps C default 'thing'. */
                 what = 'thing';
+                break;
             }
             seemimic(mtmp);
-            await pline(
-                `${use_plural ? 'Those' : 'That'} ${what} `
-                + `${use_plural ? 'are' : 'is'} really ${mnm}.`,
-            );
+            await pline('%s %s %s really %s.',
+                use_plural ? 'Those' : 'That', what,
+                use_plural ? 'are' : 'is', mnm);
         } else if (game.flags?.verbose !== false && !canspotmon(mtmp)) {
-            await pline(`There is ${mnm} there.`);
+            await There('is %s there.', mnm);
         }
 
-        // C apply.c:395 — gb.bhitpos needed by mstatusline iff long worm.
-        if (!game._bhitpos) game._bhitpos = { x: 0, y: 0 };
-        game._bhitpos.x = rx; game._bhitpos.y = ry;
-        game.bhitpos = game._bhitpos;
-        game.notonhead = ((mtmp.mx | 0) !== (rx | 0)
-            || (mtmp.my | 0) !== (ry | 0));
         await mstatusline(mtmp);
-        if (!canspotmon(mtmp)) {
-            // map_invisible deferred — still return res
-        }
+        if (!canspotmon(mtmp)) map_invisible(rx, ry);
         return res;
     }
+    if (unmap_invisible(rx, ry)) {
+        await pline_The('invisible monster must have moved.');
+    }
 
-    // C: SDOOR/SCORR reveal + its_dead deferred → "hear nothing special"
     const lev = game.level?.at(rx, ry);
-    if (lev && (lev.typ === SDOOR || lev.typ === SCORR)) {
-        // Named omission: hollow_str reveal + cvt_sdoor / unblock_point
-        await pline('You hear nothing special.');
-        return res;
+    if (lev) {
+        switch (lev.typ) {
+        case SDOOR:
+            Soundeffect(se_hollow_sound, 100);
+            await You_hear(HOLLOW_STR.replace('%s', 'door'));
+            cvt_sdoor_to_door(lev); /* ->typ = DOOR */
+            recalc_block_point(rx, ry);
+            feel_newsym(rx, ry);
+            return res;
+        case SCORR:
+            await You_hear(HOLLOW_STR.replace('%s', 'passage'));
+            lev.typ = CORR; lev.flags = 0;
+            unblock_point(rx, ry);
+            feel_newsym(rx, ry);
+            return res;
+        }
     }
 
-    // C: if (!its_dead(...)) You("hear nothing special."); return res
-    await pline('You hear nothing special.');
+    {
+        const resp = { v: res };
+        const hit = await its_dead(rx, ry, resp);
+        res = resp.v;
+        if (!hit) await You('hear nothing special.'); /* C: not You_hear() */
+    }
     return res;
-}
-
-/** C ref: objnam.c simple_typename — otyp → lowercase name. */
-function simple_typename_steth(otyp) {
-    const s = objectNameStrs[otyp]
-        || (objectNames[otyp] || 'object').toLowerCase().replace(/_/g, ' ');
-    return s;
 }
 
 /** C mondata.h perceives — M1_SEE_INVIS. */

@@ -1812,7 +1812,7 @@ async function forcelock() {
 }
 
 /** C ref: lock.c u_have_forceable_weapon */
-function u_have_forceable_weapon() {
+export function u_have_forceable_weapon() {
     const uwep = game.u?.uwep;
     if (!uwep) return false;
     if (uwep.oclass === WEAPON_CLASS || is_weptool(uwep)) {

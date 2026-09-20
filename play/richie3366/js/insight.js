@@ -78,6 +78,8 @@ import {
     VANQ_COUNT_L_H,
 } from './const.js';
 import { pline, impossible } from './display.js';
+import { getnow } from './calendar.js';
+import { timet_delta } from './allmain.js';
 import { livelog_printf } from './pline.js';
 import { objectNameStrs } from './objects.js';
 import { show_text_pages, show_nhw_menu_text, mhidden_description } from './pager.js';
@@ -158,6 +160,62 @@ function wizardMode() {
 
 function plur(n) {
     return (n | 0) === 1 ? '' : 's';
+}
+
+/**
+ * C ref: insight.c fmt_elapsed_time `:313–358` (C `staticfn`, exported for
+ * the JS enlightenment builders) — format `urealtime.realtime` as
+ * " D days, H hours, M minutes and S seconds" with zero-valued fields
+ * omitted (`" none"` when every field is 0, which should never happen).
+ * For a game still in progress (`!final`; C callers pass
+ * ENL_GAMEINPROGRESS = 0) the live delta `:324–325`
+ * `timet_delta(getnow(), urealtime.start_timing)` is added; for a game
+ * that's over, really_done() already folded it into `.realtime` (end.js).
+ * C `eos(outbuf)` appends are plain concatenation here; C `plur(x)` is
+ * `hack.h:1520` (`""` iff x == 1), the file-local helper above. Division
+ * is trunc-toward-zero like C `long` `/` (non-negative in practice).
+ * Sole C caller: insight.c:448 `enlightenment` — wired in js/invent.js
+ * `enlightenment` (final disclosure) and `doattributes` (^X overlay).
+ * @param {number} final ENL_GAMEINPROGRESS / GAMEOVERALIVE / GAMEOVERDEAD
+ * @returns {string} elapsed field text with leading space (C `outbuf`)
+ */
+export function fmt_elapsed_time(final) {
+    const rt = game.urealtime || {};
+    // C `:322–325` — etim = urealtime.realtime (+ live delta if !final).
+    let etim = (rt.realtime | 0);
+    if (!final) etim += timet_delta(getnow(), (rt.start_timing | 0));
+    // C `:328–331` — eseconds = etim % 60, etim /= 60, &c, in C order.
+    const eseconds = etim % 60;
+    etim = Math.trunc(etim / 60);
+    const eminutes = etim % 60;
+    etim = Math.trunc(etim / 60);
+    const ehours = etim % 24;
+    const edays = Math.trunc(etim / 24);
+    // C `:332` — fieldcnt = !!edays + !!ehours + !!eminutes + !!eseconds.
+    let fieldcnt = (edays ? 1 : 0) + (ehours ? 1 : 0)
+        + (eminutes ? 1 : 0) + (eseconds ? 1 : 0);
+    // C `:334` — 'none' should never happen.
+    let outbuf = fieldcnt ? '' : ' none';
+    if (edays) {
+        // C `:335–340`.
+        outbuf += ` ${edays} day${plur(edays)}`;
+        if (fieldcnt > 1) outbuf += (fieldcnt === 2) ? ' and' : ',';
+        --fieldcnt; /* edays has been processed */
+    }
+    if (ehours) {
+        // C `:341–346`.
+        outbuf += ` ${ehours} hour${plur(ehours)}`;
+        if (fieldcnt > 1) outbuf += (fieldcnt === 2) ? ' and' : ',';
+        --fieldcnt; /* ehours has been processed */
+    }
+    if (eminutes) {
+        // C `:347–352` (no fieldcnt decrement per C comment).
+        outbuf += ` ${eminutes} minute${plur(eminutes)}`;
+        if (fieldcnt > 1) outbuf += ' and';
+    }
+    // C `:353–354`.
+    if (eseconds) outbuf += ` ${eseconds} second${plur(eseconds)}`;
+    return outbuf;
 }
 
 /** C ref: insight.c N_times */

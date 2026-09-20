@@ -13,7 +13,7 @@
 //         attrib.c poison_strdmg / gainstr;
 //         potion.c make_vomiting / make_glib;
 //         costly_tin → shk costly_alteration; use_tin_opener (D-0940).
-// Named omissions: floorfood cockatrice-feel; hallu AD_STUN covered
+// Named omissions: hallu AD_STUN covered
 // D-0943; corpse_intrinsic/givit covered D-0944;
 // were*/mimic/attrcurse covered D-0945 (set_mimic_blocking /
 // retouch_equipment / display_nhwindow WIN_MAP polish / livelog /
@@ -36,7 +36,7 @@ import { game } from './gstate.js';
 import { rn2, rnd, rn1, d } from './rng.js';
 import {
     pline, You_feel, newsym, see_monsters, more,
-    canspotmon, canseemon, bot, Hallucination, verbalize,
+    canspotmon, canseemon, bot, Hallucination, verbalize, impossible,
 } from './display.js';
 import { yn_function, paranoid_query, y_n } from './getline.js';
 import {
@@ -55,7 +55,8 @@ import { Soundeffect } from './sndprocs.js';
 import { se_sinister_laughter } from './generated/seffects_data.js';
 import {
     singular, xname, doname, the, makeplural, obj_is_pname, thesimpleoname,
-    an, killer_xname, yobjnam, Tobjnam, corpse_xname,
+    an, killer_xname, yobjnam, Tobjnam, corpse_xname, otense, safe_qbuf,
+    ansimpleoname,
 } from './objnam.js';
 import {
     mons, acidic, poisonous, carnivorous, herbivorous, metallivorous,
@@ -111,7 +112,8 @@ import {
     stop_occupation, end_running, You_hear, fall_asleep,
 } from './hack.js';
 import { Blind, near_capacity, observe_object, makeknown, getobj, freeinv,
-    encumber_msg, update_inventory, useupall, useup, useupf } from './invent.js';
+    encumber_msg, update_inventory, useupall, useup, useupf,
+    will_feel_cockatrice, feel_cockatrice } from './invent.js';
 import {
     make_confused, make_vomiting, make_glib, make_stoned, make_slimed,
     make_stunned, make_hallucinated, make_sick,
@@ -1157,8 +1159,8 @@ function Breathless() {
  * pool-lava+(Wwalking|clinger|(Flying&&!Breathless)) skip to invent;
  * metallivore beartrap + IRONBARS + floor gold ynq; edible floor
  * FOOD (non-coin) ynq; invent getobj eat_ok GETOBJ_NOFLAGS.
- * Named omissions: will_feel_cockatrice; sacrifice floor yn
- * safe_qbuf ansimpleoname fallback (tin: D-1027 floorfood("tin", 2);
+ * Cockatrice touch (`:3688–3691`) + otense/safe_qbuf question
+ * (`:3696–3702`) live (tin: D-1027 floorfood("tin", 2);
  * sacrifice getobj: D-1665).
  */
 async function floorfood_eat() {
@@ -1250,10 +1252,19 @@ async function floorfood_eat() {
         }
         for (let otmp = objects_at(ux, uy); otmp; otmp = otmp.nexthere) {
             if (otmp.oclass === COIN_CLASS || !is_edible(otmp)) continue;
-            // will_feel_cockatrice deferred
+            // C `:3688–3691` — blind bare-handed cockatrice touch is fatal
+            // before the question (no 'm<dir>'+'e' corpse probe).
+            if ((otmp.otyp | 0) === CORPSE && will_feel_cockatrice(otmp, false)) {
+                await feel_cockatrice(otmp, false);
+                return null;
+            }
+            // C `:3696–3702` — "There is <an object> here; eat it?" via
+            // otense + safe_qbuf(doname, ansimpleoname, something/things).
             const one = (otmp.quan || 1) === 1;
-            // C: "There is <doname> here; eat it?" (otense + safe_qbuf)
-            const qbuf = `There ${one ? 'is' : 'are'} ${doname(otmp)} here; eat ${one ? 'it' : 'one'}?`;
+            const qsfx = ` here; eat ${one ? 'it' : 'one'}?`;
+            const qbuf = safe_qbuf(null, `There ${otense(otmp, 'are')} `,
+                qsfx, otmp, doname, ansimpleoname,
+                one ? 'something' : 'things');
             const c = await yn_function(qbuf, 'ynq', 'n');
             if (c === 'y') return otmp;
             if (c === 'q') return null;
@@ -3848,8 +3859,8 @@ function tin_ok(obj) {
 /**
  * C ref: eat.c floorfood("tin", 2) — yn tinnable floor corpses, else
  * invent getobj tin_ok. Not feeding: usteed does not skip floor.
- * Named omit: will_feel_cockatrice; safe_qbuf fallback.
- * Sacrifice getobj is D-1665.
+ * Cockatrice touch (`:3688–3691`) + otense/safe_qbuf question
+ * (`:3696–3702`) live. Sacrifice getobj is D-1665.
  */
 async function floorfood_tin() {
     const u = game.u || {};
@@ -3865,8 +3876,17 @@ async function floorfood_tin() {
     if (!skip_floor) {
         for (let otmp = objects_at(ux, uy); otmp; otmp = otmp.nexthere) {
             if ((otmp.otyp | 0) !== CORPSE || !tinnable(otmp)) continue;
+            // C `:3688–3691` — cockatrice touch is fatal before asking.
+            if (will_feel_cockatrice(otmp, false)) {
+                await feel_cockatrice(otmp, false);
+                return null;
+            }
+            // C `:3696–3702` — otense + safe_qbuf question.
             const one = (otmp.quan || 1) === 1;
-            const qbuf = `There ${one ? 'is' : 'are'} ${doname(otmp)} here; tin ${one ? 'it' : 'one'}?`;
+            const qsfx = ` here; tin ${one ? 'it' : 'one'}?`;
+            const qbuf = safe_qbuf(null, `There ${otense(otmp, 'are')} `,
+                qsfx, otmp, doname, ansimpleoname,
+                one ? 'something' : 'things');
             const c = await yn_function(qbuf, 'ynq', 'n');
             if (c === 'y') return otmp;
             if (c === 'q') return null;
@@ -3906,7 +3926,8 @@ function offer_ok(obj) {
 /**
  * C ref: eat.c floorfood("sacrifice", 1) — yn floor CORPSE, else invent
  * getobj offer_ok GETOBJ_NOFLAGS. Not feeding: usteed does not skip floor.
- * Named omit: will_feel_cockatrice; safe_qbuf ansimpleoname fallback.
+ * Cockatrice touch (`:3688–3691`) + otense/safe_qbuf question
+ * (`:3696–3702`) live.
  */
 async function floorfood_sacrifice(verb) {
     const u = game.u || {};
@@ -3922,8 +3943,17 @@ async function floorfood_sacrifice(verb) {
     if (!skip_floor) {
         for (let otmp = objects_at(ux, uy); otmp; otmp = otmp.nexthere) {
             if ((otmp.otyp | 0) !== CORPSE) continue;
+            // C `:3688–3691` — cockatrice touch is fatal before asking.
+            if (will_feel_cockatrice(otmp, false)) {
+                await feel_cockatrice(otmp, false);
+                return null;
+            }
+            // C `:3696–3702` — otense + safe_qbuf question.
             const one = (otmp.quan || 1) === 1;
-            const qbuf = `There ${one ? 'is' : 'are'} ${doname(otmp)} here; ${verb} ${one ? 'it' : 'one'}?`;
+            const qsfx = ` here; ${verb} ${one ? 'it' : 'one'}?`;
+            const qbuf = safe_qbuf(null, `There ${otense(otmp, 'are')} `,
+                qsfx, otmp, doname, ansimpleoname,
+                one ? 'something' : 'things');
             const c = await yn_function(qbuf, 'ynq', 'n');
             if (c === 'y') return otmp;
             if (c === 'q') return null;
@@ -3949,6 +3979,8 @@ export async function floorfood(verb, corpsecheck) {
     if ((corpsecheck | 0) === 0) return floorfood_eat();
     if ((corpsecheck | 0) === 1) return floorfood_sacrifice(verb);
     if ((corpsecheck | 0) === 2) return floorfood_tin();
+    // C `:3717–3719` — unreachable from the three live callers.
+    await impossible('floorfood: unknown request (%s)', verb);
     return null;
 }
 

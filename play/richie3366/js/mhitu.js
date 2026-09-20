@@ -90,7 +90,7 @@ import {
 import { burn_away_slime } from './timeout.js';
 import {
     get_mattk, mhitm_knockback, mhitm_mgc_atk_negated, mattackm, rustm,
-    could_seduce, SYSOPT_SEDUCE, mon_poly, mondead, erode_armor,
+    could_seduce, failed_grab, SYSOPT_SEDUCE, mon_poly, mondead, erode_armor,
     AT_NONE, AT_CLAW, AT_KICK, AT_BITE, AT_STNG, AT_TUCH, AT_BUTT, AT_WEAP,
     AT_ENGL, AT_GAZE, AT_SPIT, AT_BREA, AT_EXPL, AT_BOOM, AT_TENT, AT_MAGC,
     AT_HUGS,
@@ -1628,35 +1628,11 @@ export async function u_slip_free(mtmp, mattk) {
 }
 
 /**
- * C ref: mhitm.c failed_grab — unsolid / notonhead grab miss (no RNG).
- * mhitu mdef is always youmonst; magr is the monster.
+ * C mhitm.c failed_grab (`:597–640`) is the canonical export from
+ * `mhitm.js` (C has one function; the 2-arg clone lived here before).
+ * mhitu callers always pass mdef = youmonst, so the canonical message
+ * gate (`:612–613`) is always true here — identical behavior.
  */
-async function failed_grab(magr, mattk) {
-    const youdat = game.youmonst?.data;
-    if (!(unsolid(youdat) || game.notonhead)
-        || !((mattk.aatyp | 0) === AT_HUGS
-            || (mattk.adtyp | 0) === AD_WRAP
-            || (mattk.adtyp | 0) === AD_STCK
-            || (mattk.adtyp | 0) === AD_DGST)) {
-        return false;
-    }
-    const verb = (mattk.adtyp | 0) === AD_DGST ? 'gulp'
-        : (mattk.adtyp | 0) === AD_STCK ? 'adhere' : 'grab';
-    const magrnam = s_suffix_hitmsg(Monnam(magr));
-    let mdefnam;
-    if (!game.notonhead) {
-        mdefnam = 'you';
-    } else {
-        /* C some_mon_nam(mdef); named omit — s_suffix(mon_nam) stand-in. */
-        mdefnam = `${s_suffix_hitmsg(mon_nam(game.youmonst))} tail`;
-    }
-    await pline(
-        `${magrnam} ${verb} attempt ${
-            game.notonhead ? 'fails to hold' : 'passes right through'
-        } ${mdefnam}!`,
-    );
-    return true;
-}
 
 /**
  * C ref: mon.c set_ustuck — bind / clear hero grabber; clears swallow on null.
@@ -1878,7 +1854,7 @@ async function gulpmu(mtmp, mattk) {
         if (!engulf_target(mtmp, true)) return M_ATTK_MISS;
         if (t && is_pit(t.ttyp) && sobj_at(BOULDER, u.ux | 0, u.uy | 0))
             return M_ATTK_MISS;
-        if (await failed_grab(mtmp, mattk)) return M_ATTK_MISS;
+        if (await failed_grab(mtmp, game.youmonst, mattk)) return M_ATTK_MISS;
 
         if (Punished())
             unplacebc(); /* ball&chain go away */
@@ -4297,7 +4273,7 @@ export async function mattacku(mtmp) {
                     const j = rnd(20 + i);
                     if (tmp > j) {
                         if (unsolid(game.youmonst?.data)
-                            && await failed_grab(mtmp, mattk)) {
+                            && await failed_grab(mtmp, game.youmonst, mattk)) {
                             continue;
                         }
                         if ((mattk.aatyp | 0) !== AT_KICK
@@ -4320,7 +4296,7 @@ export async function mattacku(mtmp) {
              * hit, or already grabbing. */
             if ((!range2 && i >= 2 && sum[i - 1] && sum[i - 2])
                 || mtmp === u.ustuck) {
-                if (!(await failed_grab(mtmp, mattk))) {
+                if (!(await failed_grab(mtmp, game.youmonst, mattk))) {
                     sum[i] = await hitmu(mtmp, mattk);
                 }
             }

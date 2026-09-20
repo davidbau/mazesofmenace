@@ -5,11 +5,12 @@
 
 import { game } from './gstate.js';
 import { vfsReadFile, vfsWriteFile, vfsDeleteFile } from './storage.js';
-import { next_ident, obj_extract_self, dealloc_obj } from './mkobj.js';
+import { next_ident, obj_extract_self, dealloc_obj, curse, free_omonst, set_corpsenm, weight, is_mines_prize, is_soko_prize } from './mkobj.js';
 import { peace_minded, set_malign, propagate } from './makemon.js';
 import {
     OBJ_FLOOR, OBJ_CONTAINED, SHOPBASE, ROOMOFFSET, ONAME_BONES,
-    DEFUNCT_MONSTER, NON_PM, TRICKED, has_oname, has_mgivenname,
+    DEFUNCT_MONSTER, NON_PM, TRICKED, LOST_NONE, has_oname, has_omonst,
+    has_mgivenname, ismnum,
 } from './const.js';
 import { FOOD_CLASS } from './objects.js';
 import { save_track, rest_track } from './track.js';
@@ -24,16 +25,34 @@ import { serLevel, deserLevel } from './lev_json.js';
 import { exist_artifact, artifact_exists } from './artifact.js';
 import { is_quest_artifact } from './quest.js';
 import { safe_oname, free_oname } from './do_name.js';
-import { get_obj_location } from './timeout.js';
+import { get_obj_location, end_burn } from './timeout.js';
 import { inside_shop, fix_shop_damage } from './shk.js';
 import { in_rooms } from './hack.js';
 import { tended_shop } from './sounds.js';
-import { mongone } from './mon.js';
+import { mongone, unique_corpstat } from './mon.js';
 import { no_bones_level, done } from './end.js';
 import { sanitize_engravings } from './engrave.js';
+import { delete_convertedfile } from './files.js';
+import { mons, monsterNames, SPECIAL_PM } from './monsters.js';
+import { cant_revive } from './zap.js';
 
 const BONES_VFS_PREFIX = 'bones/';
 const SLIME_MOLD = objectNames.indexOf('SLIME_MOLD');
+const STATUE = objectNames.indexOf('STATUE');
+const SPE_NOVEL = objectNames.indexOf('SPE_NOVEL');
+const CORPSE = objectNames.indexOf('CORPSE');
+const SCR_MAIL = objectNames.indexOf('SCR_MAIL');
+const EGG = objectNames.indexOf('EGG');
+const TIN = objectNames.indexOf('TIN');
+const AMULET_OF_YENDOR = objectNames.indexOf('AMULET_OF_YENDOR');
+const FAKE_AMULET_OF_YENDOR = objectNames.indexOf('FAKE_AMULET_OF_YENDOR');
+const CANDELABRUM_OF_INVOCATION = objectNames.indexOf('CANDELABRUM_OF_INVOCATION');
+const WAX_CANDLE = objectNames.indexOf('WAX_CANDLE');
+const BELL_OF_OPENING = objectNames.indexOf('BELL_OF_OPENING');
+const BELL = objectNames.indexOf('BELL');
+const SPE_BOOK_OF_THE_DEAD = objectNames.indexOf('SPE_BOOK_OF_THE_DEAD');
+const SPE_BLANK_PAPER = objectNames.indexOf('SPE_BLANK_PAPER');
+const PM_DOPPELGANGER = monsterNames.indexOf('PM_DOPPELGANGER');
 /** C ref: global.h PL_FSIZ — fruit name buffer (copynchars n = PL_FSIZ-1). */
 const PL_FSIZ = 32;
 
@@ -80,10 +99,9 @@ export function sanitize_name(namebuf) {
 /**
  * C ref: bones.c resetobjs `:50–193` — recurse cobj first, drop
  * in_use objects, then the restore arm (artifact bookkeeping, oname
- * sanitize, shop no_charge for partly eaten food) or the save arm.
- * Save arm: SLIME_MOLD goodfruit only; the known/dknown/name strip,
- * SCR_MAIL/EGG/TIN/unique-corpse and invocation-item arms are named
- * (end.js set_ghostly_objlist covers the hero's dropped inventory).
+ * sanitize, shop no_charge for partly eaten food) or the save arm
+ * (known-strip, name strip, SLIME_MOLD/SCR_MAIL/EGG/TIN/corpse-statue
+ * fixups, mines/soko prize nomerge, invocation-item downgrade+curse).
  * @param {object|null} ochain
  * @param {boolean} restore
  */
@@ -134,8 +152,104 @@ function resetobjs(ochain, restore) {
                         game.level.rooms[p.charCodeAt(0) - ROOMOFFSET]))
                     ? 1 : 0;
             }
-        } else if ((otmp.otyp | 0) === SLIME_MOLD) { /* saving */
-            goodfruit(otmp.spe);
+        } else { /* saving */
+            /* do not zero out o_ids for ghost levels anymore */
+
+            // C `:103–104`
+            if (game.objects?.[otmp.otyp]?.oc_uses_known) otmp.known = 0;
+            // C `:105–112`
+            otmp.dknown = otmp.bknown = 0;
+            otmp.rknown = 0;
+            otmp.lknown = 0;
+            otmp.cknown = 0;
+            otmp.tknown = 0;
+            otmp.invlet = 0;
+            otmp.no_charge = 0;
+            otmp.how_lost = LOST_NONE;
+
+            /* strip user-supplied names */
+            /* Statue and some corpse names are left intact,
+               presumably in case they came from score file. */
+            // C `:123–128`
+            if (has_oname(otmp)
+                && !(otmp.oartifact || (otmp.otyp | 0) === STATUE
+                     || (otmp.otyp | 0) === SPE_NOVEL
+                     || ((otmp.otyp | 0) === CORPSE
+                         && (otmp.corpsenm | 0) >= SPECIAL_PM))) {
+                free_oname(otmp);
+            }
+
+            // C `:131–132`
+            if ((otmp.otyp | 0) === SLIME_MOLD) {
+                goodfruit(otmp.spe);
+            // C `:134–138` (MAIL_STRUCTURES is defined — global.h:430)
+            } else if ((otmp.otyp | 0) === SCR_MAIL) {
+                /* 0: delivered in-game via external event;
+                   1: from bones or wishing; 2: written with marker */
+                if ((otmp.spe | 0) === 0) otmp.spe = 1;
+            // C `:140–141`
+            } else if ((otmp.otyp | 0) === EGG) {
+                otmp.spe = 0; /* not "laid by you" in next game */
+            // C `:142–145`
+            } else if ((otmp.otyp | 0) === TIN) {
+                /* make tins of unique monster's meat be empty */
+                if (ismnum(otmp.corpsenm | 0)
+                    && unique_corpstat(mons(otmp.corpsenm | 0)))
+                    otmp.corpsenm = NON_PM;
+            // C `:147–165`
+            } else if ((otmp.otyp | 0) === CORPSE
+                || (otmp.otyp | 0) === STATUE) {
+                // C `int mnum = otmp->corpsenm` — JS cant_revive takes
+                // an inout { mtype } box (zap.js:2960)
+                const mnumBox = { mtype: otmp.corpsenm | 0 };
+                /* Discard incarnation details of unique monsters
+                   (by passing null instead of otmp for object),
+                   shopkeepers (by passing false for revival flag),
+                   temple priests, and vault guards in order to
+                   prevent corpse revival or statue reanimation. */
+                if (has_omonst(otmp)
+                    && cant_revive(mnumBox, false, null)) {
+                    free_omonst(otmp);
+                    /* mnum is now either human_zombie or doppelganger;
+                       for corpses of uniques, we need to force the
+                       transformation now rather than wait until a
+                       revival attempt, otherwise eating this corpse
+                       would behave as if it remains unique */
+                    if (mnumBox.mtype === PM_DOPPELGANGER
+                        && (otmp.otyp | 0) === CORPSE)
+                        set_corpsenm(otmp, mnumBox.mtype);
+                }
+            // C `:166–169`
+            } else if (is_mines_prize(otmp) || is_soko_prize(otmp)) {
+                /* achievement tracking; in case prize was moved off its
+                   original level (which is always a no-bones level) */
+                otmp.nomerge = 0;
+            // C `:170–173`
+            } else if ((otmp.otyp | 0) === AMULET_OF_YENDOR) {
+                /* no longer the real Amulet */
+                otmp.otyp = FAKE_AMULET_OF_YENDOR;
+                // sync-effect precedent: mkobj mksobj bare curse()
+                // (all state changes precede its first await; these
+                // arms are unlit, candelabrum via end_burn below)
+                curse(otmp);
+            // C `:174–183`
+            } else if ((otmp.otyp | 0) === CANDELABRUM_OF_INVOCATION) {
+                if (otmp.lamplit) end_burn(otmp, true);
+                otmp.otyp = WAX_CANDLE;
+                otmp.age = 50; /* assume used */
+                if ((otmp.spe | 0) > 0) otmp.quan = otmp.spe;
+                otmp.spe = 0;
+                otmp.owt = weight(otmp);
+                curse(otmp);
+            // C `:184–186`
+            } else if ((otmp.otyp | 0) === BELL_OF_OPENING) {
+                otmp.otyp = BELL;
+                curse(otmp);
+            // C `:187–189`
+            } else if ((otmp.otyp | 0) === SPE_BOOK_OF_THE_DEAD) {
+                otmp.otyp = SPE_BLANK_PAPER;
+                curse(otmp);
+            }
         }
     }
 }
@@ -203,10 +317,15 @@ export function bones_file_exists(lev) {
     return vfsReadFile(vfsPath(filename)) != null;
 }
 
-/** C ref: files.c delete_bonesfile — VFS unlink. */
+/** C ref: files.c delete_bonesfile `:993–1001` — VFS unlink + converted cleanup.
+ * C passes `fqname(gb.bones, BONESPREFIX, 0)` to both arms; with unconfigured
+ * prefixes that is the bare base (fqname precedent), so the bare filename
+ * goes to delete_convertedfile here too. */
 export function delete_bonesfile(lev) {
     const { filename } = set_bonesfile_name(lev);
-    return vfsDeleteFile(vfsPath(filename));
+    const reslt = vfsDeleteFile(vfsPath(filename)); // `:998`
+    delete_convertedfile(filename); // `:999`
+    return reslt; // `:1000` !(reslt < 0)
 }
 
 /**

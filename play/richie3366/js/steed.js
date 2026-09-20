@@ -51,7 +51,7 @@ import { an } from './objnam.js';
 import { pmnames, PM_KNIGHT, PM_GRID_BUG, monsterNames } from './generated/monsters_data.js';
 import { vision_recalc } from './vision.js';
 import { enexto, rloc_to, rloc } from './teleport.js';
-import { which_armor } from './worn.js';
+import { which_armor, update_mon_extrinsics } from './worn.js';
 import { acurr, exercise, Fumbling, adjalign } from './attrib.js';
 import { surface } from './sit.js';
 import { killed } from './uhitm.js';
@@ -276,8 +276,8 @@ function fully_identify_obj(obj) {
  * pick_saddle linked minvent without where/ocarry, hanging
  * relobj_on_death's `while (minvent)` on the first saddled-mon death
  * (scen-normal-Knight-92182). imports.mjs --can: mpickobj is hoisted,
- * cycle-safe. update_mon_extrinsics deferred (no RNG for ordinary
- * saddle).
+ * cycle-safe. update_mon_extrinsics wired per C steed.c:162 (no RNG
+ * for ordinary saddle).
  */
 export function put_saddle_on_mon(saddle, mtmp) {
     if (!can_saddle(mtmp) || which_armor_saddle(mtmp)) {
@@ -294,6 +294,9 @@ export function put_saddle_on_mon(saddle, mtmp) {
     mtmp.misc_worn_check = (mtmp.misc_worn_check || 0) | W_SADDLE;
     saddle.owornmask = W_SADDLE;
     saddle.leashmon = mtmp.m_id;
+    // C steed.c:162 — saddle has no oprop/alt (early maybe_blocks) and
+    // on=TRUE skips the dismount arm; sync-through, no tail to await.
+    update_mon_extrinsics(mtmp, saddle, true, false);
 }
 
 /**

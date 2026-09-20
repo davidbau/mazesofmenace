@@ -3357,7 +3357,7 @@ export async function instapetrify(str) {
  * C ref: do_name.c obj_pmname — CORPSE/STATUE/FIGURINE pmnames subset.
  * Named omission: aligned-cleric → cleric remap; omonst traits.
  */
-function obj_pmname(obj) {
+export function obj_pmname(obj) {
     const CORPSE = objectNames.indexOf('CORPSE');
     const STATUE = objectNames.indexOf('STATUE');
     const FIGURINE = objectNames.indexOf('FIGURINE');
@@ -5477,7 +5477,7 @@ async function trapeffect_poly_trap(mtmp, trap, trflags) {
         if (shoes) {
             mtmp.misc_worn_check = (mtmp.misc_worn_check | 0) | W_ARMF;
             shoes.owornmask = W_ARMF;
-            update_mon_extrinsics(mtmp, shoes, true, true);
+            await update_mon_extrinsics(mtmp, shoes, true, true);
         }
     } else if (resists_magm(mtmp)) {
         /* Named omission: shieldeff_mon(mtmp) — display-only flash, no live exporter */
