@@ -10,7 +10,7 @@ import { GameMap } from './game.js';
 import { rn2, rnd, rn1, rnz } from './rng.js';
 import { CLR_CYAN, CLR_GRAY, CLR_BRIGHT_BLUE } from './terminal.js';
 import { init_rect, rnd_rect, get_rect, split_rects } from './rect.js';
-import { depth as depth_of_level, dist2, distmin, level_difficulty, strstri, upstart } from './hacklib.js';
+import { depth as depth_of_level, dist2, distmin, level_difficulty, strstri, upstart, swapbits } from './hacklib.js';
 import { getbones } from './bones.js';
 import {
     COLNO, ROWNO, STONE, ROOM, CORR, DOOR, STAIRS,
@@ -799,21 +799,23 @@ function levregion_add(lregion) {
  * by hand (earth/fire/air/hell) rather than this helper.
  */
 export function l_teleport_region(opts) {
-    const region = opts.region;
-    const exclude = opts.exclude;
+    // C l_get_lregion (sp_lev.c:5410–5441): required "region", optional
+    // "exclude" over pre-set -1s; del_islev forced when exclude x1 < 0.
+    const region = get_table_region_unpacked(opts, 'region', false); // :5414
+    const exclude = get_table_region_unpacked(opts, 'exclude', true); // :5421
     const dir = opts.dir || 'both';
     const rtype = dir === 'up' ? LR_UPTELE
         : dir === 'down' ? LR_DOWNTELE
         : LR_TELE;
     const lregion = {
         inarea: {
-            x1: region[0] | 0, y1: region[1] | 0,
-            x2: region[2] | 0, y2: region[3] | 0,
+            x1: region[0], y1: region[1],
+            x2: region[2], y2: region[3],
         },
         delarea: exclude
             ? {
-                x1: exclude[0] | 0, y1: exclude[1] | 0,
-                x2: exclude[2] | 0, y2: exclude[3] | 0,
+                x1: exclude[0], y1: exclude[1],
+                x2: exclude[2], y2: exclude[3],
             }
             : { x1: -1, y1: -1, x2: -1, y2: -1 },
         in_islev: !!opts.region_islev,
@@ -822,7 +824,7 @@ export function l_teleport_region(opts) {
         padding: 0,
         rname: { str: null },
     };
-    if (!exclude || (exclude[0] | 0) < 0)
+    if (!exclude || exclude[0] < 0)
         lregion.del_islev = true;
     levregion_add(lregion);
 }
@@ -842,18 +844,20 @@ const LREGION_TYPES = {
 };
 
 export function l_levregion(opts) {
-    const region = opts.region;
-    const exclude = opts.exclude;
+    // C l_get_lregion (sp_lev.c:5410–5441): required "region", optional
+    // "exclude" over pre-set -1s; del_islev forced when exclude x1 < 0.
+    const region = get_table_region_unpacked(opts, 'region', false); // :5414
+    const exclude = get_table_region_unpacked(opts, 'exclude', true); // :5421
     const rtype = LREGION_TYPES[opts.type || 'stair-down'] ?? LR_DOWNSTAIR;
     const lregion = {
         inarea: {
-            x1: region[0] | 0, y1: region[1] | 0,
-            x2: region[2] | 0, y2: region[3] | 0,
+            x1: region[0], y1: region[1],
+            x2: region[2], y2: region[3],
         },
         delarea: exclude
             ? {
-                x1: exclude[0] | 0, y1: exclude[1] | 0,
-                x2: exclude[2] | 0, y2: exclude[3] | 0,
+                x1: exclude[0], y1: exclude[1],
+                x2: exclude[2], y2: exclude[3],
             }
             : { x1: -1, y1: -1, x2: -1, y2: -1 },
         in_islev: !!opts.region_islev,
@@ -862,7 +866,7 @@ export function l_levregion(opts) {
         padding: opts.padding | 0,
         rname: { str: opts.name ?? null },
     };
-    if (!exclude || (exclude[0] | 0) < 0)
+    if (!exclude || exclude[0] < 0)
         lregion.del_islev = true;
     levregion_add(lregion);
 }
@@ -886,11 +890,12 @@ const EZ_TYPES = {
 export function lspo_exclusion(opts) {
     const typeName = opts?.type ?? 'teleport';
     const zonetype = EZ_TYPES[typeName] ?? LR_TELE;
-    const region = opts.region;
+    // C sp_lev.c:5514 get_table_region(L, "region", …, FALSE).
+    const region = get_table_region_unpacked(opts ?? {}, 'region', false);
     const croom = opts.croom ?? null;
-    const a = get_location(region[0] | 0, region[1] | 0,
+    const a = get_location(region[0], region[1],
         ANY_LOC | NO_LOC_WARN, croom);
-    const b = get_location(region[2] | 0, region[3] | 0,
+    const b = get_location(region[2], region[3],
         ANY_LOC | NO_LOC_WARN, croom);
     const ez = {
         zonetype,
@@ -4586,8 +4591,9 @@ function load_bar_strt() {
         const fx = mx + 37;
         const fy = my + 7;
         const flood = selection_new();
-        const matchTyp = g.level.at(fx, fy)?.typ ?? ROOM;
-        selection_floodfill(flood, fx, fy, false, matchTyp);
+        // C: nhlsel.c l_selection_flood `:750-751` — match-under seed typ, flood.
+        set_floodfillchk_match_under(g.level.at(fx, fy)?.typ ?? ROOM);
+        selection_floodfill(flood, fx, fy, false);
         const area = selection_fillrect(mx + 40, my + 3, mx + 45, my + 20);
         const ogrelocs = selection_and(flood, area);
         // for i = 0, 11 do des.monster({ id="ogre", coord=rndcoord(1), peaceful=0 })
@@ -5392,11 +5398,12 @@ function load_pri_strt() {
     sel_set_ter(mx + 5, my + 4, ROOM, SET_LIT_NOCHANGE);
 
     // local spacelocs = selection.floodfill(05,04)
+    // C: nhlsel.c l_selection_flood `:750-751` — match-under seed typ, flood.
     const spacelocs = selection_new();
     {
         const fx = mx + 5, fy = my + 4;
-        const matchTyp = g.level.at(fx, fy)?.typ ?? ROOM;
-        selection_floodfill(spacelocs, fx, fy, false, matchTyp);
+        set_floodfillchk_match_under(g.level.at(fx, fy)?.typ ?? ROOM);
+        selection_floodfill(spacelocs, fx, fy, false);
     }
 
     // des.stair("down", 52,09)
@@ -7050,8 +7057,9 @@ function load_rog_strt() {
     const streets = selection_new();
     {
         const fx = mx + 0, fy = my + 12;
-        const matchTyp = g.level.at(fx, fy)?.typ ?? ROOM;
-        selection_floodfill(streets, fx, fy, false, matchTyp);
+        // C: nhlsel.c l_selection_flood `:750-751` — match-under seed typ, flood.
+        set_floodfillchk_match_under(g.level.at(fx, fy)?.typ ?? ROOM);
+        selection_floodfill(streets, fx, fy, false);
     }
 
     // local place = { {33,0}, {0,12}, {25,20}, {75,05} }; shuffle(place)
@@ -10209,11 +10217,12 @@ function load_mon_strt() {
     // local spacelocs = selection.floodfill(05,04) — Mon lua order runs the
     // floodfill BEFORE des.terrain; the seed cell is already "." (ROOM), so
     // the match typ is ROOM either way
+    // C: nhlsel.c l_selection_flood `:750-751` — match-under seed typ, flood.
     const spacelocs = selection_new();
     {
         const fx = mx + 5, fy = my + 4;
-        const matchTyp = g.level.at(fx, fy)?.typ ?? ROOM;
-        selection_floodfill(spacelocs, fx, fy, false, matchTyp);
+        set_floodfillchk_match_under(g.level.at(fx, fy)?.typ ?? ROOM);
+        selection_floodfill(spacelocs, fx, fy, false);
     }
 
     // des.terrain({05,04}, ".") — portal/floodfill seed
@@ -13906,8 +13915,9 @@ function load_astral() {
             hall = selection_new();
             {
                 const fx = mx + 30, fy = my + 16;
-                const matchTyp = g.level.at(fx, fy)?.typ ?? ROOM;
-                selection_floodfill(hall, fx, fy, false, matchTyp);
+                // C: nhlsel.c l_selection_flood `:750-751` — match-under seed typ, flood.
+                set_floodfillchk_match_under(g.level.at(fx, fy)?.typ ?? ROOM);
+                selection_floodfill(hall, fx, fy, false);
             }
             terCell(33, 18, ROOM);
         } else {
@@ -13917,8 +13927,9 @@ function load_astral() {
             hall = selection_new();
             {
                 const fx = mx + 44, fy = my + 16;
-                const matchTyp = g.level.at(fx, fy)?.typ ?? ROOM;
-                selection_floodfill(hall, fx, fy, false, matchTyp);
+                // C: nhlsel.c l_selection_flood `:750-751` — match-under seed typ, flood.
+                set_floodfillchk_match_under(g.level.at(fx, fy)?.typ ?? ROOM);
+                selection_floodfill(hall, fx, fy, false);
             }
             terCell(41, 18, ROOM);
         }
@@ -15015,8 +15026,9 @@ async function load_minetn_1() {
     const inside = selection_new();
     {
         const fx = mx + 18, fy = my + 8;
-        const matchTyp = g.level.at(fx, fy)?.typ ?? ROOM;
-        selection_floodfill(inside, fx, fy, false, matchTyp);
+        // C: nhlsel.c l_selection_flood `:750-751` — match-under seed typ, flood.
+        set_floodfillchk_match_under(g.level.at(fx, fy)?.typ ?? ROOM);
+        selection_floodfill(inside, fx, fy, false);
     }
     const near_temple = selection_and(
         selection_fillrect(mx + 17, my + 8, mx + 23, my + 14),
@@ -17030,6 +17042,29 @@ function m_bad_boulder_spot(x, y) {
 /**
  * C ref: sp_lev.c flip_level_rnd — rn2 per allowed axis then flip_level.
  */
+/**
+ * C ref: sp_lev.c:498-514 — transpose an encoded direction.
+ * Bit swaps depend on xdir[]/ydir[] order (C decl.c:77-78; JS tables
+ * above match: [-1,-1,0,1,1,1,0,-1] / [0,-1,-1,-1,0,1,1,1]).
+ * C staticfn; swapbits lives in hacklib.js (C hacklib.c:830-837).
+ */
+function flip_encoded_dir_bits(flp, val) {
+    flp |= 0; val |= 0;
+    /* C sp_lev.c:502 — these depend on xdir[] and ydir[] order */
+    if (flp & 1) {
+        val = swapbits(val, 1, 7); /* C :503 */
+        val = swapbits(val, 2, 6); /* C :504 */
+        val = swapbits(val, 3, 5); /* C :505 */
+    }
+    if (flp & 2) {
+        val = swapbits(val, 1, 3); /* C :508 */
+        val = swapbits(val, 0, 4); /* C :509 */
+        val = swapbits(val, 7, 5); /* C :510 */
+    }
+
+    return val | 0;
+}
+
 function flip_level_rnd(flp, extras) {
     let c = 0;
     if ((flp & 1) && rn2(2)) c |= 1;
@@ -17100,6 +17135,9 @@ function flip_level(flp, _extras) {
             if (ttmp.ttyp === ROLLING_BOULDER_TRAP) {
                 if (ttmp.launch) ttmp.launch.y = FlipY(ttmp.launch.y);
                 if (ttmp.launch2) ttmp.launch2.y = FlipY(ttmp.launch2.y);
+            } else if (is_pit(ttmp.ttyp) && ttmp.conjoined) {
+                // C ref: sp_lev.c:603-604 — full flp mask, like C.
+                ttmp.conjoined = flip_encoded_dir_bits(flp, ttmp.conjoined) | 0;
             }
         }
         if (flp & 2) {
@@ -17107,6 +17145,9 @@ function flip_level(flp, _extras) {
             if (ttmp.ttyp === ROLLING_BOULDER_TRAP) {
                 if (ttmp.launch) ttmp.launch.x = FlipX(ttmp.launch.x);
                 if (ttmp.launch2) ttmp.launch2.x = FlipX(ttmp.launch2.x);
+            } else if (is_pit(ttmp.ttyp) && ttmp.conjoined) {
+                // C ref: sp_lev.c:612-613 — full flp mask, like C.
+                ttmp.conjoined = flip_encoded_dir_bits(flp, ttmp.conjoined) | 0;
             }
         }
     }
@@ -19837,6 +19878,51 @@ function lspo_bool_opt(v, dflt) {
     if (v == null) return dflt;
     if (typeof v === 'boolean') return v ? 1 : 0;
     return v | 0;
+}
+
+/**
+ * C ref: sp_lev.c get_table_intarray_entry :5260–5280 (unpacked; not
+ * lua_State). 1-based entry read: a number truncates like lua_tointeger
+ * (Math.trunc — no ToInt32 wrap); a numeric string coerces like
+ * lua_isnumber/lua_tointeger. Anything else throws like C nhl_error
+ * ("Array entry #… is %s, expected number" — C prints a hardcoded 1).
+ */
+function get_table_intarray_entry_unpacked(arr, entrynum) {
+    const v = arr[entrynum - 1]; // C :5267–5268 lua_pushinteger + lua_gettable
+    if (typeof v === 'number' && Number.isFinite(v)) return Math.trunc(v); // :5270
+    if (typeof v === 'string' && v.trim() !== '' && !Number.isNaN(Number(v)))
+        return Math.trunc(Number(v)); // C lua_isnumber coerces numeric strings
+    const typename = v == null ? 'nil' : (Array.isArray(v) ? 'table' : typeof v);
+    throw new Error(`Array entry #1 is ${typename}, expected number`); // :5272–5276
+}
+
+/**
+ * C ref: sp_lev.c get_table_region :5282–5316 (unpacked; not lua_State).
+ * Reads tab[name] as a 4-entry {x1,y1,x2,y2} array. Optional-absent
+ * returns null (C :5292–5295 returns 1 leaving the outs untouched — the
+ * caller keeps its pre-set values); a missing required field or a
+ * non-table throws like luaL_checktype (:5297); a non-4 length throws
+ * C's own "Not a region" (:5303–5308; the lua_pop/return-0 after
+ * nhl_error is NOTREACHED). Entries come from get_table_intarray_entry
+ * (:5309–5312).
+ */
+function get_table_region_unpacked(tab, name, optional) {
+    const v = tab?.[name]; // C :5291 lua_getfield(L, 1, name)
+    if (v == null) {
+        if (optional) return null; // :5292–5295
+        throw new Error(`bad argument '${name}' (table expected, got nil)`); // :5297
+    }
+    if (!Array.isArray(v)) { // C :5297 luaL_checktype(L, -1, LUA_TTABLE)
+        const typename = v === null ? 'nil' : (typeof v === 'object' ? 'table' : typeof v);
+        throw new Error(`bad argument '${name}' (table expected, got ${typename})`);
+    }
+    if (v.length !== 4) throw new Error('Not a region'); // :5303–5308
+    return [
+        get_table_intarray_entry_unpacked(v, 1), // :5309
+        get_table_intarray_entry_unpacked(v, 2), // :5310
+        get_table_intarray_entry_unpacked(v, 3), // :5311
+        get_table_intarray_entry_unpacked(v, 4), // :5312
+    ];
 }
 
 /**
@@ -26184,9 +26270,10 @@ function selection_from_mkroom(croom) {
 }
 
 /**
- * C ref: sp_lev.c floodfillchk_match_accessible — ACCESSIBLE terrain plus
- * secret doors and corridors (the predicate ensure_way_out installs with
- * set_selection_floodfillchk before each selection_floodfill below).
+ * C ref: sp_lev.c floodfillchk_match_accessible `:4599-4605` — ACCESSIBLE
+ * terrain plus secret doors and corridors (the predicate ensure_way_out
+ * installs once with set_selection_floodfillchk, sp_lev.c:5225, covering
+ * every selection_floodfill below including generate_way_out_method's).
  */
 function floodfillchk_match_accessible(x, y) {
     const loc = game.level.at(x, y);
@@ -26194,44 +26281,22 @@ function floodfillchk_match_accessible(x, y) {
     return ACCESSIBLE(loc.typ) || loc.typ === SDOOR || loc.typ === SCORR;
 }
 
-/**
- * C ref: selvar.c selection_floodfill walked with the accessible check —
- * C stack shape verbatim: the seed is pushed without a predicate check,
- * neighbours need isok + predicate + not-visited-this-call (C `tmp`,
- * here `seen`); diagonal neighbours only when asked. ensure_way_out and
- * generate_way_out_method always pass diagonals=TRUE.
- */
-function selection_floodfill_accessible(ov, x0, y0, diagonals) {
-    if (!ov) return;
-    const seen = new Set([`${x0},${y0}`]);
-    const stackX = [x0];
-    const stackY = [y0];
-    while (stackX.length) {
-        const x = stackX.pop();
-        const y = stackY.pop();
-        if (isok(x, y)) {
-            selection_setpoint(x, y, ov, 1);
-            const chkdir = (mx, my) => {
-                if (!isok(mx, my)) return;
-                if (!floodfillchk_match_accessible(mx, my)) return;
-                const key = `${mx},${my}`;
-                if (seen.has(key)) return;
-                seen.add(key);
-                stackX.push(mx);
-                stackY.push(my);
-            };
-            chkdir(x + 1, y);
-            chkdir(x - 1, y);
-            chkdir(x, y + 1);
-            chkdir(x, y - 1);
-            if (diagonals) {
-                chkdir(x + 1, y + 1);
-                chkdir(x - 1, y - 1);
-                chkdir(x - 1, y + 1);
-                chkdir(x + 1, y - 1);
-            }
-        }
-    }
+// C ref: sp_lev.c:4584 — predicate typ for floodfillchk_match_under.
+let floodfillchk_match_under_typ = 0;
+
+// C ref: sp_lev.c floodfillchk_match_under `:4586-4590` — cell matches the
+// seed terrain (callers only reach here through isok-gated CHKDIR; the
+// null guard is JS-only, C indexes levl direct).
+function floodfillchk_match_under(x, y) {
+    const loc = game.level.at(x, y);
+    if (!loc) return false;
+    return floodfillchk_match_under_typ === loc.typ;
+}
+
+// C ref: sp_lev.c set_floodfillchk_match_under `:4592-4597`
+export function set_floodfillchk_match_under(typ) {
+    floodfillchk_match_under_typ = typ;
+    set_selection_floodfillchk(floodfillchk_match_under);
 }
 
 /**
@@ -26250,7 +26315,9 @@ function generate_way_out_method(nx, ny, ov) {
     ];
     const ov2 = selection_new();
 
-    selection_floodfill_accessible(ov2, nx, ny, true);
+    // C sp_lev.c:5158 — the global still holds floodfillchk_match_accessible
+    // (installed once by ensure_way_out, sp_lev.c:5225).
+    selection_floodfill(ov2, nx, ny, true);
     let ov3 = selection_clone(ov2);
 
     /* try to make a secret door */
@@ -26325,9 +26392,12 @@ function ensure_way_out() {
     const ov = selection_new();
     let ret = true;
 
+    // C sp_lev.c:5225 — one install covers every flood below.
+    set_selection_floodfillchk(floodfillchk_match_accessible);
+
     for (let stway = g.stairs; stway; stway = stway.next) {
         if ((stway.tolev?.dnum | 0) === (g.u?.uz?.dnum | 0))
-            selection_floodfill_accessible(ov, stway.sx, stway.sy, true);
+            selection_floodfill(ov, stway.sx, stway.sy, true); // C sp_lev.c:5229
     }
 
     const traps = g.level?.traps;
@@ -26336,7 +26406,7 @@ function ensure_way_out() {
             if (!ttmp) continue;
             if ((undestroyable_trap(ttmp.ttyp) || is_hole(ttmp.ttyp))
                 && !selection_getpoint(ttmp.tx, ttmp.ty, ov))
-                selection_floodfill_accessible(ov, ttmp.tx, ttmp.ty, true);
+                selection_floodfill(ov, ttmp.tx, ttmp.ty, true); // C sp_lev.c:5236
         }
     }
 
@@ -26348,7 +26418,7 @@ function ensure_way_out() {
                 if (loc && ACCESSIBLE(loc.typ)
                     && !selection_getpoint(x, y, ov)) {
                     if (generate_way_out_method(x, y, ov))
-                        selection_floodfill_accessible(ov, x, y, true);
+                        selection_floodfill(ov, x, y, true); // C sp_lev.c:5247
                     ret = false;
                     break outer;
                 }
@@ -26481,41 +26551,98 @@ export function selection_setpoint(x, y, sel, c) {
     }
 }
 
-/**
- * C ref: selvar.c selection_floodfill + sp_lev floodfillchk_match_under.
- * Stack walk; matchTyp is terrain under the seed cell.
- */
-function selection_floodfill(ov, x0, y0, diagonals, matchTyp) {
-    if (!ov || !isok(x0, y0)) return;
-    const stackX = [];
-    const stackY = [];
-    const queued = new Set();
-    const enqueue = (nx, ny) => {
-        if (!isok(nx, ny)) return;
-        const key = `${nx},${ny}`;
-        if (queued.has(key) || selection_getpoint(nx, ny, ov)) return;
-        const loc = game.level.at(nx, ny);
-        if (!loc || loc.typ !== matchTyp) return;
-        queued.add(key);
-        stackX.push(nx);
-        stackY.push(ny);
-    };
-    enqueue(x0, y0);
-    while (stackX.length) {
-        const x = stackX.pop();
-        const y = stackY.pop();
-        selection_setpoint(x, y, ov, 1);
-        enqueue(x + 1, y);
-        enqueue(x - 1, y);
-        enqueue(x, y + 1);
-        enqueue(x, y - 1);
-        if (diagonals) {
-            enqueue(x + 1, y + 1);
-            enqueue(x - 1, y - 1);
-            enqueue(x - 1, y + 1);
-            enqueue(x + 1, y - 1);
-        }
+// C ref: selvar.c:369 — floodfill predicate installed by
+// set_selection_floodfillchk; null until a caller installs one.
+let selection_flood_check_func = null;
+
+// C ref: selvar.c set_selection_floodfillchk `:371-375`
+export function set_selection_floodfillchk(f) {
+    selection_flood_check_func = f;
+}
+
+// C ref: selvar.c sel_flood_havepoint `:377-392` — linear scan of the live
+// stack for <x,y> (C scans xs[0..n); array suffix past idx holds popped
+// cells, never scanned).
+function sel_flood_havepoint(x, y, xs, ys, n) {
+    while (n > 0) {
+        --n;
+        if (xs[n] === x && ys[n] === y) return true;
     }
+    return false;
+}
+
+// C ref: selvar.c selection_free `:32-44` — release the map; freesel only
+// drops the struct itself (GC here), else C memsets it to zero. JS
+// selections are Set-backed, so both arms reset to the empty shape.
+export function selection_free(sel, freesel) {
+    if (!sel) return;
+    if (sel.pts) sel.pts.clear();
+    sel.lx = COLNO;
+    sel.ly = ROWNO;
+    sel.hx = 0;
+    sel.hy = 0;
+}
+
+/**
+ * C ref: selvar.c selection_floodfill `:394-452` — generic flood over the
+ * installed selection_flood_check_func predicate. The seed is pushed with
+ * no predicate check (C `:428`) and always joins ov when in bounds; each
+ * neighbour needs isok + predicate + not-visited-this-call (C `tmp`) +
+ * not-already-stacked, in C `&&` order (C `:411-418`); the stack overrun
+ * is C panic (loud throw ≡ C panic, house idiom).
+ */
+export function selection_floodfill(ov, x, y, diagonals) {
+    const tmp = selection_new(); // C `:400`
+    // C `:401` #define SEL_FLOOD_STACK (COLNO * ROWNO)
+    const SEL_FLOOD_STACK = COLNO * ROWNO;
+    let idx = 0; // C `:420`
+    const dx = new Array(SEL_FLOOD_STACK); // C `:421-422`
+    const dy = new Array(SEL_FLOOD_STACK);
+    // C SEL_FLOOD `:402-410` — push with stack-overrun panic
+    const SEL_FLOOD = (nx, ny) => {
+        if (idx < SEL_FLOOD_STACK) {
+            dx[idx] = nx;
+            dy[idx] = ny;
+            idx++;
+        } else {
+            // C: panic(floodfill_stack_overrun)
+            throw new Error('floodfill stack overrun');
+        }
+    };
+    // C SEL_FLOOD_CHKDIR `:411-418`
+    const SEL_FLOOD_CHKDIR = (mx, my, sel) => {
+        if (isok(mx, my) // C `:413`
+            && selection_flood_check_func(mx, my) // C `:414`
+            && !selection_getpoint(mx, my, sel) // C `:415`
+            && !sel_flood_havepoint(mx, my, dx, dy, idx)) // C `:416`
+            SEL_FLOOD(mx, my); // C `:417`
+    };
+
+    if (selection_flood_check_func == null) { // C `:424`
+        selection_free(tmp, true); // C `:425`
+        return; // C `:426`
+    }
+    SEL_FLOOD(x, y); // C `:428`
+    do { // C `:429`
+        idx--; // C `:430`
+        x = dx[idx]; // C `:431`
+        y = dy[idx]; // C `:432`
+        if (isok(x, y)) { // C `:433`
+            selection_setpoint(x, y, ov, 1); // C `:434`
+            selection_setpoint(x, y, tmp, 1); // C `:435`
+        }
+        SEL_FLOOD_CHKDIR(x + 1, y, tmp); // C `:437`
+        SEL_FLOOD_CHKDIR(x - 1, y, tmp); // C `:438`
+        SEL_FLOOD_CHKDIR(x, y + 1, tmp); // C `:439`
+        SEL_FLOOD_CHKDIR(x, y - 1, tmp); // C `:440`
+        if (diagonals) { // C `:441`
+            SEL_FLOOD_CHKDIR(x + 1, y + 1, tmp); // C `:442`
+            SEL_FLOOD_CHKDIR(x - 1, y - 1, tmp); // C `:443`
+            SEL_FLOOD_CHKDIR(x - 1, y + 1, tmp); // C `:444`
+            SEL_FLOOD_CHKDIR(x + 1, y - 1, tmp); // C `:445`
+        }
+    } while (idx > 0); // C `:447`
+    selection_free(tmp, true); // C `:451`
 }
 
 /** C ref: nhlsel.c l_selection_fillrect / selection.area — absolute rect. */
@@ -28475,6 +28602,117 @@ function maybe_sdoor(chance) {
 }
 
 // C ref: sp_lev.c dig_corridor()
+/**
+ * C ref: sp_lev.c search_door :2492–2539 (unpacked room; not lua_State).
+ * Scan the wall-adjacent row for doors; cnt is the 0-based door index
+ * (C assigns *x/*y per door found and returns on cnt-- <= 0).
+ * Default arm is C panic :2526 (loud throw, house idiom).
+ * Returns {x, y} or null (C boolean + out params).
+ */
+export function search_door(croom, wall, cnt) {
+    let dx, dy, xx, yy;
+    switch (wall) { // C :2501–2527
+        case W_SOUTH:
+            dy = 0;
+            dx = 1;
+            xx = croom.lx;
+            yy = croom.hy + 1;
+            break;
+        case W_NORTH:
+            dy = 0;
+            dx = 1;
+            xx = croom.lx;
+            yy = croom.ly - 1;
+            break;
+        case W_EAST:
+            dy = 1;
+            dx = 0;
+            xx = croom.hx + 1;
+            yy = croom.ly;
+            break;
+        case W_WEST:
+            dy = 1;
+            dx = 0;
+            xx = croom.lx - 1;
+            yy = croom.ly;
+            break;
+        default:
+            throw new Error('search_door: Bad wall!'); // :2526 panic
+            /*NOTREACHED*/
+    }
+    while (xx <= croom.hx + 1 && yy <= croom.hy + 1) { // :2529
+        const loc = game.level.at(xx, yy);
+        if (loc && (IS_DOOR(loc.typ) || loc.typ === SDOOR)) { // :2530
+            if (cnt-- <= 0) return { x: xx, y: yy }; // :2531–2534
+        }
+        xx += dx;
+        yy += dy;
+    }
+    return null; // :2538 FALSE
+}
+
+/**
+ * C ref: sp_lev.c create_corridor :2671–2725. c is { src: { room, door,
+ * wall }, dest: { room, door, wall } }. Async: the W_ANY/W_RANDOM guard
+ * reports via impossible (async, continues like C) then returns.
+ * The dig_corridor return is discarded like C's (void) cast (:2723).
+ * Named omissions: lspo_corridor table-form (sp_lev.c:4551 — no
+ * des.corridor table call in the compiled levels); lspo_random_corridors
+ * (:4571) stays inline as makecorridors() at the loader sites.
+ */
+export async function create_corridor(c) {
+    if (c.src.room === -1) { // :2675–2678
+        makecorridors(); /*makecorridors(c.src.door);*/
+        return;
+    }
+
+    /* Safety railings - if there's ever a case where des.corridor() needs
+     * to be called with src/destwall="random", that logic first needs to be
+     * implemented in search_door. */
+    if (c.src.wall === W_ANY || c.src.wall === W_RANDOM // :2684–2688
+        || c.dest.wall === W_ANY || c.dest.wall === W_RANDOM) {
+        await impossible('create_corridor to/from a random wall');
+        return;
+    }
+    const org = search_door(game.level.rooms[c.src.room], c.src.wall, // :2689–2691
+        c.src.door);
+    if (!org) return;
+    if (c.dest.room !== -1) { // :2692
+        const dest = search_door(game.level.rooms[c.dest.room], // :2693–2695
+            c.dest.wall, c.dest.door);
+        if (!dest) return;
+        switch (c.src.wall) { // :2696–2707
+            case W_NORTH:
+                org.y--;
+                break;
+            case W_SOUTH:
+                org.y++;
+                break;
+            case W_WEST:
+                org.x--;
+                break;
+            case W_EAST:
+                org.x++;
+                break;
+        }
+        switch (c.dest.wall) { // :2708–2719
+            case W_NORTH:
+                dest.y--;
+                break;
+            case W_SOUTH:
+                dest.y++;
+                break;
+            case W_WEST:
+                dest.x--;
+                break;
+            case W_EAST:
+                dest.x++;
+                break;
+        }
+        dig_corridor(org, dest, null, false, CORR, STONE); // :2723 (void)
+    }
+}
+
 export function dig_corridor(org, dest, npoints_out, nxcor, ftyp, btyp) {
     const map = game.level;
     let dx = 0, dy = 0;

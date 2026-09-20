@@ -26,7 +26,8 @@ const PORT_ID = 'MacOS';
 
 // C ref: 001-deterministic-runtime.patch — pinned "May  2 2026 12:00:00"
 // unless NETHACK_REAL_BUILD_DATE (no env in this runtime, Rule #2).
-const PINNED_BUILD_DATE = 'May  2 2026 12:00:00';
+// Exported for js/date.js populate_nomakedefs (same C tmpbuf1).
+export const PINNED_BUILD_DATE = 'May  2 2026 12:00:00';
 
 // C ref: date.c nomakedefs.git_sha / git_branch / git_prefix —
 // unset in the contest recorder (no " (...)" suffix on screen).
@@ -448,16 +449,28 @@ export function build_options() {
 // C ref: mdlib.c done_runtime_opt_init_once `:95`.
 let done_runtime_opt_init_once = false;
 
+// C ref: mdlib.c runtime_info_init `:842` populate_nomakedefs(&version).
+// version.js stays import-free (D-1881: const.js:21 reads COMMIT_NUMBER at
+// top level, so no static version.js→date.js edge); js/date.js registers
+// the C-order call here at its evaluation. Unset in graphs that never
+// import js/date.js — then populate stays the pre-port omission.
+let populateNomakedefsHook = null;
+export function __setPopulateNomakedefs(fn) {
+    populateNomakedefsHook = fn;
+}
+
 /**
  * C ref: mdlib.c runtime_info_init `:834–846` — one-shot init; calls
- * build_options (`:844`, the row's C caller — wired here). `:841–842`
- * make_version/populate_nomakedefs fill the save-compat version struct
- * (no JS reader yet — named omission, future row).
+ * build_options (`:844`, the row's C caller — wired here). `:841`
+ * make_version fills the static version struct (NOT YET PORTED — own row;
+ * js/date.js interimVersionInfo stands in until then). `:842`
+ * populate_nomakedefs(&version) runs via the hook above (wired here).
  */
 export function runtime_info_init() {
     if (!done_runtime_opt_init_once) {
         done_runtime_opt_init_once = true;
         build_savebones_compat_string(); // `:839`
+        if (populateNomakedefsHook) populateNomakedefsHook(); // `:842`
         idxopttext = 0; // `:843`
         build_options(); // `:844`
     }
@@ -486,7 +499,8 @@ export function do_runtime_info(rtcontext) {
 /**
  * C ref: mdlib.c release_runtime_info `:863–872` — free every stored line
  * (`:866–869`, GC here) and reset the one-shot flag (`:870`); `:871`
- * free_nomakedefs is a named omission with populate_nomakedefs.
+ * free_nomakedefs stays a named omission (date.c remainder; populate is
+ * live in js/date.js since D-2653).
  */
 export function release_runtime_info() {
     while (idxopttext > 0) {

@@ -124,7 +124,7 @@ import { monflee } from './monmove.js';
 import { make_stunned, make_confused, healup } from './potion.js';
 import { losexp } from './exper.js';
 import { monhp_per_lvl, race_hostile } from './makemon.js';
-import { upstart } from './hacklib.js';
+import { upstart, depth } from './hacklib.js';
 import { exercise, A_WIS, A_CON } from './attrib.js';
 // C mk_artifact by_align — mksobj/obj_extract_self are hoisted fns, cycle-safe
 // (mkobj.js already imports artifact.js; runtime-only calls, no top-level
@@ -143,8 +143,14 @@ import { remove_worn_item } from './steal.js';
 // C retouch_object loseit arm — hoisted fns, cycle-safe (`imports.mjs --can
 // artifact.js dothrow.js hitfloor / do.js dropx / sit.js surface`: SAFE).
 import { hitfloor } from './dothrow.js';
-import { dropx } from './do.js';
+import { dropx, goto_level } from './do.js';
 import { surface } from './sit.js';
+// C invoke_create_portal callees — hoisted fns, cycle-safe (`imports.mjs
+// --can artifact.js apply.js next_to_u` / `artifact.js options.js
+// select_menu_pick_one`: SAFE, same shape as the file's existing
+// do.js/hacklib.js/mondata.js cycle edges; runtime-only awaited calls).
+import { next_to_u } from './apply.js';
+import { select_menu_pick_one } from './options.js';
 
 const CRYSTAL_BALL = objectNames.indexOf('CRYSTAL_BALL');
 const FAKE_AMULET_OF_YENDOR = objectNames.indexOf('FAKE_AMULET_OF_YENDOR');
@@ -620,6 +626,25 @@ export function get_artifact(obj) {
     const a = obj.oartifact | 0;
     if (a <= 0 || a > NROFARTIFACTS) return list[0];
     return list[a];
+}
+
+/**
+ * C ref: artifact.c protects `:697–709` — worn PROTECTION-oprop or a
+ * protective artifact. Callee of mhitu.c magic_negation `:1115`.
+ * `objects[otyp].oc_oprop` via game.objects; non-artifact is
+ * `list[ART_NONARTIFACT]` (touch_artifact arm precedent).
+ */
+export function protects(otmp, being_worn) {
+    // C: if (being_worn && objects[otmp->otyp].oc_oprop == PROTECTION) `:701`
+    if (being_worn && ((game.objects?.[otmp?.otyp]?.oc_oprop | 0) === PROTECTION))
+        return true;
+    // C: arti = get_artifact(otmp); non-artifact → FALSE `:703–706`
+    const list = artilist();
+    const arti = get_artifact(otmp);
+    if (arti === list[ART_NONARTIFACT]) return false;
+    // C: cspfx always counts; spfx only when worn `:707–708`
+    return ((((arti.cspfx | 0) & SPFX_PROTECT) !== 0)
+        || (!!being_worn && ((((arti.spfx | 0) & SPFX_PROTECT) !== 0))));
 }
 
 /**
@@ -1885,49 +1910,69 @@ async function invoke_charge_obj(obj) {
 
 /** C artifact.c invoke_create_portal :1866–1931 — Eye of the Aethiopica. */
 async function invoke_create_portal(obj) {
-    const { ATR_INVERSE } = await import('./terminal.js');
-    const { select_menu_pick_one } = await import('./options.js');
+    // C :1872 tmpwin = create_nhwindow(NHW_MENU) — no nhwindow handle in
+    // the JS menu model; window lifecycle is owned by the live PICK_ONE
+    // picker below (select_menu_pick_one, js/options.js:2309).
+    // C :1874 any = cg.zeroany — items carry a plain a_int field instead.
+    // C :1875 start_menu(tmpwin, MENU_BEHAVE_STANDARD) — items array.
+    // C :1891 end_menu prompt "Open a portal to which dungeon?" is modelled
+    // as non-selectable header rows (review 463 ACCEPT-WITH-DEBT).
     const tutorial = game.tutorial_dnum;
     const items = [
         { text: 'Open a portal to which dungeon?', attr: ATR_INVERSE, selectable: false },
         { text: '', attr: 0, selectable: false },
     ];
+    // C :1877 for (i = num_ok_dungeons = 0; i < svn.n_dgns; i++).
     let num_ok_dungeons = 0, last_ok_dungeon = 0;
     for (let i = 0; i < (game.n_dgns | 0); i++) {
+        // C :1878–1879 skip !dunlev_ureached; C :1880–1881 skip tutorial.
         const dun = game.dungeons?.[i];
         if (!dun?.dunlev_ureached) continue;
         if (tutorial != null && i === (tutorial | 0)) continue;
+        // C :1882 any.a_int = i + 1 (index+1; 0 is no identifier).
+        // C :1883–1886 add_menu ATR_NONE / NO_COLOR dname, no flags.
         items.push({ text: dun.dname || '?', selectable: true, a_int: i + 1 });
         num_ok_dungeons++;
         last_ok_dungeon = i;
     }
+    // C :1904–1905 else arm: i = last_ok_dungeon (also first & only OK).
     let i = last_ok_dungeon;
+    // C :1892 num_ok_dungeons > 1 → select_menu PICK_ONE (:1896).
     if (num_ok_dungeons > 1) {
         const n = await select_menu_pick_one(items);
+        // C :1897–1900 n <= 0 → destroy window (picker-owned teardown),
+        // nothing_special (staticfn :1761–1766, local nothing_special),
+        // ECMD_TIME (invoke cost kept).
         if (n?.kind !== 'pick' || !n.item) {
             await nothing_special(obj);
             return ECMD_TIME;
         }
+        // C :1901 i = selected[0].item.a_int - 1; free(selected) → GC.
         i = (n.item.a_int | 0) - 1;
     }
+    // C :1905 destroy_nhwindow(tmpwin) — no handle in the JS menu model.
+    // C :1912–1918 closest level: entry_lev when depth_start >= depth(uz),
+    // else dunlev_ureached.
     const dun = game.dungeons?.[i];
     const u = game.u || {};
-    const { depth } = await import('./hacklib.js');
     const newlev = { dnum: i, dlevel: 1 };
     newlev.dlevel = ((dun?.depth_start | 0) >= depth(u.uz))
         ? (dun?.entry_lev | 0) : (dun?.dunlev_ureached | 0);
-    const { next_to_u } = await import('./apply.js');
+    // C :1920–1922 five-disjunct block gate in C order → disoriented.
     if ((u.uhave?.amulet || u.uhave_amulet)
         || In_endgame(u.uz) || In_endgame(newlev)
         || (newlev.dnum | 0) === (u.uz?.dnum | 0)
         || !(await next_to_u())) {
         await You_feel('very disoriented for a moment.');
     } else {
+        // C :1924 !Blind → You shimmering (bare You is not imported in this
+        // module; the pline literal is output-identical); C :1926 Blind →
+        // You_feel weightless; C :1927 goto_level(newlev, FALSE × 3).
         if (!Blind()) await pline('You are surrounded by a shimmering sphere!');
         else await You_feel('weightless for a moment.');
-        const { goto_level } = await import('./do.js');
         await goto_level(newlev, false, false, false);
     }
+    // C :1929 return ECMD_TIME.
     return ECMD_TIME;
 }
 async function invoke_create_ammo(obj) {

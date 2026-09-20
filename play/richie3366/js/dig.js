@@ -63,7 +63,7 @@ import {
     Fumbling, adjalign, acurr, A_STR, A_INT, A_WIS, A_DEX, A_CON, A_CHA, exercise,
 } from './attrib.js';
 import { dbon, dmgval } from './weapon.js';
-import { depth } from './hacklib.js';
+import { depth, dist2 } from './hacklib.js';
 import { get_level } from './dungeon.js';
 import { align_str, uhis } from './roles.js';
 import { count_wsegs, worm_known } from './worm.js';
@@ -155,12 +155,6 @@ const DIG_DIR_CHARS = [
     { ch: '>', dx: 0, dy: 0, dz: 1 },
     { ch: '<', dx: 0, dy: 0, dz: -1 },
 ];
-
-function dist2(x0, y0, x1, y1) {
-    const dx = x0 - x1;
-    const dy = y0 - y1;
-    return dx * dx + dy * dy;
-}
 
 /**
  * C: `#define wall_info flags` — one field. JS sometimes writes W_* bits to
@@ -543,7 +537,9 @@ export async function unearth_objs(x, y) {
 const HEAVY_IRON_BALL = objectNames.indexOf('HEAVY_IRON_BALL');
 
 /**
- * C ref: dig.c buried_ball — nearest buried HEAVY_IRON_BALL within dist2≤8.
+ * C ref: dig.c buried_ball — nearest buried HEAVY_IRON_BALL within dist2≤8
+ * (squared Euclidean, live hacklib.js export from C hacklib.c:673 — the
+ * file-local clone is removed, no new edge: dig.js already imports hacklib).
  * Mutates cc.{x,y} to ball coords when found off-target.
  * @param {{x:number,y:number}} cc
  * @returns {object|null}

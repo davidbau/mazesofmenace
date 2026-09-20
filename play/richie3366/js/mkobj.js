@@ -57,6 +57,7 @@ import {
     RANGE_LEVEL,
     MELT_ICE_AWAY, HATCH_EGG, FIG_TRANSFORM, BURN_OBJECT, SHRINK_GLOB,
     MAX_EGG_HATCH_TIME,
+    Has_contents,
     OBJ_FREE, OBJ_FLOOR, OBJ_INVENT, OBJ_BURIED, OBJ_MINVENT, OBJ_CONTAINED,
     OBJ_MIGRATING, OBJ_ONBILL, OBJ_LUAFREE, OBJ_DELETED, MIGR_TO_SPECIES, W_WEP,
     W_SWAPWEP, W_QUIVER,
@@ -1616,6 +1617,59 @@ export async function insane_object(obj, fmt, mesg, mon) {
                          objnm, fmt_ptr(mon), monnm);
     } else {
         await impossible(fmt, mesg, fmt_ptr(obj), where_name(obj), objnm);
+    }
+}
+
+/**
+ * C ref: mkobj.c check_contained `:3374–3416` (staticfn) — recurse over a
+ * container's cobj chain asserting every member is OBJ_CONTAINED with its
+ * ocontainer pointing back (`:3392–3398`: wrong where → insane_object with
+ * OFMT0_SANITY, wrong owner → impossible with the three fmt_ptr identities),
+ * glob members re-checked via check_glob (`:3399–3400`), nested containers
+ * recursed with the "nested …" message (`:3401–3414`). The direct-cycle
+ * (`:3390`) and holds-its-parent (`:3404`) panics are loud throws (house
+ * stand-in, dealloc_obj precedent). mesgbuf[40]/nestedmesg[120] are plain
+ * JS strings: the `:3384–3386` "contained " prefix and the `:3408–3410`
+ * Strcpy+copynchars (at most 120−7−1=112 chars, newline-terminated per
+ * hacklib.c:287; eos() is the concatenation point) are inline string ops —
+ * no new copynchars clone (topten.js:44 stays the only one). Callers
+ * objlist_sanity `:3051` / mon_obj_sanity `:3226` are unported (wire-up-on-ship,
+ * review-1479 rule); self-recursion `:3413` awaited.
+ * Async only because insane_object/impossible/check_glob can reach --More--.
+ */
+export async function check_contained(container, mesg) {
+    if (!Has_contents(container)) /* C :3380 */
+        return;
+    /* change "invent sanity" to "contained invent sanity"
+       but leave "nested contained invent sanity" as is */
+    if (!strstri(mesg, 'contained')) /* C :3384 */
+        mesg = 'contained ' + mesg; /* C :3386 mesgbuf[40] strcat(strcpy()) */
+    for (let obj = container.cobj; obj; obj = obj.nobj) {
+        /* catch direct cycle to avoid unbounded recursion */
+        if (obj === container) /* C :3390 */
+            throw new Error('failed sanity check: container holds itself');
+        if ((obj.where | 0) !== OBJ_CONTAINED) /* C :3392 */
+            await insane_object(obj, OFMT0_SANITY, mesg, null);
+        else if (obj.ocontainer !== container) /* C :3394–3398 */
+            await impossible('%s obj %s in container %s, not %s', mesg,
+                             fmt_ptr(obj), fmt_ptr(obj.ocontainer),
+                             fmt_ptr(container));
+        if (obj.globby) /* C :3399 */
+            await check_glob(obj, mesg);
+
+        if (Has_contents(obj)) { /* C :3401 */
+            /* catch most likely indirect cycle; we won't notice if
+               parent is present when something comes before it, or
+               notice more deeply embedded cycles (grandparent, &c) */
+            if (obj.cobj === container) /* C :3404 */
+                throw new Error('failed sanity check: container holds its parent');
+            /* change "contained... sanity" to "nested contained... sanity"
+               and "nested contained..." to "nested nested contained..." */
+            const nestedmesg = 'nested ' /* C :3408–3410 */
+                + String(mesg).split('\n')[0].slice(0, 112);
+            /* recursively check contents */
+            await check_contained(obj, nestedmesg); /* C :3413 */
+        }
     }
 }
 

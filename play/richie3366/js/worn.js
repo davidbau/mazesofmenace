@@ -42,7 +42,7 @@ import {
     Monnam, mon_nam, s_suffix, pmname, Mgender, hcolor,
 } from './do_name.js';
 import { cansee, vision_recalc } from './vision.js';
-import { mhim, mhis } from './mondata.js';
+import { mhim, mhis, raceptr } from './mondata.js';
 import {
     an, distant_name, doname, simpleonames, otense, Yname2,
     arti_light_description,
@@ -238,8 +238,8 @@ export function find_mac(mon) {
     return base | 0;
 }
 
-/** C ref: prop.h res_to_mr */
-function res_to_mr(r) {
+/** C ref: prop.h res_to_mr — live for mon.js mon_give_prop (mon.c:1757). */
+export function res_to_mr(r) {
     if (r >= FIRE_RES && r <= STONE_RES) return 1 << (r - 1);
     return 0;
 }
@@ -679,10 +679,14 @@ function extra_pref(mon, obj) {
 }
 
 /**
- * C ref: worn.c racial_exception — hobbit+elven armor ok.
+ * C ref: worn.c racial_exception `:1359-1373` — hobbit in elven armor is
+ * acceptable (`:1364-1367`, return 1); the unacceptable-race arm is
+ * comment-only in C (`:1368-1370`, no return -1); else 0 (`:1372`).
+ * Race comes from live `raceptr` (`:1362`, mondata.c:1359) — a
+ * non-polymorphed hobbit hero reads mons[urace], not the role form.
  */
 export function racial_exception(mon, obj) {
-    const ptr = mon?.data;
+    const ptr = raceptr(mon);
     if ((ptr?.mndx ?? -1) === PM_HOBBIT && is_elven_armor(obj)) return 1;
     return 0;
 }

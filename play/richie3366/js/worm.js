@@ -17,6 +17,7 @@ import {
     MON_OFFMAP, has_mcorpsenm,
 } from './const.js';
 import { goodpos } from './teleport.js';
+import { distmin } from './hacklib.js';
 import { newsym, show_wseg_detect_glyph, Hallucination, pline, canspotmon, impossible } from './display.js';
 import { cansee } from './vision.js';
 import { NUMMONS, NON_PM, monsterNames } from './monsters.js';
@@ -649,30 +650,43 @@ export function clear_wormdata() {
 }
 
 /**
- * C ref: worm.c worm_cross — true if diagonal between (x1,y1)-(x2,y2) would
- * pass through consecutive segments of the same long worm (flank cells).
- * Uses level.monsters occupancy (same as C m_at on worm segs).
+ * C ref: worm.c worm_cross :898–942 — would moving from (x1,y1) to (x2,y2)
+ * involve passing between two consecutive segments of the same worm?
+ * C :903–911:
+ *  "With digits representing relative sequence number of the segments,
+ *   returns true when testing between @ and ? (passes through worm's
+ *   body), false between @ and ! (stays on same side of worm).
+ *    .w1?..
+ *    ..@2..
+ *    .65!3.
+ *    ...4.."
  */
 export function worm_cross(x1, y1, x2, y2) {
-    const distmin = Math.max(Math.abs(x1 - x2), Math.abs(y1 - y2));
-    if (distmin !== 1) return false;
-    if (x1 === x2 || y1 === y2) return false;
-    const worm = worm_mon_at(x1, y2) || _fmon_at(x1, y2);
-    if (!worm) return false;
-    const other = worm_mon_at(x2, y1) || _fmon_at(x2, y1);
-    if (other !== worm) return false;
-    const wnum = worm.wormno | 0;
-    if (!wnum) return false;
-    for (let curr = wtails[wnum]; curr; curr = curr.nseg) {
-        const wnxt = curr.nseg;
-        if (!wnxt) break;
-        if (curr.wx === x1 && curr.wy === y2) {
-            return wnxt.wx === x2 && wnxt.wy === y1;
-        }
-        if (curr.wx === x2 && curr.wy === y1) {
-            return wnxt.wx === x1 && wnxt.wy === y2;
-        }
+    // C :913–916 — non-adjacent guard (void-impossible: sync fn, wormgone :200 precedent)
+    if (distmin(x1, y1, x2, y2) !== 1) {
+        void impossible('worm_cross checking for non-adjacent location?');
+        return false;
     }
+    // C :917–919 — passing between segs is only relevant for diagonal moves
+    if (x1 === x2 || y1 === y2) return false;
+    // C :921–924 — is the same monster at <x1,y2> and at <x2,y1>?
+    // (JS: worm_mon_at covers _level_monsters incl. seg cells + wormno arm;
+    // _fmon_at covers fmon heads; mon.js must not be imported here — cycle.)
+    const worm = worm_mon_at(x1, y2) || _fmon_at(x1, y2);
+    if (!worm || (worm_mon_at(x2, y1) || _fmon_at(x2, y1)) !== worm) return false;
+    // C :926–939 — consecutive iff whichever flank cell is hit first is
+    // followed at once by the other. wtails[0] is always null (get_wormno
+    // starts at 1), so wormno 0 falls out of the loop FALSE exactly like C.
+    for (let curr = wtails[worm.wormno | 0], wnxt; curr; curr = wnxt) {
+        wnxt = curr.nseg;
+        if (!wnxt) break; // C :930–931 no next segment; can't continue
+        // C :933–936 — whichever flank cell comes first, next seg is the other
+        if (curr.wx === x1 && curr.wy === y2)
+            return wnxt.wx === x2 && wnxt.wy === y1;
+        if (curr.wx === x2 && curr.wy === y1)
+            return wnxt.wx === x1 && wnxt.wy === y2;
+    }
+    // C :940–941 should never reach here...
     return false;
 }
 

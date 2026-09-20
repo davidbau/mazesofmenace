@@ -41,7 +41,7 @@ import { pline, pline_mon, newsym, canseemon, canspotmon, sensemon, map_invisibl
 import { cansee } from './vision.js';
 import {
     dmgval, hitval, P_SKILL, weapon_hit_bonus, martial_bonus,
-    dbon, weapon_dam_bonus, use_skill, weapon_type,
+    dbon, weapon_dam_bonus, use_skill, weapon_type, uwep_skill_type,
     special_dmgval, silver_sears, MON_WEP, setmnotwielded, possibly_unwield,
     is_wet_towel, dry_a_towel,
 } from './weapon.js';
@@ -50,7 +50,7 @@ import {
     is_pole, drop_uswapwep, uwepgone,
 } from './wield.js';
 import { near_capacity, useup, useupall, hold_another_object, Blind, observe_object } from './invent.js';
-import { PM_BARBARIAN, PM_MONK, PM_KNIGHT, PM_SAMURAI, PM_ARCHEOLOGIST, PM_WIZARD, PM_HUMAN, PM_HEALER, PM_ROGUE } from './generated/monsters_data.js';
+import { PM_BARBARIAN, PM_MONK, PM_KNIGHT, PM_SAMURAI, PM_ARCHEOLOGIST, PM_WIZARD, PM_HUMAN, PM_HEALER, PM_ROGUE, PM_ELF } from './generated/monsters_data.js';
 import {
     find_mac, get_mattk, make_corpse, monstone, mhitm_knockback, monkilled, mondead,
     troll_baned, mhitm_ad_poly, mhitm_ad_slee, mhitm_ad_heal, mhitm_ad_blnd, mhitm_ad_ston, mhitm_ad_elec, mhitm_ad_sedu, mhitm_ad_tlpt, mhitm_ad_rust, could_seduce, failed_grab, shade_miss,
@@ -70,7 +70,7 @@ import {
     flaming, touch_petrifies, is_neuter, is_vampshifter, is_animal, amphibious,
     is_swimmer, slithy,
     amorphous, noncorporeal, is_whirly, passes_walls, hates_silver, mon_hates_silver, humanoid,
-    is_human, always_hostile, is_unicorn, slimeproof,
+    is_human, is_orc, is_elf, always_hostile, is_unicorn, slimeproof,
     MR_FIRE, MR_COLD, MR_ELEC, MR_ACID,
     resists_ston, resists_acid, mon_hates_blessings,
 } from './monsters.js';
@@ -575,8 +575,8 @@ export async function check_caitiff(mtmp) {
 /**
  * C ref: uhitm.c find_roll_to_hit — to-hit threshold before rnd(20).
  * dokick poly AT_KICK loop is a caller (D-1310).
- * monk armor / orc-vs-elf deferred (RNG-free; no corpus session has
- * demanded them yet). Encumbrance + utrap live (uhitm.c:407-411):
+ * Role/race arms live (uhitm.c:396-406): monk spelarmr / bare-hand
+ * bonus + orc-vs-elf +1 (RNG-free). Encumbrance + utrap live (uhitm.c:407-411):
  * scen-poly-Archeologist-92226 drew C miss at tmp 11 vs JS hit at 16.
  * maybe_polyd live: poly form's mlevel, not ulevel (uhitm.c:378-379).
  * weapon_hit_bonus from weapon.c (bare-hand unskilled = +1; AT_KICK
@@ -606,6 +606,23 @@ export async function find_roll_to_hit(mtmp, aatyp, weapon, attk_count, role_rol
     if (mtmp.mflee) tmp += 2;
     if (mtmp.msleeping) tmp += 2;
     if (!mtmp.mcanmove) tmp += 4;
+    // C uhitm.c:396-406 — role/race adjustments. Monk in body armor
+    // loses the role's spelarmr (kept in role_roll_penalty for the
+    // armor-penalty message tail); unarmored bare-handed monk gains
+    // (ulevel/3)+2 with C integer division. Orc target vs elf-form (or
+    // elf race unpolyed) hero is +1 via maybe_polyd = Upolyd ? form : race.
+    if (Role_if(PM_MONK) && !Upolyd(u)) {
+        if (u.uarm) {
+            role_roll_penalty.v = game.urole?.spelarmr | 0;
+            tmp -= role_roll_penalty.v;
+        } else if (!u.uwep && !u.uarms) {
+            tmp += Math.trunc((u.ulevel | 0) / 3) + 2;
+        }
+    }
+    if (is_orc(mtmp.data)
+        && (Upolyd(u) ? is_elf(game.youmonst?.data) : Race_if(PM_ELF))) {
+        tmp++;
+    }
     // C uhitm.c:407-411 — encumbrance dulls agility; being trapped
     // costs 3. near_capacity is 0 while unencumbered (no-op then).
     const cap = near_capacity();
@@ -1068,42 +1085,52 @@ function hmonas_toggle_altwep(u) {
 }
 
 /**
- * C ref: uhitm.c hmon_hitmon_dmg_recalc — udaminc + dbon + weapon_dam_bonus.
+ * C ref: uhitm.c hmon_hitmon_dmg_recalc :1435–1507 — udaminc + dbon +
+ * weapon_dam_bonus on the hmd, floored at 1.
  * Async for the `use_skill` may-advance arm (single caller `hmon` is async).
- * Named omissions: PROJECTILE→launcher
- * skillwep swap (ammo uses weapon_type(obj) until shot path ports).
+ * JS shape: destructured scalars in, adjusted dmg out (C mutates hmd->dmg).
  */
 async function hmon_hitmon_dmg_recalc(dmg, obj, thrown, twohits, use_weapon_skill,
-    train_weapon_skill) {
-    let dmgbonus = game.u?.udaminc | 0;
+    train_weapon_skill, get_dmg_bonus) {
+    let dmgbonus = 0; // C :1438
     const u = game.u || {};
-    // thrown launcher ammo: udaminc yes, dbon no
-    if (thrown !== HMON_THROWN
-        || !obj || !u.uwep || !ammo_and_launcher(obj, u.uwep)) {
-        let strbonus = dbon();
-        const absbonus = Math.abs(strbonus);
-        const sgn = strbonus < 0 ? -1 : (strbonus > 0 ? 1 : 0);
-        if (twohits) {
-            strbonus = Math.trunc((3 * absbonus + 2) / 4) * sgn;
-        } else if (thrown === HMON_MELEE && u.uwep && bimanual(u.uwep)) {
-            strbonus = Math.trunc((3 * absbonus + 1) / 2) * sgn;
-        }
-        dmgbonus += strbonus;
-    }
-    if (use_weapon_skill) {
-        let skillwep = obj;
-        // C: PROJECTILE(obj) && ammo_and_launcher → skillwep = uwep deferred
-        dmgbonus += weapon_dam_bonus(skillwep);
-        if (train_weapon_skill) {
-            // C: thrown ? weapon_type(skillwep) : uwep_skill_type()
-            const wtype = thrown
-                ? weapon_type(skillwep)
-                : (u.twoweap ? P_TWO_WEAPON_COMBAT : weapon_type(u.uwep));
-            await use_skill(wtype, 1);
+    // C :1447–1470 — ring/increase-damage + strength bonus (dual-attack 3/4,
+    // two-handed 3/2); thrown launcher ammo keeps udaminc, skips strength.
+    if (get_dmg_bonus) { // C :1447
+        // C :1448–1449 — dual attacks take udaminc on both, two-handed as-is
+        dmgbonus = u.udaminc | 0; // C :1450
+        // C :1460–1461 — throwing with a propellor skips the strength bonus
+        if (thrown !== HMON_THROWN
+            || !obj || !u.uwep || !ammo_and_launcher(obj, u.uwep)) {
+            let strbonus = dbon(); // C :1462
+            const absbonus = Math.abs(strbonus); // C :1463 abs()
+            const sgn = strbonus < 0 ? -1 : (strbonus > 0 ? 1 : 0); // C sgn()
+            if (twohits) // C :1464–1465
+                strbonus = Math.trunc((3 * absbonus + 2) / 4) * sgn;
+            else if (thrown === HMON_MELEE && u.uwep && bimanual(u.uwep)) // C :1466–1467
+                strbonus = Math.trunc((3 * absbonus + 1) / 2) * sgn;
+            dmgbonus += strbonus; // C :1468
         }
     }
-    dmg += dmgbonus;
-    if (dmg < 1) dmg = 1;
+    // C :1484–1500 — weapon-skill bonus + training.
+    if (use_weapon_skill) { // C :1484
+        let skillwep = obj; // C :1485
+        if (obj && is_ammo(obj) // C :1487 PROJECTILE(obj) (uhitm.c:72)
+            && ammo_and_launcher(obj, u.uwep))
+            skillwep = u.uwep; // C :1488
+        dmgbonus += weapon_dam_bonus(skillwep); // C :1489
+        // C :1491–1493 — a more-than-minimal hit trains the skill
+        if (train_weapon_skill) { // C :1494
+            /* [this assumes that `!thrown' implies wielded...] */ // C :1495
+            const wtype = thrown ? weapon_type(skillwep) // C :1496–1497
+                : uwep_skill_type();
+            await use_skill(wtype, 1); // C :1498
+        }
+    }
+    // C :1502–1503 — apply combined damage+strength and skill bonuses
+    dmg += dmgbonus; // C :1503
+    /* don't let penalty, if bonus is negative, turn a hit into a miss */ // C :1504
+    if (dmg < 1) dmg = 1; // C :1505–1506
     return dmg;
 }
 
@@ -1216,8 +1243,8 @@ async function hmon_hitmon_weapon_melee(mon, obj, ctx) {
  * Named: muse.c munstone :2884 (monster eats a cure; treat as FALSE, the
  * mhitm.js do_stone_mon idiom) so petrify arms always minstapetrify;
  * hmon_hitmon_msg_silver :1876 (silvermsg/silverobj set, no plumbing —
- * same as the ranged arm); get_dmg_bonus consumers (recalc gate :1447,
- * shade bump :1817 — pre-existing named, see hmon_hitmon_dmg_recalc);
+ * same as the ranged arm); get_dmg_bonus recalc gate :1447 now live
+ * (hmon_hitmon_dmg_recalc), shade bump :1817 still pre-existing named;
  * C's commented-out learn_egg_type (:1206) stays commented out.
  * Caller: hmon_hitmon's non-weapon branch (C hmon_hitmon_do_hit :1429).
  * The pie/venom arms are ported here in full, but hmon_hitmon's D-0693
@@ -1501,6 +1528,7 @@ async function hmon_hitmon(mon, obj, thrown, _dieroll) {
     let dmg = 0;
     let use_weapon_skill = false;
     let train_weapon_skill = false;
+    let get_dmg_bonus = true; // C hmon_hitmon :1778 hmd.get_dmg_bonus = TRUE
     let hittxt = false;
     let dryit = false; // C hmd.dryit :1790 (wet towel; applied at :1872)
     if (!obj) {
@@ -1569,6 +1597,7 @@ async function hmon_hitmon(mon, obj, thrown, _dieroll) {
                 use_weapon_skill,
                 train_weapon_skill,
                 hittxt,
+                get_dmg_bonus: true, // C :1778 (no melee arm clears it)
                 doreturn: false,
                 retval: true,
                 dieroll: _dieroll | 0,
@@ -1580,6 +1609,7 @@ async function hmon_hitmon(mon, obj, thrown, _dieroll) {
             use_weapon_skill = ctx.use_weapon_skill;
             train_weapon_skill = ctx.train_weapon_skill;
             hittxt = ctx.hittxt;
+            get_dmg_bonus = ctx.get_dmg_bonus; // C: melee keeps the :1778 TRUE
             // C hmon_hitmon :1797 — artifact doreturn (killed → FALSE,
             // dmg-zeroed → TRUE) skips recalc/pet/msg entirely.
             if (ctx.doreturn) return !!ctx.retval;
@@ -1605,7 +1635,7 @@ async function hmon_hitmon(mon, obj, thrown, _dieroll) {
             material: game.objects?.[obj.otyp]?.oc_material | 0, // C :1774
             dmg: 0,
             hittxt,
-            get_dmg_bonus: true, // C :1778 (consumers pre-existing named)
+            get_dmg_bonus: true, // C :1778 (recalc gate wired; :1817 bump still named)
             unarmed: false,
             doreturn: false,
             retval: true,
@@ -1619,11 +1649,12 @@ async function hmon_hitmon(mon, obj, thrown, _dieroll) {
         dmg = mctx.dmg | 0;
         hittxt = mctx.hittxt;
         dryit = mctx.dryit;
+        get_dmg_bonus = mctx.get_dmg_bonus; // C misc_obj FALSE arms :1137/:1190/:1316/:1339/:1349
     }
-    // C: if (hmd.dmg > 0) hmon_hitmon_dmg_recalc — before stagger
+    // C hmon_hitmon :1806–1807 — if (hmd.dmg > 0) recalc, before stagger
     if (dmg > 0) {
         dmg = await hmon_hitmon_dmg_recalc(dmg, obj, thrown, twohits,
-            use_weapon_skill, train_weapon_skill);
+            use_weapon_skill, train_weapon_skill, get_dmg_bonus);
     }
 
     // C uhitm.c hmon_hitmon :1812–1822 — dmg<1 shade melee/applied
@@ -4225,6 +4256,11 @@ function cantwield(ptr) {
 /** C ref: role.h Role_if — urole.mnum match. */
 function Role_if(pm) {
     return (game.urole?.mnum ?? -1) === pm;
+}
+
+/** C ref: role.h Race_if — urace.mnum match. */
+function Race_if(pm) {
+    return (game.urace?.mnum ?? -1) === pm;
 }
 
 /** C ref: objnam.c yname — invent → "your ", else "the ". */

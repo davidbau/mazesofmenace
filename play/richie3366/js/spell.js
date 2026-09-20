@@ -160,6 +160,7 @@ import { getdir } from './lock.js';
 import { getpos, getpos_sethilite } from './getpos.js';
 import { cansee } from './vision.js';
 import { m_at, wakeup, iter_mons, mdistu } from './mon.js';
+import { defended } from './mondata.js';
 import { walk_path } from './dothrow.js';
 import { distmin } from './hacklib.js';
 import { livelog_printf } from './pline.js';
@@ -1987,11 +1988,15 @@ function CHAIN_LIGHTNING_POS(x, y) {
 }
 
 /**
- * C ref: spell.c propagate_chain_lightning :951–1000.
- * zap is copied (C pass-by-value); mutates the copy then maybe enqueue.
- * defended(mon, AD_ELEC) named omit (same as zap.js zhitm).
+ * C ref: spell.c propagate_chain_lightning :951–1000 — full body in C order.
+ * zap is copied (C pass-by-value :949–950); the copy steps forward then is
+ * maybe enqueued. defended(mon, AD_ELEC) :975 via the live mondata.js
+ * export (imports.mjs --can: hoisted fn, cycle-safe) — retires the D-1400
+ * named omit for this arm (zhitm's own defended/shieldeff omits stay named
+ * on their row).
  */
 function propagate_chain_lightning(clq, zapIn) {
+    // C :958–959 — step forward (mutates the by-value copy)
     const zap = {
         dir: zapIn.dir | 0,
         x: (zapIn.x | 0) + (xdir[zapIn.dir | 0] | 0),
@@ -1999,26 +2004,29 @@ function propagate_chain_lightning(clq, zapIn) {
         strength: zapIn.strength | 0,
     };
 
-    if (clq.tail >= CHAIN_LIGHTNING_LIMIT) return;
-    if (!CHAIN_LIGHTNING_POS(zap.x, zap.y)) return;
+    if (clq.tail >= CHAIN_LIGHTNING_LIMIT) return; // C :961–962
+    if (!CHAIN_LIGHTNING_POS(zap.x, zap.y)) return; // C :963–964
 
-    const mon = m_at(zap.x, zap.y);
-    if (mon && mon.mpeaceful) return;
+    const mon = m_at(zap.x, zap.y); // C :966
+    if (mon && mon.mpeaceful) return; // C :967–968
 
-    if (mon && !resists_elec(mon) /* && !defended(mon, AD_ELEC) */) {
+    // C :975–978 — non-resistant hit regains full power; a shock-resistant
+    // hit still lands (shield effect shows in zhitm) but chains no further
+    if (mon && !resists_elec(mon) && !defended(mon, AD_ELEC))
         zap.strength = 3;
-    } else if (mon) {
+    else if (mon)
         zap.strength = 0;
-    }
 
-    if (!mon && !zap.strength) return;
+    if (!mon && !zap.strength) return; // C :983–984
 
+    // C :986–990 — the same square can't be chained to twice
     for (let i = 0; i < clq.tail; i++) {
         if (clq.q[i].x === zap.x && clq.q[i].y === zap.y) return;
     }
 
-    clq.q[clq.tail++] = zap;
+    clq.q[clq.tail++] = zap; // C :992–994 — inbounds by the :961 check
 
+    // C :996–999 — draw it
     tmp_at(DISP_CHANGE, zapdir_to_glyph(
         xdir[zap.dir], ydir[zap.dir], clq.displayed_beam,
     ));

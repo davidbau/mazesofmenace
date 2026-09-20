@@ -4,7 +4,7 @@
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
-import { flush_screen, flush_topl_more, pline } from './display.js';
+import { flush_screen, flush_topl_more, pline, You } from './display.js';
 import { xprname, xname, yname, aobjnam, makeplural, vtense, an, doname, The, body_part_latebound, simpleonames, is_plural, otense, Yname2, arti_light_description } from './objnam.js';
 import { strstri } from './hacklib.js';
 import { yn_function } from './getline.js';
@@ -27,7 +27,7 @@ import {
 import { retouch_object, set_artifact_intrinsic, is_art, restrict_name } from './artifact.js';
 import { setworn, reset_remarm } from './do_wear.js';
 import { ART_SNICKERSNEE, ART_MAGICBANE } from './generated/artifacts_data.js';
-import { makeknown, encumber_msg, compactify_invlets, update_inventory, getobj_take_count, getobj_apply_count, getobj_from_cmdq, getobj_display_pickinv, splittable, freeinv } from './invent.js';
+import { makeknown, encumber_msg, compactify_invlets, update_inventory, getobj_take_count, getobj_apply_count, getobj_from_cmdq, getobj_display_pickinv, splittable, freeinv, prinv } from './invent.js';
 import { uncurse, weight, unsplitobj, clear_splitobjs, splitobj } from './mkobj.js';
 import { trycall } from './do_name.js';
 import { addinv_nomerge } from './u_init.js';
@@ -385,35 +385,49 @@ export function uqwepgone() {
 }
 
 /**
- * C ref: wield.c doswapweapon — exchange uwep ↔ uswapwep (takes time on success).
- * @returns {number} 0 fail; 1 took time (ECMD_TIME)
+ * C ref: wield.c doswapweapon `:461–501` — exchange uwep ↔ uswapwep.
+ * C order: multi=0 → cantwield "Don't be ridiculous!" → welded(uwep)
+ * weldmsg → stash oldwep/oldswap → setuswapwep(0) → ready_weapon(oldswap)
+ * → uwep==oldwep (wield failed) restores oldswap, else setuswapwep(oldwep)
+ * + prinv(uswapwep) / You("have no secondary weapon readied.") →
+ * twoweap && !can_twoweapon → untwoweapon → return result.
+ * @returns {number} 0 no turn (ECMD_OK/ECMD_FAIL — C ECMD_FAIL=0x04 carries
+ * no ECMD_TIME bit); 1 took time (ECMD_TIME, from ready_weapon)
  */
 export async function doswapweapon() {
-    game.multi = 0;
+    game.multi = 0; // C `:464`
     const u = game.u || (game.u = {});
-    // C: cantwield → "Don't be ridiculous!" deferred (set_uasmon)
+    // C `:466–469` — cantwield (mondata.h: nohands || verysmall); local `:171`.
+    if (cantwield(game.youmonst?.data)) {
+        await pline("Don't be ridiculous!");
+        return 0;
+    }
+    // C `:470–473` — welded(uwep) → weldmsg (Yobjnam2 `:1071`), ECMD_FAIL.
     if (welded(u.uwep)) {
-        await weldmsg(u.uwep); // C wield.c:473 — Yobjnam2, not "weapon"
+        await weldmsg(u.uwep);
         return 0;
     }
 
+    // C `:476–478` — stash slots, then clear secondary ahead of ready_weapon.
     const oldwep = u.uwep || null;
     const oldswap = u.uswapwep || null;
-    // C: setuswapwep(0) via setworn clears twoweap before ready_weapon
     setuswapwep(null);
 
+    // C `:481` — new primary (local ready_weapon `:430`, same file).
     const result = await ready_weapon(oldswap);
 
+    // C `:483–492` — wield failed (uwep unchanged) → restore oldswap;
+    // else the old primary becomes secondary + prinv / You message.
     if (u.uwep === oldwep) {
+        /* Wield failed for some reason */
         setuswapwep(oldswap);
     } else {
         setuswapwep(oldwep);
-        // C: second prinv triggers more() on the ready_weapon message
-        if (u.uswapwep) await pline(xprname(u.uswapwep, undefined, true));
-        else await pline('You have no secondary weapon readied.');
+        if (u.uswapwep) await prinv(null, u.uswapwep, 0);
+        else await You('have no secondary weapon readied.');
     }
 
-    // C: if (u.twoweap && !can_twoweapon()) untwoweapon();
+    // C `:494–495`
     if (u.twoweap && !(await can_twoweapon())) await untwoweapon();
     return result;
 }

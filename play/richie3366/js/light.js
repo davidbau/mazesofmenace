@@ -7,6 +7,7 @@ import { game } from './gstate.js';
 import {
     COLNO, ROWNO, MAX_RADIUS, LS_NONE, LS_MONSTER, LS_OBJECT, TEMP_LIT,
     OBJ_INVENT, OBJ_FLOOR, OBJ_MINVENT, OBJ_FREE, FM_EVERYWHERE,
+    FM_YOU, FM_FMON, FM_MIGRATE, FM_MYDOGS,
 } from './const.js';
 import { circle_ptr, clear_path, vision_recalc } from './vision.js';
 import {
@@ -35,8 +36,11 @@ const COULD_SEE = 0x1; // vision.js — avoid circular const export
 // per-recalc state, cleared up front in do_light_sources each call.
 // LSF_NEEDS_FIXUP marks an entry whose id is still an unrestored o_id
 // (save/restore; no JS producer sets it yet — lev_json relinks at load).
+// LSF_IS_PROBLEMATIC is set + cleared inside write_ls only (C :653/:682/
+// :687/:697 — net zero on return); no JS reader tests it.
 const LSF_SHOW = 0x1;
 const LSF_NEEDS_FIXUP = 0x2;
+const LSF_IS_PROBLEMATIC = 0x4;
 
 // C ref: mondata.h emits_light — range 1 for all current emitters.
 export function emits_light(ptr) {
@@ -319,6 +323,133 @@ export function relink_light_sources(ghostly) {
         // C :559 — clear the fixup flag.
         ls.flags = (ls.flags | 0) & ~LSF_NEEDS_FIXUP;
     }
+}
+
+/**
+ * C ref: light.c whereis_mon `:397–417` (staticfn → file-local, the
+ * new_light_core/delete_ls precedent) — which monster chain holds `mon`.
+ * C walks `nmon` linked lists; the JS chains are Arrays (fmon per mon.js,
+ * migrating_mons/mydogs per dog.js), so each arm is an identity scan.
+ * The Null guard is C-equivalent: C's `for (mtmp = fmon; mtmp; ...)`
+ * never tests a Null link, so a Null `mon` matches nothing (returns 0);
+ * the JS `|| []` guards are the only JS-only shaping (C chains are never
+ * Null-dangling, JS lists may be absent).
+ */
+function whereis_mon(mon, fmflags) {
+    const fm = fmflags | 0;
+    if (!mon) return 0;
+    // C :402–403 — FM_YOU (monst.h FM_* at hack.h:1294–1298).
+    if ((fm & FM_YOU) && mon === game.youmonst)
+        return FM_YOU;
+    // C :404–407 — FM_FMON.
+    if (fm & FM_FMON) {
+        for (const mtmp of game.fmon || []) {
+            if (mtmp === mon)
+                return FM_FMON;
+        }
+    }
+    // C :408–411 — FM_MIGRATE.
+    if (fm & FM_MIGRATE) {
+        for (const mtmp of game.migrating_mons || []) {
+            if (mtmp === mon)
+                return FM_MIGRATE;
+        }
+    }
+    // C :412–415 — FM_MYDOGS.
+    if (fm & FM_MYDOGS) {
+        for (const mtmp of game.mydogs || []) {
+            if (mtmp === mon)
+                return FM_MYDOGS;
+        }
+    }
+    return 0; // C :416.
+}
+
+/**
+ * C ref: light.c write_ls `:633–702` — serialize one light source for the
+ * save file: swap the live id pointer for its numeric o_id/m_id (verified
+ * against the object/monster chains), write the struct, put the pointer
+ * back. C is staticfn called only from maybe_write_ls `:598` (the
+ * `write_it` arm); exported here because the JS per-entry save writer is
+ * lev_json.js serLight (snapshotLocal/GlobalLights + serLightList), which
+ * is wired to this function — the D-log names those JS sites.
+ * The C `Sfo_ls_t` binary write (`:642`/`:694`) has no JS layer
+ * (Constitution §1.5/§1.6 — JSON VFS, do.js savelev precedent); the
+ * returned `{type, x, y, range, id}` record (the serLight shape) IS the
+ * write. Sync like C; the impossible arms stay fire-and-forget `void`
+ * (delete_ls precedent — impossible can reach --More--).
+ * Callees: live `find_oid` (shk.js) / `find_mid` (mon.js, fmon-only named
+ * omit — the flag is still passed, relink_light_sources precedent) /
+ * file-local `whereis_mon` above.
+ * @param {object} ls  live light_base entry (id = obj/mtmp pointer)
+ * @returns {{type:number,x:number,y:number,range:number,id:number}|null}
+ * record to persist, or Null when C writes nothing (bad-type arm `:700`).
+ */
+export function write_ls(ls) {
+    const t = ls.type | 0;
+    // C :640 — LS_OBJECT / LS_MONSTER only; anything else is
+    // impossible-only and unwritten (C :699–701).
+    if (t !== LS_OBJECT && t !== LS_MONSTER) {
+        // C :700.
+        void impossible('write_ls: bad type (%d)', t);
+        return null;
+    }
+    // C :641–642 — NEEDS_FIXUP entries already carry the numeric id, so
+    // C writes the struct untouched (flags keep NEEDS_FIXUP for relink).
+    if ((ls.flags | 0) & LSF_NEEDS_FIXUP)
+        return { type: t, x: ls.x | 0, y: ls.y | 0, range: ls.range | 0, id: ls.id | 0 };
+    // C :644–645 — replace the id pointer with the number for the write,
+    // then put it back (:695). The `cg.zeroany` union step collapses: JS
+    // ids are a single slot holding either the pointer or the number.
+    const arg_save = ls.id;
+    let auint = 0;
+    if (t === LS_OBJECT) {
+        // C :646–654.
+        const otmp = arg_save; // C :647 — ls->id.a_obj.
+        // JS-only Null guard (C takes non-null; every JS caller skips
+        // id-less LS_OBJECT first — lev_json discard-flash arms): a Null
+        // id takes the can't-find arm with id 0 instead of throwing.
+        auint = otmp ? otmp.o_id | 0 : 0; // C :649 — ls->id.a_uint.
+        ls.id = auint; // C :648–649.
+        if (!otmp || find_oid(auint) !== otmp) { // C :650.
+            // C :651–652 — impossible supports %d only, so the C `%u`
+            // renders via template (relink_light_sources precedent).
+            void impossible(`write_ls: can't find obj #${auint >>> 0}!`);
+            ls.flags = (ls.flags | 0) | LSF_IS_PROBLEMATIC; // C :653.
+        }
+    } else { /* ls->type == LS_MONSTER */ // C :655.
+        // C :656 — monloc.
+        // C :658 — the stashed monst pointer. The C :660–672 comment is
+        // the reason for the chain check below: the pointer may dangle
+        // (freed monster, e.g. planes), so m_id must not be read before
+        // whereis_mon proves the pointer is still chained. find_mid
+        // disregards DEADMONSTER but whereis_mon does not (C :671–672).
+        const mtmp = arg_save; // C :658 — (struct monst *) ls->id.a_monst.
+        const monloc = whereis_mon(mtmp, FM_EVERYWHERE); // C :674.
+        if (monloc !== 0) {
+            auint = mtmp ? mtmp.m_id | 0 : 0; // C :676.
+            ls.id = auint; // C :675–676.
+            if (!mtmp || find_mid(auint, monloc) !== mtmp) { // C :677.
+                // C :678–681 — DEADMONSTER is monst.h:214 (mhp < 1).
+                void impossible(`write_ls: can't find mon${(!mtmp || (mtmp.mhp | 0) < 1) ? " because it's dead" : ''} #${auint >>> 0}!`);
+                ls.flags = (ls.flags | 0) | LSF_IS_PROBLEMATIC; // C :682.
+            }
+        } else {
+            // C :684–687 — stashed pointer is in no chain at all.
+            void impossible('write_ls: stashed monst ptr not in any chain');
+            ls.flags = (ls.flags | 0) | LSF_IS_PROBLEMATIC; // C :687.
+        }
+    }
+    if ((ls.flags | 0) & LSF_IS_PROBLEMATIC) {
+        // C :690–691 — TODO: cleanup this ls, or skip writing it (no-op).
+    }
+    ls.flags = (ls.flags | 0) | LSF_NEEDS_FIXUP; // C :693.
+    // C :694 — Sfo_ls_t(nhfp, ls, "lightsource") — the record is the write.
+    const rec = { type: t, x: ls.x | 0, y: ls.y | 0, range: ls.range | 0, id: auint };
+    ls.id = arg_save; // C :695 — put the pointer back.
+    ls.flags = (ls.flags | 0) & ~LSF_NEEDS_FIXUP; // C :696.
+    ls.flags = (ls.flags | 0) & ~LSF_IS_PROBLEMATIC; // C :697.
+    return rec;
 }
 
 /**

@@ -1832,21 +1832,56 @@ async function addinv_before_throw(obj, other_obj) {
 }
 
 /**
- * C dothrow.c return_throw_to_inv — restore a throw-and-return missile.
- * Named omit: objsplit unsplit (unique aklys/Mjollnir are not split).
+ * C ref: dothrow.c return_throw_to_inv `:1852–1909` (staticfn) — restore a
+ * throw-and-return missile to invent. A split-off child (boomerang thrown
+ * from a stack) rejoins its parent via the live unsplitobj arm (`:1865–
+ * 1882`); otherwise nomerge addinv_before (`:1884–1892`), the autoquiver
+ * clear (`:1895–1897`), re-wield arms (`:1899–1904`), twoweap reinstate
+ * (`:1906–1909`), encumber_msg. Callers: throwit ceiling-return (`:1587`)
+ * + boomerang-caught (`:1608`).
  */
 async function return_throw_to_inv(obj, wep_mask, twoweap, oldslot) {
-    obj = await addinv_before_throw(obj, oldslot);
-    if (!obj) return obj;
-    if (((obj.owornmask || 0) & W_QUIVER) !== 0
-        && (((obj.owornmask || 0) | wep_mask) & (W_WEP | W_SWAPWEP)) !== 0) {
-        setuqwep(null);
+    // C `:1863–1864` — undo a stack split so the missile cannot merge with
+    // a different compatible stack (boomerang split off at `:255–257`).
+    let otmp = null; // C `:1862`
+    const split = game.context?.objsplit;
+    if (obj && ((obj.o_id | 0) === (split?.parent_oid | 0)
+        || (obj.o_id | 0) === (split?.child_oid | 0))) {
+        // C `:1868–1871` — relink onto invent (C gi.invent chain; JS sets
+        // the where-gate live unsplitobj requires) then rejoin the stack.
+        obj.where = OBJ_INVENT;
+        otmp = unsplitobj(obj);
+        if (!otmp) {
+            // C `:1873–1878` — wouldn't merge back (new erosion damage?);
+            // unlink so the addinv path below takes it.
+            obj.where = OBJ_FREE;
+        } else {
+            obj = otmp; // C `:1880–1881`
+        }
     }
-    const u = game.u || {};
-    if ((wep_mask & W_WEP) && !u.uwep) setuwep(obj);
-    else if ((wep_mask & W_SWAPWEP) && !u.uswapwep) setuswapwep(obj);
-    else if ((wep_mask & W_QUIVER) && !u.uquiver) setuqwep(obj);
-    if (twoweap && !u.twoweap) set_twoweap(true);
+    // C `:1884–1892` — not from a split, or wouldn't merge back: add to
+    // invent without merging into any other stack (addinv_before is
+    // implicitly nomerge; C sets nomerge anyway in case oldslot went away).
+    if (!otmp) {
+        if (obj) obj.nomerge = 1; // C `:1889`
+        obj = await addinv_before_throw(obj, oldslot); // C `:1890`
+        if (obj) obj.nomerge = 0; // C `:1891`
+        if (!obj) return obj;
+        // C `:1895–1897` — in case addinv() autoquivered.
+        if (((obj.owornmask || 0) & W_QUIVER) !== 0
+            && (((obj.owornmask || 0) | wep_mask) & (W_WEP | W_SWAPWEP)) !== 0) {
+            setuqwep(null);
+        }
+        // C `:1899–1904` — re-wield what was worn before the throw.
+        const u = game.u || {};
+        if ((wep_mask & W_WEP) && !u.uwep) setuwep(obj);
+        else if ((wep_mask & W_SWAPWEP) && !u.uswapwep) setuswapwep(obj);
+        else if ((wep_mask & W_QUIVER) && !u.uquiver) setuqwep(obj);
+        // C `:1906–1909` — reinstate dual-wield after a successful catch
+        // (not needed for a boomerang split/unsplit rejoin above).
+        if (twoweap && !u.twoweap) set_twoweap(true);
+    }
+    // C `:1911–1912`
     const { encumber_msg } = await import('./invent.js');
     await encumber_msg();
     return obj;

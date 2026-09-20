@@ -841,6 +841,98 @@ function aspect_header() {
 }
 
 /**
+ * C ref: role.c role_selection_prolog `:1726–1812` — five-line prolog for the
+ * role-selection menus (name/role/race/gender/alignment status, in C order).
+ * C writes each line with `putstr(where, 0, buf)`; JS returns the five
+ * strings in that order — the C `where` winid has no corner-menu counterpart
+ * (`win`/`add_menu` stay with the callers — setup_*menu precedent), so a
+ * caller mapping these into a corner menu wraps each as `{ text, attr: 0 }`.
+ * C callers live in windowport code outside the pinned tree (extern.h
+ * declaration only; zero pinned-C call sites), so this ships with no JS
+ * call-site change: threading it into pick_*_menu bodies would invent a call
+ * C never makes and repaint chargen screens.
+ * Narrowing assigns the display locals only (never flags.init*): a selected
+ * role forces the race/gender/alignment readings (`:1738–1756`), a selected
+ * race forces the alignment reading (`:1757–1767`, never gender — `:1766`);
+ * gender and alignment constrain nothing (`:1768–1769`). C `assert`s below
+ * are NDEBUG no-ops (preconditions held by the windowport callers); only the
+ * value arms are live. `?? ROLE_NONE` is the options.c `:7193` default when
+ * chargen has not staged the facets yet.
+ */
+export function role_selection_prolog(which) {
+    const choosing = ' choosing now'; // C `:1728` NEARDATA
+    const not_yet = ' not yet specified'; // C `:1729`
+    const rand_choice = ' random'; // C `:1730`
+    const flags = f();
+    let r = flags.initrole ?? ROLE_NONE; // C `:1734`
+    let c = flags.initrace ?? ROLE_NONE; // C `:1735`
+    let gend = flags.initgend ?? ROLE_NONE; // C `:1736`
+    let a = flags.initalign ?? ROLE_NONE; // C `:1737`
+    if (r >= 0) { // C `:1738–1756`
+        // C `:1739` assert(IndexOkT(r, roles)) — NDEBUG no-op, see header.
+        const allowmask = roles[r].allow; // C `:1740`
+        if ((allowmask & ROLE_RACEMASK) === MH_HUMAN) c = 0; // C `:1741–1742` races[human]
+        else if (c >= 0 && c < races.length // C `:1743–1744` IndexOkT(c, races)
+                 && !(allowmask & ROLE_RACEMASK & races[c].allow))
+            c = ROLE_RANDOM; // C `:1745` role bars the selected race
+        if ((allowmask & ROLE_GENDMASK) === ROLE_MALE) gend = 0; // C `:1746–1747`
+        else if ((allowmask & ROLE_GENDMASK) === ROLE_FEMALE) gend = 1; // C `:1748–1749` valkyrie
+        if ((allowmask & ROLE_ALIGNMASK) === AM_LAWFUL) a = 0; // C `:1750–1751` aligns[lawful]
+        else if ((allowmask & ROLE_ALIGNMASK) === AM_NEUTRAL) a = 1; // C `:1752–1753`
+        else if ((allowmask & ROLE_ALIGNMASK) === AM_CHAOTIC) a = 2; // C `:1754–1755`
+    }
+    if (c >= 0) { // C `:1757–1767`
+        // C `:1758` assert(IndexOkT(c, races)) — NDEBUG no-op, see header.
+        const allowmask = races[c].allow; // C `:1759`
+        if ((allowmask & ROLE_ALIGNMASK) === AM_LAWFUL) a = 0; // C `:1760–1761`
+        else if ((allowmask & ROLE_ALIGNMASK) === AM_NEUTRAL) a = 1; // C `:1762–1763`
+        else if ((allowmask & ROLE_ALIGNMASK) === AM_CHAOTIC) a = 2; // C `:1764–1765`
+        /* [c never forces gender] */ // C `:1766`
+    }
+    /* [g and a don't constrain anything sufficiently to narrow something
+       done to a single choice] */ // C `:1768–1769`
+    // C `:1776–1777`/`:1793–1794` asserts are NDEBUG no-ops, see header.
+    const lines = [];
+    const plname = game.plname || ''; // C svp.plname; `!*svp.plname`
+    // C `:1771–1774` — `"%12s "` label then choosing / not_yet / plname.
+    lines.push(`${'name:'.padStart(12)} ${(which === RS_NAME) ? choosing
+        : !plname ? not_yet : plname}`);
+    // C `:1775–1791` — choosing / not_yet / random / roles[r].name.m.
+    let roleLine = `${'role:'.padStart(12)} ${(which === RS_ROLE) ? choosing
+        : (r === ROLE_NONE) ? not_yet
+          : (r === ROLE_RANDOM) ? rand_choice
+            : roles[r].name.m}`;
+    if (r >= 0 && roles[r].name.f) { // C `:1782`
+        /* distinct female name [caveman/cavewoman, priest/priestess] */
+        if (gend === 1)
+            /* female specified; replace male role name with female one */
+            // C `:1784–1786` Sprintf(strchr(buf, ':'), ": %s", f) — first ':'.
+            roleLine = `${roleLine.slice(0, roleLine.indexOf(':'))}: ${roles[r].name.f}`;
+        else if (gend < 0)
+            /* gender unspecified; append slash and female role name */
+            // C `:1787–1789` Sprintf(eos(buf), "/%s", f).
+            roleLine += `/${roles[r].name.f}`;
+    }
+    lines.push(roleLine);
+    // C `:1792–1799` — choosing / not_yet / random / races[c].noun.
+    lines.push(`${'race:'.padStart(12)} ${(which === RS_RACE) ? choosing
+        : (c === ROLE_NONE) ? not_yet
+          : (c === ROLE_RANDOM) ? rand_choice
+            : races[c].noun}`);
+    // C `:1800–1805` — choosing / not_yet / random / genders[gend].adj.
+    lines.push(`${'gender:'.padStart(12)} ${(which === RS_GENDER) ? choosing
+        : (gend === ROLE_NONE) ? not_yet
+          : (gend === ROLE_RANDOM) ? rand_choice
+            : genders[gend].adj}`);
+    // C `:1806–1811` — choosing / not_yet / random / aligns[a].adj.
+    lines.push(`${'alignment:'.padStart(12)} ${(which === RS_ALGNMNT) ? choosing
+        : (a === ROLE_NONE) ? not_yet
+          : (a === ROLE_RANDOM) ? rand_choice
+            : aligns[a].adj}`);
+    return lines;
+}
+
+/**
  * C ref: role.c role_menu_extra `:1816–1960` — constrained line or
  * pick-X-first / filter / Random / Quit extra rows for the role, race,
  * gender and alignment menus, in C order.

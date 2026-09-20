@@ -2717,7 +2717,7 @@ export async function dip_into() {
 }
 
 /** C ref: potion.c bottlename — ROLL_FROM bottlenames / hbottlenames. */
-function bottlename() {
+export function bottlename() {
     const u = game.u || {};
     const hallu = !!(u.Hallucination || u.HHallucination);
     const names = hallu ? HBOTTLENAMES : BOTTLENAMES;

@@ -15,6 +15,11 @@
 
 import { game } from './gstate.js';
 import { getversionstring, do_runtime_info } from './version.js';
+// C ref: mdlib.c runtime_info_init `:842` — js/date.js registers the
+// populate_nomakedefs call on version.js's hook at evaluation; this
+// side-effect import keeps that registration on the only runtime path
+// that drives do_runtime_info (doextversion below). No binding is read.
+import './date.js';
 import { rn2, rn2_on_display_rng } from './rng.js';
 import { nhgetch } from './input.js';
 import {

@@ -14,7 +14,7 @@ import { cansee } from './vision.js';
 import { dist2, isok } from './hacklib.js';
 import { resist_conflict, set_mon_data, on_fire, mhis, mhe, little_to_big, defended, monsndx } from './mondata.js';
 import { MON_WEP, mon_wield_item, hitval, dmgval, possibly_unwield } from './weapon.js';
-import { arti_reflects, artifact_hit, permapoisoned, is_art } from './artifact.js';
+import { arti_reflects, artifact_hit, permapoisoned, is_art, protects } from './artifact.js';
 import { find_mac, which_armor, bypass_obj, is_flimsy, extract_from_minvent } from './worn.js';
 import { update_monster_region } from './region.js';
 import { remove_worm, place_worm_tail_randomly, worm_known } from './worm.js';
@@ -87,6 +87,8 @@ import {
     W_ARMF,
     W_ARMU,
     W_AMUL,
+    W_ACCESSORY,
+    W_WEP,
     W_SADDLE,
     DISMOUNT_KNOCKED,
     DISMOUNT_POLY,
@@ -104,7 +106,7 @@ import {
 } from './const.js';
 import {
     verysmall, G_FREQ, G_NOCORPSE, G_UNIQ, is_neuter, nonliving,
-    bigmonst, is_golem, is_mplayer, is_rider, monsterNames, mons, NUMMONS,
+    bigmonst, is_golem, is_mplayer, is_minion, is_rider, monsterNames, mons, NUMMONS,
     is_animal, M1_SEE_INVIS, is_vampshifter, MZ_TINY, MZ_SMALL, MZ_HUGE, amorphous,
     is_flyer, is_floater, slithy, nolimbs, MR_STONE, MALE, FEMALE, NEUTRAL, can_teleport,
     touch_petrifies, poly_when_stoned, resists_ston, humanoid, is_elf, is_orc,
@@ -687,8 +689,13 @@ export async function mon_poly(magr, mdef, dmg) {
 }
 
 /**
- * C ref: uhitm.c mhitm_ad_poly — mhitm (mon→mon) and uhitm (you→mon) arms.
- * Named omissions: uhitm weaponless poly'd-hero path (damageum); shieldeff.
+ * C ref: uhitm.c mhitm_ad_poly `:3729–3774` — uhitm (`:3739–3752`,
+ * weaponless + damage < mhp; Monnam pline `:3743` / mon_poly + DEF_DIED
+ * `:3745–3749`) and mhitm (`:3764–3772`) arms in C order; negated
+ * `:3734–3735` incl. magr->mspec_used. mhitu arm (`:3753–3763`) lives in
+ * mhitu.js mhitm_ad_poly_u (split by attacker/defender architecture).
+ * Named omissions: none — every callee live (prior shieldeff/damageum
+ * note retired: C body calls neither).
  */
 export async function mhitm_ad_poly(magr, mattk, mdef, mhm) {
     void mattk;
@@ -2389,60 +2396,108 @@ async function passivemm(magr, mdef, mhitb, mdead, mwep) {
     return mdead | mhit;
 }
 
+/** C PM_ALIGNED_CLERIC for magic_negation's intrinsic floor (file PM idiom). */
+const PM_ALIGNED_CLERIC = monsterNames.indexOf('PM_ALIGNED_CLERIC');
+
 /**
- * C ref: mhitu.c magic_negation — hero arm (is_you, so the
- * `if (is_you || gotprot) continue` skips the protects() scan: only the
- * worn a_can max, the amulet-of-guarding branch, extrinsic Protection
- * and the intrinsic floor apply; the monster arm is magic_negation_mon,
- * D-1405). oc_level packs oc_oc2 ≡ a_can for armor
- * (scripts/extract-objects.py; objclass.h:103).
+ * C ref: mhitu.c magic_negation `:1089–1137` — cancellation MC from worn
+ * armor (a_can max), extrinsic Protection (+1, +2 via amulet of guarding,
+ * cap 3) and the intrinsic floor (mc 1). mon null (the JS hero-defender
+ * idiom; C `mon == &gy.youmonst`) takes the is_you path; a monster takes
+ * the mon path (high priests start protected, protects() scan).
+ * The intrinsic aligned-cleric/minion floor reads mon->data on both
+ * paths (hero polyform included). oc_level packs oc_oc2 ≡ a_can for armor
+ * (scripts/extract-objects.py; objclass.h:103). Unifies D-2347 (hero arm)
+ * and D-1405 (mon arm — its amulet/protects/cleric·minion omits retired).
  */
-export function magic_negation_you() {
-    const u = game.u || {};
-    // C: gotprot = (EProtection != 0L) — flat mirror or uprops extrinsic
-    const gotprot = (((u.EProtection | 0)
-        || (u.uprops?.[PROTECTION]?.extrinsic | 0)) !== 0);
-    const AMULET_OF_GUARDING = objectNames.indexOf('AMULET_OF_GUARDING');
-    let mc = 0;
+export function magic_negation(mon) {
+    // C: boolean is_you = (mon == &gy.youmonst) `:1093`
+    const is_you = (mon == null || mon === game.youmonst);
+    // C: gotprot = is_you ? (EProtection != 0L)
+    //             : (mon->data == &mons[PM_HIGH_CLERIC]) `:1095–1097`
+    // (EProtection/HProtection are pure uprops aliases, youprop.h:351-352;
+    // flat-mirror OR idiom per D-2347.)
     let via_amul = false;
-    for (const o of game.invent || []) {
+    let gotprot;
+    let mc = 0;
+    if (is_you) {
+        const u = game.u || {};
+        gotprot = (((u.EProtection | 0)
+            || (u.uprops?.[PROTECTION]?.extrinsic | 0)) !== 0);
+    } else {
+        gotprot = (monsndx(mon.data) === PM_HIGH_CLERIC);
+    }
+    // C: for (o = is_you ? gi.invent : mon->minvent; o; o = o->nobj) `:1099`
+    // (JS: hero invent is an array, monster minvent an o->nobj chain —
+    // the chain is walked once so the single C-order body serves both.)
+    const objs = [];
+    if (is_you) {
+        for (const o of game.invent || []) objs.push(o);
+    } else {
+        for (let o = mon?.minvent; o; o = o.nobj) objs.push(o);
+    }
+    const AMULET_OF_GUARDING = objectNames.indexOf('AMULET_OF_GUARDING');
+    for (const o of objs) {
+        // C: a_can field is only applicable for armor (which must be worn) `:1100`
         if (((o.owornmask || 0) & W_ARMOR) !== 0) {
-            // C: objects[o->otyp].a_can — packed as oc_level for armor
+            // C: armpro = objects[o->otyp].a_can; if (armpro > mc) mc = armpro `:1101–1103`
             const armpro = game.objects?.[o.otyp]?.oc_level ?? 0;
             if (armpro > mc) mc = armpro;
         } else if (((o.owornmask || 0) & W_AMUL) !== 0) {
-            // C: via_amul = (o->otyp == AMULET_OF_GUARDING)
+            // C: via_amul = (o->otyp == AMULET_OF_GUARDING) `:1104–1106`
             via_amul = (o.otyp === AMULET_OF_GUARDING);
         }
+        // C: if we've already confirmed Protection, skip additional checks `:1107–1109`
+        // (hero side always continues here — the protects() scan is mon-only)
+        if (is_you || gotprot) continue;
+        // C: omit W_SWAPWEP+W_QUIVER; W_ART+W_ARTI handled by protects() `:1111`
+        let wearmask = W_ARMOR | W_ACCESSORY;
+        // C: if (o->oclass == WEAPON_CLASS || is_weptool(o)) wearmask |= W_WEP `:1112–1114`
+        if (o.oclass === WEAPON_CLASS || is_weptool(o)) wearmask |= W_WEP;
+        // C: if (protects(o, ...)) gotprot = TRUE `:1115–1116`
+        if (protects(o, (((o.owornmask || 0) & wearmask) !== 0))) gotprot = true;
     }
     if (gotprot) {
-        // C: mc += via_amul ? 2 : 1, capped at 3
+        // C: extrinsic Protection increases mc by 1 (2 for amulet of
+        // guarding); multiple sources don't provide multiple increments `:1119–1121`
         mc += via_amul ? 2 : 1;
+        // C: if (mc > 3) mc = 3 `:1122–1123`
         if (mc > 3) mc = 3;
     } else if (mc < 1) {
-        // C: (HProtection && u.ublessed > 0) || u.uspellprot → mc = 1
+        // C: intrinsic Protection is weaker ... it confers minimum mc 1 `:1126–1128`
+        // C: if ((is_you && ((HProtection && u.ublessed > 0) || u.uspellprot)) `:1130`
+        //        || (mon->data == &mons[PM_ALIGNED_CLERIC] `:1131–1132`
+        //            || is_minion(mon->data))) `:1133–1134`
+        // (one C if: the aligned/minion disjunct reads mon->data even when
+        // mon == &youmonst, i.e. the hero's polyform; null — the JS
+        // hero-defender idiom — reads game.youmonst.data instead.)
+        const u = game.u || {};
         const hprot = (((u.HProtection | 0)
             || (u.uprops?.[PROTECTION]?.intrinsic | 0)) !== 0);
-        if ((hprot && ((u.ublessed | 0) > 0)) || ((u.uspellprot | 0) !== 0)) {
-            mc = 1;
-        }
+        const form = is_you ? (mon?.data ?? game.youmonst?.data) : mon.data;
+        if ((is_you && ((hprot && (((u.ublessed | 0) > 0))) || (((u.uspellprot | 0) !== 0))))
+            || (monsndx(form) === PM_ALIGNED_CLERIC || is_minion(form))) mc = 1;
     }
     return mc;
 }
 
 /**
- * C ref: mhitu.c magic_negation — worn a_can max for a monster defender.
- * Named omit: amulet of guarding / protects() / innate cleric·minion.
+ * C ref: mhitu.c magic_negation — hero arm (D-2347).
+ * Thin delegate: C insight.c:1800 calls magic_negation(&gy.youmonst);
+ * the full hero path lives in magic_negation(null) above.
+ */
+export function magic_negation_you() {
+    return magic_negation(null);
+}
+
+/**
+ * C ref: mhitu.c magic_negation — monster-defender arm (D-1405).
+ * Thin delegate: C uhitm.c:86 calls magic_negation(mdef); the full mon
+ * path (high-cleric gotprot, protects() scan, aligned/minion floor)
+ * lives in magic_negation(mon) above. Named omissions: none.
  */
 function magic_negation_mon(mon) {
-    let mc = 0;
-    for (let o = mon?.minvent; o; o = o.nobj) {
-        if (((o.owornmask || 0) & W_ARMOR) !== 0) {
-            const armpro = game.objects?.[o.otyp]?.oc_level ?? 0;
-            if (armpro > mc) mc = armpro;
-        }
-    }
-    return mc;
+    return magic_negation(mon);
 }
 
 /**

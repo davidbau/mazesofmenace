@@ -252,11 +252,16 @@ import { select_menu_pick_any, hide_unhide_msgtypes } from './options.js';
 import { rn2 } from './rng.js';
 import { newuexp } from './exper.js';
 import {
-    DOOR, STAIRS, FOUNTAIN, SINK, ALTAR, GRAVE, TREE, IRONBARS,
+    FOUNTAIN, THRONE, SINK, ALTAR, GRAVE, TREE, IRONBARS,
+    DRAWBRIDGE_DOWN, DBWALL,
     D_NODOOR, D_ISOPEN, D_BROKEN,
+    AM_SANCTUM, AM_SHRINE,
+    Amask2align,
     A_LAWFUL, A_NEUTRAL, A_CHAOTIC,
     ROLE_GENDMASK, ROLE_MALE, ROLE_FEMALE,
-    IS_DOOR,
+    IS_DOOR, IS_FOUNTAIN, IS_THRONE, IS_SINK, IS_ALTAR, IS_GRAVE,
+    S_ndoor, S_vodoor, S_vcdoor, S_fountain, S_throne, S_lava,
+    S_sink, S_vodbridge, S_vcdbridge, S_grave, S_tree,
     P_NONE, P_DAGGER, P_KNIFE, P_AXE, P_PICK_AXE, P_SHORT_SWORD,
     P_BROAD_SWORD, P_LONG_SWORD, P_TWO_HANDED_SWORD, P_SABER,
     P_CLUB, P_MACE, P_MORNING_STAR, P_FLAIL, P_HAMMER, P_QUARTERSTAFF,
@@ -318,7 +323,11 @@ import {
 import { stairway_at, stairs_description } from './mklev.js';
 import { objects_at } from './mkobj.js';
 import { magic_negation_you } from './mhitm.js';
-import { t_at, trapname } from './trap.js';
+import { t_at, trapname, ice_descr } from './trap.js';
+import { is_pool, is_lava } from './hack.js';
+import { is_ice } from './zap.js';
+import { is_drawbridge_wall } from './dbridge.js';
+import { a_gname_at } from './pray.js';
 import { sticks } from './engrave.js';
 import { surface } from './sit.js';
 import { visible_region_at, reg_damg } from './region.js';
@@ -7723,54 +7732,104 @@ export async function doprinuse() {
 }
 
 /**
- * C ref: invent.c dfeature_at — dungeon feature worth mentioning at <x,y>.
- * Branch envelope this iteration: doors, stairs (via stairs_description),
- * fountain/sink/altar/grave/tree/bars stubs. Lava/ice/pool/drawbridge deferred.
+ * C ref: invent.c dfeature_at `:4037–4099` — dungeon feature worth
+ * mentioning at <x,y>, or null when none (C returns NULL).
+ * Whole-body C-order port: IS_DOOR switch (D_NODOOR/D_ISOPEN/D_BROKEN/
+ * default) + open-drawbridge portcullis override; IS_FOUNTAIN; IS_THRONE;
+ * is_lava; is_ice via ice_descr; is_pool ("pool of water"); IS_SINK;
+ * IS_ALTAR ("%saltar to %s (%s)" via a_gname + align_str(Amask2align));
+ * stairway_at + stairs_description(stcase TRUE); DRAWBRIDGE_DOWN; DBWALL;
+ * IS_GRAVE; TREE (C `==`, not IS_TREE); IRONBARS literal; cmap arm reads
+ * the defsym.h explanation literals (no JS defsyms table); Strcpy(buf),
+ * return dfeature.
+ * JS-only: `!lev` null guard (C indexes levl[] directly); `buf` is an
+ * optional 1-element array out-param — C callers use both buf and the
+ * return, JS callers use the return.
  */
-export function dfeature_at(x, y) {
+export function dfeature_at(x, y, buf) {
     const lev = game.level?.at(x, y);
     if (!lev) return null;
     const ltyp = lev.typ;
+    let cmap = -1;
     let dfeature = null;
-
-    if (IS_DOOR(ltyp) || ltyp === DOOR) {
-        // C: switch on exact doormask
-        switch (lev.doormask ?? D_NODOOR) {
+    const stway = stairway_at(x, y); // C `:4042` — before the chain
+    if (IS_DOOR(ltyp)) { // C `:4047`
+        switch (lev.doormask ?? D_NODOOR) { // C `:4048–4061`
         case D_NODOOR:
-            dfeature = 'doorway';
+            cmap = S_ndoor; // defsym.h:103 "doorway"
             break;
         case D_ISOPEN:
-            dfeature = 'open door';
+            cmap = S_vodoor; // defsym.h:104 "open door"
             break;
         case D_BROKEN:
-            dfeature = 'broken door';
+            dfeature = 'broken door'; // C literal, cmap stays -1
             break;
         default:
-            dfeature = 'closed door';
+            cmap = S_vcdoor; // defsym.h:107 "closed door"
             break;
         }
-    } else if (ltyp === FOUNTAIN) {
-        dfeature = 'fountain';
-    } else if (ltyp === SINK) {
-        dfeature = 'sink';
-    } else if (ltyp === ALTAR) {
-        dfeature = 'altar';
-    } else {
-        const stway = stairway_at(x, y);
-        if (stway) {
-            dfeature = stairs_description(stway, true);
-        } else if (ltyp === STAIRS) {
-            // typ STAIRS without stairway node — direction from ladder flag
-            dfeature = (lev.ladder === 1) ? 'staircase up' : 'staircase down';
-        } else if (ltyp === GRAVE) {
-            dfeature = 'grave';
-        } else if (ltyp === TREE) {
-            dfeature = 'tree';
-        } else if (ltyp === IRONBARS) {
-            dfeature = 'set of iron bars';
+        // C `:4063–4065` — open drawbridge portcullis overrides the door
+        if (is_drawbridge_wall(x, y) >= 0) {
+            dfeature = 'open drawbridge portcullis';
+            cmap = -1;
         }
+    } else if (IS_FOUNTAIN(ltyp)) { // C `:4066`
+        cmap = S_fountain; // defsym.h:137 "fountain"
+    } else if (IS_THRONE(ltyp)) { // C `:4068`
+        cmap = S_throne; // defsym.h:132 "opulent throne"
+    } else if (is_lava(x, y)) { // C `:4070`
+        cmap = S_lava; // defsym.h:138 "molten lava"
+    } else if (is_ice(x, y)) { // C `:4072`
+        dfeature = ice_descr(x, y); // C ice_descr(x, y, altbuf), comma-expr
+        cmap = -1;
+    } else if (is_pool(x, y)) { // C `:4074`
+        dfeature = 'pool of water';
+    } else if (IS_SINK(ltyp)) { // C `:4076`
+        cmap = S_sink; // defsym.h:136 "sink"
+    } else if (IS_ALTAR(ltyp)) { // C `:4078–4083`
+        const high = ((lev.altarmask | 0) & AM_SANCTUM) ? 'high ' : '';
+        // C a_gname() === a_gname_at(u.ux, u.uy) (pray.c:2506–2510)
+        const u = game.u || {};
+        dfeature = `${high}altar to ${a_gname_at(u.ux | 0, u.uy | 0)} (${align_str(Amask2align((lev.altarmask | 0) & ~AM_SHRINE))})`;
+    } else if (stway) { // C `:4084`
+        dfeature = stairs_description(stway, true); // C (stway, altbuf, TRUE)
+    } else if (ltyp === DRAWBRIDGE_DOWN) { // C `:4086`
+        cmap = S_vodbridge; // defsym.h:141 "lowered drawbridge"
+    } else if (ltyp === DBWALL) { // C `:4088`
+        cmap = S_vcdbridge; // defsym.h:145 "raised drawbridge"
+    } else if (IS_GRAVE(ltyp)) { // C `:4090`
+        cmap = S_grave; // defsym.h:134 "grave"
+    } else if (ltyp === TREE) { // C `:4092`
+        cmap = S_tree; // defsym.h:118 "tree"
+    } else if (ltyp === IRONBARS) { // C `:4094`
+        dfeature = 'set of iron bars';
     }
+    if (cmap >= 0) // C `:4097` defsyms[cmap].explanation
+        dfeature = dfeatureExplanation(cmap);
+    if (dfeature && Array.isArray(buf)) // C `:4099` Strcpy(buf, dfeature)
+        buf[0] = dfeature;
     return dfeature;
+}
+
+/**
+ * C ref: defsym.h PCHAR explanations backing `defsyms[cmap].explanation`
+ * for exactly the cmap arms dfeature_at can set (JS has no defsyms table).
+ */
+function dfeatureExplanation(cmap) {
+    switch (cmap) {
+    case S_ndoor: return 'doorway';
+    case S_vodoor: return 'open door';
+    case S_vcdoor: return 'closed door';
+    case S_fountain: return 'fountain';
+    case S_throne: return 'opulent throne';
+    case S_lava: return 'molten lava';
+    case S_sink: return 'sink';
+    case S_vodbridge: return 'lowered drawbridge';
+    case S_vcdbridge: return 'raised drawbridge';
+    case S_grave: return 'grave';
+    case S_tree: return 'tree';
+    default: return null;
+    }
 }
 
 /**
@@ -7819,6 +7878,8 @@ export async function look_here(obj_cnt = 0, lookhere_flags = 0) {
 
     const otmp = objects_at(u?.ux, u?.uy);
     let dfeature = dfeature_at(u?.ux, u?.uy);
+    // C `:4182–4183` — no pool feature while Underwater
+    if (dfeature === 'pool of water' && u?.Underwater) dfeature = null;
     let fbuf = null;
 
     // C invent.c Blind arm — feel-floor pline before object list (forces
@@ -7850,10 +7911,14 @@ export async function look_here(obj_cnt = 0, lookhere_flags = 0) {
     }
 
     if (dfeature && !skip_dfeature) {
-        // C: special no-article cases (lava/bars/ice) — iron bars only here
+        // C `:4224–4231` — "molten lava", plain "ice", "frozen …"
+        // (hallucination), thawing ice ("solid ice", "thin ice", &c via
+        // case-insensitive " ice" suffix). C's "iron bars" never matches
+        // the "set of iron bars" dfeature; kept as the JS string.
         let article = 1;
-        if (dfeature === 'set of iron bars' || dfeature === 'ice'
-            || dfeature === 'molten lava')
+        if (dfeature === 'set of iron bars' || dfeature === 'molten lava'
+            || dfeature === 'ice' || dfeature.startsWith('frozen ')
+            || / ice$/i.test(dfeature))
             article = 0;
         let feat = dfeature;
         if (article === 1) feat = an(dfeature);

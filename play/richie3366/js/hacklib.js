@@ -24,6 +24,13 @@ export function dist2(x1, y1, x2, y2) {
     return (x1 - x2) * (x1 - x2) + (y1 - y2) * (y1 - y2);
 }
 
+/* C ref: hacklib.c:830-837 — swapbits(val, bita, bitb) swaps bit a with bit b in val. */
+export function swapbits(val, bita, bitb) {
+    val |= 0; bita |= 0; bitb |= 0;
+    const tmp = (((val >> bita) & 1) ^ ((val >> bitb) & 1)) | 0;
+    return (val ^ ((tmp << bita) | (tmp << bitb))) | 0;
+}
+
 /** C ref: hacklib.c online2 — orthogonal or diagonal line. */
 export function online2(x0, y0, x1, y1) {
     const dx = x0 - x1;

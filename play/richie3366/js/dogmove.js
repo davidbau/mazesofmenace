@@ -10,6 +10,7 @@ import {
 } from './mon.js';
 import {
     objects_at, obj_extract_self, place_object, splitobj, stackobj, delobj,
+    eaten_stat,
 } from './mkobj.js';
 import { mattackm, max_passive_dmg, mdisplacem, mondied } from './mhitm.js';
 import { mon_reflects } from './mhitu.js';
@@ -40,7 +41,8 @@ import {
 import { FOOD_CLASS, BALL_CLASS, CHAIN_CLASS, ROCK_CLASS, COIN_CLASS, objectNames, is_pick, objectDescrs, objectNameStrs } from './objects.js';
 import {
     monsterNames, mons, carnivorous, herbivorous, vegan, acidic, poisonous,
-    is_swimmer, likes_lava, throws_rocks, is_rider,
+    is_swimmer, likes_lava, throws_rocks, is_rider, humanoid,
+    is_undead, is_elf,
     unsolid, nolimbs, has_head, LOW_PM, NUMMONS,
     PM_LICHEN, MZ_TINY, MZ_SMALL, MZ_MEDIUM, MZ_LARGE, MZ_HUGE,
     is_animal, mindless, tunnels, needspick, nohands, verysmall,
@@ -51,7 +53,7 @@ import { which_armor } from './worn.js';
 import { m_cansee, couldsee, cansee, do_clear_area } from './vision.js';
 import { Monnam, noit_Monnam, y_monnam, pmname, Mgender } from './do_name.js';
 import { gettrack } from './track.js';
-import { hero_conflict, resist_conflict, monsndx } from './mondata.js';
+import { hero_conflict, resist_conflict, monsndx, same_race } from './mondata.js';
 import { is_pool, is_lava, stop_occupation } from './hack.js';
 import { m_unleash } from './apply.js';
 import { lose_guardian_angel } from './minion.js';
@@ -197,7 +199,7 @@ export function dogfood(mon, obj) {
             case CORPSE: {
                 // C ref: dog.c dogfood CORPSE — age/poison/acid → POISON;
                 // vegan(fptr) → herbi?CADAVER:MANFOOD (lichen etc.).
-                // polyfood / humanoid cannibalism / rider / petrify deferred.
+                // polyfood / rider / petrify deferred.
                 const moves = game.moves ?? 1;
                 const corpseAge = obj.age ?? moves;
                 const agePoison = corpseAge + 50 <= moves
@@ -210,6 +212,13 @@ export function dogfood(mon, obj) {
                     return POISON;
                 }
                 if (vegan(fptr)) return herbi ? CADAVER : MANFOOD;
+                // C `:1080-1083` — most humanoids avoid cannibalism unless
+                // starving; elves won't eat other elves even then.
+                if (humanoid(mptr) && same_race(mptr, fptr)
+                    && (!is_undead(mptr) && fptr?.mlet !== 'S_KOBOLD'
+                        && fptr?.mlet !== 'S_ORC' && fptr?.mlet !== 'S_OGRE')) {
+                    return (starving && carni && !is_elf(mptr)) ? ACCFOOD : TABU;
+                }
                 return carni ? CADAVER : MANFOOD;
             }
             case APPLE:
@@ -324,45 +333,77 @@ function food_oc_nutrition(otyp) {
     return FOOD_NUTRITION[name] ?? 0;
 }
 
-// C ref: dogmove.c dog_nutrition — meating/hungrytime; corpse uses cwt/cnutrit.
+// C ref: monflag.h:183 — MZ_GIGANTIC is 7, off the scale (no monsters.js export;
+// cf. the file-local const in js/insight.js).
+const MZ_GIGANTIC = 7;
+
+// C ref: dogmove.c:156–214 dog_nutrition — pet eating time (meating) + nutrition.
+// FOOD: corpse uses mons[].cwt/cnutrit (`:165–167`), else objects[].oc_delay /
+// oc_nutrition (`:168–171`); msize multiplier (`:173–193`, default falls into
+// MZ_MEDIUM); partially-eaten food scales both via eaten_stat (`:194–197`).
+// COIN (`:198–205`) and unusual non-food (`:206–213`) arms in C order.
 export function dog_nutrition(mtmp, obj) {
     const oclass = obj.oclass ?? 0;
     const otyp = obj.otyp ?? -1;
     const oc = game.objects?.[otyp];
+    let nutrit;
 
     if (oclass === FOOD_CLASS) {
-        let nutrit;
+        // C :164–172
         if (otyp === CORPSE) {
-            const cwt = obj.cwt ?? mons_cwt(obj.corpsenm);
-            mtmp.meating = 3 + (cwt >> 6);
-            nutrit = obj.cnutrit ?? mons_cnutrit(obj.corpsenm);
+            // C :165–167 — mons table, not instance fields (no JS writer
+            // ever sets obj.cwt/obj.cnutrit; the mons table is authoritative)
+            mtmp.meating = 3 + (mons_cwt(obj.corpsenm) >> 6);
+            nutrit = mons_cnutrit(obj.corpsenm);
         } else {
-            // C: objects[obj->otyp].oc_delay / oc_nutrition — table, not instance
+            // C :168–171 — objects[] table; game.objects carries oc_delay
+            // live, oc_nutrition via the FOOD_NUTRITION fallback below
             mtmp.meating = oc?.oc_delay ?? 1;
             nutrit = food_oc_nutrition(otyp);
         }
-        // C: pet gets more nutrition by msize (little dog MZ_SMALL → ×6)
-        const msize = mtmp.data?.msize ?? MZ_MEDIUM;
-        if (msize === MZ_TINY) nutrit *= 8;
-        else if (msize === MZ_SMALL) nutrit *= 6;
-        else if (msize === MZ_LARGE) nutrit *= 4;
-        else if (msize === MZ_HUGE) nutrit *= 3;
-        else if (msize > MZ_HUGE) nutrit *= 2; // MZ_GIGANTIC
-        else nutrit *= 5; // MZ_MEDIUM default
-        // oeaten/eaten_stat deferred
-        return nutrit;
+        // C :173–193 — default falls into MZ_MEDIUM (×5)
+        switch (mtmp.data?.msize ?? MZ_MEDIUM) {
+        case MZ_TINY: // C :174–176
+            nutrit *= 8;
+            break;
+        case MZ_SMALL: // C :177–179
+            nutrit *= 6;
+            break;
+        default:
+        case MZ_MEDIUM: // C :180–183
+            nutrit *= 5;
+            break;
+        case MZ_LARGE: // C :184–186
+            nutrit *= 4;
+            break;
+        case MZ_HUGE: // C :187–189
+            nutrit *= 3;
+            break;
+        case MZ_GIGANTIC: // C :190–192
+            nutrit *= 2;
+            break;
+        }
+        // C :194–197 — partially eaten: scale both meating and nutrit
+        if (obj.oeaten) {
+            mtmp.meating = eaten_stat(mtmp.meating, obj);
+            nutrit = eaten_stat(nutrit, obj);
+        }
+    } else if (oclass === COIN_CLASS) {
+        // C :198–205
+        mtmp.meating = Math.trunc((obj.quan ?? 0) / 2000) + 1;
+        if (mtmp.meating < 0)
+            mtmp.meating = 1;
+        nutrit = Math.trunc((obj.quan ?? 0) / 20);
+        if (nutrit < 0)
+            nutrit = 0;
+    } else {
+        // C :206–213 — unusual pet such as gelatinous cube eating odd stuff;
+        // meating matches wild monsters (mon.c), nutrit matches polymorphed
+        // player (eat.c); no clamp in C
+        mtmp.meating = Math.trunc((obj.owt ?? 0) / 20) + 1;
+        nutrit = 5 * food_oc_nutrition(otyp);
     }
-    if (oclass === COIN_CLASS) {
-        mtmp.meating = Math.trunc((obj.quan || 0) / 2000) + 1;
-        if (mtmp.meating < 1) mtmp.meating = 1;
-        let nutrit = Math.trunc((obj.quan || 0) / 20);
-        if (nutrit < 0) nutrit = 0;
-        return nutrit;
-    }
-    // C: unusual non-food — meating = owt/20+1 (not /2)
-    mtmp.meating = Math.trunc((obj.owt || 0) / 20) + 1;
-    if (mtmp.meating < 1) mtmp.meating = 1;
-    return 5 * food_oc_nutrition(otyp);
+    return nutrit;
 }
 
 function mons_cwt(corpsenm) {
@@ -853,26 +894,45 @@ function find_targ(mtmp, dx, dy, maxdist) {
     return targ;
 }
 
-// C ref: dogmove.c find_friends() — hero/ally beyond target on the same ray
+// C ref: dogmove.c find_friends() `:694–735` — hero/ally beyond target on
+// the same ray. Restart in C order: sgn ray from the target square,
+// distmin start distance, then isok / m_cansee / mux-muy / m_at arms.
 function find_friends(mtmp, mtarg, maxdist) {
+    // C: mtarg->mx/my; mtarg may be &youmonst, whose mx/my are the hero
+    // position — the JS sentinel carries no mx/my, so read game.u instead.
     const tmx = mtarg._youmonst ? game.u.ux : mtarg.mx;
     const tmy = mtarg._youmonst ? game.u.uy : mtarg.my;
-    const dx = sgn(tmx - mtmp.mx);
-    const dy = sgn(tmy - mtmp.my);
+    const dx = sgn(tmx - mtmp.mx),
+        dy = sgn(tmy - mtmp.my);
     let curx = tmx, cury = tmy;
     let dist = distmin(tmx, tmy, mtmp.mx, mtmp.my);
-    for (; dist <= maxdist; dist++) {
+
+    for (; dist <= maxdist; ++dist) {
         curx += dx;
         cury += dy;
-        if (curx < 1 || curx >= COLNO || cury < 0 || cury >= ROWNO) return 0;
-        if (!m_cansee(mtmp, curx, cury)) return 0;
-        if (mtmp.mux === curx && mtmp.muy === cury) return 1;
+
+        if (!isok(curx, cury))
+            return 0;
+
+        /* If the pet can't see beyond this point, don't
+         * check any farther
+         */
+        if (!m_cansee(mtmp, curx, cury))
+            return 0;
+
+        /* Does pet think you're here? */
+        if (mtmp.mux === curx && mtmp.muy === cury)
+            return 1;
+
         const pal = m_at(curx, cury);
+
         if (pal) {
             if (pal.mtame) {
-                if (!pal.minvis) return 1;
+                /* Pet won't notice invisible pets */
+                if (!pal.minvis || perceives(mtmp.data))
+                    return 1;
             } else {
-                // C: quest leaders and guardians are always seen
+                /* Quest leaders and guardians are always seen */
                 const ms = pal.data?.msound | 0;
                 if (ms === MS_LEADER || ms === MS_GUARDIAN)
                     return 1;

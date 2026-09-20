@@ -3559,35 +3559,59 @@ export function doname_base(obj, doname_flags = 0) {
 }
 
 /**
- * C ref: objnam.c paydoname `:2311–2355` — doname with invent-style
- * price suppressed (billing menus / shk_names_obj). Has_contents zeros
- * cknown around doname then "an unpaid "/"your " + contents phrasing.
- * buy_container sets no_charge so the just-bought box stays "a/an"
- * rather than "your".
+ * C ref: objnam.c paydoname `:2313–2355` — doname for itemized buying
+ * (billing menus / shk_names_obj) with invent-style price suppressed.
+ * buy_container sets no_charge for a just-purchased container so the
+ * shk_names_obj call keeps "a/an" rather than "your".
+ * C string ops (strncmp/strprepend/Strcat/strlen) are plain JS string
+ * ops; strprepend/Strcat need no import.
  */
 export function paydoname(obj) {
-    if (!obj) return '';
+    // C `:2316` — static " and its contents" tail for unpaid containers.
+    const AND_CONTENTS = ' and its contents';
+    if (!obj) return ''; // JS-only null guard; C takes NONNULLARG1.
     if (!game.iflags) game.iflags = {};
+    // C `:2319–2320` — save cknown and wizweight across the call.
     const save_cknown = obj.cknown;
     const save_wizweight = game.iflags.wizweight;
+    // C `:2322–2323` — Has_contents zeros cknown so doname names contents.
     if (Has_contents(obj)) obj.cknown = 0;
+    // C `:2325` — hide item weights to unclutter billing's pay-menu.
     game.iflags.wizweight = false;
+    // C `:2326–2328` — suppress invent-style price around doname_base
+    // (the caller adds billing-style price); doname(obj) would be the
+    // same call (doname `:1754–1756` is doname_base(obj, 0)) but C names
+    // doname_base(obj, 0U) here.
     game.iflags.suppress_price = (game.iflags.suppress_price | 0) + 1;
-    let p = doname(obj);
+    let p = doname_base(obj, 0);
     game.iflags.suppress_price = (game.iflags.suppress_price | 0) - 1;
     game.iflags.wizweight = save_wizweight;
 
+    // C `:2331–2352` — container phrasing for Has_contents holders.
     if (Has_contents(obj)) {
+        // C `:2336–2343` — strip the "a "/"an " article, then prepend
+        // "an unpaid " (unpaid) or "your "; skipped when buy_container
+        // set no_charge on the just-purchased box.
         if (!obj.no_charge) {
             if (p.startsWith('a ')) p = p.slice(2);
             else if (p.startsWith('an ')) p = p.slice(3);
             p = `${obj.unpaid ? 'an unpaid ' : 'your '}${p}`;
         }
+        // C `:2345–2351` — cknown stayed 0 (contents undisclosed).
         if (!obj.cknown) {
-            if (obj.unpaid) p += ' and its contents';
-            else p = `the contents of ${p}`;
+            if (obj.unpaid) {
+                // C `:2347–2350` — append only when it fits in
+                // BUFSZ - PREFIX (17 = sizeof and_contents - 1; PREFIX
+                // is XNAME_PREFIX = 80 here).
+                if (p.length + AND_CONTENTS.length < BUFSZ - XNAME_PREFIX)
+                    p += AND_CONTENTS;
+            } else {
+                // C `:2352` — paid box names the contents, not the box.
+                p = `the contents of ${p}`;
+            }
         }
     }
+    // C `:2354` — restore the caller's cknown.
     obj.cknown = save_cknown;
     return p;
 }

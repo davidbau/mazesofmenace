@@ -1313,6 +1313,12 @@ export function weapon_type(obj) {
     return type < 0 ? -type : type;
 }
 
+/** C ref: weapon.c uwep_skill_type — two-weapon skill else weapon_type(uwep). */
+export function uwep_skill_type() {
+    if (game.u?.twoweap) return P_TWO_WEAPON_COMBAT;
+    return weapon_type(game.u?.uwep);
+}
+
 /**
  * C ref: weapon.c dbon — strength damage bonus (0 when Upolyd).
  * Named omission: none for ordinary STR bands.

@@ -83,7 +83,7 @@ import { uhim, uhis, genders } from './roles.js';
 import { PM_HEALER } from './generated/monsters_data.js';
 import { is_art, retouch_object } from './artifact.js';
 import { ART_SNICKERSNEE } from './generated/artifacts_data.js';
-import { P_SKILL, weapon_type, dbon, MON_WEP, is_wet_towel, dry_a_towel, hands_obj, possibly_unwield, setmnotwielded } from './weapon.js';
+import { P_SKILL, weapon_type, uwep_skill_type, dbon, MON_WEP, is_wet_towel, dry_a_towel, hands_obj, possibly_unwield, setmnotwielded } from './weapon.js';
 import { pickup_object, spoteffects } from './pickup.js';
 import { select_menu_pick_one } from './options.js';
 import { teleds, tele_to_rnd_pet, noteleport_level, enexto, rloc_to } from './teleport.js';
@@ -3280,12 +3280,6 @@ function bimanual_apply(obj) {
     if (!obj) return false;
     const oc = game.objects?.[obj.otyp];
     return !!(oc?.oc_bimanual || oc?.oc_big);
-}
-
-/** C ref: weapon.c uwep_skill_type. */
-function uwep_skill_type() {
-    if (game.u?.twoweap) return P_TWO_WEAPON_COMBAT;
-    return weapon_type(game.u?.uwep);
 }
 
 function u_wield_art(art) {

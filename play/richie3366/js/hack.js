@@ -58,7 +58,7 @@ import { xname, the, The, makeplural, an, just_an } from './objnam.js';
 import { A_STR, A_CON, A_DEX, acurr, acurrstr, exercise, Fumbling, adjalign } from './attrib.js';
 import { objdescr_is } from './apply.js';
 import { rn2, rnd, rn1 } from './rng.js';
-import { ing_suffix, upstart } from './hacklib.js';
+import { ing_suffix, upstart, dist2 } from './hacklib.js';
 import { visible_region_at, reg_damg } from './region.js';
 import { midnight } from './calendar.js';
 import {
@@ -90,7 +90,7 @@ import { sticks } from './engrave.js';
 import { revive_corpse, l_nhcore_call } from './do.js';
 import { is_db_wall } from './dbridge.js';
 import { doopen_indir } from './lock.js';
-import { use_pick_axe2 } from './dig.js';
+import { use_pick_axe2, buried_ball, buried_ball_to_punishment } from './dig.js';
 import { is_ice, resists_cold, Cold_resistance } from './zap.js';
 import { can_ooze, curr_mon_load } from './monmove.js';
 import { abuse_dog } from './dog.js';
@@ -2049,8 +2049,9 @@ export function crawl_destination(x, y) {
  * Branch envelope this iteration: TT_BEARTRAP full (no steed); TT_WEB
  * decrement+msgs; TT_PIT adjacent-pit continue + climb_pit (trap.c);
  * TT_LAVA /
- * TT_INFLOOR / TT_BURIEDBALL / steed / Sting / buried_ball_to_punishment /
- * surface() culprit text deferred.
+ * TT_INFLOOR / TT_BURIEDBALL (radius-1 buried_ball free move via live
+ * dig.js export + wriggle_free buried_ball_to_punishment, C `:1633–1647` /
+ * `:1677–1678`); steed / Sting / surface() culprit text still deferred.
  *
  * @param {number} x destination x
  * @param {number} y destination y
@@ -2117,7 +2118,18 @@ export async function trapmove(x, y, desttrap) {
     case TT_INFLOOR:
     case TT_BURIEDBALL: {
         anchored = (u.utraptype | 0) === TT_BURIEDBALL;
-        // buried_ball radius-1 free-move arm deferred
+        if (anchored) {
+            // C ref: hack.c trapmove `:1633–1647` — can move normally
+            // within radius 1 of the buried ball (dist2 <= 2 on the
+            // destination); buried_ball(&cc) rewrites cc to the ball cell.
+            const cc = { x: u.ux | 0, y: u.uy | 0 };
+            if (buried_ball(cc) && dist2(x, y, cc.x, cc.y) <= 2) {
+                // C `:1640–1645` ugly-hack Norep so a later out-of-range
+                // can't-do-that message is not suppressed by Norep.
+                if (verbose) await Norep("You move within the chain's reach.");
+                return true;
+            }
+        }
         u.utrap = (u.utrap | 0) - 1;
         if (u.utrap | 0) {
             if (verbose) {
@@ -2128,7 +2140,9 @@ export async function trapmove(x, y, desttrap) {
             }
         } else if (anchored) {
             await pline('You finally wrench the ball free.');
-            // buried_ball_to_punishment deferred
+            // C ref: hack.c trapmove `:1677–1678` wriggle_free — re-punish
+            // with the unearthed buried ball.
+            await buried_ball_to_punishment();
         } else {
             await pline('You finally wriggle free.');
         }

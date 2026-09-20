@@ -4,7 +4,7 @@
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
-import { pline, newsym, canseemon, clear_nhwindow_message, verbalize, feel_location, impossible, flush_screen, docrt_flags, docrtRefresh } from './display.js';
+import { pline, You, newsym, canseemon, clear_nhwindow_message, verbalize, feel_location, impossible, flush_screen, docrt_flags, docrtRefresh } from './display.js';
 import { yn_function } from './getline.js';
 import { vision_recalc, recalc_block_point, cansee } from './vision.js';
 import { stop_occupation, in_rooms, closed_door, confdir } from './hack.js';
@@ -26,7 +26,7 @@ import {
 import { cmdq_pop, cmdq_clear } from './cmd.js';
 import { rnl, rn2, rnd } from './rng.js';
 import { acurr, acurrstr, A_STR, A_DEX, A_CON, exercise } from './attrib.js';
-import { verysmall, nohands, passes_walls, G_UNIQ } from './monsters.js';
+import { verysmall, nohands, passes_walls, G_UNIQ, breathless, haseyes } from './monsters.js';
 import {
     objects_at, place_object, stackobj, obj_extract_self, delobj,
 } from './mkobj.js';
@@ -35,7 +35,8 @@ import {
     WEAPON_CLASS, ROCK_CLASS, TOOL_CLASS, POTION_CLASS, WAND_CLASS,
     objectNames,
 } from './objects.js';
-import { doname, xname, cxname, singular } from './objnam.js';
+import { doname, xname, cxname, singular, An, an as canon_an } from './objnam.js';
+import { potionbreathe, bottlename } from './potion.js';
 import { obj_resists } from './dogmove.js';
 import { setuwep } from './wield.js';
 import { PM_ROGUE, PM_WIZARD, PM_GRID_BUG, monsterNames } from './generated/monsters_data.js';
@@ -1654,16 +1655,24 @@ const MAT_WOOD = 8;
 const MAT_GLASS = 19;
 
 /**
- * C ref: lock.c chest_shatter_msg — destroy-path content messages.
- * Temporarily Blind so xname does not observe_object (appearance leak).
- * potionbreathe / Blind hear-vs-see polish deferred (pline only).
+ * C ref: lock.c chest_shatter_msg `:1276–1318` — destroy-path content messages.
+ * C order: POTION_CLASS You hear/see + an(bottlename()) + breathless/haseyes
+ * potionbreathe arm; Blind-forced singular(xname); oc_material switch;
+ * pline An(thing) + disposition. Local Blind() is the per-file youprop
+ * idiom (same body as invent.js Blind); canon_an/An are the objnam.js
+ * exports (local an/the/simple_typename below stay for other sites).
  */
 async function chest_shatter_msg(otmp) {
+    // C `:1283–1289` — potion shatters with a bottle name, not xname.
     if (otmp.oclass === POTION_CLASS) {
-        await pline(`You see ${an(xname(otmp))} shatter!`);
+        // C: You("%s %s shatter!", Blind ? "hear" : "see", an(bottlename()));
+        await You('%s %s shatter!', Blind() ? 'hear' : 'see', canon_an(bottlename()));
+        // C `:1286–1288` — vapor only when the hero can smell/see it.
+        if (!breathless(game.youmonst?.data) || haseyes(game.youmonst?.data))
+            await potionbreathe(otmp);
         return;
     }
-    // C: save Blind props; force Blind for singular(xname) only.
+    // C `:1292–1296` — force Blind so singular(xname) skips observe_object.
     const u = game.u || (game.u = {});
     const save_HBlinded = u.HBlinded | 0;
     const save_BBlinded = u.BBlinded | 0;
@@ -1675,17 +1684,34 @@ async function chest_shatter_msg(otmp) {
     u.HBlinded = save_HBlinded;
     u.BBlinded = save_BBlinded;
     u.Blind = save_Blind;
+    // C `:1297–1316` — oc_material switch in C order.
     const mat = game.objects?.[otmp.otyp]?.oc_material | 0;
-    let disposition = 'is destroyed';
-    if (mat === MAT_PAPER) disposition = 'is torn to shreds';
-    else if (mat === MAT_WAX) disposition = 'is crushed';
-    else if (mat === MAT_VEGGY) disposition = 'is pulped';
-    else if (mat === MAT_FLESH) disposition = 'is mashed';
-    else if (mat === MAT_GLASS) disposition = 'shatters';
-    else if (mat === MAT_WOOD) disposition = 'splinters to fragments';
-    // C: pline("%s %s!", An(thing), disposition);
-    const named = an(thing);
-    await pline(`${named.charAt(0).toUpperCase()}${named.slice(1)} ${disposition}!`);
+    let disposition;
+    switch (mat) {
+    case MAT_PAPER:
+        disposition = 'is torn to shreds';
+        break;
+    case MAT_WAX:
+        disposition = 'is crushed';
+        break;
+    case MAT_VEGGY:
+        disposition = 'is pulped';
+        break;
+    case MAT_FLESH:
+        disposition = 'is mashed';
+        break;
+    case MAT_GLASS:
+        disposition = 'shatters';
+        break;
+    case MAT_WOOD:
+        disposition = 'splinters to fragments';
+        break;
+    default:
+        disposition = 'is destroyed';
+        break;
+    }
+    // C `:1317` — pline("%s %s!", An(thing), disposition);
+    await pline('%s %s!', An(thing), disposition);
 }
 
 /**

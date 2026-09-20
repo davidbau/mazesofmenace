@@ -24,6 +24,7 @@ import { savecemetery, restcemetery } from './dungeon.js';
 import { forget_temple_entry } from './priest.js';
 import { peek_track } from './track.js';
 import { timer_is_local, light_is_local } from './mkobj.js';
+import { write_ls } from './light.js';
 
 /**
  * C ref: save.c savetrapchn / restore.c getlev trap loop `:1149–1163`.
@@ -324,13 +325,13 @@ function lightIdNumber(ls) {
 }
 
 function serLight(ls) {
-    return {
-        type: ls.type | 0,
-        x: ls.x | 0,
-        y: ls.y | 0,
-        range: ls.range | 0,
-        id: lightIdNumber(ls),
-    };
+    // C ref: light.c maybe_write_ls `:582–608` write_it arm (`:598`
+    // write_ls) — per-entry save write with the pointer→id fixup and the
+    // chain verification. write_ls returns the record (the Sfo_ls_t
+    // analogue) or Null for the bad-type arm C `:699–701` (impossible-only,
+    // unwritten); callers skip Null. lightIdNumber stays for the relink
+    // (numeric-id) path below, not the save write.
+    return write_ls(ls);
 }
 
 function snapshotLocalTimers() {
@@ -350,7 +351,9 @@ function snapshotLocalLights() {
         if ((ls.type | 0) === LS_OBJECT && !ls.id) continue;
         // C maybe_write_ls RANGE_LEVEL: light_is_local (mx > 0)
         if (!light_is_local(ls)) continue;
-        out.push(serLight(ls));
+        // write_ls Null ≡ C bad-type arm (impossible-only, unwritten).
+        const rec = serLight(ls);
+        if (rec) out.push(rec);
     }
     return out;
 }
@@ -369,7 +372,8 @@ function serLightList(list) {
     for (const ls of list || []) {
         if (!ls) continue;
         if ((ls.type | 0) === LS_OBJECT && !ls.id) continue;
-        out.push(serLight(ls));
+        const rec = serLight(ls);
+        if (rec) out.push(rec);
     }
     return out;
 }
@@ -549,7 +553,8 @@ export function snapshotGlobalLights() {
         if (!ls) continue;
         if ((ls.type | 0) === LS_OBJECT && !ls.id) continue;
         if (light_is_local(ls)) continue;
-        out.push(serLight(ls));
+        const rec = serLight(ls);
+        if (rec) out.push(rec);
     }
     return out;
 }

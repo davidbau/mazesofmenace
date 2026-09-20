@@ -30,7 +30,7 @@ import { rnd, d, rn2, rn1 } from './rng.js';
 import {
     pline, pline_mon, set_msg_xy, mon_visible, canspotmon, map_invisible,
     canseemon, newsym, docrt, swallowed, flush_topl_more, tp_sensemon,
-    shieldeff, urgent_pline, You_feel, verbalize, impossible,
+    shieldeff, urgent_pline, You, You_feel, verbalize, impossible,
     flush_screen, bot, sensemon,
 } from './display.js';
 import { cansee, couldsee, vision_recalc, vision_off_newsym_gbuf } from './vision.js';
@@ -2360,18 +2360,25 @@ async function mhitm_ad_legs_u(mtmp, _mattk, mhm) {
 }
 
 /**
- * C ref: uhitm.c mhitm_ad_poly — mhitu (mdef == youmonst) arm.
- * hitmsg; if Maybe_Half_Phys(dmg) < current HP → mon_poly or negated msg.
- * Named omissions: magr.mcan You aren't transformed polish.
+ * C ref: uhitm.c mhitm_ad_poly `:3753–3763` — mhitu (mdef == youmonst) arm.
+ * negated hoisted to fn top per `:3734–3735` (rn2(10) inside
+ * mhitm_mgc_atk_negated draws even when the HP gate below fails) incl.
+ * magr->mspec_used; mdef null idiom routes to magic_negation_you(),
+ * which is C magic_negation(&gy.youmonst) (mhitu.c:1089).
+ * hitmsg `:3755`; Maybe_Half_Phys vs Upolyd HP `:3756`; mcan-gated
+ * You("aren't transformed.") `:3757–3759`; else mon_poly + HIT/done
+ * `:3760–3763` (C sets no DEF_DIED here).
+ * Named omissions: none.
  */
 async function mhitm_ad_poly_u(mtmp, mattk, mhm) {
+    const negated = (await mhitm_mgc_atk_negated(mtmp, null, false))
+        || !!mtmp.mspec_used;
     await hitmsg(mtmp, mattk);
     const u = game.u || {};
     const curhp = Upolyd(u) ? (u.mh | 0) : (u.uhp | 0);
     if (maybe_half_phys(mhm.damage | 0) < curhp) {
-        const negated = await mhitm_mgc_atk_negated(mtmp, null, false);
         if (negated) {
-            if (mtmp.mcan) await pline("You aren't transformed.");
+            if (mtmp.mcan) await You("aren't transformed.");
         } else {
             mhm.damage = await mon_poly(mtmp, game.youmonst, mhm.damage | 0);
             mhm.hitflags |= M_ATTK_HIT;

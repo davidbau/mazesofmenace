@@ -78,7 +78,7 @@ import { in_your_sanctuary, p_coaligned, ghod_hitsu, inhistemple } from './pries
 import { inhishop } from './shk.js';
 import { in_rooms, is_pool, is_lava, disturb_buried_zombies, stop_occupation } from './hack.js';
 import { inv_weight, weight_cap } from './invent.js';
-import { maybe_m_dowear_special, extract_from_minvent, update_mon_extrinsics, mon_set_minvis, which_armor } from './worn.js';
+import { maybe_m_dowear_special, extract_from_minvent, update_mon_extrinsics, mon_set_minvis, which_armor, res_to_mr } from './worn.js';
 import { adjalign } from './attrib.js';
 import { SetVoice } from './sndprocs.js';
 import { maybe_gasp, growl } from './sounds.js';
@@ -2697,46 +2697,53 @@ export async function meatcorpse(mtmp) {
     return 0;
 }
 
-/** C ref: prop.h res_to_mr — FIRE_RES..STONE_RES → MR_* bit. */
-function res_to_mr_mon(r) {
-    if (r >= FIRE_RES && r <= STONE_RES) return 1 << (r - 1);
-    return 0;
-}
-
 /**
- * C ref: mon.c mon_give_prop — MR_* mintrinsics from corpse resist props.
- * Strength / teleport / other hero-only props are ignored.
+ * C ref: mon.c mon_give_prop `:1726–1774` — grant a corpse resist
+ * intrinsic to a monster. Async only because live pline_mon must be
+ * awaited; C is sync void. Callees all live: res_to_mr (worn.js,
+ * prop.h), canseemon + pline_mon (display.js), Monnam (do_name.js).
  */
 export async function mon_give_prop(mtmp, prop) {
-    let msg = null;
-    switch (prop | 0) {
-    case FIRE_RES:
-        msg = `${Monnam(mtmp)} shivers slightly.`;
+    let msg = null; // C `:1728` const char *msg = NULL
+    // C `:1729` unsigned short intrinsic = 0 (MR_* constant) — below.
+    /* C `:1731–1733` — pets lack the hero's fields, so non-resist
+       props (strength gain, teleport control, whatever) are ignored. */
+    switch (prop | 0) { // C `:1734` switch (prop); |0 is the int cast
+    case FIRE_RES: // C `:1735–1737`
+        msg = '%s shivers slightly.';
         break;
-    case COLD_RES:
-        msg = `${Monnam(mtmp)} looks quite warm.`;
+    case COLD_RES: // C `:1738–1740`
+        msg = '%s looks quite warm.';
         break;
-    case SLEEP_RES:
-        msg = `${Monnam(mtmp)} looks wide awake.`;
+    case SLEEP_RES: // C `:1741–1743`
+        msg = '%s looks wide awake.';
         break;
-    case DISINT_RES:
-        msg = `${Monnam(mtmp)} looks very firm.`;
+    case DISINT_RES: // C `:1744–1746`
+        msg = '%s looks very firm.';
         break;
-    case SHOCK_RES:
-        msg = `${Monnam(mtmp)} crackles with static electricity.`;
+    case SHOCK_RES: // C `:1747–1749`
+        msg = '%s crackles with static electricity.';
         break;
-    case POISON_RES:
-        msg = `${Monnam(mtmp)} looks healthy.`;
+    case POISON_RES: // C `:1750–1752`
+        msg = '%s looks healthy.';
         break;
-    default:
+    default: // C `:1753–1755` return (can't give it; break unreachable)
         return;
     }
-    const intrinsic = res_to_mr_mon(prop);
-    if (((mtmp.data?.mresists | 0) | (mtmp.mintrinsics | 0)) & intrinsic) {
-        msg = null;
-    }
-    if (intrinsic) mtmp.mintrinsics = (mtmp.mintrinsics | 0) | intrinsic;
-    if (canseemon(mtmp) && msg) await pline_mon(mtmp, msg);
+    const intrinsic = res_to_mr(prop); // C `:1757`
+    /* C `:1759–1764` — no message if already intrinsically immune, but
+       still grant the bit when it only came from mresists; an extrinsic-
+       only property still prints, which is why mon_resistancebits
+       isn't used here. */
+    if (((mtmp.data?.mresists | 0) | (mtmp.mintrinsics | 0)) & intrinsic)
+        msg = null; // C `:1764` msg = (const char *) 0
+    if (intrinsic) // C `:1766–1767`
+        mtmp.mintrinsics = (mtmp.mintrinsics | 0) | intrinsic;
+    /* C `:1769–1773` — DISABLE/RESTORE_WARNING_FORMAT_NONLITERAL are
+       compile-time only (no JS equivalent); Monnam stays an argument
+       so it evaluates only when canseemon && msg, as in C. */
+    if (canseemon(mtmp) && msg)
+        await pline_mon(mtmp, msg, Monnam(mtmp));
 }
 
 /**

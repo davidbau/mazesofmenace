@@ -26,6 +26,7 @@ import {
     SHOCK_RES, ACID_RES, REFLECTING,
     W_ARM, W_ARMOR, W_ACCESSORY, W_WEP, W_SWAPWEP,
     BLND_RES,
+    Upolyd,
 } from './const.js';
 import { defends, defends_when_carried, Is_dragon_armor } from './artifact.js';
 import { MON_WEP } from './weapon.js';
@@ -56,6 +57,20 @@ const AD_ELEC = 6;
 const AD_DRST = 7;
 const AD_ACID = 8;
 const AD_RBRE = 242;
+
+/**
+ * C ref: mondata.c raceptr `:1359-1365` — race pointer of a monster: the
+ * hero while not polymorphed reads the race table (`&mons[urace]`),
+ * otherwise the current form (`mtmp->data`). Fresh `mons()` objects
+ * carry `mndx`, so callers compare that (C compares the pointer).
+ * @param {object} mtmp
+ */
+export function raceptr(mtmp) {
+    if ((mtmp === game.youmonst || !!mtmp?._youmonst) && !Upolyd(game.u)) {
+        return mons(game.urace?.mnum);
+    }
+    return mtmp?.data;
+}
 
 /**
  * C ref: mondata.c set_mon_data — assign data/mnum; when new form is
@@ -396,56 +411,79 @@ const PM_KILLER_BEE = monsterNames.indexOf('PM_KILLER_BEE');
 const PM_QUEEN_BEE = monsterNames.indexOf('PM_QUEEN_BEE');
 
 /**
- * C ref: mondata.c same_race — species kinship for cannibal / peace checks.
- * Branch envelope: exact; player races; giant/golem/mind flayer; kobold/
- * ogre/nymph/centaur/unicorn/dragon/naga; rider/minion; tengu/imp/demon;
- * undead letter families; little↔big growth; gargoyle; bee; longworm.
+ * C ref: mondata.c same_race `:771-871` — species kinship for the cannibal
+ * and peace checks. C callers: dog.c:1080 (dogfood), eat.c:776
+ * (maybe_cannibal), muse.c:255, sounds.c:706-707 (domonnoise remap).
+ * Branch envelope: exact `:775-776`; player races `:778-787`;
+ * giant/golem/mind flayer `:789-794`; kobold+zombie+mummy `:795-798`;
+ * ogre/nymph/centaur/unicorn/dragon/naga `:799-810`; rider/minion
+ * `:812-815`; tengu `:817-818`; imp `:819-823`; demon `:824-825`; undead
+ * letters `:826-840` (no terminal return — a miss falls through);
+ * little/big growth `:843-857`; gargoyle/bee `:859-863`; longworm
+ * `:865-866`; miss `:870`.
  */
 export function same_race(pm1, pm2) {
+    /* C `:773` reads the letters first; the null guard is JS-only (C takes
+       NONNULLARG12, extern.h:1892) and pre-existing — kept. */
     if (!pm1 || !pm2) return false;
-    if (pm1 === pm2 || (pm1.mndx != null && pm1.mndx === pm2.mndx)) return true;
-
-    if (is_human(pm1)) return is_human(pm2);
-    if (is_elf(pm1)) return is_elf(pm2);
-    if (is_dwarf(pm1)) return is_dwarf(pm2);
-    if (is_gnome(pm1)) return is_gnome(pm2);
-    if (is_orc(pm1)) return is_orc(pm2);
-    if (is_giant(pm1)) return is_giant(pm2);
-    if (is_golem(pm1)) return is_golem(pm2);
-    if (is_mind_flayer(pm1)) return is_mind_flayer(pm2);
-
     const let1 = pm1.mlet;
     const let2 = pm2.mlet;
-    const m1 = pm1.mndx | 0;
-    const m2 = pm2.mndx | 0;
 
-    if (let1 === 'S_KOBOLD' || m1 === PM_KOBOLD_ZOMBIE || m1 === PM_KOBOLD_MUMMY) {
-        return let2 === 'S_KOBOLD' || m2 === PM_KOBOLD_ZOMBIE || m2 === PM_KOBOLD_MUMMY;
+    /* C `:775-776` — exact match. C compares table pointers; mons() may
+       hand out fresh wrappers for one index, so equal mndx counts too. */
+    if (pm1 === pm2 || (pm1.mndx != null && pm1.mndx === pm2.mndx)) return true;
+
+    /* C compares `pm == &mons[PM_X]` table pointers (`:795-798`, `:817`,
+       `:859-863`); JS compares live monsndx() against monsterNames indices
+       (same table order — pm()/monsterNames convention). */
+    const m1 = monsndx(pm1);
+    const m2 = monsndx(pm2);
+
+    /* C `:777-787` — player races have their own predicates */
+    if (is_human(pm1)) return is_human(pm2); // `:778-779`
+    if (is_elf(pm1)) return is_elf(pm2); // `:780-781`
+    if (is_dwarf(pm1)) return is_dwarf(pm2); // `:782-783`
+    if (is_gnome(pm1)) return is_gnome(pm2); // `:784-785`
+    if (is_orc(pm1)) return is_orc(pm2); // `:786-787`
+    /* C `:788-794` — other creatures are less precise */
+    if (is_giant(pm1)) return is_giant(pm2); // `:789-790`
+    if (is_golem(pm1)) return is_golem(pm2); // `:791-792`
+    if (is_mind_flayer(pm1)) return is_mind_flayer(pm2); // `:793-794`
+    if (let1 === 'S_KOBOLD' || m1 === PM_KOBOLD_ZOMBIE || m1 === PM_KOBOLD_MUMMY) { // `:795-796`
+        return let2 === 'S_KOBOLD' || m2 === PM_KOBOLD_ZOMBIE || m2 === PM_KOBOLD_MUMMY; // `:797-798`
     }
-    if (let1 === 'S_OGRE') return let2 === 'S_OGRE';
-    if (let1 === 'S_NYMPH') return let2 === 'S_NYMPH';
-    if (let1 === 'S_CENTAUR') return let2 === 'S_CENTAUR';
-    if (is_unicorn(pm1)) return is_unicorn(pm2);
-    if (let1 === 'S_DRAGON') return let2 === 'S_DRAGON';
-    if (let1 === 'S_NAGA') return let2 === 'S_NAGA';
-    if (is_rider(pm1)) return is_rider(pm2);
-    if (is_minion(pm1)) return is_minion(pm2);
+    if (let1 === 'S_OGRE') return let2 === 'S_OGRE'; // `:799-800`
+    if (let1 === 'S_NYMPH') return let2 === 'S_NYMPH'; // `:801-802`
+    if (let1 === 'S_CENTAUR') return let2 === 'S_CENTAUR'; // `:803-804`
+    if (is_unicorn(pm1)) return is_unicorn(pm2); // `:805-806`
+    if (let1 === 'S_DRAGON') return let2 === 'S_DRAGON'; // `:807-808`
+    if (let1 === 'S_NAGA') return let2 === 'S_NAGA'; // `:809-810`
+    /* C `:811-815` — other critters get steadily messier */
+    if (is_rider(pm1)) return is_rider(pm2); // `:812-813`
+    if (is_minion(pm1)) return is_minion(pm2); // `:814-815`
+    /* C `:816-818` — tengu don't match imps (both-tengu handled by exact) */
     if (m1 === PM_TENGU || m2 === PM_TENGU) return false;
-    if (let1 === 'S_IMP') return let2 === 'S_IMP';
-    if (let2 === 'S_IMP') return false;
-    if (is_demon(pm1)) return is_demon(pm2);
+    if (let1 === 'S_IMP') return let2 === 'S_IMP'; // `:819-820`
+    /* C `:821-823` — minor demons (imps) don't match major demons */
+    else if (let2 === 'S_IMP') return false;
+    if (is_demon(pm1)) return is_demon(pm2); // `:824-825`
+    /* C `:826-840` — no terminal return inside the pm1 arm: a letter miss
+       falls through to the growth / gargoyle / bee / longworm checks. */
     if (is_undead(pm1)) {
-        if (let1 === 'S_ZOMBIE') return let2 === 'S_ZOMBIE';
-        if (let1 === 'S_MUMMY') return let2 === 'S_MUMMY';
-        if (let1 === 'S_VAMPIRE') return let2 === 'S_VAMPIRE';
-        if (let1 === 'S_LICH') return let2 === 'S_LICH';
-        if (let1 === 'S_WRAITH') return let2 === 'S_WRAITH';
-        if (let1 === 'S_GHOST') return let2 === 'S_GHOST';
-        return false;
+        if (let1 === 'S_ZOMBIE') return let2 === 'S_ZOMBIE'; // `:827-828`
+        if (let1 === 'S_MUMMY') return let2 === 'S_MUMMY'; // `:829-830`
+        if (let1 === 'S_VAMPIRE') return let2 === 'S_VAMPIRE'; // `:831-832`
+        if (let1 === 'S_LICH') return let2 === 'S_LICH'; // `:833-834`
+        if (let1 === 'S_WRAITH') return let2 === 'S_WRAITH'; // `:835-836`
+        if (let1 === 'S_GHOST') return let2 === 'S_GHOST'; // `:837-838`
+    } else if (is_undead(pm2)) {
+        return false; // `:839-840`
     }
-    if (is_undead(pm2)) return false;
 
+    /* C `:842-857` — monsters which grow into more mature forms; m1 != m2
+       is known from the exact check, so only m1's chain is walked. */
     if (let1 === let2) {
+        /* C `:846-852` — all smaller forms of m1, then `:853-856` larger */
         for (let prv = m1, nxt = big_to_little(m1); nxt !== prv;
             prv = nxt, nxt = big_to_little(nxt)) {
             if (nxt === m2) return true;
@@ -455,13 +493,15 @@ export function same_race(pm1, pm2) {
             if (nxt === m2) return true;
         }
     }
-    if (m1 === PM_GARGOYLE || m1 === PM_WINGED_GARGOYLE) {
-        return m2 === PM_GARGOYLE || m2 === PM_WINGED_GARGOYLE;
+    /* C `:858-863` — not caught by little/big handling */
+    if (m1 === PM_GARGOYLE || m1 === PM_WINGED_GARGOYLE) { // `:859`
+        return m2 === PM_GARGOYLE || m2 === PM_WINGED_GARGOYLE; // `:860-861`
     }
-    if (m1 === PM_KILLER_BEE || m1 === PM_QUEEN_BEE) {
-        return m2 === PM_KILLER_BEE || m2 === PM_QUEEN_BEE;
+    if (m1 === PM_KILLER_BEE || m1 === PM_QUEEN_BEE) { // `:862`
+        return m2 === PM_KILLER_BEE || m2 === PM_QUEEN_BEE; // `:863`
     }
-    if (is_longworm(pm1)) return is_longworm(pm2);
+    if (is_longworm(pm1)) return is_longworm(pm2); // `:865-866`
+    /* C `:867-870` — didn't match */
     return false;
 }
 
