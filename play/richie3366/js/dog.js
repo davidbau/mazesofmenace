@@ -52,7 +52,7 @@ import {
     impossible,
 } from './display.js';
 import { redraw_worm, count_wsegs, wormgone, get_wormno, initworm } from './worm.js';
-import { set_residency } from './shk.js';
+import { set_residency, make_happy_shoppers } from './shk.js';
 import { Is_qstart } from './quest.js';
 import { builds_up } from './hacklib.js';
 import { hero_conflict } from './mondata.js';
@@ -1161,16 +1161,53 @@ export async function mon_arrive(mtmp, when) {
 }
 
 /**
- * C ref: dog.c losedogs `:303–415` — Before_you re-place, then mydogs
- * With_you, then migrating_mons After_you (mux/muy match u.uz,
- * xyloc != MIGR_EXACT_XY), then the failed_arrivals drain back onto
- * migrating_mons via fmon + m_into_limbo. Named omissions: kops-dismiss
- * scan (dismissKops/make_happy_shoppers head `:310–356`).
+ * C ref: dog.c losedogs `:303–415` — kops-dismiss scan, then Before_you
+ * re-place, then mydogs With_you, then migrating_mons After_you
+ * (mux/muy match u.uz, xyloc != MIGR_EXACT_XY), then the
+ * failed_arrivals drain back onto migrating_mons via fmon +
+ * m_into_limbo. Every callee live; both C callers wired
+ * (do.c:1816 goto_level → do.js, cmd.c:1047 makemap → wizcmds.js).
  */
 export async function losedogs() {
     const uz = game.u?.uz || {};
     /* C `:303–309` — arrivals reset per call. */
     failed_arrivals = [];
+
+    /* C `:310–356` — kops-dismiss scan. A returning shopkeeper on
+       migrating_mons whose dismiss_kops is set votes to dismiss the
+       kops (flag reset as read); an unpacified returning shk vetoes,
+       and so does any hostile shk accompanying the hero on mydogs.
+       Dismissal runs before placement: the hero may be displaced by a
+       re-placed migrant later, so kops are cleared while there is room. */
+    let dismissKops = 0;
+    for (const mtmp of game.migrating_mons || []) {
+        if ((mtmp.mux | 0) !== (uz.dnum | 0)
+            || (mtmp.muy | 0) !== (uz.dlevel | 0))
+            continue;
+        if (mtmp.isshk) {
+            const eshkp = ESHK(mtmp);
+            if (eshkp?.dismiss_kops) {
+                if (dismissKops === 0) dismissKops = 1;
+                eshkp.dismiss_kops = false; /* reset */
+            } else if (!(mtmp.mpeaceful | 0)) {
+                /* an unpacified shk is returning; don't dismiss kops
+                   even if another pacified one is willing to do so */
+                dismissKops = -1;
+                /* [keep looping; later monsters might need ESHK reset] */
+            }
+        }
+    }
+    /* C `:340–350` — same check for mydogs; a hostile shk accompanying
+       the hero vetoes (dismiss_kops is only ever set on migrating_mons,
+       so no flag is read here). The C loop condition folds into break. */
+    for (const mtmp of game.mydogs || []) {
+        if (dismissKops < 0) break;
+        if (mtmp.isshk && !(mtmp.mpeaceful | 0)) dismissKops = -1;
+    }
+
+    /* C `:352–356` — a hostile shk chased to another level then paid off
+       there summons kops here; now that he is back, clear them. */
+    if (dismissKops > 0) await make_happy_shoppers(true);
 
     /* C `:366–374` — Before_you: accessible-but-unleft migrants re-place
        before pets so pets can't steal their spots. */

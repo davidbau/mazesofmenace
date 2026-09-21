@@ -64,7 +64,7 @@ import { clearpriests } from './priest.js';
 import { shkname, shkname_is_pname } from './shknam.js';
 import {
     enlightenment, display_inventory, discover_object, makeknown, sortloot,
-    currency, free_pickinv_cache,
+    currency, free_pickinv_cache, perm_invent_toggled,
 } from './invent.js';
 import {
     list_vanquished, list_genocided, show_conduct, count_achievements,
@@ -509,12 +509,25 @@ export function formatkiller(how, incl_helpless = false) {
 }
 
 /**
- * C ref: end.c done_object_cleanup — place in-flight thrown/kicked missiles
- * onto the map before disclosure/bones so they are not lost from limbo.
- * Named omissions: inven_inuse; uchain/uball placebc; perm_invent clear;
- * closed_door rejection inside accessible (ACCESSIBLE-only approx).
+ * C ref: end.c done_object_cleanup `:850–903` — use up the active invent
+ * item, place limbo thrown/kicked missiles on the map, lift the limbo
+ * ball&chain, drop the perm_invent window, all before disclosure/bones.
+ * Async: inven_inuse + lift_covet_and_placebc are async callees
+ * (imports.mjs: end→save / end→ball are CHECK, so both load lazily via
+ * dynamic import, same shape as the allmain.js edge in really_done).
+ * Callers: end.c:1157 really_done (below); save.c:98 dosave0
+ * (js/save.js); save.c:1111 freedynamicdata has no JS counterpart
+ * (save-freeing teardown — named, not wired).
+ * Named omissions: closed_door rejection inside accessible()
+ * (ACCESSIBLE-only approx below).
  */
-function done_object_cleanup() {
+export async function done_object_cleanup() {
+    // C `:854` — killed while using a disposable item: finish it off
+    // before disclosure/bones (restore.c inven_inuse, quietly=TRUE).
+    const { inven_inuse } = await import('./save.js');
+    await inven_inuse(true);
+    // C `:873–877` — missile square is u + dx/dy, hero square when
+    // off-map or blocked.
     const u = game.u || {};
     let ox = (u.ux | 0) + (u.dx | 0);
     let oy = (u.uy | 0) + (u.dy | 0);
@@ -527,6 +540,8 @@ function done_object_cleanup() {
         ox = u.ux | 0;
         oy = u.uy | 0;
     }
+    // C `:878–885` — limbo missiles onto the map (bypassing
+    // flooreffects), stacked, cleared (D-0275).
     const thrown = game._thrownobj;
     if (thrown && thrown.where === OBJ_FREE) {
         place_object(thrown, ox, oy);
@@ -538,6 +553,22 @@ function done_object_cleanup() {
         place_object(kicked, ox, oy);
         stackobj(kicked);
         game._kickedobj = null;
+    }
+    // C `:886–890` — Punished death mid-change/swallowed: ball&chain in
+    // limbo go back on the floor (the `placebc()` comment is dead in C —
+    // the live call is lift_covet_and_placebc; hack.h:110
+    // override_restriction is -1, cf. ball.js check_restriction).
+    const uchain = u.uchain;
+    if (uchain && uchain.where === OBJ_FREE) {
+        const { lift_covet_and_placebc } = await import('./ball.js');
+        await lift_covet_and_placebc(-1);
+    }
+    // C `:894–897` — popup disclosure replaced the persistent window
+    // (avoids "Bad fruit #n" when saving bones).
+    const iflags = game.iflags || {};
+    if (iflags.perm_invent) {
+        iflags.perm_invent = false;
+        perm_invent_toggled(true); /* make interface notice the change */
     }
 }
 
@@ -962,7 +993,7 @@ async function show_death_rip_and_summary(how, umoney, endtime = 0) {
  * (no session effect); wait_synch/signals/sethanguphandler/exit_nhwindows
  * (platform/windowing, no JS counterpart); sound_exit_nhsound (no sound
  * lib); panic() caller (C end.c:470 — panic itself unported, own row);
- * inven_inuse / ball-chain arms of done_object_cleanup;
+ * done_object_cleanup arms (live export above);
  * unleash_all in finish_paybill; ParanoidBones getlin; DUMPLOG second
  * artifact_score; grddead inside mongone; display_pickinv cache setter;
  * insight fmt_elapsed_time / savegamestate / dosuspend / dosh
@@ -980,8 +1011,10 @@ async function really_done(how) {
     if (!game.iflags) game.iflags = {};
     game.iflags.vision_inited = false;
 
-    // C: done_object_cleanup before bones/disclosure — limbo missiles → map
-    if (!game.program_state.panicking) done_object_cleanup();
+    // C end.c `:1155–1160` — limbo missiles → map before bones/disclosure
+    // (skipped while panicking); perm_invent cleared again here since the
+    // panicking path never ran done_object_cleanup().
+    if (!game.program_state.panicking) await done_object_cleanup();
     game.iflags.perm_invent = false;
 
     // C really_done `:1165–1170` — one getnow for bones when[] / rip / topten

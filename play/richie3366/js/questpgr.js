@@ -11,6 +11,7 @@ import {
 import { NO_COLOR } from './terminal.js';
 import { align_gname, align_gtitle, align_str, rank_of, genders } from './roles.js';
 import { highc, strstri } from './hacklib.js';
+import { rn2 } from './rng.js';
 import { artiname } from './artifact.js';
 import {
     A_NEUTRAL, A_LAWFUL, MIN_QUEST_LEVEL, BUFSZ,
@@ -826,16 +827,89 @@ export function convert_line(inLine) {
     return out;
 }
 
-/** C ref: quest.lua common.quest_portal* — leader telepathy at dungeon entrance. */
+/** C ref: quest.lua common text-form entries (quest_portal output=pline
+ * comes from lua now, not a JS special case; banished :92-104). */
 const QUEST_COMMON = {
-    quest_portal: `You receive a faint telepathic message from %l:
+    quest_portal: {
+        output: 'pline',
+        text: `You receive a faint telepathic message from %l:
 Your help is urgently needed at %H!
 Look for a ...ic transporter.
 You couldn't quite make out that last message.`,
+    },
     quest_portal_again: 'You again sense %l pleading for help.',
     quest_portal_demand: 'You again sense %l demanding your attendance.',
     quest_complete_no_bell: `"The silver bell which was hoarded by %n will be
 essential in locating the Amulet of Yendor."`,
+    banished: {
+        output: 'text',
+        synopsis: '[You are banished from %H for betraying your allegiance to %d.]',
+        text: `"You have betrayed all those who hold allegiance to %d, as you once did.
+My allegiance to %d holds fast and I cannot condone or accept what you
+have done.
+
+Leave this place.  You shall never set foot at %H again.
+That which you seek is now lost forever, for without the Bell of Opening,
+you will never be able to enter the place where he who has the Amulet
+resides.
+
+Go now!  You are banished from this place.]`,
+    },
+};
+
+/**
+ * C ref: dat/quest.lua:76-90 angel_cuss (14 strings) + :106-133 demon_cuss
+ * (27 strings) — array-form common entries with no text/synopsis/output
+ * keys. C com_pager_core :543/:552-568 picks lua[rn2(nelems)+1]; output
+ * stays default, synopsis stays null. Callers: wizard.c cuss_scroll
+ * :873/:880 via com_pager.
+ */
+const QUEST_CUSS_ARRAYS = {
+    angel_cuss: [
+        "\"Repent, and thou shalt be saved!\"",
+        "\"Thou shalt pay for thine insolence!\"",
+        "\"Very soon, my child, thou shalt meet thy maker.\"",
+        "\"The great %D has sent me to make you pay for your sins!\"",
+        "\"The wrath of %D is now upon you!\"",
+        "\"Thy life belongs to %D now!\"",
+        "\"Dost thou wish to receive thy final blessing?\"",
+        "\"Thou art but a godless void.\"",
+        "\"Thou art not worthy to seek the Amulet.\"",
+        "\"No one expects the Spanish Inquisition!\"",
+        "\"Judgment hath been passed upon thee, %p.\"",
+        "\"Thy reckoning is at hand, %p.\"",
+        "\"Thou shalt be brought before %D for thy crimes!\"",
+        "\"With %D as my witness, I shall strike thee down.\"",
+    ],
+    demon_cuss: [
+        "\"I first mistook thee for a statue, when I regarded thy head of stone.\"",
+        "\"Come here often?\"",
+        "\"Doth pain excite thee?  Wouldst thou prefer the whip?\"",
+        "\"Thinkest thou it shall tickle as I rip out thy lungs?\"",
+        "\"Eat slime and die!\"",
+        "\"Go ahead, fetch thy mama!  I shall wait.\"",
+        "\"Go play leapfrog with a herd of unicorns!\"",
+        "\"Hast thou been drinking, or art thou always so clumsy?\"",
+        "\"This time I shall let thee off with a spanking, but let it not happen again.\"",
+        "\"I've met smarter (and prettier) acid blobs.\"",
+        "\"Look!  Thy bootlace is undone!\"",
+        "\"Mercy!  Dost thou wish me to die of laughter?\"",
+        "\"Run away!  Live to flee another day!\"",
+        "\"Thou hadst best fight better than thou canst dress!\"",
+        "\"Twixt thy cousin and thee, Medusa is the prettier.\"",
+        "\"Methinks thou wert unnaturally stirred by yon corpse back there, eh, varlet?\"",
+        "\"Up thy nose with a rubber hose!\"",
+        "\"Verily, thy corpse could not smell worse!\"",
+        "\"Wait!  I shall polymorph into a grid bug to give thee a fighting chance!\"",
+        "\"Why search for the Amulet?  Thou wouldst but lose it, cretin.\"",
+        "\"Thou ought to be a comedian, thy skills are so laughable!\"",
+        "\"Thy gaze is so vacant, I thought thee a floating eye!\"",
+        "\"Thy head is unfit for a mind flayer to munch upon!\"",
+        "\"Only thy reflection could love thee!\"",
+        "\"Hast thou considered masking thine odour?\"",
+        "\"Hold! Thy face is a most exquisite torture!\"",
+        "\"I should fart in thy direction, but it might improve thy smell!\"",
+    ],
 };
 
 /**
@@ -863,13 +937,20 @@ function skip_pager(_common) {
  */
 function lookup_quest_entry(section, msgid, fallbackTried) {
     if (section === 'common') {
+        // C :517-541 entry table; array-form entries (no "text" key) carry
+        // text:null until the :552-568 rn2 arm resolves them.
+        const arr = QUEST_CUSS_ARRAYS[msgid];
+        if (arr) return { text: null, synopsis: null, output: 'default', array: arr };
         const raw = QUEST_COMMON[msgid];
-        if (!raw) return null;
-        return {
-            text: raw,
-            synopsis: null,
-            output: msgid === 'quest_portal' ? 'pline' : 'default',
-        };
+        if (raw == null) return null;
+        if (typeof raw === 'object') {
+            return {
+                text: raw.text ?? null,
+                synopsis: raw.synopsis ?? null,
+                output: raw.output ?? 'default',
+            };
+        }
+        return { text: raw, synopsis: null, output: 'default' };
     }
     const table = QUEST_ROLE_TEXT[msgid];
     const text = table?.[section];
@@ -921,56 +1002,92 @@ async function deliver_by_window(raw, _how) {
 }
 
 /**
- * C ref: questpgr.c com_pager_core `:467–621`.
- * nhl_init shuffle, lookup text/synopsis/output, promote default+newline
- * to window (synthesize synopsis when lua has none), deliver, then
- * convert_line(synopsis) + putmsghistory(FALSE) for ^P recall.
+ * C ref: questpgr.c com_pager_core `:468–621`, in C order.
+ * skip_pager gate; nhl_init shuffle; questtext/section/entry lookup with
+ * msg_fallbacks tryagain; rawtext arm; synopsis/output options; array
+ * rn2 arm; default+newline/long promote-to-window with synthesized
+ * synopsis; pline/window delivery; convert_line(synopsis) +
+ * putmsghistory(FALSE) for ^P recall; compagerdone frees (GC in JS).
  *
- * Named omissions: lua VM / msg_fallbacks beyond goal_alt; array rn2
- * (angel_cuss/demon_cuss); explicit single-line output=text; NHW_MENU
- * except legacy; other-role bodies; pauper_legacy.
- * convert_arg catalogue is D-1649;
+ * Named omissions: lua VM init/load/malformed-table impossible() text —
+ * tables are embedded constants so load cannot fail, and a JS miss also
+ * covers unported role bodies (map-named) where C shows text and never
+ * calls impossible(), so misses stay silent-FALSE; NHW_MENU except legacy
+ * (legacy/pauper_legacy own com_pager_legacy); TEST_PATTERN (lua self-test
+ * only); other-role bodies; convert_arg catalogue is D-1649;
  * convert_line pronoun %Xh is D-1634. qt_pager common retry is D-1662.
+ * Lua helpers with no JS counterpart: nhl_init/nhl_loadlua/nhl_done
+ * (no VM — embedded tables), get_table_str_opt/get_table_option
+ * (the lookup above), dupstr (string assign).
  *
  * @param {string} section role filecode or "common"
  * @param {string} msgid
- * @param {boolean} showerror C impossible() on miss — named omit
+ * @param {boolean} showerror C impossible() on miss — named omit (see above)
  * @param {{ text?: string }|null} rawOut C char **rawtext; stinky_nemesis
  */
 async function com_pager_core(section, msgid, showerror, rawOut) {
+    // C :484 — skip_pager(TRUE) gate (WIZKIT suppresses plot pager).
     if (skip_pager(true)) return false;
 
-    // C: nhl_init → nhlib.lua shuffle(align) then load QTEXT_FILE
+    // C :487-497 — nhl_init (+nhlib align shuffle) and QTEXT_FILE load;
+    // :501-514 questtext + section tables. Embedded tables cannot fail to
+    // init/load (nhl_nhlib_align_shuffle covers the shuffle half).
     nhl_nhlib_align_shuffle();
 
+    // C :517-541 — entry table with msg_fallbacks tryagain (lua has only
+    // goal_alt→goal_next; inside lookup_quest_entry). Miss → impossible()
+    // when showerror, then compagerdone FALSE (silent here — see doc).
     const entry = lookup_quest_entry(section, msgid, false);
-    const text = entry?.text || null;
-    if (!text) {
-        // C: impossible() when showerror; miss returns FALSE (qt_pager
-        // then retries section "common", which nhl_init's again).
+    if (!entry) {
         void showerror;
         return false;
     }
+
+    // C :543 — text field (null for array-form entries).
+    let text = entry.text ?? null;
+    // C :544-548 — rawtext arm BEFORE the array arm: dupstr(text) with no
+    // display, res TRUE even when text is null.
     if (rawOut) {
         rawOut.text = text;
         return true;
     }
 
-    let synopsis = entry.synopsis || null;
+    // C :549-550 — synopsis + output ("default" → 0) options.
+    let synopsis = entry.synopsis ?? null;
     let output = howtoput2i(entry.output);
 
+    // C :552-568 — no text: entry is an array of strings; nelems<2 is
+    // impossible()+done, else text = array[rn2(nelems)+1] (lua 1-based;
+    // JS 0-based picks the same element with one rn2).
+    if (!text) {
+        const arr = entry.array ?? null;
+        const nelems = arr ? arr.length : 0;
+        if (nelems < 2) {
+            void showerror;
+            return false;
+        }
+        text = arr[rn2(nelems)];
+    }
+
+    // C :570-590 — output==0 default with a newline or BUFSZ-1 length
+    // promotes to window (2), synthesizing "[text]" with newlines→spaces
+    // when lua has no synopsis (C FIXME comment kept in the helper).
     if (output === 0 && (text.includes('\n') || text.length >= BUFSZ - 1)) {
         output = 2;
         if (!synopsis) synopsis = synthesize_window_synopsis(text);
     }
 
+    // C :592-595 — 0/1 pline, else window (3 → NHW_MENU; named omit —
+    // deliver_by_window shows text pages, menu lives in com_pager_legacy).
     if (output === 0 || output === 1) {
         await deliver_by_pline(text);
     } else {
-        // output==3 NHW_MENU named omit here (legacy uses com_pager_legacy)
         await deliver_by_window(text, output);
     }
 
+    // C :597-610 — synopsis via convert_line + putmsghistory(FALSE) for ^P
+    // recall (C #else arm: Strcpy, no added brackets); res TRUE, compagerdone
+    // frees + nhl_done (GC + nothing to tear down in JS).
     if (synopsis) {
         putmsghistory(convert_line(synopsis), false);
     }
@@ -1006,8 +1123,8 @@ export async function stinky_nemesis(mtmp) {
 
 /**
  * C ref: questpgr.c com_pager(msgid) → com_pager_core("common", …).
- * Named omissions: other common msgids (portal again/demand live;
- * quest_complete_no_bell D-1312); menu output; array rn2 picks.
+ * portal/again/demand/no_bell/banished/cuss arrays live; TEST_PATTERN
+ * (lua self-test) + menu output (legacy path) still named.
  */
 export async function com_pager(msgid) {
     await com_pager_core('common', msgid, true, null);
@@ -1017,7 +1134,7 @@ export async function com_pager(msgid) {
  * C ref: questpgr.c qt_pager `:629–634`.
  * com_pager_core(filecode, msgid, FALSE) then, on miss,
  * com_pager_core("common", msgid, TRUE). Each core runs nhl_init
- * (second shuffle is C). Array rn2 / pauper_legacy still named.
+ * (second shuffle is C). pauper_legacy still named (legacy path).
  */
 export async function qt_pager(msgid) {
     const code = game.urole?.filecode || 'Tou';

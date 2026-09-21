@@ -1848,7 +1848,7 @@ function pacify_guards() {
 
 /**
  * C ref: shk.c make_happy_shoppers — kops+guards iff no angry shk remains.
- * Caller losedogs still named.
+ * Caller losedogs wired (js/dog.js kops-dismiss head, C dog.c:352–356).
  */
 export async function make_happy_shoppers(silentkops) {
     if (!angry_shk_exists()) {

@@ -172,16 +172,25 @@ export function rndexp(gaining) {
 }
 
 /**
- * C ref: exper.c pluslvl(incr)
+ * C ref: exper.c pluslvl(incr) :306–372
  * incr false: potion / #levelchange / wraith (You_feel + set xp).
+ * Upolyd arm live (monhp_per_lvl :320 before newhp :324).
  * SoundAchievement deferred (no SND_LIB).
  */
 export async function pluslvl(incr) {
     const u = game.u || (game.u = {});
     if (!incr) await pline('You feel more experienced.');
 
-    // Upolyd monhp_per_lvl deferred
-    const hpinc = newhp();
+    // C `:317–323` — increase hit points (when polymorphed, do monster
+    // form first in order to retain normal human/whatever increase for
+    // later): monhp_per_lvl draw, mh += hpinc, then setuhpmax(mhmax,
+    // FALSE) acts as setmhmax() when Upolyd (clamps mh to mhmax).
+    if (Upolyd(u)) {
+        const hpincUp = monhp_per_lvl(game.youmonst); // C `:320`
+        u.mh = (u.mh || 0) + hpincUp; // C `:321`
+        setuhpmax(u.mhmax || 0, false); // C `:322`
+    }
+    const hpinc = newhp(); // C `:324`
     u.uhp = (u.uhp || 0) + hpinc;
     setuhpmax((u.uhpmax || 0) + hpinc, true);
 

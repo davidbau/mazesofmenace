@@ -104,7 +104,7 @@ import { weight, uncurse, curse, bless, blessorcurse, maybe_adjust_light, mkobj,
 import { A_WIS, A_STR, A_CON, exercise, adjalign } from './attrib.js';
 import {
     makeknown, getobj, identify_pack, near_capacity, update_inventory,
-    useup as useup_live,
+    useup as useup_live, Blind,
 } from './invent.js';
 import { more_experienced } from './exper.js';
 import {
@@ -136,7 +136,7 @@ import {
 import { vision_recalc, do_clear_area, cansee } from './vision.js';
 import { valid_cloud_pos, create_gas_cloud } from './region.js';
 import { getpos, getpos_sethilite } from './getpos.js';
-import { bcsign } from './rumors.js';
+import { bcsign, BY_COOKIE, outrumor } from './rumors.js';
 import { dist2 } from './hacklib.js';
 import { You_hear, closed_door, maybe_half_phys } from './hack.js';
 import { Soundeffect } from './sndprocs.js';
@@ -193,6 +193,7 @@ const SCR_GOLD_DETECTION = objectNames.indexOf('SCR_GOLD_DETECTION');
 const SCR_FOOD_DETECTION = objectNames.indexOf('SCR_FOOD_DETECTION');
 const SPE_DETECT_FOOD = objectNames.indexOf('SPE_DETECT_FOOD');
 const SCR_BLANK_PAPER = objectNames.indexOf('SCR_BLANK_PAPER');
+const FORTUNE_COOKIE = objectNames.indexOf('FORTUNE_COOKIE');
 const HEAVY_IRON_BALL = objectNames.indexOf('HEAVY_IRON_BALL');
 const SPE_BOOK_OF_THE_DEAD = objectNames.indexOf('SPE_BOOK_OF_THE_DEAD');
 const SPE_NOVEL = objectNames.indexOf('SPE_NOVEL');
@@ -2184,7 +2185,25 @@ export async function doread() {
     const otyp = scroll.otyp;
     // C ref: read.c:359 doread — no longer 'just picked up' (eat.js/apply.js idiom)
     scroll.pickup_prev = 0;
-    // cookie / shirt / credit / marker / coin / orb / candy deferred
+    // shirt / credit / marker / coin / orb / candy deferred
+    // C ref: read.c:365-377 doread — cookie reads via outrumor, which owns
+    // the Blind gate; first read while !Blind marks the literate conduct.
+    if (otyp === FORTUNE_COOKIE) {
+        if (game.flags?.verbose !== false)
+            await You('break up the cookie and throw away the pieces.');
+        await outrumor(bcsign(scroll), BY_COOKIE);
+        if (!Blind()) {
+            if (!game.u) game.u = {};
+            if (!game.u.uconduct) game.u.uconduct = {};
+            if (!(game.u.uconduct.literate | 0)) {
+                livelog_printf(LL_CONDUCT,
+                    'became literate by reading a fortune cookie');
+            }
+            game.u.uconduct.literate = (game.u.uconduct.literate | 0) + 1;
+        }
+        useup(scroll);
+        return 1; // C ECMD_TIME (this file returns 1 for TIME, 0 for OK)
+    }
 
     if (scroll.oclass !== SCROLL_CLASS && scroll.oclass !== SPBOOK_CLASS) {
         await pline('That is a silly thing to read.');
@@ -2365,7 +2384,7 @@ function upstart(str) {
 }
 
 /** C ref: polyself.c udeadinside — dead / condemned / empty. */
-function udeadinside() {
+export function udeadinside() {
     const data = game.youmonst?.data;
     if (!nonliving(data)) return 'dead';
     if (!weirdnonliving(data)) return 'condemned';

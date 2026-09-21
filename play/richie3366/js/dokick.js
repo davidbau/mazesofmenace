@@ -28,6 +28,7 @@ import {
 import {
     pline, newsym, canspotmon, canseemon, map_invisible, unmap_invisible,
     flush_topl_more, verbalize, feel_newsym, feel_location, Norep,
+    glyph_at, glyph_is_invisible_id, show_glyph_cell,
 } from './display.js';
 import { vision_recalc, recalc_block_point, couldsee, cansee } from './vision.js';
 import { getdir, breakchestlock } from './lock.js';
@@ -44,6 +45,7 @@ import {
     attacktype_fordmg,
 } from './uhitm.js';
 import { AT_KICK } from './mhitm.js';
+import { digests } from './mhitu.js';
 import {
     overexertion, losehp, maybe_half_phys, in_rooms, in_town, is_pool,
     impact_disturbs_zombies,
@@ -60,7 +62,7 @@ import {
 import { abuse_dog } from './dog.js';
 import { monflee, set_apparxy, maybe_unhide_at } from './monmove.js';
 import { m_in_out_region } from './region.js';
-import { mon_nam, Monnam, christen_orc, free_oname } from './do_name.js';
+import { mon_nam, Monnam, christen_orc, free_oname, hliquid } from './do_name.js';
 import { martial_bonus, use_skill, special_dmgval } from './weapon.js';
 import {
     verysmall, bigmonst, thick_skinned, nohands, haseyes, nolimbs, slithy,
@@ -96,7 +98,7 @@ import {
     ONAME,
     IS_SOFT, TRAPDOOR, is_hole, is_pit, Is_stronghold, Is_botlevel,
     In_endgame, Is_airlevel, Is_waterlevel, ZAP_POS, Is_box, Is_container,
-    ESHK, Has_contents, ismnum, ER_NOTHING, A_LAWFUL,
+    ESHK, Has_contents, engulfing_u, ismnum, ER_NOTHING, A_LAWFUL,
     S_LPUDDING, S_LDWASHER, G_GONE, MM_NOMSG, MM_MALE, MM_FEMALE, MM_ANGRY,
     T_LOOTED, TREE_LOOTED, TREE_SWARM, MAY_HIT, VIS_EFFECTS, WEB,
     STATUE_TRAP,
@@ -1559,7 +1561,12 @@ async function really_kick_object(x, y) {
 }
 
 /**
- * C ref: dokick.c dokick — #kick (Ctrl-D).
+ * C ref: dokick.c dokick `:1257–1470` — #kick (Ctrl-D), whole body in
+ * C order (D-2723): no_kick chain, getdir, kickedloc, boots-99 avrg,
+ * swallow rn2(3), pit side-kick, Levitation brace, maybe_kick + oldglyph,
+ * wake_nearby + u_wipe_engr, !isok ouch, maploc, kick_monster +
+ * glyph/invisible/recoil, unmap_invisible, pool splash via hliquid,
+ * Levitation-gated kick_object + air hurtle, door/nondoor.
  * Returns true if the action consumes a turn (ECMD_TIME).
  */
 export async function dokick() {
@@ -1573,7 +1580,7 @@ export async function dokick() {
     /* C dokick.c dokick `:1265–1310` — no_kick chain (D-1362).
      * Poly/steed before wounded (D-0786). Encumber before lizard /
      * uinwater / utrap / boulder. Steed yn returns before More.
-     * Swallow / pit-brace / Levitation after getdir still named. */
+     * Swallow / pit-brace / Levitation after getdir live below. */
     if (nolimbs(youdata) || slithy(youdata)) {
         await pline('You have no legs to kick with.');
         no_kick = true;
@@ -1636,14 +1643,60 @@ export async function dokick() {
     // C ref: dokick.c — gk.kickedloc set before kick resolution; pets avoid it
     game.kickedloc = { x, y };
 
-    const avrg_attrib = Math.trunc(
-        (acurr(A_STR) + acurr(A_DEX) + acurr(A_CON)) / 3,
-    );
+    /* C dokick.c `:1330–1333` — kicking boots always succeed (D-2723). */
+    const avrg_attrib = (u.uarmf && (u.uarmf.otyp | 0) === KICKING_BOOTS)
+        ? 99
+        : Math.trunc((acurr(A_STR) + acurr(A_DEX) + acurr(A_CON)) / 3);
 
-    // Swallow / pit / levitation brace paths deferred
+    /* C dokick.c `:1335–1352` — swallowed hero flails (D-2723). */
+    if (u.uswallow) {
+        switch (rn2(3)) {
+        case 0:
+            await pline(`You can't move your ${body_part(LEG)}!`);
+            break;
+        case 1:
+            if (digests(game.u?.ustuck?.data)) {
+                await pline(`${Monnam(game.u?.ustuck)} burps loudly.`);
+                break;
+            }
+            /* FALLTHROUGH */
+        default:
+            await pline('Your feeble kick has no effect.');
+            break;
+        }
+        return true;
+    } else if ((u.utrap | 0) !== 0 && (u.utraptype | 0) === TT_PIT) {
+        /* C `:1353–1356` — must be Passes_walls: the no_kick chain above
+         * only lets a pit-trapped walls-phaser reach here. */
+        await pline('You kick at the side of the pit.');
+        return true;
+    }
+    /* C dokick.c `:1357–1372` — levitating brace check (D-2723). */
+    if (Levitation()) {
+        const xx = (u.ux || 0) - (u.dx || 0);
+        const yy = (u.uy || 0) - (u.dy || 0);
+        /* doors can be opened while levitating, so they must be
+         * reachable for bracing purposes */
+        const bloc = game.level?.at(xx, yy);
+        if (isok(xx, yy) && bloc && !IS_OBSTRUCTED(bloc.typ)
+            && !IS_DOOR(bloc.typ)
+            && (!Is_airlevel(game.u?.uz) || !objects_at(xx, yy))) {
+            await pline('You have nothing to brace yourself against.');
+            return false;
+        }
+    }
 
     const mtmp = isok(x, y) ? mon_at(x, y) : null;
+    /* might not kick monster if it is hidden and becomes revealed,
+       if it is peaceful and player declines to attack, or if the
+       hero passes out due to encumbrance with low hp; context.move
+       will be 1 unless player declines to kick peaceful monster */
+    let oldglyph = -1;
+    let oldmem = null;
     if (mtmp) {
+        oldglyph = glyph_at(x, y);
+        const preloc = game.level?.at(x, y);
+        oldmem = preloc?.remembered_glyph ? { ...preloc.remembered_glyph } : null;
         if (!(await maybe_kick_monster(mtmp, x, y))) {
             // C: return context.move ? ECMD_TIME : ECMD_OK
             return !!(game.context?.move ?? true);
@@ -1677,31 +1730,72 @@ export async function dokick() {
      * Monster kick runs here when mtmp survived maybe_kick_monster.
      */
     if (mtmp) {
+        /* C `:1404` — save mtmp->data for recoil in case mtmp is killed. */
+        const mdat = mtmp.data;
         await kick_monster(mtmp, x, y);
-        // glyph / map_invisible / airlevel recoil deferred
+        const glyph = glyph_at(x, y);
+        /* see comment in attack_checks() */
+        if ((mtmp.mhp | 0) < 1) { /* DEADMONSTER(mtmp) (monst.h:214) */
+            /* C `:1411–1413` — mapped an invisible monster and killed it:
+             * redisplay the pre-kick glyph, not the invisible marker.
+             * JS hero-memory record is C lev->glyph's counterpart and
+             * carries its painted cell; restoring it restores both. */
+            if (glyph !== oldglyph && glyph_is_invisible_id(glyph) && oldmem) {
+                loc.remembered_glyph = oldmem;
+                await show_glyph_cell(
+                    x, y, oldmem.ch, oldmem.color, !!oldmem.decgfx, 0, oldglyph,
+                );
+            }
+        } else if (!canspotmon(mtmp)
+                   /* check <x,y>: evade-by-jump to an unseen square
+                      leaves no I behind */
+                   && mtmp.mx === x && mtmp.my === y
+                   && !glyph_is_invisible_id(glyph)
+                   && !engulfing_u(mtmp)) {
+            map_invisible(x, y);
+        }
+        /* recoil if floating */
+        if ((Is_airlevel(game.u?.uz) || Levitation())
+            && (game.context?.move ?? true)) {
+            let range = ((game.youmonst?.data?.cwt | 0)
+                + (weight_cap() + inv_weight()));
+            if (range < 1) range = 1; /* divide by zero avoidance */
+            range = Math.trunc((3 * (mdat?.cwt | 0)) / range);
+            if (range < 1) range = 1;
+            await hurtle(-(u.dx || 0), -(u.dy || 0), range, true);
+        }
+        return true;
+    }
+    /* C `:1433` — (void) unmap_invisible(x, y). */
+    unmap_invisible(x, y);
+    /* C `:1434–1440` — objects can't be kicked out of water this way. */
+    if ((is_pool(x, y) || loc.typ === LAVAWALL) !== !!(u.uinwater)) {
+        /* pretend the kick is fast enough for lava not to burn */
+        await pline(`You splash some ${hliquid(is_pool(x, y) ? 'water' : 'lava')} around.`);
         return true;
     }
 
-    if ((IS_POOL(loc.typ) || loc.typ === LAVAWALL) !== !!(u.uinwater)) {
-        await pline(`You splash some ${IS_POOL(loc.typ) ? 'water' : 'lava'} around.`);
-        return true;
-    }
-
-    // OBJ_AT — kick_object (D-0988)
-    if (objects_at(x, y)) {
+    /* C `:1442–1452` — OBJ_AT with the Levitation gate (D-2723). */
+    if (objects_at(x, y) && (!Levitation() || Is_airlevel(game.u?.uz)
+                             || Is_waterlevel(game.u?.uz)
+                             || sobj_at(BOULDER, x, y))) {
         const kickobjnam = { value: '' };
-        const kicked = await kick_object(x, y, kickobjnam);
-        if (kicked) return true;
+        if (await kick_object(x, y, kickobjnam)) {
+            if (Is_airlevel(game.u?.uz)) {
+                await hurtle(-(u.dx || 0), -(u.dy || 0), 1, true); // assume light
+            }
+            return true;
+        }
         await kick_ouch(x, y, kickobjnam.value);
         return true;
     }
 
+    /* C `:1454–1468` — doors last; kick_nondoor returns the ECMD value. */
     if (IS_DOOR(loc.typ)) {
         await kick_door(x, y, avrg_attrib);
         return true;
     }
-    await kick_nondoor(x, y, avrg_attrib);
-    return true;
+    return await kick_nondoor(x, y, avrg_attrib);
 }
 
 function on_level(a, b) {

@@ -25,7 +25,7 @@ import {
     MON_EXPLODE, NO_MM_FLAGS, NO_TRAP_FLAGS, DISP_ALWAYS, DISP_END, STOMACH, DIED, NO_KILLER_PREFIX, ERODE_CORRODE, ERODE_BURN, EF_GREASE, EF_NONE,
     KILLED_BY_AN, PASSES_WALLS, SLOW_DIGESTION, MALE, FEMALE, MMOVE_DIED, CXN_ARTICLE,
     ERODE_ROT, NO_NC_FLAGS, AD_CURS, EDOG, is_pit, FACE, NEUTRAL, CXN_PFX_THE,
-    EXPL_FIERY, ismnum,
+    EXPL_FIERY, ismnum, EXT_ENCUMBER,
     isok, xytodir, xdir, ydir,
     DIR_LEFT, DIR_RIGHT, DIR_LEFT2, DIR_RIGHT2, DIR_ERR,
 } from './const.js';
@@ -35,7 +35,7 @@ import {
     objectNameStrs, objectNames,
 } from './objects.js';
 import { exercise, A_STR, A_DEX, A_WIS, A_CON, acurr, adjalign, change_luck, ALIGNLIM } from './attrib.js';
-import { overexertion, nomul, losehp, is_pool, maybe_half_phys } from './hack.js';
+import { overexertion, nomul, losehp, is_pool, maybe_half_phys, noattacks } from './hack.js';
 import { ing_suffix, upstart } from './hacklib.js';
 import { pline, pline_mon, newsym, canseemon, canspotmon, sensemon, map_invisible, unmap_object, unmap_invisible, memory_glyph_is_invisible, glyph_is_invisible_id, flush_topl_more, You_feel, tmp_at, map_location, nh_delay_output, mon_glyph, shieldeff, impossible, see_monsters, hero_Blind_telepat, You, Your, pline_The } from './display.js';
 import { cansee } from './vision.js';
@@ -53,9 +53,9 @@ import { near_capacity, useup, useupall, hold_another_object, Blind, observe_obj
 import { PM_BARBARIAN, PM_MONK, PM_KNIGHT, PM_SAMURAI, PM_ARCHEOLOGIST, PM_WIZARD, PM_HUMAN, PM_HEALER, PM_ROGUE, PM_ELF } from './generated/monsters_data.js';
 import {
     find_mac, get_mattk, make_corpse, monstone, mhitm_knockback, monkilled, mondead,
-    troll_baned, mhitm_ad_poly, mhitm_ad_slee, mhitm_ad_heal, mhitm_ad_blnd, mhitm_ad_ston, mhitm_ad_elec, mhitm_ad_sedu, mhitm_ad_tlpt, mhitm_ad_rust, could_seduce, failed_grab, shade_miss,
+    troll_baned, mhitm_ad_poly, mhitm_ad_slee, mhitm_ad_heal, mhitm_ad_blnd, mhitm_ad_ston, mhitm_ad_elec, mhitm_ad_sedu, mhitm_ad_tlpt, mhitm_ad_rust, mhitm_ad_fire, could_seduce, failed_grab, shade_miss,
     shade_aware, paralyze_monst,
-    mhitm_mgc_atk_negated, resists_poison_mm, erode_armor,
+    mhitm_mgc_atk_negated, resists_poison_mm, erode_armor, golemeffects_mm,
     AT_NONE, AT_WEAP, AT_KICK, AT_CLAW, AT_SPIT, AT_HUGS,
     AT_TUCH, AT_BITE, AT_BUTT, AT_STNG, AT_MAGC, AT_TENT,
     AT_EXPL, AT_ENGL, AT_BREA, AT_GAZE, AD_PHYS, AD_POLY, AD_DRIN, AD_SLEE,
@@ -759,10 +759,9 @@ async function xkilled_treasure_drop(mtmp, mdat, x, y, nomsg) {
  * corpse_chance → make_corpse, wasinside museum + spoteffects, newsym,
  * cleanup (murder/peaceful/unicorn luck), experience, quest/priest/tame/
  * peaceful adjalign arms, malign. C `#if 0` HARDFOUGHT livelog stays out.
- * Named omissions: mhitm_ad_fire uhitm arm (C caller `:2547`, enclosing
- * C function unported; mhitm_ad_rust uhitm `:2294` now live via
- * damageum_adtyping AD_RUST) and wiz_kill (`wizcmds.c:315`,
- * unported) — own coverage rows.
+ * Named omissions: wiz_kill (`wizcmds.c:315`, unported) — own coverage
+ * row. (mhitm_ad_fire uhitm `:2529–2560` and mhitm_ad_rust uhitm `:2294`
+ * are live via damageum_adtyping AD_FIRE / AD_RUST.)
  */
 export async function xkilled(mtmp, xkill_flags = XKILL_GIVEMSG) {
     // C `:3485–3498` — flag unpack; sad_feeling saved and always cleared
@@ -2146,8 +2145,8 @@ async function damageum_ad_slow(mdef, mhm) {
  * after shieldeff + "The frost doesn't chill <mon>!"; leftover +=
  * destroy_items(AD_COLD, orig). Named omissions: defended(mdef, AD_COLD)
  * worn walk (no JS export; same omit on every defended call site);
- * golemeffects(mdef, AD_COLD, damage) is slow-only for flesh golem
- * (no heal; slow named with golemeffects_mm).
+ * golemeffects(mdef, AD_COLD, damage) via live golemeffects_mm
+ * (C uhitm.c:2644 — heal-or-slow, flesh COLD slows).
  */
 async function damageum_ad_cold(mdef, mhm) {
     const magr = game.youmonst;
@@ -2164,6 +2163,7 @@ async function damageum_ad_cold(mdef, mhm) {
         if (!Blind_that()) {
             await pline(`The frost doesn't chill ${mon_nam(mdef)}!`);
         }
+        await golemeffects_mm(mdef, AD_COLD, mhm.damage | 0); // C uhitm.c:2644
         mhm.damage = 0;
     }
     mhm.damage = (mhm.damage | 0) + ((await destroy_items(mdef, AD_COLD, orig_dmg)) | 0);
@@ -2496,6 +2496,15 @@ async function damageum_adtyping(mattk, mdef, mhm) {
            dice zeroed either way. Routed through the shared mhitm.js
            arm (elec precedent); mhitu arm is mhitm_ad_rust_u in mhitu.js. */
         await mhitm_ad_rust(game.youmonst, mattk, mdef, mhm);
+    } else if (adtyp === AD_FIRE) {
+        /* C ref: uhitm.c mhitm_adtyping `:4792` → mhitm_ad_fire `:2529–2560`
+           uhitm (hero as attacker) arm: mgc-negate gate, !Blind on_fire
+           pline, paper/straw completelyburns + xkilled(NOMSG|NOCORPSE),
+           resists_fire/defended zeroes the leftover after
+           golemeffects+shield, else destroy_items adds the orig leftover +
+           ignite_items(minvent). Routed through the shared mhitm.js arm
+           (elec precedent); mhitu arm is mhitm_ad_fire_u in mhitu.js. */
+        await mhitm_ad_fire(game.youmonst, mattk, mdef, mhm);
     }
 }
 
@@ -3325,19 +3334,6 @@ async function xdrainenergym(mon, givemsg) {
         if (givemsg) await pline_mon(mon, `${Monnam(mon)} seems lethargic.`);
     }
 }
-async function golemeffects_you(mon, damtype, dam) {
-    const mndx = mon?.data?.mndx ?? mon?.mnum ?? -1;
-    let heal = 0;
-    if (mndx === PM_FLESH_GOLEM && (damtype | 0) === AD_ELEC) {
-        heal = Math.trunc(((dam | 0) + 5) / 6);
-    } else if (mndx === PM_IRON_GOLEM && (damtype | 0) === AD_FIRE) {
-        heal = dam | 0;
-    } else return;
-    if (heal && healmon(mon, heal, 0) && cansee(mon.mx, mon.my)) {
-        await pline_mon(mon, `${Monnam(mon)} seems healthier.`);
-    }
-}
-
 /** C mhitm.c engulf_target — youmonst magr (uatk / !udef). */
 function engulf_blocked_you(x, y, whirlyPtr) {
     const lev = game.level?.at?.(x, y);
@@ -3546,7 +3542,7 @@ export async function gulpum(mdef, mattk) {
                         ad === AD_COLD ? 'is freezing to death!' : 'is burning to a crisp!'
                     }`);
                 }
-                await golemeffects_you(mdef, ad, dam);
+                await golemeffects_mm(mdef, ad, dam); // C uhitm.c:5148/:5159/:5170 (gulpum ELEC/COLD/FIRE)
                 break;
             }
             case AD_DREN:
@@ -4273,8 +4269,8 @@ function yname(obj) {
  * C ref: uhitm.c do_attack — safemon displace, else attack → hitum.
  * attack_checks: invis Wait + mimic stumble before overexertion.
  * After STR exercise: u_wipe_engr(3) (D-1373; callee D-1051).
- * Leprechaun evade `!rn2(7)` then m_move (D-1381). check_capacity /
- * twoweapon still named.
+ * Leprechaun evade `!rn2(7)` then m_move (D-1381). check_capacity gate
+ * live in C order (D-2420 W6); twoweapon still named.
  */
 export async function do_attack(mtmp) {
     if (!mtmp) return false;
@@ -4334,8 +4330,40 @@ export async function do_attack(mtmp) {
         return true;
     }
 
-    // check_capacity / overexertion
+    // C uhitm.c do_attack `:525–534` — Upolyd pacifist gate, then the
+    // check_capacity || overexertion short-circuit to atk_done. check_capacity
+    // is hack.c near_capacity() >= EXT_ENCUMBER printing
+    // "You cannot fight while so heavily loaded."; when it blocks,
+    // overexertion (and its gethungry RNG) must NOT run — C `||`
+    // short-circuit. All three arms fall through to atk_done (forcefight
+    // map_invisible plant) and return TRUE. Container/cursed-bag state
+    // resolves through live weight()/inv_weight() (mkobj.c BoH ternary
+    // chain); BoH-blessed divisor falsified D-2420, not re-checked.
+    const attack_atk_done = () => {
+        const u = game.u || {};
+        const ix = (u.ux | 0) + (u.dx | 0);
+        const iy = (u.uy | 0) + (u.dy | 0);
+        if (game.context?.forcefight
+            && (mtmp.mhp | 0) > 0
+            && !canspotmon(mtmp)
+            && !memory_glyph_is_invisible(game.level?.at?.(ix, iy))
+            && !engulfing_u(mtmp)) {
+            map_invisible(ix, iy);
+        }
+    };
+    if (Upolyd(game.u) && noattacks(game.youmonst?.data)) {
+        await pline('You have no way to attack monsters physically.');
+        if (mtmp.mstrategy != null) mtmp.mstrategy &= ~STRAT_WAITMASK;
+        attack_atk_done();
+        return true;
+    }
+    if (near_capacity() >= EXT_ENCUMBER) {
+        await pline('You cannot fight while so heavily loaded.');
+        attack_atk_done();
+        return true;
+    }
     if (await overexertion()) {
+        attack_atk_done();
         return true; // fainted
     }
 

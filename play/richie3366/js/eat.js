@@ -61,7 +61,7 @@ import {
 import {
     mons, acidic, poisonous, carnivorous, herbivorous, metallivorous,
     vegan, vegetarian, nohands, verysmall,
-    is_rider, is_undead, humanoid, is_orc, is_elf, olfaction, is_giant, mindless, noncorporeal,
+    is_rider, is_undead, humanoid, is_orc, is_elf, is_dwarf, olfaction, is_giant, mindless, noncorporeal,
     can_teleport, control_teleport, telepathic,
     flesh_petrifies, slimeproof, your_race, poly_when_stoned,
     is_clinger, breathless, is_flyer,
@@ -1496,10 +1496,34 @@ async function fprefx(otmp) {
 }
 
 /**
+ * C ref: eat.c adj_victual_nutrition `:335–356` — per-bite nutrition when
+ * nmod is negative; lembas wafer elf +`(nut+2)/4` (800→1000), orc
+ * −`(nut+2)/4` (800→600); cram ration dwarf +`(nut+3)/6` (600→700);
+ * clamped ≥1. `maybe_polyd` is C `Upolyd ? form-pred : Race_if`
+ * (`youprop.h:22`); form via `hero_form_data()` (`gy.youmonst.data`).
+ * Sole C caller: bite `:3148`.
+ */
+function adj_victual_nutrition() {
+    const otyp = game.context?.victual?.piece?.otyp;
+    // C: only called when nmod is negative; convert nmod to positive.
+    let nut = -(game.context?.victual?.nmod | 0);
+    const u = game.u || {};
+    const form = hero_form_data();
+    if (otyp === LEMBAS_WAFER) {
+        if (Upolyd(u) ? is_elf(form) : Race_if(PM_ELF)) nut += Math.trunc((nut + 2) / 4);
+        else if (Upolyd(u) ? is_orc(form) : Race_if(PM_ORC)) nut -= Math.trunc((nut + 2) / 4);
+    } else if (otyp === CRAM_RATION) {
+        if (Upolyd(u) ? is_dwarf(form) : Race_if(PM_DWARF)) nut += Math.trunc((nut + 3) / 6);
+    }
+    if (nut < 1) nut = 1;
+    return nut;
+}
+
+/**
  * C ref: eat.c bite `:3133–3158` — choke if canchoke && uhunger>=2000;
  * else force_save_hs around lesshungry so start_eating's first bite
- * counts as iseating before occupation is set.
- * Named omit: adj_victual_nutrition (lembas/cram race vs -nmod).
+ * counts as iseating before occupation is set (`:3383` comment).
+ * `sa_victual` (`:3136`) is a static-analyzer no-op, compiled out.
  * @returns {number} 1 if choked (abort), else 0
  */
 async function bite() {
@@ -1516,9 +1540,7 @@ async function bite() {
     if (!v.piece) return 0;
     game.force_save_hs = true;
     if ((v.nmod | 0) < 0) {
-        let nut = -(v.nmod | 0);
-        if (nut < 1) nut = 1;
-        await lesshungry(nut);
+        await lesshungry(adj_victual_nutrition());
         consume_oeaten(v.piece, v.nmod | 0);
     } else if ((v.nmod | 0) > 0 && ((v.usedtime | 0) % (v.nmod | 0))) {
         await lesshungry(1);
@@ -2240,8 +2262,8 @@ export async function cant_finish_meal(corpse) {
  * up svc.context.victual.piece). Must live here: the gate compares
  * against the module-local `eatfood` identity (same reason as
  * `cant_finish_meal`, D-2223, and `eating_dangerous_corpse`, D-2229).
- * Callers: allmain.c stop_occupation(TRUE) (deferred per the lembas
- * park — JS hack.js stop_occupation keeps its message path) and
+ * Callers: allmain.c stop_occupation(TRUE) (wired in js/hack.js
+ * stop_occupation, C `:687–689` order — the lembas finish path) and
  * steal.c:371 (wired in js/steal.js). No RNG in the gate itself.
  */
 export async function maybe_finished_meal(stopping) {

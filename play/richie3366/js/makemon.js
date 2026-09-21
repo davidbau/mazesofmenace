@@ -956,22 +956,32 @@ export function golemhp(type) {
 }
 
 /**
- * C ref: makemon.c monhp_per_lvl — HP gain/loss per drained level.
- * Named omit: is_golem / high-mlevel / adult-dragon arms (ordinary d8 / lvl0 d4).
+ * C ref: makemon.c monhp_per_lvl :986–1007 — HP gain/loss per drained level.
+ * In C order: the default d8 is drawn unconditionally, then the golem /
+ * high-mlevel / adult-dragon / level-0 arms overwrite it (each keeping
+ * C's extra draw: golemhp draws nothing, the rest draw again).
+ * Callers: artifact.c:1653, exper.c:283/:320, zap.c:524/:755
+ * (uhitm.c:2497 is a comment, not a call).
  */
 export function monhp_per_lvl(mon) {
     const ptr = mon?.data;
-    if (!ptr) return rnd(8);
+    let hp = rnd(8); /* default is d8 */
+    if (!ptr) return hp;
     if (is_golem(ptr)) {
+        /* draining usually won't be applicable for these critters */
         const lev = (ptr.mlevel | 0) || 1;
-        return Math.trunc(golemhp(ptr.mndx | 0) / lev);
+        hp = Math.trunc(golemhp(ptr.mndx | 0) / lev);
+    } else if ((ptr.mlevel | 0) > 49) {
+        /* arbitrary; such monsters won't be involved in draining anyway */
+        hp = 4 + rnd(4); /* 5..8 */
+    } else if (ptr.mlet === 'S_DRAGON' && (ptr.mndx | 0) >= pm('GRAY_DRAGON')) {
+        /* adult dragons; newmonhp() uses In_endgame(&u.uz) ? 8 : 4 + rnd(4) */
+        hp = 4 + rn2(5); /* 4..8 */
+    } else if (!(mon.m_lev | 0)) {
+        /* level 0 monsters use 1d4 instead of Nd8 */
+        hp = rnd(4);
     }
-    if ((ptr.mlevel | 0) > 49) return 4 + rnd(4);
-    if (ptr.mlet === 'S_DRAGON' && (ptr.mndx | 0) >= pm('GRAY_DRAGON')) {
-        return 4 + rn2(5);
-    }
-    if (!(mon.m_lev | 0)) return rnd(4);
-    return rnd(8);
+    return hp;
 }
 
 // C ref: makemon.c newmonhp()

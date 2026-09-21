@@ -3724,13 +3724,18 @@ export async function disintegrate_arm(atmp) {
 }
 
 /**
- * C ref: do_wear.c destroy_arm — erode rn2(4)+1 random worn armor pieces;
- * stop early on ER_DESTROYED. Named omissions: none for the gather/hit loop.
+ * C ref: do_wear.c destroy_arm `:3278–3316`, in C order — gather worn
+ * armor (uarm/uarmc/uarmh/uarms/uarmg/uarmf/uarmu, non-erodeable
+ * included); erode rn2(4)+1 random pieces via erode_obj EF_PAY|EF_DESTROY;
+ * stop early on ER_DESTROYED; stop_occupation if anything eroded.
+ * C draws `hits = rn2(4) + 1` at declaration (C `:3282`), before the
+ * gather and the `!idx` early return — a naked hero still draws.
  *
  * @returns {Promise<number>} 1 if any damage/destroy, else 0
  */
 export async function destroy_arm() {
     const u = game.u || {};
+    const hits = rn2(4) + 1;
     const armors = [];
     if (u.uarm) armors.push(u.uarm);
     if (u.uarmc) armors.push(u.uarmc);
@@ -3742,11 +3747,9 @@ export async function destroy_arm() {
     const idx = armors.length;
     if (!idx) return 0;
 
-    const hits = rn2(4) + 1;
     let ret = 0;
     for (let i = 0; i < hits; i++) {
         const otmp = armors[rn2(idx)];
-        if (!otmp) continue;
         if (erosion_matters(otmp) && is_damageable(otmp) && !otmp.oerodeproof) {
             const erosion = obj_erode_type(otmp);
             if (erosion !== ERODE_NONE) {

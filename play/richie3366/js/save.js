@@ -458,7 +458,15 @@ function restWornFromInvent(invent) {
  * mapseenchn cemetery JSON is save_dungeon/save_mapseen (D-1685);
  * current-level bonesinfo is savelev savecemetery.
  */
-export function dosave0() {
+export async function dosave0() {
+    // C save.c:98 dosave0 — hangup/panic save fix-up: in-use item used
+    // up, thrown/kicked missiles and limbo ball&chain onto the map
+    // before persisting (end.c done_object_cleanup; imports.mjs
+    // save→end is CHECK, so lazy dynamic import like end.js:995).
+    // The `:80–96` preamble (saving++, notice_mon_off, uinvulnerable=0,
+    // save_uswallow/uinwater/uburied restores) stays unported — own rows.
+    const { done_object_cleanup } = await import('./end.js');
+    await done_object_cleanup();
     const u = game.u || {};
     // C save.c savemonchn `:904–907` — stamp m_id from live pointers.
     u.usteed_mid = (u.usteed && (u.usteed.m_id | 0)) ? (u.usteed.m_id | 0) : 0;
@@ -717,13 +725,19 @@ function serHero(u) {
 }
 
 /**
- * C ref: restore.c inven_inuse `:112–125` — objects marked in_use at
- * save (HUP cheat) get used up after invent + current level exist.
- * Named omit on done_object_cleanup (end.c) stays; this is dorecover.
+ * C ref: restore.c inven_inuse `:112–125` — objects marked in_use get
+ * used up (dorecover after invent + level exist; end.c
+ * done_object_cleanup `:854` with TRUE before disclosure/bones).
+ * Exported for the end.c caller (imports.mjs: save→end is CHECK, so
+ * end.js loads it lazily via dynamic import, same as its allmain.js
+ * edge); dorecover below is the direct caller.
  * @param {boolean} quietly
  */
-async function inven_inuse(quietly) {
-    const { useup } = await import('./eat.js');
+export async function inven_inuse(quietly) {
+    // C restore.c `:121` useup lives in invent.c — eat.js only imports
+    // it (never re-exports), so the old './eat.js' source gave
+    // `useup is not a function` whenever an in_use item existed.
+    const { useup } = await import('./invent.js');
     const { xname } = await import('./objnam.js');
     for (const otmp of [...(game.invent || [])]) {
         if (!otmp?.in_use) continue;
@@ -1155,7 +1169,7 @@ export async function dosave() {
     game._pending_message = '';
     // C: pline("Saving..."); display_nhwindow only more()'s if NEED_MORE
     await pline('Saving...');
-    if (!dosave0()) {
+    if (!(await dosave0())) {
         await pline('Cannot open save file.');
         await docrt();
         return ECMD_OK;

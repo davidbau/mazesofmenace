@@ -9,7 +9,8 @@ import { pline, verbalize, impossible, flush_topl_more } from './display.js';
 import { SetVoice, voice_oracle } from './sndprocs.js';
 import { Monnam } from './do_name.js';
 import { ynq, y_n } from './getline.js';
-import { currency } from './invent.js';
+import { currency, Blind } from './invent.js';
+import { is_fainted } from './eat.js';
 import { money_cnt, money2mon } from './shk.js';
 import { record_achievement } from './insight.js';
 import { more_experienced, newexplevel } from './exper.js';
@@ -169,6 +170,19 @@ export function bcsign(otmp) {
  */
 export async function outrumor(truth, mechanism) {
     const reading = mechanism === BY_COOKIE || mechanism === BY_PAPER;
+    // C rumors.c:539-549 — reading gates run before getrumor draws.
+    if (reading) {
+        // C :541-543 — fainting hero drops the cookie unread.
+        if (is_fainted() && mechanism === BY_COOKIE) {
+            return;
+        } else if (Blind()) {
+            // C :544-549 — blind: cookie shows the scrap, then pity.
+            if (mechanism === BY_COOKIE)
+                await pline('This cookie has a scrap of paper inside.');
+            await pline('What a pity that you cannot read it!');
+            return;
+        }
+    }
     let line = getrumor(truth, reading ? false : true);
     if (!line) line = 'NetHack rumors file closed for renovation.';
 

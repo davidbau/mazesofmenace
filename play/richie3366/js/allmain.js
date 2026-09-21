@@ -17,9 +17,9 @@ import { initrack, settrack } from './track.js';
 import { fastforward_pre_mklev } from './fastforward.js';
 import { init_objects } from './o_init.js';
 import { init_artifacts, mkot_trap_warn } from './artifact.js';
-import { init_dungeons, find_level } from './dungeon.js';
+import { init_dungeons, find_level, print_level_annotation } from './dungeon.js';
 import { depth } from './hacklib.js';
-import { schedule_goto, deferred_goto } from './do.js';
+import { schedule_goto, deferred_goto, l_nhcore_call, hellish_smoke_mesg } from './do.js';
 import { obj_delivery } from './dokick.js';
 import { read_wizkit } from './files.js';
 import { setup_role_race_from_rc, u_init_misc, u_init_inventory_attrs, u_init_skills_discoveries, find_ac } from './u_init.js';
@@ -61,11 +61,12 @@ import { run_regions, any_visible_region } from './region.js';
 import { m_everyturn_effect } from './monmove.js';
 import { tele } from './teleport.js';
 import { sink_into_lava } from './trap.js';
-import { polyself, set_uasmon, uasmon_maxStr } from './polyself.js';
+import { polyself, set_uasmon, uasmon_maxStr, ugenocided } from './polyself.js';
+import { udeadinside } from './read.js';
 import { you_were } from './were.js';
 import {
     UNENCUMBERED, SLT_ENCUMBER, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER,
-    NO_MM_FLAGS, Upolyd, LL_ACHIEVE,
+    NO_MM_FLAGS, Upolyd, LL_ACHIEVE, NHCORE_START_NEW_GAME, NHCORE_RESTORE_OLD_GAME,
     ROLE_GENDMASK, ROLE_MALE, ROLE_FEMALE,
     UTOTYPE_NONE, TIMEOUT, REGENERATION, CLAIRVOYANT,
     MAXULEV, ENERGY_REGENERATION, MAGICAL_BREATHING, GLIB,
@@ -669,22 +670,39 @@ async function exerchk() {
     g.context.next_attrib_check += rn1(200, 800);
 }
 
-// C ref: allmain.c welcome() — new_game false → restore path
+// C ref: allmain.c welcome() `:854–929` — whole body in C order.
 export async function welcome(new_game) {
     const g = game;
-    // C: currentgend = Upolyd ? u.mfemale : flags.female (poly deferred)
-    const currentgend = !!g.flags?.female;
+    const u = g.u || {};
     const role = g.urole || {};
     const race = g.urace || {};
-    const u = g.u || {};
+    // C `:858–859`: currentgend = Upolyd ? u.mfemale : flags.female;
+    // adrift = (u.ualign.type != u.ualignbase[A_CURRENT])
+    const currentgend = Upolyd(u) ? !!u.mfemale : !!g.flags?.female;
     const atype = u.ualign?.type ?? 0;
     const baseCur = u.ualignbase?.current ?? atype;
     const baseOrig = u.ualignbase?.original ?? atype;
-    // C: adrift = (u.ualign.type != u.ualignbase[A_CURRENT])
     const adrift = atype !== baseCur;
 
-    // C builds buf; align only for new_game or changed/adrift base align
-    let buf = '';
+    // C `:860`
+    await l_nhcore_call(new_game ? NHCORE_START_NEW_GAME : NHCORE_RESTORE_OLD_GAME);
+
+    // C `:862–866`: skip "welcome back" if restoring a doomed character
+    if (!new_game && Upolyd(u) && ugenocided()) {
+        // C `:864–865`: death via self-genocide is pending
+        await pline("You're back, but you still feel %s inside.", udeadinside());
+        return;
+    }
+
+    // C `:869–870` (Hallucination ≡ HHallucination && !res — a call here,
+    // js/display.js:1047; the bare binding is always truthy)
+    if (Hallucination())
+        await pline('NetHack is filmed in front of an undead studio audience.');
+
+    // C `:872–910`: the "welcome back" message describes the innate form;
+    // align shown for new games, or restores when base changed or adrift.
+    // (The `#if 0` A_ORIGINAL arm is dead in C — only the `#else` ships.)
+    let buf = ''; // C `*buf = '\0'`
     if (new_game || baseOrig !== baseCur || adrift) {
         buf += ` ${adrift ? 'adrift ' : ''}${align_str(adrift ? atype : baseCur)}`;
     }
@@ -701,12 +719,17 @@ export async function welcome(new_game) {
 
     const hello = Hello(role.mnum);
     const plname = g.plname || 'Hero';
+    await pline(new_game ? `${hello} ${plname}, welcome to NetHack!  You are a${buf}.`
+        : `${hello} ${plname}, the${buf}, welcome back to NetHack!`);
+
     if (new_game) {
-        await pline(`${hello} ${plname}, welcome to NetHack!  You are a${buf}.`);
-        // C: livelog_printf(LL_ACHIEVE, "%s the%s entered the dungeon", plname, buf)
+        // C `:918–920`: guarantee that 'major' event category is never empty
         livelog_printf(LL_ACHIEVE, '%s the%s entered the dungeon', plname, buf);
     } else {
-        await pline(`${hello} ${plname}, the${buf}, welcome back to NetHack!`);
+        // C `:922–927`: restoring in Gehennom gets the entry message again,
+        // plus the level-annotation reminder from goto_level()
+        await hellish_smoke_mesg();
+        await print_level_annotation();
     }
 }
 

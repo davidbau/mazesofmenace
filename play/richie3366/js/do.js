@@ -2167,7 +2167,7 @@ export async function deliver_splev_message() {
 /**
  * C ref: do.c hellish_smoke_mesg — temperature hot/cold pline (+ Gehennom smoke).
  */
-async function hellish_smoke_mesg() {
+export async function hellish_smoke_mesg() {
     const temp = game.level?.flags?.temperature | 0;
     if (temp) {
         await pline(`It is ${temp > 0 ? 'hot' : 'cold'} here.`);
@@ -3083,7 +3083,7 @@ export async function toggle_blindness() {
         await Sting_effects(-1);
     }
     if (!Blind()) {
-        learn_unseen_invent();
+        await learn_unseen_invent();
     }
 }
 

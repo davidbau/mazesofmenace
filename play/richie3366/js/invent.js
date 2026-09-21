@@ -64,7 +64,7 @@ import { hidden_gold } from './vault.js';
 import { setnotworn, dropy } from './do.js';
 import { s_suffix, a_monnam, pmname, x_monnam, hliquid } from './do_name.js';
 import { inv_cnt } from './steal.js';
-import { assigninvlet, find_ac } from './u_init.js';
+import { assigninvlet, find_ac, addinv_core2 } from './u_init.js';
 import { cansee } from './vision.js';
 import {
     WEAPON_CLASS,
@@ -101,6 +101,7 @@ import {
     Never_mind,
     silly_thing_to,
     ECMD_OK,
+    ECMD_TIME,
     ECMD_CANCEL,
     ECMD_FAIL,
     WIN_ERR,
@@ -331,7 +332,7 @@ import { a_gname_at } from './pray.js';
 import { sticks } from './engrave.js';
 import { surface } from './sit.js';
 import { visible_region_at, reg_damg } from './region.js';
-import { PM_SAMURAI, PM_MONK, PM_CLERIC, monsterNames } from './generated/monsters_data.js';
+import { PM_SAMURAI, PM_MONK, PM_CLERIC, PM_ARCHEOLOGIST, monsterNames } from './generated/monsters_data.js';
 import { humanoid, strongmonst, mons, touch_petrifies, poly_when_stoned, hides_under, haseyes, dmgtype, hates_silver, is_male, is_female, is_neuter, vampshifted, nonliving, weirdnonliving } from './monsters.js';
 import { hideunder } from './mon.js';
 import { set_artifact_intrinsic, undiscovered_artifact, discover_artifact, confers_luck, disp_artifact_discoveries } from './artifact.js';
@@ -3168,19 +3169,44 @@ export function u_carried_gloves() {
 }
 
 /**
- * C ref: invent.c learn_unseen_invent — on regaining sight, mark invent
- * picked up while Blind as seen (xname/observe). addinv_core2 /
- * update_inventory / cleric bknown / archeologist scroll polish deferred.
+ * C ref: invent.c learn_unseen_invent `:2750–2775` — on regaining sight,
+ * mark everything picked up while Blind as seen. C order: Blind sanity
+ * return `:2755–2756`; per-item skip when dknown && (bknown || !Cleric)
+ * && (non-scroll || !Archeologist) `:2759–2761`; else invupdated=TRUE,
+ * maybereleaseobuf(xname(otmp)) `:2764–2765` (xname sets dknown, cleric
+ * bknown — objnam.js `:637`; the release is a GC no-op; xname also runs
+ * observe_object when !Blind — objnam.js `:638` via set_xname_observe),
+ * addinv_core2 `:2766` (Archeologist scroll-label decipher; luckstone
+ * set_moreluck is addinv_core2's named omit); eknown-deferred comment
+ * `:2770–2774` stands (learnwand live, zap.js); invupdated tail
+ * `:2776–2777` via live update_inventory (same file). Async: addinv_core2
+ * awaits pline on the decipher arm; sole caller toggle_blindness (do.js)
+ * is async and awaits. C caller potion.c:363 cures via make_blinded →
+ * toggle_blindness (potion.js:2194).
  */
-export function learn_unseen_invent() {
-    if (Blind()) return;
+export async function learn_unseen_invent() {
+    if (Blind()) return; /* C :2755–2756 sanity check */
+    /* C Role_if gates (same-file urole.mnum convention, :1267) */
+    const cleric = (game.urole?.mnum | 0) === PM_CLERIC;
+    const archeologist = (game.urole?.mnum | 0) === PM_ARCHEOLOGIST;
+    let invupdated = false;
     for (const otmp of game.invent || []) {
         if (!otmp) continue;
-        // C: skip when already dknown (+ role bknown/scroll gates deferred)
-        if (otmp.dknown) continue;
-        // C: xname(otmp) → observe_object when !Blind
-        observe_object(otmp);
+        /* C :2759–2761 — already seen */
+        if (otmp.dknown && (otmp.bknown || !cleric)
+            && (((otmp.oclass | 0) !== SCROLL_CLASS) || !archeologist))
+            continue; /* already seen */
+        invupdated = true;
+        /* C :2762–2765 — xname() will set dknown, perhaps bknown (for
+           priest[ess]); result immediately released for re-use */
+        xname(otmp);
+        await addinv_core2(otmp); /* C :2766 you react to seeing the object */
+        /*
+         * C :2770–2774 — If object->eknown gets implemented (see
+         * learnwand(zap.c)), handle deferred discovery here.
+         */
     }
+    if (invupdated) update_inventory(); /* C :2776–2777 */
 }
 
 const SCR_MAIL = objectNames.indexOf('SCR_MAIL');
@@ -8008,10 +8034,14 @@ function dfeatureExplanation(cmap) {
  * "Things that are/you feel here:" via display_nhwindow(WIN_MESSAGE)+putstr
  * (D-0220); **observe_object before doname** (D-0399; C xname_flags).
  * **doname_with_price** (D-0460). **feel_cockatrice** D-1599 (skip_objects
- * / single / multi `doname...` then feel). Named omissions: altar/ice
- * Blind variants beyond floor, engulfer stomach minvent feel; blanket
- * xname observe / distant_name. Furniture with ct==0 uses
- * pickup.describe_decor (D-0356), not this path.
+ * / single / multi `doname...` then feel). **Return contract**
+ * (invent.c:4216/4248/4314): Blind feel costs a turn (ECMD_TIME), sight is
+ * free (ECMD_OK); can't-reach is ECMD_OK even when Blind. Named omissions:
+ * altar/ice Blind variants beyond floor, engulfer stomach minvent feel
+ * (incl. its :4160 Blind-gated return); blanket xname observe /
+ * distant_name. Furniture with ct==0 uses pickup.describe_decor (D-0356),
+ * not this path.
+ * @returns {Promise<number>} ECMD_TIME when Blind, else ECMD_OK
  */
 export async function look_here(obj_cnt = 0, lookhere_flags = 0) {
     // Dynamic import avoids invent↔shk cycle (shk imports paint_corner).
@@ -8073,9 +8103,10 @@ export async function look_here(obj_cnt = 0, lookhere_flags = 0) {
             if (dfeature && !drift && dfeature === surf) skip_dfeature = true;
         }
         // C: !can_reach_floor(pit) → "But you can't reach it!" (pit trap deferred)
+        // C returns ECMD_OK here even when Blind (invent.c:4216).
         if (!can_reach_floor(false)) {
             await pline("But you can't reach it!");
-            return;
+            return ECMD_OK;
         }
     }
 
@@ -8102,7 +8133,8 @@ export async function look_here(obj_cnt = 0, lookhere_flags = 0) {
         // C: (!skip_objects && (Blind || !dfeature))
         if (!skip_objects && (blind || !dfeature))
             await pline(`You ${verb} no objects here.`);
-        return;
+        // C invent.c:4248 — feeling (Blind) costs a turn, sight is free.
+        return blind ? ECMD_TIME : ECMD_OK;
     }
 
     if (skip_objects) {
@@ -8136,7 +8168,9 @@ export async function look_here(obj_cnt = 0, lookhere_flags = 0) {
                 break;
             }
         }
-        return;
+        // C invent.c:4314 tail — skip/single/multi arms share the Blind-gated
+        // `!!Blind ? ECMD_TIME : ECMD_OK` return.
+        return blind ? ECMD_TIME : ECMD_OK;
     }
 
     if (!otmp.nexthere) {
@@ -8154,7 +8188,8 @@ export async function look_here(obj_cnt = 0, lookhere_flags = 0) {
         // C: You("%s here %s.", verb, doname_with_price(otmp))
         await pline(`You ${verb} here ${doname_with_price(otmp)}.`);
         if ((otmp.otyp | 0) === OTYP_CORPSE) await feel_cockatrice(otmp, false);
-        return;
+        // C invent.c:4314 tail (see skip arm above).
+        return blind ? ECMD_TIME : ECMD_OK;
     }
 
     // C: display_nhwindow(WIN_MESSAGE, FALSE) then NHW_MENU putstr list.
@@ -8192,6 +8227,8 @@ export async function look_here(obj_cnt = 0, lookhere_flags = 0) {
         const { read_engr_at } = await import('./engrave.js');
         await read_engr_at(u?.ux, u?.uy);
     }
+    // C invent.c:4314 tail (see skip arm above).
+    return blind ? ECMD_TIME : ECMD_OK;
 }
 
 /** C ref: invent.c dolook() — hide MSGTYPE norep/noshow around look_here. */

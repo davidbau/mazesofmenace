@@ -91,6 +91,7 @@ import { burn_away_slime } from './timeout.js';
 import {
     get_mattk, mhitm_knockback, mhitm_mgc_atk_negated, mattackm, rustm,
     could_seduce, failed_grab, SYSOPT_SEDUCE, mon_poly, mondead, erode_armor,
+    golemeffects_mm,
     AT_NONE, AT_CLAW, AT_KICK, AT_BITE, AT_STNG, AT_TUCH, AT_BUTT, AT_WEAP,
     AT_ENGL, AT_GAZE, AT_SPIT, AT_BREA, AT_EXPL, AT_BOOM, AT_TENT, AT_MAGC,
     AT_HUGS,
@@ -900,8 +901,10 @@ async function mhitm_ad_elec_u(mtmp, mattk, mhm) {
 }
 
 /**
- * C ref: uhitm.c mhitm_ad_cold mhitu branch (mdef == youmonst).
- * destroy_items when m_lev > rn2(20); monstseesu / monstunseesu deferred.
+ * C ref: uhitm.c mhitm_ad_cold mhitu branch (mdef == youmonst, `:2654–2667`).
+ * hitmsg, mgc_negated(TRUE) gate, frost pline, Cold_resistance zero,
+ * m_lev > rn2(20) → (void) destroy_items (return discarded).
+ * monstseesu / monstunseesu deferred (elec_u body deferred, keep).
  */
 async function mhitm_ad_cold_u(mtmp, mattk, mhm) {
     const orig_dmg = mhm.damage;
@@ -915,10 +918,12 @@ async function mhitm_ad_cold_u(mtmp, mattk, mhm) {
             await pline("The frost doesn't seem cold!");
             mhm.damage = 0;
         }
-        // C: if ((int) magr->m_lev > rn2(20)) destroy_items(&youmonst, AD_COLD, …)
+        // C uhitm.c:2661: if ((int) magr->m_lev > rn2(20))
+        // (void) destroy_items(&gy.youmonst, AD_COLD, orig_dmg) — return
+        // discarded (hero already losehps inside); cf. fire_u mhitu.js:961.
         if ((mtmp.m_lev | 0) > rn2(20)) {
             const you = game.youmonst || { _youmonst: true };
-            mhm.damage += await destroy_items(you, AD_COLD, orig_dmg);
+            await destroy_items(you, AD_COLD, orig_dmg);
         }
     } else {
         mhm.damage = 0;
@@ -3355,10 +3360,11 @@ async function passiveum(olduasmon, mtmp, mattk) {
                 return M_ATTK_AGR_DONE;
             }
             return M_ATTK_HIT;
-        case AD_COLD:
+        case AD_COLD: // C mhitu.c passiveum :2561–2571
             if (resists_mr(mtmp, MR_COLD)) {
-                // shieldeff / golemeffects deferred
-                await pline(`${Monnam(mtmp)} is mildly chilly.`);
+                await shieldeff(mtmp.mx | 0, mtmp.my | 0); // C `:2563`
+                await pline(`${Monnam(mtmp)} is mildly chilly.`); // C `:2564`
+                await golemeffects_mm(mtmp, AD_COLD, tmp); // C `:2565`
                 tmp = 0;
                 break;
             }
@@ -3377,17 +3383,21 @@ async function passiveum(olduasmon, mtmp, mattk) {
             }
             tmp = 0;
             break;
-        case AD_FIRE:
+        case AD_FIRE: // C mhitu.c passiveum :2584–2592
             if (resists_mr(mtmp, MR_FIRE)) {
-                await pline(`${Monnam(mtmp)} is mildly warm.`);
+                await shieldeff(mtmp.mx | 0, mtmp.my | 0); // C `:2586`
+                await pline(`${Monnam(mtmp)} is mildly warm.`); // C `:2587`
+                await golemeffects_mm(mtmp, AD_FIRE, tmp); // C `:2588`
                 tmp = 0;
                 break;
             }
             await pline(`${Monnam(mtmp)} is suddenly very hot!`);
             break;
-        case AD_ELEC:
+        case AD_ELEC: // C mhitu.c passiveum :2594–2602
             if (resists_mr(mtmp, MR_ELEC)) {
-                await pline(`${Monnam(mtmp)} is slightly tingled.`);
+                await shieldeff(mtmp.mx | 0, mtmp.my | 0); // C `:2596`
+                await pline(`${Monnam(mtmp)} is slightly tingled.`); // C `:2597`
+                await golemeffects_mm(mtmp, AD_ELEC, tmp); // C `:2598`
                 tmp = 0;
                 break;
             }

@@ -2942,8 +2942,8 @@ function muse_newcham_mon(mon) {
 }
 
 /**
- * C ref: muse.c mloot_container `:2263`.
- * Named omit: cursed bag-of-holding FIXME (C returns 0).
+ * C ref: muse.c mloot_container `:2263–2378` whole body in C order
+ * (cursed-mbag early-0 return implemented; C FIXME comment noted).
  */
 async function mloot_container(mon, container, vismon) {
     let res = 0;

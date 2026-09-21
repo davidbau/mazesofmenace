@@ -17,12 +17,12 @@ import { mon_reflects } from './mhitu.js';
 import {
     can_carry, // C: mon.c can_carry (notake/touch/glomper/weight), not the removed local clone
     set_apparxy, locomotion, m_digweapon_check, hero_Deaf,
-    should_displace, undesirable_disp, mon_offmap,
+    should_displace, undesirable_disp, mon_offmap, bee_eat_jelly,
 } from './monmove.js';
 import { mattacku } from './mhitu.js';
 import { newsym, pline, canseemon, mon_visible, canspotmon, pline_mon, pline_xy, impossible, You_feel, glyph_is_object, glyph_at, You, Your, more } from './display.js';
 import { doname, distant_name, vtense, an, xname } from './objnam.js';
-import { unpaid_cost } from './shk.js';
+import { unpaid_cost, costly_alteration } from './shk.js';
 import { currency } from './invent.js';
 import { defsym_explanation } from './uhitm.js';
 import { mpickobj, is_vampshifter } from './makemon.js';
@@ -36,7 +36,7 @@ import {
     MAGIC_PORTAL, A_NONE,
     EPRI, EMIN, DIR_LEFT, DIR_RIGHT, DIR_LEFT2, DIR_RIGHT2,
     xdir, ydir, xytodir,
-    DISMOUNT_THROWN, DISMOUNT_POLY, W_ARMS,
+    DISMOUNT_THROWN, DISMOUNT_POLY, W_ARMS, COST_DEGRD,
     S_sink, something,
     M_AP_FURNITURE, M_AP_OBJECT, M_AP_MONSTER, M_AP_TYPE,
     COST_CONTENTS,
@@ -108,6 +108,10 @@ const EGG = objectNames.indexOf('EGG');
 const CORPSE = objectNames.indexOf('CORPSE');
 const TIN = objectNames.indexOf('TIN');
 const SLIME_MOLD = objectNames.indexOf('SLIME_MOLD');
+// C ref: dogmove.c dog_eat — killer-bee jelly bypass + rust-monster spit arms
+const LUMP_OF_ROYAL_JELLY = objectNames.indexOf('LUMP_OF_ROYAL_JELLY');
+const PM_KILLER_BEE = monsterNames.indexOf('PM_KILLER_BEE');
+const PM_RUST_MONSTER = monsterNames.indexOf('PM_RUST_MONSTER');
 // C ref: dogmove.c droppables tool-keeping otyps
 const DWARVISH_MATTOCK = objectNames.indexOf('DWARVISH_MATTOCK');
 const PICK_AXE = objectNames.indexOf('PICK_AXE');
@@ -418,23 +422,28 @@ function mons_cnutrit(corpsenm) {
 }
 
 /**
- * C ref: dogmove.c dog_eat()
+ * C ref: dogmove.c dog_eat() :217–345 — whole body in C order.
  * Returns 2 if pet died, 1 otherwise. Always re-rolls dogfood (obj_resists)
  * for the DOGFOOD+invlet apport reward check; then m_consume_obj→delobj.
  * Exported for dog.c tamedog thrown-food path (D-0415).
+ * Callers: dog.c:1212 FALSE + :1265 devour-TRUE, dog_invent edible
+ * (dogmove.c:441), dog_move do_eat (dogmove.c:1319).
  */
 export async function dog_eat(mtmp, obj, x, y, devour) {
     const edog = mtmp.edog;
     if (!obj || !edog) return 1;
 
+    // C :233-236 — hunger clock floors at the current move; nutrition after
     if ((edog.hungrytime || 0) < (game.moves ?? 1)) {
         edog.hungrytime = game.moves ?? 1;
     }
     let nutrit = dog_nutrition(mtmp, obj);
+    // C :237-242 — devouring halves remaining meal time, trims nutrition
     if (devour) {
         if ((mtmp.meating || 0) > 1) mtmp.meating = Math.trunc(mtmp.meating / 2);
         if (nutrit > 1) nutrit = Math.trunc((nutrit * 3) / 4);
     }
+    // C :243-253 — satiation, confusion clear, starvation recovery, fear/tame
     edog.hungrytime = (edog.hungrytime || 0) + nutrit;
     mtmp.mconf = 0;
     if (edog.mhpmax_penalty) {
@@ -446,12 +455,22 @@ export async function dog_eat(mtmp, obj, x, y, devour) {
     }
     if ((mtmp.mtame || 0) < 20) mtmp.mtame = (mtmp.mtame || 0) + 1;
 
+    // C :254-256 — moved & ate on same turn: refresh both squares
     if (x !== mtmp.mx || y !== mtmp.my) {
         newsym(x, y);
         newsym(mtmp.mx, mtmp.my);
     }
 
-    // bee jelly / rust monster spit deferred
+    // C :257-261 — killer bee on royal jelly bypasses the rest of
+    // dog_eat(), including the apport update below
+    if ((mtmp.data?.mndx ?? mtmp.mnum) === PM_KILLER_BEE
+        && obj.otyp === LUMP_OF_ROYAL_JELLY) {
+        const res = await bee_eat_jelly(mtmp, obj);
+        if (res >= 0) return res + 1; /* 1 -> 2, 0 -> 1; -1 keeps going */
+    }
+
+    /* food items are eaten one at a time; entire stack for other stuff */
+    // C :262-265
     if ((obj.quan || 1) > 1 && (obj.oclass ?? 0) === FOOD_CLASS) {
         obj = splitobj(obj, 1) || obj;
     }
@@ -461,19 +480,33 @@ export async function dog_eat(mtmp, obj, x, y, devour) {
         game.iflags.suppress_price = (game.iflags.suppress_price | 0) + 1;
     }
 
-    // C ref: dogmove.c dog_eat — sawpet is cansee+mon_visible (not
-    // canseemon: the food square need not be in sight when the pet's
-    // start square is seen); second arm is canspotmon (D-1875).
-    const seeobj = cansee(mtmp.mx, mtmp.my);
-    const sawpet = cansee(x, y) && mon_visible(mtmp);
-    if (sawpet || (seeobj && canspotmon(mtmp))) {
-        const obj_name = doname(obj);
-        await pline(
-            `${noit_Monnam(mtmp)} ${devour ? 'devours' : 'eats'} ${obj_name}.`,
-        );
-    } else if (seeobj) {
-        const obj_name = doname(obj);
-        await pline(`It ${devour ? 'devours' : 'eats'} ${obj_name}.`);
+    /* food is at the monster's current location <mx,my>; <x,y> was its
+       location at turn start; they differ on a moving+eating turn */
+    // C :266-270 — pool meal while the hero is not underwater stays silent
+    // (C TODO sea-monster reveal named in the map); messages live in else
+    if (is_pool(mtmp.mx, mtmp.my) && !(game.u?.uinwater)) {
+        /* Don't print obj */
+    } else {
+        const seeobj = cansee(mtmp.mx, mtmp.my);
+        // C: sawpet is cansee+mon_visible (not canseemon: the food square
+        // need not be in sight when the pet's start square is seen);
+        // second arm is canspotmon (D-1875)
+        const sawpet = cansee(x, y) && mon_visible(mtmp);
+        if (sawpet || (seeobj && canspotmon(mtmp))) {
+            /* call distant_name() for possible side-effects even if the
+               result won't be printed */
+            const obj_name = distant_name(obj, doname);
+            // C :285-289 — tunnellers dig in instead of eating politely
+            if (tunnels(mtmp.data)) {
+                await pline_mon(mtmp, `${noit_Monnam(mtmp)} digs in.`);
+            } else {
+                await pline_mon(mtmp,
+                    `${noit_Monnam(mtmp)} ${devour ? 'devours' : 'eats'} ${obj_name}.`);
+            }
+        } else if (seeobj) {
+            const obj_name = distant_name(obj, doname);
+            await pline(`It ${devour ? 'devours' : 'eats'} ${obj_name}.`);
+        }
     }
 
     // C dogmove.c:296-299 — name copy for the shop bill message below
@@ -483,19 +516,49 @@ export async function dog_eat(mtmp, obj, x, y, devour) {
         game.iflags.suppress_price = (game.iflags.suppress_price | 0) - 1;
     }
 
-    // C: dogfood again for DOGFOOD+invlet apport — always rolls obj_resists
-    if (dogfood(mtmp, obj) === DOGFOOD && obj.invlet) {
-        edog.apport = (edog.apport || 0)
-            + Math.trunc(200 / ((edog.dropdist || 0)
-                + (game.moves ?? 1) - (edog.droptime || 0)));
-        if (edog.apport <= 0) edog.apport = 1;
+    // C :300-311 — rust monster: the rustproofing is eaten, the pet is
+    // briefly stunned and spits the item out instead of consuming it
+    if ((mtmp.data?.mndx ?? mtmp.mnum) === PM_RUST_MONSTER && obj.oerodeproof) {
+        /* The object's rustproofing is gone now */
+        if (obj.unpaid) await costly_alteration(obj, COST_DEGRD);
+        obj.oerodeproof = 0;
+        mtmp.mstun = 1;
+        if (canseemon(mtmp)) {
+            const rust_name = distant_name(obj, doname); /* (see above) */
+            if (game.flags?.verbose) {
+                await pline(`${Monnam(mtmp)} spits ${rust_name} out in disgust!`);
+            }
+        }
+    } else {
+        /* It's a reward if it's DOGFOOD and the player dropped/threw it.
+           We know the player had it if invlet is set. -dlc */
+        // C :312-330 — apport reward; the impossible arm guards a clobbered
+        // edog (C %ld/%u render as %d; impossible() only formats %d/%s)
+        if (dogfood(mtmp, obj) === DOGFOOD && obj.invlet) {
+            const prior_apport = edog.apport || 0;
+            edog.apport = (edog.apport || 0)
+                + Math.trunc(200 / ((edog.dropdist || 0)
+                    + (game.moves ?? 1) - (edog.droptime || 0)));
+            if (edog.apport <= 0) {
+                await impossible(
+                    'dog_eat: pet apport <= 0 (%d, %d, %d, %d, %d, %d, %d)',
+                    edog.apport, edog.dropdist, edog.droptime,
+                    game.moves ?? 1, prior_apport,
+                    mtmp.m_id, edog.parentmid);
+                edog.apport = 1;
+            }
+        }
+        // C :332-337 — pet caught shop food the hero threw or kicked
+        if (obj.unpaid) {
+            const oprice = unpaid_cost(obj, COST_CONTENTS);
+            await pline(`That ${objnambuf} will cost you ${oprice} ${currency(oprice)}.`);
+            /* m_consume_obj() -> delobj() -> obfree() will handle the shop
+               billing update */
+        }
+        await m_consume_obj(mtmp, obj);
     }
-    // C dogmove.c:332-337 — pet caught shop food the hero threw or kicked
-    if (obj.unpaid) {
-        const oprice = unpaid_cost(obj, COST_CONTENTS);
-        await pline(`That ${objnambuf} will cost you ${oprice} ${currency(oprice)}.`);
-    }
-    await m_consume_obj(mtmp, obj);
+
+    // C :339 — DEADMONSTER (mhp <= 0) ate something lethal → 2
     return (mtmp.mhp | 0) <= 0 ? 2 : 1;
 }
 

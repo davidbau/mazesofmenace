@@ -143,6 +143,11 @@ export function end_of_input() {
         ps.something_worth_saving = 0;
     }
     if (ps.something_worth_saving) {
+        // C cmd.c end_of_input → dosave0 is sync; JS dosave0 awaits the
+        // async done_object_cleanup, so here it floats — end_of_input
+        // and its hangup callers (hangup, moveloop_core, rhack) have no
+        // await point. The in-process VFS write still lands on microtask
+        // flush before any later awaited work reads it back.
         dosave0();
     }
     ps.in_moveloop = 0;
@@ -3907,9 +3912,10 @@ export async function rhack(key) {
         await wiz_map();
         game.context.move = 0;
     } else if (ch === ':') {
-        // C ref: invent.c dolook / lookat
-        await dolook();
-        game.context.move = 0;
+        // C ref: invent.c dolook / lookat — dolook returns look_here's
+        // Blind-gated ECMD_TIME (invent.c:4319-4327); a blind feel takes
+        // the turn just like any timed command (sibling ECMD_TIME pattern).
+        game.context.move = ((await dolook()) & ECMD_TIME) ? 1 : 0;
     } else if (ch === '&') {
         // C ref: cmd.c '&' → dowhatdoes (IFBURIED|GENERALCMD) — ECMD_OK, no turn
         await dowhatdoes();

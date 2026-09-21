@@ -43,7 +43,7 @@ import {
     nh_delay_output, back_to_glyph, glyph_to_cmap, glyph_is_cmap, pline_dir,
     impossible,
 } from './display.js';
-import { gethungry, morehungry, is_fainted } from './eat.js';
+import { gethungry, morehungry, is_fainted, maybe_finished_meal } from './eat.js';
 import { unconscious, enexto, goodpos, rloc_to } from './teleport.js';
 import { m_at, hideunder, seemimic, bad_rock, may_passwall, cant_squeeze_thru, minliquid, onscary } from './mon.js';
 import { recalc_block_point } from './vision.js';
@@ -1370,16 +1370,24 @@ export function nomul(nval) {
 }
 
 /**
- * C ref: allmain.c stop_occupation — interrupt multi-turn occupation.
- * maybe_finished_meal / reset_eat callers deferred at call sites.
+ * C ref: allmain.c stop_occupation `:685–699` — interrupt multi-turn
+ * occupation. C order: `maybe_finished_meal(TRUE)` first (a completable
+ * eatfood meal finishes via eatfood→done_eating, no "stop" message);
+ * else `You("stop %s.")`; then occupation=0, `disp.botl = TRUE` (in case
+ * u.uhs changed), nomul(0). JS sets flags.botl + disp.botl (house
+ * convention: botl.js:753, both cleared at :760–765).
  */
 export async function stop_occupation() {
     if (typeof game.occupation === 'function') {
-        const txt = game.occtxt;
-        if (txt) await pline(`You stop ${txt}.`);
+        // C `:687–689` — finish a completable meal instead of aborting it.
+        if (!(await maybe_finished_meal(true))) {
+            const txt = game.occtxt;
+            if (txt) await pline(`You stop ${txt}.`);
+        }
         game.occupation = null;
         if (!game.flags) game.flags = {};
         game.flags.botl = true;
+        if (game.disp) game.disp.botl = true;
         nomul(0);
     } else if ((game.multi || 0) >= 0) {
         nomul(0);

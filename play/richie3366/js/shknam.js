@@ -27,7 +27,7 @@ import {
 import {
     SHOPBASE, ROOMOFFSET, MM_ESHK, CORR, SDOOR, ROOM,
     D_NODOOR, D_ISOPEN, D_LOCKED, D_TRAPPED, DUST,
-    IS_ROOM, isok, ESHK,
+    IS_ROOM, isok, ESHK, has_eshk,
     HEALTHY_TIN, ROTTEN_TIN, HOMEMADE_TIN, SPINACH_TIN,
     NON_PM, ismnum, In_mines, RLOC_NOMSG, ALL_TRAPS,
 } from './const.js';
@@ -46,6 +46,7 @@ import { newsym, Hallucination } from './display.js';
 import { obj_resists } from './dogmove.js';
 import { in_town } from './hack.js';
 import { rloc } from './teleport.js';
+import { noit_mon_nam } from './do_name.js';
 
 const VEGETARIAN_CLASS = MAXOCLASSES + 1;
 const VEGGY = 3; // objclass.h
@@ -444,12 +445,36 @@ function mkveggy_at(sx, sy) {
 /** C ref: shknam.c neweshk — re-export from makemon (MM_ESHK allocator). */
 export { neweshk };
 
-/** C ref: shknam.c shkname `:853–897` — strip non-letter prefix; Hallu random-name arm `:873–890`. */
+/**
+ * C ref: shknam.c shkname `:856–897` — whole body in C order: isshk
+ * save/clear + noit_mon_nam fallback (`:859–863`, the mon_nam recursion
+ * guard); `!isshk` impossible fallthrough (`:865–866`); `!has_eshk`
+ * panic (`:867–868`); eshk shknam + Hallu random-name (`:870–890`) +
+ * non-letter prefix strip (`:892–893`) + return (`:894–896`).
+ * Named omissions: the `:866` impossible message (async in JS — unreachable
+ * for valid input since every caller passes a shopkeeper; xname_flags
+ * glorkum precedent — C falls through to the fallback, which stands);
+ * the C `char *` buffer (by-design JS strings — the Strcpy copy-out is
+ * the return). The `!mtmp` guard is JS-only null-safety (C NONNULLARG1).
+ */
 export function shkname(mtmp) {
+    if (!mtmp) return ''; // JS-only null-safety; C NONNULLARG1
+    // C `:859–863` — don't want mon_nam() calling shkname(); nam doubles
+    // as the modifiable buffer and the `:865` fallback result.
+    const save_isshk = mtmp.isshk | 0;
+    mtmp.isshk = 0;
+    const nam = noit_mon_nam(mtmp);
+    mtmp.isshk = save_isshk;
+    // C `:865–866` — sanity: not a shopkeeper after all (named omit above).
+    if (!save_isshk) return nam;
+    // C `:867–868` — a shopkeeper without eshk data is a C panic (abort);
+    // the JS analogue is a throw (remove_object precedent, D-2607).
+    if (!has_eshk(mtmp)) throw new Error(`shkname: shopkeeper "${nam}" lacks 'eshk' data.`);
+    // C `:870` — the shop's own name.
     let shknm = ESHK(mtmp)?.shknam || '';
     if (Hallucination() && !game.program_state?.gameover) {
-        // C: count non-unique shop types (prob != 0), pick one via rn2,
-        // then pick a name at random from that type's list.
+        // C `:873–890`: count non-unique shop types (prob != 0), pick one
+        // via rn2, then pick a name at random from that type's list.
         let num = 0;
         while (num < shtypes.length && shtypes[num].prob !== 0) num++;
         if (num > 0) {
@@ -457,7 +482,9 @@ export function shkname(mtmp) {
             if (nlp.length > 0) shknm = nlp[rn2(nlp.length)];
         }
     }
+    // C `:892–893` — strip prefix if present (C letter(); ASCII regex here).
     if (shknm && !/[A-Za-z]/.test(shknm[0])) shknm = shknm.slice(1);
+    // C `:894–896` — Strcpy(nam, shknm); return nam (by-design strings).
     return shknm;
 }
 
