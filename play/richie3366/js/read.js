@@ -2201,7 +2201,10 @@ export async function doread() {
             }
             game.u.uconduct.literate = (game.u.uconduct.literate | 0) + 1;
         }
-        useup(scroll);
+        // C ref: read.c:377 doread — real useup (invent.c:1320-1333 quan>1
+        // update_inventory, else useupall setnotworn/freeinv/obfree), not the
+        // local clone at :260 (review 1688).
+        useup_live(scroll);
         return 1; // C ECMD_TIME (this file returns 1 for TIME, 0 for OK)
     }
 

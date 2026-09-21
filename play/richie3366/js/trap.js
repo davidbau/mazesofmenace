@@ -2446,7 +2446,7 @@ export function force_launch_placement() {
  * scatter MAY_FRACTURE/MAY_DESTROY/VIS_EFFECTS (explode.js); curs_on_u.
  * @returns {Promise<number>} 0 none, 1 placed, 2 used up
  */
-async function launch_obj(otyp, x1, y1, x2, y2, style) {
+export async function launch_obj(otyp, x1, y1, x2, y2, style) {
     let otmp = sobj_at(otyp, x1, y1);
     let otherside = false;
     if (!otmp && otyp === BOULDER) {
@@ -5293,7 +5293,7 @@ async function trapeffect_web(mtmp, trap, trflags) {
  * Named omission: spot_checks(x, y, old_typ) — no JS counterpart anywhere
  * in `js/` (own future row when it lands).
  */
-async function blow_up_landmine(trap) {
+export async function blow_up_landmine(trap) {
     if (!trap) return;
     const x = trap.tx | 0;
     const y = trap.ty | 0;

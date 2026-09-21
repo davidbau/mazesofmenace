@@ -1554,6 +1554,467 @@ export function lspo_room(opts, contentsFn) {
     return 0;
 }
 
+/**
+ * C ref: sp_lev.c sel_set_lit `:5535–5540` (staticfn selection_iterate
+ * callback for the lspo_region selection arm) — lava or the rlit int,
+ * assigned numeric like C `:5539`.
+ */
+function sel_set_lit(x, y, lit) {
+    const loc = game.level.at(x, y);
+    if (!loc) return;
+    loc.lit = (IS_LAVA(loc.typ) || lit) ? 1 : 0; // C :5539
+}
+
+/**
+ * C ref: sp_lev.c mapfrag_error `:281–295` — NULL → "mapfragment error"
+ * (`:283–285`); non-odd wid/hei → "…odd height and width" (`:286–289`
+ * via mapfrag_canmatch `:275–279`); non-matchable center → "…center must
+ * be valid terrain" (`:290–294` via TYP_CANNOT_MATCH `:203`). C frees mf
+ * on the error arms (mapfrag_free — GC no-op, named below). The center
+ * index truncates like C `mf->wid / 2` (`:290`).
+ */
+function mapfrag_error(mf) {
+    if (!mf) return 'mapfragment error'; // C :283-285
+    if (!((mf.wid % 2) && (mf.hei % 2))) return 'mapfragment needs to have odd height and width'; // C :286-289
+    const center = mapfrag_get(mf, Math.trunc(mf.wid / 2), Math.trunc(mf.hei / 2)); // C :290
+    if (center === MAX_TYPE || center === INVALID_TYPE) return 'mapfragment center must be valid terrain'; // C :290-294
+    return null;
+}
+
+/**
+ * C ref: mkmaze.c set_levltyp_lit `:125–145` lit tail — the set_levltyp
+ * half (typ/flags/roomno/edge) rides sel_set_ter, which already covers
+ * NOCHANGE-keep and truthy-set; this tail ports what it does not:
+ * explicit 0 clears (JS sel_set_ter leaves legacy false alone — the
+ * lspo_map inline idiom), SET_LIT_RANDOM draws rn2(2) (C `:139–140`),
+ * lava forces lit (C `:137–138`). Assigned when the cell isok like C
+ * `:129` (sel bounds are isok-gated; the guard mirrors C's ret).
+ */
+function set_levltyp_lit_tail(x, y, typ, lit) {
+    if (lit === SET_LIT_NOCHANGE) return; // C :131
+    let l = lit;
+    if (IS_LAVA(typ)) l = 1; // C :137-138
+    else if (lit === SET_LIT_RANDOM) l = rn2(2); // C :139-140
+    const loc = game.level.at(x, y);
+    if (loc && isok(x, y)) loc.lit = !!l; // C :142
+}
+
+/**
+ * C ref: sp_lev.c lspo_replace_terrain `:5051–5143` — des.replace_terrain
+ * entry in C order. Table form only (C `:5064` lcheck_param_table ≡
+ * table-or-empty + object check). toterrain is required (C nhlua.c:241
+ * get_table_mapchr: missing/wrong-type throws, INVALID_TYPE throws
+ * "Erroneous map char"); totyp >= MAX_TYPE returns 0 (C `:5068–5069`).
+ * fromterrain defaults INVALID_TYPE, which selects the mapfragment arm
+ * (C `:5071–5082`: mapfragment required there, mapfrag_error throws).
+ * chance/lit/x1..y2 default 100/NOCHANGE/-1 (C nhlua.c:1029
+ * get_table_int_opt ≡ splev_opt_int). All--1 reads the "region" array
+ * (C `:5092–5095` get_table_region optional-TRUE ≡
+ * get_table_region_unpacked null-keeps--1s); still-all--1 reads the
+ * "selection" field (C `:5097–5101`, shape-checked like
+ * l_selection_check). A fresh selection covers the whole level
+ * (C `:5108–5109` selection_clear) or the get_location ANY_LOC rect
+ * (C `:5111–5119`, get_location_coord twin). Bounds are
+ * selection_getbounds (C selvar.c:77: recalc + empty→full level,
+ * region.js:1146 idiom); x starts at max(1, lx) while y starts at ly
+ * like C `:5123–5124`. Per cell, mapfrag_match short-circuits before
+ * rn2(100) (C `:5127–5129`); else the MATCH_WALL/typ check runs before
+ * rn2 (C `:5131–5134`). Locally-built selections are freed
+ * (C `:5138–5139`); mapfrag_free is a GC no-op.
+ * Named: lcheck_param_table (table-or-empty + object check);
+ * l_selection_check (selection-shape check); get_table_mapchr family
+ * (inline string + splev_chr2typ above, C nhlua.c:241/256/393);
+ * mapfrag_free (GC no-op — lspo_map_themeroom precedent).
+ */
+export function lspo_replace_terrain(opts) {
+    create_des_coder(); // C :5062
+    const o = opts ?? {}; // C :5064 lcheck_param_table
+    if (o === null || typeof o !== 'object') throw new Error('lspo_replace_terrain: Wrong parameters');
+    if (typeof o.toterrain !== 'string' || o.toterrain.length !== 1) // C nhlua.c:241 get_table_mapchr (get_table_str + check_mapchr :393)
+        throw new Error('lspo_replace_terrain: Erroneous map char');
+    const totyp = splev_chr2typ(o.toterrain); // C nhlua.c:393-397 check_mapchr
+    if (totyp === INVALID_TYPE) throw new Error('lspo_replace_terrain: Erroneous map char'); // C nhlua.c:247-248
+    if (totyp >= MAX_TYPE) return 0; // C :5068-5069
+    let fromtyp = INVALID_TYPE; // C :5071 get_table_mapchr_opt defval
+    if (o.fromterrain != null && o.fromterrain !== '') { // C nhlua.c:256-271 (missing/empty → defval)
+        if (typeof o.fromterrain !== 'string' || o.fromterrain.length !== 1)
+            throw new Error('lspo_replace_terrain: Erroneous map char');
+        fromtyp = splev_chr2typ(o.fromterrain);
+        if (fromtyp === INVALID_TYPE) throw new Error('lspo_replace_terrain: Erroneous map char'); // C nhlua.c:265-266
+    }
+    let mf = null;
+    if (fromtyp === INVALID_TYPE) { // C :5073
+        if (typeof o.mapfragment !== 'string') // C :5076 get_table_str
+            throw new Error("bad argument 'mapfragment' (string expected)");
+        mf = mapfrag_fromstr(o.mapfragment); // C :5077 (dupstr/free are GC no-ops)
+        const err = mapfrag_error(mf); // C :5080
+        if (err !== null) throw new Error(`lspo_replace_terrain: ${err}`); // C :5081 nhl_error
+    }
+    const chance = splev_opt_int(o.chance, 100); // C :5085
+    const tolit = splev_opt_int(o.lit, SET_LIT_NOCHANGE); // C :5086
+    let x1 = splev_opt_int(o.x1, -1); // C :5087-5090
+    let y1 = splev_opt_int(o.y1, -1);
+    let x2 = splev_opt_int(o.x2, -1);
+    let y2 = splev_opt_int(o.y2, -1);
+    if (x1 === -1 && y1 === -1 && x2 === -1 && y2 === -1) { // C :5092
+        const reg = get_table_region_unpacked(o, 'region', true); // C :5093 optional-TRUE
+        if (reg) { x1 = reg[0]; y1 = reg[1]; x2 = reg[2]; y2 = reg[3]; }
+    }
+    let sel = null;
+    if (x1 === -1 && y1 === -1 && x2 === -1 && y2 === -1) { // C :5097
+        const s = o.selection; // C :5098 lua_getfield
+        if (s != null) { // C :5099 != NIL
+            if (typeof s !== 'object' || !(s.pts instanceof Set)) // C :5100 l_selection_check
+                throw new Error('lspo_replace_terrain: selection expected');
+            sel = s;
+        }
+    }
+    let freesel = false;
+    if (!sel) { // C :5104
+        sel = selection_new(); // C :5105
+        freesel = true; // C :5106
+        if (x1 === -1 && y1 === -1 && x2 === -1 && y2 === -1) { // C :5108
+            selection_clear(sel, 1); // C :5109
+        } else { // C :5110
+            const coder = game.gc?.coder ?? null; // C gc.coder->croom
+            const p1 = get_location_coord(ANY_LOC, coder?.croom ?? null, x1, y1); // C :5112
+            const p2 = get_location_coord(ANY_LOC, coder?.croom ?? null, x2, y2); // C :5113
+            for (let x = Math.max(p1.x, 0); x <= Math.min(p2.x, COLNO - 1); x++) // C :5114-5115
+                for (let y = Math.max(p1.y, 0); y <= Math.min(p2.y, ROWNO - 1); y++) // C :5116
+                    selection_setpoint(x, y, sel, 1); // C :5117
+        }
+    }
+    selection_recalc_bounds(sel); // C selvar.c:82 (selection_getbounds recalc half)
+    let rect;
+    if (!sel || sel.lx >= COLNO) rect = { lx: 0, ly: 0, hx: COLNO - 1, hy: ROWNO - 1 }; // C selvar.c:84-89 empty → full level
+    else rect = { lx: sel.lx, ly: sel.ly, hx: sel.hx, hy: sel.hy }; // C selvar.c:90-95
+    for (let x = Math.max(1, rect.lx); x <= rect.hx; x++) // C :5123
+        for (let y = rect.ly; y <= rect.hy; y++) // C :5124 (no lower clamp, like C)
+            if (selection_getpoint(x, y, sel)) { // C :5125
+                if (mf) { // C :5126
+                    if (mapfrag_match(mf, x, y) && rn2(100) < chance) { // C :5127-5128
+                        sel_set_ter(x, y, totyp, tolit === SET_LIT_RANDOM ? SET_LIT_NOCHANGE : tolit); // C :5129 set_levltyp half
+                        set_levltyp_lit_tail(x, y, totyp, tolit); // C :5129 lit half
+                    }
+                } else { // C :5130
+                    const t = game.level.at(x, y)?.typ; // C levl[x][y].typ
+                    if (((fromtyp === MATCH_WALL && IS_STWALL(t)) || t === fromtyp) // C :5131-5132
+                        && rn2(100) < chance) { // C :5133
+                        sel_set_ter(x, y, totyp, tolit === SET_LIT_RANDOM ? SET_LIT_NOCHANGE : tolit); // C :5134 set_levltyp half
+                        set_levltyp_lit_tail(x, y, totyp, tolit); // C :5134 lit half
+                    }
+                }
+            }
+    if (freesel) selection_free(sel, true); // C :5138-5139
+    // C :5141 mapfrag_free(&mf) — GC no-op
+    return 0; // C :5143
+}
+
+/**
+ * C ref: sp_lev.c lspo_region `:5584–5715` — des.region entry in C order.
+ * Unpacked forms (C `:5593` lua_gettop): (opts?, contentsFn?) table form
+ * (C `:5597–5618`) and (selection, "lit"|"unlit") pair (C `:5619–5640`).
+ * A function second arg is the unpacked contents callback (lspo_room
+ * precedent); any other 2-arg shape is the selection pair, and 3+ args
+ * throw like C `:5641–5645` "Wrong parameters". Table form reads
+ * filled/irregular/joined/arrival_room/type/lit like lspo_room (C
+ * nhlua.c:1029/1104 int/boolean opts; unknown roomtype impossibles
+ * keeping OROOM); x1..y2 else the required "region" array (C `:5561–5580`
+ * get_table_coords_or_region, required-FALSE); all--1 throws like C
+ * `:5611–5613` "region needs region". rlit resolves through the
+ * same-file litstate_rnd (C `:5648`); both endpoints go through ANY_LOC
+ * with no croom (C `:5650–5651`). OROOM non-irregular non-arrival
+ * outside themerooms only lights (C `:5660–5674`, "Too many rooms"
+ * impossibles when full); otherwise a real room: irregular flood-fills
+ * then add_room (C `:5682–5690`, smeq + ROOMOFFSET like
+ * splev_irregular_oroom), rectangular add_room + topologize (C `:5691–
+ * 5698`). needfill/needjoining land on the stored room (C writes the
+ * pre-add_room slot which add_room preserves; JS add_room builds fresh
+ * so they apply after — same final state). The coder subroom push,
+ * contents call with the room, spo_endroom and add_doors_to_room follow
+ * C `:5700–5712` ("region as subroom" impossibles past depth 1).
+ * Named: Lua stack reads (unpacked above); l_selection_check
+ * (selection-shape check); l_push_mkroom_table (the room object itself,
+ * lspo_room precedent); nhl_pcall_handle (direct contents call).
+ */
+export function lspo_region(a, b) {
+    create_des_coder(); // C :5595
+    const argc = arguments.length; // C :5593
+    const coder = game.gc.coder; // C gc.coder (lspo_room idiom)
+    if ((argc === 2 && typeof b === 'function') || argc <= 1) { // C :5597 table form (+ unpacked contents)
+        const o = a ?? {}; // C :5598 lcheck_param_table
+        if (o === null || typeof o !== 'object') throw new Error('lspo_region: Wrong parameters');
+        // C TODO (:5599-5601): "unfilled"/"filled"/"lvflags_only" needfill strings — no get_table_needfill_opt in C yet; int stands
+        const needfill = splev_opt_int(o.filled, 0); // C :5602
+        const irregular = splev_opt_boolean(o.irregular, 0); // C :5603
+        const joined = splev_opt_boolean(o.joined, 1); // C :5604 (TRUE)
+        const do_arrival_room = splev_opt_boolean(o.arrival_room, 0); // C :5605
+        let rtype = OROOM; // C :5606 defval
+        if (o.type) { // C :5606 get_table_roomtype_opt (lspo_room idiom)
+            const mapped = splev_roomtype(o.type, -1);
+            if (mapped === -1) impossible(`Unknown room type '${o.type}'`);
+            else rtype = mapped;
+        }
+        let rlit = splev_opt_int(o.lit, -1); // C :5607
+        let dx1 = splev_opt_int(o.x1, -1); // C :5563-5566 get_table_coords_or_region
+        let dy1 = splev_opt_int(o.y1, -1);
+        let dx2 = splev_opt_int(o.x2, -1);
+        let dy2 = splev_opt_int(o.y2, -1);
+        if (dx1 === -1 && dy1 === -1 && dx2 === -1 && dy2 === -1) { // C :5569
+            const reg = get_table_region_unpacked(o, 'region', false); // C :5571 required-FALSE
+            dx1 = reg[0]; dy1 = reg[1]; dx2 = reg[2]; dy2 = reg[3]; // C :5572-5574
+        }
+        if (dx1 === -1 && dy1 === -1 && dx2 === -1 && dy2 === -1) // C :5611-5612
+            throw new Error('lspo_region: region needs region'); // C :5613 nhl_error
+        rlit = litstate_rnd(rlit); // C :5648
+        const p1 = get_location_coord(ANY_LOC, null, dx1, dy1); // C :5650 (NULL croom)
+        dx1 = p1.x; dy1 = p1.y;
+        const p2 = get_location_coord(ANY_LOC, null, dx2, dy2); // C :5651
+        dx2 = p2.x; dy2 = p2.y;
+        const room_not_needed = (rtype === OROOM && !irregular && !do_arrival_room && !game.in_mk_themerooms); // C :5660-5661
+        if (room_not_needed || (game.level.nroom | 0) >= MAXNROFROOMS) { // C :5662
+            if (!room_not_needed) impossible('Too many rooms on new level!'); // C :5664-5665
+            light_region(dx1, dy1, dx2, dy2, rlit); // C :5666-5671 light_region(&tmpregion)
+            return 0; // C :5673
+        }
+        let troom;
+        if (irregular) { // C :5682
+            const bounds = { min_rx: dx1, max_rx: dx1, min_ry: dy1, max_ry: dy1 }; // C :5683-5684 gm.min/max
+            if (game.smeq) game.smeq[game.level.nroom] = game.level.nroom; // C :5685 gs.smeq
+            flood_fill_rm(dx1, dy1, (game.level.nroom | 0) + ROOMOFFSET, rlit, true, bounds); // C :5686
+            add_room(bounds.min_rx, bounds.min_ry, bounds.max_rx, bounds.max_ry, false, rtype, true); // C :5687-5688
+            troom = game.level.rooms[(game.level.nroom | 0) - 1]; // C :5677 troom slot (stored by add_room)
+            troom.needfill = needfill; // C :5679 (pre-add_room slot write in C; applied after — same final state)
+            troom.needjoining = !!joined; // C :5681
+            troom.rlit = rlit ? 1 : 0; // C :5689
+            troom.irregular = true; // C :5690
+        } else { // C :5691
+            add_room(dx1, dy1, dx2, dy2, rlit, rtype, true); // C :5692
+            troom = game.level.rooms[(game.level.nroom | 0) - 1]; // C :5677 troom slot
+            troom.needfill = needfill; // C :5679 (see above)
+            troom.needjoining = !!joined; // C :5681
+            topologize(troom); // C :5697 topologize(troom) (SPECIALIZATION-off arm)
+        }
+        if (!room_not_needed) { // C :5700 (always true here — kept like C)
+            if (coder.n_subroom > 1) { // C :5701
+                impossible('region as subroom'); // C :5702
+            } else { // C :5703
+                coder.tmproomlist[coder.n_subroom] = troom; // C :5704
+                coder.failed_room[coder.n_subroom] = false; // C :5705
+                coder.n_subroom++; // C :5705
+                update_croom(); // C :5705
+                const contents = typeof b === 'function' ? b // unpacked contents (lspo_room precedent)
+                    : (typeof o.contents === 'function' ? o.contents : null); // C :5706 lua_getfield contents
+                if (contents) contents(troom); // C :5707-5710 pcall with mkroom table (room object — lspo_room precedent)
+                spo_endroom(coder); // C :5711
+                add_doors_to_room(troom); // C :5712
+            }
+        }
+        return 0; // C :5714
+    } else if (argc === 2) { // C :5619 region(selection, "lit")
+        if (!a || typeof a !== 'object' || !(a.pts instanceof Set)) // C :5622 l_selection_check
+            throw new Error('lspo_region: selection expected');
+        const li = ['unlit', 'lit'].indexOf(b ?? 'lit'); // C :5625 luaL_checkoption def "lit"
+        if (li < 0) throw new Error(`lspo_region: bad option '${b}'`);
+        const rlit2 = li;
+        const sel = selection_clone(a); // C :5622-5623
+        // TODO: lit=random (C's own note — kept)
+        if (rlit2) selection_do_grow(sel, W_ANY); // C :5630-5631
+        selection_iterate(sel, (x, y) => sel_set_lit(x, y, rlit2)); // C :5632
+        selection_free(sel, true); // C :5634
+        // TODO: skip the rest of this function? (C's own note — kept; returns here like C :5637)
+        return 0; // C :5637
+    }
+    throw new Error('lspo_region: Wrong parameters'); // C :5641-5642
+}
+
+/**
+ * C ref: sp_lev.c lspo_map `:6075–6319` — des.map entry in C order.
+ * Unpacked forms (C `:6096` lua_gettop): (mapstr) string form
+ * (C `:6105–6109`, centered) and (opts?, contentsFn?) table form
+ * (C `:6110–6130`). A function second arg is the unpacked contents
+ * callback (lspo_room precedent); the table's own "contents" function
+ * field is honored too (C `:6122–6126` lua_getfield). halign/valign
+ * map exactly like C `:6081–6093` (TOP=1 BOTTOM=5, sp_lev.c:172-173;
+ * absent → "none" → -1 via splev_opt_index, C nhlua.c get_table_option).
+ * The map string is required (C `:6120` get_table_str) and lit defaults
+ * FALSE (C `:6121`). x,y-or-halign/valign placement (C `:6147–6223`):
+ * themeroom random placement with croom somex/somey (C `:6148–6168`),
+ * croom-relative clamp (C `:6173–6186`), the halign/valign switch with
+ * truncating division (C `:6197–6221`) and odd-forcing (C `:6222–6223`;
+ * a -1 side matches no arm so that start keeps its value, like C).
+ * ystart clamp (C `:6225–6235`), 1×1 reset (C `:6237–6238`), themeroom
+ * no-overwrite guard with tryct redo (C `:6244–6283`) and the cell load
+ * (C `:6286–6305`: SpLev_Map mark, selection point, terr ter/tlit via
+ * sel_set_ter with the explicit lit-FALSE clear the JS legacy no-op
+ * needs — inline-idiom precedent) follow in order. skipmap frees nothing
+ * (mapfrag_free GC no-op), resets bounds keeping SpLev_Map (C
+ * reset_xystart_size never clears it — the JS full reset would, so the
+ * keep-SpLev_Map variant runs), fires contents with {width,height}
+ * (C `:6318` l_push_wid_hei_table, sp_lev.c:3050) and returns the live
+ * selection (C `:6321–6324` push-copy + free + return 1 — no Lua stack).
+ * Lua-table-called (C `:6392` des registration); 0 C callers.
+ * Named: mapfrag_free (GC no-op); dupstr/free (GC no-ops);
+ * l_push_wid_hei_table ({width,height} object); nhl_pcall_handle
+ * (direct contents call); l_selection_push_copy + selection_free
+ * (the live selection is returned).
+ */
+export function lspo_map(a, contentsFn) {
+    create_des_coder(); // C :6099
+    if (game.in_mk_themerooms && game.themeroom_failed) return 0; // C :6101-6102
+    const argc = arguments.length; // C :6096 lua_gettop
+    const left_or_right = ['left', 'half-left', 'center', 'half-right', 'right', 'none']; // C :6082-6084
+    const l_or_r2i = [SPLEV_LEFT, SPLEV_H_LEFT, SPLEV_CENTER, SPLEV_H_RIGHT, SPLEV_RIGHT, -1, -1]; // C :6085-6088
+    const top_or_bot = ['top', 'center', 'bottom', 'none']; // C :6090-6091
+    const t_or_b2i = [SPLEV_TOP, SPLEV_CENTER, SPLEV_BOTTOM, -1, -1]; // C :6093
+    let lr, tb, x = -1, y = -1, mf = null;
+    let lit = 0, contents = null;
+    if (argc === 1 && typeof a === 'string') { // C :6105 string form
+        lr = tb = SPLEV_CENTER; // C :6107
+        mf = mapfrag_fromstr(a); // C :6108 (dupstr/free are GC no-ops)
+    } else { // C :6110 table form
+        const o = a ?? {}; // C :6112 lcheck_param_table
+        if (o === null || typeof o !== 'object') throw new Error('lspo_map: Wrong parameters');
+        lr = l_or_r2i[splev_opt_index(o.halign, 'none', left_or_right)]; // C :6114
+        tb = t_or_b2i[splev_opt_index(o.valign, 'none', top_or_bot)]; // C :6115
+        const xy = get_table_xy_or_coord(o); // C :6116
+        x = xy.x; y = xy.y;
+        if (typeof o.map !== 'string') // C :6120 get_table_str
+            throw new Error("bad argument 'map' (string expected)");
+        mf = mapfrag_fromstr(o.map); // C :6128 (dupstr/free are GC no-ops)
+        lit = splev_opt_boolean(o.lit, 0); // C :6121 get_table_boolean_opt FALSE
+        if (typeof contentsFn === 'function') contents = contentsFn; // unpacked contents (lspo_room precedent)
+        else if (typeof o.contents === 'function') contents = o.contents; // C :6122-6126 lua_getfield contents
+    }
+    if (!mf) throw new Error('lspo_map: Map data error'); // C :6132-6136 nhl_error
+    const has_contents = contents !== null;
+    const sel = selection_new(); // C :6139
+    const ox = x, oy = y; // C :6140-6141
+    const coder = game.gc.coder; // C gc.coder->croom (lspo_room idiom)
+    let tryct = 0; // C :6097
+    for (;;) { // C :6143 redo_maploc
+        game.splev_xsize = mf.wid; // C :6144 gx.xsize
+        game.splev_ysize = mf.hei; // C :6145 gy.ysize
+        if (lr === -1 && tb === -1) { // C :6147
+            if (game.in_mk_themerooms && (ox === -1 || oy === -1)) { // C :6148
+                if (ox === -1) { // C :6149
+                    if (coder?.croom) { // C :6150
+                        x = somex(coder.croom) - mf.wid; // C :6151
+                        if (x < 1) x = 1; // C :6152-6153
+                    } else x = 1 + rn2(COLNO - 1 - mf.wid); // C :6155-6156
+                }
+                if (oy === -1) { // C :6159
+                    if (coder?.croom) { // C :6160
+                        y = somey(coder.croom) - mf.hei; // C :6161
+                        if (y < 1) y = 1; // C :6162-6163
+                    } else y = rn2(ROWNO - mf.hei); // C :6165-6166
+                }
+            }
+            if (isok(x, y)) { // C :6171
+                if (coder?.croom) { // C :6173
+                    game.splev_xstart = x + coder.croom.lx; // C :6175
+                    game.splev_ystart = y + coder.croom.ly; // C :6176
+                    game.splev_xsize = Math.min(mf.wid, coder.croom.hx - coder.croom.lx); // C :6177-6178
+                    game.splev_ysize = Math.min(mf.hei, coder.croom.hy - coder.croom.ly); // C :6179-6180
+                } else { // C :6181
+                    game.splev_xsize = mf.wid; // C :6182
+                    game.splev_ysize = mf.hei; // C :6183
+                    game.splev_xstart = x; // C :6184
+                    game.splev_ystart = y; // C :6185
+                }
+            } else { // C :6188
+                // C :6189 mapfrag_free(&mf) — GC no-op
+                selection_free(sel, true); // C :6191
+                throw new Error('lspo_map: Map requires either x,y or halign,valign params'); // C :6190 nhl_error
+            }
+        } else { // C :6195 halign/valign placement
+            // C: a -1 side matches no switch arm, so that start keeps its value
+            let xstart = game.splev_xstart, ystart = game.splev_ystart;
+            switch (lr) { // C :6197-6211
+            case SPLEV_LEFT: xstart = splev_init_present ? 1 : 3; break; // C :6198-6199
+            case SPLEV_H_LEFT: xstart = 2 + Math.trunc((X_MAZE_MAX - 2 - game.splev_xsize) / 4); break; // C :6200-6201
+            case SPLEV_CENTER: xstart = 2 + Math.trunc((X_MAZE_MAX - 2 - game.splev_xsize) / 2); break; // C :6202-6203
+            case SPLEV_H_RIGHT: xstart = 2 + Math.trunc((X_MAZE_MAX - 2 - game.splev_xsize) * 3 / 4); break; // C :6204-6205
+            case SPLEV_RIGHT: xstart = X_MAZE_MAX - game.splev_xsize - 1; break; // C :6206-6207
+            }
+            switch (tb) { // C :6212-6221
+            case SPLEV_TOP: ystart = 3; break; // C :6213-6214
+            case SPLEV_CENTER: ystart = 2 + Math.trunc((Y_MAZE_MAX - 2 - game.splev_ysize) / 2); break; // C :6215-6216
+            case SPLEV_BOTTOM: ystart = Y_MAZE_MAX - game.splev_ysize - 1; break; // C :6217-6218
+            }
+            if (!(xstart % 2)) xstart++; // C :6222
+            if (!(ystart % 2)) ystart++; // C :6223
+            game.splev_xstart = xstart;
+            game.splev_ystart = ystart;
+        }
+        if (game.splev_ystart < 0 || game.splev_ystart + game.splev_ysize > ROWNO) { // C :6225
+            if (game.in_mk_themerooms) { // C :6226
+                game.themeroom_failed = true; // C :6227
+                break; // C :6228 goto skipmap
+            }
+            game.splev_ystart += (game.splev_ystart > 0) ? -2 : 2; // C :6231
+            if (game.splev_ysize === ROWNO) game.splev_ystart = 0; // C :6232-6233
+            if (game.splev_ystart < 0 || game.splev_ystart + game.splev_ysize > ROWNO) // C :6234
+                game.splev_ystart = 0; // C :6235
+        }
+        if (game.splev_xsize <= 1 && game.splev_ysize <= 1) { // C :6237
+            splev_reset_xystart_size_keep_spmap(); // C :6238 reset_xystart_size (keeps SpLev_Map — see skipmap)
+        } else { // C :6239
+            const xstart = game.splev_xstart, ystart = game.splev_ystart;
+            const xsize = game.splev_xsize, ysize = game.splev_ysize;
+            if (game.in_mk_themerooms) { // C :6244 themed rooms never overwrite
+                let isokp = true; // C :6246
+                let redone = false, failed = false;
+                guardY: // C :6247-6251 border+interior scan
+                for (let yy = ystart - 1; yy < Math.min(ROWNO, ystart + ysize) + 1; yy++) {
+                    for (let xx = xstart - 1; xx < Math.min(COLNO, xstart + xsize) + 1; xx++) {
+                        if (!isok(xx, yy)) isokp = false; // C :6252-6254
+                        else if (yy < ystart || yy >= ystart + ysize || xx < xstart || xx >= xstart + xsize) { // C :6255-6256
+                            const blo = game.level.at(xx, yy); // C levl (isok-gated above)
+                            if (blo.typ !== STONE || blo.roomno !== NO_ROOM) isokp = false; // C :6257-6259
+                        } else { // C :6260
+                            const mptyp = mapfrag_get(mf, xx - xstart, yy - ystart); // C :6261
+                            if (mptyp >= MAX_TYPE) continue; // C :6262-6263
+                            const loc = game.level.at(xx, yy);
+                            if ((loc.typ !== STONE && loc.typ !== mptyp) || loc.roomno !== NO_ROOM) // C :6264-6266
+                                isokp = false; // C :6267
+                        }
+                        if (!isokp) { // C :6269
+                            if (tryct++ < 100 && (lr === -1 || tb === -1)) { redone = true; break guardY; } // C :6270-6271 goto redo_maploc
+                            failed = true; break guardY; // C :6272-6273 goto skipmap
+                        }
+                    }
+                }
+                if (redone) continue; // C goto redo_maploc
+                if (failed) { game.themeroom_failed = true; break; } // C goto skipmap
+            }
+            for (let yy = ystart; yy < Math.min(ROWNO, ystart + ysize); yy++) // C :6286 load the map
+                for (let xx = xstart; xx < Math.min(COLNO, xstart + xsize); xx++) { // C :6287
+                    const mptyp = mapfrag_get(mf, xx - xstart, yy - ystart); // C :6288
+                    if (mptyp === INVALID_TYPE) continue; // C :6289-6292
+                    if (mptyp >= MAX_TYPE) continue; // C :6293-6294
+                    if (game.SpLev_Map) game.SpLev_Map.add(`${xx},${yy}`); // C :6300 (lspo_drawbridge idiom)
+                    selection_setpoint(xx, yy, sel, 1); // C :6301
+                    sel_set_ter(xx, yy, mptyp, lit); // C :6296-6299 levl clear + :6302-6304 terr.ter/terr.tlit
+                    if (!lit) { // C terr.tlit=FALSE clears (JS sel_set_ter leaves legacy false alone — inline idiom)
+                        const loc = game.level.at(xx, yy);
+                        if (loc && !IS_LAVA(mptyp)) loc.lit = false;
+                    }
+                }
+        }
+        break; // fall through to skipmap
+    }
+    // C :6307 skipmap (mapfrag_free(&mf) — GC no-op)
+    if (game.in_mk_themerooms && game.themeroom_failed) { // C :6311
+        // C :6315 reset_xystart_size — which never clears SpLev_Map (the JS full reset would, so the keep variant runs)
+        splev_reset_xystart_size_keep_spmap();
+    } else if (has_contents) { // C :6317
+        contents({ width: game.splev_xsize, height: game.splev_ysize }); // C :6318 l_push_wid_hei_table {width,height} + nhl_pcall_handle (no Lua stack — direct call)
+        splev_reset_xystart_size_keep_spmap(); // C :6319 reset_xystart_size
+    }
+    return sel; // C :6321-6324 l_selection_push_copy + selection_free + return 1 (no Lua stack — the live selection is returned)
+}
+
 
 /**
  * C ref: sp_lev.c lspo_finalize_level `:6014–6064` — des finalize in C

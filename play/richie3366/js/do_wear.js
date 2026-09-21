@@ -73,12 +73,13 @@ import {
     ARMOR_CLASS, RING_CLASS, AMULET_CLASS, WEAPON_CLASS, TOOL_CLASS,
     objectNames, objectNameStrs, objectDescrs, is_sword,
 } from './objects.js';
-import { PM_ARCHEOLOGIST, PM_WIZARD, PM_MONK, nolimbs, nohands, verysmall, slithy, MZ_SMALL, touch_petrifies, mons, is_flyer } from './monsters.js';
+import { PM_ARCHEOLOGIST, PM_WIZARD, PM_MONK, nolimbs, nohands, verysmall, slithy, MZ_SMALL, touch_petrifies, mons, is_flyer, is_clinger } from './monsters.js';
 import {
     is_flammable, is_rustprone, is_rottable, is_corrodeable, is_crackable,
     erosion_matters, is_damageable, is_metallic, curse, set_bknown,
 } from './mkobj.js';
-import { erode_obj, selftouch, instapetrify, drown } from './trap.js';
+import { erode_obj, selftouch, instapetrify, drown, float_down } from './trap.js';
+import { has_ceiling } from './dungeon.js';
 import { artifact_light, begin_burn, end_burn } from './timeout.js';
 import { strsubst } from './hacklib.js';
 import { make_hallucinated, make_slimed } from './potion.js';
@@ -142,6 +143,13 @@ const AMULET_OF_MAGICAL_BREATHING = objectNames.indexOf('AMULET_OF_MAGICAL_BREAT
 const FUMBLE_BOOTS = objectNames.indexOf('FUMBLE_BOOTS');
 const SPEED_BOOTS = objectNames.indexOf('SPEED_BOOTS');
 const ELVEN_BOOTS = objectNames.indexOf('ELVEN_BOOTS');
+const WATER_WALKING_BOOTS = objectNames.indexOf('WATER_WALKING_BOOTS');
+const LEVITATION_BOOTS = objectNames.indexOf('LEVITATION_BOOTS');
+const LOW_BOOTS = objectNames.indexOf('LOW_BOOTS');
+const IRON_SHOES = objectNames.indexOf('IRON_SHOES');
+const HIGH_BOOTS = objectNames.indexOf('HIGH_BOOTS');
+const JUMPING_BOOTS = objectNames.indexOf('JUMPING_BOOTS');
+const KICKING_BOOTS = objectNames.indexOf('KICKING_BOOTS');
 const ELVEN_CLOAK = objectNames.indexOf('ELVEN_CLOAK');
 const GRAY_DRAGON_SCALES = objectNames.indexOf('GRAY_DRAGON_SCALES');
 const GRAY_DRAGON_SCALE_MAIL = objectNames.indexOf('GRAY_DRAGON_SCALE_MAIL');
@@ -915,9 +923,11 @@ export async function Gloves_off() {
     return 0;
 }
 /**
- * C ref: do_wear.c Boots_off — setworn then ELVEN toggle_stealth.
- * Named omissions: SPEED slow-down; water-walking spoteffects;
- * FUMBLE clear; LEVITATION float_down.
+ * C ref: do_wear.c Boots_off `:261–323` — full C-order restart: takeoff.mask
+ * clear, setworn(NULL, W_ARMF) (must precede the levitation case since
+ * float_down returns while Levitation holds), per-otyp switch, cancelled_don
+ * reset. Null boots keep the old graceful clear (C dereferences uarmf).
+ * @returns {Promise<number>} 0
  */
 export async function Boots_off() {
     const u = game.u || {};
@@ -927,17 +937,89 @@ export async function Boots_off() {
         return 0;
     }
     const otyp = otmp.otyp | 0;
+    /* C `:265` — oldprop = uprops[objects[otyp].oc_oprop].extrinsic & ~WORN_BOOTS. */
     const oprop = game.objects?.[otyp]?.oc_oprop | 0;
     const oldprop = (u.uprops?.[oprop]?.extrinsic | 0) & ~WORN_BOOTS;
+    /* C `:267`. */
     if (game.context?.takeoff) {
         game.context.takeoff.mask =
             (game.context.takeoff.mask | 0) & ~W_ARMF;
     }
+    /* C `:271` setworn((struct obj *) 0, W_ARMF). */
     clear_worn(W_ARMF);
-    if (otyp === ELVEN_BOOTS) {
+    switch (otyp) {
+    case SPEED_BOOTS:
+        /* C `:273–279` — slow down unless still Very_fast. */
+        if (!Very_fast() && !game.context?.takeoff?.cancelled_don) {
+            makeknown(otyp);
+            await You_feel(`yourself slow down${Fast() ? ' a bit' : ''}.`);
+        }
+        break;
+    case WATER_WALKING_BOOTS:
+        /* C `:280–298` — check for lava since fireproofed boots make it
+           viable; drown-check via spoteffects unless levitating, flying,
+           ceiling-clinging, cancelling, or already inside lava_effects
+           (which would recurse). */
+        if ((is_pool(u.ux | 0, u.uy | 0) || is_lava(u.ux | 0, u.uy | 0))
+            && !Levitation_dw() && !Flying_dw()
+            && !(is_clinger(game.youmonst?.data) && has_ceiling(u.uz))
+            && !game.context?.takeoff?.cancelled_don
+            /* C `:294` — avoid recursive call to lava_effects(). */
+            && !game.iflags?.in_lava_effects) {
+            /* C: make boots known in case you survive the drowning. */
+            makeknown(otyp);
+            await spoteffects(true);
+        }
+        break;
+    case ELVEN_BOOTS:
+        /* C `:299–301`. */
         await toggle_stealth(otmp, oldprop, false);
+        break;
+    case FUMBLE_BOOTS:
+        /* C `:302–305` — clear only when no other fumble source remains and
+           no non-timeout intrinsic half; HFumbling ≡ uprops[FUMBLING]
+           intrinsic, EFumbling the extrinsic half (Boots_on convention). */
+        if (!oldprop
+            && !(((u.HFumbling | 0) | (u.uprops?.[oprop]?.intrinsic | 0))
+                & ~TIMEOUT)) {
+            u.HFumbling = 0;
+            u.EFumbling = 0;
+            if (u.uprops?.[oprop]) {
+                u.uprops[oprop].intrinsic = 0;
+                u.uprops[oprop].extrinsic = 0;
+            }
+        }
+        break;
+    case LEVITATION_BOOTS:
+        /* C `:306–317` — float down unless another levitation source
+           remains; otherwise maybe toggle (BFlying & I_SPECIAL). */
+        if (!oldprop && !(u.HLevitation | 0)
+            && !((u.BLevitation | 0) & FROMOUTSIDE)
+            && !game.context?.takeoff?.cancelled_don) {
+            /* C: lava_effects() sets in_lava_effects and calls Boots_off()
+               so hero is already in midst of floating down. */
+            if (!game.iflags?.in_lava_effects) {
+                await float_down(0, 0);
+            }
+            makeknown(otyp);
+        } else {
+            float_vs_flight(); /* maybe toggle (BFlying & I_SPECIAL) */
+        }
+        break;
+    case LOW_BOOTS:
+    case IRON_SHOES:
+    case HIGH_BOOTS:
+    case JUMPING_BOOTS:
+    case KICKING_BOOTS:
+        /* C `:318–322` — no property side effects. */
+        break;
+    default:
+        /* C `:323` impossible(unknown_type, c_boots, otyp). */
+        await impossible(`Unknown type of boots (${otyp}).`);
+        break;
     }
-    // SPEED / WATER_WALKING / FUMBLE / LEVITATION deferred
+    /* C `:324` — always reset (C has no early return here; unlike
+       Helmet_off's TELEPATHY arm, every Boots_off path reaches the tail). */
     if (game.context?.takeoff) {
         game.context.takeoff.cancelled_don = false;
     }

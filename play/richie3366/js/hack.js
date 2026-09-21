@@ -9,14 +9,15 @@ import {
     IS_OBSTRUCTED, IRONBARS, IS_DOOR, IS_WALL, IS_TREE, IS_STWALL,
     D_NODOOR, D_BROKEN, D_ISOPEN, D_CLOSED, D_LOCKED, D_TRAPPED,
     NO_ROOM, SHARED, SHARED_PLUS, ROOMOFFSET, SHOPBASE, COLNO, ROWNO,
-    is_pit, TEMPLE, OROOM, COURT, SWAMP, MORGUE, ZOO, BEEHIVE, BARRACKS,
+    is_pit, LANDMINE, PIT, SPIKED_PIT, HOLE, TRAPDOOR, TELEP_TRAP, LEVEL_TELEP,
+    ROLLING_BOULDER_TRAP, TEMPLE, OROOM, COURT, SWAMP, MORGUE, ZOO, BEEHIVE, BARRACKS,
     LEPREHALL, COCKNEST, ANTHOLE, DELPHI,
     POOL, MOAT, WATER, LAVAPOOL, LAVAWALL, DRAWBRIDGE_UP, DB_UNDER, DB_MOAT,
     DB_LAVA, DB_ICE, STONE, THRONE,
     ROOM, CORR, DOOR, SDOOR, TREE, ICE, MAX_TYPE,
     xFLOOR, xGROUND, xOPENDOOR, xSHUTDOOR, xSWAMP, xSUBMERGED, xSEA,
     xWATERWALL,
-    W_NONDIGGABLE, SHOP_DOOR_COST,
+    W_NONDIGGABLE, SHOP_DOOR_COST, MIGR_RANDOM, IN_SIGHT, ROLL, LAUNCH_KNOWN,
     IS_WATERWALL, PARANOID_SWIM, PARANOID_TRAP, PARANOID_CONFIRM, TIP_SWIM,
     TT_BEARTRAP, TT_PIT, TT_WEB, TT_LAVA, TT_INFLOOR, TT_BURIEDBALL,
     TRAP_CLEARLY_IMMUNE, TRAPNUM, WEB,
@@ -35,30 +36,30 @@ import {
     ARTICLE_NONE, ARTICLE_A, ARTICLE_THE, ARTICLE_YOUR, SUPPRESS_SADDLE,
     LL_CONDUCT,
     has_mgivenname, RUN_TPORT, RUN_LEAP, RUN_STEP, RUN_CRAWL,
-    DO_MOVE, TEST_MOVE, TEST_TRAV, TEST_TRAP, S_stone,
+    DO_MOVE, TEST_MOVE, TEST_TRAV, TEST_TRAP, S_stone, ESHK,
 } from './const.js';
 import {
-    pline, You, Norep, newsym, canspotmon, canseemon, map_invisible, You_feel,
-    set_msg_xy, feel_location, map_object, verbalize, curs_on_u,
+    pline, You, There, Norep, newsym, canspotmon, canseemon, map_invisible, You_feel,
+    set_msg_xy, feel_location, map_object, unmap_object, verbalize, curs_on_u,
     nh_delay_output, back_to_glyph, glyph_to_cmap, glyph_is_cmap, pline_dir,
     impossible,
 } from './display.js';
 import { gethungry, morehungry, is_fainted, maybe_finished_meal } from './eat.js';
-import { unconscious, enexto, goodpos, rloc_to } from './teleport.js';
+import { unconscious, enexto, goodpos, rloc_to, rloco, random_teleport_level } from './teleport.js';
 import { m_at, hideunder, seemimic, bad_rock, may_passwall, cant_squeeze_thru, minliquid, onscary } from './mon.js';
-import { recalc_block_point } from './vision.js';
+import { recalc_block_point, cansee } from './vision.js';
 import { is_hider, hides_under, throws_rocks, noncorporeal, metallivorous, mons, is_flyer, is_swimmer, verysmall, bigmonst, passes_bars, dmgtype, is_rider, amorphous, tunnels, needspick, is_floater, is_clinger, is_whirly } from './monsters.js';
 import {
-    objects_at, sobj_at, obj_extract_self, place_object, delobj,
-    peek_timer, stop_timer, start_timer, splitobj,
+    objects_at, sobj_at, obj_extract_self, place_object, remove_object, delobj,
+    add_to_migration, peek_timer, stop_timer, start_timer, splitobj,
 } from './mkobj.js';
 import { objectNames } from './generated/objects_data.js';
 import { WEAPON_CLASS, TOOL_CLASS, COIN_CLASS, is_blade, is_pick } from './objects.js';
-import { xname, the, The, makeplural, an, just_an } from './objnam.js';
+import { xname, the, The, Tobjnam, otense, makeplural, an, just_an } from './objnam.js';
 import { A_STR, A_CON, A_DEX, acurr, acurrstr, exercise, Fumbling, adjalign } from './attrib.js';
 import { objdescr_is } from './apply.js';
 import { rn2, rnd, rn1 } from './rng.js';
-import { ing_suffix, upstart, dist2 } from './hacklib.js';
+import { ing_suffix, upstart, dist2, depth } from './hacklib.js';
 import { visible_region_at, reg_damg } from './region.js';
 import { midnight } from './calendar.js';
 import {
@@ -67,11 +68,15 @@ import {
 } from './generated/monsters_data.js';
 import { ART_STING } from './generated/artifacts_data.js';
 import { hliquid, Hallucination, y_monnam, x_monnam, type_is_pname, YMonnam } from './do_name.js';
-import { near_capacity, inv_weight, freeinv, weapon_descr } from './invent.js';
+import { get_level } from './dungeon.js';
+import { costly_spot, shop_keeper, addtobill, subfrombill, onshopbill, find_objowner, stolen_value } from './shk.js';
+import { se_monster_behind_boulder, se_kerplunk_boulder_gone } from './generated/seffects_data.js';
+import { near_capacity, inv_weight, freeinv, weapon_descr, useupf } from './invent.js';
 import { record_achievement } from './insight.js';
 import {
     b_trapped, selftouch, t_at, into_vs_onto, immune_to_trap, trapname,
-    sokoban_guilt, feeltrap, deltrap, climb_pit, Fire_resistance,
+    sokoban_guilt, feeltrap, deltrap, seetrap, climb_pit, Fire_resistance,
+    blow_up_landmine, launch_obj,
     mintrap, NO_TRAP_FLAGS,
     Trap_Effect_Finished, Trap_Killed_Mon, Trap_Caught_Mon, Trap_Moved_Mon,
 } from './trap.js';
@@ -84,13 +89,13 @@ import { P_SKILL, weapon_type, use_skill } from './weapon.js';
 import { surface } from './sit.js';
 import { autopick_testobj } from './pickup.js';
 import { Hello } from './roles.js';
-import { SetVoice } from './sndprocs.js';
+import { SetVoice, Soundeffect } from './sndprocs.js';
 import { set_ustuck, Conflict, Levitation, Flying } from './mhitu.js';
 import { sticks } from './engrave.js';
-import { revive_corpse, l_nhcore_call } from './do.js';
+import { revive_corpse, l_nhcore_call, flooreffects, boulder_hits_pool } from './do.js';
 import { is_db_wall } from './dbridge.js';
 import { doopen_indir } from './lock.js';
-import { use_pick_axe2, buried_ball, buried_ball_to_punishment } from './dig.js';
+import { use_pick_axe2, buried_ball, buried_ball_to_punishment, bury_objs, fill_pit } from './dig.js';
 import { is_ice, resists_cold, Cold_resistance } from './zap.js';
 import { can_ooze, curr_mon_load } from './monmove.js';
 import { abuse_dog } from './dog.js';
@@ -206,13 +211,22 @@ function a_monnam(mtmp) {
  * moverock_core, not here.
  */
 async function cannot_push_msg(otmp, sx, sy) {
-    const what = `the ${xname(otmp)}`;
-    if (game.u?.usteed) {
-        await pline(`Your steed tries to move ${what}, but cannot.`);
-    } else {
-        await pline(`You try to move ${what}, but in vain.`);
-    }
+    const what = the(xname(otmp));
+    if (game.u?.usteed)
+        await pline(`${YMonnam(game.u.usteed)} tries to move ${what}, but cannot.`);
+    else
+        await You(`try to move ${what}, but in vain.`);
     if (Blind_im()) feel_location(sx, sy);
+}
+
+/**
+ * C youprop.h Deaf — HDeaf || EDeaf || uroleplay.deaf (the You_hear-gate
+ * idiom at js/hack.js:173). C staticfn bodies in this file read Deaf
+ * directly; moverock_core's landmine/monster-behind arms need it here.
+ */
+function Deaf_mr() {
+    const u = game.u || {};
+    return !!((u.HDeaf | 0) || (u.EDeaf | 0) || u.uroleplay?.deaf || u.Deaf);
 }
 
 /**
@@ -652,10 +666,11 @@ export function movobj(obj, ox, oy) {
 }
 
 /**
- * C ref: hack.c dopush — message + exercise(A_STR) + movobj.
- * Shop bill / unpaid / stolen_value arms deferred.
+ * C ref: hack.c dopush `:166–244` — message + exercise(A_STR) + movobj +
+ * shop bill arms. Caller passes costly (push started inside a shop).
+ * unmap_object trap/engr arms deferred (JS clears the remembered glyph).
  */
-async function dopush(sx, sy, rx, ry, otmp) {
+async function dopush(sx, sy, rx, ry, otmp, costly) {
     const u = game.u;
     if (!game.bldrpush) game.bldrpush = { oid: 0, time: 0 };
     const bp = game.bldrpush;
@@ -666,7 +681,7 @@ async function dopush(sx, sy, rx, ry, otmp) {
     }
     const moves = game.moves || 0;
     const givemesg = moves > bp.time + 2 || moves < bp.time;
-    const what = givemesg ? `the ${xname(otmp)}` : null;
+    const what = givemesg ? the(xname(otmp)) : 0;
     if (!u.usteed) {
         const easypush = throws_rocks(game.youmonst?.data);
         if (givemesg) {
@@ -676,27 +691,70 @@ async function dopush(sx, sy, rx, ry, otmp) {
         }
         if (!easypush) exercise(A_STR, true);
     } else if (givemesg) {
-        // YMonnam(steed) deferred — rare for ordinary push
-        await pline(`Your steed moves ${what}.`);
+        await pline(`${YMonnam(u.usteed)} moves ${what}.`);
     }
     bp.time = moves;
 
-    // C: if glyph_is_invisible(dest) → unmap_object before movobj/newsym
-    // (I from You_hear monster-behind must yield to the pushed boulder).
-    const dloc = game.level?.at(rx, ry);
-    if (dloc?.remembered_glyph?.invisible) {
-        dloc.remembered_glyph = null; // unmap_object trap/engr arms deferred
+    /* C `:206–207` — move the boulder after the message; an invisible
+     * remembered glyph (I from a monster-behind You_hear) yields to it. */
+    {
+        const dloc = game.level?.at(rx, ry);
+        if (dloc?.remembered_glyph?.invisible) {
+            dloc.remembered_glyph = null; // unmap_object trap/engr arms deferred
+        }
     }
-    otmp.next_boulder = 0; /* C hack.c dopush :208 — reset before movobj. D-1294. */
-    movobj(otmp, rx, ry); /* C: newsym dest (and source) */
-    // C hack.c dopush `:210–215` — Blind feel dest+source (is_worm_tail
-    // overlay in feel_location D-1749); else newsym source again.
+    otmp.next_boulder = 0; /* C `:208` — reset before movobj. D-1294. */
+    movobj(otmp, rx, ry); /* C `:209` — does newsym(rx,ry) */
+    /* C `:210–215` — Blind feels dest+source (is_worm_tail overlay in
+     * feel_location D-1749); else newsym source again. */
     if (Blind_im()) {
         feel_location(rx, ry);
         feel_location(sx, sy);
     } else {
         newsym(sx, sy);
     }
+    /* C `:220–243` — adjust the bill when the boulder crosses a shop
+     * boundary. otmp->unpaid applies via addtobill/subfrombill even
+     * though the boulder is never in inventory. */
+    if (costly && !costly_spot(rx, ry)) {
+        /* C `:220–222` — pushed from inside the shop to its boundary
+         * (or a free spot). */
+        await addtobill(otmp, false, false, false);
+    } else {
+        /* C `:223–243` — shkp/owner are pure shop lookups (no RNG);
+         * hoisted out of the chain, arm order and gates unchanged. */
+        const rxrooms = in_rooms(rx, ry, SHOPBASE) || '';
+        const dstshkp = rxrooms ? shop_keeper(rxrooms.charCodeAt(0)) : null;
+        const owner = find_objowner(otmp, sx, sy);
+        if (!costly && costly_spot(rx, ry) && otmp.unpaid
+            && dstshkp && onshopbill(otmp, dstshkp, true)) {
+            /* C `:223–234` — pushed from farther inside the shop into
+             * its free spot (billed there), then pushed back into the
+             * shop without leaving; contingent on the shopkeeper not
+             * fracturing the boulder while it sat unpaid at the free
+             * spot. */
+            subfrombill(otmp, dstshkp);
+        } else if (otmp.unpaid && owner
+                   && !rxrooms.includes(
+                       String.fromCharCode(ESHK(owner)?.shoproom | 0))) {
+            /* C `:235–243` — fully out of the shop with no way to push
+             * it back in without leaving (and triggering the Kops):
+             * bill it as stolen. shk.c:1288 precedent for strchr. */
+            await stolen_value(otmp, sx, sy, true, false);
+        }
+    }
+}
+
+/**
+ * C ref: hack.c rock_disappear_msg `:315–324` — teleport-trap wording.
+ * C staticfn void; async here because JS pline awaits. Caller:
+ * moverock_core TELEP_TRAP / LEVEL_TELEP arms.
+ */
+async function rock_disappear_msg(otmp) {
+    if (game.u?.usteed)
+        await pline(`${YMonnam(game.u.usteed)} pushes ${the(xname(otmp))} and suddenly it disappears!`);
+    else
+        await You(`push ${the(xname(otmp))} and suddenly it disappears!`);
 }
 
 /**
@@ -751,24 +809,31 @@ export async function revive_nasty(x, y, msg) {
 }
 
 /**
- * C ref: hack.c moverock_core — push boulder(s) at (sx,sy) along u.dx/u.dy.
- * Branch envelope: Blind unseen start-of-loop feel (D-1281) + next_boulder
- * naming (D-1294) + nopick m-dir over/against (D-1262) + clear-dest dopush
- * + monster-behind You_hear/canspotmon + closed_door cannot_push_msg
- * (D-0317) + rumbling disturb_buried_zombies (D-1214) + Blind
- * feel_location on dopush / cannot_push_msg / monster-behind (D-1749)
- * + Sokoban diagonal won't-roll (D-1859).
- * Named omissions: shop costly, trap/teleport/pool
- * arms, Levitation (after nopick) Blind feel, verysmall vain-push Blind
- * feel, tunneling chew, revive_nasty, y_monnam steed wording. Giant
- * pickup/maneuver D-1253.
+ * C ref: hack.c moverock_core `:348–638` — push boulder(s) at (sx,sy)
+ * along u.dx/u.dy, whole-body port in C order. C staticfn int; async
+ * here because JS pline/nomul await. Only caller: moverock() below
+ * (C hack.c:342); leftover naming reset via moverock_done (C :326–333).
+ * Branch envelope: Blind unseen start-of-loop feel (D-1281) +
+ * next_boulder naming (D-1294) + movobj top-of-pile + nopick m-dir
+ * over/against/in-way (D-1262) + Levitation leverage abort + verysmall
+ * vain push + clear-dest gate + shop costly + Sokoban diagonal
+ * won't-roll (D-1859) + revive_nasty + monster-behind You_hear/canspotmon
+ * + closed_door cannot_push_msg (D-0317) + rumbling
+ * disturb_buried_zombies (D-1214) + full trap switch (LANDMINE / PIT /
+ * HOLE / TELEP / ROLLING_BOULDER_TRAP) + boulder_hits_pool +
+ * fobj-chain relink + dopush with costly + cannot_push_msg (D-1749
+ * Blind feels throughout).
+ * Named omissions: unmap_object trap/engr arms (remembered-glyph clear
+ * stands in, dopush); squeezeablylightinvent pack-weight arm of
+ * could_move_onto_boulder lives in that helper, not here.
  * Returns 0 to advance onto vacated cell, -1 to abort the move.
  */
 async function moverock_core(sx, sy) {
     const u = game.u;
+    let otmp;
+    let rx, ry; /* C `:351` — boulder destination position */
     let firstboulder = true;
-    while (sobj_at(BOULDER, sx, sy)) {
-        const otmp = sobj_at(BOULDER, sx, sy);
+    while ((otmp = sobj_at(BOULDER, sx, sy))) {
 
         /* C hack.c moverock_core :358–363 — Blind + glyph_to_obj(glyph_at)
            != BOULDER before next_boulder / top-of-pile / nopick. D-1281. */
@@ -785,12 +850,12 @@ async function moverock_core(sx, sy) {
         otmp.next_boulder = firstboulder ? 0 : 1;
         firstboulder = false;
 
-        // Ensure boulder is top of pile
-        const head = objects_at(sx, sy);
-        if (otmp && head && otmp !== head) movobj(otmp, sx, sy);
+        /* C `:376` — this boulder must be visible as the top
+         * object before the push names it. */
+        if (otmp !== objects_at(sx, sy)) movobj(otmp, sx, sy);
 
-        const rx = u.ux + 2 * u.dx;
-        const ry = u.uy + 2 * u.dy;
+        rx = u.ux + 2 * u.dx; /* C `:377` — boulder destination */
+        ry = u.uy + 2 * u.dy;
         await nomul(0);
 
         /* C hack.c moverock_core :382–413 — m<dir> (context.nopick)
@@ -813,7 +878,7 @@ async function moverock_core(sx, sy) {
                 sokoban_guilt();
                 return 0;
             }
-            await pline('There is a boulder in your way.');
+            await There('is a boulder in your way.');
             if (glyph_at_fp(sx, sy) !== oldglyph) {
                 if (!game.context) game.context = {};
                 game.context.door_opened = true;
@@ -822,11 +887,26 @@ async function moverock_core(sx, sy) {
             return -1;
         }
 
+        /* C `:415–424` — levitating (or on the air level) gives no
+         * leverage; Blind still feels the boulder first. */
         if (u.Levitation || game.dungeon_topology?.Is_airlevel) {
-            await pline(`You don't have enough leverage to push the ${xname(otmp)}.`);
+            if (Blind_im())
+                feel_location(sx, sy);
+            await You(`don't have enough leverage to push ${the(xname(otmp))}.`);
+            /* Give them a chance to climb over it? */
             return -1;
         }
+        /* C `:426–431` — too small to push (unless riding). */
+        if (verysmall(game.youmonst?.data) && !u.usteed) {
+            if (Blind_im())
+                feel_location(sx, sy);
+            await pline(`You're too small to push that ${xname(otmp)}.`);
+            return cannot_push(otmp, sx, sy);
+        }
 
+        /* C `:432–436` — destination must take a boulder: in-bounds,
+         * unobstructed, not iron bars, no diagonal door push, no
+         * boulder already there. */
         const loc = game.level?.at(rx, ry);
         const typ = loc?.typ ?? 0;
         const clear = isok(rx, ry)
@@ -838,6 +918,10 @@ async function moverock_core(sx, sy) {
         if (clear) {
             const ttmp = t_at_local(rx, ry);
             const mtmp = m_at(rx, ry);
+            /* C `:437–439` — pushing out of a shop starts a costly
+             * push (dopush bills the boundary crossing). */
+            const costly = costly_spot(sx, sy)
+                && shop_keeper((in_rooms(sx, sy, SHOPBASE) || '').charCodeAt(0) || 0);
 
             /* C hack.c moverock_core :441–448 — Sokoban never rolls
                diagonally: Blind feel_location(sx,sy), "%s won't roll
@@ -851,7 +935,12 @@ async function moverock_core(sx, sy) {
                 return cannot_push(otmp, sx, sy);
             }
 
-            // C: revive_nasty deferred
+            /* C `:450–452` — pushing onto a spot where a Rider or the
+             * Wizard would revive wakes them instead of moving rock. */
+            if (await revive_nasty(rx, ry,
+                    'You sense movement on the other side.')) {
+                return -1;
+            }
 
             // C ref: hack.c moverock_core — monster on far side of boulder
             if (mtmp && !noncorporeal(mtmp.data)
@@ -864,25 +953,19 @@ async function moverock_core(sx, sy) {
                     await pline(`There's ${a_monnam(mtmp)} on the other side.`);
                     deliver_part1 = true;
                 } else {
-                    // Soundeffect deferred
-                    await You_hear(`a monster behind the ${xname(otmp)}.`);
-                    if (!u.Deaf) deliver_part1 = true;
+                    Soundeffect(se_monster_behind_boulder, 50);
+                    await You_hear(`a monster behind ${the(xname(otmp))}.`);
+                    if (!Deaf_mr())
+                        deliver_part1 = true;
                     map_invisible(rx, ry);
                 }
                 if (game.flags?.verbose !== false) {
-                    // y_monnam(usteed) deferred — rare on ordinary push
-                    const you_or_steed = u.usteed ? 'your steed' : 'you';
-                    if (deliver_part1) {
-                        await pline(
-                            `Perhaps that's why ${you_or_steed} cannot move it.`,
-                        );
-                    } else {
-                        const who = you_or_steed.charAt(0).toUpperCase()
-                            + you_or_steed.slice(1);
-                        await pline(
-                            `${who} cannot move the ${xname(otmp)}.`,
-                        );
-                    }
+                    /* C `:471–474` — steed wording via y_monnam. */
+                    const you_or_steed = u.usteed ? y_monnam(u.usteed) : 'you';
+                    /* C `:475–479` — one pline for both halves. */
+                    await pline(
+                        `${deliver_part1 ? "Perhaps that's why " : ''}${deliver_part1 ? you_or_steed : upstart(you_or_steed)} cannot move ${deliver_part1 ? 'it' : the(xname(otmp))}.`,
+                    );
                 }
                 return cannot_push(otmp, sx, sy);
             }
@@ -892,9 +975,142 @@ async function moverock_core(sx, sy) {
                 return cannot_push(otmp, sx, sy);
             }
 
+            /* C `:494` — rumbling disturbs buried zombies. */
             disturb_buried_zombies(sx, sy);
-            // Trap / pool arms deferred
-            await dopush(sx, sy, rx, ry, otmp);
+
+            if (ttmp) {
+                /* C `:496–504` — a trap operating on the boulder ends
+                 * the push for this pile: -1 if another boulder still
+                 * blocks, else 0 to step onto the vacated spot. */
+                let newlev = 0; /* C `:497` lint suppression */
+                switch (ttmp.ttyp) {
+                case LANDMINE:
+                    /* C `:505–528` — 9/10 the push triggers the mine. */
+                    if (rn2(10)) {
+                        obj_extract_self(otmp);
+                        place_object(otmp, rx, ry);
+                        newsym(sx, sy);
+                        await pline(
+                            `${(!Deaf_mr() || !Blind_im()) ? 'KAABLAMM!!' : 'Gadzooks'}!  ${Tobjnam(otmp, 'trigger')} ${ttmp.madeby_u ? 'your' : 'a'} land mine.`,
+                        );
+                        await blow_up_landmine(ttmp);
+                        /* if the boulder remains, it should fill the pit */
+                        fill_pit(u.ux, u.uy);
+                        if (cansee(rx, ry))
+                            newsym(rx, ry);
+                        return sobj_at(BOULDER, sx, sy) ? -1 : 0;
+                    }
+                    break;
+                case SPIKED_PIT:
+                case PIT:
+                    /* C `:530–542` — the boulder falls in; flooreffects
+                     * decides whether it survives the fall. */
+                    obj_extract_self(otmp);
+                    /* vision kludge to get messages right;
+                       the pit will temporarily be seen even
+                       if this is one among multiple boulders */
+                    if (!Blind_im() && game.viz_array?.[ry])
+                        game.viz_array[ry][rx] |= IN_SIGHT;
+                    if (!(await flooreffects(otmp, rx, ry, 'fall'))) {
+                        place_object(otmp, rx, ry);
+                    }
+                    if (mtmp && !Blind_im())
+                        newsym(rx, ry);
+                    return sobj_at(BOULDER, sx, sy) ? -1 : 0;
+                case HOLE:
+                case TRAPDOOR:
+                    /* C `:544–565` — the boulder plugs the hole and is
+                     * used up; the floor becomes diggable. */
+                    Soundeffect(se_kerplunk_boulder_gone, 40);
+                    if (Blind_im())
+                        await pline(`Kerplunk!  You no longer feel ${the(xname(otmp))}.`);
+                    else
+                        await pline(
+                            `${Tobjnam(otmp, ttmp.ttyp === TRAPDOOR ? 'trigger' : 'fall')}${ttmp.ttyp === TRAPDOOR ? '' : ' into'} and ${otense(otmp, 'plug')} a ${ttmp.ttyp === TRAPDOOR ? 'trap door' : 'hole'} in the ${surface(rx, ry)}!`,
+                        );
+                    deltrap(ttmp);
+                    useupf(otmp, 1);
+                    await bury_objs(rx, ry);
+                    {
+                        const holelev = game.level?.at(rx, ry);
+                        if (holelev) {
+                            holelev.wall_info = (holelev.wall_info | 0) & ~W_NONDIGGABLE;
+                            holelev.candig = 1;
+                        }
+                    }
+                    if (cansee(rx, ry))
+                        newsym(rx, ry);
+                    return sobj_at(BOULDER, sx, sy) ? -1 : 0;
+                case LEVEL_TELEP:
+                    /* C `:567–576` — 20% chance of picking the current
+                     * level (always, in single-level branches/endgame);
+                     * a no-op trap pushes on instead. */
+                    newlev = random_teleport_level();
+                    /* if trap doesn't work, skip "disappears" message */
+                    if (newlev === depth(game.u?.uz)) {
+                        await dopush(sx, sy, rx, ry, otmp, costly);
+                        continue;
+                    }
+                    /* FALLTHROUGH */
+                    /*FALLTHRU*/
+                case TELEP_TRAP:
+                    /* C `:578–593` — the boulder leaves the level. */
+                    await rock_disappear_msg(otmp);
+                    otmp.next_boulder = 0; /* reset before moving it */
+                    if (ttmp.ttyp === TELEP_TRAP) {
+                        await rloco(otmp);
+                    } else {
+                        if (costly)
+                            await stolen_value(otmp, rx, ry, !ttmp.tseen, false);
+                        obj_extract_self(otmp);
+                        add_to_migration(otmp);
+                        {
+                            const dest = {};
+                            get_level(dest, newlev);
+                            otmp.ox = dest.dnum;
+                            otmp.oy = dest.dlevel;
+                        }
+                        otmp.owornmask = MIGR_RANDOM;
+                    }
+                    seetrap(ttmp);
+                    return sobj_at(BOULDER, sx, sy) ? -1 : 0;
+                case ROLLING_BOULDER_TRAP: {
+                    /* C `:595–617` — the boulder rolls on to one of the
+                     * trap's launch spots (or a wall / out-of-bounds). */
+                    let tox = rx;
+                    let toy = ry;
+                    while (isok(tox + u.dx, toy + u.dy)) {
+                        tox += u.dx;
+                        toy += u.dy;
+                        if (tox === ttmp.launch?.x && toy === ttmp.launch?.y)
+                            break;
+                        if (tox === ttmp.launch2?.x && toy === ttmp.launch2?.y)
+                            break;
+                    }
+                    await pline(`${Tobjnam(otmp, 'suddenly roll')} away from you!`);
+                    feeltrap(ttmp);
+                    await launch_obj(BOULDER, sx, sy, tox, toy, ROLL | LAUNCH_KNOWN);
+                    return sobj_at(BOULDER, sx, sy) ? -1 : 0;
+                }
+                default:
+                    break; /* boulder not affected by this trap */
+                }
+            }
+
+            /* C `:620` — a boulder pushed into water is gone from
+             * the pile; the loop moves on to the next one. */
+            if (await boulder_hits_pool(otmp, rx, ry, true))
+                continue;
+
+            /*
+             * C `:627–630` — re-link at top of fobj chain so that pile
+             * order is preserved when level is restored.
+             */
+            if (otmp !== game.fobj) {
+                remove_object(otmp);
+                place_object(otmp, otmp.ox, otmp.oy);
+            }
+            await dopush(sx, sy, rx, ry, otmp, costly);
         } else {
             await cannot_push_msg(otmp, sx, sy);
             return cannot_push(otmp, sx, sy);
@@ -3465,8 +3681,8 @@ function is_weptool_hack(obj) {
  * Branch envelope: innate/blocked wobble vs flight control vs crash
  * (rn1 dmg + floor weapons + exercise); stop_donning; strip arti/timeout
  * lev + RIN_LEVITATION / LEVITATION_BOOTS; float_vs_flight.
- * Named omissions: Boots_off LEVITATION float_down
- * side-effect (HLevitation++ bracket still prevents mid-strip land).
+ * Named omissions: none — Boots_off LEVITATION float_down is live
+ * (D-2746); the HLevitation++ bracket still prevents mid-strip land.
  */
 export async function dosinkfall() {
     const fell_on_sink = 'fell onto a sink';

@@ -1789,7 +1789,7 @@ function is_home_elemental(ptr) {
     }
 }
 
-function unlink_minvent(mon, obj) {
+export function unlink_minvent(mon, obj) {
     if (!mon || !obj) return;
     if (mon.minvent === obj) {
         mon.minvent = obj.nobj || null;

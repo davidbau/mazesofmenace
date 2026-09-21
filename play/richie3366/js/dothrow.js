@@ -40,7 +40,7 @@ import {
     ERODE_CRACK, EF_DESTROY, EF_VERBOSE, ER_DESTROYED, ESHK, EYE, EXPL_FIERY,
     ismnum, isok, u_at, MM_IGNOREWATER, MM_IGNORELAVA, MM_NOMSG,
     HURTLING, FORCEBUNGLE, IRONBARS, Upolyd, FACE, HEAD, ARM, FOOT, STONING,
-    TIMEOUT, WT_TO_DMG, POTHIT_HERO_THROW, Has_contents, NON_PM, LOW_PM,
+    TIMEOUT, I_SPECIAL, WT_TO_DMG, POTHIT_HERO_THROW, Has_contents, NON_PM, LOW_PM,
     W_WEP, W_SWAPWEP, W_QUIVER, STR19, LOST_NONE, SLT_ENCUMBER, Is_airlevel,
     BOLT_LIM, AKLYS_LIM, HAND, THROWN_WEAPON, THROWN_TETHERED_WEAPON,
     xdir, ydir, xytodir, N_DIRS, RIGHT_HANDED, IS_SINK, HI_WOOD, OBJ_MINVENT,
@@ -2876,6 +2876,84 @@ export function walk_path(src, dest, check_proc, arg) {
     dest.x = prev_x;
     dest.y = prev_y;
     return false;
+}
+
+/**
+ * C ref: dothrow.c walk_path — async twin of the Bresenham walk above.
+ * Same cell order and early-stop dest mutation, but awaits an async
+ * check_proc (C walk_path callers are sync; jump's hurtle_jump is async
+ * in JS because hurtle_step awaits pline/wakeup). No separate C body.
+ * @param {{x:number,y:number}} src
+ * @param {{x:number,y:number}} dest  mutated on early exit
+ * @param {(arg:*, x:number, y:number) => Promise<boolean>|boolean} check_proc
+ * @param {*} arg
+ */
+export async function walk_path_async(src, dest, check_proc, arg) {
+    let dx = (dest.x | 0) - (src.x | 0);
+    let dy = (dest.y | 0) - (src.y | 0);
+    let prev_x = src.x | 0;
+    let prev_y = src.y | 0;
+    let x = prev_x;
+    let y = prev_y;
+    let x_change = 1;
+    let y_change = 1;
+    if (dx < 0) {
+        x_change = -1;
+        dx = -dx;
+    }
+    if (dy < 0) {
+        y_change = -1;
+        dy = -dy;
+    }
+    let err = 0;
+    let i = 0;
+    let keep_going = true;
+    if (dx < dy) {
+        while (i++ < dy) {
+            prev_x = x;
+            prev_y = y;
+            y += y_change;
+            err += dx << 1;
+            if (err > dy) {
+                x += x_change;
+                err -= dy << 1;
+            }
+            keep_going = !!(await check_proc(arg, x, y));
+            if (!keep_going) break;
+        }
+    } else {
+        while (i++ < dx) {
+            prev_x = x;
+            prev_y = y;
+            x += x_change;
+            err += dy << 1;
+            if (err > dx) {
+                y += y_change;
+                err -= dx << 1;
+            }
+            keep_going = !!(await check_proc(arg, x, y));
+            if (!keep_going) break;
+        }
+    }
+    if (keep_going) return true;
+    dest.x = prev_x;
+    dest.y = prev_y;
+    return false;
+}
+
+/**
+ * C ref: dothrow.c hurtle_jump — walk_path callback for jump().
+ * Sets EWwalking I_SPECIAL around hurtle_step (C :742–752: "prevent
+ * jumping over water from being placed in that water"), then restores.
+ * @param {{n:number}} rangeArg
+ */
+export async function hurtle_jump(rangeArg, x, y) {
+    const u = game.u || {};
+    const save_EWwalking = u.EWwalking | 0;
+    u.EWwalking = save_EWwalking | I_SPECIAL;
+    const res = await hurtle_step(rangeArg, x, y);
+    u.EWwalking = save_EWwalking;
+    return res;
 }
 
 function sgn_hurtle(n) {

@@ -28,7 +28,9 @@ import {
     ACCESSIBLE, IS_STWALL, IS_DOOR, IS_FURNITURE, IS_OBSTRUCTED, IS_WATERWALL,
     IS_AIR, AIR, CLOUD,
     TELEDS_NO_FLAGS, TELEDS_ALLOW_DRAG, INTRINSIC, STONE, LAVAWALL, TT_PIT,
-    EXT_ENCUMBER, COST_DSTROY, COST_DEGRD, HEAD, HAND, NOSE, NON_PM,
+    TT_BEARTRAP, TT_WEB, TT_LAVA, TT_INFLOOR, FORCETRAP, TOOKPLUNGE,
+    LEFT_SIDE, RIGHT_SIDE, UNENCUMBERED,
+    EXT_ENCUMBER, COST_DSTROY, COST_DEGRD, HEAD, HAND, NOSE, LEG, NON_PM,
     KILLED_BY, NO_KILLER_PREFIX, W_WEP, STATUE_TRAP,
     EXPL_MAGICAL, EXPL_FIERY, EXPL_FROSTY, PARANOID_BREAKWAND,
     RLOC_NOMSG, RLOC_MSG, RLOC_NONE, XKILL_NOMSG, ARTICLE_NONE, ARTICLE_A,
@@ -58,7 +60,7 @@ import { rn2, rn1, rnd, d, rnl, shuffle_int_array } from './rng.js';
 import {
     nohands, haseyes, humanoid, is_demon, is_vampire, is_vampshifter,
     likes_gems, M1_SEE_INVIS, monsterNames, mons, throws_rocks, passes_walls,
-    unsolid, nolimbs, has_head, breathless, is_floater, is_flyer, amorphous,
+    unsolid, nolimbs, slithy, has_head, breathless, is_floater, is_flyer, amorphous,
     hides_under, MZ_SMALL, MZ_TINY, M1_SLITHY, is_whirly, is_female, is_male,
     PM_ARCHEOLOGIST, PM_GNOME, bigmonst, verysmall, strongmonst,
     touch_petrifies, poly_when_stoned, is_rider,
@@ -74,11 +76,11 @@ import {
 import { xname, the, The, makeplural, vtense, doname, an, singular, cxname, thesimpleoname, simpleonames, simple_typename, yname, shk_your, Tobjnam, gloves_simple_name, otense } from './objnam.js';
 import { obj_resists } from './dogmove.js';
 import { acurr, A_CHA, A_STR, A_DEX, A_CON, change_luck, Fumbling } from './attrib.js';
-import { Monnam, mon_nam, x_monnam, y_monnam, Hallucination, a_monnam, Amonnam, monverbself, l_monnam, type_is_pname, pmname, Mgender } from './do_name.js';
+import { Monnam, mon_nam, x_monnam, y_monnam, Hallucination, a_monnam, Amonnam, monverbself, l_monnam, type_is_pname, pmname, Mgender, hliquid, YMonnam } from './do_name.js';
 import { monflee } from './monmove.js';
 import { nomul, confdir, losehp, maybe_half_phys, is_pool, is_lava, overexertion, in_rooms, You_hear } from './hack.js';
 import { getpos, getpos_sethilite } from './getpos.js';
-import { walk_path, thitmonst, hurtle } from './dothrow.js';
+import { walk_path, walk_path_async, hurtle_jump, thitmonst, hurtle } from './dothrow.js';
 import { uhim, uhis, genders } from './roles.js';
 import { PM_HEALER } from './generated/monsters_data.js';
 import { is_art, retouch_object } from './artifact.js';
@@ -102,7 +104,7 @@ import {
     flash_hits_mon, xkilled, attack_checks, check_caitiff,
     force_attack, stumble_onto_mimic,
 } from './uhitm.js';
-import { digests, set_ustuck } from './mhitu.js';
+import { digests, set_ustuck, Flying } from './mhitu.js';
 import { growl, yelp, whimper, mon_msound } from './sounds.js';
 import { Soundeffect } from './sndprocs.js';
 import { se_wall_of_force, se_faint_splashing, se_heart_beat, se_typing_noise, se_hollow_sound, se_crackling_of_hellfire } from './generated/seffects_data.js';
@@ -111,7 +113,10 @@ import { fill_pit, buried_ball_to_freedom } from './dig.js';
 import {
     mintrap, Trap_Killed_Mon, reset_utrap, instapetrify, t_at,
     activate_statue_trap, maketrap, feeltrap, dotrap, trapname, obj_pmname,
+    deltrap, set_wounded_legs, legs_in_no_shape,
 } from './trap.js';
+import { stucksteed } from './steed.js';
+import { known_spell, spe_Fresh, SPE_JUMPING, spelleffects } from './spell.js';
 import { begin_burn, end_burn, Is_candle, obj_merge_light_sources,
     get_obj_location } from './timeout.js';
 import { show_transient_light, transient_light_cleanup } from './light.js';
@@ -5474,58 +5479,89 @@ export async function dojump() {
 
 /**
  * C ref: apply.c jump(magic) — 0=physical, else spell skill (D-0899 /
- * D-1397). Named omissions: #jump known_spell fallback; nolimbs/slithy;
- * stucksteed; encumbrance/hunger/wounded-legs; steed utrap; trap-escape
- * arms; hurtle_jump body (success still teleds after walk_path always-true
- * stub).
+ * D-1397). Full C order (apply.c :1988–2164): known_spell #jump fallback;
+ * nolimbs/slithy; !Jumping; stucksteed; uswallow; uinwater; ustuck;
+ * Levitation/air/water; encumbrance; hunger/strength; Wounded_legs; steed
+ * trap; getpos prompt; is_valid_jump_pos; steed in-place; utrap escape
+ * switch; same-spot trap/no-time arms; walk_path hurtle_jump; teleds.
  */
 export async function jump(magic) {
     const u = game.u || {};
 
-    if (!magic && !Jumping()) {
-        await pline("You can't jump very far.");
-        return ECMD_OK;
+    /* C :1993–1995 — no innate jumping but the spell is fresh: cast it. */
+    if (!magic && !Jumping() && known_spell(SPE_JUMPING) >= spe_Fresh) {
+        return spelleffects(SPE_JUMPING, false, false);
     }
-    if (u.uswallow) {
+    if (!magic && (nolimbs(game.youmonst?.data) || slithy(game.youmonst?.data))) {
+        /* C :1997–2002 — normally implies !Jumping, but not for knights. */
+        await You_cant('jump; you have no legs!');
+        return ECMD_OK;
+    } else if (!magic && !Jumping()) {
+        await You_cant('jump very far.');
+        return ECMD_OK;
+    /* C :2007–2010 — stucksteed printed "<steed> won't move". */
+    } else if (!magic && u.usteed && (await stucksteed(false))) {
+        return ECMD_OK;
+    } else if (u.uswallow) {
+        /* C :2011–2017 */
         if (magic) {
-            await pline('You bounce around a little.');
+            await You('bounce around a little.');
             return ECMD_TIME;
         }
         await pline("You've got to be kidding!");
         return ECMD_OK;
-    }
-    if (u.uinwater) {
+    } else if (u.uinwater) {
+        /* C :2018–2024 */
         if (magic) {
-            await pline('You swish around a little.');
+            await You('swish around a little.');
             return ECMD_TIME;
         }
         await pline('This calls for swimming, not jumping!');
         return ECMD_OK;
-    }
-    if (u.ustuck) {
-        /* C apply.c :2023–2036 — tame pull-free then magic writhe. */
+    } else if (u.ustuck) {
+        /* C :2025–2038 — tame pull-free, then magic writhe. */
         if (u.ustuck.mtame && !hero_conflict() && !u.ustuck.mconf) {
             const mtmp = u.ustuck;
             set_ustuck(null);
-            await pline(`You pull free from ${mon_nam(mtmp)}.`);
+            await You('pull free from %s.', mon_nam(mtmp));
             return ECMD_TIME;
         }
         if (magic) {
-            await pline(
-                `You writhe a little in the grasp of ${mon_nam(u.ustuck)}!`,
+            await You(
+                'writhe a little in the grasp of %s!',
+                mon_nam(u.ustuck),
             );
             return ECMD_TIME;
         }
-        await pline(`You cannot escape from ${mon_nam(u.ustuck)}!`);
+        await You('cannot escape from %s!', mon_nam(u.ustuck));
         return ECMD_OK;
-    }
-    if (u.Levitation || u.HLevitation || u.ELevitation
+    } else if ((((u.HLevitation | 0) || (u.ELevitation | 0))
+            && !(u.BLevitation | 0))
         || Is_airlevel(u.uz) || Is_waterlevel(u.uz)) {
+        /* C :2039–2045 — youprop.h Levitation shape (artifact.js:386). */
         if (magic) {
-            await pline('You flail around a little.');
+            await You('flail around a little.');
             return ECMD_TIME;
         }
-        await pline("You don't have enough traction to jump.");
+        await You("don't have enough traction to jump.");
+        return ECMD_OK;
+    } else if (!magic && near_capacity() > UNENCUMBERED) {
+        /* C :2046–2048 */
+        await You('are carrying too much to jump!');
+        return ECMD_OK;
+    } else if (!magic && (u.uhunger <= 100 || acurr(A_STR) < 6)) {
+        /* C :2049–2051 */
+        await You('lack the strength to jump!');
+        return ECMD_OK;
+    } else if (!magic && (u.Wounded_legs
+            || ((u.HWounded_legs | 0) & TIMEOUT)
+            || (u.EWounded_legs | 0))) {
+        /* C :2052–2054 */
+        await legs_in_no_shape('jumping', !!u.usteed);
+        return ECMD_OK;
+    } else if (u.usteed && u.utrap) {
+        /* C :2055–2057 */
+        await pline('%s is stuck in a trap.', Monnam(u.usteed));
         return ECMD_OK;
     }
 
@@ -5534,35 +5570,119 @@ export async function jump(magic) {
     game.jumping_is_magic = magic | 0;
     getpos_sethilite(display_jump_positions, get_valid_jump_position);
     if ((await getpos(cc, true, 'the desired position')) < 0) {
-        return ECMD_CANCEL;
+        return ECMD_CANCEL; /* C :2063–2064 — user pressed ESC */
     }
     if (!(await is_valid_jump_pos(cc.x, cc.y, magic, true))) {
+        /* C :2065–2066 */
         return ECMD_FAIL;
-    }
-    if (u.usteed && (u.ux | 0) === (cc.x | 0) && (u.uy | 0) === (cc.y | 0)) {
-        await pline(`${Monnam(u.usteed)} isn't capable of jumping in place.`);
+    } else if (u.usteed && u_at(cc.x, cc.y)) {
+        /* C :2067–2069 */
+        await pline("%s isn't capable of jumping in place.", YMonnam(u.usteed));
         return ECMD_FAIL;
-    }
+    } else {
+        let wastrapped = false;
 
-    // Same-spot / trap-escape arms deferred — seed path jumps elsewhere.
-    if ((u.ux | 0) === (cc.x | 0) && (u.uy | 0) === (cc.y | 0)) {
-        await pline('You decide not to jump after all.');
-        return ECMD_OK;
-    }
+        /* C :2075–2120 — trapped escape switch; reset_utrap after. */
+        if (u.utrap) {
+            wastrapped = true;
+            switch (u.utraptype | 0) {
+            case TT_BEARTRAP:
+                /* C :2078–2083 */
+                await You('rip yourself free of the bear trap!  Ouch!');
+                losehp(
+                    maybe_half_phys(rnd(10)),
+                    'jumping out of a bear trap',
+                    KILLED_BY,
+                );
+                await set_wounded_legs(
+                    rn2(3) ? LEFT_SIDE : RIGHT_SIDE,
+                    rn1(1000, 500),
+                );
+                break;
+            case TT_PIT:
+                /* C :2085–2087 */
+                await You('leap from the pit!');
+                break;
+            case TT_WEB:
+                /* C :2088–2091 */
+                await You('tear the web apart as you pull yourself free!');
+                deltrap(t_at(u.ux, u.uy));
+                break;
+            case TT_LAVA:
+                /* C :2092–2095 — take the u_at 'if' below. */
+                await You('pull yourself above the %s!', hliquid('lava'));
+                cc.x = u.ux;
+                cc.y = u.uy;
+                break;
+            case TT_BURIEDBALL:
+            case TT_INFLOOR:
+                /* C :2096–2106 — still trapped: return before reset. */
+                await You(
+                    'strain your %s, but you\'re still %s.',
+                    makeplural(body_part(LEG)),
+                    (u.utraptype | 0) === TT_INFLOOR
+                        ? 'stuck in the floor'
+                        : 'attached to the buried ball',
+                );
+                await set_wounded_legs(LEFT_SIDE, rn1(10, 11));
+                await set_wounded_legs(RIGHT_SIDE, rn1(10, 11));
+                return ECMD_TIME;
+            default:
+                /* C :2107–2109 */
+                await impossible(
+                    'Jumping out of strange trap (%d)?',
+                    u.utraptype,
+                );
+                break;
+            }
+            /* C :2112 — hero is no longer trapped. */
+            reset_utrap(true);
+        }
+        /* C :2116–2136 — same-spot arms (riding handled above). */
+        if (u_at(cc.x, cc.y)) {
+            /* C :2120–2123 — trap escape takes precedence. */
+            if (wastrapped) {
+                await morehungry(rnd(10));
+                return ECMD_TIME;
+            }
+            /* C :2125–2129 — jumping in place on a trap triggers it. */
+            const t = t_at(cc.x, cc.y);
+            if (t != null) {
+                await You('jump up and %s back down.', !Flying() ? 'come' : 'fly');
+                await dotrap(t, FORCETRAP | TOOKPLUNGE);
+                return ECMD_TIME;
+            }
+            /* C :2131–2135 — no time, exercises nothing. */
+            await You(
+                '%s.',
+                Hallucination()
+                    ? 'hop up and down a bit'
+                    : 'decide not to jump after all',
+            );
+            return ECMD_OK;
+        }
 
-    const uc = { x: u.ux | 0, y: u.uy | 0 };
-    let range = Math.abs((cc.x | 0) - (uc.x | 0));
-    const temp = Math.abs((cc.y | 0) - (uc.y | 0));
-    if (range < temp) range = temp;
-    // C: walk_path(..., hurtle_jump, &range) — hurtle body deferred;
-    // always-true keeps dest so teleds lands on the chosen cell.
-    walk_path(uc, cc, () => true, range);
-    await teleds(cc.x, cc.y, TELEDS_NO_FLAGS);
-    nomul(-1);
-    if (!game.multi_reason) game.multi_reason = 'jumping around';
-    game.nomovemsg = '';
-    await morehungry(rnd(25));
-    return ECMD_TIME;
+        /*
+         * C :2138–2163 — walk the path calling hurtle_jump at each
+         * location; the final position reached lands in cc. hurtle_jump
+         * -> hurtle_step leaves <u.ux,u.uy> == <cc.x,cc.y> but not all
+         * landing effects, so teleds finishes the move. (void): the walk
+         * return is ignored; cc carries the early stop.
+         */
+        const uc = { x: u.ux | 0, y: u.uy | 0 };
+        let range = (cc.x | 0) - (uc.x | 0);
+        if (range < 0) range = -range;
+        const temp = (cc.y | 0) - (uc.y | 0);
+        const tempAbs = temp < 0 ? -temp : temp;
+        if (range < tempAbs) range = tempAbs;
+        await walk_path_async(uc, cc, hurtle_jump, { n: range });
+        await teleds(cc.x, cc.y, TELEDS_NO_FLAGS);
+        nomul(-1);
+        game.multi_reason = 'jumping around';
+        game.nomovemsg = '';
+        await morehungry(rnd(25));
+        return ECMD_TIME;
+    }
 }
 
 /** C objnam.c Yname2 — capitalized yname (minvent uses shk_your mon_owns). */

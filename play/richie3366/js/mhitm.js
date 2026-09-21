@@ -6,10 +6,10 @@ import { rn2, rnd, rn1, d, rnl } from './rng.js';
 import {
     distmin, m_at, record_mvitals_died, undead_to_corpse, monnear, seemimic,
     zombie_maker, zombie_form, minliquid, healmon, wake_nearto, mon_givit,
-    mtrapped_in_pit, LEVEL_SPECIFIC_NOCORPSE,
+    mtrapped_in_pit, LEVEL_SPECIFIC_NOCORPSE, unlink_minvent,
 } from './mon.js';
 import { game } from './gstate.js';
-import { pline, pline_mon, newsym, canspotmon, canseemon, map_invisible, unmap_object, memory_glyph_is_invisible, You, You_feel, flush_screen, flush_topl_more, verbalize, sensemon, shieldeff, mon_visible } from './display.js';
+import { pline, pline_mon, newsym, canspotmon, canseemon, map_invisible, unmap_object, memory_glyph_is_invisible, glyph_is_invisible, You, You_feel, flush_screen, flush_topl_more, verbalize, sensemon, shieldeff, mon_visible } from './display.js';
 import { cansee } from './vision.js';
 import { dist2, isok } from './hacklib.js';
 import { resist_conflict, set_mon_data, on_fire, mhis, mhe, little_to_big, defended, monsndx } from './mondata.js';
@@ -125,6 +125,9 @@ import {
     obj_extract_self, add_to_minv,
 } from './mkobj.js';
 import { findgold, stealarm, unstolenarm } from './steal.js';
+import { flooreffects } from './do.js';
+import { end_burn } from './timeout.js';
+import { obj_resists } from './dogmove.js';
 import { munslime, mon_adjust_speed, munstone } from './muse.js';
 import { Monnam, mon_nam, mon_nam_too, Adjmonnam, Amonnam, oname, pmname, x_monnam, hliquid, YMonnam, s_suffix, free_mgivenname, a_monnam, y_monnam, some_mon_nam, minimal_monnam } from './do_name.js';
 import { an, xname, makeplural, cxname, vtense, The, simpleonames, doname } from './objnam.js';
@@ -140,7 +143,7 @@ import { m_unleash } from './apply.js';
 import { update_inventory } from './invent.js';
 import { bury_an_obj } from './dig.js';
 import { is_pole, is_weptool } from './wield.js';
-import { mswings_verb, Conflict, unstuck, set_ustuck } from './mhitu.js';
+import { mswings_verb, Conflict, unstuck, set_ustuck, digests } from './mhitu.js';
 import { mon_offmap, set_apparxy, mb_trapped, itsstuck } from './monmove.js';
 import { hurtle, mhurtle, will_hurtle } from './dothrow.js';
 import { make_stunned } from './potion.js';
@@ -173,7 +176,7 @@ import { livelog_printf } from './pline.js';
 import { shtypes } from './shknam.js';
 import { obfree, setpaid, discard_damage_owned_by } from './shk.js';
 import { search_special } from './sounds.js';
-import { closed_door, test_move } from './hack.js';
+import { closed_door, test_move, u_locomotion } from './hack.js';
 import { surface } from './sit.js';
 import { emits_light, del_light_source } from './light.js';
 import { on_level } from './dungeon.js';
@@ -3227,87 +3230,89 @@ export async function vamp_stone(mtmp) {
 }
 
 /**
- * C ref: zap.c obj_resists(obj,0,0) — invocation tools only (no rn2);
- * ordinary objects burn rn2(100) then fail with ochance 0.
- */
-function obj_resists_00(obj) {
-    if (!obj) return false;
-    const n = objectNames[obj.otyp];
-    if (n === 'AMULET_OF_YENDOR'
-        || n === 'SPE_BOOK_OF_THE_DEAD'
-        || n === 'CANDELABRUM_OF_INVOCATION'
-        || n === 'BELL_OF_OPENING'
-        || (n === 'CORPSE' && is_rider(mons(obj.corpsenm)))) {
-        return true;
-    }
-    rn2(100); // C always consumes for ordinary
-    return false;
-}
-
-/**
- * C ref: mon.c monstone — statue or rock + mondead.
- * Named omissions: lifesaved_monster; flooreffects on ejected boulder;
- * end_burn lamplit; engulfing_u digests pline; free_mgivenname.
+ * C ref: mon.c monstone `:3286–3373` — statue or rock + mondead, in C order.
+ * `:3295` vamp_stone gate (x/y read at `:3290`, before it — vamp_stone
+ * can rloc an amorphous); `:3302–3304` mhp=0, lifesaved, DEADMONSTER
+ * return; `:3307` mtrapped=0; `:3309–3352` statue arm (size gate, extract
+ * loop with BOULDER/obj_resists eject via flooreffects-fall else lamplit
+ * end_burn + oldminvent chain, FEMALE/MALE/HISTORIC flags, mkcorpstat +
+ * mgivenname oname, add_to_container chain, weight) else `:3354` ROCK;
+ * `:3356–3361` stackobj + glyph unmap + cansee newsym; `:3364–3370`
+ * engulfing wasinside before mondead, digests jump-out pline after.
+ * Callers (8, all wired): eat.js:3319 (eat.c:646), mhitm.js:1717/2066/5528
+ * (mhitm.c:237/786/1050), mon.js:2409 (mon.c:1439), uhitm.js:843 xkilled
+ * (mon.c:3547), trap.js:3449 (trap.c:3879), mhitm.js do_stone_mon:1706
+ * (uhitm.c:3963). No map omissions: the `:3319–3322` STATUE arm is
+ * `#if 0` compiled out in C; free_mgivenname is mondead's, not this fn's.
  */
 export async function monstone(mdef) {
-    if (!(await vamp_stone(mdef))) return;
-
-    const x = mdef.mx | 0;
+    const x = mdef.mx | 0; // C `:3290` — before vamp_stone (it can rloc)
     const y = mdef.my | 0;
-    mdef.mhp = 0;
-    // C mon.c monstone `:3301–3303` — lifesaving before the statue.
-    await lifesaved_monster(mdef);
-    if (!deadmonster(mdef)) return;
+    let wasinside = false; // C `:3291`
+    if (!(await vamp_stone(mdef))) return; // C `:3295–3296`
 
-    mdef.mtrapped = 0;
+    mdef.mhp = 0; // C `:3302` — in case caller hasn't done this
+    await lifesaved_monster(mdef); // C `:3303`
+    if (!deadmonster(mdef)) return; // C `:3304–3305`
+
+    mdef.mtrapped = 0; // C `:3307` (see m_detach)
 
     let otmp;
     const msize = mdef.data?.msize ?? 0;
     const geno = mdef.data?.geno ?? 0;
-    if (msize > MZ_TINY
+    if (msize > MZ_TINY // C `:3309–3310`
         || !rn2(2 + (((geno & G_FREQ) > 2) ? 1 : 0))) {
         let oldminvent = null;
-        while (mdef.minvent) {
-            const obj = mdef.minvent;
-            mdef.minvent = obj.nobj;
-            obj.nobj = null;
-            obj.owornmask = 0;
-            obj.ocarry = null;
-            if (obj.otyp === BOULDER || obj_resists_00(obj)) {
-                // flooreffects deferred — place on floor
-                place_object(obj, x, y);
+        let obj;
+        while ((obj = mdef.minvent) != null) { // C `:3315`
+            extract_from_minvent(mdef, obj, true, true); // C `:3316`
+            unlink_minvent(mdef, obj); // stale where-tag fallback
+            if (obj.otyp === BOULDER // C `:3317–3323` (STATUE arm is #if 0)
+                || obj_resists(obj, 0, 0)) {
+                if (await flooreffects(obj, x, y, 'fall')) // C `:3324`
+                    continue;
+                place_object(obj, x, y); // C `:3326`
             } else {
-                // end_burn deferred
-                obj.nobj = oldminvent;
+                if (obj.lamplit) // C `:3328–3329`
+                    end_burn(obj, true);
+                obj.nobj = oldminvent; // C `:3330–3331`
                 oldminvent = obj;
             }
         }
-        mdef.mw = null;
-        let corpstatflags = CORPSTAT_NONE;
-        if (mdef.female) corpstatflags |= CORPSTAT_FEMALE;
-        else if (!is_neuter(mdef.data)) corpstatflags |= CORPSTAT_MALE;
-        if ((mdef.data?.geno | 0) & G_UNIQ) corpstatflags |= CORPSTAT_HISTORIC;
-        otmp = mkcorpstat(STATUE, mdef, mdef.data, x, y, corpstatflags);
-        if (has_mgivenname(mdef) && otmp) {
+        let corpstatflags = CORPSTAT_NONE; // C `:3334–3336` (deferred past removal)
+        if (mdef.female) // C `:3336–3340`
+            corpstatflags |= CORPSTAT_FEMALE;
+        else if (!is_neuter(mdef.data))
+            corpstatflags |= CORPSTAT_MALE;
+        if ((mdef.data?.geno | 0) & G_UNIQ) // C `:3342–3343` (archeologists)
+            corpstatflags |= CORPSTAT_HISTORIC;
+        otmp = mkcorpstat(STATUE, mdef, mdef.data, x, y, corpstatflags); // C `:3344`
+        if (has_mgivenname(mdef) && otmp) // C `:3345–3346`
             otmp = oname(otmp, MGIVENNAME(mdef), ONAME_NO_FLAGS);
-        }
-        while (oldminvent) {
-            const obj = oldminvent;
+        while ((obj = oldminvent) != null) { // C `:3347–3351`
             oldminvent = obj.nobj;
-            obj.nobj = null;
+            obj.nobj = null; // avoid merged->obfree->dealloc panic
             if (otmp) add_to_container(otmp, obj);
         }
-        if (otmp) otmp.owt = weight(otmp);
+        if (otmp) otmp.owt = weight(otmp); // C `:3352`
     } else {
-        otmp = mksobj_at(ROCK, x, y, true, false);
+        otmp = mksobj_at(ROCK, x, y, true, false); // C `:3354`
     }
 
-    if (otmp) stackobj(otmp);
-    if (x > 0 && memory_glyph_is_invisible(game.level?.at?.(x, y))) {
+    if (otmp) stackobj(otmp); // C `:3356`
+    // C `:3357–3358` — mondead() already does this, but before the newsym
+    if (glyph_is_invisible(game.level?.at?.(x, y))) // C `:3358`
         unmap_object(x, y);
+    if (cansee(x, y)) // C `:3360–3361`
+        newsym(x, y);
+    if (engulfing_u(mdef)) // C `:3364–3365`, before mondead
+        wasinside = true;
+    await mondead(mdef); // C `:3366`
+    if (wasinside && otmp) { // C `:3367–3370`
+        if (digests(mdef.data))
+            await You(`${u_locomotion('jump')} through an opening in the new ${xname(otmp)}.`);
     }
-    if (x > 0 && cansee(x, y)) newsym(x, y);
-    await mondead(mdef);
+    return;
 }
 
 /**
@@ -5246,19 +5251,6 @@ function closed_door_mm(x, y) {
     const loc = game.level?.at?.(x, y);
     if (!loc || !IS_DOOR(loc.typ)) return false;
     return !!((loc.doormask || 0) & (D_CLOSED | D_LOCKED));
-}
-
-/**
- * C ref: mondata.h digests — AT_ENGL + AD_DGST.
- * Local copy: mhitu.js exports this; importing it would cycle.
- */
-function digests(ptr) {
-    const slots = ptr?.mattk;
-    if (!slots) return false;
-    for (const a of slots) {
-        if ((a.aatyp | 0) === AT_ENGL && (a.adtyp | 0) === AD_DGST) return true;
-    }
-    return false;
 }
 
 /** C ref: mondata.h enfolds — AT_ENGL + AD_WRAP. */

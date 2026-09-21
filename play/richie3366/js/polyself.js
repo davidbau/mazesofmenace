@@ -5,7 +5,7 @@ import { game } from './gstate.js';
 import { rn2, rn1, d, rnd } from './rng.js';
 import { dist2, strstri, strsubst } from './hacklib.js';
 import {
-    pline, You, urgent_pline, newsym, see_monsters, impossible, Hallucination,
+    pline, You, Your, urgent_pline, newsym, see_monsters, impossible, Hallucination,
     canseemon,
 } from './display.js';
 import { getlin, yn_function, y_n } from './getline.js';
@@ -80,7 +80,7 @@ import {
 } from './monsters.js';
 import {
     TT_WEB, TT_BEARTRAP, TT_LAVA, TT_INFLOOR, TT_BURIEDBALL, DISMOUNT_POLY,
-    SICK_ALL, LL_CONDUCT, NECK, STRANGLED, PL_CSIZ,
+    SICK_ALL, LL_CONDUCT, LL_MINORAC, NECK, STRANGLED, PL_CSIZ,
 } from './const.js';
 // change_sex :287 callee (imports.mjs: IN-SCC, runtime-only call — no TDZ read).
 import { max_rank_sz } from './botl.js';
@@ -951,30 +951,39 @@ async function polyman(fmt, arg) {
 }
 
 /**
- * C ref: polyself.c newman — fail-to-poly / force-human: level±2, sex
- * rn2(10), rndexp, redist_attr, HP/EN rebuild, hunger rn1(500,500),
- * then polyman.
- * Named omissions: Sick/Stoned clear; Slimed residual;
- * livelog; retouch_equipment/selftouch; Polymorph_control uhp clamp.
- * (dead-arm lifesave via done(DIED) is live.)
+ * C ref: polyself.c newman `:338–466` — fail-to-poly / force-human: level±2,
+ * sex rn2(10), rndexp, redist_attr, HP/EN rebuild, hunger rn1(500,500),
+ * Sick/Stoned clear, Polymorph_control uhp arm, newuhs, polyman, livelog,
+ * Slimed residual, botl/see/encumber tail, gloveless selftouch.
+ * Named omissions: retouch_equipment(2) (`:464`, own coverage row —
+ * rehumanize precedent); livelog_newform (`:307` non-static C fn, own row)
+ * on the no-level-change arm (`:452–453`).
  */
+/**
+ * C ref: polyself.c newman `:423–432` dead arm (single definition shared
+ * via goto) — urgent_pline blocks (--More--), killer set, done(DIED);
+ * lifesaved resumes with newuhs + encumber_msg. Caller returns after.
+ */
+async function newman_dead_end() {
+    await urgent_pline("Your new form doesn't seem healthy enough to survive.");
+    if (!game.killer) game.killer = { name: '', format: 0 };
+    game.killer.format = KILLED_BY_AN;
+    game.killer.name = 'unsuccessful polymorph';
+    await done(DIED);
+    /* must have been life-saved to get here */
+    await newuhs(false);
+    await encumber_msg(); /* used to be done by redist_attr() */
+}
+
 async function newman() {
     const u = game.u || (game.u = {});
     const flags = game.flags || (game.flags = {});
     const oldlvl = u.ulevel | 0;
     let newlvl = oldlvl + rn1(5, -2); // rn2(5)+(-2)
     if (newlvl > 127 || newlvl < 1) {
-        // C polyself.c:426-439 dead arm — old level intact (u.ulevel is
-        // still oldlvl here); urgent_pline blocks (--More--), then
-        // lifesave via done(DIED); lifesaved resumes with newuhs.
-        await urgent_pline("Your new form doesn't seem healthy enough to survive.");
-        if (!game.killer) game.killer = { name: '', format: 0 };
-        game.killer.format = KILLED_BY_AN;
-        game.killer.name = 'unsuccessful polymorph';
-        await done(DIED);
-        /* must have been life-saved to get here */
-        await newuhs(false);
-        await encumber_msg();
+        // C polyself.c:344 goto dead — old level intact (u.ulevel is
+        // still oldlvl here); shared dead arm above.
+        await newman_dead_end();
         return; /* lifesaved */
     }
     if (newlvl > MAXULEV) newlvl = MAXULEV;
@@ -982,8 +991,9 @@ async function newman() {
     if ((u.ulevelmax | 0) < newlvl) u.ulevelmax = newlvl;
     u.ulevel = newlvl;
 
-    // oldgend unused until livelog; still match C call order
-    void poly_gender();
+    // C `:360` — gender before a possible change_sex (feeds the
+    // livelog_newform arm, itself a named omission above).
+    const oldgend = poly_gender();
     if (game.sex_change_ok && !rn2(10)) change_sex();
 
     await adjabil(oldlvl, u.ulevel | 0);
@@ -1012,12 +1022,21 @@ async function newman() {
     u.uen = rounddiv((u.uen | 0) * enmax, oldEnmax);
     u.uenmax = enmax;
 
+    // C `:414` — random hunger for the new form.
     u.uhunger = rn1(500, 500);
-    // Sick/Stoned clear deferred (no-op when unset)
-
+    // C `:415–416` — the new form shakes off sickness.
+    if ((u.Sick | 0)) await make_sick(0, null, false, SICK_ALL);
+    // C `:417–418` — ... and petrification-in-progress.
+    if ((u.Stoned | 0)) await make_stoned(0, null, 0, null);
+    // C `:419–422` — too frail to survive: Polymorph_control clamps even
+    // when Stunned/Unaware, otherwise the shared dead arm.
     if ((u.uhp | 0) <= 0) {
-        // Poly_control clamp / done(DIED) deferred — keep 1 hp
-        u.uhp = 1;
+        if (Polymorph_control(u)) {
+            if ((u.uhp | 0) <= 0) u.uhp = 1;
+        } else {
+            await newman_dead_end();
+            return; /* lifesaved */
+        }
     }
 
     const female = Upolyd(u) ? !!u.mfemale : !!flags.female;
@@ -1031,11 +1050,26 @@ async function newman() {
             : (race.noun || race.adj || 'human');
     await polyman('You feel like a new %s!', newform);
 
-    // Slimed residual / livelog deferred
+    // C `:445` — gender after the change (feeds livelog_newform).
+    const newgend = poly_gender();
+    // C `:449–451` — log a level change; the no-change arm calls
+    // livelog_newform, a named omission above (oldgend/newgend feed it).
+    void oldgend; void newgend;
+    if (newlvl !== oldlvl) {
+        livelog_printf(LL_MINORAC, 'became experience level %d as a new %s', newlvl, newform);
+    }
+    // C `:455–458` — slime survives the transformation.
+    if ((u.Slimed | 0)) {
+        await Your('body transforms, but there is still slime on you.');
+        await make_slimed(10, null);
+    }
+    // C `:460–462` — botl/see/encumber tail.
     flags.botl = true;
     see_monsters();
     await encumber_msg();
-    // retouch_equipment(2) / selftouch deferred
+    // C `:464` retouch_equipment(2) stays a named omission (own row).
+    // C `:465–466` — a gloveless new form touches itself.
+    if (!u.uarmg) await selftouch(no_longer_petrify_resistant);
 }
 
 /**

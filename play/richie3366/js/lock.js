@@ -4,17 +4,17 @@
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
-import { pline, You, newsym, feel_newsym, canseemon, clear_nhwindow_message, verbalize, feel_location, impossible, flush_screen, docrt_flags, docrtRefresh } from './display.js';
+import { pline, You, You_cant, There, pline_The, newsym, feel_newsym, canseemon, clear_nhwindow_message, verbalize, feel_location, impossible, flush_screen, docrt_flags, docrtRefresh } from './display.js';
 import { yn_function } from './getline.js';
 import { vision_recalc, recalc_block_point, cansee } from './vision.js';
-import { stop_occupation, in_rooms, closed_door, confdir } from './hack.js';
+import { stop_occupation, in_rooms, closed_door, confdir, is_lava, is_pool } from './hack.js';
 import {
     COLNO, ROWNO, IS_DOOR, ECMD_OK, ECMD_TIME, OBJ_FLOOR, OBJ_FREE,
     DOOR, SDOOR, Is_rogue_level, SHOPBASE,
     D_NODOOR, D_BROKEN, D_ISOPEN, D_CLOSED, D_LOCKED, D_TRAPPED,
     DRAWBRIDGE_UP, DRAWBRIDGE_DOWN,
     P_DAGGER, P_FLAIL, P_LANCE, P_PICK_AXE, P_SABER, P_NONE,
-    AUTOUNLOCK_APPLY_KEY, STRAT_WAITMASK, TT_PIT, M_AP_TYPE,
+    AUTOUNLOCK_APPLY_KEY, AUTOUNLOCK_UNTRAP, STRAT_WAITMASK, TT_PIT, M_AP_TYPE,
     M_AP_FURNITURE, M_AP_OBJECT, FINGER, S_hcdoor, S_vcdoor,
     CMDQ_DIR, CMDQ_KEY, CQ_CANNED, CQ_REPEAT,
     xytodir, getdirInp, u_at,
@@ -35,12 +35,12 @@ import {
     WEAPON_CLASS, ROCK_CLASS, TOOL_CLASS, POTION_CLASS, WAND_CLASS,
     objectNames,
 } from './objects.js';
-import { doname, xname, cxname, singular, An, an as canon_an } from './objnam.js';
+import { doname, xname, cxname, singular, An, an, an as canon_an, the, yname, ysimple_name, ansimpleoname, simple_typename, safe_qbuf } from './objnam.js';
 import { potionbreathe, bottlename } from './potion.js';
 import { obj_resists } from './dogmove.js';
 import { setuwep } from './wield.js';
 import { PM_ROGUE, PM_WIZARD, PM_GRID_BUG, monsterNames } from './generated/monsters_data.js';
-import { mon_nam } from './do_name.js';
+import { mon_nam, hliquid } from './do_name.js';
 import { SetVoice } from './sndprocs.js';
 import { stumble_onto_mimic } from './uhitm.js';
 // C youprop.h:355-360 Protection_from_shape_changers = H || E
@@ -54,14 +54,14 @@ import { m_at, wake_nearto } from './mon.js';
 // (KABOOM/hear, wake_nearto 49, mstun, rnd(15), mondied/lifesave,
 // mon_learns_traps TRAPPED_DOOR); hoisted fn, cycle-safe per imports.mjs.
 import { mb_trapped } from './monmove.js';
-import { b_trapped, t_at } from './trap.js';
+import { b_trapped, t_at, could_untrap, untrap } from './trap.js';
 import { currency, cmdq_add_key } from './invent.js';
 import { show_text_pages, dowhatdoes_core } from './pager.js';
 import { visctrl, cmdbind_get, cmd_from_dir } from './dokeylist.js';
 import { getpos } from './getpos.js';
 import { highc } from './hacklib.js';
 import { doloot, container_at } from './pickup.js';
-import { is_magic_key } from './artifact.js';
+import { is_magic_key, touch_artifact } from './artifact.js';
 import { is_quest_artifact } from './quest.js';
 import { ART_ORB_OF_DETECTION } from './generated/artifacts_data.js';
 
@@ -337,12 +337,6 @@ const PM_ORACLE = monsterNames.indexOf('PM_ORACLE');
 
 function Role_if(pm) {
     return (game.urole?.mnum ?? -1) === pm;
-}
-
-/** C ref: objnam.c yname — invent → "your ", else "the ". */
-function yname(obj) {
-    const carried = (game.invent || []).includes(obj);
-    return `${carried ? 'your' : 'the'} ${cxname(obj)}`;
 }
 
 /** C ref: lock.c reset_pick */
@@ -964,6 +958,17 @@ function Deaf() {
     return !!((u.HDeaf | 0) || (u.EDeaf | 0) || u.uroleplay?.deaf || u.Deaf);
 }
 
+/** C youprop.h Levitation — (HLevitation || ELevitation) && !BLevitation. */
+function Levitation() {
+    const u = game.u || {};
+    return !!(((u.HLevitation | 0) || (u.ELevitation | 0)) && !(u.BLevitation | 0));
+}
+
+/** C youprop.h:279 `#define Underwater (u.uinwater)`. */
+function Underwater() {
+    return !!(game.u?.uinwater);
+}
+
 /** C youprop.h Unaware — multi < 0 && (unconscious || fainted). */
 function Unaware() {
     if ((game.multi | 0) >= 0) return false;
@@ -1116,247 +1121,281 @@ export async function doclose() {
 }
 
 /**
- * C ref: lock.c pick_lock — door + floor-box autounlock (APPLY_KEY).
- * Deferred: AUTOUNLOCK_UNTRAP, interactive non-autounlock multi-box menu,
- * touch_artifact, magic-key ranking, lava/pool underfoot gates.
- * @param {object} pick key / lock pick / credit card
+ * C ref: lock.c pick_lock `:358–656` — whole C body in C order.
+ * Named omissions: `maybe_absorb_item` (steal.c:772, no JS port — map).
+ * Callers: apply.c:4288 (`apply.js`), lock.c:882 (`doopen_indir` below),
+ * pickup.c:2125 (`pickup.js`).
+ * @param {object|null} pick key / lock pick / credit card (null/0 = autounlock untrap probe)
  * @param {number} [rx=0] autounlock x (0 → prompt getdir)
  * @param {number} [ry=0] autounlock y
  * @param {object|null} [container=null] box for #loot autounlock
  * @returns {number} PICKLOCK_* ; caller maps != 0 to ECMD_TIME
  */
 export async function pick_lock(pick, rx = 0, ry = 0, container = null) {
-    const picktyp = pick?.otyp ?? 0;
+    // C `:373–377` — 'pick' might be Null (do_loot_cont AUTOUNLOCK_UNTRAP);
+    // dummypick.otyp is STRANGE_OBJECT (objectNames[0], otyp 0).
+    const hasTool = pick != null && pick !== 0;
+    if (!hasTool) pick = { otyp: 0 };
+    const picktyp = pick.otyp | 0;
     const autounlock = (rx !== 0 || container != null);
+    const u = game.u || {};
+    let cc;
+    let ch = 0; // C `:419` lint suppression
+    let c;
 
-    // C: resume interrupted attempt when usedtime && same picktyp
-    if ((game.xlock?.usedtime | 0) && picktyp === game.xlock.picktyp) {
-        if (nohands(game.youmonst?.data)) {
-            await pline('Unfortunately, you can no longer hold the pick.');
+    // C `:380–401` — resuming an interrupted previous attempt.
+    if ((game.xlock?.usedtime | 0) && picktyp === (game.xlock?.picktyp | 0)) {
+        if (nohands(game.youmonst?.data)) { // C `:383–388`
+            let what = picktyp === LOCK_PICK ? 'pick' : 'key';
+            if (picktyp === CREDIT_CARD) what = 'card';
+            await pline('Unfortunately, you can no longer %s %s.', 'hold the', what);
+            reset_pick();
+            return PICKLOCK_LEARNED_SOMETHING;
+        } else if (game.u?.uswallow || (game.xlock?.box && !can_reach_floor(true))) { // C `:391–392`
+            await pline('Unfortunately, you can no longer %s %s.', 'reach the', 'lock');
             reset_pick();
             return PICKLOCK_LEARNED_SOMETHING;
         }
-        const action = lock_action();
-        await pline(`You resume your attempt at ${action}.`);
-        game.xlock.magic_key = is_magic_key(null, pick);
-        set_occupation(picklock, action, 0);
+        const action = lock_action(); // C `:396`
+        await You('resume your attempt at %s.', action); // C `:398`
+        game.xlock.magic_key = is_magic_key(game.youmonst, pick); // C `:399`
+        set_occupation(picklock, action, 0); // C `:400`
         return PICKLOCK_DID_SOMETHING;
     }
 
-    if (nohands(game.youmonst?.data)) {
-        await pline(`You can't hold ${doname(pick)} -- you have no hands!`);
+    if (nohands(game.youmonst?.data)) { // C `:405–407`
+        await You_cant('hold %s -- you have no hands!', doname(pick));
+        return PICKLOCK_DID_NOTHING;
+    } else if (game.u?.uswallow) { // C `:408–411`
+        await You_cant('%sunlock %s.',
+            picktyp === CREDIT_CARD ? '' : 'lock or ', mon_nam(game.u.ustuck));
         return PICKLOCK_DID_NOTHING;
     }
 
-    let cc;
-    if (rx !== 0) {
-        cc = { x: rx, y: ry };
-    } else {
-        cc = await get_adjacent_loc(null, 'Invalid location!');
-        if (!cc) return PICKLOCK_DID_NOTHING;
+    if (hasTool && picktyp !== SKELETON_KEY // C `:414–417`
+        && picktyp !== LOCK_PICK && picktyp !== CREDIT_CARD) {
+        await impossible('picking lock with object %d?', picktyp);
+        return PICKLOCK_DID_NOTHING;
     }
 
-    const u = game.u || {};
-    let ch = 0;
+    if (rx !== 0) { // C `:422–423` autounlock; caller provided coordinates
+        cc = { x: rx, y: ry };
+    } else if (!(cc = await get_adjacent_loc(null, 'Invalid location!'))) { // C `:424–426`
+        return PICKLOCK_DID_NOTHING;
+    }
 
-    if (cc.x === u.ux && cc.y === u.uy) {
-        // C ref: lock.c pick_lock — underfoot box path
-        let c = 'n';
+    if (u_at(cc.x, cc.y)) { // C `:429` — pick lock on a container
+        let verb;
+        let it;
         let count = 0;
-        for (let otmp = objects_at(cc.x, cc.y); otmp; otmp = otmp.nexthere) {
-            if (autounlock && otmp !== container) continue;
-            if (!Is_box(otmp)) continue;
-            count++;
-            if (!can_reach_floor(true)) {
-                await pline(`You can't reach ${the(xname(otmp))} from up here.`);
-                return PICKLOCK_LEARNED_SOMETHING;
-            }
-            // AUTOUNLOCK_UNTRAP trap-check deferred
-            if (autounlock) {
-                const au = game.flags?.autounlock ?? AUTOUNLOCK_APPLY_KEY;
-                if ((au & AUTOUNLOCK_APPLY_KEY) !== 0) {
-                    c = 'q';
-                    if (pick) {
-                        const { yn_function } = await import('./getline.js');
-                        c = await yn_function(
-                            `Unlock it with ${yname(pick)}?`,
-                            'ynq',
-                            'q',
-                        );
-                    }
-                    if (c !== 'y') return PICKLOCK_DID_NOTHING;
-                } else {
-                    return PICKLOCK_DID_NOTHING;
-                }
-            } else {
-                // interactive apply-to-box ynq deferred
-                await pline("There doesn't seem to be any sort of lock here.");
-                return PICKLOCK_LEARNED_SOMETHING;
-            }
 
-            if (otmp.obroken) {
-                await pline(
-                    `You can't fix its broken lock with ${yname(pick)}.`,
-                );
-                return PICKLOCK_LEARNED_SOMETHING;
-            }
-            if (picktyp === CREDIT_CARD && !otmp.olocked) {
-                await pline(
-                    `You can't do that with ${an(simple_typename(picktyp))}.`,
-                );
-                return PICKLOCK_LEARNED_SOMETHING;
-            }
-
-            // C: box chance — differs from door (4*DEX+25 rogue pick)
-            switch (picktyp) {
-            case CREDIT_CARD:
-                ch = acurr(A_DEX) + 20 * (Role_if(PM_ROGUE) ? 1 : 0);
-                break;
-            case LOCK_PICK:
-                ch = 4 * acurr(A_DEX) + 25 * (Role_if(PM_ROGUE) ? 1 : 0);
-                break;
-            case SKELETON_KEY:
-                ch = 75 + acurr(A_DEX);
-                break;
-            default:
-                ch = 0;
-            }
-            if (otmp.cursed) ch = Math.trunc(ch / 2);
-
-            if (!game.xlock) game.xlock = {};
-            game.xlock.box = otmp;
-            game.xlock.door = null;
-            game.xlock.door_x = 0;
-            game.xlock.door_y = 0;
-            break;
-        }
-        if (c !== 'y') {
-            if (!count) {
-                await pline("There doesn't seem to be any sort of lock here.");
-            }
+        if (u.dz < 0 && !autounlock) { // C `:435` beware stale u.dz value
+            await There("isn't any sort of lock up %s.", Levitation() ? 'here' : 'there');
+            return PICKLOCK_LEARNED_SOMETHING;
+        } else if (is_lava(u.ux, u.uy)) { // C `:439–441`
+            await pline('Doing that would probably melt %s.', yname(pick));
+            return PICKLOCK_LEARNED_SOMETHING;
+        } else if (is_pool(u.ux, u.uy) && !Underwater()) { // C `:442–444`
+            await pline_The('%s has no lock.', hliquid('water'));
             return PICKLOCK_LEARNED_SOMETHING;
         }
+
+        c = 'n'; // C `:448` in case there are no boxes here
+        for (let otmp = objects_at(cc.x, cc.y); otmp; otmp = otmp.nexthere) {
+            // C `:451–454` autounlock on boxes: only the just-discovered one
+            if (autounlock && otmp !== container) continue;
+            if (Is_box(otmp)) { // C `:455`
+                ++count;
+                if (!can_reach_floor(true)) { // C `:456–459`
+                    await You_cant('reach %s from up here.', the(xname(otmp)));
+                    return PICKLOCK_LEARNED_SOMETHING;
+                }
+                it = false; // C `:461`
+                if (otmp.obroken) verb = 'fix'; // C `:462–463`
+                else if (!otmp.olocked) { verb = 'lock'; it = true; } // C `:464–465`
+                else if (picktyp !== LOCK_PICK) { verb = 'unlock'; it = true; } // C `:466–467`
+                else verb = 'pick'; // C `:468–469`
+
+                const au = game.flags?.autounlock ?? AUTOUNLOCK_APPLY_KEY;
+                if (autounlock && (au & AUTOUNLOCK_UNTRAP) !== 0 // C `:470–481`
+                    && await could_untrap(false, true)
+                    && (c = otmp.tknown ? (otmp.otrapped ? 'y' : 'n')
+                        : await yn_function(safe_qbuf(null, 'Check ', ' for a trap?',
+                            otmp, yname, ysimple_name, 'this'), 'ynq', 'q')) !== 'n') {
+                    if (c === 'q') return PICKLOCK_DID_NOTHING; // C `:478`
+                    await untrap(false, 0, 0, otmp); // C `:480`
+                    return PICKLOCK_DID_SOMETHING;
+                } else if (autounlock // C `:482–490`
+                    && (au & AUTOUNLOCK_APPLY_KEY) !== 0) {
+                    c = 'q';
+                    if (hasTool) { // C `:485` pick != &dummypick
+                        c = await yn_function(`Unlock it with ${yname(pick)}?`, 'ynq', 'q'); // C `:486–487`
+                    }
+                    if (c !== 'y') return PICKLOCK_DID_NOTHING; // C `:489–490`
+                } else {
+                    // C `:492–497` "There is <a box> here; <verb> <it|its lock>?"
+                    const qsfx = ` here; ${verb} ${it ? 'it' : 'its lock'}?`;
+                    const qbuf = safe_qbuf(null, 'There is ', qsfx,
+                        otmp, doname, ansimpleoname, 'a box');
+                    otmp.lknown = 1;
+
+                    c = await yn_function(qbuf, 'ynq', 'q'); // C `:499`
+                    if (c === 'q') return PICKLOCK_DID_NOTHING; // C `:500–501`
+                    if (c === 'n') continue; // C `:502–503` try next box
+                }
+
+                if (otmp.obroken) { // C `:506–509`
+                    await You_cant('fix its broken lock with %s.', ansimpleoname(pick));
+                    return PICKLOCK_LEARNED_SOMETHING;
+                } else if (picktyp === CREDIT_CARD && !otmp.olocked) { // C `:510–514`
+                    // credit cards are only good for unlocking
+                    await You_cant('do that with %s.', an(simple_typename(picktyp)));
+                    return PICKLOCK_LEARNED_SOMETHING;
+                } else if (autounlock // C `:515–518`
+                    && !await touch_artifact(pick, game.youmonst)) {
+                    // note: for !autounlock, apply already did touch check
+                    return PICKLOCK_DID_SOMETHING;
+                }
+                switch (picktyp) { // C `:520–532` box chance
+                case CREDIT_CARD: // C `:522`
+                    ch = acurr(A_DEX) + 20 * (Role_if(PM_ROGUE) ? 1 : 0);
+                    break;
+                case LOCK_PICK: // C `:525`
+                    ch = 4 * acurr(A_DEX) + 25 * (Role_if(PM_ROGUE) ? 1 : 0);
+                    break;
+                case SKELETON_KEY: // C `:528`
+                    ch = 75 + acurr(A_DEX);
+                    break;
+                default: // C `:531–532`
+                    ch = 0;
+                }
+                if (otmp.cursed) ch = Math.trunc(ch / 2); // C `:533–534`
+
+                if (!game.xlock) game.xlock = {};
+                game.xlock.box = otmp; // C `:536`
+                game.xlock.door = null; // C `:537` door = 0
+                game.xlock.door_x = 0;
+                game.xlock.door_y = 0;
+                break;
+            }
+        }
+        if (c !== 'y') { // C `:541–545` decided against all boxes
+            if (!count) await There("doesn't seem to be any sort of lock here.");
+            return PICKLOCK_LEARNED_SOMETHING;
+        }
+
+    // C `:547` — not the hero's location; pick the lock in an adjacent door
     } else {
-        // C ref: lock.c pick_lock `:547–550` — can't reach past a pit rim
-        if (u.utrap && (u.utraptype | 0) === TT_PIT) {
-            await pline("You can't reach over the edge of the pit.");
+        if (u.utrap && u.utraptype === TT_PIT) { // C `:551–555`
+            await You_cant('reach over the edge of the pit.');
+            /* C `:553–554` used to return LEARNED but #open takes no turn here */
             return PICKLOCK_DID_NOTHING;
         }
-        const loc = game.level?.at(cc.x, cc.y);
-        // C ref: lock.c pick_lock `:552–570` — visible monster there first
-        const mtmp = m_at(cc.x, cc.y);
-        if (mtmp && canseemon(mtmp) && M_AP_TYPE(mtmp) !== M_AP_FURNITURE
+
+        const door = game.level?.at(cc.x, cc.y); // C `:557`
+        const mtmp = m_at(cc.x, cc.y); // C `:558`
+        if (mtmp && canseemon(mtmp) && M_AP_TYPE(mtmp) !== M_AP_FURNITURE // C `:559–560`
             && M_AP_TYPE(mtmp) !== M_AP_OBJECT) {
-            if (picktyp === CREDIT_CARD
+            if (picktyp === CREDIT_CARD // C `:561–566`
                 && (mtmp.isshk || (mtmp.data?.mndx | 0) === PM_ORACLE)) {
                 SetVoice(mtmp, 0, 80, 0);
                 await verbalize('No checks, no credit, no problem.');
-            } else {
-                await pline(`I don't think ${mon_nam(mtmp)} would appreciate that.`);
+            } else { // C `:567–569`
+                await pline("I don't think %s would appreciate that.", mon_nam(mtmp));
             }
             return PICKLOCK_LEARNED_SOMETHING;
-        } else if (mtmp && M_AP_TYPE(mtmp) === M_AP_FURNITURE
+        } else if (mtmp && M_AP_TYPE(mtmp) === M_AP_FURNITURE // C `:571–576` monst.h:240 is_door_mappear
             && ((mtmp.mappearance | 0) === S_hcdoor
                 || (mtmp.mappearance | 0) === S_vcdoor)) {
-            // C ref: monst.h `:240` is_door_mappear — door-mimic reveal
-            await stumble_onto_mimic(mtmp);
-            // maybe_absorb_item 50%/10% named omit — no JS port
+            // C `:572` "The door actually was a <mimic>!"
+            await stumble_onto_mimic(mtmp); // C `:573`
+            // C `:574–575` mimic might keep the key (50%, 10% PYEC/MKoT) — maybe_absorb_item named omit
             return PICKLOCK_LEARNED_SOMETHING;
         }
-        if (!loc || !IS_DOOR(loc.typ)) {
-            // C ref: lock.c pick_lock `:576–590` — feel/mapseen side
-            // effects, then Blind feel/see + drawbridge message.
-            // Return stays LEARNED: C's DID_NOTHING half turns on
-            // lev->glyph, which JS cells don't model (game.js).
-            update_mapseen_for(cc.x, cc.y);
-            /* this is probably only relevant when blind */
-            feel_location(cc.x, cc.y);
-            const sense = Blind() ? 'feel' : 'see';
-            if (is_drawbridge_wall(cc.x, cc.y) >= 0) {
-                await pline(`You ${sense} no lock on the drawbridge.`);
-            } else {
-                await pline(`You ${sense} no door there.`);
-            }
+        if (!door || !IS_DOOR(door.typ)) { // C `:578–593`
+            // NAMED OMISSION (map): C's DID_NOTHING half (`:579–586` — return
+            // stays DID_NOTHING when feel_location changes neither lev->glyph
+            // nor mapseen). The trigger lives in C's glyph-id layer: C takes
+            // the turn with no JS-visible delta (cell-glyph and shown-tuple
+            // compares both miss it, D-2744), so JS keeps the historical
+            // always-LEARNED here (own queue row).
+            update_mapseen_for(cc.x, cc.y); // C `:580`
+            /* C `:582` this is probably only relevant when blind */
+            feel_location(cc.x, cc.y); // C `:583`
+            if (is_drawbridge_wall(cc.x, cc.y) >= 0) // C `:588–589`
+                await You('%s no lock on the drawbridge.', Blind() ? 'feel' : 'see');
+            else // C `:590–591`
+                await You('%s no door there.', Blind() ? 'feel' : 'see');
             return PICKLOCK_LEARNED_SOMETHING;
         }
 
-        // C ref: lock.c pick_lock — switch (door->doormask) exact cases
-        const mask = loc.doormask || 0;
-        switch (mask) {
-        case D_NODOOR:
+        // C `:594` switch (door->doormask)
+        switch (door.doormask | 0) {
+        case D_NODOOR: // C `:595–597`
             await pline('This doorway has no door.');
             return PICKLOCK_LEARNED_SOMETHING;
-        case D_ISOPEN:
-            await pline('You cannot lock an open door.');
+        case D_ISOPEN: // C `:598–600`
+            await You('cannot lock an open door.');
             return PICKLOCK_LEARNED_SOMETHING;
-        case D_BROKEN:
+        case D_BROKEN: // C `:601–603`
             await pline('This door is broken.');
             return PICKLOCK_LEARNED_SOMETHING;
-        default: {
-            // CLOSED / LOCKED (+ TRAPPED): ynq then occupation
-            // AUTOUNLOCK_UNTRAP door check deferred
-            if (picktyp === CREDIT_CARD && !(mask & D_LOCKED)) {
-                await pline("You can't lock a door with a credit card.");
+        default: { // C `:604`
+            const au = game.flags?.autounlock ?? AUTOUNLOCK_APPLY_KEY;
+            if ((au & AUTOUNLOCK_UNTRAP) !== 0 // C `:605–611` (no autounlock gate in C)
+                && await could_untrap(false, false)
+                && (c = await yn_function('Check this door for a trap?', 'ynq', 'q')) !== 'n') {
+                if (c === 'q') return PICKLOCK_DID_NOTHING; // C `:608–609`
+                await untrap(false, cc.x, cc.y, null); // C `:610`
+                return PICKLOCK_DID_SOMETHING;
+            }
+            // C `:612` credit cards are only good for unlocking
+            if (picktyp === CREDIT_CARD && !(door.doormask & D_LOCKED)) { // C `:613–617`
+                await You_cant('lock a door with a credit card.');
                 return PICKLOCK_LEARNED_SOMETHING;
             }
 
-            let qbuf = (mask & D_LOCKED) ? 'Unlock it' : 'Lock it';
-            if (autounlock) qbuf += ` with ${yname(pick)}`;
-            qbuf += '?';
+            const qbuf = `${(door.doormask & D_LOCKED) ? 'Unlock' : 'Lock'} it${autounlock ? ' with ' : ''}${autounlock ? yname(pick) : ''}?`; // C `:620–623`
+            c = await yn_function(qbuf, 'ynq', 'q'); // C `:624`
+            if (c !== 'y') return PICKLOCK_DID_NOTHING; // C `:625–626`
 
-            const { yn_function } = await import('./getline.js');
-            // C: ynq → yn_function(..., ynqchars, 'q')
-            const c = await yn_function(qbuf, 'ynq', 'q');
-            if (c !== 'y') return PICKLOCK_DID_NOTHING;
+            // C `:628` note: for !autounlock, 'apply' already did touch check
+            if (autounlock && !await touch_artifact(pick, game.youmonst)) // C `:629–630`
+                return PICKLOCK_DID_SOMETHING;
 
-            switch (picktyp) {
-            case CREDIT_CARD:
+            switch (picktyp) { // C `:632–644` door chance
+            case CREDIT_CARD: // C `:634`
                 ch = 2 * acurr(A_DEX) + 20 * (Role_if(PM_ROGUE) ? 1 : 0);
                 break;
-            case LOCK_PICK:
+            case LOCK_PICK: // C `:637`
                 ch = 3 * acurr(A_DEX) + 30 * (Role_if(PM_ROGUE) ? 1 : 0);
                 break;
-            case SKELETON_KEY:
+            case SKELETON_KEY: // C `:640`
                 ch = 70 + acurr(A_DEX);
                 break;
-            default:
+            default: // C `:643–644`
                 ch = 0;
             }
 
             if (!game.xlock) game.xlock = {};
-            game.xlock.door = loc;
+            game.xlock.door = door; // C `:645`
             game.xlock.door_x = cc.x;
             game.xlock.door_y = cc.y;
-            game.xlock.box = null;
+            game.xlock.box = null; // C `:646` box = 0
             break;
         }
         }
     }
 
-    // C: svc.context.move = 0 before occupation setup
+    if (!game.xlock) game.xlock = {};
     if (!game.context) game.context = {};
-    game.context.move = 0;
-    game.xlock.chance = ch;
-    game.xlock.picktyp = picktyp;
-    game.xlock.magic_key = is_magic_key(null, pick);
-    game.xlock.usedtime = 0;
-    set_occupation(picklock, lock_action(), 0);
-    return PICKLOCK_DID_SOMETHING;
-}
-
-/** C ref: objnam.c an / simple_typename stub for pick messages. */
-function an(s) {
-    if (!s) return s;
-    const c = s.charAt(0).toLowerCase();
-    return `${'aeiou'.includes(c) ? 'an' : 'a'} ${s}`;
-}
-function the(s) {
-    return `the ${s}`;
-}
-function simple_typename(otyp) {
-    const n = objectNames[otyp];
-    if (!n) return 'tool';
-    return n.toLowerCase().replace(/_/g, ' ');
+    game.context.move = 0; // C `:649` svc.context.move = 0
+    game.xlock.chance = ch; // C `:650`
+    game.xlock.picktyp = picktyp; // C `:651`
+    game.xlock.magic_key = is_magic_key(game.youmonst, pick); // C `:652`
+    game.xlock.usedtime = 0; // C `:653`
+    set_occupation(picklock, lock_action(), 0); // C `:654`
+    return PICKLOCK_DID_SOMETHING; // C `:655`
 }
 
 /** C ref: obj.h Is_box — LARGE_BOX / CHEST. */
