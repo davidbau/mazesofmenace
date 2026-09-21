@@ -16,7 +16,7 @@ import {
     is_mind_flayer, is_minion, is_demon, is_undead, is_rider,
     is_unicorn, is_longworm,
     breathless, dmgtype, verysmall, has_head, haseyes,
-    is_neuter, humanoid, G_UNIQ,
+    is_neuter, humanoid, G_UNIQ, G_SGROUP, G_LGROUP, M2_STRONG,
 } from './monsters.js';
 import {
     M_SEEN_NOTHING, M_SEEN_MAGR, M_SEEN_FIRE, M_SEEN_COLD, M_SEEN_SLEEP,
@@ -26,7 +26,7 @@ import {
     SHOCK_RES, ACID_RES, REFLECTING,
     W_ARM, W_ARMOR, W_ACCESSORY, W_WEP, W_SWAPWEP,
     BLND_RES,
-    Upolyd,
+    Upolyd, NATTK,
 } from './const.js';
 import { defends, defends_when_carried, Is_dragon_armor } from './artifact.js';
 import { MON_WEP } from './weapon.js';
@@ -39,7 +39,11 @@ import { type_is_pname } from './do_name.js';
 import { canspotmon, Hallucination, impossible } from './display.js';
 import { Blind } from './invent.js';
 import { Unaware } from './eat.js';
-import { dmgtype_fromattack, AT_EXPL, AT_GAZE, AD_BLND } from './mhitm.js';
+import {
+    dmgtype_fromattack, AT_EXPL, AT_GAZE, AD_BLND,
+    AT_SPIT, AT_BREA, AT_WEAP, AT_MAGC,
+    AD_PHYS, AD_DRLI, AD_STON, AD_DRDX, AD_DRCO, AD_WERE,
+} from './mhitm.js';
 import { title_to_mon } from './botl.js';
 
 const RIN_CONFLICT = objectNames.indexOf('RIN_CONFLICT');
@@ -1063,3 +1067,93 @@ export function noit_mhis(mtmp) {
 }
 
 export { MALE, FEMALE, NEUTRAL, NUM_MGENDERS };
+
+/**
+ * C ref: mondata.c mstrength_ranged_attk :501–512 (static, file-local) —
+ * true when the monster can attack at range. Ported whole-body in C order.
+ */
+function mstrength_ranged_attk(ptr) {
+    // C :504 — (1 << AT_BREA) | (1 << AT_SPIT) | (1 << AT_GAZE)
+    const atk_mask = (1 << AT_BREA) | (1 << AT_SPIT) | (1 << AT_GAZE);
+    const mattk = ptr?.mattk || [];
+    for (let i = 0; i < NATTK; i++) {
+        // C :507–508 — assignment inside the condition; >= AT_WEAP covers
+        // AT_WEAP (254) and AT_MAGC (255); the j < 32 guard bounds the shift
+        const j = mattk[i]?.aatyp | 0;
+        if (j >= AT_WEAP || (j < 32 && (atk_mask & (1 << j)) !== 0)) return true;
+    }
+    return false; // C :511
+}
+
+/**
+ * C ref: mondata.c mstrength :428–497 — integer approximation of monster
+ * strength, same method family as experience() (js/exper.js). Ported
+ * whole-body in C order. C takes NONNULLARG1; JS coerces missing fields
+ * to 0 (exper.js precedent) so a synthetic permonst cannot throw.
+ * @param {object} ptr permonst (C struct permonst *)
+ */
+export function mstrength(ptr) {
+    // C :432 — int i, tmp2, n, tmp = ptr->mlevel
+    let tmp = ptr?.mlevel | 0;
+    // C :434–435 — special fixed-hp monster (named demons above level 49)
+    if (tmp > 49) tmp = Math.trunc((2 * (tmp - 6)) / 4);
+    // C :438–439 — for creation in groups
+    let n = ((ptr?.geno ?? 0) & G_SGROUP) ? 1 : 0;
+    n += (((ptr?.geno ?? 0) & G_LGROUP) ? 1 : 0) << 1;
+    // C :442–443 — for ranged attacks
+    if (mstrength_ranged_attk(ptr)) n++;
+    // C :446–447 — for higher ac values
+    const ac = ptr?.ac | 0;
+    n += ac < 4 ? 1 : 0;
+    n += ac < 0 ? 1 : 0;
+    // C :450 — for very fast monsters
+    n += (ptr?.mmove | 0) >= 18 ? 1 : 0;
+    // C reads ptr->pmnames[NEUTRAL] at :473, :481, :485–486; the struct
+    // field is hoisted (ptr is never mutated, so a single read is exact).
+    // Fresh mons() objects carry mndx, so the generated table is read by
+    // index (js/mon.js:485 / js/insight.js:798 shape).
+    const pname = ptr?.pmnames?.[NEUTRAL] ?? pmnames[ptr?.mndx]?.[NEUTRAL] ?? '';
+    const mattk = ptr?.mattk || [];
+    // C :453–465 — for each attack and "special" attack
+    for (let i = 0; i < NATTK; i++) {
+        const tmp2 = mattk[i]?.aatyp | 0; // C :454
+        n += tmp2 > 0 ? 1 : 0; // C :455
+        n += tmp2 === AT_MAGC ? 1 : 0; // C :456
+        // C :457 — AT_WEAP only counts for M2_STRONG monsters
+        n += (tmp2 === AT_WEAP && (((ptr?.mflags2 ?? 0) & M2_STRONG) !== 0)) ? 1 : 0;
+        if (tmp2 === AT_EXPL) { // C :458
+            const tmp3 = mattk[i]?.adtyp | 0; // C :459
+            // C :460–464 — {freezing,flaming,shocking} spheres are fairly
+            // weak but can destroy equipment; {yellow,black} lights can't.
+            // AD_FIRE/AD_COLD/AD_ELEC are the file-local monattk.h consts
+            // (js/mondata.js:52–56, values verified against C).
+            n += (tmp3 === AD_COLD || tmp3 === AD_FIRE) ? 3
+                : tmp3 === AD_ELEC ? 5 : 0;
+        }
+    }
+    // C :468–476 — for each "special" damage type
+    for (let i = 0; i < NATTK; i++) {
+        const slot = mattk[i] || {};
+        const tmp2 = slot.adtyp | 0; // C :469
+        if (tmp2 === AD_DRLI || tmp2 === AD_STON || tmp2 === AD_DRST
+            || tmp2 === AD_DRDX || tmp2 === AD_DRCO || tmp2 === AD_WERE) {
+            n += 2; // C :470–472
+        } else if (pname !== 'grid bug') { // C :473 — strcmp() != 0
+            n += tmp2 !== AD_PHYS ? 1 : 0; // C :474
+        }
+        // C :475 — heavy-damage bonus; damd/damn are small ints, exact
+        n += ((slot.damd | 0) * (slot.damn | 0)) > 23 ? 1 : 0;
+    }
+    // C :478–481 — Leprechauns are a special case: many hit dice so they
+    // can hit and are hard to kill, but they don't do much damage
+    if (pname === 'leprechaun') n -= 2;
+    // C :483–487 — soldier ants and killer bees are underestimated by the
+    // formula, so an artificial +1 difficulty (+2 halves to +1 below)
+    if (pname === 'killer bee' || pname === 'soldier ant') n += 2;
+    // C :490–494 — finally, adjust the monster level (0 <= n <= 24 approx.);
+    // C integer division truncates (n > 0 throughout, so Math.trunc is exact)
+    if (n === 0) tmp -= 1;
+    else if (n < 6) tmp += Math.trunc(n / 3) + 1;
+    else tmp += Math.trunc(n / 2);
+    return tmp >= 0 ? tmp : 0; // C :496
+}

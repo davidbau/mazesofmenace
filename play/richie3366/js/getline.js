@@ -480,6 +480,19 @@ const EXT_CMDS = [
         },
     },
     {
+        // C: cmd.c "toggle" → dotoggleoption. No AUTOCOMPLETE in C
+        // (:1907 IFBURIED|GENERALCMD|CMD_PARAM); typed #toggle still
+        // resolves via exact match and takes the #optionsfull arm until
+        // CMD_PARAM binds carry a param (named).
+        name: 'toggle',
+        wiz: false,
+        autocomplete: false,
+        run: async () => {
+            const { dotoggleoption } = await import('./cmd.js');
+            return dotoggleoption();
+        },
+    },
+    {
         // C: cmd.c "droptype" → doddrop. Key 'D'. No AUTOCOMPLETE.
         name: 'droptype',
         wiz: false,

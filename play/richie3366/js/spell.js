@@ -315,6 +315,8 @@ const BELL_OF_OPENING = objectNames.indexOf('BELL_OF_OPENING');
 const PM_MASTER_LICH = monsterNames.indexOf('PM_MASTER_LICH');
 const PM_NALFESHNEE = monsterNames.indexOf('PM_NALFESHNEE');
 const QUARTERSTAFF = objectNames.indexOf('QUARTERSTAFF');
+const ROBE = objectNames.indexOf('ROBE');
+const SMALL_SHIELD = objectNames.indexOf('SMALL_SHIELD');
 const LENSES = objectNames.indexOf('LENSES');
 
 /** C monattk.h — local for enfolds (do not import mhitm). */
@@ -1155,16 +1157,29 @@ export async function study_book(spellbook) {
 }
 
 /**
- * C ref: spell.c percent_success — cast chance for Fail% column.
- * Branch envelope: robe/shield/metal/spelspec/healing bonuses; no
- * oversized-shield awkwardness when weight ≤ SMALL_SHIELD.
+ * C ref: spell.c percent_success `:2172–2292` (staticfn, local here too).
+ * Intrinsic + learned ability combined into the cast-success percentile.
+ * C order: skilltype/paladin_bonus → spelbase/heal/stat → body-armor
+ * penalty (ROBE halves) / robe bonus → shield bonus → quarterstaff −3 →
+ * helm/gauntlets/boots metal (skipped for paladin_bonus) → spelspec bonus →
+ * healing-spell bonus → splcaster clamp → chance from stat → difficulty
+ * (isqrt penalty / learning bonus) → chance clamp → oversized-shield
+ * halve/quarter → combine → percentile clamp. Callers: spelleffects_check
+ * `:1371` (fail-to-cast gate) and dospellmenu `:2122` (Fail% column).
+ * Integer division truncates toward zero (C `/`); all numerators here are
+ * non-negative after the clamps, so Math.trunc matches.
  */
 function percent_success(spell) {
+    // C `:2180`: skilltype from the spell's school.
     const urole = game.urole || {};
     const skilltype = spell_skilltype(spellid(spell));
+    // C `:2182–2184` (you.h Role_if ≡ urole.mnum == PM_KNIGHT): Knights
+    // skip the metal armor penalty for clerical spells.
     const paladin_bonus = (urole.mnum === PM_KNIGHT
         && skilltype === P_CLERIC_SPELL);
 
+    // C `:2188–2190`: intrinsic ability (splcaster), healing bonus
+    // (special), magic stat (ACURR ≡ acurr).
     let splcaster = urole.spelbase ?? 0;
     const special = urole.spelheal ?? 0;
     const statused = acurr(urole.spelstat ?? A_WIS);
@@ -1178,63 +1193,81 @@ function percent_success(spell) {
     const uwep = game.u?.uwep;
     const spelarmr = urole.spelarmr ?? 0;
 
+    // C `:2192–2196`: metallic body armor penalty (halved under a robe),
+    // else a worn robe eases casting. Skipped entirely for paladin_bonus.
     if (uarm && is_metallic(uarm) && !paladin_bonus) {
-        splcaster += (uarmc && objectNames[uarmc.otyp] === 'ROBE')
+        splcaster += (uarmc && uarmc.otyp === ROBE)
             ? Math.trunc(spelarmr / 2)
             : spelarmr;
-    } else if (uarmc && objectNames[uarmc.otyp] === 'ROBE') {
+    } else if (uarmc && uarmc.otyp === ROBE) {
         splcaster -= spelarmr;
     }
+    // C `:2197–2198`: shield penalty.
     if (uarms) splcaster += urole.spelshld ?? 0;
 
-    if (uwep && objectNames[uwep.otyp] === 'QUARTERSTAFF') splcaster -= 3;
+    // C `:2200–2201`: quarterstaff focus, small bonus.
+    if (uwep && uwep.otyp === QUARTERSTAFF) splcaster -= 3;
 
+    // C `:2203–2209` (spell.c uarmhbon 4 / uarmgbon 6 / uarmfbon 2):
+    // metallic helm/gauntlets/boots interfere; skipped for paladin_bonus.
     if (!paladin_bonus) {
         if (uarmh && is_metallic(uarmh)) splcaster += uarmhbon;
         if (uarmg && is_metallic(uarmg)) splcaster += uarmgbon;
         if (uarmf && is_metallic(uarmf)) splcaster += uarmfbon;
     }
 
+    // C `:2211–2212`: role specialty spell bonus.
     if (spellid(spell) === (urole.spelspec | 0)) {
         splcaster += urole.spelsbon ?? 0;
     }
 
+    // C `:2215–2221`: `healing spell' bonus for six healing otyps.
     const sid = spellid(spell);
-    if (sid === otypByName('SPE_HEALING')
-        || sid === otypByName('SPE_EXTRA_HEALING')
-        || sid === otypByName('SPE_CURE_BLINDNESS')
-        || sid === otypByName('SPE_CURE_SICKNESS')
-        || sid === otypByName('SPE_RESTORE_ABILITY')
-        || sid === otypByName('SPE_REMOVE_CURSE')) {
+    if (sid === SPE_HEALING
+        || sid === SPE_EXTRA_HEALING
+        || sid === SPE_CURE_BLINDNESS
+        || sid === SPE_CURE_SICKNESS
+        || sid === SPE_RESTORE_ABILITY
+        || sid === SPE_REMOVE_CURSE) {
         splcaster += special;
     }
 
+    // C `:2223–2224`: clamp intrinsic ability (upper only).
     if (splcaster > 20) splcaster = 20;
 
+    // C `:2231`: learned ability from the magic stat (Int or Wis).
     let chance = Math.trunc((11 * statused) / 2);
+    // C `:2237–2240`: difficulty from spell level, skill and hero level
+    // (unskilled => 0 via max − 1).
     let skill = P_SKILL(skilltype);
     skill = Math.max(skill, P_UNSKILLED) - 1;
     const difficulty = (spellev(spell) - 1) * 4
         - ((skill * 6) + Math.trunc((game.u?.ulevel ?? 1) / 3) + 1);
 
     if (difficulty > 0) {
+        // C `:2242–2244`: too low level or unskilled.
         chance -= isqrt(900 * difficulty + 2000);
     } else {
-        let learning = Math.trunc((15 * -difficulty) / spellev(spell));
+        // C `:2246–2256`: above level; diminishing returns, capped at 20.
+        const learning = Math.trunc((15 * -difficulty) / spellev(spell));
         chance += learning > 20 ? 20 : learning;
     }
 
+    // C `:2263–2266`: clamp learned chance (also guards 16-bit overflow).
     if (chance < 0) chance = 0;
     if (chance > 120) chance = 120;
 
-    const smallShield = otypByName('SMALL_SHIELD');
-    const smallWt = game.objects?.[smallShield]?.oc_weight ?? 0;
+    // C `:2272–2278`: anything heavier than a small shield is awkward;
+    // the role specialty spell is penalized less (halved, else quartered).
+    const smallWt = game.objects?.[SMALL_SHIELD]?.oc_weight ?? 0;
     if (uarms && weight(uarms) > smallWt) {
         if (spellid(spell) === (urole.spelspec | 0)) chance = Math.trunc(chance / 2);
         else chance = Math.trunc(chance / 4);
     }
 
+    // C `:2285`: combine learned chance with intrinsic ability.
     chance = Math.trunc((chance * (20 - splcaster)) / 15) - splcaster;
+    // C `:2288–2291`: clamp to percentile.
     if (chance > 100) chance = 100;
     if (chance < 0) chance = 0;
     return chance;

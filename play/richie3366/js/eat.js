@@ -47,7 +47,7 @@ import {
 import {
     weight, splitobj, objects_at, stackobj,
     g_at, is_metallic, is_organic, is_flammable, is_rustprone,
-    mksobj, obj_extract_self, set_bknown,
+    mksobj, obj_extract_self, set_bknown, peek_at_iced_corpse_age,
 } from './mkobj.js';
 import { BY_COOKIE, bcsign, outrumor } from './rumors.js';
 import { livelog_printf } from './pline.js';
@@ -69,7 +69,7 @@ import {
     MR_FIRE, MR_COLD, MR_SLEEP, MR_DISINT, MR_ELEC, MR_POISON, MR_ACID, MR_STONE,
     M1_SEE_INVIS, M2_SHAPESHIFTER, is_were,
 } from './monsters.js';
-import { same_race, cantvomit } from './mondata.js';
+import { same_race, cantvomit, defended } from './mondata.js';
 import { were_beastie, set_ulycn, you_unwere } from './were.js';
 import { monflee } from './monmove.js';
 import { dist2, rescham } from './mon.js';
@@ -291,6 +291,7 @@ const SLIME_MOLD = objectNames.indexOf('SLIME_MOLD');
 /* C monattk.h — stun / hallucination damage types for cpostfx hallu. */
 const AD_STUN = 12;
 const AD_HALU = 36;
+const AD_DISE = 33; /* confers diseases — monattk.h */
 /* C monattk.h — engulf / blind attack for the fpostfx carrot arm. */
 const AT_ENGL = 11;
 const AD_BLND = 11;
@@ -1000,12 +1001,6 @@ function rounddiv(x, y) {
     return divsgn * r;
 }
 
-/** C ref: mkobj.c peek_at_iced_corpse_age — non-ice returns otmp.age */
-function peek_at_iced_corpse_age(otmp) {
-    // on_ice ROT_ICE_ADJUSTMENT deferred
-    return otmp?.age ?? 0;
-}
-
 /**
  * C ref: eat.c food_xname `:217–235` — CORPSE → corpse_xname CXN_SINGULAR
  * (+CXN_PFX_THE); pname suppresses the(); else singular(xname).
@@ -1560,8 +1555,9 @@ async function eye_of_newt_buzz() {
 
 /**
  * C ref: eat.c intrinsic_possible — true iff corpse can convey `type`.
+ * Exported for shk.c corpsenm_price_adj (tin/egg/corpse price loop).
  */
-function intrinsic_possible(type, ptr) {
+export function intrinsic_possible(type, ptr) {
     if (!ptr) return 0;
     const mc = ptr.mconveys | 0;
     switch (type | 0) {
@@ -4048,6 +4044,8 @@ export async function use_tin_opener(obj) {
  * smell prompts in C order (tainted → stone/slime → tainted-resistant →
  * rotten → poisonous → sleep-apple → monk-meat → acidic → rustproof →
  * vegan → vegetarian). Worst-case rotted (no rn2(20)) to force the prompt.
+ * Sick_resistance incl. defended(youmonst, AD_DISE) (youprop.h:69-70);
+ * peek_at_iced_corpse_age is the live mkobj.js export (on_ice adjusted).
  * @returns {number} 1 = decline (ECMD_OK), 2 = eat anyway, 0 = no prompt
  */
 async function edibility_prompts(otmp) {
@@ -4077,8 +4075,13 @@ async function edibility_prompts(otmp) {
         }
     }
     let buf = '';
+    // C youprop.h:69-70 — Sick_resistance ≡ HSick || ESick ||
+    // defended(youmonst, AD_DISE) (green dragon scales / disease-defending
+    // wielded artifact; D-2363 trap.js precedent; invent.js named it omitted
+    // only because no defended export existed — now live in mondata.js).
     const Sick_resistance = !!(u.Sick_resistance || u.HSick_resistance
-        || u.ESick_resistance);
+        || u.ESick_resistance
+        || (game.youmonst ? defended(game.youmonst, AD_DISE) : false));
     if (cadaver && rotted > 5 && !Sick_resistance) {
         buf = `${foodsmell} like ${it_or_they} could be tainted!`;
     } else if (stoneorslime) {

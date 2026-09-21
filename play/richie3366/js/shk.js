@@ -62,6 +62,8 @@ import {
     DISPLACED, LOW_PM, Has_contents, Is_container, has_omid, OMID, MAXULEV, ECMD_OK, ECMD_TIME, ECMD_CANCEL,
     EYE, M_AP_NOTHING, M_AP_MONSTER, M_AP_TYPE, HAND,
     COST_CONTENTS, COST_SINGLEOBJ, COST_UNBLSS, COST_UNCURS, TELEPAT,
+    FIRE_RES, SLEEP_RES, COLD_RES, DISINT_RES, SHOCK_RES, POISON_RES,
+    ACID_RES, STONE_RES, TELEPORT, TELEPORT_CONTROL, ismnum,
     MENU_TRADITIONAL, MENU_FULL,
     W_SWAPWEP, W_QUIVER, TT_PIT, MIGR_APPROX_XY, MON_FLOOR,
     SELL_NORMAL, SELL_DELIBERATE, SELL_DONTSELL, CANDLESHOP,
@@ -77,7 +79,7 @@ import {
     WEAPON_CLASS, TOOL_CLASS, GEM_CLASS, SCROLL_CLASS, SPBOOK_CLASS,
     AMULET_CLASS, RING_CLASS,
     BALL_CLASS, CHAIN_CLASS, FIRST_REAL_GEM, LAST_REAL_GEM, objects,
-    POT_WATER,
+    POT_WATER, is_pick,
 } from './objects.js';
 import {
     newsym, pline, Norep, verbalize, Your, You_feel, docrt, flush_screen,
@@ -106,7 +108,7 @@ import {
 } from './objnam.js';
 import {
     is_human, is_demon, is_watch, nolimbs, is_floater, is_flyer, amorphous,
-    M1_SLITHY, passes_walls, mons, monsterNames,
+    M1_SLITHY, passes_walls, mons, monsterNames, haseyes,
 } from './monsters.js';
 import { nhgetch } from './input.js';
 import {
@@ -116,7 +118,8 @@ import {
 import { ATR_INVERSE } from './terminal.js';
 import { yn_function } from './getline.js';
 import { getpos } from './getpos.js';
-import { m_at, angry_guards } from './mon.js';
+import { m_at, angry_guards, unique_corpstat } from './mon.js';
+import { intrinsic_possible } from './eat.js';
 import { Soundeffect, se_alarm, SetVoice } from './sndprocs.js';
 import { livelog_printf } from './pline.js';
 import { enexto, rloc_to_flag, migrate_to_level } from './teleport.js';
@@ -150,6 +153,9 @@ const CAN_OF_GREASE = objectNames.indexOf('CAN_OF_GREASE');
 const TINNING_KIT = objectNames.indexOf('TINNING_KIT');
 const EXPENSIVE_CAMERA = objectNames.indexOf('EXPENSIVE_CAMERA');
 const POT_OIL = objectNames.indexOf('POT_OIL');
+const TIN = objectNames.indexOf('TIN');
+const EGG = objectNames.indexOf('EGG');
+const CORPSE = objectNames.indexOf('CORPSE');
 /** C objects.h STRANGE_OBJECT — otyp 0; gem_learned all-gems sentinel. */
 const STRANGE_OBJECT = objectNames.indexOf('STRANGE_OBJECT');
 /** C objects.h MARKER FIRST_GLASS_GEM = WORTHLESS_WHITE_GLASS (after JADE). */
@@ -748,6 +754,31 @@ export function inhishop(shkp) {
     return !!loc && ((loc.roomno | 0) === (eshk.shoproom | 0));
 }
 
+/** C shk.c pick_pick — last moves tick that drew pick feedback. */
+let pickmovetime = 0;
+
+/**
+ * C ref: shk.c pick_pick `:919–947` — called when removing a pick-axe or
+ * mattock from a container; shopkeeper feedback, at most once per moves tick.
+ */
+export async function pick_pick(obj) {
+    if (obj.unpaid || !is_pick(obj)) return;
+    const shkp = shop_keeper(game.u?.ushops || '');
+    if (shkp && inhishop(shkp)) {
+        if ((game.moves | 0) !== pickmovetime) {
+            if (!hero_deaf() && !muteshk(shkp)) {
+                SetVoice(shkp, 0, 80, 0);
+                await verbalize(
+                    `You sneaky ${cad(false)}!  Get out of here with that pick!`);
+            } else {
+                await pline(
+                    `${Shknam(shkp)} ${haseyes(shkp.data) ? 'glares at' : 'is dismayed because of'} your pick!`);
+            }
+        }
+        pickmovetime = game.moves | 0;
+    }
+}
+
 /** C mextra.h BILLSZ */
 const BILLSZ = 200;
 /** C obj_material_types GLASS */
@@ -987,22 +1018,31 @@ export function is_unpaid(obj) {
 }
 
 /**
- * C ref: shk.c unpaid_cost — bill price for unpaid invent / contents.
- * Named omissions: impossible() when unpaid but not on bill.
+ * C ref: shk.c unpaid_cost `:3260–3305` — bill price for an unpaid object.
+ * Walks u.ushops in order; per shop with a live shopkeeper, onbill()
+ * supplies bp and amt = bp->price (*= quan unless COST_SINGLEOBJ —
+ * glob weight already sits in the price, hence quan not
+ * get_pricing_units); COST_CONTENTS with contents folds in
+ * contained_cost(). Breaks on bp, or on amt for a paid object.
+ * Sync: impossible() is fire-and-forget (as in same_price below).
+ * The `#if 0` get_obj_location/in_rooms/next_shkp search is compiled
+ * out in C, so those callees stay unwired here.
  */
 export function unpaid_cost(unp_obj, cost_type) {
-    let amt = 0;
-    let shkp = null;
     let bp = null;
+    let shkp = null;
+    let amt = 0;
+    // C: for (shop = u.ushops; *shop; shop++)
     const ushops = game.u?.ushops || '';
     for (let i = 0; i < ushops.length; i++) {
+        // C: if ((shkp = shop_keeper(*shop)) != 0)
         shkp = shop_keeper(ushops.charCodeAt(i));
         if (!shkp) continue;
         bp = onbill(unp_obj, shkp, true);
         if (bp) {
             amt = bp.price | 0;
             if (cost_type !== COST_SINGLEOBJ) {
-                amt *= (unp_obj.quan | 0) || 1;
+                amt *= (unp_obj.quan | 0);
             }
         }
         if (cost_type === COST_CONTENTS && Has_contents(unp_obj)) {
@@ -1010,7 +1050,10 @@ export function unpaid_cost(unp_obj, cost_type) {
         }
         if (bp || (!unp_obj.unpaid && amt)) break;
     }
-    // C: if (!shkp || (unp_obj->unpaid && !bp)) impossible(...);
+    // C: onbill() gave no message if unexpected problem occurred
+    if (!shkp || (unp_obj.unpaid && !bp)) {
+        impossible("unpaid_cost: object wasn't on any bill.");
+    }
     return amt;
 }
 
@@ -3241,8 +3284,46 @@ export function doname_with_price(obj) {
 set_doname_shop_suffix(append_doname_unpaid_suffix);
 
 /**
+ * C ref: shk.c corpsenm_price_adj `:4275–4316` — tin/egg/corpse surcharge.
+ * Intrinsic-conveyance table (tmp starts at 1) times a level/nutrition
+ * base; unique corpse +50. Caller: getprice FOOD_CLASS arm.
+ * @param {object} obj
+ * @returns {number} surcharge, 0 when not tin/egg/corpse
+ */
+function corpsenm_price_adj(obj) {
+    let val = 0;
+    const otyp = obj?.otyp | 0;
+    if ((otyp === TIN || otyp === EGG || otyp === CORPSE)
+        && ismnum(obj.corpsenm)) {
+        const ptr = mons(obj.corpsenm);
+        let tmp = 1;
+        const icost = [
+            [FIRE_RES, 2],
+            [SLEEP_RES, 3],
+            [COLD_RES, 2],
+            [DISINT_RES, 5],
+            [SHOCK_RES, 4],
+            [POISON_RES, 2],
+            [ACID_RES, 1],
+            [STONE_RES, 3],
+            [TELEPORT, 2],
+            [TELEPORT_CONTROL, 3],
+            [TELEPAT, 5],
+        ];
+        for (const [trinsic, cost] of icost) {
+            if (intrinsic_possible(trinsic, ptr)) tmp += cost;
+        }
+        if (unique_corpstat(ptr)) tmp += 50;
+        val = Math.max(1, (((ptr?.mlevel | 0) - 1) * 2));
+        if (otyp === CORPSE) val += Math.max(1, Math.trunc((ptr?.cnutrit | 0) / 30));
+        val = val * tmp;
+    }
+    return val;
+}
+
+/**
  * C ref: shk.c getprice — base oc_cost + class tweaks.
- * Named omissions: corpsenm_price_adj; full candle Is_candle.
+ * Named omissions: full candle Is_candle.
  */
 function getprice(obj, shk_buying) {
     const oc = objects()?.[obj?.otyp | 0];
@@ -3253,6 +3334,7 @@ function getprice(obj, shk_buying) {
     }
     switch (obj?.oclass | 0) {
     case FOOD_CLASS: {
+        tmp += corpsenm_price_adj(obj);
         const u = game.u;
         if ((u?.uhs | 0) >= HUNGRY && !shk_buying) tmp *= (u.uhs | 0);
         if (obj.oeaten) tmp = 0;

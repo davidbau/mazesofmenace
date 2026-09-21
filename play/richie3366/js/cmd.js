@@ -12,7 +12,7 @@ import {
     newsym, flush_screen, pline, You, pline_dir, pline_xy, set_msg_xy,
     see_nearby_objects,
     clear_nhwindow_message,
-    mon_visible, sensemon, canspotmon, glyph_at, glyph_is_invisible_id,
+    mon_visible, sensemon, canspotmon, glyph_at, hero_glyph, glyph_is_invisible_id,
     glyph_is_warning, unmap_object, map_object,
     look_shown_at, glyph_to_obj_at, Norep, tty_doprev_message, putmsghistory,
     unmap_invisible, map_invisible, custompline,
@@ -22,7 +22,7 @@ import { COLNO, ROWNO, STONE, DOOR, CORR, ROOM, IRONBARS, TREE, SDOOR,
          DRAWBRIDGE_UP, ROOMOFFSET,
          IS_DOOR, IS_OBSTRUCTED, IS_FURNITURE, IS_STWALL, IS_WALL, IS_TREE,
          IS_FOUNTAIN, IS_SINK, IS_THRONE, IS_ALTAR, IS_ROOM, IS_WATERWALL,
-         ACCESSIBLE, isok, Upolyd, Is_container, CLICK_1,
+         ACCESSIBLE, isok, Upolyd, Is_container, CLICK_1, CLICK_2,
          ECMD_OK, ECMD_TIME, ECMD_CANCEL, ECMD_FAIL, DOMOVE_RUSH, DOMOVE_WALK,
          CMDQ_EXTCMD, CMDQ_KEY, CMDQ_DIR, CMDQ_USER_INPUT, CQ_CANNED, CQ_REPEAT,
          IFBURIED, WIZMODECMD, NOFUZZERCMD, PREFIXCMD, MOVEMENTCMD,
@@ -38,6 +38,7 @@ import { COLNO, ROWNO, STONE, DOOR, CORR, ROOM, IRONBARS, TREE, SDOOR,
          SUPPRESS_HISTORY,
          In_sokoban,
          TRAVP_TRAVEL, TRAVP_VALID,
+         TEST_MOVE,
          } from './const.js';
 import { FOOD_CLASS, objectNames } from './objects.js';
 import { EXTCMDLIST } from './generated/extcmdlist_data.js';
@@ -49,7 +50,7 @@ const PICK_AXE_OTYP = objectNames.indexOf('PICK_AXE');
 const PM_DISPLACER_BEAST = monsterNames.indexOf('PM_DISPLACER_BEAST');
 const DWARVISH_MATTOCK_OTYP = objectNames.indexOf('DWARVISH_MATTOCK');
 const AT_EXPL = 13; // monattk.h — fight_empty Upolyd explode
-import { dist2, bad_rock, cant_squeeze_thru, wake_nearto, minliquid } from './mon.js';
+import { dist2, bad_rock, cant_squeeze_thru, wake_nearto, minliquid, m_at } from './mon.js';
 import { is_hider, hides_under, tunnels, needspick, monsterNames } from './monsters.js';
 import { vision_recalc, couldsee, cansee } from './vision.js';
 import {
@@ -66,9 +67,10 @@ import { doengrave, maybe_smudge_engr, set_occupation, can_reach_floor, engr_at 
 import { dothrow, dofire } from './dothrow.js';
 import { doapply, check_leash } from './apply.js';
 import { dokick } from './dokick.js';
+import { dosit } from './sit.js';
 import { donull, dodown, doup, dodrop, doddrop, reset_occupations } from './do.js';
 import { dosave, dosave0 } from './save.js';
-import { doset_simple, dotogglepickup, select_menu_pick_one, strbuf_append } from './options.js';
+import { doset_simple, dotogglepickup, toggle_bool_option, select_menu_pick_one, strbuf_append } from './options.js';
 import {
     do_attack, mon_at, is_safemon, explum, attacktype_fordmg,
     stumble_onto_mimic,
@@ -89,7 +91,7 @@ import { an, doname, makeplural } from './objnam.js';
 import { m_monnam, mon_nam, YMonnam, Hallucination, docallcmd } from './do_name.js';
 import { spoteffects, dopickup, doloot, dotip } from './pickup.js';
 import { objects_at } from './mkobj.js';
-import { stairway_at, u_on_newpos, maybe_adjust_hero_bubble, selection_new, selection_getpoint, selection_setpoint } from './mklev.js';
+import { stairway_at, On_stairs_up, On_stairs_dn, u_on_newpos, maybe_adjust_hero_bubble, selection_new, selection_getpoint, selection_setpoint } from './mklev.js';
 import { In_tutorial } from './dungeon.js';
 import { ATR_INVERSE } from './terminal.js';
 import { dopay } from './shk.js';
@@ -108,6 +110,7 @@ import {
     water_turbulence, move_out_of_bounds, avoid_running_into_trap_or_liquid,
     escape_from_sticky_mon, domove_fight_ironbars, domove_fight_web,
     air_turbulence, slippery_ice_fumbling,
+    test_move,
 } from './hack.js';
 import { acurr, exercise, A_DEX, Fumbling } from './attrib.js';
 import { drag_ball, move_bc } from './ball.js';
@@ -1074,6 +1077,8 @@ function rhack_user_overlay_key(key) {
  */
 async function rhack_dispatch_bound(key, prefix_seen, was_m_prefix) {
     const tlist = cmdbind_get(key);
+    if (!game.gc) game.gc = {};
+    game.gc.cmd_bind = tlist || null; // C `:3679` — live binding for dotoggleoption's param arm
     if (!tlist) return {};
     const run = extcmd_run_by_txt(tlist.txt);
     if (!run) return {};
@@ -1259,6 +1264,131 @@ async function doclicklook() {
     const { auto_describe } = await import('./getpos.js'); // `:5388`
     await auto_describe(cc.x | 0, cc.y | 0);
     return ECMD_OK; // `:5390`
+}
+
+/**
+ * C ref: cmd.c domouseaction `:4916–5006` (staticfn → export for the
+ * cmdlist "mouseaction" INTERNALCMD|MOUSECMD row) — act on a map click at
+ * gc.clicklook_cc. C order kept arm by arm: travelcmd near-clamp vs far
+ * travel stamp, here-arms (drink/sit/stairs-up/stairs-down/loot-or-pickup/
+ * rest), directional assist (kick locked / open closed / search / walk),
+ * else sloppy-click quantize + rest-on-self, tail walk queue.
+ * vobj_at is display.h:22 (svl.level.objects head) → live objects_at;
+ * move_funcs[*][MV_WALK] → live move_funcs_walk (xytodir order, same rows);
+ * On_stairs_up/dn live js/mklev.js; test_move is async in JS (awaited,
+ * short-circuit kept). C caller cmd.c:2061 cmdlist row → JS
+ * extcmdlist_data.js:165 row, dispatched via click_to_cmd (inert while
+ * game.Cmd.mousebtn is undefined — bind_mousebtn :2624 named omit).
+ * @returns {Promise<number>} ECMD_*
+ */
+export async function domouseaction() {
+    const u = game.u || {};
+    let x = (game.gc?.clicklook_cc?.x | 0) - (u.ux | 0); // C `:4923`
+    let y = (game.gc?.clicklook_cc?.y | 0) - (u.uy | 0); // C `:4924`
+    let o = null; // C `:4919 struct obj *o`
+    let dir = 0; // C `:4921`
+    if ((game.flags?.travel ?? true)) { // C `:4926 flags.travelcmd` (JS key 'travel', optlist default On)
+        if (Math.abs(x) <= 1 && Math.abs(y) <= 1) { // C `:4927`
+            x = sgn(x); y = sgn(y); // C `:4928`
+        } else { // C `:4929–4934`
+            if (!game.iflags) game.iflags = {};
+            if (!game.iflags.travelcc) game.iflags.travelcc = { x: 0, y: 0 };
+            game.iflags.travelcc.x = u.tx = (u.ux | 0) + x; // C `:4930`
+            game.iflags.travelcc.y = u.ty = (u.uy | 0) + y; // C `:4931`
+            cmdq_add_ec(CQ_CANNED, dotravel_target); // C `:4932`
+            return ECMD_OK; // C `:4933`
+        }
+
+        if (x === 0 && y === 0) { // C `:4936` here
+            const htyp = game.level?.at(u.ux, u.uy)?.typ; // C `levl[u.ux][u.uy].typ`
+            if (IS_FOUNTAIN(htyp) || IS_SINK(htyp)) { // C `:4938–4939`
+                cmdq_add_ec(CQ_CANNED, dodrink); // C `:4940`
+                return ECMD_OK; // C `:4941`
+            } else if (IS_THRONE(htyp)) { // C `:4942`
+                cmdq_add_ec(CQ_CANNED, dosit); // C `:4943`
+                return ECMD_OK;
+            } else if (On_stairs_up(u.ux, u.uy)) { // C `:4944`
+                cmdq_add_ec(CQ_CANNED, doup); // C `:4945`
+                return ECMD_OK; // C `:4946`
+            } else if (On_stairs_dn(u.ux, u.uy)) { // C `:4947`
+                cmdq_add_ec(CQ_CANNED, dodown); // C `:4948`
+                return ECMD_OK;
+            } else if ((o = objects_at(u.ux, u.uy)) !== null) { // C `:4950 vobj_at`
+                cmdq_add_ec(CQ_CANNED, Is_container(o) ? doloot : dopickup); // C `:4951`
+                return ECMD_OK; // C `:4952`
+            } else { // C `:4953–4955` just rest
+                cmdq_add_ec(CQ_CANNED, donull);
+                return ECMD_OK;
+            }
+        }
+
+        /* directional commands */
+        dir = xytodir(x, y); // C `:4959`
+        if (!m_at((u.ux | 0) + x, (u.uy | 0) + y) // C `:4960–4961`
+            && !(await test_move(u.ux, u.uy, x, y, TEST_MOVE))) {
+            const ahead = game.level?.at((u.ux | 0) + x, (u.uy | 0) + y);
+            if (IS_DOOR(ahead?.typ)) { // C `:4962`
+                /* slight assistance to player: choose kick/open for them */
+                if (((ahead?.doormask | 0) & D_LOCKED) !== 0) { // C `:4964`
+                    cmdq_add_ec(CQ_CANNED, dokick); // C `:4965`
+                    return ECMD_OK; // C `:4966`
+                }
+                if (((ahead?.doormask | 0) & D_CLOSED) !== 0) { // C `:4968`
+                    cmdq_add_ec(CQ_CANNED, doopen); // C `:4969`
+                    return ECMD_OK; // C `:4970`
+                }
+            }
+            if ((ahead?.typ | 0) <= SCORR) { // C `:4973`
+                cmdq_add_ec(CQ_CANNED, dosearch); // C `:4974`
+                return ECMD_OK; // C `:4975`
+            }
+            cmdq_add_ec(CQ_CANNED, move_funcs_walk[dir]); // C `:4977 [MV_WALK]`
+            return ECMD_OK; // C `:4978–4980`
+        }
+    } else {
+        /* convert without using floating point, allowing sloppy clicking */
+        if (x > 2 * Math.abs(y)) // C `:4984`
+            x = 1, y = 0;
+        else if (y > 2 * Math.abs(x)) // C `:4986`
+            x = 0, y = 1;
+        else if (x < -2 * Math.abs(y)) // C `:4988`
+            x = -1, y = 0;
+        else if (y < -2 * Math.abs(x)) // C `:4990`
+            x = 0, y = -1;
+        else // C `:4992`
+            x = sgn(x), y = sgn(y); // C `:4993`
+
+        if (x === 0 && y === 0) { // C `:4995`
+            /* map click on player to "rest" command */
+            cmdq_add_ec(CQ_CANNED, donull); // C `:4997`
+            return ECMD_OK; // C `:4998`
+        }
+        dir = xytodir(x, y); // C `:5000`
+    }
+
+    /* move, attack, etc. */
+    cmdq_add_ec(CQ_CANNED, move_funcs_walk[dir]); // C `:5004 [MV_WALK]`
+    return ECMD_OK; // C `:5005`
+}
+
+/**
+ * C ref: cmd.c dotoggleoption `:1376–1384` (`#toggle` extcmd `:1907`,
+ * BIND=`'`:toggle(price_quotes) / `@`:toggle(autopickup)) — toggle the
+ * boolean option named by the current key binding's param, else direct
+ * the player to #optionsfull. The param arm reads game.gc.cmd_bind,
+ * stamped at the C `:3679` site in rhack_dispatch_bound; bind rows carry
+ * no param until CMD_PARAM binds land (named — dokeylist "no bound
+ * params in default binds"), so typed #toggle takes the pline arm.
+ * C caller cmd.c:1907 extcmd row → JS EXT_CMDS 'toggle' (getline.js).
+ * @returns {Promise<number>} ECMD_*
+ */
+export async function dotoggleoption() {
+    const bind = game.gc?.cmd_bind; // C `:1378 gc.cmd_bind`
+    if (bind && bind.param) { // C `:1378 ->param`
+        return toggle_bool_option(bind.param); // C `:1379`
+    }
+    await pline('Use #optionsfull to set any option instead.'); // C `:1381`
+    return ECMD_OK; // C `:1382`
 }
 
 /* C ref: cmd.c move_funcs `:2070–2078` [MV_WALK] column — xytodir order. */
@@ -1569,16 +1699,25 @@ function there_cmd_menu_self_items(x, y) {
 }
 
 /**
- * C ref: cmd.c there_cmd_menu_common — "Look at map symbol" for self when
- * Upolyd (glyph≠hero_glyph / steed arms deferred).
+ * C ref: cmd.c there_cmd_menu_common `:4638–4654` in C order — append the
+ * shared "Look at map symbol" entry on CLICK_1/CLICK_2 (C ignores
+ * iflags.clicklook here). JS builds an items array where C calls
+ * mcmd_addmenu(win, MCMD_LOOK_AT, ...) + ++K (add_menu on a window is
+ * display-stream plumbing; the menu assembly in there_cmd_menu below is
+ * the live caller). C's `int *act` is UNUSED. Short-circuit order kept:
+ * `!u_at(x,y) || Upolyd || glyph_at(x,y) != hero_glyph` — the glyph arm
+ * covers self shown as non-hero (invisible w/o see-invisible, ?).
+ * C hero_glyph is an int (display.h:654 monnum_to_glyph); JS hero_glyph()
+ * returns its descriptor, so compare against `.glyph`.
+ * @returns {{act:number, text:string}[]}
  */
-function there_cmd_menu_common_items(x, y, mod) {
+export function there_cmd_menu_common(x, y, mod) {
     const items = [];
-    if (mod !== CLICK_1 && mod !== 2 /* CLICK_2 */) return items;
+    if (mod !== CLICK_1 && mod !== CLICK_2) return items;
     const u = game.u;
     const atSelf = u && (u.ux | 0) === (x | 0) && (u.uy | 0) === (y | 0);
-    // C: !u_at || Upolyd || glyph_at != hero_glyph
-    if (!atSelf || Upolyd(u)) {
+    // C `:4649–4651`: !u_at || Upolyd || glyph_at != hero_glyph
+    if (!atSelf || Upolyd(u) || glyph_at(x, y) !== hero_glyph().glyph) {
         items.push({ act: MCMD_LOOK_AT, text: 'Look at map symbol' });
     }
     return items;
@@ -1598,7 +1737,7 @@ async function there_cmd_menu(x, y, mod) {
         items = items.concat(there_cmd_menu_self_items(x, y));
     }
     // next2u / far deferred
-    items = items.concat(there_cmd_menu_common_items(x, y, mod));
+    items = items.concat(there_cmd_menu_common(x, y, mod));
 
     if (!items.length) return '\0';
 

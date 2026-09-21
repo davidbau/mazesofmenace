@@ -18,6 +18,7 @@ import {
     DISCLOSE_NO_WITHOUT_PROMPT,
     DISCLOSE_SPECIAL_WITHOUT_PROMPT,
     ECMD_OK,
+    ECMD_FAIL,
     AUTOUNLOCK_UNTRAP,
     AUTOUNLOCK_APPLY_KEY,
     AUTOUNLOCK_KICK,
@@ -4016,6 +4017,36 @@ function complain_about_duplicate(_optidx) {
  * Sole wired JS caller: itself (recursion `:519`); every other C caller is
  * named in the map with its JS counterpart.
  */
+
+/**
+ * C ref: options.c toggle_bool_option `:9278–9297` — toggle any settable
+ * in-game boolean option by prefix name. No-break loop like C: every
+ * prefix match toggles and resets visuals, even when a parse fails.
+ * Allopt rows carry { name, opttyp, setwhere, addr } (JS: BoolOpt const,
+ * SET_IN_GAME const, addr {obj,key} or null). Async only because the
+ * in-file reset_needed_visuals awaits docrt; parseoptions itself is sync.
+ * Caller: cmd.c dotoggleoption (`#toggle` / BIND `:toggle(name)`).
+ * @param {string} p option name prefix (C `const char *p`)
+ * @returns {Promise<number>} ECMD_OK if any row parsed, else ECMD_FAIL
+ */
+export async function toggle_bool_option(p) {
+    let ret = ECMD_FAIL; // C `:9281`
+    const want = String(p);
+    for (let i = 0; i < OPTCOUNT; i++) { // C `:9283`
+        const row = allopt[i];
+        if (optStrncasecmp(row.name, want, want.length) === 0 // C `:9284 !strncmpi(name, p, strlen(p))`
+            && row.opttyp === BoolOpt // C `:9285`
+            && row.setwhere === SET_IN_GAME // C `:9286`
+            && row.addr != null) { // C `:9287 addr != 0`
+            const buf = (simple_bool_value(row) ? '!' : '') + row.name; // C `:9290 *addr ? "!" : ""`
+            if (parseoptions(buf, false, false)) // C `:9291 (FALSE, FALSE)`
+                ret = ECMD_OK; // C `:9292`
+            await reset_needed_visuals(); // C `:9294`
+        }
+    }
+    return ret; // C `:9296`
+}
+
 export function parseoptions(opts, tinitial, tfromFile) {
     let negated = false, gotMatch = false, pfxMatch = false; // C `:496`
     let matchidx = -1, optresult = OPTN_ERR, retval = true; // C `:499`

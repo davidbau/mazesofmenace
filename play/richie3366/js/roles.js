@@ -1026,9 +1026,11 @@ export function randrole(for_display) {
     return rn2(roles.length);
 }
 
-// C ref: role.c randrole_filtered `:730–744` (staticfn, kept module-local)
-// — honor all the filter masks; fall back to randrole when nothing passes.
-function randrole_filtered() {
+// C ref: role.c randrole_filtered `:730–744` (staticfn in C; exported here
+// so rigid_role_checks in js/player_selection.js calls the live body instead
+// of cloning it) — honor all the filter masks; fall back to randrole when
+// nothing passes.
+export function randrole_filtered() {
     const set = [];
     for (let i = 0; i < roles.length; ++i)
         if (ok_role(i, ROLE_NONE, ROLE_NONE, ROLE_NONE)

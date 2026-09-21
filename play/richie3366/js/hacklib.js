@@ -328,6 +328,24 @@ export function strsubst(bp, orig, replacement) {
     return s.slice(0, i) + String(replacement ?? '') + s.slice(i + o.length);
 }
 
+/**
+ * C ref: hacklib.c trimspaces `:162–176` — leading ' '/'\t' are skipped
+ * by returning the advanced pointer ("leading whitespace will remain in
+ * the buffer"); trailing ' '/'\t' are stripped in place. Only space and
+ * tab count. JS strings are immutable, so this returns the adjusted
+ * string (C's return value).
+ * @param {string} txt
+ * @returns {string}
+ */
+export function trimspaces(txt) {
+    const s = String(txt ?? '');
+    let start = 0;
+    while (start < s.length && (s[start] === ' ' || s[start] === '\t')) start++;
+    let end = s.length;
+    while (end > start && (s[end - 1] === ' ' || s[end - 1] === '\t')) end--;
+    return s.slice(start, end);
+}
+
 // C ref: rn2(x) already in rng.js — re-export not needed
 
 /**

@@ -258,9 +258,11 @@ export function reset_erinys() {
 }
 
 /**
- * C ref: mon.c adj_erinys — scale erinys with alignment abuse.
+ * C ref: mon.c:5922–5966 adj_erinys — scale erinys with alignment abuse.
  * Mutates generated mons[] arrays (same as C mons[PM_ERINYS]).
  * Flags/attacks use the `abuse` arg; mlevel/difficulty use u.ualign.abuse.
+ * C callers: attrib.c:1309 adjalign (abuse gain) + restore.c:727
+ * restgamestate (save-load re-apply).
  */
 export function adj_erinys(abuse) {
     if (PM_ERINYS < 0) return;
@@ -286,8 +288,9 @@ export function adj_erinys(abuse) {
         a2.damn = 3;
         a2.damd = 4;
     }
-    // C: min(7 + u.ualign.abuse, 50) / min(10 + abuse/3, 25)
-    const uabuse = (game.u?.ualign?.abuse | 0);
+    // C: min(7 + u.ualign.abuse, 50) / min(10 + (abuse / 3), 25);
+    // abuse is unsigned (align.h:13), so convert with >>> 0, not | 0.
+    const uabuse = game.u?.ualign?.abuse >>> 0;
     mlevels[PM_ERINYS] = Math.min(7 + uabuse, 50);
     difficulties[PM_ERINYS] = Math.min(10 + Math.trunc(uabuse / 3), 25);
 }

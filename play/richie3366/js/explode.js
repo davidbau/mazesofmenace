@@ -30,7 +30,6 @@
 // Unaware export); ugolemeffects/golemeffects (no JS port);
 // Upolyd rehumanize fatal path; wake_nearto beyond msleeping;
 // Role_switch damu only for known role pm;
-// resists_magm worn/artifact ANTIMAGIC scan;
 // explode_show_visible already owns explosion_to_glyph;
 // scatter shop bill live via shk.js credit_report (D-2282);
 // scatter boulder restack live via canonical mkobj.js sobj_at (this D);
@@ -47,7 +46,7 @@ import { m_at, setmangry, seemimic, hideunder } from './mon.js';
 import { Monnam, rndmonnam } from './do_name.js';
 import { strstri, dist2 } from './hacklib.js';
 import {
-    monstseesu, monstunseesu, cvt_adtyp_to_mseenres,
+    monstseesu, monstunseesu, cvt_adtyp_to_mseenres, resists_magm,
 } from './mondata.js';
 import { uhim, uhis } from './roles.js';
 import { sticks } from './engrave.js';
@@ -199,31 +198,6 @@ function resists_disint(mon) { return mon_resists_bit(mon, MR_DISINT); }
 function resists_poison(mon) { return mon_resists_bit(mon, MR_POISON); }
 function resists_acid(mon) { return mon_resists_bit(mon, MR_ACID); }
 
-/** C ref: mondata.h dmgtype — any mattk slot has adtyp. */
-function dmgtype(ptr, adtyp) {
-    const slots = ptr?.mattk;
-    if (!slots) return false;
-    for (let i = 0; i < slots.length; i++) {
-        if ((slots[i]?.adtyp | 0) === (adtyp | 0)) return true;
-    }
-    return false;
-}
-
-/**
- * C ref: mondata.c resists_magm — dmgtype AD_MAGM / baby gray / AD_RBRE.
- * Named omit: wielded/worn/carried ANTIMAGIC artifact scan.
- */
-function resists_magm(mon) {
-    if (!mon) return false;
-    const ptr = mon.data;
-    if (!ptr) return false;
-    if (dmgtype(ptr, AD_MAGM)) return true;
-    const mndx = ptr.mndx ?? ptr.mnum;
-    if (mndx === PM_BABY_GRAY_DRAGON) return true;
-    if (dmgtype(ptr, AD_RBRE)) return true;
-    return false;
-}
-
 /** C ref: mondata.c completelyburns — paper/straw golem. */
 export function completelyburns(data) {
     const mndx = data?.mndx ?? data?.mnum;
@@ -259,10 +233,12 @@ function resist(mtmp, oclass, damage, tell) {
 }
 
 /**
- * C ref: explode.c explosionmask — PHYS none; MAGM/FIRE/COLD/DISN/ELEC/
- * DRST/ACID hero + mon resist shields (D-0968/D-0971/D-0973).
+ * C ref: explode.c explosionmask :25–115 (staticfn, same-file callers only) —
+ * PHYS none; MAGM/FIRE/COLD/DISN/ELEC/DRST/ACID hero + mon resist shields
+ * (D-0968/D-0971/D-0973); both default arms impossible() (this D); monster
+ * MAGM via canonical mondata.js resists_magm (species-only local clone retired).
  */
-function explosionmask(m, adtyp, olet) {
+async function explosionmask(m, adtyp, olet) {
     const isHero = !m || m === game.youmonst || m._youmonst;
     if (isHero) {
         switch (adtyp) {
@@ -290,6 +266,8 @@ function explosionmask(m, adtyp, olet) {
         case AD_ACID:
             return Acid_resistance() ? EXPL_HERO : EXPL_NONE;
         default:
+            // C: impossible("explosion type %d?", adtyp); res stays EXPL_NONE
+            await impossible('explosion type %d?', adtyp);
             return EXPL_NONE;
         }
     }
@@ -317,6 +295,8 @@ function explosionmask(m, adtyp, olet) {
     case AD_ACID:
         return resists_acid(m) ? EXPL_MON : EXPL_NONE;
     default:
+        // C: impossible("explosion type %d?", adtyp); res stays EXPL_NONE
+        await impossible('explosion type %d?', adtyp);
         return EXPL_NONE;
     }
 }
@@ -536,13 +516,13 @@ export async function explode(x, y, typeIn, dam, olet, expltype) {
             }
             explmask[i][j] = EXPL_NONE;
             if (u_at(xx, yy)) {
-                explmask[i][j] = explosionmask(you, adtyp, olet);
+                explmask[i][j] = await explosionmask(you, adtyp, olet);
             }
             let mtmp = m_at(xx, yy);
             if (!mtmp && u_at(xx, yy)) mtmp = game.u?.usteed;
             if (mtmp && (mtmp.mhp | 0) < 1) mtmp = null;
             if (mtmp) {
-                explmask[i][j] |= explosionmask(mtmp, adtyp, olet);
+                explmask[i][j] |= await explosionmask(mtmp, adtyp, olet);
             }
             // C explode.c :378–381 — I-glyph when in view but not spottable
             if (mtmp && cansee(xx, yy) && !canspotmon(mtmp)) {

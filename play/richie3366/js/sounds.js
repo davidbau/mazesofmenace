@@ -843,17 +843,17 @@ export async function growl(mtmp) {
         growl_verb = growl_sound(mtmp);
     }
     if (growl_verb) {
-        const Deaf = !!(game.u?.Deaf || game.u?.HDeaf || game.u?.EDeaf);
+        // C: Deaf is HDeaf || EDeaf || u.uroleplay.deaf (youprop.h:125)
+        const Deaf = !!(game.u?.Deaf || game.u?.HDeaf || game.u?.EDeaf || game.u?.uroleplay?.deaf);
         if (canseemon(mtmp) || !Deaf) {
             await pline(`${Monnam(mtmp)} ${vtense(null, growl_verb)}!`);
             if (!game.iflags) game.iflags = {};
             game.iflags.last_msg = PLNMSG_GROWL;
             if (game.context?.run) nomul(0);
         }
-        // C: wake_nearto(mx, my, mlevel * 18) after growl pline
-        if (mtmp.mx) {
-            await wake_nearto(mtmp.mx, mtmp.my, (mtmp.data?.mlevel | 0) * 18);
-        }
+        // C sounds.c:421: wake_nearto(mx, my, mlevel * 18) — unconditional
+        // inside if (growl_verb), even at mx 0 / pline suppressed.
+        await wake_nearto(mtmp.mx, mtmp.my, (mtmp.data?.mlevel | 0) * 18);
     }
 }
 

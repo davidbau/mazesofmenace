@@ -62,7 +62,7 @@ import { attacktype_fordmg } from './uhitm.js';
 import { acurr, A_STR } from './attrib.js';
 import { m_carrying, mon_has_shield } from './mon.js';
 import { mhis } from './mondata.js';
-import { ATR_INVERSE } from './terminal.js';
+import { ATR_INVERSE, ATR_NONE } from './terminal.js';
 import {
     skill_based_spellbook_id, spell_skilltype,
 } from './spell.js';
@@ -1514,11 +1514,17 @@ const skill_ranges = [
 ];
 
 /**
- * C ref: weapon.c add_skills_to_menu — append skill lines into entries[].
- * selectable → lettered can_advance rows (+ * / # annotations); wizard
- * shows practice counts.
+ * C ref: weapon.c add_skills_to_menu `:1229–1302` — write the skill list
+ * onto menu `entries[]` in skill_ranges order (Fighting, Weapon,
+ * Spellcasting), one heading per range. JS models C's winid/add_menu as
+ * appended entries: headings carry the add_menu_heading attr (windows.c
+ * `:1815–1828` — menu_headings unless gameover), skill rows ATR_NONE with
+ * `skill: i` for C's `any.a_int = i + 1` and `selectable` for the
+ * lettered can_advance rows (the painter assigns the letters). All four
+ * Snprintf arms are live, including both iflags.menu_tab_sep tab arms.
  */
 function add_skills_to_menu(entries, selectable, speedy) {
+    /* C: longest Strlen(P_NAME(i)) over unrestricted skills. */
     let longest = 0;
     for (let i = 0; i < P_NUM_SKILLS; i++) {
         if (P_RESTRICTED(i)) continue;
@@ -1526,43 +1532,74 @@ function add_skills_to_menu(entries, selectable, speedy) {
         if (len > longest) longest = len;
     }
     const wiz = wizardMode();
-    for (const range of skill_ranges) {
-        for (let i = range.first; i <= range.last; i++) {
-            if (i === range.first) {
+    const tabsep = !!game.iflags?.menu_tab_sep;
+    /* C: for (pass = 0; pass < SIZE(skill_ranges); pass++). */
+    for (let pass = 0; pass < skill_ranges.length; pass++) {
+        for (let i = skill_ranges[pass].first; i <= skill_ranges[pass].last; i++) {
+            /* C: add_menu_heading before the P_RESTRICTED skip. */
+            if (i === skill_ranges[pass].first) {
                 entries.push({
-                    text: range.name,
-                    attr: ATR_INVERSE,
+                    text: skill_ranges[pass].name,
+                    attr: game.program_state?.gameover ? ATR_NONE : ATR_INVERSE,
                     selectable: false,
                 });
             }
             if (P_RESTRICTED(i)) continue;
+            /* C prefix order: blank / advanceable / * / # / blank. */
             let prefix;
             if (!selectable) prefix = '';
             else if (can_advance(i, speedy)) prefix = '';
             else if (could_advance(i)) prefix = '  * ';
             else if (peaked_skill(i)) prefix = '  # ';
             else prefix = '    ';
-            const name = P_NAME(i).padEnd(longest);
-            const sklnam = skill_level_name(i).padEnd(12);
+            /* C: (void) skill_level_name(i, sklnambuf) once per row. */
+            const sklnam = skill_level_name(i);
+            const name = P_NAME(i);
             let text;
             if (wiz) {
                 const adv = P_ADVANCE(i) | 0;
                 const need = practice_needed_to_advance(P_SKILL(i));
-                // C: " %s%-*s %-12s %5d(%4d)" — space before and after level field
-                text = ` ${prefix}${name} ${sklnam} ${String(adv).padStart(5)}(${String(need).padStart(4)})`;
+                if (!tabsep) {
+                    /* C: " %s%-*s %-12s %5d(%4d)". */
+                    text = ` ${prefix}${name.padEnd(longest)} ${sklnam.padEnd(12)} ${String(adv).padStart(5)}(${String(need).padStart(4)})`;
+                } else {
+                    /* C: " %s%s\t%s\t%5d(%4d)". */
+                    text = ` ${prefix}${name}\t${sklnam}\t${String(adv).padStart(5)}(${String(need).padStart(4)})`;
+                }
+            } else if (!tabsep) {
+                /* C: " %s %-*s [%s]". */
+                text = ` ${prefix} ${name.padEnd(longest)} [${sklnam}]`;
             } else {
-                // C non-wizard: " %s %-*s [%s]"
-                text = ` ${prefix} ${name} [${skill_level_name(i)}]`;
+                /* C: " %s%s\t[%s]". */
+                text = ` ${prefix}${name}\t[${sklnam}]`;
             }
+            /* C: any.a_int = selectable && can_advance(i, speedy) ? i + 1
+               : 0; add_menu(..., ATR_NONE, NO_COLOR, buf, ...). */
             const canSel = selectable && can_advance(i, speedy);
             entries.push({
                 text,
-                attr: 0,
+                attr: ATR_NONE,
                 selectable: canSel,
                 skill: i,
             });
         }
     }
+}
+
+/**
+ * C ref: weapon.c show_skills `:1304–1318` — dumplog "Skills:" PICK_NONE
+ * menu (add_skills_to_menu FALSE/FALSE, end_menu ""). Sole C caller is
+ * end.c dump_everything (DUMPLOG-retired, D-1776); kept live so this
+ * add_skills_to_menu caller stays wired in JS.
+ */
+export async function show_skills() {
+    await pline('Skills:');
+    const raw = [];
+    add_skills_to_menu(raw, false, false);
+    await select_menu_pick_none(raw.map((it) => ({
+        text: it.text,
+        attr: it.attr || 0,
+    })));
 }
 
 /**

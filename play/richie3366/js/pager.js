@@ -69,7 +69,7 @@ import { visible_region_at } from './region.js';
 import { engr_at, sticks } from './engrave.js';
 import { digests } from './mhitu.js';
 import { option_help_lines } from './options.js';
-import { dokeylist_lines, domenucontrols_lines } from './dokeylist.js';
+import { dokeylist_lines, domenucontrols_lines, cmdbind_get, movecmd, MISC_KEYS, SPKEYS_DEFAULT } from './dokeylist.js';
 import { trapname, t_at, ice_descr } from './trap.js';
 import { trapped_chest_at, trapped_door_at } from './detect.js';
 import { costly_spot, doname_with_price } from './shk.js';
@@ -107,6 +107,7 @@ import {
     MONSEEN_NORMAL, MONSEEN_SEEINVIS, MONSEEN_INFRAVIS, MONSEEN_TELEPAT,
     MONSEEN_XRAYVIS, MONSEEN_DETECT, MONSEEN_WARNMON,
     CMDQ_KEY, MENU_SEARCH, PICK_ONE, I_SPECIAL,
+    MV_WALK, MV_RUN, MV_RUSH,
 } from './const.js';
 import { ATR_INVERSE, NO_COLOR, DEC_TO_UNICODE } from './terminal.js';
 import { DAT_TEXT } from './generated/dat_text.js';
@@ -2987,45 +2988,73 @@ function key2txt(c) {
 }
 
 /**
- * C ref: cmd.c key2extcmddesc — description for a command key.
- * Branch envelope: letters bound in rhack/cmd.js + common meta; full
- * misc_keys / number_pad / rush-run prefixes deferred.
+ * C ref: cmd.c key2extcmddesc `:2561–2621` — description for a command key.
+ * C order kept arm by arm: movecmd WALK/RUSH/RUN movement probe (the buffer
+ * is set but never returned here — a bound move key is re-described by the
+ * cmdbind arm below, so the probe's observable effect is the u.dx/dy/dz set
+ * inside live `movecmd`) → digit/num_pad count-prefix arms (buffer reset on
+ * entry, return only when non-empty) → misc_keys prefix loop before regular
+ * commands (NHKF_ESC always; NHKF_COUNT only when num_pad; live
+ * `game.Cmd.spkeys` with `spkeys_binds` defaults) → cmdbind ef_desc/ef_txt
+ * `"desc (#txt)"` with the reqmenu two-line prefix rewrite and the `" (##)"`
+ * strip. C `static key2cmdbuf[QBUFSZ]` is a local string. The hardcoded
+ * letter table this replaces covered ~24 keys (no moves, digits, prefixes,
+ * or BIND= overlays); overlays arrive via live `cmdbind_get`
+ * (rest_on_space wait binding stays a named omit per `js/dokeylist.js`).
+ * C caller `pager.c:2588` dowhatdoes → wired `dowhatdoes_core` below.
  */
 function key2extcmddesc(key) {
-    const ch = typeof key === 'number' ? String.fromCharCode(key) : String(key);
-    /** @type {Record<string, [string, string]>} ef_desc, ef_txt */
-    const binds = {
-        i: ['show your inventory', 'inventory'],
-        ':': ['look here', 'look'],
-        ',': ['pick up things', 'pickup'],
-        '.': ['rest one move', 'wait'],
-        s: ['search for traps and secret doors', 'search'],
-        o: ['open a door', 'open'],
-        c: ['close a door', 'close'],
-        a: ['apply (use) something', 'apply'],
-        e: ['eat something', 'eat'],
-        q: ['quaff (drink) something', 'quaff'],
-        r: ['read a scroll or spellbook', 'read'],
-        z: ['zap a wand', 'zap'],
-        t: ['throw something', 'throw'],
-        f: ['fire ammunition', 'fire'],
-        w: ['wield a weapon', 'wield'],
-        W: ['wear armor', 'wear'],
-        T: ['take off armor', 'takeoff'],
-        P: ['put on an accessory', 'puton'],
-        R: ['remove an accessory', 'remove'],
-        E: ['engrave into the floor', 'engrave'],
-        d: ['drop an item', 'drop'],
-        '/': ['identify a glyph or creature', 'whatis'],
-        '?': ['get this help menu', 'help'],
-        '<': ['go up a staircase', 'up'],
-        '>': ['go down a staircase', 'down'],
-        '_': ['travel to a map location', 'travel'],
-        ' ': ['rest one move', 'wait'],
-    };
-    const b = binds[ch];
-    if (!b) return null;
-    return `${b[0]} (#${b[1]})`;
+    const k = (typeof key === 'string' ? key.charCodeAt(0) : key) & 0xff;
+    const M5 = 0x80 | 0x35; // C M('5') (`global.h:480`)
+    const M0 = 0x80 | 0x30; // C M('0')
+    let buf = ''; // C static key2cmdbuf
+
+    /* C `:2571–2579` — movement probe before the extcmd table (the table
+       holds number_pad binds like 'j'=="jump" that match !number_pad move) */
+    if (movecmd(k, MV_WALK)) buf = 'move'; // C `"move or attack"?`
+    else if (movecmd(k, MV_RUSH)) buf = 'rush';
+    else if (movecmd(k, MV_RUN)) buf = 'run';
+    /* C falls through without returning here. */
+    // C gc.Cmd.num_pad (`hack.h:249`; mirrors iflags.num_pad — tree reads both)
+    const numPad = !!(game.Cmd?.num_pad || game.iflags?.num_pad);
+    const isDigit = (c) => c >= 0x30 && c <= 0x39; // C hacklib.c digit `:62–66`
+    if (isDigit(k) || (numPad && isDigit(k & 0x7f))) { // C unmeta `global.h:490`
+        buf = ''; // C `:2581`
+        if (!numPad) buf = 'start of, or continuation of, a count'; // C `:2582–2583`
+        else if (k === 0x35 || k === M5) { // C `:2584–2586`
+            // C `!!gc.Cmd.pcHack_compat ^ (key == M_5)`
+            const runFirst = !!((game.Cmd?.pcHack_compat ? 1 : 0) ^ (k === M5 ? 1 : 0));
+            buf = `${runFirst ? 'run' : 'rush'} prefix`;
+        } else if (k === 0x30 // C `:2587–2588`
+            || (game.Cmd?.pcHack_compat && k === M0)) {
+            buf = "synonym for 'i'";
+        }
+        if (buf) return buf; // C `:2589–2590`
+    }
+    /* C `:2592–2599` — prefixes before regular commands, incl. ^A pseudo */
+    for (const mk of MISC_KEYS) { // C misc_keys `cmd.c:2088–2094`
+        if (mk.numpad && !numPad) continue; // C `!iflags.num_pad`
+        // C `gc.Cmd.spkeys[j]` with spkeys_binds default (lock.js pattern)
+        const sp = game.Cmd?.spkeys?.[mk.nhkf];
+        const spkey = (sp != null && sp !== 0 ? sp : SPKEYS_DEFAULT[mk.nhkf]) & 0xff;
+        if (k === spkey) return mk.desc;
+    }
+    /* C `:2601–2619` — bound command: "desc (#txt)" plus two rewrites */
+    const cmdbind = cmdbind_get(k); // C `bind && bind->cmd && ef_txt`
+    if (cmdbind && cmdbind.txt) {
+        buf = `${cmdbind.desc} (#${cmdbind.txt})`; // C `:2604`
+        /* C `:2606–2614` — reqmenu "prefix: ..." becomes the two-line
+           movement/non-movement prefix text (C relies on literal concat) */
+        if (buf.slice(0, 7).toLowerCase() === 'prefix:' // C strncmpi
+            && cmdbind.txt.toLowerCase() === 'reqmenu') { // C strcmpi
+            buf = strsubst(buf, 'prefix:',
+                'movement prefix: move without autopickup and without attacking'
+                + '\nnon-movement prefix:');
+        }
+        /* C `:2616–2619` — '#' txt would read "(##)"; strip it */
+        return strsubst(buf, ' (##)', '');
+    }
+    return null; // C `(char *) 0`
 }
 
 /**

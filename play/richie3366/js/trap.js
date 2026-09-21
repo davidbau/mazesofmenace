@@ -149,7 +149,7 @@ import { Soundeffect } from './sndprocs.js';
 import { se_loud_crash, se_roar } from './generated/seffects_data.js';
 import { mon_adjust_speed } from './muse.js';
 import { m_dowear, extract_from_minvent, update_mon_extrinsics } from './worn.js';
-import { m_unleash, number_leashed, unleash_all, check_leash } from './apply.js';
+import { m_unleash, number_leashed, unleash_all, check_leash, mon_has_amulet } from './apply.js';
 import { hard_helmet, helm_simple_name, cloak_simple_name, suit_simple_name } from './do_wear.js';
 import { unplacebc, placebc, ballfall, drag_ball, move_bc } from './ball.js';
 import { carried, is_fainted, reset_faint } from './eat.js';
@@ -199,7 +199,8 @@ const PM_NORN = monsterNames.indexOf('PM_NORN');
 const PM_CYCLOPS = monsterNames.indexOf('PM_CYCLOPS');
 const PM_LORD_SURTUR = monsterNames.indexOf('PM_LORD_SURTUR');
 const STATUE = objectNames.indexOf('STATUE');
-const AMULET_OF_YENDOR = objectNames.indexOf('AMULET_OF_YENDOR');
+const SCR_FIRE = objectNames.indexOf('SCR_FIRE');
+const SPE_FIREBALL = objectNames.indexOf('SPE_FIREBALL');
 const SPE_REMOVE_CURSE = objectNames.indexOf('SPE_REMOVE_CURSE');
 const AD_RUST = 24; /* monattk.h */
 const PM_FLESH_GOLEM = monsterNames.indexOf('PM_FLESH_GOLEM');
@@ -1639,11 +1640,36 @@ function Antimagic_prop() {
 }
 
 /**
- * C ref: trap.c immune_to_trap. Hero MAGIC_PORTAL is NOT_IMMUNE so
- * ParanoidTrap still asks (hack.c avoid_trap_andor_region). Named
- * omissions: monster ANTI_MAGIC resists_magm/attacktype; FIRE/MAGIC
- * invent-burn walk (hero FIRE is at most HIDDEN — still asks);
- * POLY resists_magm (hero Antimagic is HIDDEN — still asks).
+ * C ref: trap.c immune_to_trap FIRE_TRAP invent walk — scroll/potion/
+ * spellbook or worn flammable counts as fuel, except a fire scroll or
+ * fireball spellbook the victim knows is safe (monsters always know;
+ * hero iff this one seen and its type discovered).
+ */
+function firetrap_fuel(obj, is_you) {
+    if (!obj) return false;
+    if ((obj.oclass | 0) !== SCROLL_CLASS && (obj.oclass | 0) !== POTION_CLASS
+        && (obj.oclass | 0) !== SPBOOK_CLASS
+        && !((obj.owornmask | 0) && is_flammable(obj))) {
+        return false;
+    }
+    if (((obj.otyp | 0) === SCR_FIRE || (obj.otyp | 0) === SPE_FIREBALL)
+        /* C: mon knows fire SCR/SPE won't be affected; hero knows iff
+           this one has been seen and its type has been discovered */
+        && (!is_you
+            || (obj.dknown && game.objects?.[obj.otyp | 0]?.oc_name_known))) {
+        return false;
+    }
+    return true;
+}
+
+/**
+ * C ref: trap.c immune_to_trap `:2783–2934` — whole-body port in C order.
+ * Hero MAGIC_PORTAL is NOT_IMMUNE so ParanoidTrap still asks (hack.c
+ * avoid_trap_andor_region). C's two impossible() paths (null mon,
+ * default bad ttype) stay named: sync port keeps no impossible path,
+ * per D-1868 review (m_harmless_trap above). TELEP uses the canonical
+ * wizard.c mon_has_amulet (minvent walk — youmonst.minvent is not
+ * gi.invent, so hero-with-Amulet is not CLEARLY via this arm).
  */
 export function immune_to_trap(mon, ttype) {
     if (!mon) return TRAP_NOT_IMMUNE;
@@ -1690,15 +1716,16 @@ export function immune_to_trap(mon, ttype) {
         return TRAP_NOT_IMMUNE;
     case LEVEL_TELEP:
     case TELEP_TRAP:
-        // C wizard.c mon_has_amulet walks mtmp->minvent (youmonst.minvent
-        // is not gi.invent — hero-with-Amulet is not CLEARLY via this).
-        if (In_endgame(u.uz)) return TRAP_CLEARLY_IMMUNE;
-        for (let otmp = mon.minvent; otmp; otmp = otmp.nobj) {
-            if ((otmp.otyp | 0) === AMULET_OF_YENDOR) return TRAP_CLEARLY_IMMUNE;
-        }
+        /* C: consider unintended teleporting to be an adverse effect; if in
+           the endgame or carrying the Amulet, the teleport trap won't work
+           anyway, so anything hitting it is immune. */
+        if (In_endgame(u.uz) || mon_has_amulet(mon))
+            return TRAP_CLEARLY_IMMUNE;
         return TRAP_NOT_IMMUNE;
     case POLY_TRAP:
-        if (is_you && Antimagic_prop()) return TRAP_HIDDEN_IMMUNE;
+        if (resists_magm(mon))
+            /* C: covers Antimagic for player */
+            return is_you ? TRAP_HIDDEN_IMMUNE : TRAP_CLEARLY_IMMUNE;
         return TRAP_NOT_IMMUNE;
     case STATUE_TRAP:
         if (!is_you) return TRAP_CLEARLY_IMMUNE;
@@ -1710,9 +1737,18 @@ export function immune_to_trap(mon, ttype) {
         }
         return TRAP_NOT_IMMUNE;
     case ANTI_MAGIC:
+        /* C: doesn't hurt any non-magic-resistant monster with no magic */
         if (is_you) {
             if (Antimagic_prop()) return TRAP_NOT_IMMUNE;
-            if ((u.uenmax | 0) === 0) return TRAP_HIDDEN_IMMUNE;
+            if ((u.uenmax | 0) === 0)
+                /* C: player won't lose HP and can't lose more Pw */
+                return TRAP_HIDDEN_IMMUNE;
+
+        /* C: following conditional lifted from mintrap ANTI_MAGIC logic */
+        } else if (!resists_magm(mon)
+                   && (mon.mcan || (!attacktype(pm, AT_MAGC)
+                                     && !attacktype(pm, AT_BREA)))) {
+            return TRAP_CLEARLY_IMMUNE;
         }
         return TRAP_NOT_IMMUNE;
     case RUST_TRAP:
@@ -1738,15 +1774,29 @@ export function immune_to_trap(mon, ttype) {
         }
         return TRAP_CLEARLY_IMMUNE;
     case MAGIC_TRAP:
+        /* C: for player, any number of bad effects;
+           for monsters, only replicates fire trap, so fall through */
         if (is_you) return TRAP_NOT_IMMUNE;
-        // FALLTHROUGH — monsters: fire-trap replica
-    case FIRE_TRAP:
+        // FALLTHROUGH
+        /*FALLTHRU*/
+    case FIRE_TRAP: /* C: can always destroy items being carried */
+        /* C: harmful if not resistant or if carrying anything that could burn */
+        if (is_you ? !Fire_resistance() : !resists_fire(mon))
+            return TRAP_NOT_IMMUNE;
+
+        /* C walks is_you ? gi.invent (nobj chain) : mon->minvent; JS
+           game.invent is an array (D-2477 idiom) — same predicate, same
+           fire-scroll/spellbook exemption. */
         if (is_you) {
-            if (!Fire_resistance()) return TRAP_NOT_IMMUNE;
-            return TRAP_HIDDEN_IMMUNE;
+            for (const obj of game.invent || []) {
+                if (firetrap_fuel(obj, true)) return TRAP_NOT_IMMUNE;
+            }
+        } else {
+            for (let obj = mon.minvent; obj; obj = obj.nobj) {
+                if (firetrap_fuel(obj, false)) return TRAP_NOT_IMMUNE;
+            }
         }
-        if (!resists_fire(mon)) return TRAP_NOT_IMMUNE;
-        return TRAP_CLEARLY_IMMUNE;
+        return is_you ? TRAP_HIDDEN_IMMUNE : TRAP_CLEARLY_IMMUNE;
     case MAGIC_PORTAL:
         if (!is_you) return TRAP_CLEARLY_IMMUNE;
         return TRAP_NOT_IMMUNE;

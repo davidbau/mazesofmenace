@@ -21,7 +21,9 @@ import {
 } from './monmove.js';
 import { mattacku } from './mhitu.js';
 import { newsym, pline, canseemon, mon_visible, canspotmon, pline_mon, pline_xy, impossible, You_feel, glyph_is_object, glyph_at, You, Your, more } from './display.js';
-import { doname, distant_name, vtense, an } from './objnam.js';
+import { doname, distant_name, vtense, an, xname } from './objnam.js';
+import { unpaid_cost } from './shk.js';
+import { currency } from './invent.js';
 import { defsym_explanation } from './uhitm.js';
 import { mpickobj, is_vampshifter } from './makemon.js';
 import { t_at } from './trap.js';
@@ -37,6 +39,7 @@ import {
     DISMOUNT_THROWN, DISMOUNT_POLY, W_ARMS,
     S_sink, something,
     M_AP_FURNITURE, M_AP_OBJECT, M_AP_MONSTER, M_AP_TYPE,
+    COST_CONTENTS,
 } from './const.js';
 import { FOOD_CLASS, BALL_CLASS, CHAIN_CLASS, ROCK_CLASS, COIN_CLASS, objectNames, is_pick, objectDescrs, objectNameStrs } from './objects.js';
 import {
@@ -448,9 +451,14 @@ export async function dog_eat(mtmp, obj, x, y, devour) {
         newsym(mtmp.mx, mtmp.my);
     }
 
-    // bee jelly / unpaid shop / rust monster spit deferred
+    // bee jelly / rust monster spit deferred
     if ((obj.quan || 1) > 1 && (obj.oclass ?? 0) === FOOD_CLASS) {
         obj = splitobj(obj, 1) || obj;
+    }
+    // C dogmove.c:264-265 — suppress "(unpaid)" in the eat message below
+    if (obj.unpaid) {
+        if (!game.iflags) game.iflags = {};
+        game.iflags.suppress_price = (game.iflags.suppress_price | 0) + 1;
     }
 
     // C ref: dogmove.c dog_eat — sawpet is cansee+mon_visible (not
@@ -468,12 +476,24 @@ export async function dog_eat(mtmp, obj, x, y, devour) {
         await pline(`It ${devour ? 'devours' : 'eats'} ${obj_name}.`);
     }
 
+    // C dogmove.c:296-299 — name copy for the shop bill message below
+    let objnambuf = '';
+    if (obj.unpaid) {
+        objnambuf = xname(obj);
+        game.iflags.suppress_price = (game.iflags.suppress_price | 0) - 1;
+    }
+
     // C: dogfood again for DOGFOOD+invlet apport — always rolls obj_resists
     if (dogfood(mtmp, obj) === DOGFOOD && obj.invlet) {
         edog.apport = (edog.apport || 0)
             + Math.trunc(200 / ((edog.dropdist || 0)
                 + (game.moves ?? 1) - (edog.droptime || 0)));
         if (edog.apport <= 0) edog.apport = 1;
+    }
+    // C dogmove.c:332-337 — pet caught shop food the hero threw or kicked
+    if (obj.unpaid) {
+        const oprice = unpaid_cost(obj, COST_CONTENTS);
+        await pline(`That ${objnambuf} will cost you ${oprice} ${currency(oprice)}.`);
     }
     await m_consume_obj(mtmp, obj);
     return (mtmp.mhp | 0) <= 0 ? 2 : 1;

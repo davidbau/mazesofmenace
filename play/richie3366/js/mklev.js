@@ -49,6 +49,7 @@ import {
     WM_T_LONG, WM_T_BL, WM_T_BR,
     WM_X_TL, WM_X_TR, WM_X_BL, WM_X_BR, WM_X_TLBR, WM_X_BLTR,
     BOOL_RANDOM,
+    SEL_GRADIENT_RADIAL, SEL_GRADIENT_SQUARE,
     SET_LIT_RANDOM, SET_LIT_NOCHANGE,
     LVLINIT_NONE, LVLINIT_SOLIDFILL, LVLINIT_MAZEGRID, LVLINIT_MAZE,
     LVLINIT_MINES, LVLINIT_ROGUE, LVLINIT_SWAMP,
@@ -64,7 +65,7 @@ import {
     Is_medusa_level,
     Is_baal_level,
     RLOC_ERR,
-    DUST, MARK as ENGRAVE_MARK, M_AP_OBJECT, M_AP_FURNITURE, M_AP_MONSTER, M_AP_NOTHING, ENGRAVE,
+    DUST, MARK as ENGRAVE_MARK, M_AP_OBJECT, M_AP_FURNITURE, M_AP_MONSTER, M_AP_NOTHING, ENGRAVE, ENGR_BLOOD,
     LS_MONSTER, ismnum,
     S_dnstair,
     MM_ASLEEP, MM_NOCOUNTBIRTH, MM_NOMSG, IS_TREE, G_GENOD,
@@ -81,6 +82,8 @@ import {
     Is_earthlevel,
     DRY, WET, HOT, SOLID, ANY_LOC, NO_LOC_WARN, SPACELOC,
     SP_OBJ_CONTENT, SP_OBJ_CONTAINER,
+    F_LOOTED, F_WARNED, S_LPUDDING, S_LDWASHER, S_LRING,
+    T_LOOTED, TREE_LOOTED, TREE_SWARM,
     Can_fall_thru, Can_dig_down, G_GONE,
     CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_FEMALE, CORPSTAT_NONE,
     NUM_NHCORE_CALLS,
@@ -138,7 +141,7 @@ import { make_engr_at, make_grave, wipe_engr_at, random_engraving, del_engr_at, 
 import { cmd_from_ecname } from './dokeylist.js';
 import {
     find_level, dungeon_branch, at_dgn_entrance, insert_branch, get_level,
-    on_level, init_dungeons, Is_special, Invocation_lev,
+    on_level, init_dungeons, Is_special, Invocation_lev, In_W_tower,
 } from './dungeon.js';
 import { premap_detect } from './detect.js';
 import {
@@ -159,6 +162,10 @@ import { readobjnam, rnd_otyp_by_namedesc } from './readobjnam.js';
 // C mkmap.c envelope lives in ./mkmap.js; splev_initlev MINES awaits it.
 // Cycle-safe: mkmap only calls back into mklev function declarations.
 import { mkmap } from './mkmap.js';
+// C sp_lev.c lspo_finalize_level awaits makemap_prepost(FALSE, wtower).
+// Cycle-safe per scripts/imports.mjs: same 98-module SCC, hoisted function
+// used only at runtime (no top-level TDZ read).
+import { makemap_prepost } from './wizcmds.js';
 
 const GOLD_PIECE = objectNames.indexOf('GOLD_PIECE');
 const ROCK = objectNames.indexOf('ROCK');
@@ -327,6 +334,9 @@ const SPLEV_CENTER = 3;
 const SPLEV_RIGHT = 5;
 const SPLEV_TOP = 1;
 const SPLEV_BOTTOM = 5;
+// C ref: sp_lev.c:167,169 half-step aligns (lspo_room xalign table)
+const SPLEV_H_LEFT = 2;
+const SPLEV_H_RIGHT = 4;
 
 // Direction deltas
 const xdir = [-1, -1, 0, 1, 1, 1, 0, -1];
@@ -388,6 +398,18 @@ export function stairway_at(x, y) {
 export function On_ladder(x, y) {
     const stway = stairway_at(x | 0, y | 0);
     return !!(stway && stway.isladder);
+}
+
+/** C ref: stairs.c On_stairs_up `:162-167` — stairway_at != NULL && up. */
+export function On_stairs_up(x, y) {
+    const stway = stairway_at(x | 0, y | 0);
+    return !!(stway && stway.up);
+}
+
+/** C ref: stairs.c On_stairs_dn `:170-175` — stairway_at != NULL && !up. */
+export function On_stairs_dn(x, y) {
+    const stway = stairway_at(x | 0, y | 0);
+    return !!(stway && !stway.up);
 }
 
 /** C ref: stairs.c stairway_find_dir — first stairway with matching up. */
@@ -934,6 +956,490 @@ export async function lspo_gas_cloud(opts) {
         : await create_gas_cloud(x, y, 1, damage);
     if (ttl > -2) reg.ttl = ttl;
     return reg;
+}
+
+/**
+ * C ref: nhlua.c get_table_int_opt — nil field → defval, else integer.
+ * Unpacked-table form: plain-object field read (des tables are trusted
+ * content, so `| 0` coercion stands in for luaL_checkinteger).
+ */
+function splev_opt_int(v, defval) {
+    return v == null ? defval : v | 0;
+}
+
+/**
+ * C ref: nhlua.c get_table_option — luaL_checkoption index into the option
+ * table; absent field → default string; no match → nhl_error (fatal).
+ * luaL_checkoption matches exactly (case-sensitive).
+ */
+function splev_opt_index(v, defval, opts) {
+    const s = v ?? defval;
+    const i = opts.indexOf(s);
+    if (i < 0) throw new Error(`lspo: bad option '${s}'`);
+    return i;
+}
+
+/**
+ * C ref: nhlua.c get_table_boolean_opt / get_table_boolean — nil field →
+ * defval; "true"/"false"/"yes"/"no" (exact), boolean, or 0/1; else
+ * nhl_error (fatal — the JS guard throws likewise).
+ */
+function splev_opt_boolean(v, defval) {
+    if (v == null) return defval;
+    if (typeof v === 'boolean') return v ? 1 : 0;
+    if (typeof v === 'number') {
+        if (v === 0 || v === 1) return v;
+        throw new Error('lspo: Expected a boolean');
+    }
+    if (typeof v === 'string') {
+        const i = ['true', 'false', 'yes', 'no'].indexOf(v);
+        if (i >= 0) return [1, 0, 1, 0][i];
+    }
+    throw new Error('lspo: Expected a boolean');
+}
+
+/**
+ * C ref: mklev.c count_level_features `:828–841` — recount fountains and
+ * sinks over x 1..COLNO-1, y 0..ROWNO-1 (x = 1 lower bound like C).
+ */
+function count_level_features() {
+    const flags = game.level.flags || (game.level.flags = {});
+    flags.nfountains = 0; // C :832
+    flags.nsinks = 0;
+    for (let y = 0; y < ROWNO; y++)
+        for (let x = 1; x < COLNO; x++) {
+            const typ = game.level.at(x, y)?.typ;
+            if (typ === FOUNTAIN) flags.nfountains++;
+            else if (typ === SINK) flags.nsinks++;
+        }
+}
+
+/**
+ * C ref: sp_lev.c spo_endroom — pop one coder subroom level (or, when
+ * leaving the outermost room, reset the map bounds so content created
+ * outside it with no MAP still has something sensible), then update_croom.
+ * Callers guarantee game.gc.coder like C guarantees gc.coder.
+ */
+function spo_endroom(_coder) {
+    const coder = game.gc.coder; // C: gc.coder (struct sp_coder * arg is UNUSED)
+    if (coder.n_subroom > 1) {
+        coder.n_subroom--;
+        coder.tmproomlist[coder.n_subroom] = null;
+        coder.failed_room[coder.n_subroom] = true;
+    } else {
+        // no subroom, get out of top-level room; gx.xsize/gx.ysize bounds
+        if ((game.splev_xsize | 0) <= 1 && (game.splev_ysize | 0) <= 1)
+            reset_xystart_size();
+    }
+    update_croom();
+}
+
+/**
+ * C ref: sp_lev.c build_room `:2807–2830` — chance-gated rtype, subroom
+ * under the coder parent else top-level room, topologize + fill/join flags.
+ * (splev_build_room is the unpacked-opts twin used by direct JS builders;
+ * this coder form keeps C's layering: no irregular marking here — lspo_room
+ * marks the parent like C `:4081–4082`.)
+ */
+function splev_coder_build_room(r, parent) {
+    const rtype = (!r.chance || rn2(100) < r.chance) ? r.rtype : OROOM; // C :2811
+    let aroom = null;
+    if (parent) {
+        if (!create_subroom(parent, r.x, r.y, r.w, r.h, rtype, r.rlit)) return null; // C :2814-2815
+        aroom = game.level.rooms[MAXNROFROOMS + 1 + ((game.level.nsubroom | 0) - 1)] ?? null;
+    } else {
+        if (!create_room(r.x, r.y, r.w, r.h, r.xalign, r.yalign, rtype, r.rlit)) return null; // C :2817-2819
+        aroom = game.level.rooms[(game.level.nroom | 0) - 1] ?? null;
+    }
+    if (!aroom) return null;
+    topologize(aroom); // C :2824 (set roomno)
+    aroom.needfill = r.needfill; // C :2826
+    aroom.needjoining = r.joined; // C :2827
+    return aroom;
+}
+
+// C ref: sp_lev.c lspo_drawbridge static tables `:5722–5733`.
+const LSPO_MWDIRS = ['north', 'south', 'west', 'east', 'random'];
+const LSPO_MWDIRS2I = [DB_NORTH, DB_SOUTH, DB_WEST, DB_EAST, -1];
+const LSPO_DBOPENS = ['open', 'closed', 'random'];
+const LSPO_DBOPENS2I = [1, 0, -1];
+
+/**
+ * C ref: sp_lev.c lspo_drawbridge `:5720–5763` — des.drawbridge entry in C
+ * order. Unpacked-table form (opts object; lcheck_param_table ≡ table-or-
+ * empty). dir "random" maps to -1 and flows into create_drawbridge like C
+ * `:5745` (default arm: impossible + WEST fallthrough — dbridge.c:253-260).
+ * isok guards the raw table coords like C `:5751`; SpLev_Map mark mirrors
+ * the lspo_map `SpLev_Map.add` idiom (C `SpLev_Map[x][y] = 1`).
+ */
+export function lspo_drawbridge(opts) {
+    create_des_coder(); // C :5739
+    const o = opts ?? {}; // C :5741 lcheck_param_table
+    const mm = get_table_xy_or_coord(o); // C :5743
+    const dir = LSPO_MWDIRS2I[splev_opt_index(o.dir, 'random', LSPO_MWDIRS)]; // C :5745
+    const coder = game.gc.coder;
+    let db_open = LSPO_DBOPENS2I[splev_opt_index(o.state, 'random', LSPO_DBOPENS)]; // C :5747
+    const pos = get_location_coord(DRY | WET | HOT, coder?.croom ?? null, mm.x, mm.y); // C :5750
+    if (!isok(mm.x, mm.y)) throw new Error('lspo_drawbridge: drawbridge coord not ok'); // C :5751-5754 nhl_error
+    if (db_open === -1) db_open = !rn2(2) ? 1 : 0; // C :5756-5757 db_open = !rn2(2)
+    if (!create_drawbridge(pos.x, pos.y, dir, db_open !== 0)) // C :5758-5759
+        impossible('Cannot create drawbridge.');
+    if (game.SpLev_Map) game.SpLev_Map.add(`${pos.x},${pos.y}`); // C :5761
+    return 0;
+}
+
+/**
+ * C ref: sp_lev.c lspo_gold `:4480–4522` — des.gold entry in C order.
+ * C dispatches on the Lua stack shape; JS takes the unpacked equivalents:
+ * (amount, x, y) triple, (amount, coord) pair, or (opts?) table form
+ * (amount/x/y/coord fields). Anything else throws like C `:4510`
+ * nhl_error("Wrong parameters"). x=y=-1 packs RANDOM like C `:4515`.
+ */
+export function lspo_gold(a, b, c) {
+    let amount, x, y;
+    const argc = arguments.length;
+    if (argc === 3) { // C :4489-4492
+        amount = a | 0;
+        x = b | 0;
+        y = c | 0;
+    } else if (argc === 2 && b !== null && typeof b === 'object') { // C :4493-4496
+        amount = a | 0;
+        const cc = get_coord_unpacked(b); // C get_coord(L, 2, ...)
+        x = cc.x;
+        y = cc.y;
+    } else if (argc === 0 || (argc === 1 && a !== null && typeof a === 'object')) { // C :4497-4501
+        create_des_coder();
+        const o = a ?? {}; // C lcheck_param_table
+        amount = splev_opt_int(o.amount, -1); // C :4499
+        const xy = get_table_xy_or_coord(o); // C :4500
+        x = xy.x;
+        y = xy.y;
+    } else {
+        throw new Error('lspo_gold: Wrong parameters'); // C :4503-4506 nhl_error
+    }
+    const coder = game.gc?.coder ?? null; // C :4520 gc.coder->croom (table form created it above)
+    const pos = get_location_coord(DRY, coder?.croom ?? null, x, y); // C :4520 (RANDOM when x=y=-1)
+    if (amount < 0) amount = rnd(200); // C :4521-4522
+    mkgold(amount, pos.x, pos.y); // C :4523
+    return 0;
+}
+
+// C ref: sp_lev.c lspo_feature static tables `:4847–4850`.
+const LSPO_FEATURES = ['fountain', 'sink', 'pool', 'throne', 'tree'];
+const LSPO_FEATURES2I = [FOUNTAIN, SINK, POOL, THRONE, TREE, STONE];
+
+/**
+ * C ref: sp_lev.c sel_set_feature `:4633–4644` — isok gate, IS_FURNITURE
+ * guard, typ only (no lit change, no nfountains/nsinks recount — that
+ * lives in set_levltyp, not here). C takes typ by genericptr; JS passes
+ * the int. The EXTRA_SANITY_CHECKS impossible is compiled out upstream.
+ */
+function sel_set_feature(x, y, typ) {
+    if (!isok(x, y)) return; // C :4636-4641
+    const loc = game.level.at(x, y);
+    if (!loc) return;
+    if (IS_FURNITURE(loc.typ)) return; // C :4642-4643
+    loc.typ = typ; // C :4644
+}
+
+/**
+ * C ref: nhlua.c get_table_boolean `:1079–1104` — string arm returns the
+ * raw luaL_checkoption index ("true"→0, "false"→1, "yes"→2, "no"→3;
+ * no match throws like nhl_error); boolean → 1/0; number must be an
+ * integer 0/1 else throw ("Expected a boolean").
+ */
+function splev_feature_boolopt(v, name) {
+    if (typeof v === 'string') {
+        const i = ['true', 'false', 'yes', 'no'].indexOf(v);
+        if (i < 0) throw new Error(`lspo_feature: Expected a boolean for '${name}'`);
+        return i;
+    }
+    if (typeof v === 'boolean') return v ? 1 : 0;
+    if (typeof v === 'number') {
+        if (!Number.isInteger(v) || v < 0 || v > 1)
+            throw new Error(`lspo_feature: Expected a boolean for '${name}'`);
+        return v;
+    }
+    throw new Error(`lspo_feature: Expected a boolean for '${name}'`);
+}
+
+/**
+ * C ref: sp_lev.c l_table_getset_feature_flag `:4739–4756` — absent field
+ * (get_table_boolean_opt defval -2) skips; else set/clear flag on the
+ * cell. C writes levl[x][y].flags, which rm.h aliases (`#define looted
+ * flags` for throne/tree/fountain/sink/door); JS cells carry `.looted`
+ * (fountain.js/dokick.js). The `val == -1 → rn2(2)` arm is dead in C
+ * (get_table_boolean throws on -1) and is kept verbatim for C order.
+ */
+function l_table_getset_feature_flag(o, x, y, name, flag) {
+    if (o[name] == null) return; // C :4746 get_table_boolean_opt -2
+    let val = splev_feature_boolopt(o[name], name);
+    if (val === -1) val = rn2(2); // C :4748-4749
+    const loc = game.level.at(x, y);
+    if (!loc) return;
+    if (val) loc.looted = (loc.looted | 0) | flag; // C :4750-4751
+    else loc.looted = (loc.looted | 0) & ~flag; // C :4752-4753
+}
+
+/**
+ * C ref: sp_lev.c lspo_feature `:4844–4923` — des.feature entry in C
+ * order. C dispatches on the Lua stack shape; JS takes the unpacked
+ * equivalents like lspo_gold: (typeStr) string-only, (typeStr, coord)
+ * pair, (typeStr, x, y) triple, or (opts?) table form (type/x/y/coord
+ * fields plus flag fields; absent opts ≡ empty table per
+ * lcheck_param_table, so table-form type is required). Anything else
+ * throws like C nhl_error. x=y=-1 packs RANDOM/DRY like C `:4881`;
+ * explicit coords pack ANY_LOC like C `:4885`. STONE impossibles like C
+ * `:4891` (unreachable via the 5-entry option table, kept verbatim).
+ * Flag arms only run when the cell now has typ AND the table form was
+ * used (C `:4895`); POOL has no flags (default arm).
+ */
+export function lspo_feature(a, b, c) {
+    let typ, x, y;
+    let can_have_flags = false;
+    let o = null;
+    create_des_coder(); // C :4855
+    const argc = arguments.length;
+    if (argc === 1 && typeof a === 'string') { // C :4857-4860
+        typ = LSPO_FEATURES2I[splev_opt_index(a, null, LSPO_FEATURES)];
+        x = y = -1;
+    } else if (argc === 2 && typeof a === 'string' // C :4861-4867
+        && b !== null && typeof b === 'object') {
+        typ = LSPO_FEATURES2I[splev_opt_index(a, null, LSPO_FEATURES)];
+        const cc = get_coord_unpacked(b); // C get_coord(L, 2, ...)
+        x = cc.x;
+        y = cc.y;
+    } else if (argc === 3) { // C :4868-4872
+        typ = LSPO_FEATURES2I[splev_opt_index(a, null, LSPO_FEATURES)];
+        x = b | 0;
+        y = c | 0;
+    } else { // C :4873-4880 table form (lcheck_param_table: argc<1 ≡ {})
+        o = a ?? {};
+        const xy = get_table_xy_or_coord(o); // C :4877
+        x = xy.x;
+        y = xy.y;
+        typ = LSPO_FEATURES2I[splev_opt_index(o.type, null, LSPO_FEATURES)]; // C :4878
+        can_have_flags = true; // C :4879
+    }
+
+    let humidity;
+    if (x === -1 && y === -1) {
+        humidity = DRY; // C :4882-4883 SP_COORD_PACK_RANDOM(0)
+    } else {
+        humidity = ANY_LOC; // C :4886 SP_COORD_PACK(x, y)
+    }
+    const coder = game.gc?.coder ?? null;
+    const pos = get_location_coord(humidity, coder?.croom ?? null, x, y); // C :4888
+    x = pos.x;
+    y = pos.y;
+
+    if (typ === STONE) // C :4890-4891
+        impossible('feature has unknown type param.');
+    else
+        sel_set_feature(x, y, typ); // C :4893 (genericptr_t)&typ
+
+    const loc = game.level.at(x, y);
+    if (!loc || loc.typ !== typ || !can_have_flags) // C :4895-4896
+        return 0;
+
+    switch (typ) { // C :4898-4920
+    default:
+        break;
+    case FOUNTAIN:
+        l_table_getset_feature_flag(o, x, y, 'looted', F_LOOTED); // C :4905
+        l_table_getset_feature_flag(o, x, y, 'warned', F_WARNED); // C :4906
+        break;
+    case SINK:
+        l_table_getset_feature_flag(o, x, y, 'pudding', S_LPUDDING); // C :4909
+        l_table_getset_feature_flag(o, x, y, 'dishwasher', S_LDWASHER); // C :4910
+        l_table_getset_feature_flag(o, x, y, 'ring', S_LRING); // C :4911
+        break;
+    case THRONE:
+        l_table_getset_feature_flag(o, x, y, 'looted', T_LOOTED); // C :4914
+        break;
+    case TREE:
+        l_table_getset_feature_flag(o, x, y, 'looted', TREE_LOOTED); // C :4917
+        l_table_getset_feature_flag(o, x, y, 'swarm', TREE_SWARM); // C :4918
+        break;
+    }
+
+    return 0;
+}
+
+// C ref: sp_lev.c lspo_engraving static tables `:3883–3888`.
+const LSPO_ENGRTYPES = ['dust', 'engrave', 'burn', 'mark', 'blood'];
+const LSPO_ENGRTYPES2I = [DUST, ENGRAVE, BURN, ENGRAVE_MARK, ENGR_BLOOD]; // C MARK ≡ ENGRAVE_MARK (const.js import alias)
+
+/**
+ * C ref: sp_lev.c lspo_engraving `:3881–3936` — des.engraving entry in C
+ * order, unpacked-args idiom like lspo_feature (arguments.length dispatch).
+ * argc==1 is the table form (lcheck_param_table: no arg ≡ {}, extra args
+ * dropped, non-table throws); argc==3 is (coord, type, text); anything else
+ * throws like C nhl_error `:3919`. x=y=-1 packs SP_COORD_PACK_RANDOM(0)
+ * `:3922-3923` and explicit coords SP_COORD_PACK `:3925` — both round-trip
+ * through get_unpacked_coord to (x, y) + DRY humidity, so JS passes x, y
+ * straight to get_location_coord like lspo_feature does. croom is read
+ * post-dispatch like C `:3927` (gc.coder->croom after create_des_coder).
+ * Free(txt) `:3929` is a no-op (JS strings need no free). The ep tail
+ * `:3930-3934` writes both fields unconditionally, even in the 3-arity form
+ * (guardobjects=FALSE→0, nowipeout=!TRUE→0).
+ */
+export function lspo_engraving(a, b, c) {
+    let etyp = DUST; // C :3889
+    let txt = null; // C :3890
+    let x = -1, y = -1; // C :3892
+    let guardobjs = false; // C :3894
+    let wipeout = true; // C :3895
+    create_des_coder(); // C :3898
+    const argc = arguments.length; // C :3893
+    if (argc === 1) { // C :3900-3910
+        if (a == null || typeof a !== 'object') // C :3902 lcheck_param_table
+            throw new Error('bad argument #1 (table expected)');
+        const o = a;
+        const xy = get_table_xy_or_coord(o); // C :3904
+        x = xy.x;
+        y = xy.y;
+        etyp = LSPO_ENGRTYPES2I[splev_opt_index(o.type, 'engrave', LSPO_ENGRTYPES)]; // C :3907
+        if (typeof o.text !== 'string') // C :3908 get_table_str luaL_checkstring
+            throw new Error("bad argument 'text' (string expected)");
+        txt = o.text;
+        // C :3909-3910 get_table_boolean_opt (nil → default, else shared
+        // C nhlua.c get_table_boolean raw-index semantics via
+        // splev_feature_boolopt; nonzero → true like C's boolean assignment).
+        wipeout = (o.degrade == null ? 1 : splev_feature_boolopt(o.degrade, 'degrade')) !== 0;
+        guardobjs = (o.guardobjects == null ? 0 : splev_feature_boolopt(o.guardobjects, 'guardobjects')) !== 0;
+    } else if (argc === 3) { // C :3911-3917
+        const cc = get_coord_unpacked(a); // C :3913 (void) get_coord
+        x = cc.x;
+        y = cc.y;
+        etyp = LSPO_ENGRTYPES2I[splev_opt_index(b, 'engrave', LSPO_ENGRTYPES)]; // C :3916
+        if (typeof c !== 'string') // C :3917 dupstr(luaL_checkstring)
+            throw new Error('bad argument #3 (string expected)');
+        txt = c;
+    } else {
+        throw new Error('Wrong parameters'); // C :3919
+    }
+
+    const coder = game.gc?.coder ?? null;
+    const pos = get_location_coord(DRY, coder?.croom ?? null, x, y); // C :3927
+    x = pos.x;
+    y = pos.y;
+    make_engr_at(x, y, txt, null, 0, etyp); // C :3928
+    const ep = engr_at(x, y); // C :3930
+    if (ep) { // C :3931-3934
+        ep.guardobjects = guardobjs ? 1 : 0;
+        ep.nowipeout = wipeout ? 0 : 1;
+    }
+    return 0;
+}
+
+/**
+ * C ref: sp_lev.c lspo_room `:4028–4116` — des.room entry in C order.
+ * Unpacked-table form (opts object; contents callback replaces the Lua
+ * "contents" function + l_push_mkroom_table/nhl_pcall_handle plumbing, cf.
+ * splev_des_room). Align tables map exactly like C `:4040–4051` (exact
+ * match; "none"/"random" → -1); unknown type impossibles like C
+ * get_table_roomtype_opt (splev_roomtype for the strcmpi match); nesting
+ * overflow throws like C `:4059` panic; x/y and w/h half-absence throws
+ * like C nhl_error.
+ */
+export function lspo_room(opts, contentsFn) {
+    create_des_coder(); // C :4030
+    const coder = game.gc.coder;
+    if (game.in_mk_themerooms && game.themeroom_failed) return 0; // C :4032-4033
+    const o = opts ?? {}; // C :4035 lcheck_param_table
+    if (coder.n_subroom > MAX_NESTED_ROOMS) // C :4038-4039 panic
+        throw new Error('lspo_room: Too deeply nested rooms?!');
+    const left_or_right = ['left', 'half-left', 'center', 'half-right', 'right', 'none', 'random']; // C :4041-4044
+    const l_or_r2i = [SPLEV_LEFT, SPLEV_H_LEFT, SPLEV_CENTER, SPLEV_H_RIGHT, SPLEV_RIGHT, -1, -1]; // C :4045-4048
+    const top_or_bot = ['top', 'center', 'bottom', 'none', 'random']; // C :4049-4051
+    const t_or_b2i = [SPLEV_TOP, SPLEV_CENTER, SPLEV_BOTTOM, -1, -1]; // C :4051-4052
+    const xy = get_table_xy_or_coord(o); // C :4057
+    const tmproom = { x: xy.x, y: xy.y }; // C :4058
+    if ((tmproom.x === -1 || tmproom.y === -1) && tmproom.x !== tmproom.y) // C :4059-4060
+        throw new Error('lspo_room: Room must have both x and y');
+    tmproom.w = splev_opt_int(o.w, -1); // C :4062
+    tmproom.h = splev_opt_int(o.h, -1); // C :4063
+    if ((tmproom.w === -1 || tmproom.h === -1) && tmproom.w !== tmproom.h) // C :4065-4066
+        throw new Error('lspo_room: Room must have both w and h');
+    tmproom.xalign = l_or_r2i[splev_opt_index(o.xalign, 'random', left_or_right)]; // C :4068-4069
+    tmproom.yalign = t_or_b2i[splev_opt_index(o.yalign, 'random', top_or_bot)]; // C :4070-4071
+    tmproom.rtype = OROOM; // C :4072 get_table_roomtype_opt defval
+    if (o.type) { // C: non-empty roomstr searches room_types (strcmpi)
+        const mapped = splev_roomtype(o.type, -1);
+        if (mapped === -1) impossible(`Unknown room type '${o.type}'`); // C: impossible, keeps defval
+        else tmproom.rtype = mapped;
+    }
+    tmproom.chance = splev_opt_int(o.chance, 100); // C :4073
+    tmproom.rlit = splev_opt_int(o.lit, -1); // C :4074
+    // theme rooms default to unfilled (C :4075-4077)
+    tmproom.needfill = splev_opt_int(o.filled, game.in_mk_themerooms ? 0 : 1);
+    tmproom.joined = splev_opt_boolean(o.joined, true); // C :4078 (TRUE)
+    if (!coder.failed_room[coder.n_subroom - 1]) { // C :4080
+        const tmpcr = splev_coder_build_room(tmproom, coder.croom); // C :4081 build_room
+        if (tmpcr) {
+            const n = coder.n_subroom; // C :4083
+            coder.tmproomlist[n] = tmpcr; // C :4085
+            coder.failed_room[n] = false; // C :4086
+            // added a subroom, make parent room irregular (C :4087-4089)
+            if (coder.tmproomlist[n - 1]) coder.tmproomlist[n - 1].irregular = true;
+            coder.n_subroom++; // C :4090
+            update_croom(); // C :4091
+            if (typeof contentsFn === 'function') contentsFn(tmpcr); // C :4092-4098 contents pcall
+            spo_endroom(coder); // C :4099
+            add_doors_to_room(tmpcr); // C :4100
+            return 0;
+        }
+        if (game.in_mk_themerooms) game.themeroom_failed = true; // C :4103-4104 gt.themeroom_failed
+    } // failed to create parent room, so fail this too (C :4106)
+    coder.tmproomlist[coder.n_subroom] = null; // C :4108
+    coder.failed_room[coder.n_subroom] = true; // C :4109
+    coder.n_subroom++; // C :4110
+    update_croom(); // C :4111
+    spo_endroom(coder); // C :4112
+    if (game.in_mk_themerooms) game.themeroom_failed = true; // C :4113-4114 gt.themeroom_failed
+    return 0;
+}
+
+
+/**
+ * C ref: sp_lev.c lspo_finalize_level `:6014–6064` — des finalize in C
+ * order. fromDes ≡ C `L` non-null (des interpreter context); false is the
+ * C NULL form (wizard-debug wiz_load_splua, unported — arm kept for it).
+ * The FIXME corrmaze overload and the premap branch-stairs ordering comment
+ * are C's own. fill_special_room/makemap_prepost are async, so this is
+ * async (C is sync Lua).
+ */
+export async function lspo_finalize_level(fromDes = true) {
+    const wtower = In_W_tower(game.u?.ux, game.u?.uy, game.u?.uz); // C :6017
+    if (fromDes) create_des_coder(); // C :6019-6020
+    const coder = fromDes ? game.gc.coder : null;
+    link_doors_rooms(); // C :6022
+    remove_boundary_syms(); // C :6023
+    // TODO: ensure_way_out() needs rewrite (C's own note — ported, live)
+    if (fromDes && coder.check_inaccessibles) ensure_way_out(); // C :6026-6027
+    map_cleanup(); // C :6029
+    /* FIXME: Ideally, we want this call to only cover areas of the map
+     * which were not inserted directly by the special level file (see
+     * the insect legs on Baalzebub's level, for instance). Since that
+     * is currently not possible, we overload the corrmaze flag for this
+     * purpose. */
+    if (!game.level.flags.corrmaze) // C :6037
+        wallification(1, 0, COLNO - 1, ROWNO - 1); // C :6038
+    if (fromDes) flip_level_rnd(coder.allow_flips, false); // C :6040-6041
+    count_level_features(); // C :6043
+    if (fromDes && coder.solidify) solidify_map(); // C :6045-6046
+    /* This must be done before premap_detect(),
+     * otherwise branch stairs won't be premapped. */
+    fixup_special(); // C :6051
+    if (fromDes && coder.premapped) premap_detect(); // C :6053-6054
+    level_finalize_topology(); // C :6056
+    for (let i = 0; i < (game.level?.nroom | 0); i++) // C :6058-6060
+        await fill_special_room(game.level.rooms[i]);
+    await makemap_prepost(false, wtower); // C :6062
+    if (!game.iflags) game.iflags = {};
+    game.iflags.lua_testing = false; // C :6063
+    return 0;
 }
 
 /** C ref: dungeon.c free_exclusions — drop the list on clear_level_structures. */
@@ -3209,6 +3715,127 @@ function splev_irregular_oroom(dx1, dy1, rlit) {
     return troom;
 }
 
+/**
+ * C ref: sp_lev.c sel_set_wall_property `:986-996` — OR prop into
+ * wall_info on stone walls, trees and iron bars (C `:990-995`, incl. the
+ * 3.6.2 iron-bars note checked by chewing/zap_over_floor). The isok + null
+ * guards stand in for C selection_iterate's isok gate (`selvar.c:736`);
+ * the JS same-file selection_iterate (x-outer/y-inner, C order) has none,
+ * cf. sel_set_ter's guards. prop passes by value (C takes genericptr arg).
+ */
+function sel_set_wall_property(x, y, prop) {
+    if (!isok(x, y)) return;
+    const loc = game.level.at(x, y);
+    if (!loc) return;
+    if (IS_STWALL(loc.typ) || IS_TREE(loc.typ) || loc.typ === IRONBARS)
+        loc.wall_info = (loc.wall_info || 0) | prop;
+}
+
+/**
+ * C ref: sp_lev.c set_wallprop_in_selection `:5911-5932` — whole body in
+ * C order. create_des_coder() first; then the lua-arity dispatch: argc==1
+ * iterates the caller's selection (C `l_selection_check(L, -1)` errors on
+ * a non-selection, so sel is non-null there), argc==0 builds a fresh full
+ * selection (selection_new + selection_clear(sel, 1), freed after the
+ * iterate), any other arity leaves sel null and does nothing (C `if (sel)`
+ * gate). No Lua stack exists in scored ESM, so sel is explicit: a
+ * selection object selects the argc==1 arm, null/undefined selects the
+ * argc==0 whole-map arm. selection_iterate order is C order (x-outer).
+ */
+export function set_wallprop_in_selection(sel, prop) {
+    create_des_coder();
+    let freesel = false;
+    if (sel == null) {
+        freesel = true;
+        sel = selection_new();
+        selection_clear(sel, 1);
+    }
+    if (sel) {
+        selection_iterate(sel, (x, y) => sel_set_wall_property(x, y, prop));
+        if (freesel) selection_free(sel, true);
+    }
+}
+
+/**
+ * C ref: sp_lev.c lspo_non_diggable `:5936-5942` — des.non_diggable:
+ * set_wallprop_in_selection(L, W_NONDIGGABLE). sel-or-nothing mirrors the
+ * C stack dispatch (selection arm vs no-arg whole-map arm).
+ */
+export function lspo_non_diggable(sel) {
+    set_wallprop_in_selection(sel, W_NONDIGGABLE);
+}
+
+/**
+ * C ref: sp_lev.c lspo_non_passwall `:5945-5951` — des.non_passwall:
+ * set_wallprop_in_selection(L, W_NONPASSWALL). sel-or-nothing mirrors the
+ * C stack dispatch (selection arm vs no-arg whole-map arm).
+ */
+export function lspo_non_passwall(sel) {
+    set_wallprop_in_selection(sel, W_NONPASSWALL);
+}
+
+// C ref: sp_lev.c lspo_wall_property static tables `:5878–5881`.
+const LSPO_WPROPS = ['nondiggable', 'nonpasswall'];
+const LSPO_WPROPS2I = [W_NONDIGGABLE, W_NONPASSWALL, -1];
+
+/**
+ * C ref: sp_lev.c set_wall_property `:1001–1013` — clamp the rectangle to
+ * x 1..COLNO-1, y 0..ROWNO-1 (`:1005–1008`), then sel_set_wall_property
+ * over it in C order (y-outer/x-inner `:1009–1012`; the per-cell
+ * stone/tree/bars gate lives in sel_set_wall_property).
+ */
+function set_wall_property(x1, y1, x2, y2, prop) {
+    x1 = Math.max(x1, 1); // C :1005
+    x2 = Math.min(x2, COLNO - 1); // C :1006
+    y1 = Math.max(y1, 0); // C :1007
+    y2 = Math.min(y2, ROWNO - 1); // C :1008
+    for (let y = y1; y <= y2; y++) // C :1009-1012
+        for (let x = x1; x <= x2; x++)
+            sel_set_wall_property(x, y, prop);
+}
+
+/**
+ * C ref: sp_lev.c lspo_wall_property `:5876–5908` — des.wall_property entry
+ * in C order (table form only: lcheck_param_table `:5887` — no arg ≡ {},
+ * non-table throws). x1/y1/x2/y2 default -1 (C
+ * get_table_coords_or_region `:5561–5577` ≡ get_table_int_opt -1); the
+ * region subtable is consulted only when all four are -1, required there
+ * (optional=FALSE). Unset ends fall back to the full map extent
+ * `:5893–5900` (gx/gy ≡ game.splev_* with the reset_xystart_size defaults),
+ * then both corners go through get_location ANY_LOC `:5902–5903` before
+ * set_wall_property `:5905`.
+ */
+export function lspo_wall_property(o) {
+    create_des_coder(); // C :5885
+    if (arguments.length < 1) o = {}; // C lcheck_param_table :228-230
+    if (o == null || typeof o !== 'object') // C :232 luaL_checktype
+        throw new Error('bad argument #1 (table expected)');
+    let dx1 = o.x1 != null ? (o.x1 | 0) : -1; // C :5889 get_table_int_opt -1
+    let dy1 = o.y1 != null ? (o.y1 | 0) : -1;
+    let dx2 = o.x2 != null ? (o.x2 | 0) : -1;
+    let dy2 = o.y2 != null ? (o.y2 | 0) : -1;
+    if (dx1 === -1 && dy1 === -1 && dx2 === -1 && dy2 === -1) {
+        const r = get_table_region_unpacked(o, 'region', false); // C :5571-5576
+        dx1 = r[0];
+        dy1 = r[1];
+        dx2 = r[2];
+        dy2 = r[3];
+    }
+    const wprop = LSPO_WPROPS2I[splev_opt_index(o.property, 'nondiggable', LSPO_WPROPS)]; // C :5891
+    const xs = game.splev_xstart ?? 1; // C gx.xstart
+    const ys = game.splev_ystart ?? 0; // C gy.ystart
+    const xsz = game.splev_xsize ?? COLNO - 1; // C gx.xsize
+    const ysz = game.splev_ysize ?? ROWNO; // C gy.ysize
+    if (dx1 === -1) dx1 = xs - 1; // C :5893-5894
+    if (dy1 === -1) dy1 = ys - 1; // C :5895-5896
+    if (dx2 === -1) dx2 = xs + xsz + 1; // C :5897-5898
+    if (dy2 === -1) dy2 = ys + ysz + 1; // C :5899-5900
+    const p1 = get_location(dx1, dy1, ANY_LOC, null); // C :5902
+    const p2 = get_location(dx2, dy2, ANY_LOC, null); // C :5903
+    set_wall_property(p1.x, p1.y, p2.x, p2.y, wprop); // C :5905
+    return 0;
+}
+
 /** C ref: sp_lev.c sel_set_wall_property via lspo_non_diggable(selection). */
 function medusa_mark_nondig(mx, my, x1, y1, x2, y2) {
     for (let y = my + y1; y <= my + y2 && y < ROWNO; y++) {
@@ -3326,6 +3953,7 @@ function load_medusa_1() {
         const loc = g.level.at(mx + rx, my + ry);
         if (!loc) return;
         if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
+        set_door_orientation(mx + rx, my + ry); // C sel_set_door :4659
         loc.doormask = mask;
         loc.flags = mask;
     };
@@ -3632,6 +4260,7 @@ function load_medusa_3() {
         const loc = g.level.at(mx + rx, my + ry);
         if (!loc) return;
         if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
+        set_door_orientation(mx + rx, my + ry); // C sel_set_door :4659
         loc.doormask = mask;
         loc.flags = mask;
     };
@@ -3861,6 +4490,7 @@ function load_medusa_2() {
         const loc = g.level.at(mx + 71, my + 7);
         if (loc) {
             if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
+            set_door_orientation(mx + 71, my + 7); // C sel_set_door :4659
             loc.doormask = D_LOCKED;
             loc.flags = D_LOCKED;
         }
@@ -4015,6 +4645,7 @@ function load_medusa_4() {
         const loc = g.level.at(mx + rx, my + ry);
         if (!loc) return;
         if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
+        set_door_orientation(mx + rx, my + ry); // C sel_set_door :4659
         loc.doormask = D_LOCKED;
         loc.flags = D_LOCKED;
     };
@@ -4503,6 +5134,7 @@ function load_bar_strt() {
         const loc = g.level.at(mx + rx, my + ry);
         if (!loc) return;
         if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
+        set_door_orientation(mx + rx, my + ry); // C sel_set_door :4659
         loc.doormask = mask;
         loc.flags = mask;
     };
@@ -4735,6 +5367,7 @@ function load_wiz_strt() {
         const loc = g.level.at(mx + rx, my + ry);
         if (!loc) return;
         if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
+        set_door_orientation(mx + rx, my + ry); // C sel_set_door :4659
         loc.doormask = mask;
         loc.flags = mask;
     };
@@ -4971,6 +5604,7 @@ function load_wiz_loca() {
         const loc = g.level.at(mx + rx, my + ry);
         if (!loc) return;
         if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
+        set_door_orientation(mx + rx, my + ry); // C sel_set_door :4659
         loc.doormask = mask;
         loc.flags = mask;
     };
@@ -5234,6 +5868,7 @@ function load_wiz_goal() {
         const loc = g.level.at(mx + rx, my + ry);
         if (!loc) return;
         if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
+        set_door_orientation(mx + rx, my + ry); // C sel_set_door :4659
         loc.doormask = mask;
         loc.flags = mask;
     };
@@ -5414,6 +6049,7 @@ function load_pri_strt() {
         const loc = g.level.at(mx + rx, my + ry);
         if (!loc) return;
         if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
+        set_door_orientation(mx + rx, my + ry); // C sel_set_door :4659
         loc.doormask = mask;
         loc.flags = mask;
     };
@@ -5671,6 +6307,7 @@ async function load_pri_loca() {
         const loc = g.level.at(mx + rx, my + ry);
         if (!loc) return;
         if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
+        set_door_orientation(mx + rx, my + ry); // C sel_set_door :4659
         loc.doormask = mask;
         loc.flags = mask;
     };
@@ -5923,6 +6560,7 @@ function load_arc_strt() {
         const loc = g.level.at(mx + rx, my + ry);
         if (!loc) return;
         if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
+        set_door_orientation(mx + rx, my + ry); // C sel_set_door :4659
         loc.doormask = mask;
         loc.flags = mask;
     };
@@ -6160,6 +6798,7 @@ function load_arc_loca() {
         const loc = g.level.at(mx + rx, my + ry);
         if (!loc) return;
         if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
+        set_door_orientation(mx + rx, my + ry); // C sel_set_door :4659
         loc.doormask = mask;
         loc.flags = mask;
     };
@@ -6522,6 +7161,7 @@ async function load_kni_strt() {
         const loc = g.level.at(mx + rx, my + ry);
         if (!loc) return;
         if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
+        set_door_orientation(mx + rx, my + ry); // C sel_set_door :4659
         loc.doormask = mask;
         loc.flags = mask;
     };
@@ -7081,6 +7721,7 @@ function load_rog_strt() {
         const loc = g.level.at(mx + rx, my + ry);
         if (!loc) return;
         if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
+        set_door_orientation(mx + rx, my + ry); // C sel_set_door :4659
         loc.doormask = mask;
         loc.flags = mask;
     };
@@ -7543,6 +8184,7 @@ xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
         const loc = g.level.at(mx + rx, my + ry);
         if (!loc) continue;
         if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
+        set_door_orientation(mx + rx, my + ry); // C sel_set_door :4659
         loc.doormask = D_LOCKED;
         loc.flags = D_LOCKED;
     }
@@ -7771,12 +8413,15 @@ xxxxxxxxx..................xxxxxxxx
 
     // des.drawbridge south random, then percent(75) open else random north
     // C lspo_drawbridge state random → db_open = !rn2(2)
-    create_drawbridge(mx + 17, my + 2, DB_SOUTH, !rn2(2));
+    if (!create_drawbridge(mx + 17, my + 2, DB_SOUTH, !rn2(2)))
+        impossible('Cannot create drawbridge.');
     if (g.SpLev_Map) g.SpLev_Map.add(`${mx + 17},${my + 2}`);
     if (percent(75)) {
-        create_drawbridge(mx + 17, my + 14, DB_NORTH, true);
+        if (!create_drawbridge(mx + 17, my + 14, DB_NORTH, true))
+            impossible('Cannot create drawbridge.');
     } else {
-        create_drawbridge(mx + 17, my + 14, DB_NORTH, !rn2(2));
+        if (!create_drawbridge(mx + 17, my + 14, DB_NORTH, !rn2(2)))
+            impossible('Cannot create drawbridge.');
     }
     if (g.SpLev_Map) g.SpLev_Map.add(`${mx + 17},${my + 14}`);
 
@@ -7984,6 +8629,7 @@ function load_sam_strt() {
         const loc = g.level.at(mx + rx, my + ry);
         if (!loc) return;
         if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
+        set_door_orientation(mx + rx, my + ry); // C sel_set_door :4659
         loc.doormask = mask;
         loc.flags = mask;
     };
@@ -8123,6 +8769,7 @@ function load_sam_loca() {
         const loc = g.level.at(mx + rx, my + ry);
         if (!loc) return;
         if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
+        set_door_orientation(mx + rx, my + ry); // C sel_set_door :4659
         loc.doormask = mask;
         loc.flags = mask;
     };
@@ -8275,6 +8922,7 @@ ${' '.repeat(45)}
         const loc = g.level.at(mx + rx, my + ry);
         if (!loc) continue;
         if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
+        set_door_orientation(mx + rx, my + ry); // C sel_set_door :4659
         loc.doormask = D_CLOSED;
         loc.flags = D_CLOSED;
     }
@@ -8426,6 +9074,7 @@ function load_sam_filb() {
         const loc = g.level.at(mx + rx, my + ry);
         if (!loc) continue;
         if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
+        set_door_orientation(mx + rx, my + ry); // C sel_set_door :4659
         loc.doormask = D_CLOSED;
         loc.flags = D_CLOSED;
     }
@@ -8522,6 +9171,7 @@ PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP
         const loc = g.level.at(mx + rx, my + ry);
         if (!loc) return;
         if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
+        set_door_orientation(mx + rx, my + ry); // C sel_set_door :4659
         loc.doormask = mask;
         loc.flags = mask;
     };
@@ -8668,6 +9318,7 @@ PPPPPPPPPPP........PPPPPPPPPPPP
         const loc = g.level.at(mx + rx, my + ry);
         if (!loc) return;
         if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
+        set_door_orientation(mx + rx, my + ry); // C sel_set_door :4659
         loc.doormask = mask;
         loc.flags = mask;
     };
@@ -9021,6 +9672,7 @@ function load_tou_strt() {
         const loc = g.level.at(mx + rx, my + ry);
         if (!loc) return;
         if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
+        set_door_orientation(mx + rx, my + ry); // C sel_set_door :4659
         loc.doormask = mask;
         loc.flags = mask;
     };
@@ -9235,6 +9887,7 @@ function load_tou_loca() {
         const loc = g.level.at(mx + rx, my + ry);
         if (!loc) return;
         if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
+        set_door_orientation(mx + rx, my + ry); // C sel_set_door :4659
         loc.doormask = mask;
         loc.flags = mask;
     };
@@ -9426,6 +10079,7 @@ function load_tou_goal() {
         const loc = g.level.at(mx + rx, my + ry);
         if (!loc) return;
         if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
+        set_door_orientation(mx + rx, my + ry); // C sel_set_door :4659
         loc.doormask = mask;
         loc.flags = mask;
     };
@@ -10000,6 +10654,7 @@ function load_ran_goal() {
         const loc = g.level.at(mx + rx, my + ry);
         if (!loc) return;
         if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
+        set_door_orientation(mx + rx, my + ry); // C sel_set_door :4659
         loc.doormask = mask;
         loc.flags = mask;
     };
@@ -10236,6 +10891,7 @@ function load_mon_strt() {
         const loc = g.level.at(mx + rx, my + ry);
         if (!loc) return;
         if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
+        set_door_orientation(mx + rx, my + ry); // C sel_set_door :4659
         loc.doormask = mask;
         loc.flags = mask;
     };
@@ -10819,6 +11475,7 @@ function load_cav_strt() {
         const loc = g.level.at(mx + 19, my + 6);
         if (loc) {
             if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
+            set_door_orientation(mx + 19, my + 6); // C sel_set_door :4659
             loc.doormask = D_LOCKED;
             loc.flags = D_LOCKED;
         }
@@ -10998,6 +11655,7 @@ function load_cav_loca() {
         const loc = g.level.at(mx + 28, my + 11);
         if (loc) {
             if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
+            set_door_orientation(mx + 28, my + 11); // C sel_set_door :4659
             loc.doormask = D_LOCKED;
             loc.flags = D_LOCKED;
         }
@@ -11434,6 +12092,7 @@ function load_knox() {
         const loc = g.level.at(mx + rx, my + ry);
         if (!loc) return;
         if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
+        set_door_orientation(mx + rx, my + ry); // C sel_set_door :4659
         loc.doormask = mask;
         loc.flags = mask;
     };
@@ -11555,6 +12214,7 @@ function load_bar_loca() {
         const loc = g.level.at(mx + rx, my + ry);
         if (!loc) return;
         if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
+        set_door_orientation(mx + rx, my + ry); // C sel_set_door :4659
         loc.doormask = mask;
         loc.flags = mask;
     };
@@ -11710,6 +12370,7 @@ function load_bar_goal() {
         const loc = g.level.at(mx + rx, my + ry);
         if (!loc) return;
         if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
+        set_door_orientation(mx + rx, my + ry); // C sel_set_door :4659
         loc.doormask = mask;
         loc.flags = mask;
     };
@@ -11953,6 +12614,7 @@ function load_tower1() {
         const loc = g.level.at(mx + rx, my + ry);
         if (!loc) return;
         if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
+        set_door_orientation(mx + rx, my + ry); // C sel_set_door :4659
         loc.doormask = mask;
         loc.flags = mask;
     };
@@ -12126,6 +12788,7 @@ function load_tower2() {
         const loc = g.level.at(mx + rx, my + ry);
         if (!loc) return;
         if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
+        set_door_orientation(mx + rx, my + ry); // C sel_set_door :4659
         loc.doormask = mask;
         loc.flags = mask;
     };
@@ -12325,6 +12988,7 @@ function load_tower3() {
         const loc = g.level.at(mx + 14, my + 5);
         if (loc) {
             if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
+            set_door_orientation(mx + 14, my + 5); // C sel_set_door :4659
             loc.doormask = D_LOCKED;
             loc.flags = D_LOCKED;
         }
@@ -12529,6 +13193,7 @@ function load_soko1_1() {
         const loc = g.level.at(xstart + mx, ystart + my);
         if (!loc) return;
         if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
+        set_door_orientation(xstart + mx, ystart + my); // C sel_set_door :4659
         loc.doormask = mask;
         loc.flags = mask;
     };
@@ -12694,6 +13359,7 @@ function load_soko1_2() {
         const loc = g.level.at(xstart + mx, ystart + my);
         if (!loc) return;
         if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
+        set_door_orientation(xstart + mx, ystart + my); // C sel_set_door :4659
         loc.doormask = mask;
         loc.flags = mask;
     };
@@ -12791,6 +13457,7 @@ function load_soko3_1() {
         const loc = g.level.at(xstart + 27, ystart + 9);
         if (loc) {
             if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
+            set_door_orientation(xstart + 27, ystart + 9); // C sel_set_door :4659
             loc.doormask = D_LOCKED;
             loc.flags = D_LOCKED;
         }
@@ -12892,6 +13559,7 @@ function load_soko3_2() {
         const loc = g.level.at(xstart + 24, ystart + 9);
         if (loc) {
             if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
+            set_door_orientation(xstart + 24, ystart + 9); // C sel_set_door :4659
             loc.doormask = D_LOCKED;
             loc.flags = D_LOCKED;
         }
@@ -14009,6 +14677,7 @@ function load_astral() {
         const loc = g.level.at(mx + rx, my + ry);
         if (!loc) return;
         if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
+        set_door_orientation(mx + rx, my + ry); // C sel_set_door :4659
         loc.doormask = mask;
         loc.flags = mask;
     };
@@ -14213,6 +14882,7 @@ function load_minend_1() {
         const loc = g.level.at(mx + rx, my + ry);
         if (!loc) return;
         if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
+        set_door_orientation(mx + rx, my + ry); // C sel_set_door :4659
         loc.doormask = D_LOCKED;
         loc.flags = D_LOCKED;
     };
@@ -14384,6 +15054,7 @@ function load_minend_2() {
             const loc = g.level.at(mx + 52, my + 5);
             if (loc) {
                 if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
+                set_door_orientation(mx + 52, my + 5); // C sel_set_door :4659
                 loc.doormask = D_LOCKED;
                 loc.flags = D_LOCKED;
             }
@@ -14433,6 +15104,7 @@ function load_minend_2() {
         const loc = g.level.at(mx + rx, my + ry);
         if (!loc) return;
         if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
+        set_door_orientation(mx + rx, my + ry); // C sel_set_door :4659
         loc.doormask = D_LOCKED;
         loc.flags = D_LOCKED;
     };
@@ -14677,6 +15349,7 @@ function load_minend_3() {
         if (!loc) return;
         // C sel_set_door: keep SDOOR; closed is not D_SECRET
         if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
+        set_door_orientation(mx + rx, my + ry); // C sel_set_door :4659
         loc.doormask = D_CLOSED;
         loc.flags = D_CLOSED;
     };
@@ -14904,6 +15577,7 @@ async function load_minetn_1() {
         const loc = g.level.at(mx + rx, my + ry);
         if (!loc) return;
         if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
+        set_door_orientation(mx + rx, my + ry); // C sel_set_door :4659
         loc.doormask = mask;
         loc.flags = mask;
     };
@@ -15558,6 +16232,7 @@ function load_minetn_5() {
         const loc = g.level.at(mx + rx, my + ry);
         if (!loc) return;
         if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
+        set_door_orientation(mx + rx, my + ry); // C sel_set_door :4659
         loc.doormask = mask;
         loc.flags = mask;
     };
@@ -15789,6 +16464,7 @@ xxxx-------xxxxxxxxxxxxxxx--------------
         const loc = g.level.at(mx + rx, my + ry);
         if (!loc) return;
         if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
+        set_door_orientation(mx + rx, my + ry); // C sel_set_door :4659
         loc.doormask = mask;
         loc.flags = mask;
     };
@@ -16696,6 +17372,7 @@ function load_soko2_1() {
         const loc = g.level.at(xstart + 18, ystart + 8);
         if (loc) {
             if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
+            set_door_orientation(xstart + 18, ystart + 8); // C sel_set_door :4659
             loc.doormask = D_LOCKED;
             loc.flags = D_LOCKED;
         }
@@ -16798,6 +17475,7 @@ function load_soko2_2() {
         const loc = g.level.at(xstart + dx, ystart + dy);
         if (loc) {
             if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
+            set_door_orientation(xstart + dx, ystart + dy); // C sel_set_door :4659
             loc.doormask = D_LOCKED;
             loc.flags = D_LOCKED;
         }
@@ -16878,8 +17556,17 @@ function IS_DOORJOIN(typ) {
 }
 
 /**
- * C ref: sp_lev.c set_door_orientation — MAP '+'/'S' door axis from
- * adjacent walls (also used by link_doors_rooms).
+ * C ref: sp_lev.c set_door_orientation :1041–1085 — MAP '+'/'S' door
+ * axis from adjacent walls. C callers: link_doors_rooms :1133 (wired
+ * in that function) + sel_set_door :4659 (wired at each des.door
+ * coord-form closure: medDoor/barDoor/wizDoor/meDoor/priDoor/arcDoor
+ * (D-2695) + kniDoor/rogDoor/samDoor/heaDoor/heaLocaDoor/touStrtDoor/
+ * touLocaDoor/touGoalDoor/ranGoalDoor/monDoor/knoxDoor/barGoalDoor/
+ * twDoor/astralDoor/tnDoor/castleDoor/valleyDoor/asmoDoor/orcusDoor/
+ * wiz2Door/sanctDoor/sokoDoor/tut1_door + coord-form inline sites
+ * (medusa-2/val-strt/sam-goal/sam-filb/cav-strt/cav-loca/tower3/
+ * soko3/soko2/minend-2/asmodeus/baalz/wizard3); wall-form create_door
+ * sites (incl. sanctum/wiz-loca secret-wall doors) excluded per C.
  */
 function set_door_orientation(x, y) {
     const lev = (xx, yy) => game.level.at(xx, yy);
@@ -17450,6 +18137,7 @@ function load_tut1() {
         if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) {
             loc.typ = DOOR;
         }
+        set_door_orientation(xstart + mx, ystart + my); // C sel_set_door :4659
         loc.doormask = mask;
         loc.flags = mask;
     };
@@ -18143,6 +18831,61 @@ function lvlfill_swamp(fg, bg, lit) {
             }
         }
     }
+}
+
+/**
+ * C ref: sp_lev.c lspo_level_flags `:3759–3831` — des.level_flags entry in
+ * C order. C takes N Lua string params (`:3761–3770`, non-string throws
+ * like luaL_checkstring); JS takes them as rest args. strcmpi per arm
+ * (`:3772–3821`) ≡ one lowercase compare. C int targets map to the file's
+ * JS conventions: bool flags → true, temperature → 0/1/-1, nomongen →
+ * rndmongen=false and nodeathdrops → deathdrops=false (compiled-loader
+ * precedent `:17934–17936`). Sokoban ≡ flags.sokoban_rules (rm.h:538);
+ * the file's triple alias (sokoban + sokoban_rules + g.Sokoban) mirrors
+ * the soko loaders. coder arms write game.gc.coder (live after
+ * create_des_coder). Unknown flag throws like C `:3825–3826`.
+ */
+export function lspo_level_flags(...args) {
+    create_des_coder(); // C :3764
+    if (args.length < 1) // C :3766-3767
+        throw new Error('expected string params');
+    const flags = game.level.flags || (game.level.flags = {});
+    const coder = game.gc.coder;
+    for (const a of args) { // C :3769-3828
+        if (typeof a !== 'string') // C :3770 luaL_checkstring
+            throw new Error('bad argument (string expected)');
+        const s = a.toLowerCase(); // C strcmpi per arm
+        if (s === 'noteleport') flags.noteleport = true; // C :3772-3773
+        else if (s === 'hardfloor') flags.hardfloor = true; // C :3774-3775
+        else if (s === 'nommap') flags.nommap = true; // C :3776-3777
+        else if (s === 'shortsighted') flags.shortsighted = true; // C :3778-3779
+        else if (s === 'arboreal') flags.arboreal = true; // C :3780-3781
+        else if (s === 'mazelevel') flags.is_maze_lev = true; // C :3782-3783
+        else if (s === 'shroud') flags.hero_memory = true; // C :3784-3785
+        else if (s === 'graveyard') flags.graveyard = true; // C :3786-3787
+        else if (s === 'icedpools') icedpools = true; // C :3788-3789
+        else if (s === 'corrmaze') flags.corrmaze = true; // C :3790-3791
+        else if (s === 'premapped') coder.premapped = true; // C :3792-3793
+        else if (s === 'solidify') coder.solidify = true; // C :3794-3795
+        else if (s === 'sokoban') { // C :3796-3797
+            flags.sokoban_rules = true;
+            flags.sokoban = true;
+            game.Sokoban = true;
+        } else if (s === 'inaccessibles') coder.check_inaccessibles = true; // C :3798-3799
+        else if (s === 'noflipx') coder.allow_flips &= ~2; // C :3800-3801
+        else if (s === 'noflipy') coder.allow_flips &= ~1; // C :3802-3803
+        else if (s === 'noflip') coder.allow_flips = 0; // C :3804-3805
+        else if (s === 'temperate') flags.temperature = 0; // C :3806-3807
+        else if (s === 'hot') flags.temperature = 1; // C :3808-3809
+        else if (s === 'cold') flags.temperature = -1; // C :3810-3811
+        else if (s === 'nomongen') flags.rndmongen = false; // C :3812-3813
+        else if (s === 'nodeathdrops') flags.deathdrops = false; // C :3814-3815
+        else if (s === 'noautosearch') flags.noautosearch = true; // C :3816-3817
+        else if (s === 'fumaroles') flags.fumaroles = true; // C :3818-3819
+        else if (s === 'stormy') flags.stormy = true; // C :3820-3821
+        else throw new Error(`Unknown level flag ${a}`); // C :3822-3826
+    }
+    return 0;
 }
 
 /**
@@ -18901,35 +19644,61 @@ function splev_mazewalk(rx, ry, dir, stocked = true, typ = ROOM) {
 }
 
 /**
- * C ref: dbridge.c create_drawbridge — closed → DRAWBRIDGE_UP + DBWALL.
+ * C ref: dbridge.c:235-283 create_drawbridge — whole body in C order.
+ * dir picks the portal cell (NORTH/SOUTH → horiz arm, EAST/WEST → vertical
+ * arm); a bad dir calls impossible() then falls through to the WEST arm
+ * (C default FALLTHROUGH). flag open → DRAWBRIDGE_DOWN + DOOR/D_NODOOR;
+ * closed → DRAWBRIDGE_UP + DBWALL with wall_info = W_NONDIGGABLE (plain
+ * assign, not OR). drawbridgemask = dir, OR'd with DB_LAVA when the
+ * pre-morph cell is LAVAPOOL. FALSE unless the portal cell IS_WALL.
+ * JS-only: OOB at() misses return FALSE (C assumes an initialized map).
  */
 function create_drawbridge(x, y, dir, isOpen) {
     let x2 = x, y2 = y;
     let horiz;
-    const lava = game.level.at(x, y)?.typ === LAVAPOOL;
+    const lava = game.level.at(x, y)?.typ === LAVAPOOL; /* assume initialized map */
     switch (dir) {
-    case DB_NORTH: horiz = true; y2--; break;
-    case DB_SOUTH: horiz = true; y2++; break;
-    case DB_EAST: horiz = false; x2++; break;
+    case DB_NORTH:
+        horiz = true;
+        y2--;
+        break;
+    case DB_SOUTH:
+        horiz = true;
+        y2++;
+        break;
+    case DB_EAST:
+        horiz = false;
+        x2++;
+        break;
+    default:
+        impossible('bad direction in create_drawbridge');
+        /*FALLTHRU*/
     case DB_WEST:
-    default: horiz = false; x2--; break;
+        horiz = false;
+        x2--;
+        break;
     }
     const wall = game.level.at(x2, y2);
-    if (!wall || !IS_WALL(wall.typ)) return false;
+    if (!wall || !IS_WALL(wall.typ))
+        return false;
     const bridge = game.level.at(x, y);
-    if (!bridge) return false;
-    if (isOpen) {
+    if (!bridge)
+        return false;
+    if (isOpen) { /* We want the bridge open */
         bridge.typ = DRAWBRIDGE_DOWN;
         wall.typ = DOOR;
         wall.doormask = D_NODOOR;
     } else {
         bridge.typ = DRAWBRIDGE_UP;
         wall.typ = DBWALL;
-        wall.wall_info = (wall.wall_info || 0) | W_NONDIGGABLE;
+        /* Drawbridges are non-diggable. */
+        wall.wall_info = W_NONDIGGABLE;
     }
     bridge.horizontal = !horiz;
     wall.horizontal = horiz;
-    bridge.drawbridgemask = dir | (lava ? DB_LAVA : 0);
+    bridge.drawbridgemask = dir;
+    if (lava)
+        bridge.drawbridgemask |= DB_LAVA;
     return true;
 }
 
@@ -21027,6 +21796,7 @@ function load_castle() {
         const loc = g.level.at(mx + rx, my + ry);
         if (!loc) return;
         if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
+        set_door_orientation(mx + rx, my + ry); // C sel_set_door :4659
         loc.doormask = mask;
         loc.flags = mask;
     };
@@ -21050,7 +21820,9 @@ function load_castle() {
     castleDoor(55, 13, D_CLOSED);
 
     // des.drawbridge({ dir="east", state="closed", x=05,y=08})
-    create_drawbridge(mx + 5, my + 8, DB_EAST, false);
+    // C lspo_drawbridge FALSE-arm → impossible("Cannot create drawbridge.")
+    if (!create_drawbridge(mx + 5, my + 8, DB_EAST, false))
+        impossible('Cannot create drawbridge.');
     if (g.SpLev_Map) g.SpLev_Map.add(`${mx + 5},${my + 8}`);
 
     const placeClassObj = (ch, rx, ry) => {
@@ -21410,6 +22182,7 @@ function load_valley() {
         const loc = g.level.at(mx + rx, my + ry);
         if (!loc) return;
         if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
+        set_door_orientation(mx + rx, my + ry); // C sel_set_door :4659
         loc.doormask = mask;
         loc.flags = mask;
     };
@@ -21720,6 +22493,7 @@ function load_asmodeus() {
         const loc = g.level.at(mx1 + rx, my1 + ry);
         if (!loc) return;
         if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
+        set_door_orientation(mx1 + rx, my1 + ry); // C sel_set_door :4659
         loc.doormask = mask;
         loc.flags = mask;
     };
@@ -21860,6 +22634,7 @@ function load_asmodeus() {
         const loc = g.level.at(mx2 + 32, my2 + 2);
         if (loc) {
             if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
+            set_door_orientation(mx2 + 32, my2 + 2); // C sel_set_door :4659
             loc.doormask = D_CLOSED;
             loc.flags = D_CLOSED;
         }
@@ -22290,6 +23065,7 @@ function load_baalz() {
         const loc = g.level.at(mx + 0, my + 6);
         if (loc) {
             if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
+            set_door_orientation(mx + 0, my + 6); // C sel_set_door :4659
             loc.doormask = D_LOCKED;
             loc.flags = D_LOCKED;
         }
@@ -22475,6 +23251,7 @@ function load_orcus() {
         const loc = g.level.at(mx + rx, my + ry);
         if (!loc) return;
         if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
+        set_door_orientation(mx + rx, my + ry); // C sel_set_door :4659
         loc.doormask = mask;
         loc.flags = mask;
     };
@@ -23111,6 +23888,7 @@ function load_wizard2() {
         const loc = g.level.at(mx + rx, my + ry);
         if (!loc) return;
         if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
+        set_door_orientation(mx + rx, my + ry); // C sel_set_door :4659
         loc.doormask = mask;
         loc.flags = mask;
     };
@@ -23416,6 +24194,7 @@ function load_wizard3() {
         const loc = g.level.at(mx + 18, my + 5);
         if (loc) {
             if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
+            set_door_orientation(mx + 18, my + 5); // C sel_set_door :4659
             loc.doormask = D_CLOSED;
             loc.flags = D_CLOSED;
         }
@@ -23902,6 +24681,7 @@ function load_sanctum() {
         const loc = g.level.at(mx + rx, my + ry);
         if (!loc) return;
         if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) loc.typ = DOOR;
+        set_door_orientation(mx + rx, my + ry); // C sel_set_door :4659
         loc.doormask = mask;
         loc.flags = mask;
     };
@@ -26525,9 +27305,15 @@ function selection_iterate(sel, fn) {
     }
 }
 
-// C ref: selvar.c selection_new — empty COLNO×ROWNO selection (Set-backed)
+// C ref: selvar.c selection_new `:14-30` — empty COLNO×ROWNO selection
+// (Set-backed). sel.lx..hy is the JS store for C sel->bounds.*; wid/hei
+// scope the recalc scans and bounds_dirty gates selection_recalc_bounds
+// (C `:19-24`: wid=COLNO, hei=ROWNO, dirty=FALSE, empty bounds shape).
 export function selection_new() {
-    return { pts: new Set(), lx: COLNO, ly: ROWNO, hx: 0, hy: 0 };
+    return {
+        pts: new Set(), lx: COLNO, ly: ROWNO, hx: 0, hy: 0,
+        wid: COLNO, hei: ROWNO, bounds_dirty: false,
+    };
 }
 
 // C ref: selvar.c selection_getpoint
@@ -26536,18 +27322,26 @@ export function selection_getpoint(x, y, sel) {
     return sel.pts.has(`${x},${y}`) ? 1 : 0;
 }
 
-// C ref: selvar.c selection_setpoint — set/clear; update bounds on set
+// C ref: selvar.c selection_setpoint `:181-208` — set/clear. A set onto
+// clean bounds expands them live (C `:191-199`); a set onto dirty bounds
+// leaves them for the recalc (C `:191` guard fails, `:203` re-dirties).
+// Every clear dirties (C `:201-205`: the map cell is never literal 0, so
+// any 0-write sets bounds_dirty — including 0-writes onto fresh cells,
+// which is what makes the recalc load-bearing in l_selection_sub/xor).
 export function selection_setpoint(x, y, sel, c) {
     if (!sel || x < 0 || y < 0 || x >= COLNO || y >= ROWNO) return;
     const key = `${x},${y}`;
     if (c) {
-        sel.pts.add(key);
-        if (x < sel.lx) sel.lx = x;
-        if (y < sel.ly) sel.ly = y;
-        if (x > sel.hx) sel.hx = x;
-        if (y > sel.hy) sel.hy = y;
+        if (!sel.bounds_dirty) { // C `:191`
+            if (x < sel.lx) sel.lx = x; // C `:192-199`
+            if (y < sel.ly) sel.ly = y;
+            if (x > sel.hx) sel.hx = x;
+            if (y > sel.hy) sel.hy = y;
+        }
+        sel.pts.add(key); // C `:207` map = c + 1
     } else {
-        sel.pts.delete(key);
+        sel.bounds_dirty = true; // C `:203-204`
+        sel.pts.delete(key); // C `:207` map = c + 1
     }
 }
 
@@ -26581,6 +27375,37 @@ export function selection_free(sel, freesel) {
     sel.ly = ROWNO;
     sel.hx = 0;
     sel.hy = 0;
+    sel.bounds_dirty = false; // C `:61` bounds_dirty=FALSE (`:42` zeroes it)
+}
+
+// C ref: selvar.c selection_clear `:48-64` — set every cell to val.
+// val truthy fills the whole map (C memsets map to 1+val so getpoint reads
+// 1; bounds become the full 0..COLNO-1 / 0..ROWNO-1); val falsy empties
+// (bounds reset to the selection_new empty shape). Always clears
+// bounds_dirty (C `:63`). Retires the D-2696 "mutating selection_clear"
+// named deferral for this arm.
+export function selection_clear(sel, val) {
+    if (!sel) return;
+    if (val) {
+        if (!sel.pts) sel.pts = new Set();
+        else sel.pts.clear();
+        for (let y = 0; y < ROWNO; y++) {
+            for (let x = 0; x < COLNO; x++) {
+                sel.pts.add(`${x},${y}`);
+            }
+        }
+        sel.lx = 0; // C `:52-55`
+        sel.ly = 0;
+        sel.hx = COLNO - 1;
+        sel.hy = ROWNO - 1;
+    } else {
+        if (sel.pts) sel.pts.clear();
+        sel.lx = COLNO; // C `:57-60` empty shape (cf. selection_new)
+        sel.ly = ROWNO;
+        sel.hx = 0;
+        sel.hy = 0;
+    }
+    sel.bounds_dirty = false; // C `:63`
 }
 
 /**
@@ -26780,14 +27605,23 @@ function selection_and(sela, selb) {
     return selr;
 }
 
-/** C ref: selvar.c selection_clone — shallow copy of set-backed selection. */
+/**
+ * C ref: selvar.c selection_clone `:64-73` — struct copy (`*tmps = *sel`)
+ * plus map duplicate: bounds AND bounds_dirty come over verbatim, so a
+ * dirty source stays dirty (its recalc restores tightness) instead of
+ * being silently tightened by re-adding points one by one.
+ */
 function selection_clone(sel) {
     const out = selection_new();
-    if (!sel?.pts?.size) return out;
-    for (const key of sel.pts) {
-        const comma = key.indexOf(',');
-        selection_setpoint(Number(key.slice(0, comma)), Number(key.slice(comma + 1)), out, 1);
-    }
+    if (!sel) return out;
+    if (sel.pts) for (const key of sel.pts) out.pts.add(key); // C `:70` dupstr
+    out.lx = sel.lx; // C `:69` *tmps = *sel
+    out.ly = sel.ly;
+    out.hx = sel.hx;
+    out.hy = sel.hy;
+    if (sel.wid !== undefined) out.wid = sel.wid;
+    if (sel.hei !== undefined) out.hei = sel.hei;
+    out.bounds_dirty = !!sel.bounds_dirty;
     return out;
 }
 
@@ -26815,31 +27649,84 @@ function selection_not(sel) {
 }
 
 /**
- * C ref: selvar.c selection_recalc_bounds — recompute the tight boundary
- * rect from membership (C scans left/right/top/bottom columns and rows).
- * C returns early when bounds_dirty is false; the JS Set model has no
- * dirty flag (set expands bounds, delete never shrinks), so recompute
- * unconditionally — the endpoints are identical either way. Empty keeps
- * the C reset shape (lx=COLNO, ly=ROWNO, hx=hy=0).
+ * C ref: selvar.c selection_recalc_bounds `:98-165` — recalc the boundary
+ * of the selection when dirty, in C order. sel.lx..hy is the JS store for
+ * C sel->bounds.* (a missing bounds_dirty on hand-built literals reads as
+ * clean, and those literals already carry tight bounds). Empty keeps the
+ * C reset shape (lx=COLNO, ly=ROWNO, hx=hy=0); the scans find exactly the
+ * membership min/max. Exported: region.js selection_getbounds (C selvar.c
+ * `:82`) calls it, as does selection_sub (C nhlsel.c `:380`).
  */
-function selection_recalc_bounds(sel) {
+export function selection_recalc_bounds(sel) {
     if (!sel) return;
-    let lx = COLNO, ly = ROWNO, hx = 0, hy = 0;
-    if (sel.pts?.size) {
-        for (const key of sel.pts) {
-            const comma = key.indexOf(',');
-            const x = Number(key.slice(0, comma));
-            const y = Number(key.slice(comma + 1));
-            if (x < lx) lx = x;
-            if (y < ly) ly = y;
-            if (x > hx) hx = x;
-            if (y > hy) hy = y;
+    if (!sel.bounds_dirty) // C `:104-105`
+        return;
+
+    const wid = sel.wid ?? COLNO;
+    const hei = sel.hei ?? ROWNO;
+
+    sel.lx = COLNO; // C `:107-109` reset (empty keeps this shape)
+    sel.ly = ROWNO;
+    sel.hx = 0;
+    sel.hy = 0;
+
+    let lx = -1, ly = -1, hx = -1, hy = -1; // C `:111` NhRect r
+
+    /* left */ // C `:113-123`
+    for (let x = 0; x < wid; x++) {
+        for (let y = 0; y < hei; y++) {
+            if (selection_getpoint(x, y, sel)) {
+                lx = x;
+                break;
+            }
         }
+        if (lx > -1)
+            break;
     }
-    sel.lx = lx;
-    sel.ly = ly;
-    sel.hx = hx;
-    sel.hy = hy;
+
+    if (lx > -1) { // C `:125`
+        /* right */ // C `:127-136`
+        for (let x = wid - 1; x >= lx; x--) {
+            for (let y = 0; y < hei; y++) {
+                if (selection_getpoint(x, y, sel)) {
+                    hx = x;
+                    break;
+                }
+            }
+            if (hx > -1)
+                break;
+        }
+
+        /* top */ // C `:139-148`
+        for (let y = 0; y < hei; y++) {
+            for (let x = lx; x <= hx; x++) {
+                if (selection_getpoint(x, y, sel)) {
+                    ly = y;
+                    break;
+                }
+            }
+            if (ly > -1)
+                break;
+        }
+
+        /* bottom */ // C `:151-160`
+        for (let y = hei - 1; y >= ly; y--) {
+            for (let x = lx; x <= hx; x++) {
+                if (selection_getpoint(x, y, sel)) {
+                    hy = y;
+                    break;
+                }
+            }
+            if (hy > -1)
+                break;
+        }
+        sel.lx = lx; // C `:161` sel->bounds = r
+        sel.ly = ly;
+        sel.hx = hx;
+        sel.hy = hy;
+    }
+
+    sel.bounds_dirty = false; // C `:164`
 }
 
 /**
@@ -26878,38 +27765,165 @@ function random_wdir() {
     return wdirs[rn2(4)];
 }
 
+// C ref: selvar.c selection_getbounds `:76-95` — recalc first (C `:82`),
+// then empty (lx >= wid) reads as the full map (`:84-89`), else the
+// stored bounds (`:90-94`). region.js:1146 holds the region-side copy;
+// this one serves the selvar grow family in this module.
+function selvar_getbounds_rect(sel) {
+    selection_recalc_bounds(sel); // C `:82`
+    const wid = sel.wid ?? COLNO;
+    if ((sel.lx | 0) >= wid) // C `:84` empty
+        return { lx: 0, ly: 0, hx: COLNO - 1, hy: ROWNO - 1 }; // C `:85-89`
+    return { // C `:90-94`
+        lx: sel.lx | 0,
+        ly: sel.ly | 0,
+        hx: sel.hx | 0,
+        hy: sel.hy | 0,
+    };
+}
+
 /**
- * C ref: selvar.c selection_do_grow — expand selection by dir mask.
- * Mutates ov in place (caller clones first for Lua grow semantics).
+ * C ref: selvar.c selection_do_grow `:321-367` — expand every set cell
+ * by the dir mask into a scratch selection, then OR the scratch back
+ * into ov. Whole-body restart in C order: guard (`:328-329`), scratch
+ * (`:331`), W_RANDOM roll (`:333-334`), getbounds recalc + empty→full
+ * arm (`:336` via `:82-94`), clamped ±1 scan with the 8 C arms in C
+ * order (`:338-358`), second getbounds (`:361`), copy-back loop with
+ * the getpoint gate (`:363-366`), free (`:368`). The recalc is
+ * load-bearing: a set onto dirty bounds skips the live expand (C
+ * `:191`), so cached lx..hy can be a subset of the true points and the
+ * old cached-only scan missed grown cells. Mutates ov in place (Lua
+ * callers clone first).
  */
-function selection_do_grow(ov, dir) {
-    if (!ov) return;
+export function selection_do_grow(ov, dir) {
+    if (!ov) return; // C `:328-329`
+    const tmp = selection_new(); // C `:331`
     let d = dir | 0;
-    if (d === W_RANDOM) d = random_wdir();
-    const tmp = selection_new();
-    const lx = Math.max(0, (ov.lx | 0) - 1);
-    const ly = Math.max(0, (ov.ly | 0) - 1);
-    const hx = Math.min(COLNO - 1, (ov.hx | 0) + 1);
-    const hy = Math.min(ROWNO - 1, (ov.hy | 0) + 1);
-    for (let x = lx; x <= hx; x++) {
-        for (let y = ly; y <= hy; y++) {
-            if (((d & W_WEST) && selection_getpoint(x + 1, y, ov))
-                || (((d & (W_WEST | W_NORTH)) === (W_WEST | W_NORTH))
+    if (d === W_RANDOM) // C `:333-334`
+        d = random_wdir();
+    let rect = selvar_getbounds_rect(ov); // C `:336`
+    for (let x = Math.max(0, rect.lx - 1); // C `:338-339`
+         x <= Math.min(COLNO - 1, rect.hx + 1); x++)
+        for (let y = Math.max(0, rect.ly - 1);
+             y <= Math.min(ROWNO - 1, rect.hy + 1); y++) {
+            /* C `:340-343` note: dir is a mask of multiple directions,
+               but the only way to specify diagonals is by including the
+               two adjacent orthogonal directions, which effectively
+               specifies three-way growth
+               [WEST|NORTH => WEST plus WEST|NORTH plus NORTH] */
+            if (((d & W_WEST) && selection_getpoint(x + 1, y, ov)) // C `:344`
+                || (((d & (W_WEST | W_NORTH)) === (W_WEST | W_NORTH)) // C `:345-346`
                     && selection_getpoint(x + 1, y + 1, ov))
-                || ((d & W_NORTH) && selection_getpoint(x, y + 1, ov))
-                || (((d & (W_NORTH | W_EAST)) === (W_NORTH | W_EAST))
+                || ((d & W_NORTH) && selection_getpoint(x, y + 1, ov)) // C `:347`
+                || (((d & (W_NORTH | W_EAST)) === (W_NORTH | W_EAST)) // C `:348-349`
                     && selection_getpoint(x - 1, y + 1, ov))
-                || ((d & W_EAST) && selection_getpoint(x - 1, y, ov))
-                || (((d & (W_EAST | W_SOUTH)) === (W_EAST | W_SOUTH))
+                || ((d & W_EAST) && selection_getpoint(x - 1, y, ov)) // C `:350`
+                || (((d & (W_EAST | W_SOUTH)) === (W_EAST | W_SOUTH)) // C `:351-352`
                     && selection_getpoint(x - 1, y - 1, ov))
-                || ((d & W_SOUTH) && selection_getpoint(x, y - 1, ov))
-                || (((d & (W_SOUTH | W_WEST)) === (W_SOUTH | W_WEST))
+                || ((d & W_SOUTH) && selection_getpoint(x, y - 1, ov)) // C `:353`
+                || (((d & (W_SOUTH | W_WEST)) === (W_SOUTH | W_WEST)) // C `:354-355`
                     && selection_getpoint(x + 1, y - 1, ov))) {
-                selection_setpoint(x, y, tmp, 1);
+                selection_setpoint(x, y, tmp, 1); // C `:358`
+            }
+        }
+    rect = selvar_getbounds_rect(tmp); // C `:361`
+    for (let x = rect.lx; x <= rect.hx; x++) // C `:363-364`
+        for (let y = rect.ly; y <= rect.hy; y++)
+            if (selection_getpoint(x, y, tmp)) // C `:365`
+                selection_setpoint(x, y, ov, 1); // C `:366`
+    selection_free(tmp, true); // C `:368`
+}
+
+/**
+ * C ref: selvar.c selection_do_ellipse `:456-538` — midpoint-ellipse
+ * rasterization into ov. e(x,y) = b²x² + a²y² − a²b² (C `:462`); the
+ * crit/t/dxt/dyt increments are C `long` arithmetic, exact here in
+ * float64 (radii < COLNO). `a2/4`, `b2/4` are C integer division
+ * (Math.trunc); `a % 2` matches C for the non-negative radii the Lua
+ * callers pass. `filled = !filled` (C `:480`) keeps the double
+ * negation with the callers (`nhlsel.c:799,850` pass `!filled`), so the
+ * `if (!filled)` arm is the outline and the else arm is the scanline
+ * fill. Out-of-range setpoints clip per selection_setpoint
+ * (C `selvar.c:189-190` early return), same as C.
+ * C callers `nhlsel.c:799` l_selection_circle /
+ * `:850` l_selection_ellipse have no JS Lua bridge yet (no dat/*.lua
+ * level uses selection.circle/ellipse) — named omission in the map.
+ */
+export function selection_do_ellipse(ov, xc, yc, a, b, filled) {
+    /* C `:462` e(x,y) = b^2*x^2 + a^2*y^2 - a^2*b^2 */
+    let x = 0, y = b; // C `:466`
+    const a2 = a * a, b2 = b * b; // C `:467` (long) a * a
+    const crit1 = -(Math.trunc(a2 / 4) + (a % 2) + b2); // C `:468`
+    const crit2 = -(Math.trunc(b2 / 4) + (b % 2) + a2); // C `:469`
+    const crit3 = -(Math.trunc(b2 / 4) + (b % 2)); // C `:470`
+    let t = -a2 * y; // C `:471` e(x+1/2,y-1/2) - (a^2+b^2)/4
+    let dxt = 2 * b2 * x, dyt = -2 * a2 * y; // C `:472`
+    const d2xt = 2 * b2, d2yt = 2 * a2; // C `:473`
+    let width = 1; // C `:474`
+    let i; // C `:475`
+    if (!ov) // C `:477-478`
+        return;
+    filled = !filled; // C `:480`
+    if (!filled) { // C `:482` outline
+        while (y >= 0 && x <= a) { // C `:483`
+            selection_setpoint(xc + x, yc + y, ov, 1); // C `:484`
+            if (x !== 0 || y !== 0) // C `:485`
+                selection_setpoint(xc - x, yc - y, ov, 1); // C `:486`
+            if (x !== 0 && y !== 0) { // C `:487`
+                selection_setpoint(xc + x, yc - y, ov, 1); // C `:488`
+                selection_setpoint(xc - x, yc + y, ov, 1); // C `:489`
+            }
+            if (t + b2 * x <= crit1 // C `:491` e(x+1,y-1/2) <= 0
+                || t + a2 * y <= crit3) { // C `:492` e(x+1/2,y) <= 0
+                x++; // C `:493`
+                dxt += d2xt; // C `:494`
+                t += dxt; // C `:495`
+            } else if (t - a2 * y > crit2) { // C `:496` e(x+1/2,y-1) > 0
+                y--; // C `:497`
+                dyt += d2yt; // C `:498`
+                t += dyt; // C `:499`
+            } else { // C `:500`
+                x++; // C `:501`
+                dxt += d2xt; // C `:502`
+                t += dxt; // C `:503`
+                y--; // C `:504`
+                dyt += d2yt; // C `:505`
+                t += dyt; // C `:506`
+            }
+        }
+    } else { // C `:509` filled
+        while (y >= 0 && x <= a) { // C `:510`
+            if (t + b2 * x <= crit1 // C `:511` e(x+1,y-1/2) <= 0
+                || t + a2 * y <= crit3) { // C `:512` e(x+1/2,y) <= 0
+                x++; // C `:513`
+                dxt += d2xt; // C `:514`
+                t += dxt; // C `:515`
+                width += 2; // C `:516`
+            } else if (t - a2 * y > crit2) { // C `:517` e(x+1/2,y-1) > 0
+                for (i = 0; i < width; i++) // C `:518-519`
+                    selection_setpoint(xc - x + i, yc - y, ov, 1);
+                if (y !== 0) // C `:520`
+                    for (i = 0; i < width; i++) // C `:521-522`
+                        selection_setpoint(xc - x + i, yc + y, ov, 1);
+                y--; // C `:523`
+                dyt += d2yt; // C `:524`
+                t += dyt; // C `:525`
+            } else { // C `:526`
+                for (i = 0; i < width; i++) // C `:527-528`
+                    selection_setpoint(xc - x + i, yc - y, ov, 1);
+                if (y !== 0) // C `:529`
+                    for (i = 0; i < width; i++) // C `:530-531`
+                        selection_setpoint(xc - x + i, yc + y, ov, 1);
+                x++; // C `:532`
+                dxt += d2xt; // C `:533`
+                t += dxt; // C `:534`
+                y--; // C `:535`
+                dyt += d2yt; // C `:536`
+                t += dyt; // C `:537`
+                width += 2; // C `:538`
             }
         }
     }
-    selection_iterate(tmp, (x, y) => selection_setpoint(x, y, ov, 1));
 }
 
 /** C ref: nhlsel.c l_selection_grow — clone then selection_do_grow. */
@@ -26971,6 +27985,84 @@ function selection_do_randline(x1, y1, x2, y2, rough, rec, ov) {
     selection_do_randline(x1, y1, mx, my, r, rec, ov);
     selection_do_randline(mx, my, x2, y2, r, rec, ov);
     selection_setpoint(x2, y2, ov, 1);
+}
+
+/**
+ * C ref: selvar.c line_dist_coord `:541-566` (staticfn, file-local here too)
+ * — squared distance from (x3,y3) to the segment (x1,y1)-(x2,y2).
+ * Degenerate segment falls back to dist2 (`:550-551`); otherwise the
+ * projection factor lu is clamped to [0,1] (`:554-557`) and the projected
+ * point truncates toward zero on the C long assignment (`:559-560` —
+ * Math.trunc, not floor, since gradient endpoints may sit off-map).
+ * Only caller: selection_do_gradient (all 6 C sites).
+ */
+function line_dist_coord(x1, y1, x2, y2, x3, y3) {
+    x1 |= 0; y1 |= 0; x2 |= 0; y2 |= 0; x3 |= 0; y3 |= 0;
+    const px = (x2 - x1) | 0; // C `:544`
+    const py = (y2 - y1) | 0; // C `:545`
+    const s = (px * px + py * py) | 0; // C `:546`
+    if (x1 === x2 && y1 === y2) return dist2(x1, y1, x3, y3); // C `:550-551`
+    // C `:553` float division; coordinate magnitudes stay exactly
+    // representable, so double arithmetic matches the C float here.
+    let lu = (((x3 - x1) * px + (y3 - y1) * py) / s);
+    if (lu > 1) lu = 1; // C `:554-555`
+    else if (lu < 0) lu = 0; // C `:556-557`
+    const x = Math.trunc(x1 + lu * px); // C `:559`
+    const y = Math.trunc(y1 + lu * py); // C `:560`
+    const dx = (x - x3) | 0; // C `:561`
+    const dy = (y - y3) | 0; // C `:562`
+    return (dx * dx + dy * dy) | 0; // C `:563-565`
+}
+
+/**
+ * C ref: selvar.c selection_do_gradient `:569-622` (`/* guts of
+ * l_selection_gradient *\/`) — radial/square probability gradient over the
+ * whole COLNO×ROWNO map. mind/maxd swap (`:579-583`), dofs floor at 1
+ * (`:585-587`); unknown type impossibles then falls through to radial
+ * (`:590-594`); the setpoint gate keeps C short-circuit so rn2 fires only
+ * past mind and within maxd (`:599-601`, `:615-617`).
+ * C caller: nhlsel.c:912 l_selection_gradient (Lua selection.gradient —
+ * no JS Lua bridge yet; exported here for it — named in data.md).
+ */
+export function selection_do_gradient(ov, x, y, x2, y2, gtyp, mind, maxd) {
+    x |= 0; y |= 0; x2 |= 0; y2 |= 0; gtyp |= 0; mind |= 0; maxd |= 0;
+    if (mind > maxd) { // C `:579-583`
+        const tmp = mind;
+        mind = maxd;
+        maxd = tmp;
+    }
+    let dofs = (maxd * maxd - mind * mind) | 0; // C `:585`
+    if (dofs < 1) dofs = 1; // C `:586-587`
+    switch (gtyp) { // C `:589`
+    default:
+        impossible('Unrecognized gradient type! Defaulting to radial...'); // C `:591`
+        /* FALLTHRU */ // C `:592-593`
+    case SEL_GRADIENT_RADIAL: { // C `:594`
+        for (let dx = 0; dx < COLNO; dx++) // C `:595`
+            for (let dy = 0; dy < ROWNO; dy++) { // C `:596`
+                const d0 = line_dist_coord(x, y, x2, y2, dx, dy); // C `:597`
+                if (d0 <= mind * mind // C `:599`
+                    || (d0 <= maxd * maxd && (d0 - mind * mind) < rn2(dofs))) // C `:600`
+                    selection_setpoint(dx, dy, ov, 1); // C `:601`
+            }
+        break; // C `:603`
+    }
+    case SEL_GRADIENT_SQUARE: { // C `:605`
+        for (let dx = 0; dx < COLNO; dx++) // C `:606`
+            for (let dy = 0; dy < ROWNO; dy++) { // C `:607`
+                const d1 = line_dist_coord(x, y, x2, y2, x, dy); // C `:608`
+                const d2 = line_dist_coord(x, y, x2, y2, dx, y); // C `:609`
+                const d3 = line_dist_coord(x, y, x2, y2, x2, dy); // C `:610`
+                const d4 = line_dist_coord(x, y, x2, y2, dx, y2); // C `:611`
+                const d5 = line_dist_coord(x, y, x2, y2, dx, dy); // C `:612`
+                const d0 = Math.min(d5, Math.min(Math.max(d1, d2), Math.max(d3, d4))); // C `:613`
+                if (d0 <= mind * mind // C `:615`
+                    || (d0 <= maxd * maxd && (d0 - mind * mind) < rn2(dofs))) // C `:616`
+                    selection_setpoint(dx, dy, ov, 1); // C `:617`
+            }
+        break; // C `:619`
+    } /*case*/ // C `:620`
+    } /*switch*/ // C `:621`
 }
 
 // C ref: sp_lev.c get_location with croom → somexy for random room place

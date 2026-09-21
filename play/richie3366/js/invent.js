@@ -56,7 +56,7 @@ import {
     docorner, dxdy_to_dist_descr,
 } from './display.js';
 import { xprname, an, the, just_an, vtense, doname, distant_name, Japanese_item_name, xname, cxname_singular, set_xname_observe, set_distant_cansee, ansimpleoname, simpleonames, set_not_fully_identified, makeplural, makesingular, body_part_latebound, corpse_xname, killer_xname } from './objnam.js';
-import { yn_function, getlin, mungspaces } from './getline.js';
+import { yn_function, y_n, getlin, mungspaces } from './getline.js';
 import { get_count, pmatchi, cmdq_pop, cmdq_clear } from './cmd.js';
 import { mergable, merged, is_damageable, stop_timer, splitobj, unsplitobj, clear_splitobjs, unknwn_contnr_contents, weight, delobj, curse } from './mkobj.js';
 import { unpaid_cost, doinvbill, gem_learned, obfree, shopper_financial_report, costly_spot } from './shk.js';
@@ -96,7 +96,7 @@ import {
     is_graystone,
     POT_WATER,
 } from './objects.js';
-import { interesting_to_discover, disco_append_typename } from './o_init.js';
+import { interesting_to_discover, disco_append_typename, choose_disco_sort, disco_fmt_uniq, disco_output_sorted, DISCO_ORDER_LET, DISCO_ORDERS_DESCR, UNIQ_OBJS } from './o_init.js';
 import {
     Never_mind,
     silly_thing_to,
@@ -248,7 +248,7 @@ import {
 } from './attrib.js';
 import { depth, ing_suffix, strstri, ordin, highc, lcase } from './hacklib.js';
 import { visctrl } from './dokeylist.js';
-import { select_menu_pick_any, hide_unhide_msgtypes } from './options.js';
+import { select_menu_pick_any, select_menu_pick_one, hide_unhide_msgtypes } from './options.js';
 import { rn2 } from './rng.js';
 import { newuexp } from './exper.js';
 import {
@@ -334,7 +334,7 @@ import { visible_region_at, reg_damg } from './region.js';
 import { PM_SAMURAI, PM_MONK, PM_CLERIC, monsterNames } from './generated/monsters_data.js';
 import { humanoid, strongmonst, mons, touch_petrifies, poly_when_stoned, hides_under, haseyes, dmgtype, hates_silver, is_male, is_female, is_neuter, vampshifted, nonliving, weirdnonliving } from './monsters.js';
 import { hideunder } from './mon.js';
-import { set_artifact_intrinsic, undiscovered_artifact, discover_artifact, confers_luck } from './artifact.js';
+import { set_artifact_intrinsic, undiscovered_artifact, discover_artifact, confers_luck, disp_artifact_discoveries } from './artifact.js';
 import { is_quest_artifact } from './quest.js';
 import {
     askchain, add_valid_menu_class, collect_obj_classes,
@@ -2940,6 +2940,89 @@ export async function dismiss_nhw_menu(opts = null) {
 }
 
 /**
+ * C ref: invent.c reroll_menu `:2552–2616` — "Reroll this character?"
+ * PICK_ONE over the fresh character: start/reroll rows (fixed 'p'/'r'
+ * accelerators unless flags.lootabc, when tty auto-assigns — do_name
+ * `acc = lootabc ? 0 : a_char` precedent), then the starting inventory
+ * (doname lines) and the St/Dx/Co/In/Wi/Ch stat line. gd.distantname +
+ * iflags.override_ID guard the invent walk so menu names stay out of
+ * discoveries and fully identified. obj_to_glyph burns display RNG even
+ * on tty menus (obj_glyph); map_glyphinfo's tile slot has no tty consumer
+ * (dospellmenu precedent: text-only entries). The end_menu prompt is the
+ * ATR_INVERSE heading row (identify-menu precedent). Window lifecycle is
+ * owned by select_menu_pick_one (doextlist precedent: no explicit
+ * create/destroy_nhwindow). Returns true (and bumps uroleplay.numrerolls)
+ * iff the 'y' row is picked.
+ */
+export async function reroll_menu() {
+    // C `:2558–2576`: start/reroll rows + blank separator. Fillers below
+    // stay selectable with a_char 0: C tty letters every added item and a
+    // pick there returns a_char 0 → FALSE, same outcome.
+    const lootabc = !!(game.flags && game.flags.lootabc);
+    const entries = [
+        { text: 'Reroll this character?', attr: ATR_INVERSE },
+        {
+            text: 'start the game with this character',
+            attr: 0,
+            selectable: true,
+            selector: lootabc ? undefined : 'p',
+            a_char: 'n',
+        },
+        {
+            text: 'reroll another character',
+            attr: 0,
+            selectable: true,
+            selector: lootabc ? undefined : 'r',
+            a_char: 'y',
+        },
+        { text: '', attr: 0, selectable: true, a_char: 0 },
+    ];
+    // C `:2578–2589`: keep menu names out of discoveries + identified.
+    game.distantname = (game.distantname | 0) + 1;
+    game.iflags = game.iflags || {};
+    game.iflags.override_ID = (game.iflags.override_ID | 0) + 1;
+    try {
+        for (const otmp of game.invent || []) {
+            // C: obj_to_glyph(otmp, rn2_on_display_rng) then doname(otmp).
+            obj_glyph(otmp);
+            entries.push({
+                text: doname(otmp),
+                attr: 0,
+                selectable: true,
+                a_char: 0,
+            });
+        }
+    } finally {
+        game.iflags.override_ID = (game.iflags.override_ID | 0) - 1;
+        game.distantname = (game.distantname | 0) - 1;
+    }
+    entries.push({ text: '', attr: 0, selectable: true, a_char: 0 });
+    // C `:2592–2597`: "St:%s Dx:%-1d ..." (%-1d ≡ the bare number).
+    entries.push({
+        text: `St:${get_strength_str()} Dx:${acurr(A_DEX)} Co:${acurr(A_CON)} In:${acurr(A_INT)} Wi:${acurr(A_WIS)} Ch:${acurr(A_CHA)}`,
+        attr: 0,
+        selectable: true,
+        a_char: 0,
+    });
+    // C `:2599–2610`: PICK_ONE; menu closed without a pick → y_n fallback.
+    const picked = await select_menu_pick_one(entries);
+    let option;
+    if (picked.kind === 'pick') {
+        option = picked.item?.a_char ?? 0;
+    } else {
+        option = await y_n('Reroll this character?');
+    }
+    // C `:2612–2616`: ++u.uroleplay.numrerolls on 'y'.
+    if (option === 'y') {
+        const rp = (game.u && game.u.uroleplay) || {};
+        rp.numrerolls = (rp.numrerolls | 0) + 1;
+        if (game.u) game.u.uroleplay = rp;
+        return true;
+    }
+    return false;
+}
+
+/**
  * C ref: wintty.c tty_end_menu + process_menu_window select_menu(PICK_NONE).
  * entries already include prompt/blank/items (as after tty_end_menu).
  * Pages at lmax = rows-1 (23); ESC/Return dismiss; Space next page or done;
@@ -4541,55 +4624,141 @@ export async function consume_obj_charge(obj, maybe_unpaid) {
 }
 
 /**
- * C ref: o_init.c dodiscovered() — discoveries by inv_order within each class.
- * C: wintty tty_putstr(NHW_TEXT) pages at rows-1; display_nhwindow + dmore.
- * Named omissions: discosort a/c/s; unique/relics + artifact pseudo-classes;
- * menu_requested choose_disco_sort; flags.inv_order overrides (DEF_INV_ORDER).
+ * C ref: o_init.c sortloot_descr `:566–591` — key one object type for
+ * 's' (sortloot) discovery order. A dummy zeroobj carries the type
+ * (dknown set, known from oc_name_known||!oc_uses_known, corpsenm
+ * NON_PM so statue/figurine details stay suppressed, slime-mold spe =
+ * current_fruit); loot_classify fills the Loot record (observe_object
+ * runs inside it when !Blind, as in C `:171`) and the "%02d%02d%1d "
+ * key is what disco_output_sorted strips on print.
+ * @param {number} otyp object type index
+ * @returns {string} 6-char sort key (orderclass/subclass/disco + space)
+ */
+function sortloot_descr(otyp) {
+    const oc = game.objects?.[otyp | 0] || {};
+    // C `:572–581` — cg.zeroobj + otyp/oclass/dknown/known/corpsenm/spe.
+    const o = {
+        otyp: otyp | 0,
+        oclass: oc.oc_class,
+        dknown: 1,
+        known: (oc.oc_name_known || !oc.oc_uses_known) ? 1 : 0,
+        corpsenm: NON_PM,
+        spe: 0,
+    };
+    if ((otyp | 0) === OTYP_SLIME_MOLD) o.spe = game.context?.current_fruit ?? 0;
+    const key = { orderclass: 0, subclass: 0, disco: 0, inuse: 0 };
+    loot_classify(key, o);
+    // C `:588–589` — Sprintf "%02d%02d%1d ".
+    const p2 = (n) => String(n).padStart(2, '0');
+    return `${p2(key.orderclass)}${p2(key.subclass)}${key.disco} `;
+}
+
+/**
+ * C ref: o_init.c dodiscovered `:764–873` — the '\\' full-discoveries
+ * command. Unknown sort letters reset flags.discosort to 'o'; the 'm'
+ * prefix runs choose_disco_sort(1) first (dismiss closes with ECMD_OK).
+ * The header names the live sort; the unique/relic pseudo-class lists
+ * name-known or encountered (non-Amulet) invocation items, then
+ * disp_artifact_discoveries lists artifacts. Classes walk
+ * flags.inv_order with VENOM_CLASS appended when absent (strkitten).
+ * 'o' prints in discovery order; 'c' flushes each class sorted under
+ * its own let_to_name header; 'a' collects all classes for one sorted
+ * flush ("Discovered items" header when relics/artifacts precede);
+ * 's' keys each line with sortloot_descr and flushes per class, the
+ * key stripped by disco_output_sorted. No discoveries: You(...) and
+ * no window. The NHW_TEXT window is the paged lines model.
+ * Callers: cmd.js '\\' key + extended-command dispatch; getline.js menus.
+ * @returns {Promise<number>} ECMD_OK
  */
 export async function dodiscovered() {
+    if (!game.flags) game.flags = {};
+    // C `:775–776` — missing or unknown sort letter means 'o'.
+    if (!game.flags.discosort || !DISCO_ORDER_LET.includes(game.flags.discosort))
+        game.flags.discosort = 'o';
+    // C `:778–780` — menu_requested ('m' prefix) picks the sort first.
+    if (game.iflags?.menu_requested) {
+        if ((await choose_disco_sort(1)) < 0) return ECMD_OK;
+    }
+    const discosort = game.flags.discosort;
+    // C `:782–785`
+    const alphabyclass = discosort === 'c';
+    const alphabetized = discosort === 'a' || alphabyclass;
+    const lootsort = discosort === 's';
+    const sortindx = DISCO_ORDER_LET.indexOf(discosort);
+    // C `:787–790` — NHW_TEXT window + "Discoveries, <sort>" + blank.
     const lines = [
-        { text: 'Discoveries, by order of discovery within each class', attr: 0 },
+        { text: `Discoveries, ${DISCO_ORDERS_DESCR[sortindx]}`, attr: 0 },
         { text: '', attr: 0 },
     ];
-    const bases = game.bases || [];
-    const disco = game.disco || [];
-    // C: Strcpy(classes, flags.inv_order); append VENOM_CLASS if absent.
-    const classes = DEF_INV_ORDER.includes(VENOM_CLASS)
-        ? [...DEF_INV_ORDER]
-        : [...DEF_INV_ORDER, VENOM_CLASS];
-    let ct = 0;
-    for (const oclass of classes) {
-        const found = [];
-        const start = bases[oclass] || 0;
-        const end = bases[oclass + 1] || disco.length;
-        for (let i = start; i < end; i++) {
-            const dis = disco[i];
-            if (dis && interesting_to_discover(dis)) found.push(dis);
+    // C `:801–811` — unique/relic pseudo-class (also shown in class).
+    const objects = game.objects;
+    let uniq_ct = 0;
+    for (const uidx of UNIQ_OBJS) {
+        const oc = objects?.[uidx];
+        if (oc?.oc_name_known || (oc?.oc_encountered && uidx !== AMULET_OF_YENDOR)) {
+            if (!uniq_ct)
+                lines.push({ text: 'Unique items or Relics', attr: ATR_INVERSE });
+            uniq_ct++;
+            lines.push({ text: disco_fmt_uniq(uidx), attr: 0 });
         }
-        if (!found.length) continue;
-        lines.push({
-            text: CLASS_NAMES[oclass] || 'Items',
-            attr: ATR_INVERSE,
-        });
-        for (const otyp of found) {
-            ct++;
-            const enc = !!game.objects?.[otyp]?.oc_encountered;
-            const prefix = enc ? '  ' : '* ';
-            // C: Strcpy(buf, prefix); disco_append_typename(buf, dis)
-            lines.push({
-                text: disco_append_typename(prefix, otyp),
-                attr: 0,
-            });
+    }
+    // C `:814` — known artifacts are a second pseudo-class.
+    const arti_ct = disp_artifact_discoveries(lines);
+    // C `:817–819` — classes walk flags.inv_order (+ VENOM strkitten).
+    const classes = [...inv_order_classes()];
+    if (!classes.includes(VENOM_CLASS)) classes.push(VENOM_CLASS);
+    let ct = uniq_ct + arti_ct;
+    let sorted_ct = 0;
+    const sorted_lines = [];
+    const b = game.bases || [];
+    const disco = game.disco || [];
+    for (const oclass of classes) {
+        // C `:825` — prev_class forced different so the class opens.
+        let prev_class = (oclass | 0) + 1;
+        for (let i = b[oclass] | 0;
+            i < NUM_OBJECTS && objects?.[i]?.oc_class === oclass;
+            i++) {
+            // C `:828`
+            const dis = disco[i] | 0;
+            if (dis && interesting_to_discover(dis)) {
+                ct++;
+                if (oclass !== prev_class) {
+                    // C `:831–835` — flush the previous class under c/s.
+                    if ((alphabyclass || lootsort) && sorted_ct) {
+                        disco_output_sorted(lines, sorted_lines, lootsort);
+                        sorted_lines.length = 0;
+                        sorted_ct = 0;
+                    }
+                    // C `:837–841` — class header unless cross-class alpha.
+                    if (!alphabetized || alphabyclass) {
+                        lines.push({ text: let_to_name(oclass, false, false), attr: ATR_INVERSE });
+                        prev_class = oclass;
+                    }
+                }
+                // C `:843–847` — encounter mark + optional sortloot key.
+                let buf = objects?.[dis]?.oc_encountered ? '  ' : '* ';
+                if (lootsort) buf += sortloot_descr(dis);
+                buf = disco_append_typename(buf, dis);
+                if (!alphabetized && !lootsort) lines.push({ text: buf, attr: 0 });
+                else sorted_lines[sorted_ct++] = buf;
+            }
         }
     }
     if (ct === 0) {
-        // C: You("haven't discovered anything yet...");
+        // C `:856–857` — nothing discovered: message, no window.
         await pline("You haven't discovered anything yet...");
-        return;
+    } else {
+        if (sorted_ct) {
+            // C `:864–866` — cross-class alpha after relics needs a head.
+            if ((uniq_ct || arti_ct) && alphabetized && !alphabyclass)
+                lines.push({ text: 'Discovered items', attr: ATR_INVERSE });
+            disco_output_sorted(lines, sorted_lines, lootsort);
+        }
+        // C `:868` display_nhwindow(NHW_TEXT) → paged text window.
+        const { show_text_pages } = await import('./pager.js');
+        await show_text_pages(lines);
     }
-    // C: display_nhwindow(NHW_TEXT) → process_text_window page-at-a-time
-    const { show_text_pages } = await import('./pager.js');
-    await show_text_pages(lines);
+    return ECMD_OK;
 }
 
 // C ref: attrib.c attrname[]

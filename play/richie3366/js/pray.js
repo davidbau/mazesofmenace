@@ -33,13 +33,13 @@
 // desecrate_altar; SetVoice pitch; ureflects W_AMUL/W_ARM/dragon D-1353;
 // mcastu ureflects named; god_zaps_you shieldeff wired, SetVoice C-no-op;
 // poly mlet "creature" vs mortal; BlindedTimeout==1 region polish;
-// stuck_in_wall blocked_boulder Sokoban diagonal polish; update_inventory
+// stuck_in_wall Sokoban diagonal polish; update_inventory
 // redraw; Blindfolded cream/itch; attacktype_fordmg swallow Blind gate.
 
 import { game } from './gstate.js';
 import { rn2, rn1, rnl, rnz, rnd, d, rn2_on_display_rng } from './rng.js';
 import { pline, You, verbalize, You_feel, newsym, impossible, see_monsters, shieldeff } from './display.js';
-import { nomul, carrying, losehp, finish_maybe_wail, You_hear } from './hack.js';
+import { nomul, carrying, losehp, finish_maybe_wail, You_hear, is_pool, is_lava } from './hack.js';
 import { upstart } from './hacklib.js';
 import { weapon_type, unrestrict_weapon_skill, add_weapon_skill, P_RESTRICTED } from './weapon.js';
 import {
@@ -55,7 +55,7 @@ import {
 } from './attrib.js';
 import { align_gname, align_str, xlev_to_rank, uhim, u_gname, uhis, roles } from './roles.js';
 import {
-    objects_at, uncurse, peek_at_iced_corpse_age, eaten_stat, get_mtraits,
+    objects_at, sobj_at, uncurse, peek_at_iced_corpse_age, eaten_stat, get_mtraits,
     mksobj, bless, mkobj, place_object, rnd_class,
 } from './mkobj.js';
 import { yn_function, y_n, paranoid_query } from './getline.js';
@@ -385,8 +385,14 @@ function freehand() {
 }
 
 /**
- * C ref: pray.c blocked_boulder — boulder stack / pushability gate.
- * Named omit: Sokoban diagonal + pool sink nuance beyond isok/obstruct.
+ * C ref: pray.c blocked_boulder `:2677–2719` — boulder stack / pushability gate.
+ * C order: count BOULDER quan at (ux+dx,uy+dy); nx/ny two steps out;
+ * switch: 0 → FALSE; 1 → pushability checks below; 2 → TRUE unless the
+ * landing spot is pool/lava (boulders might sink — still needs the checks
+ * below); >2 → TRUE. Then Sokoban diagonal, isok, IS_OBSTRUCTED,
+ * sobj_at(BOULDER). Callees: is_pool_or_lava via live is_pool/is_lava
+ * (dbridge.c:77–83 `is_pool(x,y) || is_lava(x,y)`), isok + IS_OBSTRUCTED
+ * (const.js, C-locus), sobj_at + objects_at (mkobj.js).
  */
 function blocked_boulder(dx, dy) {
     const u = game.u || {};
@@ -395,13 +401,29 @@ function blocked_boulder(dx, dy) {
         otmp; otmp = otmp.nexthere) {
         if ((otmp.otyp | 0) === BOULDER) count += otmp.quan | 0;
     }
+    /* C: next spot beyond boulder(s) */
     const nx = (u.ux | 0) + 2 * dx;
     const ny = (u.uy | 0) + 2 * dy;
-    if (count === 0) return false;
-    if (count >= 2) {
-        // C: pool/lava may still allow push — thin: treat ≥2 as blocked
+    switch (count) {
+    case 0:
+        /* C: no boulders — not blocked */
+        return false;
+    case 1:
+        /* C: possibly blocked depending on if it's pushable */
+        break;
+    case 2:
+        /* C: only approximate since multiple boulders might sink —
+           pool/lava landing still needs the Sokoban check below */
+        if (!(is_pool(nx, ny) || is_lava(nx, ny))) return true;
+        break;
+    default:
+        /* C: more than one boulder — blocked after they push the top one;
+           don't force them to push it first to find out */
         return true;
     }
+    /* C: can't push boulder diagonally in Sokoban
+       (rm.h:538 Sokoban ≡ level.flags.sokoban_rules; JS mirrors
+       game.Sokoban after getlev — do.js house idiom) */
     if (dx && dy && !!(game.level?.flags?.sokoban_rules
         || game.level?.flags?.sokoban || game.Sokoban)) {
         return true;
@@ -409,9 +431,7 @@ function blocked_boulder(dx, dy) {
     if (!isok(nx, ny)) return true;
     const loc = game.level?.at(nx, ny);
     if (loc && IS_OBSTRUCTED(loc.typ | 0)) return true;
-    for (let otmp = objects_at(nx, ny); otmp; otmp = otmp.nexthere) {
-        if ((otmp.otyp | 0) === BOULDER) return true;
-    }
+    if (sobj_at(BOULDER, nx, ny)) return true;
     return false;
 }
 

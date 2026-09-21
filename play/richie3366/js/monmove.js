@@ -17,7 +17,7 @@ import { gettrack } from './track.js';
 import { wipe_engr_at } from './engrave.js';
 import { objects_at, obj_extract_self, splitobj, delobj, eaten_stat, is_organic, is_mines_prize, is_soko_prize, g_at, place_object, stackobj, sobj_at } from './mkobj.js';
 import { find_defensive, use_defensive, find_misc, use_misc, find_offensive, searches_for_item } from './muse.js';
-import { hero_conflict, resist_conflict } from './mondata.js';
+import { hero_conflict, resist_conflict, m_seenres, cvt_adtyp_to_mseenres, get_atkdam_type } from './mondata.js';
 import {
     mintrap,
     NO_TRAP_FLAGS,
@@ -1670,25 +1670,36 @@ export async function postmov(mtmp, omx, omy, mmoved, can_tunnel, can_unlock, ca
  */
 
 /**
- * C ref: mhitu.c ranged_attk_available — DISTANCE_ATTK_TYPE with m_seenres gate
- * deferred (treat distance AD as available).
+ * C ref: mhitu.c:2411-2425 ranged_attk_available — a distance attack
+ * (monattk.h:31 DISTANCE_ATTK_TYPE: AT_SPIT/BREA/MAGC/GAZE) whose damage
+ * type the hero has not yet seen-resisted counts as available. C order:
+ * the aatyp gate runs first, so get_atkdam_type's AD_RBRE roll fires only
+ * for distance attacks; m_seenres (monst.h masked bits, boolean here)
+ * `== 0` reads as "not yet resisted".
  */
 function ranged_attk_available(mtmp) {
-    const mattk = mtmp.data?.mattk;
+    const mattk = mtmp?.data?.mattk;
     if (!mattk) return false;
     for (let i = 0; i < NATTK && i < mattk.length; i++) {
         const aatyp = mattk[i]?.aatyp | 0;
         if (aatyp === AT_SPIT || aatyp === AT_BREA || aatyp === AT_MAGC
             || aatyp === AT_GAZE) {
-            return true;
+            const typ = get_atkdam_type(mattk[i]?.adtyp | 0);
+            if (typ >= 0 && !m_seenres(mtmp, cvt_adtyp_to_mseenres(typ))) {
+                return true;
+            }
         }
     }
     return false;
 }
 
 /**
- * C ref: monmove.c m_balks_at_approaching — ranged hostiles keep distance.
- * Returns oldappr, -1 (flee), or -2 (preferred range band).
+ * C ref: monmove.c:1181-1224 m_balks_at_approaching — hostiles with a
+ * ranged option balk at approaching. Returns oldappr unchanged, -1 (keep
+ * distance), or -2 (hold the autoreturn preferred-range band). `pdist`
+ * carries C's two out-params (`*pdistmin`, `*pdistmax`); the sole C caller
+ * (monmove.c:1878) passes &preferredrange_min/max, wired at :1911 with one
+ * {min,max} object.
  */
 function m_balks_at_approaching(oldappr, mtmp, pdist) {
     const mwep = MON_WEP(mtmp);
@@ -1697,29 +1708,38 @@ function m_balks_at_approaching(oldappr, mtmp, pdist) {
     const ux = mtmp.mux;
     const uy = mtmp.muy;
     const edist = dist2(x, y, ux, uy);
+    let arw = null;
     if (pdist) {
         pdist.min = 0;
         pdist.max = 0;
     }
+    /* C:1193 peaceful, far away, or can't see you */
     if (mtmp.mpeaceful || edist >= 5 * 5 || !m_canseeu(mtmp)) {
         return oldappr;
     }
-    if (m_has_launcher_and_ammo(mtmp)) return -1;
-    if (mwep && is_pole(mwep) && edist <= MON_POLE_DIST) return -1;
-    const arw = mwep ? autoreturn_weapon(mwep) : null;
-    if (arw) {
+    /* C:1197 has ammo+launcher */
+    if (m_has_launcher_and_ammo(mtmp)) {
+        return -1;
+    }
+    /* C:1201 is using a polearm and in range (MON_WEP re-read per C) */
+    if (MON_WEP(mtmp) && is_pole(MON_WEP(mtmp)) && edist <= MON_POLE_DIST) {
+        return -1;
+    }
+    /* C:1206 throw-and-return weapon; min and max preferred range */
+    if (mwep && (arw = autoreturn_weapon(mwep))) {
         if (pdist) {
             pdist.min = 2 * 2;
             pdist.max = arw.range;
         }
         return -2;
     }
+    /* C:1217 can attack from distance, and hp loss or attack not used */
     if (ranged_attk_available(mtmp)
         && ((mtmp.mhp < Math.trunc((mtmp.mhpmax + 1) / 3))
             || !mtmp.mspec_used)) {
         return -1;
     }
-    return oldappr;
+    return oldappr; /* C:1223 leaves appr unchanged */
 }
 
 /**

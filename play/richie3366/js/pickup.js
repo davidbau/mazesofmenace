@@ -99,13 +99,13 @@ import { m_at, mnexto, hideunder, ceiling_hider } from './mon.js';
 import { oclass_to_sym, regex_match, select_menu_pick_any, select_menu_pick_one } from './options.js';
 import {
     objectNames, COIN_CLASS, VENOM_CLASS, POTION_CLASS,
-    def_oc_syms, def_char_to_objclass,
+    def_oc_syms, def_char_to_objclass, is_pick,
 } from './objects.js';
 import { ATR_INVERSE } from './terminal.js';
 import {
     addtobill, costly_spot, check_unpaid_usage, is_unpaid, doname_with_price,
     remote_burglary, shop_keeper, stolen_value, obfree, sellobj, sellobj_state,
-    money_cnt,
+    money_cnt, pick_pick,
 } from './shk.js';
 import {
     nohands, nolimbs, M1_NOTAKE, touch_petrifies, poly_when_stoned, is_rider,
@@ -2521,20 +2521,32 @@ async function use_container_traditional_prompt(
 }
 
 /**
- * C ref: pickup.c out_container — remove one object from current_container
- * into invent. Branch envelope: gold weigh; lift_object `:2748` (encumbrance
- * / slot prompt says "removing"); split; extract; addinv + prinv; gold bot.
- * Named omissions: carry_count + `delta_cwt` whole body live (D-2617);
- * artifact touch; fatal corpse; icebox; shop bill; pick_pick.
- * @returns {number} -1 stop, 1 removed, 0 not removed
+ * C ref: pickup.c out_container `:2727–2777` — remove one object from
+ * current_container into invent. C order: container gate (+impossible);
+ * gold weigh; artifact touch; fatal corpse; lift_object `:2748`; split
+ * (never LOADSTONE); extract + re-weigh; icebox rot resume; shop bill;
+ * pick_pick; addinv + prinv "removing"; gold bot.
+ * Callee pick_pick ported js/shk.js (C shk.c `:919–947`).
+ * @returns {number} -1 stop, 1 removed, lift res (0) otherwise
  */
 async function out_container(obj) {
-    if (!obj || !game._current_container) return -1;
-    const container = game._current_container;
     const is_gold = obj.oclass === COIN_CLASS;
-    if (is_gold) obj.owt = weight(obj);
+    // C `:2732–2737` — no current container; gold weighed up front.
+    if (!game._current_container) {
+        await impossible('<out> no gc.current_container?');
+        return -1;
+    } else if (is_gold) {
+        obj.owt = weight(obj);
+    }
+    const container = game._current_container;
 
-    // C `:2747–2751` lift_object(obj, current_container, &count, FALSE);
+    // C `:2739–2740` — artifact willing check.
+    if (obj.oartifact && !(await touch_artifact(obj, youmonst))) return 0;
+
+    // C `:2742–2743` — deadly-corpse touch check.
+    if (await fatal_corpse_mistake(obj, false)) return -1;
+
+    // C `:2745–2749` lift_object(obj, current_container, &count, FALSE);
     // split unless the lifted count covers the stack (never for LOADSTONE).
     // C: count before addinv merge (gold may grow; prinv total_of needs it)
     const lifted = { count: obj.quan || 1, before: 0, after: 0 };
@@ -2544,8 +2556,24 @@ async function out_container(obj) {
     if ((obj.quan || 1) !== count && (obj.otyp | 0) !== LOADSTONE) {
         obj = splitobj(obj, count);
     }
+
+    /* Remove the object from the list. */
     obj_extract_self(obj);
-    game._current_container.owt = weight(game._current_container);
+    container.owt = weight(container);
+
+    // C `:2758` — Icebox is pickup.c `:64` (container otyp == ICE_BOX).
+    if ((container.otyp | 0) === ICE_BOX) removed_from_icebox(obj);
+
+    // C `:2761–2766` — unpaid goods lifted from a shop floor container bill.
+    if (!obj.unpaid && !carried(container)
+        && costly_spot(container.ox | 0, container.oy | 0)) {
+        obj.ox = container.ox | 0;
+        obj.oy = container.oy | 0;
+        await addtobill(obj, false, false, false);
+    }
+
+    // C `:2767–2768` — shopkeeper feedback for picks.
+    if (is_pick(obj)) await pick_pick(obj);
 
     const otmp = await addinv(obj);
     // C: pickup_prinv(otmp, count, "removing")

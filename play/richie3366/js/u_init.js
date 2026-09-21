@@ -8,7 +8,7 @@
 
 import { game } from './gstate.js';
 import { rn2, rnd, rn1, rne } from './rng.js';
-import { mksobj, mkobj, weight, mergable, merged, carry_obj_effects, is_mines_prize, is_soko_prize } from './mkobj.js';
+import { mksobj, mkobj, dealloc_obj, weight, mergable, merged, carry_obj_effects, is_mines_prize, is_soko_prize } from './mkobj.js';
 import {
     WEAPON_CLASS,
     ARMOR_CLASS,
@@ -56,6 +56,7 @@ import {
     P_ENCHANTMENT_SPELL, P_CLERIC_SPELL, P_ESCAPE_SPELL, P_MATTER_SPELL,
     P_RIDING, P_TWO_WEAPON_COMBAT, P_BARE_HANDED_COMBAT, P_MARTIAL_ARTS,
     P_BASIC, P_SKILLED, P_EXPERT, P_MASTER, P_GRAND_MASTER,
+    P_UNSKILLED, P_NUM_SKILLS,
     NOT_HUNGRY,
     LL_CONDUCT,
     INTRINSIC,
@@ -72,7 +73,7 @@ import {
     NON_PM,
 } from './generated/monsters_data.js';
 import { mons } from './monsters.js';
-import { skill_init } from './weapon.js';
+import { skill_init, P_SKILL } from './weapon.js';
 import { set_artifact_intrinsic } from './artifact.js';
 import { record_achievement } from './insight.js';
 import { reset_justpicked } from './pickup.js';
@@ -687,20 +688,56 @@ function trquan(trop) {
 
 // C ref: u_init.c skills_for_role()
 function skills_for_role() {
-    if (game.urole?.mnum === PM_TOURIST) return Skill_T;
-    if (game.urole?.mnum === PM_ROGUE) return Skill_R;
-    if (game.urole?.mnum === PM_WIZARD) return Skill_W;
-    if (game.urole?.mnum === PM_CLERIC) return Skill_P;
-    if (game.urole?.mnum === PM_KNIGHT) return Skill_K;
-    if (game.urole?.mnum === PM_SAMURAI) return Skill_S;
-    if (game.urole?.mnum === PM_HEALER) return Skill_H;
-    if (game.urole?.mnum === PM_VALKYRIE) return Skill_V;
-    if (game.urole?.mnum === PM_RANGER) return Skill_Ran;
-    if (game.urole?.mnum === PM_MONK) return Skill_Mon;
-    if (game.urole?.mnum === PM_ARCHEOLOGIST) return Skill_A;
-    if (game.urole?.mnum === PM_BARBARIAN) return Skill_B;
-    if (game.urole?.mnum === PM_CAVE_DWELLER) return Skill_C;
-    return null;
+    // C: switch (Role_switch) — Role_switch ≡ game.urole.mnum (you.h:248)
+    let skills;
+    switch (game.urole?.mnum) {
+    case PM_ARCHEOLOGIST:
+        skills = Skill_A;
+        break;
+    case PM_BARBARIAN:
+        skills = Skill_B;
+        break;
+    case PM_CAVE_DWELLER:
+        skills = Skill_C;
+        break;
+    case PM_HEALER:
+        skills = Skill_H;
+        break;
+    case PM_KNIGHT:
+        skills = Skill_K;
+        break;
+    case PM_MONK:
+        skills = Skill_Mon;
+        break;
+    case PM_CLERIC:
+        skills = Skill_P;
+        break;
+    case PM_RANGER:
+        skills = Skill_Ran;
+        break;
+    case PM_ROGUE:
+        skills = Skill_R;
+        break;
+    case PM_SAMURAI:
+        skills = Skill_S;
+        break;
+    case PM_TOURIST:
+        skills = Skill_T;
+        break;
+    case PM_VALKYRIE:
+        skills = Skill_V;
+        break;
+    case PM_WIZARD:
+        skills = Skill_W;
+        break;
+    default:
+        // C: panic("No skills found for role") — loud throw ≡ C panic
+        // (js/dungeon.js:250, js/mklev.js:29777 precedent); C's trailing
+        // break after panic is unreachable, so none here.
+        throw new Error('No skills found for role');
+    }
+
+    return skills;
 }
 
 // C ref: spell.c spell_skilltype() — objects[].oc_skill
@@ -1340,8 +1377,20 @@ export function find_ac() {
     }
 }
 
-// C ref: u_init.c ini_inv()
+// C ref: u_init.c ini_inv() `:1301–1366` — whole body in C order.
+// C: `if (u.uroleplay.pauper) return` — pauper gets no items.
+// C: `quan = trquan(trop)` before the loop; `while (trop->trclass)`.
+// C: defined trotyp → mksobj; UNDEF_TYP → ini_inv_mkobj_filter +
+// poly/poly-control nocreate wiring (wands before rings before
+// spellbooks) + nocreate4 for a second same ring/spellbook.
+// C: `otyp = ini_inv_obj_substitution(trop, obj); nhUse(otyp)`.
+// C: nudist gets no armor — dealloc_obj + trop++ + continue (quan is
+// NOT recomputed on that path, matching C's carried-over quan).
+// C: `if (ini_inv_adjust_obj(trop, obj)) quan = 1`; `obj = addinv(obj)`
+// (merged-stack return feeds the level-1 spellbook check);
+// `if (--quan) continue; trop++; quan = trquan(trop)`.
 async function ini_inv(tropArr) {
+    if (game.u?.uroleplay?.pauper) return; /* pauper gets no items */
     let ti = 0;
     let trop = tropArr[ti];
     let quan = trquan(trop);
@@ -1351,31 +1400,54 @@ async function ini_inv(tropArr) {
         let obj;
         if (otyp !== UNDEF_TYP) {
             obj = mksobj(otyp, true, false);
-        } else {
+        } else { /* UNDEF_TYP */
             obj = ini_inv_mkobj_filter(trop.trclass, got_sp1);
             otyp = obj.otyp;
-            // C: poly / poly-control nocreate wiring (wand before ring before book)
-            if (otyp === otypByName('WAN_POLYMORPH')
-                || otyp === otypByName('RIN_POLYMORPH')
-                || otyp === otypByName('POT_POLYMORPH')) {
+            /* Heavily relies on the facts that 1) we create wands
+             * before rings, that 2) we create rings before
+             * spellbooks, and that 3) not more than 1 object of a
+             * particular symbol is to be prohibited.  (For more
+             * objects, we need more nocreate variables...)
+             */
+            switch (otyp) {
+            case otypByName('WAN_POLYMORPH'):
+            case otypByName('RIN_POLYMORPH'):
+            case otypByName('POT_POLYMORPH'):
                 game.nocreate = otypByName('RIN_POLYMORPH_CONTROL');
-            } else if (otyp === otypByName('RIN_POLYMORPH_CONTROL')) {
+                break;
+            case otypByName('RIN_POLYMORPH_CONTROL'):
                 game.nocreate = otypByName('RIN_POLYMORPH');
                 game.nocreate2 = otypByName('SPE_POLYMORPH');
                 game.nocreate3 = otypByName('POT_POLYMORPH');
+                break;
             }
+            /* Don't have 2 of the same ring or spellbook */
             if (obj.oclass === RING_CLASS || obj.oclass === SPBOOK_CLASS) {
                 game.nocreate4 = otyp;
             }
         }
-        ini_inv_obj_substitution(trop, obj);
+        /* Put post-creation object adjustments that don't depend on whether
+         * it was UNDEF_TYP or not after this. */
+        otyp = ini_inv_obj_substitution(trop, obj);
+        void otyp; /* C: nhUse(otyp) */
+
+        /* nudist gets no armor */
+        if (game.u?.uroleplay?.nudist && obj.oclass === ARMOR_CLASS) {
+            dealloc_obj(obj);
+            ti++;
+            trop = tropArr[ti];
+            continue;
+        }
+
         if (ini_inv_adjust_obj(trop, obj)) quan = 1;
-        await addinv(obj);
+        obj = await addinv(obj);
+
+        /* First spellbook should be level 1 - did we get it? */
         if (obj.oclass === SPBOOK_CLASS
             && (game.objects?.[obj.otyp]?.oc_level ?? 0) === 1) {
             got_sp1 = true;
         }
-        if (--quan) continue;
+        if (--quan) continue; /* make a similar object */
         ti++;
         trop = tropArr[ti];
         quan = trquan(trop);
@@ -1885,12 +1957,72 @@ export async function u_init_inventory_attrs() {
     u_init_carry_attr_boost();
 }
 
+// C ref: u_init.c pauper_reinit() — pauper conduct: wipe role skills, grant
+// two weapon slots, discover the role's key item.
+function pauper_reinit() {
+    const u = game.u || {};
+    let preknown = otypByName('STRANGE_OBJECT');
+
+    if (!u.uroleplay?.pauper)
+        return;
+
+    for (let skill = 0; skill < P_NUM_SKILLS; skill++)
+        if (P_SKILL(skill) > P_UNSKILLED) {
+            u.weapon_skills[skill].skill = P_UNSKILLED;
+            u.weapon_skills[skill].advance = 0;
+        }
+    /* pauper has lost out on initial skills, but provide some unspent skill
+       credits to make up for that */
+    u.weapon_slots = 2;
+
+    /* paupers don't know any spells yet, but several roles will recognize
+       the spellbook for a key spell (not necessarily that role's special
+       spell); "supply chests" on the first few levels provide a fairly
+       high chance to find the book; some other roles know a non-book item */
+    switch (game.urole?.mnum) {
+    case PM_HEALER:
+        preknown = otypByName('SPE_HEALING');
+        break;
+    case PM_CLERIC:
+    case PM_KNIGHT:
+    case PM_MONK:
+        preknown = otypByName('SPE_PROTECTION');
+        break;
+    case PM_WIZARD:
+        preknown = otypByName('SPE_FORCE_BOLT');
+        break;
+    case PM_ARCHEOLOGIST:
+        preknown = otypByName('TOUCHSTONE');
+        break;
+    case PM_CAVE_DWELLER:
+        preknown = otypByName('FLINT');
+        break;
+    case PM_ROGUE:
+    case PM_TOURIST:
+        preknown = otypByName('SACK');
+        break;
+    case PM_SAMURAI:
+        /* food ration isn't interesting to discover, but put "gunyoki" into
+           discoveries list for players who might not recognize what it is */
+        preknown = otypByName('FOOD_RATION');
+        break;
+    default:
+    case PM_BARBARIAN:
+    case PM_RANGER:
+    case PM_VALKYRIE:
+        break;
+    }
+    if (preknown !== otypByName('STRANGE_OBJECT'))
+        knows_object(preknown, true);
+}
+
 // C ref: u_init.c u_init_skills_discoveries() — wear/wield/discover + skill_init.
 export function u_init_skills_discoveries() {
     for (const otmp of game.invent || [])
         ini_inv_use_obj(otmp);
-    // C: skill_init(skills_for_role()); pauper_reinit deferred
     skill_init(skills_for_role());
+    // C: u_init.c — if (u.uroleplay.pauper) pauper_reinit()
+    if (game.u?.uroleplay?.pauper) pauper_reinit();
     // C: if num_spells && uenmax < SPELL_LEV_PW(1) → bump starter Pw
     const u = game.u || (game.u = {});
     const minPw = SPELL_LEV_PW(1);

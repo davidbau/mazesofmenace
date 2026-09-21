@@ -18,7 +18,8 @@ import {
     CMD_PARAM,
 } from './generated/extcmdlist_data.js';
 import {
-    NHKF_ESC, NHKF_COUNT, MV_WALK, MV_RUN, MV_RUSH,
+    NHKF_ESC, NHKF_COUNT, MV_ANY, MV_WALK, MV_RUN, MV_RUSH,
+    xdir, ydir, zdir, N_DIRS_Z,
     MENU_SELECT_ALL, MENU_UNSELECT_ALL, MENU_INVERT_ALL,
     MENU_SELECT_PAGE, MENU_UNSELECT_PAGE, MENU_INVERT_PAGE,
     MENU_NEXT_PAGE, MENU_PREVIOUS_PAGE, MENU_FIRST_PAGE, MENU_LAST_PAGE,
@@ -75,7 +76,7 @@ export function key2txt(c) {
     return visctrl(c);
 }
 
-const MISC_KEYS = [
+export const MISC_KEYS = [
     { nhkf: NHKF_ESC, desc: 'cancel current prompt or pending prefix', numpad: false },
     {
         nhkf: NHKF_COUNT,
@@ -84,8 +85,9 @@ const MISC_KEYS = [
     },
 ];
 
-// C spkeys_binds defaults used by dokeylist misc section
-const SPKEYS_DEFAULT = {
+// C spkeys_binds defaults used by dokeylist misc section; shared with
+// key2extcmddesc's misc_keys loop (js/pager.js) — same C table.
+export const SPKEYS_DEFAULT = {
     [NHKF_ESC]: 27,
     [NHKF_COUNT]: 'n'.charCodeAt(0),
 };
@@ -291,6 +293,57 @@ export function cmdbind_get(key) {
     const k = key & 0xff;
     if (!k) return null;
     return cmdbinds_live()[k] || null;
+}
+
+/**
+ * C ref: cmd.c movecmd `:3868–3898` — is `sym` bound to a move-mode
+ * command? C compares the bind's `ef_funct` against `move_funcs[d][mode]`
+ * (`cmd.c:2070–2083`); JS matches the bind's extcmd `txt` against the
+ * hoisted per-mode name tables (`MOVE_WALK/RUN/RUSH_ECNAMES`, rows 0–7)
+ * plus `down`/`up` (rows 8–9: dodown/doup). High-to-low dir scan,
+ * `u.dx/dy/dz` set from the C `xdir/ydir/zdir` tables (`decl.c:77–79`),
+ * `!u.dz` returned — C order kept.
+ * C callers: `cmd.c:2573/2575/2577` key2extcmddesc (wired at
+ * `js/pager.js` key2extcmddesc) and `:4095` getdir MV_ANY (getdir keeps
+ * its inline dir-key handling, D-1038/D-2434 — not re-wired here).
+ * @param {number} sym
+ * @param {number} mode MV_ANY/MV_WALK/MV_RUN/MV_RUSH (`hack.h:630–637`)
+ * @returns {number} 1/0
+ */
+export function movecmd(sym, mode) {
+    let d = -1; // DIR_ERR (`hack.h:640`)
+    const bind = cmdbind_get(sym);
+    if (bind && bind.txt) { // C `bind && bind->cmd` (txt is ef_txt)
+        const txt = bind.txt;
+        if (mode === MV_ANY) { // C `:3877–3882`
+            for (d = N_DIRS_Z - 1; d > -1; d--) {
+                if (d < 8
+                    ? (txt === MOVE_WALK_ECNAMES[d]
+                        || txt === MOVE_RUN_ECNAMES[d]
+                        || txt === MOVE_RUSH_ECNAMES[d])
+                    : txt === (d === 8 ? 'down' : 'up')) break;
+            }
+        } else { // C `:3883–3887`
+            const col = mode === MV_WALK ? MOVE_WALK_ECNAMES
+                : mode === MV_RUN ? MOVE_RUN_ECNAMES
+                : mode === MV_RUSH ? MOVE_RUSH_ECNAMES
+                : null;
+            if (col) {
+                for (d = N_DIRS_Z - 1; d > -1; d--) {
+                    if (d < 8 ? txt === col[d] : txt === (d === 8 ? 'down' : 'up')) break;
+                }
+            }
+        }
+    }
+    const u = game.u || (game.u = {});
+    if (d !== -1) { // C `:3890–3894`
+        u.dx = xdir[d];
+        u.dy = ydir[d];
+        u.dz = zdir[d];
+        return u.dz ? 0 : 1; // C `!u.dz`
+    }
+    u.dz = 0; // C `:3896–3897`
+    return 0;
 }
 
 /**

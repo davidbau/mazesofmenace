@@ -501,8 +501,8 @@ export async function rename_disco() {
 
 // C ref: o_init.c disco_order_let `:599` + disco_orders_descr `:600–606`
 // (options.c optfn_sortdiscoveries shares the sort letters).
-const DISCO_ORDER_LET = 'osca';
-const DISCO_ORDERS_DESCR = [
+export const DISCO_ORDER_LET = 'osca';
+export const DISCO_ORDERS_DESCR = [
     'by order of discovery within each class',
     'sortloot order (by class with some sub-class groupings)',
     'alphabetical within each class',
@@ -511,7 +511,7 @@ const DISCO_ORDERS_DESCR = [
 
 // C ref: o_init.c uniq_objs `:543–548` — invocation relics (+ Amulet).
 const AMULET_OF_YENDOR = objectNames.indexOf('AMULET_OF_YENDOR');
-const UNIQ_OBJS = [
+export const UNIQ_OBJS = [
     AMULET_OF_YENDOR,
     objectNames.indexOf('BELL_OF_OPENING'),
     objectNames.indexOf('SPE_BOOK_OF_THE_DEAD'),
@@ -529,12 +529,12 @@ function discovered_cmp(a, b) {
 }
 
 /**
- * C ref: o_init.c disco_output_sorted `:743–766` — qsort + putstr + free.
+ * C ref: o_init.c disco_output_sorted `:741–760` — qsort + putstr + free.
  * The lootsort rewrite (`p[6] = p[0]; p += 6`, i.e. mark + skip the 6-char
- * "%02d%02d%1d " sortloot key) is kept for shape; live callers pass false
- * ('s' order is a named omission — sortloot_descr needs loot_classify).
+ * "%02d%02d%1d " sortloot key) is kept for shape; 's' callers pass keyed
+ * lines (sortloot_descr lives in js/invent.js next to loot_classify).
  */
-function disco_output_sorted(lines, sorted, lootsort) {
+export function disco_output_sorted(lines, sorted, lootsort) {
     const arr = [...sorted].sort(discovered_cmp);
     for (const s of arr) {
         lines.push({ text: lootsort ? s.charAt(0) + s.slice(7) : s, attr: 0 });
@@ -547,7 +547,7 @@ function disco_output_sorted(lines, sorted, lootsort) {
  * encountered-but-unknown Book of the Dead (shown "papyrus spellbook" here
  * vs "spellbook (papyrus)" in the class list). C writes outbuf; JS returns.
  */
-function disco_fmt_uniq(uidx) {
+export function disco_fmt_uniq(uidx) {
     const oc = objs()[uidx];
     const s = `  ${oc.oc_name_known ? objectNameStrs[uidx] : objectDescrs[oc.oc_descr_idx]}`;
     return (!oc.oc_name_known && oc.oc_class === SPBOOK_CLASS) ? `${s} spellbook` : s;
@@ -567,10 +567,13 @@ function oclass_to_name(oclass) {
  * skip-preselected arm cannot happen under PICK_ONE.
  */
 export async function choose_disco_sort(mode) {
+    // C `:624` — add_menu accelerator is the sort letter itself, so the
+    // menu answers 'o'/'s'/'c'/'a' (selector), not positional a/b/c/d.
     const items = DISCO_ORDERS_DESCR.map((text, i) => ({
         text,
         attr: 0,
         selectable: true,
+        selector: DISCO_ORDER_LET[i],
         a_int: DISCO_ORDER_LET[i],
     }));
     if ((mode | 0) === 2) {

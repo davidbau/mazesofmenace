@@ -44,7 +44,7 @@ import { set_wear, glibr } from './do_wear.js';
 import { clear_bypasses } from './worn.js';
 import { gethungry } from './eat.js';
 import { age_spells } from './spell.js';
-import { near_capacity, paint_corner_nhw_menu, encumber_msg, update_inventory, prepare_perminvent } from './invent.js';
+import { near_capacity, paint_corner_nhw_menu, encumber_msg, update_inventory, prepare_perminvent, reroll_menu } from './invent.js';
 import { sanity_check } from './wizcmds.js';
 import { com_pager_legacy } from './questpgr.js';
 import { snapshot_status_lines } from './display.js';
@@ -820,6 +820,11 @@ export async function newgame() {
     await docrt();
     await flush_screen(1);
     await bot();
+    // C ref: allmain.c newgame() `:820–823` — reroll loop before skills.
+    while ((g.u?.uroleplay?.reroll) && (await reroll_menu())) {
+        await u_init_inventory_attrs();
+        await bot();
+    }
     // Snapshot status for legacy window — C tty often still shows pre-wear botl
     const statusSnap = snapshot_status_lines();
 

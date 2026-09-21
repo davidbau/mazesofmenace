@@ -15,6 +15,7 @@ import {
     roles, races, aligns, genders,
     str2role, str2race, str2gend, str2align,
     validrole, role_gendercount, race_alignmentcount,
+    randrole_filtered,
 } from './roles.js';
 import { tty_askname } from './askname.js';
 import {
@@ -553,27 +554,44 @@ export function pick_align(rolenum, racenum, gendnum, pickhow) {
     return ROLE_NONE;
 }
 
+/**
+ * C ref: role.c rigid_role_checks `:1235–1281` — pre-prompt narrowing so a
+ * facet forced to a single value never prompts. C order: ROLE_RANDOM role
+ * pick via pick_role PICK_RANDOM (`:1247–1251`; failure `< 0` falls back to
+ * the filter-honoring randrole_filtered `:1255`, not a bare role-table
+ * roll); then RACE/ALIGN/GEND PICK_RANDOM narrowing (`:1256–1267`, each
+ * applied only when the pick returns non-ROLE_NONE); then, for
+ * initrole != ROLE_NONE, the PICK_RIGID single-candidate fill of any
+ * still-NONE facet (`:1269–1280`).
+ */
 export function rigid_role_checks() {
     const flags = f();
     let tmp;
+    // C `:1247–1255` — explicit ROLE_RANDOM (via -u/OPTIONS role:random)
+    // picks the role here to narrow later choices.
     if (flags.initrole === ROLE_RANDOM) {
         flags.initrole = pick_role(flags.initrace, flags.initgend,
             flags.initalign, PICK_RANDOM);
-        if (flags.initrole < 0) flags.initrole = rn2(roles.length);
+        if (flags.initrole < 0) flags.initrole = randrole_filtered();
     }
+    // C `:1256–1259` — random race narrows to one pick when unambiguous.
     if (flags.initrace === ROLE_RANDOM
         && (tmp = pick_race(flags.initrole, flags.initgend,
             flags.initalign, PICK_RANDOM)) !== ROLE_NONE)
         flags.initrace = tmp;
+    // C `:1260–1263` — random alignment narrows the same way.
     if (flags.initalign === ROLE_RANDOM
         && (tmp = pick_align(flags.initrole, flags.initrace,
             flags.initgend, PICK_RANDOM)) !== ROLE_NONE)
         flags.initalign = tmp;
+    // C `:1264–1267` — random gender narrows the same way.
     if (flags.initgend === ROLE_RANDOM
         && (tmp = pick_gend(flags.initrole, flags.initrace,
             flags.initalign, PICK_RANDOM)) !== ROLE_NONE)
         flags.initgend = tmp;
 
+    // C `:1269–1280` — a known role forces single-candidate facets rigidly
+    // (samurai→human, valkyrie→female, rogue→lawful, orc→chaotic, &c).
     if (flags.initrole !== ROLE_NONE) {
         if (flags.initrace === ROLE_NONE)
             flags.initrace = pick_race(flags.initrole, flags.initgend,

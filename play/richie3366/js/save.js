@@ -60,6 +60,7 @@ import {
 
 export { serObj, serMon, serLevel, deserLevel, serTraps, deserTraps } from './lev_json.js';
 import { relink_light_sources } from './light.js';
+import { adj_erinys, reset_erinys } from './monsters.js';
 
 const SAVE_VFS_PREFIX = 'save/';
 // C ref: fnamesiz.h UNIX arm — SAVEX `save/99999.e` (sizeof 12),
@@ -915,6 +916,13 @@ export async function try_restore_save() {
     // exactly like C `:539` (the blob relinker above already linked the
     // globals, so this is a flag-gated guard today).
     relink_light_sources(false);
+
+    // C restore.c restgamestate `:727` adj_erinys(u.ualign.abuse) in C
+    // order, right after relink_light_sources. C runs in a fresh process
+    // (mons[] at baseline); JS reuses the module, so reset first
+    // (allmain.js newgame precedent) then re-apply the restored abuse.
+    reset_erinys();
+    adj_erinys(game.u?.ualign?.abuse ?? 0);
 
     // C getlev rest_track / restore_timers / restore_light_sources
     // for the current ledger only (M2: other ledgers stay on stash).
