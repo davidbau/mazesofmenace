@@ -28,6 +28,7 @@ import {
     EXPL_FIERY, ismnum, EXT_ENCUMBER,
     isok, xytodir, xdir, ydir,
     DIR_LEFT, DIR_RIGHT, DIR_LEFT2, DIR_RIGHT2, DIR_ERR,
+    something,
 } from './const.js';
 import {
     WEAPON_CLASS, ARMOR_CLASS, TOOL_CLASS, FOOD_CLASS, COIN_CLASS, RANDOM_CLASS, POTION_CLASS,
@@ -37,7 +38,7 @@ import {
 import { exercise, A_STR, A_DEX, A_WIS, A_CON, acurr, adjalign, change_luck, ALIGNLIM } from './attrib.js';
 import { overexertion, nomul, losehp, is_pool, maybe_half_phys, noattacks } from './hack.js';
 import { ing_suffix, upstart } from './hacklib.js';
-import { pline, pline_mon, newsym, canseemon, canspotmon, sensemon, map_invisible, unmap_object, unmap_invisible, memory_glyph_is_invisible, glyph_is_invisible_id, flush_topl_more, You_feel, tmp_at, map_location, nh_delay_output, mon_glyph, shieldeff, impossible, see_monsters, hero_Blind_telepat, You, Your, pline_The } from './display.js';
+import { pline, pline_mon, newsym, canseemon, canspotmon, sensemon, tp_sensemon, map_invisible, unmap_object, unmap_invisible, memory_glyph_is_invisible, glyph_at, glyph_is_warning, glyph_is_invisible_id, flush_topl_more, You_feel, tmp_at, map_location, nh_delay_output, mon_glyph, shieldeff, impossible, see_monsters, hero_Blind_telepat, You, Your, pline_The } from './display.js';
 import { cansee } from './vision.js';
 import {
     dmgval, hitval, P_SKILL, weapon_hit_bonus, martial_bonus,
@@ -64,7 +65,7 @@ import {
 import { resists_drli, resists_cold, destroy_items } from './zap.js';
 import {
     verysmall, nohands, G_FREQ, G_NOCORPSE, M2_COLLECT, MZ_MEDIUM, MZ_HUGE,
-    bigmonst, thick_skinned, monsterNames, nonliving, haseyes,
+    bigmonst, thick_skinned, monsterNames, nonliving, haseyes, dmgtype, hides_under,
     is_golem, is_mplayer, is_rider, is_undead, is_flyer, is_floater,
     is_demon, NON_PM, NUMMONS, has_head, mindless, unsolid, breathless, mons,
     flaming, touch_petrifies, is_neuter, is_vampshifter, is_animal, amphibious,
@@ -76,7 +77,7 @@ import {
 } from './monsters.js';
 import {
     mkobj, mksobj_at, place_object, stackobj, delobj, relobj_on_death, obj_extract_self,
-    weight, obj_stop_timers,
+    weight, obj_stop_timers, objects_at,
 } from './mkobj.js';
 import {
     monnear, record_mvitals_died, seemimic, wakeup, setmangry, dist2,
@@ -89,7 +90,7 @@ import { livelog_printf } from './pline.js';
 import { experience, more_experienced, newexplevel } from './exper.js';
 import { explode, mon_explodes, adtyp_to_expltype } from './explode.js';
 import { rehumanize, body_part, mbodypart, uunstick } from './polyself.js';
-import { mon_nam, Monnam, x_monnam, x_monnam_tame, Hallucination, type_is_pname, pmname, Mgender, a_monnam, safe_oname, s_suffix } from './do_name.js';
+import { mon_nam, l_monnam, Monnam, x_monnam, x_monnam_tame, Hallucination, type_is_pname, pmname, Mgender, a_monnam, safe_oname, s_suffix } from './do_name.js';
 import { artifact_hit, youmonst, is_art, artifact_exists, shade_glare, find_artifact, u_wield_art } from './artifact.js';
 import { xname, vtense, The, the, An, an, singular, makeplural, cxname, simpleonames, otense, mshot_xname, Yobjnam2, doname, corpse_xname, ysimple_name } from './objnam.js';
 import { abuse_dog, tamedog } from './dog.js';
@@ -107,6 +108,8 @@ import { Unaware } from './eat.js';
 import { hard_helmet } from './do_wear.js';
 import { findgold, inv_cnt } from './steal.js';
 import { mselftouch, instapetrify, minstapetrify, t_at } from './trap.js';
+import { set_ustuck } from './mhitu.js';
+import { Protection_from_shape_changers } from './were.js';
 import { merge_choice_invent } from './pickup.js';
 import { addinv } from './u_init.js';
 import { dropy, flooreffects } from './do.js';
@@ -3137,21 +3140,6 @@ function sticks(ptr) {
 }
 
 /**
- * C ref: mon.c set_ustuck — bind / clear hero grab; clear swallow on null.
- * Local clone (mhitu.js export; avoid uhitm↔mhitu cycle).
- */
-function set_ustuck(mtmp) {
-    const u = game.u || (game.u = {});
-    if (!game.flags) game.flags = {};
-    game.flags.botl = true;
-    u.ustuck = mtmp || null;
-    if (!u.ustuck) {
-        u.uswallow = 0;
-        u.uswldtim = 0;
-    }
-}
-
-/**
  * C ref: mhitm.c failed_grab `:597–640` with magr = youmonst (uhitm.c
  * `:5652–5779` callers). Thin delegate to the canonical `mhitm.js` export:
  * with magr fixed to youmonst the `:612–613` message gate is always true
@@ -4171,9 +4159,8 @@ export async function force_attack(mtmp, pets_too) {
 }
 
 /**
- * C ref: uhitm.c attack_checks — invis Wait + disguised-mimic + peaceful
- * confirm (ParanoidHit). Returns true when the attack attempt is consumed
- * (no hitum). Elbereth / warning-glyph / mundetected hide arms deferred.
+ * C ref: uhitm.c attack_checks `:189–327` — whole-body port in C order.
+ * Returns true when the attack attempt is consumed (no hitum).
  * @param {object} mtmp
  * @param {object|null} [wep] uwep for do_attack; null for kick
  */
@@ -4186,46 +4173,109 @@ export async function attack_checks(mtmp, wep = null) {
     // C: engulfing_u(mtmp) → allow attack on engulfer (skip Wait!/mimic)
     if (engulfing_u(mtmp)) return false;
 
-    // C: forcefight → return FALSE (allow real attack; skip Wait!)
+    // C `:199–214`: forcefight → return FALSE (allow real attack; skip
+    // Wait!). The map_invisible inside is C-commented-out, so nothing to do.
     if (game.context?.forcefight) return false;
 
-    // C: !canspotmon && !glyph_is_warning && !glyph_is_invisible(glyph_at)
-    //    && !(!Blind && mundetected && hides_under) → Wait! + map_invisible
-    const loc = game.level?.at(mtmp.mx, mtmp.my);
+    // C `:220`: cache the shown glyph; arms that change it always return.
+    // Every caller sets game.bhitpos first (do_attack, polearm, whip, kick).
+    const bx = game.bhitpos?.x ?? mtmp.mx;
+    const by = game.bhitpos?.y ?? mtmp.my;
+    const glyph = glyph_at(bx, by);
+
     const Blind = !!(game.u?.Blind || game.u?.ublind
         || (((game.u?.HBlinded | 0) || (game.u?.EBlinded | 0))
             && !(game.u?.BBlinded | 0)));
+    // C `:229–232`: invisible-monster marker, except hiding monsters (own
+    // warning below) and warned-about monsters (glyph already shows it).
     if (!canspotmon(mtmp)
-        && !glyph_is_invisible_id(loc?.disp_glyph)
-        && !( !Blind && mtmp.mundetected /* && hides_under deferred */)) {
-        // C: "Wait!  There's %s there you can't see!" / something
-        await pline("Wait!  There's something there you can't see!");
-        map_invisible(mtmp.mx, mtmp.my);
-        // mimic AD_STCK ustuck deferred
+        && !glyph_is_warning(glyph) && !glyph_is_invisible_id(glyph)
+        && !(!Blind && mtmp.mundetected && hides_under(mtmp.data))) {
+        // C `:233–234`
+        await pline("Wait!  There's %s there you can't see!", something);
+        map_invisible(bx, by);
+        // C `:238–243`: invisible mimic holds on — applied pole-arm attack
+        // is too far (you.h m_next2u ≡ distu ≤ 2) to get stuck.
+        if (M_AP_TYPE(mtmp) && !Protection_from_shape_changers()) {
+            const u0 = game.u || {};
+            if (!u0.ustuck && !mtmp.mflee && dmgtype(mtmp.data, AD_STCK)
+                && dist2(mtmp.mx, mtmp.my, u0.ux, u0.uy) <= 2)
+                set_ustuck(mtmp);
+        }
+        // C `:250–251`: always necessary; also un-mimics mimics (the
+        // Elbereth alignment note stands: an attempt did occur).
         await wakeup(mtmp, true);
         return true;
     }
 
-    // Disguised mimic
-    if (M_AP_TYPE(mtmp)) {
-        // Protection_from_shape_changers / sensemon / glyph_is_invisible→seemimic deferred
+    // C `:254–265`: disguised mimic the hero can't sense. A remembered
+    // unseen-monster glyph means a lucky strike (seemimic, attack on).
+    if (M_AP_TYPE(mtmp) && !Protection_from_shape_changers()
+        && !sensemon(mtmp) && !glyph_is_warning(glyph)) {
+        if (glyph_is_invisible_id(glyph)) {
+            seemimic(mtmp);
+            return false;
+        }
         await stumble_onto_mimic(mtmp);
         return true;
     }
 
-    // C: mundetected hide-under / eel reveal arms deferred
+    // C `:268–298`: monster hiding under something (or an eel the hero
+    // can't see): wake and reveal it, then describe the hiding place.
+    if (mtmp.mundetected && !canseemon(mtmp)
+        && !glyph_is_warning(glyph)
+        && (hides_under(mtmp.data) || mtmp.data?.mlet === 'S_EEL')) {
+        mtmp.mundetected = 0;
+        mtmp.msleeping = 0;
+        newsym(mtmp.mx, mtmp.my);
+        if (glyph_is_invisible_id(glyph)) {
+            seemimic(mtmp);
+            return false;
+        }
+        // C youprop.h Detect_monsters (apply.js Detect_monsters_apply pattern).
+        const uH = game.u || {};
+        const Detect_monsters = !!(uH.Detect_monsters
+            || (uH.HDetect_monsters | 0) || (uH.EDetect_monsters | 0));
+        if (!tp_sensemon(mtmp) && !Detect_monsters) {
+            // C `:281–282`: unseen when invisible and hero can't see it.
+            const lmonbuf = l_monnam(mtmp);
+            const notseen = lmonbuf === 'it'; /* note: not strcmpi() */
+            if (!Blind && Hallucination())
+                await pline("A %s %s %s!", mtmp.mtame ? "tame" : "wild",
+                    notseen ? "creature" : lmonbuf,
+                    notseen ? "is present" : "appears");
+            else if (Blind || (is_pool(mtmp.mx, mtmp.my) && !((game.u || {}).Underwater)))
+                await pline("Wait!  There's a hidden monster there!");
+            else {
+                const obj = objects_at(mtmp.mx, mtmp.my);
+                if (obj)
+                    await pline("Wait!  There's %s hiding under %s!",
+                        notseen ? something : an(lmonbuf), doname(obj));
+            }
+            return true;
+        }
+    }
 
-    // C: flags.confirm && mpeaceful && !Confusion && !Hallucination && !Stunned
+    // C `:304–307`: sensed hidden/mimic presence still wakes it.
+    if ((mtmp.mundetected || M_AP_TYPE(mtmp)) && sensemon(mtmp)) {
+        mtmp.mundetected = 0;
+        await wakeup(mtmp, true);
+    }
+
+    // C `:309–310`: flags.confirm && mpeaceful && !Confusion &&
+    // !Hallucination && !Stunned
     const u = game.u || {};
     const confirm = game.flags?.confirm !== false; // C opt_out default On
     if (confirm && mtmp.mpeaceful
         && !u.Confusion && !u.Hallucination && !u.Stunned
         && !(u.HStun | 0)) {
-        // Intelligent chaotic weapons (Stormbringer) want blood
+        // C `:311–315`: intelligent chaotic weapons (Stormbringer) want blood
         if (is_art(wep, ART_STORMBRINGER)) {
             game.override_confirmation = true;
             return false;
         }
+        // C `:316–324`: ParanoidHit Really-attack abort (C ParanoidHit is
+        // already the masked bit — cmd.c `paranoid_query(ParanoidHit,…)`).
         if (canspotmon(mtmp)) {
             const qbuf = `Really attack ${mon_nam(mtmp)}?`;
             const bits = game.flags?.paranoia_bits | 0;
@@ -4238,6 +4288,7 @@ export async function attack_checks(mtmp, wep = null) {
         }
     }
 
+    // C `:327`
     return false;
 }
 

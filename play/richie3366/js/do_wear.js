@@ -3606,8 +3606,9 @@ function cancel_don() {
 /**
  * C ref: do_wear.c doffing `:1600–1640` — armor via afternmv or
  * takeoff.what; 1-turn accessories/weapons via takeoff.what only.
+ * Exported for steal.c steal `:507` was_doffing (same live body, no clone).
  */
-function doffing(otmp) {
+export function doffing(otmp) {
     if (!otmp) return false;
     const u = game.u || {};
     const what = game.context?.takeoff?.what | 0;
