@@ -857,6 +857,36 @@ const EXT_CMDS = [
         },
     },
     {
+        // C: cmd.c "wizsmell" IFBURIED|AUTOCOMPLETE|WIZMODECMD → wiz_smell (D-2766)
+        name: 'wizsmell',
+        wiz: true,
+        autocomplete: true,
+        run: async () => {
+            const { wiz_smell } = await import('./wizcmds.js');
+            return wiz_smell();
+        },
+    },
+    {
+        // C: cmd.c "wizseenv" IFBURIED|AUTOCOMPLETE|WIZMODECMD → wiz_show_seenv (D-2779)
+        name: 'wizseenv',
+        wiz: true,
+        autocomplete: true,
+        run: async () => {
+            const { wiz_show_seenv } = await import('./wizcmds.js');
+            return wiz_show_seenv();
+        },
+    },
+    {
+        // C: cmd.c "migratemons" IFBURIED|AUTOCOMPLETE|WIZMODECMD → wiz_migrate_mons (D-2779)
+        name: 'migratemons',
+        wiz: true,
+        autocomplete: true,
+        run: async () => {
+            const { wiz_migrate_mons } = await import('./wizcmds.js');
+            return wiz_migrate_mons();
+        },
+    },
+    {
         name: 'monster',
         wiz: false,
         autocomplete: true,

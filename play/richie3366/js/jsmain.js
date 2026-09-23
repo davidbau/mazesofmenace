@@ -22,7 +22,7 @@ import { flush_screen, serialize_for_scoring, reset_display_messages, docrt, bot
 import { GameDisplay } from './game_display.js';
 import { askname_if_needed } from './askname.js';
 import { player_selection } from './player_selection.js';
-import { PARANOID_PRAY, PARANOID_SWIM, PARANOID_TRAP, AUTOUNLOCK_APPLY_KEY } from './const.js';
+import { PARANOID_PRAY, PARANOID_SWIM, PARANOID_TRAP, AUTOUNLOCK_APPLY_KEY, VI_NUMBER, VI_BRANCH } from './const.js';
 import { check_special_room } from './hack.js';
 
 // ── NethackGame ──
@@ -121,6 +121,8 @@ export class NethackGame {
             end_around: 2,
             end_own: false,
             paranoia_bits: PARANOID_PRAY | PARANOID_SWIM | PARANOID_TRAP,
+            // C recorder options.c:7174 initoptions_init (absent from pinned upstream)
+            versinfo: g.nomakedefs?.git_branch ? VI_BRANCH : VI_NUMBER,
             // C options.c / optlist.h — tips default On
             tips: true,
             // C optlist.h confirm — opt_out default On

@@ -1686,8 +1686,9 @@ export async function mhitm_ad_acid(magr, mattk, mdef, mhm) {
  * C ref: uhitm.c mhitm_ad_legs `:4483–4489` — mhitm (mon→mon) arm.
  * Cancelled attacker deals no damage; else delegates to mhitm_ad_phys;
  * done propagates via mhm (caller checks).
- * uhitm you-as-agr (`:4432–4444`) shares this shape (phys + done check;
- * the `#if 0` ucancelled arm is dead in C).
+ * uhitm you-as-agr (`:4432–4444`) is the damageum_adtyping AD_LEGS row
+ * in uhitm.js (dead `#if 0` ucancelled arm; live phys uhitm arm via
+ * damageum_ad_phys + done via mhm, D-2767).
  * mhitu you-as-def (`:4445–4482`) is mhitm_ad_legs_u in mhitu.js (side
  * rn2(2), steed/Lev/Fly reach fail, mcan nuzzle via pline_mon per D-1240,
  * boots prick/scratch, set_wounded_legs + STR/DEX exercise).
@@ -4862,7 +4863,7 @@ async function mdamagem(magr, mdef, mattk, mwep, dieroll) {
     // mhitm_ad_phys (dieroll carried for artifact_hit, like AD_WERE);
     // done propagates via mhm.
     // mhitu xan-legs arm is mhitm_ad_legs_u (mhitu.js); the uhitm arm
-    // shares the phys shape (named in the callee).
+    // is the damageum_adtyping AD_LEGS row (uhitm.js, D-2767).
     if ((mattk.adtyp | 0) === AD_LEGS) {
         const mhm = {
             damage,

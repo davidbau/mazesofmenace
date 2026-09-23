@@ -2,14 +2,14 @@
 // C ref: wizcmds.c
 
 import { game } from './gstate.js';
-import { pline, docrt, impossible, flush_topl_more, Warn_of_mon } from './display.js';
-import { getlin } from './getline.js';
+import { pline, You, docrt, impossible, flush_topl_more, Warn_of_mon, glyph_at, glyph_is_monster, glyph_is_invisible_id, map_invisible, unmap_invisible } from './display.js';
+import { getlin, yn_function } from './getline.js';
 import { pluslvl, losexp } from './exper.js';
 import { makewish } from './zap.js';
 import { create_particular } from './read.js';
-import { level_tele } from './teleport.js';
+import { level_tele, migrate_to_level } from './teleport.js';
 import {
-    ECMD_OK, MAXULEV, TIMEOUT, KILLED_BY, SICK_VOMITABLE, SICK_NONVOMITABLE,
+    ECMD_OK, ECMD_CANCEL, MAXULEV, TIMEOUT, KILLED_BY, SICK_VOMITABLE, SICK_NONVOMITABLE,
     INVULNERABLE, STONED, SLIMED, STRANGLED, SICK, STUNNED, CONFUSION,
     HALLUC, HALLUC_RES, BLINDED, DEAF, VOMITING, GLIB, WOUNDED_LEGS,
     SLEEPY, TELEPORT, POLYMORPH, LEVITATION, FAST, CLAIRVOYANT,
@@ -23,16 +23,22 @@ import {
     ENERGY_REGENERATION, PROTECTION, PROT_FROM_SHAPE_CHANGERS,
     POLYMORPH_CONTROL, UNCHANGING, REFLECTING, FREE_ACTION, FIXED_ABIL,
     LIFESAVED, Upolyd, COLNO, ROWNO, STONE, S_sink, S_fountain,
-    In_sokoban, Is_knox, In_endgame,
+    In_sokoban, Is_knox, In_endgame, ARM, u_at,
+    Is_stronghold, Is_botlevel, has_mgivenname, MGIVENNAME,
+    MIGR_EXACT_XY, MIGR_RANDOM, MM_NOMSG,
 } from './const.js';
 import { ATR_INVERSE } from './terminal.js';
 import { make_blinded } from './do.js';
 import { m_at, rescham } from './mon.js';
+import { minimal_monnam } from './do_name.js';
+import { strsubst, depth } from './hacklib.js';
+import { getpos } from './getpos.js';
+import { usmellmon, makemon, rndmonst } from './makemon.js';
 import { check_invent_gold } from './invent.js';
 import { rn2 } from './rng.js';
-import { float_vs_flight } from './polyself.js';
+import { float_vs_flight, body_part } from './polyself.js';
 import { pooleffects } from './pickup.js';
-import { mons } from './monsters.js';
+import { mons, olfaction } from './monsters.js';
 import { PM_GRID_BUG } from './generated/monsters_data.js';
 import { NUM_OBJECTS } from './objects.js';
 
@@ -1161,4 +1167,380 @@ export function misc_stats(lines, total) {
         // C `:1392` Strcpy(hdrbuf, "object type names, text").
         lines.push(stats_row('object type names, text', count, size));
     }
+}
+
+/**
+ * C ref: wizcmds.c wiz_smell `:885–939` — #wizsmell wizard command
+ * (D-2766). Cursor-pick loop: sniff the hero (own form, or the steed's
+ * when mounted) or the monster at the picked cell; map a remembered but
+ * unseen monster, unmap stale invisible memory on an empty pick.
+ * Caller: cmd.c extcmdlist "wizsmell" `:1994–1995` → EXT_CMDS runnable
+ * entry in getline.js (dynamic import, like the other wiz* rows).
+ * @returns {Promise<number>} ECMD_OK, or ECMD_CANCEL when getpos aborts.
+ */
+export async function wiz_smell() {
+    const u = game.u || {};
+    // C `:893–894` — the pick cursor starts on the hero.
+    const cc = { x: u.ux | 0, y: u.uy | 0 };
+    // C `:895–898` — this form cannot smell: message + ECMD_OK (no turn).
+    if (!olfaction(game.youmonst?.data)) {
+        await You('are incapable of detecting odors in your present form.');
+        return ECMD_OK;
+    }
+    // C `:900` — once, before the pick loop.
+    await You('can move the cursor to a monster that you want to smell.');
+    // C `:901–937` — do { … } while (TRUE): pick until getpos cancels.
+    for (;;) {
+        // C `:902–903` — prompt then getpos(TRUE, "a monster").
+        await pline('Pick a monster to smell.');
+        const ans = await getpos(cc, true, 'a monster');
+        // C `:904–906` — cancel: ans < 0 or the cursor aborted (cc.x < 0).
+        if (ans < 0 || (cc.x | 0) < 0) {
+            return ECMD_CANCEL; /* done */
+        }
+        let is_you = false;
+        let mptr = null;
+        // C `:907–918` — hero cell: the steed's data when mounted, else
+        // youmonst (self sniff); monster cell: m_at data; else none.
+        // (mptr pre-nulled: the `:917–918` else arm; m_at runs only when
+        // !u_at, as in the C else-if.)
+        if (u_at(cc.x, cc.y)) {
+            if (u.usteed) {
+                mptr = u.usteed.data;
+            } else {
+                mptr = game.youmonst?.data;
+                is_you = true;
+            }
+        } else {
+            const mtmp = m_at(cc.x, cc.y);
+            if (mtmp) mptr = mtmp.data;
+        }
+        // C `:922` — glyph read before the monster test; the `:919–921`
+        // buglet note (no turn elapses for the wizmode map/unmap) holds:
+        // map_invisible/unmap_invisible below take no turn.
+        const glyph = glyph_at(cc.x, cc.y);
+        // C `:923–931` — a monster (or self/steed) was picked.
+        if (mptr) {
+            // C `:925–926` — self sniff goes under your ARM.
+            if (is_you) {
+                await You('surreptitiously sniff under your %s.', body_part(ARM));
+            }
+            // C `:927–929` — usmellmon FALSE: the no-smell message.
+            if (!(await usmellmon(mptr))) {
+                await pline('%s to not give off any smell.',
+                    is_you ? 'You seem' : 'That monster seems');
+            }
+            // C `:930–931` — remembered, unseen monster: map it.
+            if (!glyph_is_monster(glyph)) map_invisible(cc.x, cc.y);
+        } else {
+            // C `:932–936` — empty pick: message + clear stale I memory.
+            await You("don't smell any monster there.");
+            if (glyph_is_invisible_id(glyph)) unmap_invisible(cc.x, cc.y);
+        }
+    }
+}
+
+/**
+ * C ref: wizcmds.c migrsort_cmp `:1484–1501` (staticfn) — qsort comparator
+ * for list_migrating_mons: dungeon number, then level number, then an
+ * m_id tie-break (unsigned — the `<`/`>` pair, not subtraction). The
+ * tie-break makes the order total; V8 Array.sort is stable anyway
+ * (Constitution §4.5).
+ */
+function migrsort_cmp(m1, m2) {
+    // C `:1489–1490` — (int) mux/muy.
+    const d1 = (m1.mux | 0), l1 = (m1.muy | 0);
+    const d2 = (m2.mux | 0), l2 = (m2.muy | 0);
+    // C `:1492–1494` — different branches: sort by dungeon number.
+    if (d1 !== d2) return d1 - d2;
+    // C `:1495–1497` — same branch: sort by level number.
+    if (l1 !== l2) return l1 - l2;
+    // C `:1498–1500` — same destination: m_id tie-break. Live m_id values
+    // are small (0 is unset, dog.js:642), so |0 keeps C's unsigned order.
+    const id1 = (m1.m_id | 0), id2 = (m2.m_id | 0);
+    return id1 < id2 ? -1 : (id1 > id2 ? 1 : 0);
+}
+
+/**
+ * C ref: wizcmds.c list_migrating_mons `:1505–1610` (staticfn) — the
+ * #migratemons list half. Counts migrating mons by destination
+ * (current/next/other), plines the counts, asks "List which?", then shows
+ * the chosen set in an NHW_TEXT window sorted by migrsort_cmp.
+ * Signature adaptation: nextlevl is { dnum, dlevel } (C d_level *).
+ * Window via lines[] + show_text_pages (NHW_TEXT idiom, D-2508/D-2516).
+ * C `:1603` display_nhwindow(win, FALSE) is print-and-continue on tty,
+ * but the Terminal has no scrollback vehicle, so the blocking pager
+ * stands in (named adaptation).
+ * @param {{ dnum: number, dlevel: number }} nextlevl default destination
+ */
+async function list_migrating_mons(nextlevl) {
+    const { show_text_pages } = await import('./pager.js');
+    const u = game.u || {};
+    const uz = u.uz || {};
+    // C `:1516` — int here = 0, nxtlv = 0, other = 0.
+    let here = 0, nxtlv = 0, other = 0;
+    // C `:1518–1525` — walk gm.migrating_mons via nmon. JS keeps the same
+    // head-first order in the game.migrating_mons array (migrate_to_level
+    // unshifts, teleport.js:2869-2871; drains preserve order). Counts are
+    // order-insensitive and the collect below is re-sorted, so array order
+    // is unobservable here.
+    const migrating = game.migrating_mons || [];
+    for (const mtmp of migrating) {
+        // C `:1519` — mux == u.uz.dnum && muy == u.uz.dlevel.
+        if ((mtmp.mux | 0) === (uz.dnum | 0)
+            && (mtmp.muy | 0) === (uz.dlevel | 0))
+            ++here;
+        // C `:1521` — mux == nextlevl->dnum && muy == nextlevl->dlevel.
+        else if ((mtmp.mux | 0) === (nextlevl.dnum | 0)
+            && (mtmp.muy | 0) === (nextlevl.dlevel | 0))
+            ++nxtlv;
+        else
+            ++other;
+    }
+    // C `:1526–1527` — nothing migrating.
+    if (here + nxtlv + other === 0) {
+        await pline('No monsters currently migrating.');
+        return;
+    }
+    // C `:1529–1531` — "%d mon%s pending for current level, %d for next
+    // level, %d for others." plur(n) inlined (no new plur clone —
+    // misc_stats precedent).
+    await pline(
+        `${here} mon${here === 1 ? '' : 's'} pending for current level, `
+        + `${nxtlv} for next level, ${other} for others.`,
+    );
+    // C `:1532–1538` — prmpt takes the nonzero letters, xtra the zero ones;
+    // "a q" is always offered; zero-count letters stay valid but unshown
+    // behind ESC (tty_yn_function hides post-ESC, getline.js:1709, and
+    // still accepts them, getline.js:1761 — hence the "None." arm below).
+    // strkitten is a single-char append (botl.js:2068 precedent).
+    let prmpt = '', xtra = '';
+    if (here) prmpt += 'c'; else xtra += 'c'; // C `:1533`
+    if (nxtlv) prmpt += 'n'; else xtra += 'n'; // C `:1534`
+    if (other) prmpt += 'o'; else xtra += 'o'; // C `:1535`
+    prmpt += 'a q'; // C `:1536`
+    if (xtra) prmpt += `\x1b${xtra}`; // C `:1537–1538`
+    // C `:1539` — c = yn_function("List which?", prmpt, 'q', TRUE).
+    const c = await yn_function('List which?', prmpt, 'q', true);
+    // C `:1540–1544`.
+    const n = (c === 'c') ? here
+        : (c === 'n') ? nxtlv
+        : (c === 'o') ? other
+        : (c === 'a') ? here + nxtlv + other
+        : 0;
+    // C `:1545` — n > 0 shows the window.
+    if (n > 0) {
+        // C `:1546` — win = create_nhwindow(NHW_TEXT): collect lines.
+        const lines = [];
+        // C `:1547–1559` — header line.
+        if (c === 'c' || c === 'n' || c === 'o') {
+            // C `:1550–1555` — "Monster%s migrating to %s:".
+            lines.push(`Monster${n === 1 ? '' : 's'} migrating to ${
+                (c === 'c') ? 'current level'
+                : (c === 'n') ? 'next level'
+                : "'other' levels"}:`);
+        } else {
+            // C `:1556–1558` — default: "All migrating monsters:".
+            lines.push('All migrating monsters:');
+        }
+        lines.push(''); // C `:1561` putstr(win, 0, "").
+        // C `:1562–1581` — collect the chosen set (C allocs marray[n+1];
+        // JS grows the array; the [n]=0 sentinel `:1582` is the loop
+        // bound instead).
+        const marray = [];
+        for (const mtmp of migrating) {
+            let showit; // C `:1510`.
+            if (c === 'a') // C `:1569–1570`.
+                showit = true;
+            else if ((mtmp.mux | 0) === (uz.dnum | 0) // C `:1571–1572`.
+                && (mtmp.muy | 0) === (uz.dlevel | 0))
+                showit = (c === 'c');
+            else if ((mtmp.mux | 0) === (nextlevl.dnum | 0) // C `:1573–1575`.
+                && (mtmp.muy | 0) === (nextlevl.dlevel | 0))
+                showit = (c === 'n');
+            else // C `:1576–1577`.
+                showit = (c === 'o');
+            if (showit) // C `:1579–1580`.
+                marray.push(mtmp);
+        }
+        // C `:1583–1585` — qsort [0..n-1] by migrsort_cmp when n > 1.
+        if (marray.length > 1)
+            marray.sort(migrsort_cmp);
+        // C `:1586–1600` — one "  <mon>" line each.
+        for (const mtmp of marray) {
+            // C `:1587` — "  %s" of minimal_monnam(mtmp, FALSE).
+            let buf = `  ${minimal_monnam(mtmp, false)}`;
+            // C `:1588–1589` — minimal_monnam appends map coordinates;
+            // strip that (first occurrence, hacklib strsubst).
+            buf = strsubst(buf, ' <0,0>', '');
+            // C `:1590–1591` — named mons carry " named <name>".
+            if (has_mgivenname(mtmp))
+                buf += ` named ${MGIVENNAME(mtmp)}`;
+            // C `:1592–1593` — 'o'/'a' show the destination.
+            if (c === 'o' || c === 'a')
+                buf += ` to ${mtmp.mux | 0}:${mtmp.muy | 0}`;
+            // C `:1594–1599` — exact-spot arrivals show " at <x,y>".
+            const xyloc = mtmp.mtrack?.[0]?.x | 0;
+            if (xyloc === MIGR_EXACT_XY) {
+                const x = mtmp.mtrack?.[1]?.x | 0;
+                const y = mtmp.mtrack?.[1]?.y | 0;
+                buf += ` at <${x},${y}>`;
+            }
+            lines.push(buf); // C `:1600` putstr(win, 0, buf).
+        }
+        // C `:1602–1604` — free; display_nhwindow(win, FALSE);
+        // destroy_nhwindow(win). Blocking pager stands in for tty's
+        // print-and-continue (see doc comment).
+        await show_text_pages(lines);
+    } else if (c !== 'q') { // C `:1605–1606`.
+        await pline('None.');
+    }
+}
+
+/**
+ * C ref: wizcmds.c wiz_migrate_mons `:1873–1930` — #migratemons wizard
+ * command (cmd.c extcmdlist "migratemons" `:1764–1770`,
+ * IFBURIED|AUTOCOMPLETE|WIZMODECMD → EXT_CMDS runnable entry in
+ * getline.js). Lists migrating mons for the default destination (the
+ * valley inside the stronghold, the next level down otherwise, nowhere
+ * at the bottom), then migrates N more there on request.
+ * The `:1894–1928` DEBUG_MIGRATING_MONS block is LIVE, not compiled out:
+ * patchlevel.h:35-37 defines DEBUG unconditionally, so config.h:620
+ * defines DEBUG_MIGRATING_MONS. Positive N migrates that many random
+ * monsters; negative N migrates -N oldest on-map monsters (fmon head
+ * each pass); ESC/empty aborts.
+ * Named omissions: none on this body — whole C body live; the
+ * extcmdlist_data.js "migratemons" desc keeps the #else string while
+ * DEBUG-live C registers the longer one (cmd.c:1766) — extractor gap,
+ * generated files are not hand-edited (Constitution §6.4).
+ * @returns {Promise<number>} ECMD_OK.
+ */
+export async function wiz_migrate_mons() {
+    // New edges, all lazily read inside the body (dungeon.js already feeds
+    // wiz_makemap this way): get_level + ledger_no.
+    const { get_level, ledger_no } = await import('./dungeon.js');
+    const u = game.u || {};
+    const uz = u.uz || {};
+    if (!game.iflags) game.iflags = {};
+    // C `:1880–1881` — use_random_mon = TRUE; mongen_saved =
+    // iflags.debug_mongen.
+    let use_random_mon = true;
+    const mongen_saved = game.iflags.debug_mongen;
+    // C `:1883` — d_level tolevel (C leaves it uninitialized; all three
+    // arms below assign both fields before any read).
+    const tolevel = { dnum: 0, dlevel: 0 };
+    // C `:1885–1890`.
+    if (Is_stronghold(uz)) {
+        // C `:1886` — assign_level(&tolevel, &valley_level), inlined
+        // (teleport.js:2932-2936 precedent — not a 5th assign_level clone;
+        // C dungeon.c:1977-1982 copies the two fields).
+        const v = game.valley_level || {};
+        tolevel.dnum = v.dnum | 0;
+        tolevel.dlevel = v.dlevel | 0;
+    } else if (!Is_botlevel(uz)) {
+        // C `:1888` — get_level(&tolevel, depth(&u.uz) + 1).
+        get_level(tolevel, depth(uz) + 1);
+    } else {
+        // C `:1890` — tolevel.dnum = 0, tolevel.dlevel = 0.
+        tolevel.dnum = 0;
+        tolevel.dlevel = 0;
+    }
+    // C `:1892` — list_migrating_mons(&tolevel).
+    await list_migrating_mons(tolevel);
+    // C `:1894` — #ifdef DEBUG_MIGRATING_MONS: live (see doc comment).
+    // C `:1895` — inbuf[0] = inbuf[1] = '\0'.
+    let inbuf = '';
+    if (tolevel.dnum || tolevel.dlevel) { // C `:1896`.
+        // C `:1897–1898`.
+        inbuf = await getlin(
+            'How many random monsters to migrate to next level? [0]',
+        ) || '';
+    } else { // C `:1899–1900`.
+        await pline("Can't get there from here.");
+    }
+    // C `:1901–1902` — ESC or empty aborts with ECMD_OK.
+    if (!inbuf || inbuf[0] === '\x1b')
+        return ECMD_OK;
+    // C `:1904` — mcount = atoi(inbuf). parseInt matches atoi's
+    // skip-space/sign/read-digits shape (radix 10, so no hex); |0 maps
+    // NaN (no digits) to 0 the way atoi returns 0.
+    let mcount = parseInt(inbuf, 10) | 0;
+    if (mcount < 0) { // C `:1905–1908`.
+        use_random_mon = false;
+        mcount *= -1;
+    }
+    if (mcount < 1) // C `:1909–1910`.
+        mcount = 0;
+    else if (mcount > ((COLNO - 1) * ROWNO)) // C `:1911–1912`.
+        mcount = (COLNO - 1) * ROWNO;
+    // C `:1914` — iflags.debug_mongen = FALSE.
+    game.iflags.debug_mongen = false;
+    // C `:1915–1926`.
+    while (mcount > 0) {
+        let mtmp;
+        if (use_random_mon) { // C `:1916–1918`.
+            const ptr = rndmonst();
+            mtmp = makemon(ptr, 0, 0, MM_NOMSG);
+        } else { // C `:1919–1920` — mtmp = fmon (chain head).
+            mtmp = (game.fmon || [])[0] || null;
+        }
+        if (mtmp) { // C `:1922–1924` — (coord *) 0 is null.
+            migrate_to_level(mtmp, ledger_no(tolevel), MIGR_RANDOM, null);
+        }
+        mcount--; // C `:1925`.
+    }
+    game.iflags.debug_mongen = mongen_saved; // C `:1927`.
+    return ECMD_OK; // C `:1929`.
+}
+
+/**
+ * C ref: wizcmds.c wiz_show_seenv `:576–617` — #wizseenv wizard command
+ * (cmd.c extcmdlist "wizseenv" `:1990–1991`,
+ * IFBURIED|AUTOCOMPLETE|WIZMODECMD → EXT_CMDS runnable entry in
+ * getline.js; the wizcmds.c:574 `/* #seenv command *\/` comment is stale —
+ * the registered name is "wizseenv"). Dumps levl[][].seenv as 2-char hex
+ * centered on the hero into an NHW_TEXT window (`@@` at the hero, blank
+ * for zero), one putstr per map row.
+ * Window via lines[] + show_text_pages (NHW_TEXT idiom, D-2508/D-2516);
+ * C `:614` display_nhwindow(win, TRUE) is the blocking page wait.
+ * Named omissions: none — whole C body live.
+ * @returns {Promise<number>} ECMD_OK.
+ */
+export async function wiz_show_seenv() {
+    const { show_text_pages } = await import('./pager.js');
+    const u = game.u || {};
+    // C `:583` — win = create_nhwindow(NHW_TEXT): collect lines.
+    const lines = [];
+    // C `:584–589` — center the 2-char cells on the hero. COLNO/4 and
+    // COLNO/2 are exact (80/4=20, 80/2=40), matching C integer division.
+    let startx = Math.max(1, (u.ux | 0) - (COLNO / 4)); // C `:588`.
+    const stopx = Math.min(startx + (COLNO / 2), COLNO); // C `:589`.
+    // C `:590–592` — can't have a line exactly 80 chars long.
+    if (stopx - startx === COLNO / 2)
+        startx++;
+    // C `:594–613` — one putstr per map row.
+    for (let y = 0; y < ROWNO; y++) {
+        // C `:595–605` — 2 chars per cell from startx..stopx-1
+        // (row.length tracks C's curx: every pass appends exactly 2).
+        let row = '';
+        for (let x = startx; x < stopx; x++) {
+            if (u_at(x, y)) { // C `:596–597`.
+                row += '@@';
+            } else {
+                // C `:599` — v = levl[x][y].seenv & 0xff.
+                const v = ((game.level?.at(x, y)?.seenv | 0) & 0xff);
+                // C `:600–603` — blank for 0, else %02x (lowercase).
+                row += (v === 0) ? '  ' : v.toString(16).padStart(2, '0');
+            }
+        }
+        // C `:606–610` — remove trailing spaces (terminate after the last
+        // non-space; an all-space row becomes the empty string).
+        let end = row.length;
+        while (end > 0 && row[end - 1] === ' ')
+            end--;
+        lines.push(row.slice(0, end)); // C `:612` putstr(win, 0, row).
+    }
+    // C `:614–615` — display_nhwindow(win, TRUE); destroy_nhwindow(win).
+    await show_text_pages(lines);
+    return ECMD_OK; // C `:616`.
 }

@@ -22,7 +22,7 @@ import {
     SUPPRESS_NAME, SUPPRESS_IT, SUPPRESS_INVISIBLE, SUPPRESS_HALLUCINATION, EXACT_NAME,
     HAND, LEG, A_LAWFUL, Is_airlevel, Is_waterlevel, PARANOID_HIT, LOW_PM,
     W_ARM, W_ARMC, W_ARMH, W_ARMU, W_ARMG, W_RINGL, W_RINGR, W_ARMF, W_AMUL, W_WEP,
-    MON_EXPLODE, NO_MM_FLAGS, NO_TRAP_FLAGS, DISP_ALWAYS, DISP_END, STOMACH, DIED, NO_KILLER_PREFIX, ERODE_CORRODE, ERODE_BURN, EF_GREASE, EF_NONE,
+    MON_EXPLODE, NO_MM_FLAGS, NO_TRAP_FLAGS, DISP_ALWAYS, DISP_END, STOMACH, DIED, NO_KILLER_PREFIX, ERODE_CORRODE, ERODE_BURN, EF_GREASE, EF_NONE, STONING,
     KILLED_BY_AN, PASSES_WALLS, SLOW_DIGESTION, MALE, FEMALE, MMOVE_DIED, CXN_ARTICLE,
     ERODE_ROT, NO_NC_FLAGS, AD_CURS, EDOG, is_pit, FACE, NEUTRAL, CXN_PFX_THE,
     EXPL_FIERY, ismnum, EXT_ENCUMBER,
@@ -57,6 +57,7 @@ import {
     troll_baned, mhitm_ad_poly, mhitm_ad_slee, mhitm_ad_heal, mhitm_ad_blnd, mhitm_ad_ston, mhitm_ad_elec, mhitm_ad_sedu, mhitm_ad_tlpt, mhitm_ad_rust, mhitm_ad_fire, could_seduce, failed_grab, shade_miss,
     shade_aware, paralyze_monst,
     mhitm_mgc_atk_negated, resists_poison_mm, erode_armor, golemeffects_mm,
+    attk_protection,
     AT_NONE, AT_WEAP, AT_KICK, AT_CLAW, AT_SPIT, AT_HUGS,
     AT_TUCH, AT_BITE, AT_BUTT, AT_STNG, AT_MAGC, AT_TENT,
     AT_EXPL, AT_ENGL, AT_BREA, AT_GAZE, AD_PHYS, AD_POLY, AD_DRIN, AD_SLEE,
@@ -73,7 +74,7 @@ import {
     amorphous, noncorporeal, is_whirly, passes_walls, hates_silver, mon_hates_silver, humanoid,
     is_human, is_orc, is_elf, always_hostile, is_unicorn, slimeproof,
     MR_FIRE, MR_COLD, MR_ELEC, MR_ACID,
-    resists_ston, resists_acid, mon_hates_blessings,
+    resists_ston, resists_acid, mon_hates_blessings, poly_when_stoned,
 } from './monsters.js';
 import {
     mkobj, mksobj_at, place_object, stackobj, delobj, relobj_on_death, obj_extract_self,
@@ -148,6 +149,7 @@ const CORPSE = objectNames.indexOf('CORPSE');
 const BOULDER = objectNames.indexOf('BOULDER');
 const PM_LIZARD = monsterNames.indexOf('PM_LIZARD');
 const PM_ORACLE = monsterNames.indexOf('PM_ORACLE');
+const PM_STONE_GOLEM = monsterNames.indexOf('PM_STONE_GOLEM');
 // C monflag.h — quest msound ranks (makemon.js:701–702 keeps the same values)
 const MS_NEMESIS = 37;
 const MS_GUARDIAN = 38;
@@ -179,6 +181,7 @@ const AD_SGLD = 20; /* steals gold (leprechaun) — monattk.h */
 const AD_DCAY = 34; /* decays organics (brown pudding) — monattk.h */
 const AD_SLIM = 40; /* turns victim into green slime — monattk.h */
 const AD_HEAL = 27; /* heals opponent's wounds (nurse) — monattk.h */
+const AD_LEGS = 17; /* damages legs (xan) — monattk.h:59 */
 /* C hack.h invlet_basic — a-zA-Z invent slots. */
 const invlet_basic = 52;
 
@@ -2461,6 +2464,14 @@ async function damageum_adtyping(mattk, mdef, mhm) {
            attacker, poly'd nurse) arm: mhitm_ad_phys + done via mhm
            (damageum checks, like C damageum `:4856–4858`). */
         await mhitm_ad_heal(game.youmonst, mattk, mdef, mhm);
+    } else if (adtyp === AD_LEGS) {
+        /* C ref: uhitm.c mhitm_adtyping `:4788` → mhitm_ad_legs `:4432–4444`
+           uhitm (hero as attacker, poly'd xan) arm: the `#if 0`
+           ucancelled arm is dead in C; live behavior is mhitm_ad_phys
+           uhitm arm (`:3988–4024`) + done via mhm (damageum checks,
+           like C damageum `:4856–4858`). mhitu arm is mhitm_ad_legs_u
+           in mhitu.js; mhitm arm is mhitm_ad_legs in mhitm.js. */
+        damageum_ad_phys(mdef, mattk, mhm);
     } else if (adtyp === AD_ACID) {
         /* C ref: uhitm.c mhitm_ad_acid `:2747–2751` — uhitm (hero as
            attacker) arm: resists_acid/defended zeroes the leftover
@@ -2701,7 +2712,9 @@ async function passive_obj(mon, obj, mattk) {
  * Finds first AT_NONE (incl. NO_ATTK fillers), rolls damage dice, applies
  * even-if-dead effects, then live gate `malive && !mcan && rn2(3)`.
  * Named omissions: full AD_PLYS gaze/cube / ugolemeffects /
- * erode_armor / done_in_by stone / attk_protection detail; dokick callers.
+ * erode_armor; dokick callers. D-2770: AD_STON touch-petrify live
+ * (attk_protection + Stone_resistance / poly_when_stoned→polymon gates +
+ * done_in_by STONING, uhitm.c:5930–5956).
  * D-1095: AD_COLD healmon + split_mon (potion.c via sit.js).
  * Lethal mdamageu ends the turn here (C longjmps out of done_in_by);
  * callers see it via program_state.gameover, same as other deaths.
@@ -2787,10 +2800,30 @@ export async function passive(mon, weapon, mhitb, maliveb, aatyp, wep_was_destro
         exercise(A_STR, false);
         break;
     case AD_STON:
+        // C uhitm.c passive :5930-5956 — touch-petrify: worn armor for
+        // this attack type (attk_protection; a poly'd hero's AT_MAGC hits
+        // hand to hand so gloves count) blocks it, else Stone_resistance
+        // or a golem-to-stone-golem poly saves, else done_in_by(STONING).
         if (mhitb) {
-            // attk_protection / done_in_by STONING deferred; no RNG here
-            void Stone_resistance;
-            void wep_was_destroyed;
+            let protector = attk_protection(aatyp | 0);
+            if ((aatyp | 0) === AT_MAGC) protector = W_ARMG;
+            if (protector === 0
+                || (protector === W_ARMG && !u.uarmg && !u.uwep && !wep_was_destroyed)
+                || (protector === W_ARMF && !u.uarmf)
+                || (protector === W_ARMH && !u.uarmh)
+                || (protector === (W_ARMC | W_ARMG) && (!u.uarmc || !u.uarmg))) {
+                // Dynamic imports: death-path only (file convention —
+                // mdamageu/erode_obj above load the same way).
+                const { polymon } = await import('./polyself.js');
+                const { done_in_by } = await import('./end.js');
+                if (!Stone_resistance
+                    && !(poly_when_stoned(game.youmonst?.data, game.mvitals)
+                        && (await polymon(PM_STONE_GOLEM)))) {
+                    await done_in_by(mon, STONING);
+                    if (dead()) return malive | mhit;
+                    return M_ATTK_DEF_DIED;
+                }
+            }
         }
         break;
     case AD_RUST:

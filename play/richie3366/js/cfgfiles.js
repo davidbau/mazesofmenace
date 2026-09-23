@@ -8,6 +8,8 @@
 import { game } from './gstate.js';
 import { BUFSZ, ECMD_OK } from './const.js';
 import { pline, tty_wait_synch } from './display.js';
+import { trimspaces } from './hacklib.js';
+import { config_error_add } from './botl.js';
 import { paranoid_query } from './getline.js';
 import {
     get_configfile,
@@ -69,4 +71,91 @@ export async function do_write_config_file() {
     }
     strbuf_empty(sbuf); // C `:204`
     return ECMD_OK; // C `:209`
+}
+
+/**
+ * C ref: cfgfiles.c free_config_sections `:506–517` in C order.
+ * C is staticfn void; exported for handle_config_section and the future
+ * parse_conf_buf port (`:1768` caller chain). The gameconfig fields live
+ * on `game` (currentgraphics precedent); C decl.c NULL-init is `?? null`
+ * reads. free/dupstr on strings are GC no-ops (mklev/invent precedent).
+ */
+export function free_config_sections() {
+    // C `:509–512`
+    if (game.config_section_chosen != null) {
+        game.config_section_chosen = null; // C free + = NULL
+    }
+    // C `:513–516`
+    if (game.config_section_current != null) {
+        game.config_section_current = null; // C free + = NULL
+    }
+}
+
+/**
+ * C ref: cfgfiles.c is_config_section `:522–549` in C order — check for
+ * "[ anything-except-bracket ] # arbitrary-comment" with optional spaces.
+ * C is staticfn char *; exported for handle_config_section (same `:554`
+ * call). Returns the bracket-stripped section name, or null.
+ * C mutates the input (trailing trimspaces strip, `*z = '\\0'` cut); JS
+ * strings are immutable, so the name is returned and the input-strip is
+ * owed to the future parse_conf_buf port's FALSE path (map-named).
+ * @param {string} str
+ * @returns {string|null}
+ */
+export function is_config_section(str) {
+    // C `:530`: trimspaces strips trailing in place, returns past leading.
+    const a = trimspaces(str);
+    // C `:532–533`: *a++ != '[' — empty input reads '\0' → fail.
+    if (a[0] !== '[') return null;
+    const past = a.slice(1);
+    // C `:535–537`: last char is ']' ignoring any comment.
+    const z = past.indexOf(']');
+    if (z === -1) return null;
+    // C `:539–540`: spaces only (not tabs) between ']' and comment.
+    let c = z + 1;
+    while (c < past.length && past[c] === ' ') c++;
+    // C `:541–542`: *c nonzero and not '#' → fail.
+    const tail = past.slice(c);
+    if (tail !== '' && !tail.startsWith('#')) return null;
+    // C `:545–548`: cut at ']', trim spaces around the choice.
+    return trimspaces(past.slice(0, z));
+}
+
+/**
+ * C ref: cfgfiles.c handle_config_section `:551–582` in C order.
+ * C is staticfn boolean; exported for the future parse_conf_buf port —
+ * the sole C caller (`:1768`; map-named, no JS dispatch yet).
+ * @param {string} buf
+ * @returns {boolean} TRUE = line consumed (section header or filtered out)
+ */
+export function handle_config_section(buf) {
+    // C `:554`: pointer test — '' (empty "[]" section) is non-null in C,
+    // so this is !== null, not truthiness.
+    const sect = is_config_section(buf);
+    if (sect !== null) {
+        // C `:557–558`: free current BEFORE the CHOOSE check.
+        if (game.config_section_current != null)
+            game.config_section_current = null; // C free + = 0
+        // C `:559–563`: is_config_section() removed brackets from 'sect'.
+        if (game.config_section_chosen == null) {
+            config_error_add('Section "[%s]" without CHOOSE', sect); // C `:561`
+            return true;
+        }
+        if (sect !== '') { // C `:564–567` *sect — got a section name
+            game.config_section_current = sect; // C `:565` dupstr (GC no-op)
+            // C `:566–567` debugpline1 — D_DEBUG-only (named omission).
+        } else { // C `:568–570` empty section name => end of sections
+            free_config_sections(); // C `:569`
+            // C `:570` debugpline0 — D_DEBUG-only (named omission).
+        }
+        return true; // C `:572`
+    }
+    // C `:575–580`: non-section line under an active section filter.
+    if (game.config_section_current != null) {
+        if (game.config_section_chosen == null) return true; // C `:576–577`
+        // C `:578–579` strcmp — nonzero (different) → filtered out.
+        if (game.config_section_current !== game.config_section_chosen)
+            return true;
+    }
+    return false; // C `:580`
 }

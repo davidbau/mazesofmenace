@@ -62,6 +62,9 @@ import { cursed_check, helm_simple_name } from './do_wear.js';
 import { accessible } from './monmove.js';
 import { Invis } from './timeout.js';
 import { SetVoice, voice_death, Soundeffect } from './sndprocs.js';
+// add_sound_mapping `:1590–1611` — live options.js regex/msgtype ports
+// (imports.mjs --can sounds.js options.js: SAFE, hoisted functions).
+import { msgtype_parse_add, regex_init, regex_compile, regex_free } from './options.js';
 import {
     se_courtly_conversation, se_sceptor_pounding,
     se_low_buzzing, se_angry_drone, se_bees,
@@ -96,7 +99,11 @@ export function set_voice(mtmp, tone, volume, moreinfo) {
  * this. When USER_SOUNDS is on, the first check is
  * `soundprocs.sound_play_usersound`; contest has no SND_LIB so that
  * pointer is null and the soundmap regex walk never runs.
- * Named: SOUND= / `add_sound_mapping` / `sound_matches_message`.
+ * Named: SOUND=/SOUNDDIR config dispatch (the `#ifndef USER_SOUNDS`
+ * no_sound_notified error arm, cfgfiles.c `:1600–1605` — no JS
+ * read_config_file dispatch, map-named) / `sound_matches_message`
+ * (`:1628` staticfn, own coverage row when emitted). `add_sound_mapping`
+ * (`:1556–1626`) is a live export below (D-2776).
  */
 export function maybe_play_sound(msg) {
     void msg;
@@ -112,6 +119,259 @@ export function maybe_play_sound(msg) {
  */
 export function sound_speak(text) {
     void text;
+}
+
+/* ——— USER_SOUNDS source-level ports (D-2776) ———————————————————————
+ * C ref: sounds.c `:1539–1691` (`#ifdef USER_SOUNDS`).
+ * `add_sound_mapping` (`:1556–1626`) and its sole C caller `cnf_line_SOUND`
+ * (cfgfiles.c `:1230–1235`, table rows `:1371–1374`) sit inside
+ * `#ifdef USER_SOUNDS`; the contest unix build never defines it
+ * (-DUSER_SOUNDS only under sys/windows, multisnd1 hints, xcodeproj;
+ * include/config.h silent; js/sndprocs.js no-SND_LIB_*), so contest C
+ * compiles none of it and SOUND/SOUNDDIR config lines take the
+ * `#ifndef USER_SOUNDS` no_sound_notified error path (cfgfiles.c
+ * `:1600–1605`). Ported here as a live export following the source-level
+ * body in C order (D-2599 read_simplemail precedent for a compiled-out
+ * body), deliberately NOT wired from any config dispatch: C never calls
+ * it in this build (D-2393 lesson). `base_soundname_to_filename`
+ * (`:2084–2152`) is OUTSIDE both the USER_SOUNDS and the
+ * SND_SOUNDEFFECTS_AUTOMAP (`:1959–2081`) guards, so it compiles in
+ * contest C; its only C callers are the Windows backend
+ * (sound/windsound/windsound.c `:107`/`:227`, SND_LIB_WINDSOUND, not this
+ * build), so it likewise has no JS caller.
+ */
+
+/** C ref: include/sndprocs.h `:296–301` `enum sound_file_flags`. */
+const sff_default = 0;
+const sff_base_only = 1;
+const sff_havedir_append_rest = 2;
+const sff_baseknown_add_rest = 3;
+
+/** C ref: sounds.c `:1552` `char *sounddir = 0` (C global; the "set in
+ * files.c" comment is stale upstream — the only writers are `:1580–1581`
+ * here and cfgfiles.c `:1222–1228` cnf_line_SOUNDDIR, both USER_SOUNDS). */
+let sounddir = null;
+
+/**
+ * C ref: sounds.c `:1541–1549` — `audio_mapping` list, `soundmap` head.
+ * `{ regex, filename, volume, idx, next }` in struct order; C drops the
+ * pattern text after compiling it into `regex` (no text field). The only
+ * reader, `sound_matches_message` (`:1628` staticfn), is compiled out and
+ * unported, so the list is write-only (map-named).
+ */
+let soundmap = null;
+
+/**
+ * C ref: cfgfiles.c can_read_file `:1442–1446` (`#ifdef USER_SOUNDS`):
+ * `return access(filename, 4) == 0`. access(2) has no Rule-#2
+ * representative (no filesystem; the VFS holds no sound assets), so this
+ * always takes the `:1615` cannot-read arm when idx < 0. Named in the map;
+ * the `idx >= 0` short-circuit arm stays fully live.
+ */
+function can_read_file(filename) {
+    void filename;
+    return false;
+}
+
+/**
+ * C ref: sounds.c add_sound_mapping `:1568–1577` — the four sscanf patterns
+ * tried in `||` order (short-circuit: later patterns never run once one
+ * matches). Returns `{ msgtyp, text, filename, volume, idx }` or null.
+ * Emulation measured against the toolchain libc (clang sscanf probe):
+ * - literal `MESG` must be first (leading space fails); every
+ *   format-space position takes ZERO or more isspace (`MESG"t"`,
+ *   `"f"5`, `5-7` all match);
+ * - `%*[\t ]` between the quotes is STRICT: zero spaces fails the
+ *   directive and sscanf stops (returns 1);
+ * - `%10[^\"]` msgtyp is greedy incl. spaces/tabs (`stop `, `stop\t`)
+ *   and stops at the quote; >10 chars before the quote fails outright.
+ *   (The first msgtyp char excludes whitespace: C's space-directive
+ *   eats it all with no backtrack, so without that the P2/P3 patterns
+ *   would misfire on P1-shaped lines with msgtyp=' ' — C returns 0.
+ *   No shorter take can match when the greedy take fails, so the regex
+ *   is exactly equivalent — see the D-log.);
+ * - trailing garbage after the last %d is ignored (no end anchor);
+ * - `%d` is optional-sign + ≥1 digit; C int storage is `| 0`.
+ */
+function sscanf_sound_mapping(mapping) {
+    const s = String(mapping ?? '');
+    // P1 `:1568–1569`: MESG "text" "file" vol idx → 4.
+    let m = s.match(/^MESG[ \t\n\v\f\r]*"([^"]{1,255})"[ \t]+"([^"]{1,255})"[ \t\n\v\f\r]*([+-]?[0-9]+)[ \t\n\v\f\r]*([+-]?[0-9]+)/);
+    if (m) {
+        return {
+            msgtyp: '', // P1 never runs the msgtyp conversions
+            text: m[1],
+            filename: m[2],
+            volume: parseInt(m[3], 10) | 0,
+            idx: parseInt(m[4], 10) | 0,
+        };
+    }
+    // P2 `:1570–1572`: MESG msgtyp "text" "file" vol idx → 5.
+    m = s.match(/^MESG[ \t\n\v\f\r]*([^" \t\n\v\f\r][^"]{0,9})[ \t\n\v\f\r]*"([^"]{1,255})"[ \t]+"([^"]{1,255})"[ \t\n\v\f\r]*([+-]?[0-9]+)[ \t\n\v\f\r]*([+-]?[0-9]+)/);
+    if (m) {
+        return {
+            msgtyp: m[1],
+            text: m[2],
+            filename: m[3],
+            volume: parseInt(m[4], 10) | 0,
+            idx: parseInt(m[5], 10) | 0,
+        };
+    }
+    // P3 `:1573–1575`: MESG msgtyp "text" "file" vol → 4 (idx stays -1).
+    m = s.match(/^MESG[ \t\n\v\f\r]*([^" \t\n\v\f\r][^"]{0,9})[ \t\n\v\f\r]*"([^"]{1,255})"[ \t]+"([^"]{1,255})"[ \t\n\v\f\r]*([+-]?[0-9]+)/);
+    if (m) {
+        return {
+            msgtyp: m[1],
+            text: m[2],
+            filename: m[3],
+            volume: parseInt(m[4], 10) | 0,
+            idx: -1,
+        };
+    }
+    // P4 `:1576–1577`: MESG "text" "file" vol → 3 (idx stays -1).
+    m = s.match(/^MESG[ \t\n\v\f\r]*"([^"]{1,255})"[ \t]+"([^"]{1,255})"[ \t\n\v\f\r]*([+-]?[0-9]+)/);
+    if (m) {
+        return {
+            msgtyp: '',
+            text: m[1],
+            filename: m[2],
+            volume: parseInt(m[3], 10) | 0,
+            idx: -1,
+        };
+    }
+    return null;
+}
+
+/**
+ * C ref: sounds.c add_sound_mapping `:1556–1626` in C order (live export of
+ * the USER_SOUNDS source-level body — see the note above; sole C caller
+ * cnf_line_SOUND, cfgfiles.c `:1230–1235`, compiled out, not wired).
+ * Returns 1/0 like C. `mapping` is NONNULLARG1 (extern.h `:3011`); the
+ * null → "" coercion is JS-only totality (topologize D-2597 precedent).
+ */
+export function add_sound_mapping(mapping) {
+    // C `:1564–1567` — out-param pre-NULs; the parser returns fresh strings.
+    // C `:1568–1577` — four sscanf patterns in || order (short-circuit).
+    // msgtyp is "" unless a P2/P3-shaped line matched (measured: on P1/P4
+    // success the failed P2/P3 wrote nothing — the scanset fails empty at
+    // `"`; on P2/P3 success the winner wrote it; partial-write residue only
+    // reaches the `:1620` else arm, where msgtyp is dead).
+    const parsed = sscanf_sound_mapping(mapping);
+    if (!parsed) {
+        // C `:1620–1623` — raw_print("syntax error in SOUND") named (no
+        // pre-window stdout channel, display.js vraw_printf precedent);
+        // the return is live.
+        return 0;
+    }
+    const { msgtyp, text, filename, volume, idx } = parsed;
+
+    // C `:1580–1581` — dupstr(".") is a GC no-op (cfgfiles.js precedent).
+    if (!sounddir) sounddir = '.';
+    // C `:1582–1585` — filespec is char[256]; raw_print("sound file name
+    // too long") named, the return live.
+    if (sounddir.length + 1 + filename.length >= 256) return 0;
+    // C `:1586` — Snprintf(filespec, "%s/%s") (fits: the `:1582` guard).
+    const filespec = `${sounddir}/${filename}`;
+
+    // C `:1588` — idx >= 0 short-circuits the readability check.
+    if (idx >= 0 || can_read_file(filespec)) {
+        // C `:1589–1594` — alloc/dupstr are GC no-ops; next = soundmap is
+        // taken now, soundmap = new_map only on the `:1606` else arm.
+        const new_map = {
+            regex: regex_init(),
+            filename: filespec,
+            volume,
+            idx,
+            next: soundmap,
+        };
+        // C `:1596` — regex_* are the live options.js ports (posixregex.c
+        // REG_EXTENDED|REG_NOSUB shape via JS RegExp + POSIX-class map).
+        if (!regex_compile(text, new_map.regex)) {
+            // C `:1597–1605` — regex_error_desc (posixregex.c `:76`) has no
+            // JS counterpart (options.js test_regex_pattern precedent) and
+            // raw_print is named; the frees are GC no-ops; return live.
+            regex_free(new_map.regex);
+            return 0;
+        }
+        // C `:1607–1612` — *msgtyp set only by P2/P3 (above); Sprintf
+        // "%.10s \"%.230s\"", then (void) msgtype_parse_add (options.c
+        // `:7843–7866`, live js/options.js export; return ignored like C).
+        if (msgtyp) {
+            msgtype_parse_add(`${msgtyp.slice(0, 10)} "${text.slice(0, 230)}"`);
+        }
+        // C `:1613`
+        soundmap = new_map;
+    } else {
+        // C `:1615–1619` — Sprintf(text, "cannot read %.243s", filespec) +
+        // raw_print named (same ground); the return is live.
+        return 0;
+    }
+
+    // C `:1625`
+    return 1;
+}
+
+/**
+ * C ref: sounds.c base_soundname_to_filename `:2084–2152` in C order.
+ * Unconditionally compiled (outside the `:1539–1691` USER_SOUNDS and
+ * `:1959–2081` SND_SOUNDEFFECTS_AUTOMAP guards); only C callers are the
+ * Windows backend (sound/windsound/windsound.c `:107`/`:227`,
+ * SND_LIB_WINDSOUND, not this build), so no JS caller. C `(buf, bufsz)`
+ * is a fixed array the havedir arm appends into; JS takes the existing
+ * content as a string (null ≡ C NULL) and returns the new content
+ * (null ≡ C NULL). `basename` is NONNULLARG1 (extern.h `:3029`); the
+ * null check is JS-only totality (topologize D-2597 precedent).
+ */
+export function base_soundname_to_filename(basename, buf, bufsz, approach) {
+    const suffix = '.wav'; // C `:2090` static const char suffix[]
+    // C `:2091–2093` (cp is folded into the slash test below; sizes stay
+    // exact — PATHLEN scale, no 2^53 concern).
+    let consumes = 0;
+    let existinglen = 0;
+    let needslash = true;
+    // C `:2095–2096` — buf may be NULL (only arg 1 is NONNULL).
+    if (buf === null || buf === undefined) return null;
+    const existing = String(buf);
+    if (basename === null || basename === undefined) return null;
+    // C `:2098–2099`
+    const base = String(basename);
+    const baselen = base.length;
+    consumes = baselen;
+    const cap = bufsz | 0; // C size_t bufsz (`| 0` int idiom)
+    const ap = approach | 0; // C `:2088` int32_t approach
+
+    // C `:2101–2115`
+    if (ap === sff_havedir_append_rest) {
+        existinglen = existing.length; // C `:2103`
+        if (existinglen > 0) {
+            // C `:2105–2109` — cp walks to the last char and back; the only
+            // observable is the trailing-slash test.
+            const last = existing.charAt(existinglen - 1);
+            if (last === '/' || last === '\\') needslash = false;
+        }
+        if (needslash) consumes++; // C `:2111–2112` for '/'
+        consumes += existinglen; // C `:2113`
+        consumes += suffix.length; // C `:2114` sizeof suffix - 1
+    }
+    consumes += 1; // C `:2116` trailing NUL
+    // C `:2117–2120`
+    if (!baselen || consumes > cap || existinglen >= cap) return null;
+
+    // C `:2122–2134` #if 0 Strcat block — compiled out, not ported; the
+    // `:2135–2149` #else Snprintf block below is live.
+    if (ap === sff_havedir_append_rest) {
+        // C `:2136–2144` — slash written at cp (`:2137–2142`, existinglen++
+        // feeds the Snprintf bound) then Snprintf(cp, bufsz -
+        // (existinglen + 1), "%s%s", basename, suffix); the `:2119` guard
+        // guarantees no truncation, so this is exact concatenation.
+        return existing + (needslash ? '/' : '') + base + suffix;
+    } else if (ap === sff_base_only) {
+        // C `:2145–2146` — Snprintf(buf, bufsz, "%s", basename).
+        return base;
+    }
+    // C `:2147–2149` — sff_default/sff_baseknown_add_rest rejected (no dir
+    // knowledge here; sff_default lives in get_sound_effect_filename).
+    return null;
 }
 
 const STATUE = objectNames.indexOf('STATUE');

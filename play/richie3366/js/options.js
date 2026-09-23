@@ -109,8 +109,32 @@ import {
     HL_BLINK,
     HL_INVERSE,
     BUFSZ,
+    CLR_MAX,
     QBUFSZ,
+    PARANOID_CONFIRM,
+    PARANOID_QUIT,
+    PARANOID_DIE,
+    PARANOID_BONES,
+    PARANOID_HIT,
+    PARANOID_PRAY,
+    PARANOID_REMOVE,
+    PARANOID_BREAKWAND,
+    PARANOID_WERECHANGE,
+    PARANOID_EATING,
+    PARANOID_SWIM,
+    PARANOID_TRAP,
+    PARANOID_AUTOALL,
+    VI_NUMBER,
+    VI_NAME,
+    VI_BRANCH,
+    WARNCOUNT,
+    def_warnsyms,
     gp,
+    GPCOORDS_NONE,
+    GPCOORDS_MAP,
+    GPCOORDS_COMPASS,
+    GPCOORDS_COMFULL,
+    GPCOORDS_SCREEN,
 } from './const.js';
 import { game } from './gstate.js';
 import { sanitize_name } from './bones.js';
@@ -122,6 +146,7 @@ import { flush_screen, pline, docrt, check_gold_symbol, clear_committed_status, 
 import { paint_corner_nhw_menu, dismiss_nhw_menu, collect_menu_gacc, process_menu_search, toggle_menu_curr, menu_digit_is_gacc, reassign, update_inventory, invlet_constant, perm_invent_toggled, select_menu_pick_none } from './invent.js';
 import {
     ATR_INVERSE,
+    ATR_NONE,
     CLR_BLACK, CLR_RED, CLR_GREEN, CLR_BROWN, CLR_BLUE, CLR_MAGENTA,
     CLR_CYAN, CLR_GRAY, CLR_ORANGE, CLR_BRIGHT_GREEN, CLR_YELLOW,
     CLR_BRIGHT_BLUE, CLR_BRIGHT_MAGENTA, CLR_BRIGHT_CYAN, CLR_WHITE,
@@ -143,8 +168,9 @@ import { clr2colorname } from './artifact.js';
 import {
     opt_next_cond, cond_menu, status_hilite_menu,
     status_hilite_linestr_done, status_hilite_linestr_gather,
+    match_str2clr, match_str2attr, status_version,
 } from './botl.js';
-import { get_changed_key_binds } from './cmd.js';
+import { get_changed_key_binds, handler_rebind_keys, count_bind_keys } from './cmd.js';
 
 /** C ref: global.h PL_FSIZ — fruit name buffer. */
 const PL_FSIZ = 32;
@@ -234,11 +260,13 @@ function posix_class_pat(s) {
         .replace(/\[:xdigit:\]/g, '0-9A-Fa-f');
 }
 
-function regex_init() {
+/** Exported for sounds.js add_sound_mapping (sounds.c `:1590`). */
+export function regex_init() {
     return { jsre: null, err: 0 };
 }
 
-function regex_compile(s, re) {
+/** Exported for sounds.js add_sound_mapping (sounds.c `:1596`). */
+export function regex_compile(s, re) {
     if (!re) return false;
     try {
         re.jsre = new RegExp(posix_class_pat(s));
@@ -262,7 +290,8 @@ export function regex_match(s, re) {
     return re.jsre.test(String(s));
 }
 
-function regex_free(re) {
+/** Exported for sounds.js add_sound_mapping (sounds.c `:1601`). */
+export function regex_free(re) {
     if (re) {
         re.jsre = null;
         re.err = 0;
@@ -643,6 +672,11 @@ function windowport_tty() {
     return true;
 }
 
+/** C WINDOWPORT(curses) — scored port is tty, never curses. */
+function windowport_curses() {
+    return false;
+}
+
 /**
  * C wintty.c tty_procs.wincap `:98–110` contest `!TTY_PERM_INVENT`.
  * Public tty is WC_COLOR|HILITE_PET|INVERSE|EIGHT_BIT_IN only.
@@ -990,6 +1024,934 @@ export function optfn_menu_shift_right(optidx, req, negated, opts, op) { // C `:
 }
 
 /**
+ * C options.c msgwind[][3] `:195–204` — 'msg_window' settings table read by
+ * handler_msg_window (`:5831–5890`): name, first description line, second
+ * description line. tty shows all four rows; curses skips the first two.
+ */
+const msgwind = [
+    ['single', '[show one old message at a time,', ' most recent first]'],
+    ['combination', '[for consecutive ^P requests, use', " 'single' for first two, then 'full']"],
+    ['full', '[show all available messages,', ' oldest first and most recent last]'],
+    ['reversed', '[show all available messages,', ' most recent first]'],
+];
+
+/**
+ * C options.c paranoia[] `:136–182` — paranoid_confirmation menu rows
+ * (flagmask, argname, explain). The argMinLen/synonym/synMinLen columns
+ * belong to the config-token parser in optfn_paranoid_confirmation
+ * (`:2818–3042`, named map omission) and are not carried here. The
+ * flagmask-0 "none" sentinel (`:180`) ends C's `:5966` loop; the "~0 all"
+ * tail (`:181`) is unreachable past it and omitted.
+ */
+const paranoia = [
+    { flagmask: PARANOID_CONFIRM, argname: 'Confirm', explain: 'for "yes" confirmations, require "no" to reject' },
+    { flagmask: PARANOID_QUIT, argname: 'quit', explain: 'yes vs y to quit or to enter explore mode' },
+    { flagmask: PARANOID_DIE, argname: 'die', explain: 'yes vs y to die (explore mode or debug mode)' },
+    { flagmask: PARANOID_BONES, argname: 'bones', explain: 'yes vs y to save bones data when dying in debug mode' },
+    { flagmask: PARANOID_HIT, argname: 'attack', explain: 'yes vs y to attack a peaceful monster' },
+    { flagmask: PARANOID_BREAKWAND, argname: 'wand-break', explain: 'yes vs y to break a wand via (a)pply' },
+    { flagmask: PARANOID_EATING, argname: 'eat', explain: 'yes vs y to continue eating after first bite when satiated' },
+    { flagmask: PARANOID_WERECHANGE, argname: 'Were-change', explain: 'yes vs y to change form when lycanthropy is controllable' },
+    { flagmask: PARANOID_PRAY, argname: 'pray', explain: 'y required to pray (supersedes old "prayconfirm" option)' },
+    { flagmask: PARANOID_TRAP, argname: 'trap', explain: 'y required to enter known trap unless considered harmless' },
+    { flagmask: PARANOID_AUTOALL, argname: 'Autoall', explain: "y required to pick filter choice 'A' for menustyle:Full" },
+    { flagmask: PARANOID_SWIM, argname: 'swim', explain: "'m' prefix necessary to deliberately walk into lava or water" },
+    { flagmask: PARANOID_REMOVE, argname: 'Remove', explain: 'always pick from inventory for Remove and Takeoff' },
+    { flagmask: 0, argname: 'none', explain: null }, // C `:180` loop sentinel
+];
+
+/**
+ * C symbols.c known_handling[] `:376–384` — symset handling names indexed by
+ * the H_UNK..H_UTF8 enum (sym.h `:43–49`), read by optfn_symset get_val
+ * (`:4211–4214`) and the H_UTF8 arm (`:4189–4193`). (const.js carries an
+ * unexported 4-entry autotranslation of this table; C has 6 entries + NULL.)
+ */
+const known_handling = ['UNKNOWN', 'IBM', 'DEC', 'CURS', 'MAC', 'UTF8'];
+
+/**
+ * C allopt[optidx].name — option name for an optfn's optidx (optlist.h
+ * NHOPT_PARSE `:78–80` pairs each CompOpt row with its optfn_##name).
+ * Scans by idx so the answer survives row reordering.
+ */
+function allopt_name(optidx) {
+    for (const row of allopt) if (row.idx === optidx) return row.name;
+    return '';
+}
+
+/**
+ * Inverse of allopt_name — allopt idx for an option name, for in-file
+ * optfn calls that C makes with the opt_##name enum constant.
+ */
+function allopt_idx(name) {
+    for (const row of allopt) if (row.name === name) return row.idx;
+    return -1;
+}
+
+/**
+ * C options.c optfn_msg_window `:2455–2520` (staticfn; NHOPT_PARSE wires
+ * &optfn_msg_window into the msg_window allopt row, optlist.h `:509`).
+ * PREV_MSGS=1 on tty (`:23–27`), so the `:2463–2467` nhUse side is compiled
+ * out. do_handler (`:2516–2518`) returns handler_msg_window() — async in JS
+ * (menu + pline), so doset calls the handler directly (optfn_perminv_mode
+ * precedent); no do_handler branch here.
+ * @param {number} optidx C optidx (feeds the bad_negation call only)
+ * @param {number} req REQ_DO_INIT / REQ_DO_SET / REQ_GET_VAL / REQ_GET_CNF_VAL
+ * @param {boolean} negated
+ * @param {{buf:string}|string} opts get_val holder / do_set option string (read-only)
+ * @param {string} op value tail (EMPTY_OPTSTR when valueless)
+ * @param {object|null} [iflagsBag] iflags home (result.iflags at rc parse; game.iflags in game)
+ */
+export function optfn_msg_window(optidx, req, negated, opts, op, iflagsBag) {
+    let retval = OPTN_OK; // C `:2460`
+    const iflags = iflagsBag || game.iflags || (game.iflags = {});
+    if (req === REQ_DO_INIT) { // C `:2469–2471`
+        return OPTN_OK;
+    }
+    if (req === REQ_DO_SET) { // C `:2472`
+        /* msg_window:single, combo, full or reversed */
+
+        /* allow option to be silently ignored by non-tty ports */
+        let tmp; // C `:2462`
+        if (op === EMPTY_OPTSTR) { // C `:2477 op == empty_optstr`
+            tmp = negated ? 's' : 'f'; // C `:2478`
+        } else {
+            if (negated) { // C `:2480`
+                bad_negation(allopt_name(optidx), true); // C `:2481` (stub: sink named)
+                return OPTN_ERR; // C `:2482`
+            }
+            tmp = lowc(op[0]); // C `:2484 lowc(*op)`
+        }
+        switch (tmp) { // C `:2486`
+        case 's': // C `:2487` single message history cycle (default if negated)
+        case 'c': // C `:2488` combination: first two as singles, then full page
+        case 'f': // C `:2489` full page (default if specified without argument)
+        case 'r': // C `:2490` full page in reverse order (LIFO; default for curses)
+            iflags.prevmsg_window = tmp; // C `:2491`
+            break;
+        default:
+            // Named omission (map): config_error_add("Unknown %s parameter '%s'") — no JS config-error sink (file precedent).
+            retval = OPTN_ERR; // C `:2496`
+        }
+        return retval; // C `:2499`
+    }
+    if (req === REQ_GET_VAL || req === REQ_GET_CNF_VAL) { // C `:2501`
+        set_optbuf(opts, ''); // C `:2502 opts[0] = '\0'`
+        let tmp = iflags.prevmsg_window; // C `:2504`
+        if (windowport_curses()) { // C `:2505 WINDOWPORT(curses)` — false on tty
+            if (tmp === 's' || tmp === 'c') // C `:2506`
+                tmp = iflags.prevmsg_window = 'r'; // C `:2507`
+        }
+        set_optbuf(opts, tmp === 's' ? 'single' // C `:2509–2512`
+            : tmp === 'c' ? 'combination'
+            : tmp === 'f' ? 'full'
+            : 'reversed');
+        return OPTN_OK; // C `:2514`
+    }
+    return OPTN_OK; // C `:2519`
+}
+
+/**
+ * C options.c handler_msg_window `:5831–5890` (staticfn) — 'O' menu picker
+ * for the ^P message-history display type. Sole C caller is the
+ * optfn_msg_window do_handler arm (`:2517`), async-split into
+ * doset_optfn_do_handler.
+ */
+export async function handler_msg_window() {
+    const is_tty = windowport_tty(), is_curses = windowport_curses(); // C `:5837`
+    if (is_tty || is_curses) { // C `:5840`
+        /* by Christian W. Cooper */
+        if (!game.iflags) game.iflags = {};
+        const sep = game.iflags.menu_tab_sep ? '\t' : ' '; // C `:5845`
+        const old_prevmsg_window = game.iflags.prevmsg_window; // C `:5846`
+        // C `:5849–5851` create_nhwindow/start_menu/zeroany — raw menu below.
+        // C `:5867` end_menu prompt painted as header (D-2762 precedent).
+        const raw = [{ text: 'Select message history display type:', selectable: false }];
+        for (let i = 0; i < msgwind.length; i++) { // C `:5853` SIZE(menutype) == 4 over msgwind[4]
+            if (i < 2 && is_curses) continue; // C `:5854–5855`
+            const line1 = `${msgwind[i][0].slice(0, 12).padEnd(12, ' ')}${sep}${msgwind[i][1].slice(0, 60)}`; // C `:5856–5857` "%-12.12s%c%.60s"
+            const c = msgwind[i][0][0]; // C `:5858` any.a_char = c = *msgwind[i][0]
+            // C `:5859–5862` letter *buf (== c), gacc 0; selected carries MENU_ITEMFLAGS_SELECTED.
+            raw.push({ text: line1, selectable: true, selected: c === game.iflags.prevmsg_window, a_char: c, selector: c });
+            /* second line is prefixed by spaces that "c - " would use */
+            raw.push({ text: `    ${''.padEnd(12, ' ')}${sep}${msgwind[i][2].slice(0, 60)}`, selectable: false }); // C `:5864–5865` "%4s%-12.12s%c%.60s" via add_menu_str
+        }
+        const res = await select_menu_pick_one(raw); // C `:5868` end/select/destroy (destroy inside the helper)
+        if (res.kind === 'pick') { // C `:5869` n > 0
+            // C `:5870` (+ named `:5872–5873` n>1 disambiguation: the helper returns one pick).
+            const c = res.item.a_char;
+            game.iflags.prevmsg_window = c; // C `:5874`
+            // C `:5875` free — GC
+        }
+        // C `:5877` destroy — inside the helper
+        const chngd = game.iflags.prevmsg_window !== old_prevmsg_window; // C `:5878`
+        if (chngd || game.flags?.verbose) { // C `:5879`
+            const holder = { buf: '' };
+            optfn_msg_window(allopt_idx('msg_window'), REQ_GET_VAL, false, holder, EMPTY_OPTSTR); // C `:5880–5881`
+            await pline(`'msg_window' ${(chngd ? 'changed to' : 'is still').slice(0, 20)} "${holder.buf.slice(0, 20)}".`); // C `:5882–5883` %.20s
+        }
+    } else {
+        // C `:5887–5888` (windowprocs.name is "tty" via WPID, winprocs.h `:192`).
+        await pline("'msg_window' option is not supported for 'tty'.");
+    }
+    return OPTN_OK; // C `:5889`
+}
+
+/*
+ * C options.c objsymvals[] `:273–280` (struct objsymopt `:242–246`) — the
+ * values of the menu_objsyms option. num is the iflags.menuobjsyms value;
+ * bit 1 = object symbol in menu header lines, bits 2|4 = symbol in the
+ * entries (4 only when no header is shown). 4' and 5' (!sortpack, no
+ * headers) produce the same inventory display (`:248–272`).
+ */
+const objsymvals = [
+    { num: 0, nam: 'none', descr: "don't show object symbols in menus" },
+    { num: 1, nam: 'headers', descr: 'show object symbols in menu header lines' },
+    { num: 2, nam: 'entries', descr: 'show object symbols in individual menu entries' },
+    { num: 3, nam: 'both', descr: 'show object symbols in headers and menu entries' },
+    { num: 4, nam: 'conditional', descr: 'show objsyms in entries if no headers are shown' },
+    { num: 5, nam: 'one-or-other', descr: 'show objsyms in header, in entries if no header' },
+];
+
+/**
+ * C options.c set_menuobjsyms_flags `:7443–7451` (staticfn) —
+ * iflags.menuobjsyms also controls iflags.menu_head_objsym and
+ * iflags.use_menu_glyphs; they affect execution but are no longer options.
+ * C callers: optfn_menu_objsyms do_init `:2234` and do_set `:2276`,
+ * handler_menu_objsyms `:5824`.
+ * @param {number} newobjsyms objsymvals index
+ * @param {object|null} [iflagsBag] iflags home (result.iflags at rc parse; game.iflags in game)
+ */
+function set_menuobjsyms_flags(newobjsyms, iflagsBag) {
+    const iflags = iflagsBag || game.iflags || (game.iflags = {});
+    iflags.menuobjsyms = newobjsyms; // C `:7448`
+    iflags.menu_head_objsym = (newobjsyms & 1) !== 0; // C `:7449`
+    iflags.use_menu_glyphs = (newobjsyms & (2 | 4)) !== 0; // C `:7450`
+}
+
+/**
+ * C options.c optfn_menu_objsyms `:2224–2287` (staticfn; NHOPT_PARSE wires
+ * &optfn_menu_objsyms into the menu_objsyms allopt row, optlist.h `:451`,
+ * alias "use_menu_glyphs"). do_handler (`:2283–2285`) returns
+ * handler_menu_objsyms() — async in JS (menu), so doset calls the handler
+ * through doset_optfn_do_handler (optfn_msg_window precedent); no
+ * do_handler branch here.
+ * @param {number} optidx C optidx (feeds the config_error_add text only)
+ * @param {number} req REQ_DO_INIT / REQ_DO_SET / REQ_GET_VAL / REQ_GET_CNF_VAL
+ * @param {boolean} negated
+ * @param {{buf:string}|string} opts get_val holder / do_set option string (read-only)
+ * @param {string} op value tail (EMPTY_OPTSTR when valueless)
+ * @param {object|null} [iflagsBag] iflags home (result.iflags at rc parse; game.iflags in game)
+ */
+export function optfn_menu_objsyms(optidx, req, negated, opts, op, iflagsBag) {
+    const iflags = iflagsBag || game.iflags || (game.iflags = {});
+    if (req === REQ_DO_INIT) { // C `:2230`
+        /* set iflags.menu_objsyms to 4, "conditional"; also sets
+           iflags.menu_head_objsym to False and
+           iflags.use_menu_glyphs True */
+        set_menuobjsyms_flags(4, iflags); // C `:2234`
+        return OPTN_OK; // C `:2235`
+    }
+    if (req === REQ_DO_SET) { // C `:2237`
+        let osyms; // C `:2239`
+        if (negated) { // C `:2241`
+            /* allow '!menu_objsyms' (and '!use_menu_glyphs') as
+               'menu_objsyms:none' (0) */
+            osyms = 0; // C `:2244`
+        } else if (op === EMPTY_OPTSTR) { // C `:2245`
+            /* treat boolean 'menu_objsyms' as 'menu_objsyms:headers' (1)
+               accept obsolete boolean 'use_menu_glyphs' as a synonym
+               for 'menu_objsyms:entries' (2) */
+            osyms = String(opts).startsWith('use_menu_glyphs') ? 2 : 1; // C `:2249` !strncmp(opts, …, 15)
+        } else if (op[0] >= '0' && op[0] <= '9') { // C `:2250` digit(*op)
+            const i = Number.parseInt(op, 10); // C `:2251` atoi
+            if (i >= objsymvals.length) { // C `:2252`
+                // Named omission (map): config_error_add("Illegal %s parameter '%s'",
+                // allopt[optidx].name, op) — no JS config-error sink (file precedent).
+                void optidx;
+                return OPTN_ERR; // C `:2255`
+            }
+            osyms = i; // C `:2257`
+        } else {
+            /* stilted "one-or-other" is used to compress the menu width */
+            const alt5 = 'one-or-the-other'; // C `:2260`
+            const l5 = alt5.length; // C `:2261` sizeof alt5 - sizeof ""
+
+            osyms = 0; // C `:2263`
+            const k = op.length; // C `:2264`
+            for (let i = 0; i < objsymvals.length; ++i) { // C `:2265`
+                let l = objsymvals[i].nam.length; // C `:2266`
+                if (k >= 4) // C `:2267`
+                    l = k; // C `:2268`
+                if (!optStrncasecmp(objsymvals[i].nam, op, l) // C `:2269`
+                    || (i === 5 && !optStrncasecmp(alt5, op, l5))) { // C `:2270`
+                    osyms = i; // C `:2271`
+                    break; // C `:2272`
+                }
+            }
+        }
+        set_menuobjsyms_flags(osyms, iflags); // C `:2276`
+        return OPTN_OK; // C `:2277`
+    }
+    if (req === REQ_GET_VAL || req === REQ_GET_CNF_VAL) { // C `:2279`
+        set_optbuf(opts, objsymvals[iflags.menuobjsyms].nam); // C `:2280`
+        return OPTN_OK; // C `:2281`
+    }
+    return OPTN_OK; // C `:2286`
+}
+
+/**
+ * C options.c handler_menu_objsyms `:5794–5829` (staticfn) — 'O' menu
+ * picker for the menu_objsyms value. Sole C caller is the
+ * optfn_menu_objsyms do_handler arm (`:2284`), async-split into
+ * doset_optfn_do_handler.
+ */
+export async function handler_menu_objsyms() {
+    if (!game.iflags) game.iflags = {};
+    const sep = game.iflags.menu_tab_sep ? '\t' : ' '; // C `:5801`
+    // C `:5804–5806` create_nhwindow/start_menu/zeroany — raw menu below.
+    // C `:5818` end_menu prompt painted as header (D-2762 precedent).
+    const raw = [{ text: 'Set object symbols in menus to what?', selectable: false }];
+    for (let i = 0; i < objsymvals.length; ++i) { // C `:5807`
+        const buf = `${objsymvals[i].nam.slice(0, 12).padEnd(12, ' ')}${sep}${objsymvals[i].descr.slice(0, 60)}`; // C `:5808–5809` "%-12.12s%c%.60s"
+        const j = objsymvals[i].num; // C `:5811`
+        // C `:5812–5816` a_int i+1, letter '0'+i, gacc *buf, nul_glyphinfo,
+        // ATR_NONE/NO_COLOR; MENU_ITEMFLAGS_SELECTED on the current value.
+        raw.push({
+            text: buf,
+            selectable: true,
+            selected: j === game.iflags.menuobjsyms,
+            a_int: i + 1,
+            selector: String.fromCharCode(48 + i),
+            gselector: buf[0],
+        });
+    }
+    const res = await select_menu_pick_one(raw); // C `:5818–5819` end/select (destroy inside the helper)
+    if (res.kind === 'pick') { // C `:5820` n > 0
+        const i = res.item.a_int - 1; // C `:5821`
+        /* if there are two picks, use the one that wasn't pre-selected */
+        // C `:5822–5823` n > 1 disambiguation: the helper returns the one
+        // new pick, which is the non-preselected entry C chooses.
+        set_menuobjsyms_flags(i); // C `:5824`
+        // C `:5825` free — GC
+    }
+    // C `:5827` destroy_nhwindow — inside the helper
+    return OPTN_OK; // C `:5828`
+}
+
+/**
+ * C options.c handler_paranoid_confirmation `:5952–6008` (staticfn) — 'O'
+ * menu picker for the paranoia_bits confirmation set. Sole C caller is the
+ * optfn_paranoid_confirmation do_handler arm (`:3039–3041`), reached from
+ * doset `:8935`; JS doset's handler loop awaits it for that arm.
+ */
+export async function handler_paranoid_confirmation() {
+    if (!game.flags) game.flags = {};
+    const wizard = !!(game.flags.wizard || game.flags.debug); // C `wizard` (end.js/teleport.js test)
+    // C `:5963–5965` create_nhwindow/start_menu/zeroany — raw menu below.
+    // C `:5992` end_menu prompt painted as header (D-2762 precedent).
+    const raw = [{ text: 'Actions requiring extra confirmation:', selectable: false }];
+    for (let i = 0; paranoia[i].flagmask !== 0; ++i) { // C `:5966`
+        if (paranoia[i].flagmask === PARANOID_BONES && !wizard) continue; // C `:5967–5968`
+        /* the 'swim' choice mentions the 'm' movement prefix in its
+           explanation; if that's been bound to something else or been
+           unbound altogether, substitute the replacement in the text */
+        const explain = paranoia[i].explain; // C `:5972`
+        /* Named (map): the `:5973–5984` 'm'-substitution (cmd_from_func +
+           cmdname_from_func over cmdbinds/extcmdlist, unported). The default
+           path — 'm' still bound to do_reqmenu, explain unchanged — is exact. */
+        raw.push({ // C `:5985–5990` a_int + letter *argname, gacc 0; selected carries MENU_ITEMFLAGS_SELECTED
+            text: explain,
+            selectable: true,
+            selected: ((game.flags.paranoia_bits | 0) & paranoia[i].flagmask) !== 0,
+            a_int: paranoia[i].flagmask,
+            selector: paranoia[i].argname[0],
+        });
+    }
+    const picks = await select_menu_pick_any(raw, { cancelValue: null }); // C `:5993` end/select/destroy (destroy inside the helper)
+    if (picks !== null) { // C `:5994` i >= 0 — cancel keeps; finish-empty resets
+        /* player didn't cancel; we reset all the paranoia options
+           here even if there were no items picked, since user
+           could have toggled off preselected ones to end up with 0 */
+        game.flags.paranoia_bits = 0; // C `:5998`
+        if (picks.length > 0) { // C `:5999`
+            /* at least 1 item set, either preselected or newly picked */
+            for (let k = picks.length - 1; k >= 0; --k) game.flags.paranoia_bits |= picks[k].a_int | 0; // C `:6001–6002` while (--i >= 0)
+            // C `:6003` free — GC
+        }
+    }
+    // C `:6006` destroy — inside the helper
+    return OPTN_OK; // C `:6007`
+}
+
+/**
+ * C options.c optfn_paranoid_confirmation get_val / get_cnf_val arm
+ * `:3021–3037` — space-separated argnames of the set paranoia_bits, or
+ * "none". The do_set token parser (`:2837–3020`) is a named map omission
+ * (allopt row keeps optfn null, so rc paranoid_confirmation stays
+ * unparsed); do_handler (`:3039–3041`) is dispatched from doset.
+ * @param {number} req REQ_GET_VAL / REQ_GET_CNF_VAL
+ * @param {{buf:string}} opts get_val holder
+ */
+function optfn_paranoid_confirmation_get_val(req, opts) {
+    if (!game.flags) game.flags = {};
+    const wizard = !!(game.flags.wizard || game.flags.debug); // C `wizard` (handler precedent)
+    let tmpbuf = ''; // C `:3024`
+    for (let i = 0; paranoia[i].flagmask !== 0; ++i) { // C `:3025`
+        if (((game.flags.paranoia_bits | 0) & paranoia[i].flagmask) !== 0 // C `:3026`
+            /* hide paranoid_confirm:bones during play except for wizard
+               mode; keep it for any mode if rewriting the config file */
+            && (paranoia[i].flagmask !== PARANOID_BONES // C `:3029–3030`
+                || wizard || req === REQ_GET_CNF_VAL))
+            tmpbuf += ` ${paranoia[i].argname}`; // C `:3031–3032` Snprintf(eos, " %s")
+    }
+    /* note: always leaves enough room for caller to tack on '\n' */
+    set_optbuf(opts, tmpbuf ? tmpbuf.slice(1) : 'none'); // C `:3035–3036` (BUFSZ-1 cap unreachable: 11 short argnames)
+    return OPTN_OK; // C `:3037`
+}
+
+/**
+ * C options.c optfn_whatis_coord `:4702–4745` (staticfn; NHOPT_PARSE wires
+ * &optfn_whatis_coord into the whatis_coord allopt row, optlist.h `:868`).
+ * do_handler (`:4741–4743`) returns handler_whatis_coord() — async in JS
+ * (menu), so doset calls it through doset_optfn_do_handler.
+ * @param {number} optidx C optidx
+ * @param {number} req REQ_DO_INIT / REQ_DO_SET / REQ_GET_VAL / REQ_GET_CNF_VAL
+ * @param {boolean} negated
+ * @param {{buf:string}|string} opts get_val holder / do_set full option string
+ * @param {string} _op C reassigns op from opts at `:4714`
+ * @param {object|null} [iflagsBag] iflags home (result.iflags at rc parse; game.iflags in game)
+ * @param {boolean} [optInitial] C go.opt_initial for the string_for_env_opt gate
+ */
+export function optfn_whatis_coord(optidx, req, negated, opts, _op, iflagsBag, optInitial) {
+    const iflags = iflagsBag || game.iflags || (game.iflags = {});
+    if (req === REQ_DO_INIT) { // C `:4707`
+        return OPTN_OK; // C `:4708`
+    }
+    if (req === REQ_DO_SET) { // C `:4710`
+        if (negated) { // C `:4711`
+            iflags.getpos_coords = GPCOORDS_NONE; // C `:4712`
+            return OPTN_OK; // C `:4713`
+        }
+        const op = string_for_env_opt(allopt_name(optidx), String(opts), false, optInitial); // C `:4714`
+        if (op !== EMPTY_OPTSTR) { // C `:4715`
+            const gpcoords = [GPCOORDS_NONE, GPCOORDS_COMPASS, // C `:4716–4718`
+                GPCOORDS_COMFULL, GPCOORDS_MAP, GPCOORDS_SCREEN];
+            const c = op.length ? lowc(op[0]) : ''; // C `:4719`
+            if (c && gpcoords.includes(c)) // C `:4721`
+                iflags.getpos_coords = c; // C `:4722`
+            else {
+                // Named omission (map): config_error_add("Unknown %s parameter '%s'")
+                // — no JS config-error sink (file precedent).
+                return OPTN_ERR; // C `:4726`
+            }
+        } else
+            return OPTN_ERR; // C `:4729`
+        return OPTN_OK; // C `:4730`
+    }
+    if (req === REQ_GET_VAL || req === REQ_GET_CNF_VAL) { // C `:4732`
+        const g = iflags.getpos_coords;
+        set_optbuf(opts, (g === GPCOORDS_MAP) ? 'map' // C `:4733–4738`
+            : (g === GPCOORDS_COMPASS) ? 'compass'
+            : (g === GPCOORDS_COMFULL) ? 'full compass'
+            : (g === GPCOORDS_SCREEN) ? 'screen'
+            : 'none');
+        return OPTN_OK; // C `:4739`
+    }
+    return OPTN_OK; // C `:4744`
+}
+
+/**
+ * C options.c handler_whatis_coord `:6205–6276` (staticfn) — 'O' menu
+ * picker for iflags.getpos_coords. Sole C caller is the
+ * optfn_whatis_coord do_handler arm (`:4742`), reached from doset `:8935`
+ * through doset_optfn_do_handler.
+ */
+export async function handler_whatis_coord() {
+    if (!game.iflags) game.iflags = {};
+    const gpc = game.iflags.getpos_coords; // C `:6213`
+    const verbose = game.flags?.verbose !== false; // C flags.verbose (default on)
+    const COLNO = 80, ROWNO = 21; // C global.h
+    // C `:6216–6218` create_nhwindow/start_menu/zeroany — raw menu below.
+    // C `:6264–6265` end_menu prompt painted as header (D-2762 precedent).
+    const raw = [{
+        text: 'Select coordinate display when auto-describing a map position:',
+        selectable: false,
+    }];
+    // C `:6219–6245` five add_menu rows: a_char + letter = GPCOORDS_*, gacc 0,
+    // nul_glyphinfo, ATR_NONE/NO_COLOR; MENU_ITEMFLAGS_SELECTED on gpc.
+    for (const [ch, text] of [
+        [GPCOORDS_COMPASS, "compass ('east' or '3s' or '2n,4w')"], // C `:6219–6225`
+        [GPCOORDS_COMFULL, "full compass ('east' or '3south' or '2north,4west')"], // C `:6226–6231`
+        [GPCOORDS_MAP, 'map <x,y>'], // C `:6232–6236`
+        [GPCOORDS_SCREEN, 'screen [row,column]'], // C `:6237–6241`
+        [GPCOORDS_NONE, 'none (no coordinates displayed)'], // C `:6242–6246`
+    ]) {
+        raw.push({ text, selectable: true, selected: gpc === ch, a_char: ch, selector: ch });
+    }
+    raw.push({ text: '', selectable: false }); // C `:6246` add_menu_str ""
+    raw.push({ // C `:6247–6250`
+        text: `map: upper-left: <${1},${0}>, lower-right: <${COLNO - 1},${ROWNO - 1}>${
+            verbose ? '; column 0 unused, off left edge' : ''}`,
+        selectable: false,
+    });
+    if (!windowport_tty()) // C `:6251` strcmp(windowprocs.name, "tty") — only show for non-tty
+        raw.push({ // C `:6252–6253`
+            text: "screen: row is offset to accommodate tty interface's use of top line",
+            selectable: false,
+        });
+    // C `:6254–6258` COL80ARG (COLNO == 80): verbose ? "; column 80 is not used"
+    raw.push({ // C `:6259–6262` "[%02d,%02d], lower-right: [%d,%d]%s"
+        text: `screen: upper-left: [${String(0 + 2).padStart(2, '0')},${String(1).padStart(2, '0')}], lower-right: [${
+            ROWNO - 1 + 2},${COLNO - 1}]${verbose ? '; column 80 is not used' : ''}`,
+        selectable: false,
+    });
+    raw.push({ text: '', selectable: false }); // C `:6263` add_menu_str ""
+    const res = await select_menu_pick_one(raw); // C `:6264–6266` end/select (destroy inside the helper)
+    if (res.kind === 'pick') { // C `:6266` pick_cnt > 0
+        game.iflags.getpos_coords = res.item.a_char; // C `:6267`
+        /* PICK_ONE doesn't unselect preselected entry when
+           selecting another one */
+        // C `:6270–6271` pick_cnt > 1 && == gpc → window_pick[1]: the helper
+        // returns the one new pick, which is the entry C chooses.
+        // C `:6272` free — GC
+    }
+    // C `:6274` destroy_nhwindow — inside the helper
+    return OPTN_OK; // C `:6275`
+}
+
+/**
+ * C options.c optfn_number_pad `:2574–2645` (staticfn; NHOPT_PARSE wires
+ * &optfn_number_pad into the number_pad allopt row, optlist.h `:535`).
+ * do_handler (`:2641–2643`) returns handler_number_pad() — async in JS
+ * (menu), so doset calls the handler through doset_optfn_do_handler and
+ * doset_simple through doset_compound_via_getlin (optfn_perminv_mode
+ * precedent); no do_handler branch here.
+ * @param {number} optidx C optidx (feeds the bad_negation text only)
+ * @param {number} req REQ_DO_INIT / REQ_DO_SET / REQ_GET_VAL / REQ_GET_CNF_VAL
+ * @param {boolean} negated
+ * @param {{buf:string}|string} opts get_val holder / do_set option string (read-only; C re-derives op from it)
+ * @param {string} _op C reassigns op from opts at `:2585`
+ * @param {object|null} [iflagsBag] iflags home (result.iflags at rc parse; game.iflags in game)
+ * @param {boolean} [optInitial] C go.opt_initial for the empty-value gate
+ */
+export function optfn_number_pad(optidx, req, negated, opts, _op, iflagsBag, optInitial) {
+    const iflags = iflagsBag || game.iflags || (game.iflags = {});
+    const optInit = optInitial ?? game.go?.opt_initial; // C go.opt_initial
+    if (req === REQ_DO_INIT) { // C `:2580`
+        return OPTN_OK; // C `:2581`
+    }
+    if (req === REQ_DO_SET) { // C `:2583`
+        const optstr = String(opts);
+        const compat = (optstr.length <= 10); // C `:2584` ("number_pad" is 10 chars)
+        const op = string_for_opt(optstr, (compat || !optInit)); // C `:2585` (reassigns op)
+        if (op === EMPTY_OPTSTR) { // C `:2586`
+            if (compat || negated || optInit) { // C `:2587`
+                /* for backwards compatibility, "number_pad" without a
+                   value is a synonym for number_pad:1 */
+                iflags.num_pad = !negated; // C `:2590`
+                iflags.num_pad_mode = 0; // C `:2591`
+            }
+        } else if (negated) { // C `:2593`
+            bad_negation(allopt_name(optidx), true); // C `:2594`
+            return OPTN_ERR; // C `:2595`
+        } else {
+            const mode = Number.parseInt(op, 10); // C `:2597` atoi
+            if (Number.isNaN(mode) || mode < -1 || mode > 4 // C `:2599`
+                || (mode === 0 && op[0] !== '0')) {
+                // Named omission (map): config_error_add("Illegal %s parameter '%s'",
+                // allopt[optidx].name, op) — no JS config-error sink (file precedent).
+                void optidx;
+                return OPTN_ERR; // C `:2602`
+            } else if (mode <= 0) { // C `:2603`
+                iflags.num_pad = false; // C `:2604`
+                /* German keyboard; y and z keys swapped */
+                iflags.num_pad_mode = (mode < 0) ? 1 : 0; // C `:2606` (mode < 0), 0 or 1
+            } else { // C `:2607` mode > 0
+                iflags.num_pad = true; // C `:2608`
+                iflags.num_pad_mode = 0; // C `:2609`
+                /* PC Hack / MSDOS compatibility */
+                if (mode === 2 || mode === 4) // C `:2611`
+                    iflags.num_pad_mode |= 1; // C `:2612`
+                /* phone keypad layout */
+                if (mode === 3 || mode === 4) // C `:2614`
+                    iflags.num_pad_mode |= 2; // C `:2615`
+            }
+        }
+        /* Named (map): reset_commands(FALSE) `:2618` (cmd.c `:3344–3476`,
+           own coverage row — cmdbind key-rebinding unported) and
+           number_pad(iflags.num_pad ? 1 : 0) `:2619` (winprocs.h `:161`
+           tty platform no-op, mark_synch precedent). */
+        return OPTN_OK; // C `:2620`
+    }
+    if (req === REQ_GET_VAL || req === REQ_GET_CNF_VAL) { // C `:2622`
+        const numpadmodes = [ // C `:2623–2628`
+            '0=off', '1=on', '2=on, MSDOS compatible',
+            '3=on, phone-style layout',
+            '4=on, phone layout, MSDOS compatible',
+            '-1=off, y & z swapped', /*[5]*/
+        ];
+        /* C `:2629–2632` reads gc.Cmd.*, which reset_commands syncs from
+           iflags after every change (`:3377`/`:3384`/`:3397`/`:3416` — pure
+           functions of (num_pad, num_pad_mode)), so the index below is
+           output-identical; switch to game.Cmd when reset_commands ports. */
+        const numPad = !!iflags.num_pad;
+        const npm = iflags.num_pad_mode | 0;
+        const phone = ((npm & 2) !== 0) ? numPad : false; // C `:3416`
+        const pcHack = ((npm & 1) !== 0) ? numPad : false; // C `:3397`
+        const swapYz = ((npm & 1) !== 0) ? !numPad : false; // C `:3384`
+        const indx = numPad // C `:2629–2632`
+            ? (phone ? (pcHack ? 4 : 3) : (pcHack ? 2 : 1))
+            : swapYz ? 5 : 0;
+        if (req === REQ_GET_VAL) // C `:2634`
+            set_optbuf(opts, numpadmodes[indx]); // C `:2635`
+        else {
+            set_optbuf(opts, String((indx === 5) ? -1 : indx)); // C `:2637` %i
+        }
+        return OPTN_OK; // C `:2639`
+    }
+    return OPTN_OK; // C `:2644`
+}
+
+/**
+ * C options.c handler_number_pad `:5893–5950` (staticfn) — 'O' menu
+ * picker for (iflags.num_pad, iflags.num_pad_mode). Sole C caller is the
+ * optfn_number_pad do_handler arm (`:2642`), async-split into
+ * doset_optfn_do_handler (doset `:8935`) and doset_compound_via_getlin
+ * (doset_simple).
+ */
+export async function handler_number_pad() {
+    if (!game.iflags) game.iflags = {};
+    const npchoices = [ // C `:5898–5903`
+        ' 0 (off)', ' 1 (on)', ' 2 (on, MSDOS compatible)',
+        ' 3 (on, phone-style digit layout)',
+        ' 4 (on, phone-style layout, MSDOS compatible)',
+        "-1 (off, 'z' to move upper-left, 'y' to zap wands)",
+    ];
+    // C `:5907–5909` create_nhwindow/start_menu/zeroany — raw menu below.
+    // C `:5915` end_menu prompt painted as header (D-2762 precedent).
+    const raw = [{ text: 'Select number_pad mode:', selectable: false }];
+    for (let i = 0; i < npchoices.length; ++i) { // C `:5910`
+        // C `:5911–5913` a_int i+1, letter 'a'+i, gacc '0'+i,
+        // nul_glyphinfo, ATR_NONE/NO_COLOR, MENU_ITEMFLAGS_NONE (no preselect).
+        raw.push({
+            text: npchoices[i],
+            selectable: true,
+            a_int: i + 1,
+            selector: String.fromCharCode(97 + i),
+            gselector: String.fromCharCode(48 + i),
+        });
+    }
+    const res = await select_menu_pick_one(raw); // C `:5915–5916` end/select (destroy inside the helper)
+    if (res.kind === 'pick') { // C `:5916` > 0
+        switch (res.item.a_int - 1) { // C `:5917`
+        case 0: // C `:5918`
+            game.iflags.num_pad = false; // C `:5919`
+            game.iflags.num_pad_mode = 0; // C `:5920`
+            break;
+        case 1: // C `:5922`
+            game.iflags.num_pad = true; // C `:5923`
+            game.iflags.num_pad_mode = 0; // C `:5924`
+            break;
+        case 2: // C `:5926`
+            game.iflags.num_pad = true; // C `:5927`
+            game.iflags.num_pad_mode = 1; // C `:5928`
+            break;
+        case 3: // C `:5930`
+            game.iflags.num_pad = true; // C `:5931`
+            game.iflags.num_pad_mode = 2; // C `:5932`
+            break;
+        case 4: // C `:5934`
+            game.iflags.num_pad = true; // C `:5935`
+            game.iflags.num_pad_mode = 3; // C `:5936`
+            break;
+        /* last menu choice: number_pad == -1 */ // C `:5938`
+        case 5: // C `:5939`
+            game.iflags.num_pad = false; // C `:5940`
+            game.iflags.num_pad_mode = 1; // C `:5941`
+            break;
+        }
+        /* Named (map): reset_commands(FALSE) `:5944` (own coverage row) and
+           number_pad(iflags.num_pad ? 1 : 0) `:5945` (tty platform no-op). */
+        // C `:5946` free — GC
+    }
+    // C `:5948` destroy_nhwindow — inside the helper
+    return OPTN_OK; // C `:5949`
+}
+
+/**
+ * C options.c `(*allopt[k].optfn)(idx, do_handler, …)` for the three
+ * has_handler compounds (optlist.h `:509`/`:556`/`:816`) — the do_handler
+ * arms of optfn_msg_window `:2516–2518`, optfn_paranoid_confirmation
+ * `:3039–3041` and optfn_versinfo `:4511–4516` (+ its `:4530` redraw
+ * tail). Async split of the sync optfns; sole C caller is doset `:8935`.
+ * @param {string} name allopt row name
+ * @returns {Promise<number>} optn_* result
+ */
+async function doset_optfn_do_handler(name) {
+    if (name === 'menu_objsyms') {
+        return handler_menu_objsyms(); // C `:2284`
+    }
+    if (name === 'msg_window') {
+        return handler_msg_window(); // C `:2517`
+    }
+    if (name === 'number_pad') {
+        return handler_number_pad(); // C `:2642`
+    }
+    if (name === 'paranoid_confirmation') {
+        return handler_paranoid_confirmation(); // C `:3040`
+    }
+    if (name === 'whatis_coord') {
+        return handler_whatis_coord(); // C `:4742`
+    }
+    if (name === 'versinfo') {
+        const optname = allopt_name(allopt_idx('versinfo')); // C `:4476`
+        if (!game.flags) game.flags = {};
+        const vi = game.flags.versinfo >>> 0; // C `:4477`
+        /* return handler_versinfo(); */
+        await handler_versinfo(); // C `:4513` (void)
+        const now = game.flags.versinfo >>> 0;
+        await pline(`'${optname}' ${now === vi ? 'not changed, still' : 'changed to'} ${now}.`); // C `:4514–4516`
+        if (now !== vi && !game.go?.opt_initial) // C `:4530`
+            mark_opt_need_redraw(); // C `:4531`
+        return OPTN_OK; // C `:4533`
+    }
+    return OPTN_OK;
+}
+
+/**
+ * C doset_add_menu `:9038–9042` optfn(idx, get_val, …) value column for a
+ * compound row whose optfn is live.
+ * @param {Function} optfn sync optfn_* with the C (optidx, req, negated, opts, op) shape
+ * @param {string} name allopt row name
+ */
+function doset_compopt_get_val(optfn, name) {
+    const holder = { buf: '' };
+    optfn(allopt_idx(name), REQ_GET_VAL, false, holder, EMPTY_OPTSTR);
+    return holder.buf;
+}
+
+/**
+ * C options.c optfn_symset `:4166–4236` (staticfn; NHOPT_PARSE wires
+ * &optfn_symset into the symset allopt row, optlist.h `:743`).
+ * do_handler (`:4223–4233`) is handler_symset (`:6320–6328`) around the
+ * do_symset browser (symbols.c `:908–1099`, 192 lines over the SYMBOLS
+ * file) — named map omission with the glyphid cache wrap; no do_handler
+ * branch here (optfn_perminv_mode precedent).
+ * @param {number} _optidx C optidx (unused: only feeds the named do_handler)
+ * @param {number} req REQ_DO_INIT / REQ_DO_SET / REQ_GET_VAL / REQ_GET_CNF_VAL
+ * @param {boolean} _negated C UNUSED — even "!symset:foo" stores
+ * @param {{buf:string}|string} opts get_val holder / do_set option string (read-only)
+ * @param {string} op value tail (EMPTY_OPTSTR when valueless)
+ * @param {object|null} [store] name home (rc result at parse; game in game)
+ * @param {boolean} [optInitial] C go.opt_initial — skip redraw flags at init
+ */
+export function optfn_symset(_optidx, req, _negated, opts, op, store, optInitial) {
+    const st = store || game;
+    if (req === REQ_DO_INIT) { // C `:4171–4173`
+        return OPTN_OK;
+    }
+    if (req === REQ_DO_SET) { // C `:4174`
+        if (op !== EMPTY_OPTSTR) { // C `:4175`
+            // C `:4176–4179` free old name + dupstr(op) (GC: overwrite).
+            st.symset = String(op);
+            const slot = st.gs?.symset?.[PRIMARYSET]; // C-mirror home (no live readers yet)
+            if (slot) slot.name = String(op);
+            /* Named (map): read_sym_file `:4180` (files.c fopen — Rule #2),
+               clear_symsetentry + "Unable to load" sink `:4181–4185`,
+               H_UTF8/load_symset `:4188–4194`, switch_symbols `:4197`
+               (ov_* lazy-read precedent); success flags below. */
+            if (!optInitial) { // C `:4198–4199` unconditional; gated: JS startup has no consumer (perminv precedent)
+                mark_opt_need_redraw();
+                mark_opt_need_glyph_reset();
+                if (!game.go) game.go = {};
+                game.go.opt_symset_changed = true;
+            }
+        } else {
+            return OPTN_ERR; // C `:4201–4202`
+        }
+        return OPTN_OK; // C `:4203`
+    }
+    if (req === REQ_GET_VAL) { // C `:4205`
+        const gsname = st.gs?.symset?.[PRIMARYSET]?.name || null;
+        const nm = gsname || st.symset || game._parsed_rc?.symset || game.flags?.symset;
+        let s = nm ? String(nm) : 'default'; // C `:4206–4208`
+        // C `:4209–4210` tests the gs home; the union matches C once homes unify (mirror is write-only today).
+        if ((game.currentgraphics | 0) === PRIMARYSET && (gsname || st.symset)) s += ', active';
+        const handling = st.gs?.symset?.[PRIMARYSET]?.handling | 0;
+        if (handling) s += `, handler=${known_handling[handling]}`; // C `:4211–4214`
+        set_optbuf(opts, s);
+        return OPTN_OK; // C `:4215`
+    }
+    if (req === REQ_GET_CNF_VAL) { // C `:4218`
+        const gsname = st.gs?.symset?.[PRIMARYSET]?.name || null;
+        const nm = gsname || st.symset || game._parsed_rc?.symset || game.flags?.symset;
+        set_optbuf(opts, nm ? String(nm) : 'default'); // C `:4219–4221`
+        return OPTN_OK; // C `:4222`
+    }
+    return OPTN_OK; // C `:4235`
+}
+
+/**
+ * C options.c handler_versinfo `:6572–6617` (staticfn) — 'O' menu picker
+ * for the flags.versinfo bitmask. Sole C caller is the optfn_versinfo
+ * do_handler arm (`:4513`), async-split into doset_optfn_do_handler.
+ */
+export async function handler_versinfo() {
+    const gb = game.nomakedefs?.git_branch;
+    const have_branch = !!(gb && gb[0]); // C `:6578`
+    if (!game.flags) game.flags = {};
+    const vi = game.flags.versinfo | 0; // C `:6579`
+    // C `:6581–6583` create_nhwindow/start_menu/zeroany — raw menu below.
+    // C `:6603` end_menu prompt painted as header (D-2762 precedent).
+    const raw = [
+        { text: 'Select version information flags:', selectable: false },
+        // C `:6585–6588` a_int = n = VI_NUMBER, letter 'n', gacc n+'0'.
+        { text: 'version number', selectable: true, selected: (vi & VI_NUMBER) !== 0, a_int: VI_NUMBER, selector: 'n', gselector: '1' },
+        // C `:6589–6592` a_int = n = VI_NAME, letter 'g', gacc n+'0'.
+        { text: 'game name', selectable: true, selected: (vi & VI_NAME) !== 0, a_int: VI_NAME, selector: 'g', gselector: '2' },
+        // C `:6593–6601` NH_DEVEL_STATUS == NH_STATUS_RELEASED (patchlevel.h
+        // `:33`/`:25`) so "(not applicable)" is live; "(not available)" compiled out.
+        { text: have_branch ? 'development branch' : '(not applicable)', selectable: true, selected: (vi & VI_BRANCH) !== 0, a_int: VI_BRANCH, selector: 'b', gselector: '3' },
+    ];
+    const picks = await select_menu_pick_any(raw, { cancelValue: null }); // C `:6604` end/select/destroy (destroy inside the helper)
+    if (picks !== null && picks.length > 0) { // C `:6605` n > 0 (cancel and finish-empty both keep)
+        let newval = 0; // C `:6606`
+        for (let i = 0; i < picks.length; ++i) newval |= picks[i].a_int | 0; // C `:6608–6609`
+        newval &= 7; // C `:6610`
+        if (newval) game.flags.versinfo = newval >>> 0; // C `:6611–6612` (unsigned)
+        // C `:6613` free — GC
+    }
+    // C `:6615` destroy — inside the helper
+    return OPTN_OK; // C `:6616`
+}
+
+/**
+ * C options.c optfn_versinfo `:4471–4534` (staticfn; NHOPT_PARSE wires
+ * &optfn_versinfo into the versinfo allopt row, optlist.h `:816`).
+ * do_handler (`:4511–4516`, handler_versinfo + changed/still pline) is async
+ * in JS and lives in doset_optfn_do_handler; the if/else-if chain is
+ * otherwise in C order.
+ */
+export function optfn_versinfo(optidx, req, negated, opts, op) {
+    const optname = allopt_name(optidx); // C `:4476`
+    if (!game.flags) game.flags = {};
+    const vi = game.flags.versinfo | 0; // C `:4477` unsigned snapshot
+    if (req === REQ_DO_INIT) { // C `:4479–4481`
+        return OPTN_OK;
+    }
+    if (req === REQ_DO_SET) { // C `:4482`
+        /* versinfo: what to include when 'showvers' displays version
+           on status lines; bitmask with up to three bits:
+           (1) x.y.z number, (2) program name, (4) git branch if available.
+           If branch is requested but unavailable, status_version will
+           treat 4 as 1. */
+        const vgb = game.nomakedefs?.git_branch;
+        const have_branch = !!(vgb && vgb[0]); // C `:4489–4490`
+        const dflt = have_branch ? VI_BRANCH : VI_NUMBER; // C `:4491`
+        void dflt; // feeds the named `:4499–4501` sink text only
+        if (negated) { // C `:4493`
+            bad_negation(optname, true); // C `:4494` (stub: sink named)
+            return OPTN_SILENTERR; // C `:4495`
+        }
+        op = string_for_opt(opts, false); // C `:4497` (reassigns op)
+        if (op === EMPTY_OPTSTR) { // C `:4498`
+            // Named omission (map): config_error_add("'%s' requires a value; defaulting to %d") — no JS config-error sink.
+            return OPTN_SILENTERR; // C `:4501`
+        }
+        const val = Number.parseInt(op, 10) || 0; // C `:4503` atoi
+        if (!val || (val & ~7) !== 0) { // C `:4504`
+            // Named omission (map): config_error_add("'%s' must be one of 1, 2, 4, ...") — no JS config-error sink.
+            return OPTN_SILENTERR; // C `:4508`
+        }
+        game.flags.versinfo = val >>> 0; // C `:4510` (unsigned)
+    } else if (req === REQ_GET_VAL) { // C `:4517`
+        const g = (vi & VI_NAME) !== 0, // C `:4519–4521` (from vi)
+            b = (vi & VI_BRANCH) !== 0,
+            n = (vi & VI_NUMBER) !== 0;
+        const vs = status_version(QBUFSZ, false).slice(0, 99); // C `:4526` status_version(vbuf, sizeof, FALSE) + %.99s
+        set_optbuf(opts, `${game.flags.versinfo >>> 0}: ${g ? 'name' : ''}${(b && g) ? '+' : ''}${b ? 'branch' : ''}${(n && (b || g)) ? '+' : ''}${n ? 'number' : ''} (${vs})`); // C `:4523–4526` (%u reads live flags)
+    } else if (req === REQ_GET_CNF_VAL) { // C `:4527`
+        set_optbuf(opts, String(game.flags.versinfo >>> 0)); // C `:4528`
+    }
+    if ((game.flags.versinfo | 0) !== vi && !game.go?.opt_initial) // C `:4530`
+        mark_opt_need_redraw(); // C `:4531` (sets go.opt_need_redraw directly)
+    return OPTN_OK; // C `:4533`
+}
+
+/**
+ * C options.c warning_opts `:7520–7538` (staticfn) — parse the warnings
+ * value (already extracted below) into the WARNCOUNT override bytes and
+ * assign them. Sole C caller is the optfn_warnings do_set arm (`:4692`,
+ * live below). Exported: queue coverage row.
+ * @param {string} opts full option string (value tail extracted inside, like C)
+ * @param {string} optype option name for the string_for_env_opt gate
+ */
+export function warning_opts(opts, optype) {
+    const val = string_for_env_opt(optype, opts, false); // C `:7527` (reassigns opts)
+    if (val === EMPTY_OPTSTR) return false; // C `:7528`
+    const esc = escapes(val); // C `:7529` in-place
+    const length = esc.length; // C `:7530`
+    /* match the form obtained from PC configuration files */
+    const translate = [];
+    for (let i = 0; i < WARNCOUNT; i++) // C `:7532`
+        translate[i] = (i >= length) ? 0 // C `:7533–7535`
+            : esc.charCodeAt(i) ? esc.charCodeAt(i) & 0xff
+            : def_warnsyms[i].ch.charCodeAt(0);
+    assign_warnings(translate); // C `:7536`
+    return true; // C `:7537`
+}
+
+/* C options.c string_for_env_opt `:6682–6690` (staticfn). */
+function string_for_env_opt(optname, opts, valOptional, initial = game.go?.opt_initial) {
+    if (!initial) { // C `:6685`
+        rejectoption(optname); // C `:6686`
+        return EMPTY_OPTSTR; // C `:6687`
+    }
+    return string_for_opt(opts, valOptional); // C `:6689`
+}
+
+/* C options.c rejectoption `:6811–6820` (staticfn). The MICRO arm (`:6815`)
+   is named (contest build is unix); the else arm is live. pline without
+   await: sync caller (add_menu_cmd_alias precedent). */
+function rejectoption(optname) {
+    pline(`${optname} can be set only from NETHACKOPTIONS or ${get_configfile()}.`); // C `:6817–6818`
+}
+
+/**
+ * C options.c assign_warnings `:7540–7548` (extern) — copy nonzero override
+ * bytes into gw.warnsyms. game.gw.warnsyms is seeded from def_warnsyms .ch
+ * (C `:7200–7201` init; that init body itself is unported).
+ */
+export function assign_warnings(graph_chars) {
+    if (!game.gw) game.gw = {};
+    if (!Array.isArray(game.gw.warnsyms)) // C `:7200–7201` seed
+        game.gw.warnsyms = def_warnsyms.map((e) => e.ch.charCodeAt(0));
+    for (let i = 0; i < WARNCOUNT; i++) // C `:7545`
+        if (graph_chars[i]) // C `:7546`
+            game.gw.warnsyms[i] = graph_chars[i]; // C `:7547`
+}
+
+/**
+ * C options.c optfn_warnings `:4681–4700` (staticfn; NHOPT_PARSE wires
+ * &optfn_warnings into the warnings allopt row, optlist.h `:863`). Sole
+ * in-C caller of warning_opts (`:4692` do_set).
+ */
+export function optfn_warnings(optidx, req, _negated, opts, _op) {
+    if (req === REQ_DO_INIT) { // C `:4688–4690`
+        return OPTN_OK;
+    }
+    if (req === REQ_DO_SET) { // C `:4691`
+        const reslt = warning_opts(opts, allopt_name(optidx)); // C `:4692`
+        return reslt ? OPTN_OK : OPTN_ERR; // C `:4693`
+    }
+    if (req === REQ_GET_VAL || req === REQ_GET_CNF_VAL) { // C `:4695`
+        set_optbuf(opts, ''); // C `:4696 opts[0] = '\0'`
+        return OPTN_OK; // C `:4697`
+    }
+    return OPTN_OK; // C `:4699`
+}
+
+/**
  * C options.c doset `:8869–8872` / `:8846–8848` WC skip.
  * wc2_supported named (petattr/statushilites already in the contest list).
  */
@@ -1203,6 +2165,9 @@ export function parseNethackrc(rc) {
         // C: cfgfiles.c BINDINGS → parsebindings → Cmd.cmdbinds overlays
         binds: new Map(),
     };
+    // C options.c `:7426–7430` optfn(do_init) pass before the rc file.
+    optfn_menu_objsyms(allopt_idx('menu_objsyms'), REQ_DO_INIT, false, '', EMPTY_OPTSTR, result.iflags);
+    result.iflags.getpos_coords = GPCOORDS_NONE; // C initoptions_init `:7190`
     if (!rc) return result;
 
     for (const rawLine of rc.split('\n')) {
@@ -1284,16 +2249,39 @@ export function parseNethackrc(rc) {
                     else if (val === 'dog' || val === 'd') result.preferred_pet = 'd';
                     else if (val === 'cat' || val === 'c') result.preferred_pet = 'c';
                 }
-                else if (key === 'symset') result.symset = val;
+                else if (key === 'symset') {
+                    // C optfn_symset do_set (opt_initial) on the rc result.
+                    optfn_symset(
+                        allopt_idx('symset'), REQ_DO_SET, negated, trimmed, val, result, true,
+                    );
+                }
                 else if (key === 'suppress_alert') result.flags.suppress_alert = val;
                 else if (key === 'msg_window') {
-                    // C optfn_msg_window: lowc(*op) → s/c/f/r; negated
-                    // with a value is bad_negation.
+                    // C optfn_msg_window do_set (opt_initial) on result.iflags.
+                    optfn_msg_window(
+                        allopt_idx('msg_window'), REQ_DO_SET, negated, trimmed, val, result.iflags,
+                    );
+                }
+                else if (key === 'menu_objsyms' || key === 'use_menu_glyphs') {
+                    // C optfn_menu_objsyms do_set (opt_initial) on result.iflags.
+                    optfn_menu_objsyms(
+                        allopt_idx('menu_objsyms'), REQ_DO_SET, negated, stripped, val, result.iflags,
+                    );
+                }
+                else if (key === 'whatis_coord') {
+                    // C optfn_whatis_coord do_set (opt_initial) on result.iflags.
+                    optfn_whatis_coord(
+                        allopt_idx('whatis_coord'), REQ_DO_SET, negated, stripped, val, result.iflags, true,
+                    );
+                }
+                else if (key === 'number_pad') {
+                    // C optfn_number_pad do_set (opt_initial) on result.iflags.
+                    // Negated number_pad is rejected by C parseoptions `:626`
+                    // (optlist.h negateok-No) — skip, prior value kept.
                     if (negated) continue;
-                    const tmp = val.charAt(0).toLowerCase();
-                    if (tmp === 's' || tmp === 'c' || tmp === 'f' || tmp === 'r') {
-                        result.iflags.prevmsg_window = tmp;
-                    }
+                    optfn_number_pad(
+                        allopt_idx('number_pad'), REQ_DO_SET, false, stripped, val, result.iflags, true,
+                    );
                 }
                 else if (key === 'menuinvertmode') {
                     // C options.c optfn_menuinvertmode do_set: atoi(op),
@@ -1384,8 +2372,33 @@ export function parseNethackrc(rc) {
                 // C: OPTIONS=DECgraphics loads Primary DEC showsyms (same as symset:)
                 else if (lname === 'decgraphics') result.flags.decgraphics = value;
                 else if (lname === 'msg_window') {
-                    // C optfn_msg_window empty_optstr: negated → 's', else 'f'
-                    result.iflags.prevmsg_window = negated ? 's' : 'f';
+                    // C optfn_msg_window do_set, valueless (opt_initial).
+                    optfn_msg_window(
+                        allopt_idx('msg_window'), REQ_DO_SET, negated, stripped, EMPTY_OPTSTR, result.iflags,
+                    );
+                }
+                else if (lname === 'menu_objsyms' || lname === 'use_menu_glyphs') {
+                    // C optfn_menu_objsyms do_set, valueless (opt_initial);
+                    // opts starts with the name, so use_menu_glyphs → entries.
+                    optfn_menu_objsyms(
+                        allopt_idx('menu_objsyms'), REQ_DO_SET, negated, lname, EMPTY_OPTSTR, result.iflags,
+                    );
+                }
+                else if (lname === 'whatis_coord') {
+                    // C optfn_whatis_coord do_set, valueless (opt_initial):
+                    // negated → none, else string_for_env_opt empty → optn_err.
+                    optfn_whatis_coord(
+                        allopt_idx('whatis_coord'), REQ_DO_SET, negated, lname, EMPTY_OPTSTR, result.iflags, true,
+                    );
+                }
+                else if (lname === 'number_pad') {
+                    // C optfn_number_pad do_set, valueless (opt_initial):
+                    // bare "number_pad" → (on, mode 0); "!number_pad" is
+                    // rejected by C parseoptions `:626` (negateok-No).
+                    if (negated) continue;
+                    optfn_number_pad(
+                        allopt_idx('number_pad'), REQ_DO_SET, false, lname, EMPTY_OPTSTR, result.iflags, true,
+                    );
                 }
                 else if (lname === 'accessiblemsg') {
                     parse_a11y_accessiblemsg(result, value);
@@ -1752,9 +2765,11 @@ export function free_one_menu_coloring(idx) {
  * C ref: coloratt.c add_menu_coloring_parsed `:585–613` — validated
  * callers only (test_regex_pattern ran first); recompile can still fail,
  * then FALSE. config_error_add paths named (msgtype_add precedent).
+ * C `:595` guards NULL only: an empty pattern compiles (match-everything),
+ * reachable from add_menu_coloring's `MENUCOLOR==color` / `""` arms.
  */
 export function add_menu_coloring_parsed(str, c, a) {
-    if (!str) return false;
+    if (str === null || str === undefined) return false; // C :595 !str (NULL only)
     const match = regex_init();
     if (!regex_compile(String(str), match)) {
         regex_free(match);
@@ -1770,6 +2785,313 @@ export function add_menu_coloring_parsed(str, c, a) {
     if (!game.iflags) game.iflags = {};
     game.iflags.use_menu_color = true;
     return true;
+}
+
+/* C ctype isspace() as coloratt.c `:652` uses it (`(uchar)` cast: bytes
+ * >= 0x80 never match in the C locale, so the test is the six ASCII
+ * whitespace chars only). */
+function mc_isspace(ch) {
+    return ch === ' ' || ch === '\t' || ch === '\n'
+        || ch === '\v' || ch === '\f' || ch === '\r';
+}
+
+/**
+ * C ref: coloratt.c add_menu_coloring `:616–660` — parse
+ * `'"regex_string"=color&attr'` (C `:615` header comment) from a config-file
+ * MENUCOLOR line and prepend it via add_menu_coloring_parsed. C order below:
+ * copy-then-split at the first '=' (the regexp half is never mungspaced,
+ * C `:647`), mungspaced color[&attr] with the color validated before the
+ * attr arm runs, then the quote-strip which backs over isspace before
+ * matching the closer. Sole C caller is cfgfiles.c cnf_line_MENUCOLOR
+ * (`:1166`); no JS read_config_file dispatch exists yet (map-named), so
+ * this is wired for that future caller like reset_duplicate_opt_detection.
+ */
+export function add_menu_coloring(tmpstr) {
+    let c = NO_COLOR, a = MC_ATR_NONE; // C :619 (C ATR_NONE=0, wintype.h:128)
+    // C :623-624 strncpy + forced NUL: copy truncated to BUFSZ-1.
+    const str = String(tmpstr ?? '').slice(0, BUFSZ - 1);
+    const eq = str.indexOf('='); // C :626 strchr(str, '=')
+    if (eq === -1) {
+        // Named omission (map): config_error_add("Malformed MENUCOLOR") sink.
+        return false; // C :627-628
+    }
+    // C :631-634: mungspace past '=', split at the first '&'.
+    let colorPart = mungspaces(str.slice(eq + 1)); // C :631-632
+    const amp = colorPart.indexOf('&'); // C :633 strchr(tmps, '&')
+    let attrPart = null;
+    if (amp !== -1) { // C :633-634 *amp = '\0'
+        attrPart = colorPart.slice(amp + 1);
+        colorPart = colorPart.slice(0, amp);
+    }
+    c = match_str2clr(colorPart, false); // C :636
+    if (c >= CLR_MAX) return false; // C :637-638
+    if (attrPart !== null) { // C :640 if (amp)
+        a = match_str2attr(attrPart, true); // C :641-642 advance past '&'
+        if (a === -1) return false; // C :643-644
+    }
+    // C :648-649: truncate at '='; the regexp half kept its spaces.
+    let pattern = str.slice(0, eq);
+    if (pattern[0] === '"' || pattern[0] === "'") { // C :650
+        let j = pattern.length - 1; // C :651 cs--
+        while (j >= 0 && mc_isspace(pattern[j])) j--; // C :652-653
+        if (j >= 0 && pattern[j] === pattern[0]) pattern = pattern.slice(1, j); // C :654-657
+    }
+    return add_menu_coloring_parsed(pattern, c, a); // C :659
+}
+
+/* C coloratt.c:885-970 color_256_definitions[] — file-static {index,value}
+ * table (values from UnNetHack, C `:889` comment): the xterm 256-color
+ * cube 16-231 plus grayscale 232-255. Module-local like C; readers are
+ * closest_color below and the unported get_nhcolor_from_256_index
+ * (map-named). Transcription cross-checked against the xterm formula
+ * (cube steps 0/95/135/175/215/255, gray 8+10k) in the D-2777 smoke test. */
+const color_256_definitions = [
+    { index: 16, value: 0x000000 }, { index: 17, value: 0x00005f }, { index: 18, value: 0x000087 },
+    { index: 19, value: 0x0000af }, { index: 20, value: 0x0000d7 }, { index: 21, value: 0x0000ff },
+    { index: 22, value: 0x005f00 }, { index: 23, value: 0x005f5f }, { index: 24, value: 0x005f87 },
+    { index: 25, value: 0x005faf }, { index: 26, value: 0x005fd7 }, { index: 27, value: 0x005fff },
+    { index: 28, value: 0x008700 }, { index: 29, value: 0x00875f }, { index: 30, value: 0x008787 },
+    { index: 31, value: 0x0087af }, { index: 32, value: 0x0087d7 }, { index: 33, value: 0x0087ff },
+    { index: 34, value: 0x00af00 }, { index: 35, value: 0x00af5f }, { index: 36, value: 0x00af87 },
+    { index: 37, value: 0x00afaf }, { index: 38, value: 0x00afd7 }, { index: 39, value: 0x00afff },
+    { index: 40, value: 0x00d700 }, { index: 41, value: 0x00d75f }, { index: 42, value: 0x00d787 },
+    { index: 43, value: 0x00d7af }, { index: 44, value: 0x00d7d7 }, { index: 45, value: 0x00d7ff },
+    { index: 46, value: 0x00ff00 }, { index: 47, value: 0x00ff5f }, { index: 48, value: 0x00ff87 },
+    { index: 49, value: 0x00ffaf }, { index: 50, value: 0x00ffd7 }, { index: 51, value: 0x00ffff },
+    { index: 52, value: 0x5f0000 }, { index: 53, value: 0x5f005f }, { index: 54, value: 0x5f0087 },
+    { index: 55, value: 0x5f00af }, { index: 56, value: 0x5f00d7 }, { index: 57, value: 0x5f00ff },
+    { index: 58, value: 0x5f5f00 }, { index: 59, value: 0x5f5f5f }, { index: 60, value: 0x5f5f87 },
+    { index: 61, value: 0x5f5faf }, { index: 62, value: 0x5f5fd7 }, { index: 63, value: 0x5f5fff },
+    { index: 64, value: 0x5f8700 }, { index: 65, value: 0x5f875f }, { index: 66, value: 0x5f8787 },
+    { index: 67, value: 0x5f87af }, { index: 68, value: 0x5f87d7 }, { index: 69, value: 0x5f87ff },
+    { index: 70, value: 0x5faf00 }, { index: 71, value: 0x5faf5f }, { index: 72, value: 0x5faf87 },
+    { index: 73, value: 0x5fafaf }, { index: 74, value: 0x5fafd7 }, { index: 75, value: 0x5fafff },
+    { index: 76, value: 0x5fd700 }, { index: 77, value: 0x5fd75f }, { index: 78, value: 0x5fd787 },
+    { index: 79, value: 0x5fd7af }, { index: 80, value: 0x5fd7d7 }, { index: 81, value: 0x5fd7ff },
+    { index: 82, value: 0x5fff00 }, { index: 83, value: 0x5fff5f }, { index: 84, value: 0x5fff87 },
+    { index: 85, value: 0x5fffaf }, { index: 86, value: 0x5fffd7 }, { index: 87, value: 0x5fffff },
+    { index: 88, value: 0x870000 }, { index: 89, value: 0x87005f }, { index: 90, value: 0x870087 },
+    { index: 91, value: 0x8700af }, { index: 92, value: 0x8700d7 }, { index: 93, value: 0x8700ff },
+    { index: 94, value: 0x875f00 }, { index: 95, value: 0x875f5f }, { index: 96, value: 0x875f87 },
+    { index: 97, value: 0x875faf }, { index: 98, value: 0x875fd7 }, { index: 99, value: 0x875fff },
+    { index: 100, value: 0x878700 }, { index: 101, value: 0x87875f }, { index: 102, value: 0x878787 },
+    { index: 103, value: 0x8787af }, { index: 104, value: 0x8787d7 }, { index: 105, value: 0x8787ff },
+    { index: 106, value: 0x87af00 }, { index: 107, value: 0x87af5f }, { index: 108, value: 0x87af87 },
+    { index: 109, value: 0x87afaf }, { index: 110, value: 0x87afd7 }, { index: 111, value: 0x87afff },
+    { index: 112, value: 0x87d700 }, { index: 113, value: 0x87d75f }, { index: 114, value: 0x87d787 },
+    { index: 115, value: 0x87d7af }, { index: 116, value: 0x87d7d7 }, { index: 117, value: 0x87d7ff },
+    { index: 118, value: 0x87ff00 }, { index: 119, value: 0x87ff5f }, { index: 120, value: 0x87ff87 },
+    { index: 121, value: 0x87ffaf }, { index: 122, value: 0x87ffd7 }, { index: 123, value: 0x87ffff },
+    { index: 124, value: 0xaf0000 }, { index: 125, value: 0xaf005f }, { index: 126, value: 0xaf0087 },
+    { index: 127, value: 0xaf00af }, { index: 128, value: 0xaf00d7 }, { index: 129, value: 0xaf00ff },
+    { index: 130, value: 0xaf5f00 }, { index: 131, value: 0xaf5f5f }, { index: 132, value: 0xaf5f87 },
+    { index: 133, value: 0xaf5faf }, { index: 134, value: 0xaf5fd7 }, { index: 135, value: 0xaf5fff },
+    { index: 136, value: 0xaf8700 }, { index: 137, value: 0xaf875f }, { index: 138, value: 0xaf8787 },
+    { index: 139, value: 0xaf87af }, { index: 140, value: 0xaf87d7 }, { index: 141, value: 0xaf87ff },
+    { index: 142, value: 0xafaf00 }, { index: 143, value: 0xafaf5f }, { index: 144, value: 0xafaf87 },
+    { index: 145, value: 0xafafaf }, { index: 146, value: 0xafafd7 }, { index: 147, value: 0xafafff },
+    { index: 148, value: 0xafd700 }, { index: 149, value: 0xafd75f }, { index: 150, value: 0xafd787 },
+    { index: 151, value: 0xafd7af }, { index: 152, value: 0xafd7d7 }, { index: 153, value: 0xafd7ff },
+    { index: 154, value: 0xafff00 }, { index: 155, value: 0xafff5f }, { index: 156, value: 0xafff87 },
+    { index: 157, value: 0xafffaf }, { index: 158, value: 0xafffd7 }, { index: 159, value: 0xafffff },
+    { index: 160, value: 0xd70000 }, { index: 161, value: 0xd7005f }, { index: 162, value: 0xd70087 },
+    { index: 163, value: 0xd700af }, { index: 164, value: 0xd700d7 }, { index: 165, value: 0xd700ff },
+    { index: 166, value: 0xd75f00 }, { index: 167, value: 0xd75f5f }, { index: 168, value: 0xd75f87 },
+    { index: 169, value: 0xd75faf }, { index: 170, value: 0xd75fd7 }, { index: 171, value: 0xd75fff },
+    { index: 172, value: 0xd78700 }, { index: 173, value: 0xd7875f }, { index: 174, value: 0xd78787 },
+    { index: 175, value: 0xd787af }, { index: 176, value: 0xd787d7 }, { index: 177, value: 0xd787ff },
+    { index: 178, value: 0xd7af00 }, { index: 179, value: 0xd7af5f }, { index: 180, value: 0xd7af87 },
+    { index: 181, value: 0xd7afaf }, { index: 182, value: 0xd7afd7 }, { index: 183, value: 0xd7afff },
+    { index: 184, value: 0xd7d700 }, { index: 185, value: 0xd7d75f }, { index: 186, value: 0xd7d787 },
+    { index: 187, value: 0xd7d7af }, { index: 188, value: 0xd7d7d7 }, { index: 189, value: 0xd7d7ff },
+    { index: 190, value: 0xd7ff00 }, { index: 191, value: 0xd7ff5f }, { index: 192, value: 0xd7ff87 },
+    { index: 193, value: 0xd7ffaf }, { index: 194, value: 0xd7ffd7 }, { index: 195, value: 0xd7ffff },
+    { index: 196, value: 0xff0000 }, { index: 197, value: 0xff005f }, { index: 198, value: 0xff0087 },
+    { index: 199, value: 0xff00af }, { index: 200, value: 0xff00d7 }, { index: 201, value: 0xff00ff },
+    { index: 202, value: 0xff5f00 }, { index: 203, value: 0xff5f5f }, { index: 204, value: 0xff5f87 },
+    { index: 205, value: 0xff5faf }, { index: 206, value: 0xff5fd7 }, { index: 207, value: 0xff5fff },
+    { index: 208, value: 0xff8700 }, { index: 209, value: 0xff875f }, { index: 210, value: 0xff8787 },
+    { index: 211, value: 0xff87af }, { index: 212, value: 0xff87d7 }, { index: 213, value: 0xff87ff },
+    { index: 214, value: 0xffaf00 }, { index: 215, value: 0xffaf5f }, { index: 216, value: 0xffaf87 },
+    { index: 217, value: 0xffafaf }, { index: 218, value: 0xffafd7 }, { index: 219, value: 0xffafff },
+    { index: 220, value: 0xffd700 }, { index: 221, value: 0xffd75f }, { index: 222, value: 0xffd787 },
+    { index: 223, value: 0xffd7af }, { index: 224, value: 0xffd7d7 }, { index: 225, value: 0xffd7ff },
+    { index: 226, value: 0xffff00 }, { index: 227, value: 0xffff5f }, { index: 228, value: 0xffff87 },
+    { index: 229, value: 0xffffaf }, { index: 230, value: 0xffffd7 }, { index: 231, value: 0xffffff },
+    { index: 232, value: 0x080808 }, { index: 233, value: 0x121212 }, { index: 234, value: 0x1c1c1c },
+    { index: 235, value: 0x262626 }, { index: 236, value: 0x303030 }, { index: 237, value: 0x3a3a3a },
+    { index: 238, value: 0x444444 }, { index: 239, value: 0x4e4e4e }, { index: 240, value: 0x585858 },
+    { index: 241, value: 0x626262 }, { index: 242, value: 0x6c6c6c }, { index: 243, value: 0x767676 },
+    { index: 244, value: 0x808080 }, { index: 245, value: 0x8a8a8a }, { index: 246, value: 0x949494 },
+    { index: 247, value: 0x9e9e9e }, { index: 248, value: 0xa8a8a8 }, { index: 249, value: 0xb2b2b2 },
+    { index: 250, value: 0xbcbcbc }, { index: 251, value: 0xc6c6c6 }, { index: 252, value: 0xd0d0d0 },
+    { index: 253, value: 0xdadada }, { index: 254, value: 0xe4e4e4 }, { index: 255, value: 0xeeeeee },
+];
+
+/* C decl.c:74 hexdd[] — "used by coloratt.c, options.c, utf8map.c,
+ * windows.c". Doubled digits so (index of ch)/2 is the hex value
+ * (alt_color_spec `:1156`). Module-local until a second user arrives. */
+const hexdd = '00112233445566778899aAbBcCdDeEfF';
+
+/**
+ * C ref: coloratt.c color_distance `:978–994` — redmean color distance
+ * (UnNetHack via compuphase.com/cmetric, C `:973–976` comment). `>>>`
+ * keeps the C uint32_t shifts exact; both `>> 8` terms stay
+ * non-negative so JS `>>` is the C `>>`.
+ */
+export function color_distance(rgb1, rgb2) {
+    const r1 = (rgb1 >>> 16) & 0xFF; // C :981
+    const g1 = (rgb1 >>> 8) & 0xFF; // C :982
+    const b1 = rgb1 & 0xFF; // C :983
+    const r2 = (rgb2 >>> 16) & 0xFF; // C :984
+    const g2 = (rgb2 >>> 8) & 0xFF; // C :985
+    const b2 = rgb2 & 0xFF; // C :986
+    const rmean = ((r1 + r2) / 2) | 0; // C :988 int division, non-negative
+    const r = r1 - r2; // C :989
+    const g = g1 - g2; // C :990
+    const b = b1 - b2; // C :991
+    return ((((512 + rmean) * r * r) >> 8) + 4 * g * g // C :992-993
+        + (((767 - rmean) * b * b) >> 8));
+}
+
+/**
+ * C ref: coloratt.c closest_color `:996–1021` — exact match over the
+ * 256-color table, else the redmean-closest entry. Out-params use the
+ * `{ v }` box convention (botl.js s_to_anything precedent); null boxes
+ * mean FALSE with no write (C `:1015`). Sole C caller is
+ * set_map_customcolor `:878` (unported — map-named).
+ */
+export function closest_color(lcolor, closecolor, clridx) {
+    const lcol = (lcolor ?? 0) >>> 0; // C uint32 lcolor
+    let color_index = -1, similar = 0x7fffffff, current; // C :999 (INT_MAX, limits.h)
+    let retbool = false; // C :1000
+    for (let i = 0; i < color_256_definitions.length; i++) { // C :1002 SIZE
+        /* look for an exact match */ // C :1003
+        if (lcol === color_256_definitions[i].value) { // C :1004
+            color_index = i; // C :1005
+            break; // C :1006
+        }
+        /* find a close color match */ // C :1008
+        current = color_distance(lcol, color_256_definitions[i].value); // C :1009
+        if (current < similar) { // C :1010
+            color_index = i; // C :1011
+            similar = current; // C :1012
+        }
+    }
+    if (closecolor && clridx && color_index >= 0) { // C :1015
+        closecolor.v = color_256_definitions[color_index].value; // C :1016
+        clridx.v = color_256_definitions[color_index].index; // C :1017
+        retbool = true; // C :1018
+    }
+    return retbool; // C :1020
+}
+
+/**
+ * C ref: coloratt.c alt_color_spec `:1110–1165` (staticfn; inside
+ * `#ifdef CHANGE_COLOR`, which the contest unix build does not define —
+ * amiconf.h:165 only — so contest C never compiles the sole caller
+ * alternative_palette `:1085`; live export on the D-2599 precedent).
+ * Parses `\x…`/`\o…` escapes, `#…` hex, bare decimal runs and single
+ * digits into an int32 rgb value, -1 past the digit limit. The cp
+ * pointer walk is the index `p`; unmatched chars are skipped but still
+ * counted (C has no else arm, `:1157`).
+ */
+export function alt_color_spec(str) {
+    const oct = '01234567', dec = '0123456789'; // C :1113 function-static
+    const s = String(str ?? ''); // C :1116 cp = str
+    let hidx = -1; // C :1116 dp (strchr result offset)
+    let cval = -1; // C :1117
+    let dcount, dlimit = 6; // C :1118
+    let hexescape = false, octescape = false; // C :1119
+    let p = 0; // C cp
+
+    dcount = 0; // C :1121
+    hexescape = s[p] === '\\' && !!s[p + 1] // C :1122-1123
+        && (s[p + 1] === 'x' || s[p + 1] === 'X') && !!s[p + 2];
+    if (!hexescape) { // C :1124
+        octescape = s[p] === '\\' && !!s[p + 1] // C :1125-1126
+            && (s[p + 1] === 'o' || s[p + 1] === 'O') && !!s[p + 2];
+    }
+
+    if (hexescape || octescape) { // C :1129
+        cval = 0; // C :1130
+        p += 2; // C :1131
+        if (octescape) dlimit = 8; // C :1132-1133
+    } else if (s[p] === '#' && s[p + 1]) { // C :1134
+        hexescape = true; // C :1135
+        cval = 0; // C :1136
+        p += 1; // C :1137
+    } else if (s[p + 1]) { // C :1138
+        cval = 0; // C :1139
+        dlimit = 8; // C :1140
+    } else if (!s[p + 1]) { // C :1141
+        // C :1142 — strchr(dec, NUL) matches the terminator, so C reads
+        // past "" (UB); JS returns -1 for the empty single-char arm.
+        if (s[p] !== undefined && dec.includes(s[p])) {
+            /* simple val, or nothing left for \ to escape */ // C :1143
+            cval = s[p].charCodeAt(0) - 48; // C :1144 (*cp - '0')
+        }
+        dlimit = 1; // C :1146
+        p++; // C :1147
+    }
+
+    while (s[p]) { // C :1150
+        if (!hexescape && !octescape && dec.includes(s[p])) { // C :1151
+            cval = (cval * 10) + (s[p].charCodeAt(0) - 48); // C :1152
+        } else if (octescape && oct.includes(s[p])) { // C :1153
+            cval = (cval * 8) + (s[p].charCodeAt(0) - 48); // C :1154
+        } else if (hexescape && (hidx = hexdd.indexOf(s[p])) !== -1) { // C :1155
+            cval = (cval * 16) + (hidx >> 1); // C :1156 (dp - hexdd)/2
+        }
+        ++p; // C :1158
+        if (++dcount > dlimit) { // C :1159
+            cval = -1; // C :1160
+            break; // C :1161
+        }
+    }
+    return cval; // C :1164
+}
+
+/**
+ * C ref: coloratt.c color_attr_parse_str `:260–301` — parse a
+ * `color&attr` pair (either order, C `:279–283` retry) or a single
+ * color-or-attr token into the C `color_attr` struct (JS
+ * `{ attr, color }`). Writes `ca` only on success; FALSE leaves it
+ * untouched. Sole C caller is options.c optfn_menu_headings `:2204`
+ * (unported — map-named).
+ */
+export function color_attr_parse_str(ca, str) {
+    let tmp, c = NO_COLOR, a = ATR_NONE; // C :265 (C ATR_NONE=0, wintype.h:128)
+    // C :267-268 strncpy + forced NUL: copy truncated to BUFSZ-1.
+    const buf = String(str ?? '').slice(0, BUFSZ - 1);
+    const ampIdx = buf.indexOf('&'); // C :270 strchr(buf, '&')
+    if (ampIdx !== -1) { // C :273 if (amp)
+        const colorPart = buf.slice(0, ampIdx); // C :271 buf half (*amp = NUL)
+        const attrPart = buf.slice(ampIdx + 1); // C :274 amp++
+        c = match_str2clr(colorPart, false); // C :275
+        a = match_str2attr(attrPart, true); // C :276
+        /* FIXME: match_str2clr & match_str2attr give config_error_add(),
+           so this is useless */ // C :277-278
+        if (c >= CLR_MAX && a === -1) { // C :279
+            /* try other way around */ // C :280
+            c = match_str2clr(attrPart, false); // C :281
+            a = match_str2attr(colorPart, true); // C :282
+        }
+        if (c >= CLR_MAX || a === -1) return false; // C :284-285
+    } else {
+        /* one param only */ // C :287
+        tmp = match_str2attr(buf, false); // C :288
+        if (tmp === -1) { // C :289
+            tmp = match_str2clr(buf, false); // C :290
+            if (tmp >= CLR_MAX) return false; // C :291-292
+            c = tmp; // C :293
+        } else {
+            a = tmp; // C :295
+        }
+    }
+    ca.attr = a; // C :298
+    ca.color = c; // C :299
+    return true; // C :300
 }
 
 /**
@@ -2165,8 +3487,10 @@ async function doset_compound_via_getlin(opt) {
             await handler_perminv_mode();
         } else if (name === 'menu colors') {
             await handler_menu_colors();
+        } else if (name === 'number_pad') {
+            await handler_number_pad(); // C optfn_number_pad do_handler `:2642`
         }
-        // Other hasHandler compounds deferred (number_pad/symset/…).
+        // Other hasHandler compounds deferred (symset/…).
         return;
     }
     const abuf = await getlin(`Set ${name} to what?`);
@@ -2193,9 +3517,9 @@ function currently_set_val(n) {
 
 /**
  * C ref: options.c optfn_* get_val for doset_simple_menu compound/othr rows.
- * Named omissions: full handlers for fruit/number_pad/autounlock/symset/
+ * Named omissions: full handlers for fruit/autounlock/symset/
  * statuslines/exceptions/status rules — display values only until those
- * handlers are ported (menu colors handler is live: handler_menu_colors).
+ * handlers are ported (menu colors and number_pad handlers are live).
  */
 function simple_opt_get_val(opt) {
     const name = opt.name;
@@ -2203,16 +3527,8 @@ function simple_opt_get_val(opt) {
         return String(game.pl_fruit || game.flags?.fruit || 'slime mold');
     }
     if (name === 'number_pad') {
-        // C: Cmd.num_pad / phone / pcHack / swap_yz → numpadmodes[]
-        const numPad = !!(game.iflags?.num_pad || game.Cmd?.num_pad);
-        if (!numPad) {
-            return game.Cmd?.swap_yz ? '-1=off, y & z swapped' : '0=off';
-        }
-        const phone = !!(game.Cmd?.phone_layout);
-        const pc = !!(game.Cmd?.pcHack_compat);
-        if (phone) return pc ? '4=on, phone layout, MSDOS compatible' : '3=on, phone-style layout';
-        if (pc) return '2=on, MSDOS compatible';
-        return '1=on';
+        // C optfn_number_pad get_val — live (delegates so both O-menus agree).
+        return doset_compopt_get_val(optfn_number_pad, 'number_pad');
     }
     if (name === 'autounlock') {
         // C: flags.autounlock default AUTOUNLOCK_APPLY_KEY; get_val joins names
@@ -3156,13 +4472,13 @@ export async function doset() {
         { name: 'glyph', val: '(to be done)' },
         { name: 'hilite_status', val: '(none)' },
         { name: 'menu_headings', val: 'no-color&inverse' },
-        { name: 'menu_objsyms', val: 'conditional' },
+        { name: 'menu_objsyms', get_val: () => doset_compopt_get_val(optfn_menu_objsyms, 'menu_objsyms'), handler: true },
         { name: 'menuinvertmode', val: '1' },
         { name: 'menustyle', val: 'full' },
-        { name: 'msg_window', val: 'single' },
-        { name: 'number_pad', val: '0=off' },
+        { name: 'msg_window', get_val: () => doset_compopt_get_val(optfn_msg_window, 'msg_window'), handler: true },
+        { name: 'number_pad', get_val: () => doset_compopt_get_val(optfn_number_pad, 'number_pad'), handler: true },
         { name: 'packorder', val: '$")[%?+!=/(*`0_' },
-        { name: 'paranoid_confirmation', val: 'pray trap swim' },
+        { name: 'paranoid_confirmation', get_val: () => { const h = { buf: '' }; optfn_paranoid_confirmation_get_val(REQ_GET_VAL, h); return h.buf; }, handler: true },
         // C optlist.h NHOPTC perminv_mode set_in_game before petattr.
         // doset_skip_unsupported when !WC_PERM_INVENT (contest tty).
         { name: 'perminv_mode', get_val: optfn_perminv_mode_get_val_display, handler: true },
@@ -3180,8 +4496,8 @@ export async function doset() {
         { name: 'statuslines', val: '2' },
         { name: 'suppress_alert', val: '(none)' },
         { name: 'symset', val: 'DECgraphics, active, handler=DEC' },
-        { name: 'versinfo', val: '1: number (5.0.0)' },
-        { name: 'whatis_coord', val: 'none' },
+        { name: 'versinfo', get_val: () => doset_compopt_get_val(optfn_versinfo, 'versinfo'), handler: true },
+        { name: 'whatis_coord', get_val: () => doset_compopt_get_val(optfn_whatis_coord, 'whatis_coord'), handler: true },
         { name: 'whatis_filter', val: 'none' },
     ];
     for (const c of compounds) {
@@ -3198,7 +4514,8 @@ export async function doset() {
     for (const t of [
         { name: 'autocompletions', val: '(0 currently set)' },
         { name: 'autopickup exceptions', val: '(0 currently set)' },
-        { name: 'bind keys', val: '(0 currently set)' },
+        // C options.c:8336 optfn_o_bind_keys get_val (n_currently_set).
+        { name: 'bind keys', val: currently_set_val(count_bind_keys()) },
         { name: 'menu colors', val: currently_set_val(count_menucolors()) },
         { name: 'message types', val: '(0 currently set)' },
         { name: 'status condition fields', val: '(16 currently set)' },
@@ -3241,15 +4558,24 @@ export async function doset() {
             await handler_pickup_types();
         } else if (name === 'perminv_mode') {
             await handler_perminv_mode();
+        } else {
+            // C doset `:8935–8939`: optfn do_handler; optn_ok marks the row
+            // for a later options save.
+            const reslt = await doset_optfn_do_handler(name);
+            if (reslt === OPTN_OK) opt_set_in_config[allopt_idx(name)] = true;
         }
     }
-    // C options.c doset Othr rows → optfn do_handler; menu colors
+    // C options.c doset Othr rows → optfn do_handler; bind keys
+    // (handler_rebind_keys, C `:8340`), menu colors
     // (handler_menu_colors, C `:8383`), status condition fields
     // (cond_menu, C optfn_o_status_cond `:8436–8439`), and status
     // highlight rules (status_hilite_menu, C optfn_o_status_hilites
     // `:8464–8471`) have live handlers.
     for (const name of othrPicks) {
-        if (name === 'menu colors') {
+        // C options.c:8340 optfn_o_bind_keys do_handler.
+        if (name === 'bind keys') {
+            await handler_rebind_keys();
+        } else if (name === 'menu colors') {
             await handler_menu_colors();
         } else if (name === 'status condition fields') {
             if (await cond_menu()) opt_set_in_config[PFX_COND_IDX] = true;
@@ -3273,7 +4599,7 @@ export async function doset() {
 
 /**
  * C ref: options.c doset_simple — loop doset_simple_menu until no pick.
- * Named omissions: number_pad/autounlock/symset/status handlers;
+ * Named omissions: autounlock/symset/status handlers;
  * help descr lines under simple_options_help; fruitadd bones/restore
  * ghostfruit else is D-1541 (clone in bones.js).
  */
@@ -3577,7 +4903,7 @@ const allopt = [
     // optlist.h:449 NHOPTC(menu_next_page)
     { name: 'menu_next_page', opttyp: CompOpt, idx: 97, setwhere: SET_IN_CONFIG, initval: false, addr: null, optfn: optfn_menu_next_page },
     // optlist.h:451 NHOPTC(menu_objsyms)
-    { name: 'menu_objsyms', opttyp: CompOpt, idx: 98, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: null },
+    { name: 'menu_objsyms', opttyp: CompOpt, idx: 98, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: optfn_menu_objsyms },
     // optlist.h:455 NHOPTB(menu_overlay)
     { name: 'menu_overlay', opttyp: BoolOpt, idx: 99, setwhere: SET_IN_GAME, initval: true, addr: { obj: 'iflags', key: 'menu_overlay' }, optfn: null },
     // optlist.h:463 NHOPTC(menu_previous_page)
@@ -3615,7 +4941,7 @@ const allopt = [
     // optlist.h:505 NHOPTC(mouse_support)
     { name: 'mouse_support', opttyp: CompOpt, idx: 116, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: null },
     // optlist.h:509 NHOPTC(msg_window)
-    { name: 'msg_window', opttyp: CompOpt, idx: 117, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: null },
+    { name: 'msg_window', opttyp: CompOpt, idx: 117, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: optfn_msg_window },
     // optlist.h:516 NHOPTC(msghistory)
     { name: 'msghistory', opttyp: CompOpt, idx: 118, setwhere: SET_GAMEVIEW, initval: false, addr: null, optfn: null },
     // optlist.h:521 NHOPTB(news)
@@ -3625,7 +4951,7 @@ const allopt = [
     // optlist.h:532 NHOPTB(null)
     { name: 'null', opttyp: BoolOpt, idx: 121, setwhere: SET_IN_GAME, initval: true, addr: { obj: 'flags', key: 'null' }, optfn: null },
     // optlist.h:535 NHOPTC(number_pad)
-    { name: 'number_pad', opttyp: CompOpt, idx: 122, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: null },
+    { name: 'number_pad', opttyp: CompOpt, idx: 122, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: optfn_number_pad },
     // optlist.h:538 NHOPTC(objects)
     { name: 'objects', opttyp: CompOpt, idx: 123, setwhere: SET_IN_CONFIG, initval: false, addr: null, optfn: null },
     // optlist.h:541 NHOPTC(packorder)
@@ -3737,7 +5063,7 @@ const allopt = [
     // optlist.h:740 NHOPTC(suppress_alert)
     { name: 'suppress_alert', opttyp: CompOpt, idx: 177, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: null },
     // optlist.h:743 NHOPTC(symset)
-    { name: 'symset', opttyp: CompOpt, idx: 178, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: null },
+    { name: 'symset', opttyp: CompOpt, idx: 178, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: optfn_symset },
     // optlist.h:746 NHOPTC(term_cols)
     { name: 'term_cols', opttyp: CompOpt, idx: 179, setwhere: SET_IN_CONFIG, initval: false, addr: null, optfn: null },
     // optlist.h:748 NHOPTC(term_rows)
@@ -3781,7 +5107,7 @@ const allopt = [
     // optlist.h:813 NHOPTB(verbose)
     { name: 'verbose', opttyp: BoolOpt, idx: 199, setwhere: SET_IN_GAME, initval: true, addr: { obj: 'flags', key: 'verbose' }, optfn: null },
     // optlist.h:816 NHOPTC(versinfo)
-    { name: 'versinfo', opttyp: CompOpt, idx: 200, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: null },
+    { name: 'versinfo', opttyp: CompOpt, idx: 200, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: optfn_versinfo },
     // optlist.h:841 NHOPTB(voices)
     { name: 'voices', opttyp: BoolOpt, idx: 201, setwhere: SET_GAMEVIEW, initval: false, addr: null /* C: &iflags.voices, no live field (no SND_LIB) */, optfn: null },
     // optlist.h:850 NHOPTB(vt_tiledata)
@@ -3789,11 +5115,11 @@ const allopt = [
     // optlist.h:859 NHOPTB(vt_sounddata)
     { name: 'vt_sounddata', opttyp: BoolOpt, idx: 203, setwhere: SET_IN_CONFIG, initval: false, addr: null, optfn: null },
     // optlist.h:863 NHOPTC(warnings)
-    { name: 'warnings', opttyp: CompOpt, idx: 204, setwhere: SET_IN_CONFIG, initval: false, addr: null, optfn: null },
+    { name: 'warnings', opttyp: CompOpt, idx: 204, setwhere: SET_IN_CONFIG, initval: false, addr: null, optfn: optfn_warnings },
     // optlist.h:865 NHOPTB(weaponstatus)
     { name: 'weaponstatus', opttyp: BoolOpt, idx: 205, setwhere: SET_IN_GAME, initval: false, addr: { obj: 'flags', key: 'weaponstatus' }, optfn: null },
     // optlist.h:868 NHOPTC(whatis_coord)
-    { name: 'whatis_coord', opttyp: CompOpt, idx: 206, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: null },
+    { name: 'whatis_coord', opttyp: CompOpt, idx: 206, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: optfn_whatis_coord },
     // optlist.h:871 NHOPTC(whatis_filter)
     { name: 'whatis_filter', opttyp: CompOpt, idx: 207, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: null },
     // optlist.h:874 NHOPTB(whatis_menu)

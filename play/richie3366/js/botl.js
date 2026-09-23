@@ -1146,8 +1146,10 @@ const statusHungerTxt = [
 
 /* C options.c config_error_add() — config-error sink. bad_negation
  * (options.js) precedent: the message text is a named omission (map);
- * FALSE propagation at every call site below is kept. */
-function config_error_add(_fmt, ..._args) {
+ * FALSE propagation at every call site below is kept. Exported for the
+ * bind_key `:2698`/`:2704`/`:2712` arms (cmd.js; same 98-module SCC,
+ * called only inside function bodies). */
+export function config_error_add(_fmt, ..._args) {
     // Named omission (map): config_error_add sink.
 }
 
@@ -1236,8 +1238,9 @@ function fldname_to_bl_indx(name) {
 
 /* C coloratt.c:348-370 match_str2clr() — fuzzy name over colornames (aliases
  * included, C `:356-361`); digit-led leftovers parse as bare numbers
- * (C `:360-361`); anything else is CLR_MAX with a sinked message. */
-function match_str2clr(str, suppress_msg) {
+ * (C `:360-361`); anything else is CLR_MAX with a sinked message.
+ * Exported for coloratt.c add_menu_coloring (options.js; C `:636`). */
+export function match_str2clr(str, suppress_msg) {
     const s = String(str ?? '');
     let c = CLR_MAX; // C :351
     let matched = false;
@@ -1259,8 +1262,9 @@ function match_str2clr(str, suppress_msg) {
 
 /* C coloratt.c:374-389 match_str2attr() — -1 when nothing matches (the hl2 /
  * parse_condition action loops read that as "try a color", C `:382`); the
- * complain message sinks. */
-function match_str2attr(str, complain) {
+ * complain message sinks.
+ * Exported for coloratt.c add_menu_coloring (options.js; C `:642`). */
+export function match_str2attr(str, complain) {
     const s = String(str ?? '');
     let a = -1; // C :377
     for (let i = 0; i < statusAttrNames.length; i++) { // C :379-384

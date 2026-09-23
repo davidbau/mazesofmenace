@@ -26,7 +26,7 @@ import { COLNO, ROWNO, STONE, DOOR, CORR, ROOM, IRONBARS, TREE, SDOOR, ICE,
          CMDQ_EXTCMD, CMDQ_KEY, CMDQ_DIR, CMDQ_USER_INPUT, CQ_CANNED, CQ_REPEAT,
          IFBURIED, WIZMODECMD, NOFUZZERCMD, PREFIXCMD, MOVEMENTCMD,
          AUTOCOMPLETE, CMD_NOT_AVAILABLE, INTERNALCMD, GENERALCMD,
-         CMD_M_PREFIX, CMD_gGF_PREFIX, CMD_INSANE, QBUFSZ,
+         CMD_M_PREFIX, CMD_gGF_PREFIX, CMD_INSANE, QBUFSZ, BUFSZ,
          xdir, ydir, zdir, xytodir, N_DIRS, DIR_W, DIR_N, DIR_E, DIR_S,
          DIR_NW, DIR_NE, DIR_SE, DIR_SW,
          MV_WALK, MV_RUN, MV_RUSH, commandInp, otherInp, getposInp,
@@ -40,7 +40,7 @@ import { COLNO, ROWNO, STONE, DOOR, CORR, ROOM, IRONBARS, TREE, SDOOR, ICE,
          TEST_MOVE,
          } from './const.js';
 import { FOOD_CLASS, objectNames } from './objects.js';
-import { EXTCMDLIST } from './generated/extcmdlist_data.js';
+import { EXTCMDLIST, CMD_PARAM } from './generated/extcmdlist_data.js';
 import { PM_GRID_BUG, PM_DWARF } from './generated/monsters_data.js';
 
 const STATUE_OTYP = objectNames.indexOf('STATUE');
@@ -84,8 +84,9 @@ import { dotakeoff, doddoremarm, dowear, doputon, doremring } from './do_wear.js
 import { wiz_wish, wiz_genesis, wiz_level_tele, wiz_map } from './wizcmds.js';
 import { dotelecmd, goodpos } from './teleport.js';
 import { dowield, dowieldquiver, doswapweapon } from './wield.js';
-import { dowhatis, doquickwhatis, dohelp, dowhatdoes, doversion } from './pager.js';
+import { dowhatis, doquickwhatis, dohelp, dowhatdoes, doversion, show_text_pages } from './pager.js';
 import { visctrl, key2txt, cmdbind_get, cmd_from_dir } from './dokeylist.js';
+import { config_error_add } from './botl.js';
 import { an, doname, makeplural } from './objnam.js';
 import { m_monnam, mon_nam, a_monnam, YMonnam, Hallucination, docallcmd } from './do_name.js';
 import { spoteffects, dopickup, doloot, dotip } from './pickup.js';
@@ -982,13 +983,15 @@ export async function doextlist() {
  * Callees: key2txt (dokeylist.js live), strbuf_append (options.js live),
  * cmdbind_get (dokeylist.js live). Callers: options.c all_options_strbuf
  * `:9734` (live: js/options.js all_options_strbuf); cmd.c handler_rebind_keys
- * `:2442` NULL arm (unported — named omission below).
+ * `:2442` NULL arm (live: drained via `show_text_pages`, D-2762).
  * @param {{ str: string|null, len: number }|null} sbuf strbuf or null
+ * @returns {string[]} putstr lines when sbuf is null (C returns void; the
+ * display tail belongs to the caller)
  */
 export function get_changed_key_binds(sbuf) {
     // C `:2240–2246`: win = WIN_ERR; if (!sbuf) win = create_nhwindow(NHW_TEXT).
     // js/ has no NHW_TEXT window object (pager show_text_pages is async-only),
-    // so NULL-arm lines accumulate in winLines; the display tail is named below.
+    // so NULL-arm lines accumulate in winLines, returned for the caller (D-2762).
     const winLines = [];
     // C `:2263–2266` + `:2277–2280`: sbuf ? strbuf_append(sbuf, buf) : putstr(win, 0, buf).
     const emit = (buf) => {
@@ -1001,11 +1004,11 @@ export function get_changed_key_binds(sbuf) {
     const userbinds = overlay instanceof Map ? [...overlay.entries()].reverse() : [];
     for (const [rawKey, name] of userbinds) {
         const key = Number(rawKey) & 0xff; // C uchar key
-        if (!key) continue; // C cmdbind_add `:2129`: no node for key 0
-        if (!name) continue; // C bind_key "nothing" `:2668` removes the node: no cmd, loop-1 skip
+        if (!key) continue; // C cmdbind_add `:2130`: no node for key 0
+        if (!name) continue; // C bind_key "nothing" `:2670` removes the node: no cmd, loop-1 skip
         // C `:2251`: bind->userbind && bind->cmd && bind->cmd->key != bind->key.
         // Every overlay entry is a user bind (RC parse is the only JS writer);
-        // re-match the row the way bind_key `:2686–2692` does (ef_txt match,
+        // re-match the row the way bind_key `:2690–2693` does (ef_txt match,
         // INTERNALCMD skipped — same predicate as parsebindings). A miss cannot
         // happen (parse-time match); skip defensively.
         const ext = EXTCMDLIST.find(
@@ -1032,9 +1035,328 @@ export function get_changed_key_binds(sbuf) {
     }
 
     // C `:2282–2285`: if (!sbuf) { display_nhwindow(win, TRUE); destroy_nhwindow(win); }
-    // Named omission: the sole C NULL caller is handler_rebind_keys (cmd.c:2442),
-    // unported in js/; no sync text-window primitive exists, so winLines has no
-    // display sink yet (a future port shows them via `await show_text_pages(winLines)`).
+    // The sole C NULL caller handler_rebind_keys (cmd.c:2442) is live in this
+    // file (D-2762) and drains the returned lines via `await show_text_pages`.
+    return winLines;
+}
+
+/**
+ * C ref: cmd.c count_bind_keys `:2207–2231` — changed plus unbound binds.
+ * Same two loops as get_changed_key_binds (above), counting instead of
+ * emitting; the counts are equal line-for-line, so the handler's `:2427`
+ * gate implies a non-empty item-3 display. C order kept.
+ * Callers: cmd.c:2427 (handler_rebind_keys, live below);
+ * options.c:8336 (optfn_o_bind_keys get_val → doset row, js/options.js).
+ * @returns {number} changed-bind count
+ */
+export function count_bind_keys() {
+    // C `:2214`: keys[256] zeroed, marked per node in loop 1. The
+    // marking feeds only loop 2, where the live cmdbind_get oracle
+    // (defaults + overlay, D-2550) is the same mapping — no array kept.
+    let nbinds = 0;
+
+    /* commands bound to different key */ // C `:2216`
+    const overlay = game.Cmd?.binds;
+    const userbinds = overlay instanceof Map ? [...overlay.entries()].reverse() : [];
+    for (const [rawKey, name] of userbinds) {
+        const key = Number(rawKey) & 0xff; // C uchar key
+        if (!key) continue; // C cmdbind_add `:2130`: no node for key 0
+        if (!name) continue; // C bind_key "nothing" `:2670` removes the node
+        // C `:2219`: bind->userbind && bind->cmd && bind->cmd->key != bind->key.
+        // Same bind_key-style re-match as get_changed_key_binds (above).
+        const ext = EXTCMDLIST.find(
+            (e) => e.txt.toLowerCase() === String(name).toLowerCase()
+                && ((e.flags | 0) & INTERNALCMD) === 0,
+        );
+        if (!ext || ext.key === key) continue;
+        nbinds++; // C `:2220`
+    }
+
+    /* commands which should be bound to a key, but aren't */ // C `:2225`
+    // C `:2226`: i < extcmdlist_length (SIZE-1: skips the null terminator row);
+    // the generated table has no terminator, so exhausting it is exact.
+    for (const ec of EXTCMDLIST) {
+        if (!ec.key) continue; // C `:2227` ec->key && ...
+        if (cmdbind_get(ec.key & 0xff)) continue; // C `:2227` !keys[ec->key]
+        nbinds++; // C `:2228`
+    }
+
+    return nbinds; // C `:2230`
+}
+
+/**
+ * C ref: cmd.c cmdbind_add `:2125–2155` (staticfn) — add or rebind one node.
+ * JS shape: the C cmdbinds list is split (defaults generated in dokeylist
+ * build_default_cmdbinds, user binds in the game.Cmd.binds overlay), so
+ * add/update mutate the overlay. Map.set on an existing key keeps
+ * first-insertion position (no move-to-front) ≡ C's in-place update, and
+ * Map append ≡ C prepend, both under the reversed iteration the D-2550
+ * order proof relies on. Overlay values are lowercase names (parsebindings
+ * precedent). `user` FALSE only arrives from the unported
+ * commands_init/reset_commands paths (pre-existing generated equivalents),
+ * never from a live caller — every overlay entry is a user bind.
+ * Callers: bind_key `:2694` (live below); commands_init `:2741`/`:2756`,
+ * reset_commands `:3371`/`:3411`, cmdbind_add `:2133` self (pre-existing
+ * equivalents / unported — named in the map).
+ * @param {number} key
+ * @param {typeof EXTCMDLIST[number]|null} extcmd
+ * @param {boolean} user
+ */
+function cmdbind_add(key, extcmd, user) {
+    const k = key & 0xff; // C uchar key
+    const bind = cmdbind_get(k); // C `:2128`
+    if (!k) return; // C `:2130–2131`
+    if (!extcmd && bind) { // C `:2132–2135`
+        cmdbind_remove(k);
+        return;
+    }
+    // Overlay ensure: C commands_init always ran (list exists); jsmain inits
+    // the Map, but bind_key stays total when called pre-init.
+    if (!game.Cmd) game.Cmd = {};
+    if (!(game.Cmd.binds instanceof Map)) game.Cmd.binds = new Map();
+    /* binding exists, set it to this command */ // C `:2137`
+    // C `:2139–2144`: bind->cmd = extcmd; bind->userbind = user; free param.
+    // The userbind flag is structural here (overlay-only); the param free has
+    // no target (bind->param store is a named omission in bind_key, below).
+    // C `:2147–2153` (new node) is the same overlay set via the order proof.
+    void user;
+    game.Cmd.binds.set(k, extcmd.txt.toLowerCase());
+}
+
+/**
+ * C ref: cmd.c cmdbind_remove `:2157–2177` (staticfn) — unlink one node.
+ * JS shape: delete mirrors the C unlink (a later re-add appends ≡ C
+ * prepend under reversed iteration); the null marker keeps rhack skipping
+ * if/else keys (D-1657) and clears the default in cmdbinds_live (≡ C's
+ * unbound-after-remove).
+ * Callers: bind_key `:2670` (live below); reset_commands `:3413`/`:3456`,
+ * cmdbind_add `:2133` (pre-existing equivalents / unported — named in map).
+ * @param {number} key
+ */
+function cmdbind_remove(key) {
+    const k = key & 0xff; // C uchar key
+    const overlay = game.Cmd?.binds;
+    if (!(overlay instanceof Map)) return; // C: no list — nothing to unlink
+    // C `:2164–2173`: unlink the node (free param — no JS target, see above).
+    overlay.delete(k);
+    overlay.set(k, null);
+}
+
+/**
+ * C ref: cmd.c bind_key `:2661–2728` — bind key to command (extern).
+ * "nothing" unbinds; otherwise the (param) suffix is split off
+ * bind_key-style and the bare name is matched case-insensitively against
+ * extcmdlist (INTERNALCMD skipped — the same predicate parsebindings and
+ * get_changed_key_binds use). C order kept, including the bind-before-error
+ * order: cmdbind_add `:2693` runs before the CMD_PARAM error arms, so an
+ * empty param still binds (error sunk). config_error_add is the live botl
+ * sink (message text is the pre-existing named omission there).
+ * Callers: cmd.c:2393 (handler_rebind_keys_add, live below);
+ * options.c:7669 (parsebindings BIND= — JS parsebindings writes the overlay
+ * directly, pre-existing equivalent); commands_init `:2762–2780`
+ * (build_default_cmdbinds — pre-existing equivalent).
+ * @param {number} key
+ * @param {string} command
+ * @param {boolean} user
+ * @returns {boolean} TRUE unless no command matched
+ */
+export function bind_key(key, command, user) {
+    const k = key & 0xff; // C uchar key
+    const cmd = String(command ?? '');
+
+    /* special case: "nothing" is reserved for unbinding */ // C `:2668`
+    if (cmd.toLowerCase() === 'nothing') { // C `:2669` !strcmpi
+        cmdbind_remove(k); // C `:2670`
+        return true; // C `:2671` TRUE
+    }
+
+    /* copy command to buf for modification */ // C `:2673–2676` (GC string)
+    let buf = cmd;
+    /* does buf have a parameter in parenthesis? */ // C `:2679`
+    let p = null;
+    const open = buf.indexOf('('); // C `:2680` strchr
+    const close = buf.lastIndexOf(')'); // C `:2681` strrchr
+    if (open >= 0 && close >= 0 && close > open) { // C `:2680–2682` lastp > p
+        p = buf.slice(open + 1, close); // C `:2683–2686` *p=0; *lastp=0; p++
+        buf = buf.slice(0, open);
+    }
+
+    // C `:2689`: to the null terminator (the generated table has none).
+    for (const extcmd of EXTCMDLIST) {
+        if (buf.toLowerCase() !== extcmd.txt.toLowerCase()) continue; // C `:2690–2691` strcmpi
+        if (((extcmd.flags | 0) & INTERNALCMD) !== 0) continue; // C `:2692–2693`
+        cmdbind_add(k, extcmd, user); // C `:2694`
+
+        if (((extcmd.flags | 0) & CMD_PARAM) !== 0) { // C `:2696`
+            if (p === null) { // C `:2697` !p
+                config_error_add("'%s' requires a parameter", buf); // C `:2698`
+            } else {
+                const maxlen = Math.min(30, p.length) + 1; // C `:2701`
+                if (maxlen <= 1) { // C `:2703`
+                    config_error_add('Required parameter cannot be empty'); // C `:2704`
+                }
+                // C `:2705–2707` bind->param store (min(30) chars): named
+                // omission — the JS overlay stores the bare name only
+                // (parsebindings strips (param) too); CMD_PARAM display is
+                // named in the dokeylist.js header. (C `:2700` dereferences
+                // cmdbind_get(key) unconditionally — key 0 + param is a C
+                // NULL-deref crash path; JS stays total here.)
+            }
+        } else if (p !== null && p.length > 0) { // C `:2711`
+            config_error_add("'%s' does not take a parameter", buf); // C `:2712`
+        }
+        // C `:2714–2721` #if 0 CMD_NOT_AVAILABLE note — dead in C, omitted.
+        return true; // C `:2723` TRUE (free(buf) `:2722` is GC)
+    }
+
+    return false; // C `:2727` FALSE
+}
+
+/**
+ * C ref: cmd.c handler_rebind_keys_add `:2290–2405` (staticfn) — one rebind.
+ * keyfirst reads the key up front, else the command menu comes first and the
+ * key is read at bindit. C order kept: current-bind header, "nothing" row,
+ * extcmd rows (MOVEMENTCMD/INTERNALCMD/CMD_NOT_AVAILABLE skipped, a_int
+ * i+1), end_menu prompt as header (perminv precedent), PICK_ONE, -1/param
+ * arms, bindit key read, prevcmd compare, Changed/Bound/failed plines.
+ * Async only because JS menu/getlin/plines await input (Constitution §2);
+ * C callers treat it as a plain blocking call. select_menu_pick_one
+ * auto-letters selector-less rows ≡ tty_end_menu (helper cites wintty.c).
+ * C `:2363`/`:2379` Strcat cmdstr onto the uninitialized buffer (upstream
+ * wart — only sane as assignment) is a plain assignment below.
+ * Sole caller: handler_rebind_keys `:2440` (live below).
+ * @param {boolean} keyfirst
+ */
+async function handler_rebind_keys_add(keyfirst) {
+    let key = 0; // C `:2300` uchar key = '\0'
+
+    if (keyfirst) { // C `:2303`
+        await pline('Bind which key? '); // C `:2304`
+        key = (await pgetchar()) & 0xff; // C `:2305` (uchar truncation)
+
+        if (!key || key === 27) return; // C `:2307–2308` '\033'
+    }
+
+    // C `:2311–2313` create_nhwindow/start_menu/zeroany — the raw menu below.
+    const raw = [];
+    if (key) { // C `:2315`
+        const bind = cmdbind_get(key); // C `:2316`
+
+        // C `:2318–2324`: bind && bind->cmd — the JS oracle returns the entry
+        // itself (null when unbound), so one null check covers both arms.
+        if (bind) {
+            raw.push({
+                text: `Key '${key2txt(key)}' is currently bound to "${bind.txt}".`,
+                selectable: false,
+            });
+        } else {
+            raw.push({
+                text: `Key '${key2txt(key)}' is not bound to anything.`,
+                selectable: false,
+            });
+        }
+        raw.push({ text: '', selectable: false }); // C `:2325–2326` add_menu_str(win, "")
+    }
+
+    // C `:2329–2332`: a_int -1, no selector.
+    raw.push({ text: 'nothing: unbind the key', selectable: true, a_int: -1 });
+
+    raw.push({ text: '', selectable: false }); // C `:2334`
+
+    for (let i = 0; i < EXTCMDLIST.length; i++) { // C `:2336` i < extcmdlist_length
+        const ec = EXTCMDLIST[i]; // C `:2337`
+
+        if (((ec.flags | 0) & (MOVEMENTCMD | INTERNALCMD | CMD_NOT_AVAILABLE)) !== 0) continue; // C `:2339–2340`
+
+        // C `:2342–2345`: a_int = i+1; Sprintf "%s: %s" ef_txt/ef_desc.
+        raw.push({ text: `${ec.txt}: ${ec.desc}`, selectable: true, a_int: i + 1 });
+    }
+    // C `:2347–2351` end_menu prompt — painted as header (perminv precedent).
+    raw.unshift({
+        text: key ? `Bind '${key2txt(key)}' to what command?` : 'Bind what command?',
+        selectable: false,
+    });
+    const res = await select_menu_pick_one(raw); // C `:2352–2353` select + destroy (inside the helper)
+    if (res.kind !== 'pick') return; // C npick <= 0 `:2354` falls through (no goto)
+
+    // C `:2358–2359`: i = picks->item.a_int; free(picks) (GC).
+    const i = res.item.a_int | 0;
+    let ec = null;
+    let cmdstr;
+    if (i === -1) { // C `:2361`
+        ec = null; // C `:2362`
+        cmdstr = 'nothing'; // C `:2363` (Strcat wart — see doc)
+        // C `:2364` goto bindit.
+    } else {
+        ec = EXTCMDLIST[i - 1]; // C `:2366` &extcmdlist[i-1]
+
+        if (((ec.flags | 0) & CMD_PARAM) !== 0) { // C `:2368`
+            // C `:2372`: parambuf[BUFSZ] zeroed; `:2373` querybuf. C has no
+            // ESC arm after getlin here — the buffer passes through as-is.
+            const parambuf = mungspaces(await getlin(`Command ${ec.txt} requires a parameter:`)); // C `:2373–2375`
+            // C `:2376–2377`: Snprintf(cmdstr, BUFSZ-1, "%s(%s)") + NUL.
+            cmdstr = `${ec.txt}(${parambuf})`.slice(0, BUFSZ - 1);
+        } else {
+            cmdstr = ec.txt; // C `:2379` (Strcat wart — see doc)
+        }
+    }
+// bindit: // C `:2382`
+    if (!key) { // C `:2383`
+        await pline('Bind which key? '); // C `:2384`
+        key = (await pgetchar()) & 0xff; // C `:2385`
+
+        if (!key || key === 27) return; // C `:2387–2388` '\033'
+    }
+
+    const prevcmd = cmdbind_get(key); // C `:2391`
+
+    if (bind_key(key, cmdstr, true)) { // C `:2393` TRUE
+        // C `:2394`: prevcmd && prevcmd->cmd != ec — entry identity here.
+        if (prevcmd && prevcmd !== ec) {
+            await pline(`Changed key '${key2txt(key)}' from "${prevcmd.txt}" to "${cmdstr}".`); // C `:2395–2396`
+        } else if (!prevcmd) { // C `:2397`
+            await pline(`Bound key '${key2txt(key)}' to "${cmdstr}".`); // C `:2398–2399`
+        }
+        // C: same-command rebind (prevcmd === ec) prints nothing.
+    } else {
+        await pline('Key binding failed?!'); // C `:2402`
+    }
+}
+
+/**
+ * C ref: cmd.c handler_rebind_keys `:2407–2446` — "bind keys" option menu.
+ * PICK_ONE redo loop: bind key→command / command→key, plus "view changed
+ * key binds" when count_bind_keys is nonzero. Item 3 drains the NULL arm of
+ * get_changed_key_binds via show_text_pages (the D-2550 named sink, now
+ * live). Async only because JS menus await input (Constitution §2).
+ * Caller: options.c:8340 (optfn_o_bind_keys do_handler → doset() othrPicks
+ * 'bind keys' arm, js/options.js); options.c:8336 get_val → doset row val.
+ */
+export async function handler_rebind_keys() {
+    for (;;) { // redo_rebind: C `:2416`
+        // C `:2417–2419` create_nhwindow/start_menu/zeroany — raw menu below.
+        // C `:2432` end_menu "Do what?" painted as header
+        // (handle_add_list_remove precedent — same prompt).
+        const raw = [
+            { text: 'Do what?', selectable: false },
+            { text: 'bind key to a command', selectable: true, a_int: 1 }, // C `:2421–2423`
+            { text: 'bind command to a key', selectable: true, a_int: 2 }, // C `:2424–2426`
+        ];
+        if (count_bind_keys()) { // C `:2427`
+            raw.push({ text: 'view changed key binds', selectable: true, a_int: 3 }); // C `:2428–2430`
+        }
+        const res = await select_menu_pick_one(raw); // C `:2432–2434` end/select/destroy (destroy inside the helper)
+        if (res.kind !== 'pick') return; // C npick <= 0 `:2435` falls through (no goto)
+        const i = res.item.a_int | 0; // C `:2436–2437` (+ free `:2437`, GC)
+
+        if (i === 1 || i === 2) { // C `:2439`
+            await handler_rebind_keys_add(i === 1); // C `:2440`
+        } else if (i === 3) { // C `:2441`
+            const lines = get_changed_key_binds(null); // C `:2442`
+            await show_text_pages(lines);
+        }
+        // C `:2444` goto redo_rebind.
+    }
 }
 
 /**

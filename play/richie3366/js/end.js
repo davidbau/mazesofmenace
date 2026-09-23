@@ -10,7 +10,7 @@ import { rn2, d } from './rng.js';
 import { deepest_lev_reached, depth, strstri } from './hacklib.js';
 import {
     pline, flush_topl_more, bot, You_feel, clear_nhwindow_message,
-    canspotmon, Hallucination, curs_on_u, newsym, impossible,
+    canspotmon, Hallucination, curs_on_u, newsym, impossible, You,
 } from './display.js';
 import { yn_function, paranoid_query } from './getline.js';
 import { show_text_pages, show_nhw_menu_text } from './pager.js';
@@ -1275,11 +1275,17 @@ async function finish_paybill() {
  * grave arise (wraith/mummy/zombie/vampire/ghoul, end.c:326-340) with the
  * genocided-arise reset. C mptr is mtmp->data here (the mimicker arm
  * resets it at :255; JS arise reads mtmp.data directly, same value).
- * Named omissions: ghost arms (no corpus reach). monhealthdescr (:208)
- * is exact-omit: its body is `#if 0`'d to `*outbuf = '\0'` (pager.c).
+ * Whole C body live (D-2770): named-ghost "the " (:212-216) + "ghost of"
+ * (:260-263) via mptrNdx. Exact-omits: monhealthdescr (:217) stores empty
+ * (C `#if 0`'d, pager.c:136-163; live js/pager.js twin agrees);
+ * mark_synch (:196, win_mark_synch tty flush) is a platform no-op in JS;
+ * the `#if 0` hardfought has_ebones arms (:210, :257-259) are dead in C.
  */
 export async function done_in_by(mtmp, how = DIED) {
-    await pline(how === STONING ? 'You turn to stone...' : 'You die...');
+    // C end.c :195 — You("turn to stone...") / You("die...").
+    await You(how === STONING ? 'turn to stone...' : 'die...');
+    // C end.c :196 mark_synch — win_mark_synch tty flush; platform no-op
+    // in JS (the awaited You above already flushed the topline).
     if (!game.killer) game.killer = { name: '', format: 0 };
     // C end.c done_in_by :183-190 — mptr/champtr + distorted/mimicker/imitator.
     const mnum = mtmp?.mnum;
@@ -1302,9 +1308,16 @@ export async function done_in_by(mtmp, how = DIED) {
         if (!type_is_pname(mptr)) buf += 'the ';
         game.killer.format = KILLED_BY;
     }
-    // C end.c ghost "the ghost of ..." arm — named omission (no corpus reach).
-    // C end.c :208 monhealthdescr wound prefix — named omission (not live in js/).
-    // C end.c :209-212 — minvis / hallucinogen-distorted prefixes.
+    // C end.c :212-216 — named-ghost "the " + KILLED_BY (the `#if 0`
+    // hardfought has_ebones arm is dead; the live arm needs PM_GHOST +
+    // mgivenname). mptrNdx is mptr here (imitator arm has not run yet).
+    if (mptrNdx === PM_GHOST && has_mgivenname(mtmp)) {
+        buf += 'the ';
+        game.killer.format = KILLED_BY;
+    }
+    // C end.c :217 monhealthdescr — exact-omit: C stores empty (`#if 0`'d,
+    // pager.c:136-163; live js/pager.js twin agrees), so buf is unchanged.
+    // C end.c :218-221 — minvis / hallucinogen-distorted prefixes.
     if (mtmp?.minvis) buf += 'invisible ';
     if (distorted) buf += 'hallucinogen-distorted ';
     // C end.c :230-255 — imitator (shapeshifted killer). realnm is the
@@ -1329,10 +1342,15 @@ export async function done_in_by(mtmp, how = DIED) {
         if (alt || type_is_pname(shapeptr)) shape = fakenm;
         else if (the_unique_pm(shapeptr)) shape = `the ${fakenm}`;
         else shape = an(fakenm);
-        buf += alt ? `${realnm} in ${shape} form`
+          buf += alt ? `${realnm} in ${shape} form`
             : mimicker ? `${realnm} disguised as ${shape}`
             : `${realnm} imitating ${shape}`;
-    // C end.c second ghost arm — named omission (no corpus reach).
+    // C end.c :260-263 — "ghost" (+ " of <name>"); the extra "the " came
+    // from the :212 arm above. (C mptr was reset to mtmp->data at :255;
+    // JS mptr never left it, so mptrNdx still reads it.)
+    } else if (mptrNdx === PM_GHOST) {
+        buf += 'ghost';
+        if (has_mgivenname(mtmp)) buf += ` of ${MGIVENNAME(mtmp)}`;
     } else if (mtmp?.isshk) {
         // C end.c: isshk → "%s%s, the shopkeeper" + KILLED_BY
         const shknm = shkname(mtmp);

@@ -10,6 +10,7 @@ import {
     objects_at, obj_extract_self, splitobj, weight, add_to_container,
     place_object, hornoplenty, unbless, mergable, delobj, set_corpsenm,
     unsplitobj, spot_time_left, nxtobj, stop_timer, set_bknown,
+    g_at, add_to_minv,
 } from './mkobj.js';
 import {
     look_here, observe_object, dfeature_at, paint_corner_nhw_menu,
@@ -29,7 +30,7 @@ import {
 import {
     flush_screen, pline, newsym, newsym_force, docrt, bot, flush_topl_more, canseemon,
     canspotmon, Hallucination, clear_nhwindow_message, Norep, impossible,
-    sensemon, You, There, urgent_pline, pline_The,
+    sensemon, You, There, urgent_pline, pline_The, verbalize,
 } from './display.js';
 import { addinv } from './u_init.js';
 import {
@@ -77,7 +78,7 @@ import {
     IS_GRAVE, W_SADDLE, SUPPRESS_SADDLE, ynqchars,
     P_RIDING, P_BASIC, Is_waterlevel, Is_airlevel, Upolyd, WWALKING, FLYING, SWIMMING,
     MAGICAL_BREATHING, DISMOUNT_FELL, DISMOUNT_GENERIC,
-    MAY_HIT, MAY_DESTROY,
+    MAY_HIT, MAY_DESTROY, T_LOOTED, NO_MM_FLAGS,
 } from './const.js';
 import {
     t_at, dotrap, drown, lava_effects, instapetrify, float_down, ceiling,
@@ -115,17 +116,19 @@ import {
 } from './monsters.js';
 import { welded, weldmsg, setuwep, setuswapwep, setuqwep } from './wield.js';
 import { yn_function, getlin, paranoid_ynq } from './getline.js';
-import { highc } from './hacklib.js';
+import { highc, dist2 } from './hacklib.js';
 import { show_nhw_menu_text } from './pager.js';
 import { cansee } from './vision.js';
 import { touch_artifact, youmonst } from './artifact.js';
 import { exercise, A_WIS } from './attrib.js';
-import { inv_cnt } from './steal.js';
+import { inv_cnt, remove_worn_item } from './steal.js';
 import { trycall, Monnam, christen_monst, oname, rndmonnam, Amonnam, a_monnam, x_monnam, mon_nam, s_suffix, hliquid } from './do_name.js';
 import { makemon, set_malign } from './makemon.js';
+import { courtmon } from './mklev.js';
 import { more_experienced, newexplevel } from './exper.js';
 import { hard_helmet } from './do_wear.js';
 import { tiphat } from './sounds.js';
+import { SetVoice } from './sndprocs.js';
 import { mdamageu, digests } from './mhitu.js';
 import { P_SKILL } from './weapon.js';
 import { rider_cant_reach, dismount_steed } from './steed.js';
@@ -136,10 +139,11 @@ import { which_armor, extract_from_minvent } from './worn.js';
 import { unconscious } from './teleport.js';
 import {
     get_adjacent_loc, pick_lock, autokey, doforce, u_have_forceable_weapon,
+    boxlock,
 } from './lock.js';
 import { cmdq_add_ec } from './cmd.js';
 import { scatter } from './explode.js';
-import { doaltarobj, dropy } from './do.js';
+import { doaltarobj, dropy, dropx } from './do.js';
 import { surface } from './sit.js';
 import { removed_from_icebox } from './muse.js';
 
@@ -168,6 +172,7 @@ const BAG_OF_HOLDING = objectNames.indexOf('BAG_OF_HOLDING');
 const BAG_OF_TRICKS = objectNames.indexOf('BAG_OF_TRICKS');
 const HORN_OF_PLENTY = objectNames.indexOf('HORN_OF_PLENTY');
 const LARGE_BOX = objectNames.indexOf('LARGE_BOX');
+const CHEST = objectNames.indexOf('CHEST');
 const CORPSE = objectNames.indexOf('CORPSE');
 const SCR_SCARE_MONSTER = objectNames.indexOf('SCR_SCARE_MONSTER');
 const LOADSTONE = objectNames.indexOf('LOADSTONE');
@@ -181,6 +186,7 @@ const BELL_OF_OPENING = objectNames.indexOf('BELL_OF_OPENING');
 const SPE_BOOK_OF_THE_DEAD = objectNames.indexOf('SPE_BOOK_OF_THE_DEAD');
 const LEASH = objectNames.indexOf('LEASH');
 const WAN_CANCELLATION = objectNames.indexOf('WAN_CANCELLATION');
+const SPE_WIZARD_LOCK = objectNames.indexOf('SPE_WIZARD_LOCK');
 const PM_ICE_TROLL = monsterNames.indexOf('PM_ICE_TROLL');
 const GOLD_SYM = '$';
 const PM_STONE_GOLEM = monsterNames.indexOf('PM_STONE_GOLEM');
@@ -4607,8 +4613,8 @@ export async function doloot() {
 
 /**
  * C ref: pickup.c doloot_core `:2178–2346` — lootcont then lootmon.
- * Named omissions: Confusion reverse_loot;
- * PICK_ANY @ invert / pages / >26 containers.
+ * Confusion `:2202–2209` wired (rn2(6) && reverse_loot / rn2(2)).
+ * Named omissions: PICK_ANY @ invert / pages / >26 containers.
  * (AUTOUNLOCK_FORCE lives in do_loot_cont `:2137–2144`, wired.)
  */
 async function doloot_core() {
@@ -4639,7 +4645,16 @@ async function doloot_core() {
         await pline('You have no hands!');
         return ECMD_OK;
     }
-    // C: Confusion rn2(6)&&reverse_loot / rn2(2) "Being confused…" — named omit
+    // C `:2202–2209` — Confusion: rn2(6) && reverse_loot() costs the turn;
+    // else rn2(2) finds nothing; else fall through to normal looting.
+    if (doloot_Confusion()) {
+        if (rn2(6) && (await reverse_loot()))
+            return ECMD_TIME;
+        if (rn2(2)) {
+            await pline('Being confused, you find nothing to loot.');
+            return ECMD_TIME; /* costs a turn */
+        }             /* else fallthrough to normal looting */
+    }
 
     cc = { x: u.ux, y: u.uy };
     // C: if (iflags.menu_requested) goto lootmon
@@ -4718,6 +4733,119 @@ async function doloot_core() {
         break;
     }
     return timepassed ? ECMD_TIME : ECMD_OK;
+}
+
+/**
+ * C ref: pickup.c reverse_loot `:2350–2426` (staticfn) — confused #loot
+ * misfire. Sole C caller: doloot_core `:2203` (`rn2(6) && reverse_loot()`).
+ * `:2359` !rn2(3) finds "old loot" in invent (1/(n+1) per object, FALSE
+ * off the end); `:2371–2380` splits a (rnd(5)*quan+4)/5 share off the
+ * first COIN_CLASS; `:2386` unwears quivered gold for freeinv; off-throne
+ * `:2389–2393` dropx + "Ok, now there is loot here." when it stays;
+ * throne `:2396–2407` prefers the spe == 2 coffers chest else the nearest
+ * CHEST on fobj; `:2409–2420` thanks + wizard-locks the chest;
+ * `:2421–2428` no chest → exchequer makemon (the looted gate
+ * short-circuits before courtmon RNG); `:2429–2431` else "You drop …" +
+ * dropx. Async: prinv/pline/verbalize/You/dropx/boxlock/remove_worn_item
+ * await. JS invent is the invlet-sorted array (C nobj order, both sides
+ * reorder_invent); distu is the dist2 macro (hack.h:1531); boxdummy is
+ * cg.zeroobj + otyp (boxlock reads otyp only).
+ * @returns {Promise<boolean>}
+ */
+async function reverse_loot() {
+    const u = game.u || {};
+    const x = u.ux | 0, y = u.uy | 0;
+
+    // C `:2359–2369` — !rn2(3): find old loot in invent or FALSE
+    if (!rn2(3)) {
+        /* n objects: 1/(n+1) chance per object, 1/(n+1) to fall off end */
+        let n = inv_cnt(true);
+        for (const otmp of (game.invent || [])) {
+            if (!rn2(n + 1)) {
+                await prinv('You find old loot:', otmp, 0);
+                return true;
+            }
+            --n;
+        }
+        return false;
+    }
+
+    /* find a money object to mess with */
+    let goldob = null;
+    for (const otmp of (game.invent || [])) {
+        if (otmp.oclass === COIN_CLASS) {
+            // C `:2374` — ((long) rnd(5) * quan + 4L) / 5L
+            const quan = Number(otmp.quan) || 0;
+            const contribution = Math.floor((rnd(5) * quan + 4) / 5);
+            goldob = contribution < quan ? splitobj(otmp, contribution) : otmp;
+            break;
+        }
+    }
+    if (!goldob)
+        return false;
+
+    /* gold might be quivered; dropping would un-wear it, but freeinv()
+       expects caller to do that; do so now */
+    await remove_worn_item(goldob, false);
+
+    const lev = game.level?.at?.(x, y);
+    if (!IS_THRONE(lev?.typ)) {
+        // C `:2389–2393`
+        await dropx(goldob);
+        /* the dropped gold might have fallen to lower level */
+        if (g_at(x, y))
+            await pline('Ok, now there is loot here.');
+    } else {
+        /* find original coffers chest if present, otherwise use nearest */
+        let otmp = null;
+        let coffers = null;
+        for (let c = game.fobj; c; c = c.nobj) {
+            if ((c.otyp | 0) !== CHEST)
+                continue;
+            if ((c.spe | 0) === 2) {
+                coffers = c;
+                break; /* a throne room chest */
+            }
+            // C distu(xx,yy) ≡ dist2(xx,yy,u.ux,u.uy); x/y are u.ux/u.uy
+            if (!otmp
+                || dist2(c.ox | 0, c.oy | 0, x, y)
+                    < dist2(otmp.ox | 0, otmp.oy | 0, x, y))
+                otmp = c; /* remember closest ordinary chest */
+        }
+        if (!coffers)
+            coffers = otmp;
+
+        let mon = null;
+        if (coffers) {
+            // C `:2409–2420` — thank, stash, wizard-lock
+            SetVoice(null, 0, 80, 0);
+            await verbalize(
+                'Thank you for your contribution to reduce the debt.',
+            );
+            freeinv(goldob);
+            add_to_container(coffers, goldob);
+            coffers.owt = weight(coffers);
+            coffers.cknown = 0;
+            if (!coffers.olocked) {
+                // C `:2417` — boxdummy = cg.zeroobj, otyp = SPE_WIZARD_LOCK
+                const boxdummy = { otyp: SPE_WIZARD_LOCK };
+                await boxlock(coffers, boxdummy);
+            }
+        } else if ((lev?.looted | 0) !== T_LOOTED
+            && (mon = makemon(courtmon(), x, y, NO_MM_FLAGS))) {
+            // C `:2421–2428` — exchequer accepts the contribution
+            freeinv(goldob);
+            add_to_minv(mon, goldob);
+            await pline('The exchequer accepts your contribution.');
+            if (!rn2(10))
+                lev.looted = T_LOOTED;
+        } else {
+            // C `:2429–2431`
+            await You('drop %s.', doname(goldob));
+            await dropx(goldob);
+        }
+    }
+    return true;
 }
 
 /** C ref: pickup.c mon_beside */

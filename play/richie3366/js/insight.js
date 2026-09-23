@@ -78,6 +78,7 @@ import {
     VANQ_COUNT_L_H,
 } from './const.js';
 import { pline, impossible } from './display.js';
+import { DEF_MONSYM_MLET } from './mondata.js';
 import { getnow } from './calendar.js';
 import { timet_delta } from './allmain.js';
 import { livelog_printf } from './pline.js';
@@ -87,6 +88,7 @@ import { visible_region_at, reg_damg } from './region.js';
 import {
     NUMMONS, mons, haseyes, G_UNIQ, M2_PNAME, monsterNames, pmnames, NEUTRAL,
     MZ_TINY, MZ_SMALL, MZ_MEDIUM, MZ_LARGE, MZ_HUGE, is_animal,
+    is_rider,
 } from './monsters.js';
 import { an, makeplural } from './objnam.js';
 import { upstart, ordin } from './hacklib.js';
@@ -841,9 +843,28 @@ function vanqsort_cmp(indx1, indx2) {
     }
     case VANQ_MCLS_HTOL:
     case VANQ_MCLS_LTOH: {
-        // mlet is symbolic string in JS ("S_KOBOLD"); class-header modes
-        // need numeric mlet order — deferred; fall back to mndx.
-        res = 0;
+        /* C `:2658–2699`; JS mlet is the S_* name, its defsym.h enum
+           ordinal is the DEF_MONSYM_MLET index (S_ANT == 1). */
+        let mcls1 = DEF_MONSYM_MLET.indexOf(p1?.mlet);
+        let mcls2 = DEF_MONSYM_MLET.indexOf(p2?.mlet);
+        const S_ZOMBIE = DEF_MONSYM_MLET.indexOf('S_ZOMBIE');
+        if (mcls1 > S_ZOMBIE && mcls2 > S_ZOMBIE) {
+            const punctclasses = [
+                'S_LIZARD', 'S_EEL', 'S_GOLEM', 'S_GHOST', 'S_DEMON', 'S_HUMAN',
+            ];
+            let punct = punctclasses.indexOf(p1?.mlet);
+            if (punct >= 0) mcls1 = S_ZOMBIE + 1 + punct;
+            punct = punctclasses.indexOf(p2?.mlet);
+            if (punct >= 0) mcls2 = S_ZOMBIE + 1 + punct;
+        }
+        res = mcls1 - mcls2; /* class */
+        if (res === 0) {
+            /* force Riders to be sorted before demons */
+            res = (is_rider(p2) ? 1 : 0) - (is_rider(p1) ? 1 : 0);
+            if (res) break;
+            res = (p1?.mlevel | 0) - (p2?.mlevel | 0); /* mlevel low to high */
+            if (mode === VANQ_MCLS_HTOL) res = -res; /* mlevel high to low */
+        }
         break;
     }
     case VANQ_COUNT_H_L:
@@ -1004,100 +1025,175 @@ const MLET_EXPLAIN = {
 };
 
 /**
- * C ref: insight.c list_vanquished — #vanquished / disclosure / dumplog.
+ * C ref: insight.c list_vanquished `:2784–2949` — #vanquished / disclosure /
+ * dumplog ('A' force-sort menu, 'd' => 'y'). ask-path yn (`:2834–2843`;
+ * single-type C `"ynq\033a"` ESC-pad simplified to 'ynq' — named, same as
+ * list_genocided); 'q' bumps done_stopprint (`:2848–2849`); 'a' with
+ * ntypes>1 goes through set_vanq_order(TRUE), cancel returns (`:2854–2855`);
+ * class-header modes head each mlet run with the upstart'ed def_monsyms
+ * explain, Riders under their own "Rider" header (`:2873–2886`; ATR_NONE at
+ * final disclosure else iflags.menu_headings — the text-menu primitive
+ * carries no per-line attr, so headings ride as plain lines, genocided
+ * precedent); uniq `:2888–2895`, non-uniq `:2896–2907`, pfx `:2910–2917`,
+ * tally `:2923–2927`. Named: DUMPLOG-only `putstr(0, ...)` "No creatures
+ * were vanquished." (`:2944–2947` — compiled out, config.h; DUMPLOG
+ * retired, D-1776).
  * @param {string} defquery 'y'|'a'|'A'|'d'|...
- * @param {boolean} ask end-of-game disclose yn (deferred body for ask)
+ * @param {boolean} ask end-of-game disclose yn
  */
 export async function list_vanquished(defquery, ask) {
-    let force_sort = defquery === 'A';
+    /* C `:2796–2797` */
+    const force_sort = defquery === 'A';
     const dumping = defquery === 'd';
-    if (force_sort) {
-        // set_vanq_order deferred — keep current vanq_sortmode
+    if (force_sort) { /* iflags.menu_requested via dovanquished() */
+        /* choose value for vanq_sortmode via menu; ESC cancels choosing
+           sort order but continues with vanquishd monsters display */
+        await set_vanq_order(true); /* (void) — keep going either way */
     }
     if (dumping || force_sort) {
+        /* switch from 'A' or 'd' to 'y' (`:2810–2811`) */
         defquery = 'y';
-        ask = false;
+        ask = false; /* redundant */
     }
 
+    /* get totals first (C `:2815–2820`) */
     const mv = game.mvitals || [];
     const mindx = [];
     let total_killed = 0;
     for (let i = LOW_PM; i < NUMMONS; i++) {
         const nkilled = mv[i]?.died | 0;
-        if (!nkilled) continue;
+        if (!nkilled)
+            continue;
         mindx.push(i);
         total_killed += nkilled;
     }
     const ntypes = mindx.length;
 
+    /* vanquished creatures list; includes all dead monsters, not just those
+       killed by the player (`:2823–2826`) */
     if (ntypes !== 0) {
         let c;
         if (ask) {
-            // C: ntypes>1 → ynaq; else ynq (+ allow 'a' via ESC pad)
-            let allow = ntypes > 1 ? 'ynaq' : 'ynq';
+            let allow;
             let dq = defquery;
-            if (ntypes === 1 && dq === 'a') dq = 'y';
+            if (ntypes > 1) {
+                allow = 'ynaq'; /* ynaqchars (`:2835`; decl.c) */
+            } else {
+                allow = 'ynq'; /* ynqchars (`:2837`); C `:2838` appends
+                    "\033a" so a lone type still accepts 'a' — ESC-pad
+                    simplified (named, same as list_genocided) */
+                if (dq === 'a') /* potential default from 'disclose' */
+                    dq = 'y';
+            }
             c = await yn_function(
                 'Do you want an account of creatures vanquished?',
                 allow,
                 dq,
+                true, /* C `:2842–2843` TRUE */
             );
         } else {
             c = defquery;
         }
-        if (c === 'q') {
+        if (c === 'q') { /* C `:2848–2849` */
             if (!game.program_state) game.program_state = {};
             game.program_state.done_stopprint =
                 (game.program_state.done_stopprint | 0) + 1;
         }
         if (c === 'y' || c === 'a') {
-            // c=='a' set_vanq_order deferred
+            if (c === 'a' && ntypes > 1) { /* ask user to choose sort order */
+                /* choose value for vanq_sortmode via menu; ESC cancels list
+                   of vanquished monsters but does not set 'done_stopprint' */
+                if ((await set_vanq_order(true)) < 0) /* `:2854–2855` */
+                    return;
+            }
+            /* C `:2857–2860` */
             const mode = game.flags?.vanq_sortmode ?? VANQ_MLVL_MNDX;
             const uniq_header = mode === VANQ_ALPHA_SEP;
-            // class_header needs def_monsyms explain — deferred (always false)
-            const class_header = false;
-            void class_header;
+            const class_header = (mode === VANQ_MCLS_LTOH
+                || mode === VANQ_MCLS_HTOL) && ntypes > 1;
 
+            /* C `:2867` — JS sort is stable, like the contest qsort. */
             mindx.sort(vanqsort_cmp);
             const lines = [];
-            lines.push('Vanquished creatures:');
-            if (!dumping) lines.push('');
+            lines.push('Vanquished creatures:'); /* C `:2863` */
+            if (!dumping) lines.push(''); /* C `:2864–2865` */
 
-            let was_uniq = false;
+            /* C `:2827–2829`; prev_mlet 0 matches no class (S_ANT is 1,
+               defsym.h) so the first header always prints — numeric 0 never
+               equals a JS mlet string, same effect. */
+            let was_uniq = false, special_hdr = false;
+            let prev_mlet = 0;
             for (let ni = 0; ni < ntypes; ni++) {
                 const i = mindx[ni];
                 const nkilled = mv[i]?.died | 0;
                 const ptr = mons(i);
+                const rider = is_rider(ptr); /* C `:2871` */
+                const mlet = ptr?.mlet; /* C `:2872` */
+                if (class_header
+                    && (mlet !== prev_mlet || (special_hdr && !rider))) {
+                    let hdr;
+                    if (!rider) {
+                        hdr = MLET_EXPLAIN[mlet] ?? mlet; /* `:2876` */
+                        special_hdr = false;
+                    } else {
+                        hdr = 'Rider'; /* `:2879` */
+                        special_hdr = true;
+                    }
+                    /* 'ask' implies final disclosure, where highlighting
+                       of various header lines is suppressed (`:2882–2885`;
+                       ATR_NONE vs iflags.menu_headings — the text-menu
+                       primitive carries no per-line attr, plain line). */
+                    lines.push(upstart(hdr));
+                    prev_mlet = mlet;
+                }
                 const name = pmname_neutral(i);
                 let buf;
-                if (UniqCritterIndx(i)) {
+                if (UniqCritterIndx(i)) { /* C `:2888–2895` */
                     buf = `${!type_is_pname(ptr) ? 'the ' : ''}${name}`;
-                    if (nkilled > 1) buf += ` (${N_times(nkilled)})`;
+                    if (nkilled > 1)
+                        buf += ` (${N_times(nkilled)})`; /* eos+`:2893–2894` */
                     was_uniq = true;
-                } else {
+                } else { /* C `:2896–2907` */
                     if (uniq_header && was_uniq) {
                         lines.push('');
                         was_uniq = false;
                     }
-                    if (nkilled === 1) buf = an(name);
-                    else buf = `${String(nkilled).padStart(3, ' ')} ${makeplural(name)}`;
+                    /* trolls or undead might have come back,
+                       but we don't keep track of that */
+                    if (nkilled === 1)
+                        buf = an(name);
+                    else
+                        buf = `${String(nkilled).padStart(3, ' ')} ${makeplural(name)}`; /* `%3d %s` */
                 }
+                /* number of leading spaces to match 3 digit prefix
+                   (`:2910–2913`; the strncmpi clone returns boolean-true on
+                   match, so `? 0 :` keeps C's `!strncmpi ? 0 :` sense) */
                 let pfx = strncmpi(buf, 'the ', 4) ? 0
                     : strncmpi(buf, 'an ', 3) ? 1
                         : strncmpi(buf, 'a ', 2) ? 2
                             : !isDigit(buf[2] || '') ? 4 : 0;
-                // class_header would ++pfx
-                lines.push(`${' '.repeat(pfx)}${buf}`);
+                if (class_header) /* `:2914–2915` */
+                    ++pfx;
+                lines.push(`${' '.repeat(pfx)}${buf}`); /* `%*s%s` `:2916–2917` */
             }
+            /* C's commented-out Hallucination partridge (`:2919–2922`) stays out. */
             if (ntypes > 1) {
                 if (!dumping) lines.push('');
-                lines.push(`${total_killed} creatures vanquished.`);
+                lines.push(`${total_killed} creatures vanquished.`); /* `:2926` */
             }
+            /* show_nhw_menu_text ≡ create/display/destroy (`:2862`,`:2929–2930`) */
             await show_nhw_menu_text(lines);
         }
+
+    /* For end-of-game disclosure, we're only called when some monsters
+       were vanquished and won't reach these 'else-if's (`:2933–2940`). */
     } else if (!game.program_state?.gameover) {
+        /* #vanquished rather than final disclosure, so pline() is ok */
         await pline('No creatures have been vanquished.');
     }
+    /* C `:2944–2947` — `#ifdef DUMPLOG ... else if (dumping)
+       putstr(0, 0, "No creatures were vanquished.")` is compiled out in the
+       pinned build (config.h) and DUMPLOG is retired (D-1776); named. */
 }
 
 /**
