@@ -36,7 +36,7 @@ import {
     HL_UNDEF, HL_NONE, HL_BOLD, HL_DIM, HL_ITALIC, HL_ULINE, HL_BLINK, HL_INVERSE,
     HL_ATTCLR_BOLD, HL_ATTCLR_DIM, HL_ATTCLR_ITALIC,
     HL_ATTCLR_ULINE, HL_ATTCLR_BLINK, HL_ATTCLR_INVERSE, BL_ATTCLR_MAX,
-    EQ_VALUE, LT_VALUE, LE_VALUE, GE_VALUE, GT_VALUE, TXT_VALUE,
+    NO_LTEQGT, EQ_VALUE, LT_VALUE, LE_VALUE, GE_VALUE, GT_VALUE, TXT_VALUE,
     BL_TH_NONE, BL_TH_VAL_PERCENTAGE, BL_TH_VAL_ABSOLUTE, BL_TH_UPDOWN,
     BL_TH_CONDITION, BL_TH_TEXTMATCH, BL_TH_ALWAYS_HILITE, BL_TH_CRITICALHP,
     Upolyd,
@@ -1045,7 +1045,8 @@ export async function cond_menu() {
  * Callers: C bot() never touches this path; the option layer
  * (options.c `:1873` do_set, cfgfiles.c `:1173`) is still unported, so the
  * two exports below are live for those future rows. The interactive
- * status_hilite_menu_add family (`:3890+`) is its own row, not this one.
+ * chooser / field menu / remove family is below (`:3811+`, D-2757).
+ * `status_hilite_menu_add` (`:3889–4302`) stays a named omission.
  * Named omissions (map): config_error_add sink (options.c; bad_negation
  * precedent in options.js) — FALSE propagation at every site is kept.
  */
@@ -2453,8 +2454,9 @@ export function status_hilite_linestr_done() {
 
 // C botl.c:3462–3474 status_hilite_linestr_countfield() (staticfn) —
 // BL_FLUSH counts every line (`:3465–3466`), else only fld matches
-// (`:3470–3471`). Only reader is count_status_hilites (`:3477–3485`, the
-// doset(options.c) helper — named omission, travels with the doset row).
+// (`:3470–3471`). Readers: this file's hilite menus, and
+// count_status_hilites (`:3477–3485`, the doset get_val helper — still
+// a named omission).
 function status_hilite_linestr_countfield(fld) {
     const countall = (fld === BL_FLUSH); // C `:3465`
     let count = 0; // C `:3466`
@@ -2604,4 +2606,359 @@ function status_hilite2str(hl) {
         if (tmpattr != null) clrbuf += `&${tmpattr}`; // C `:3662–3663`
     }
     return `${initblstats[hl.fld]?.name ?? ''}/${behavebuf}/${clrbuf}`; // C `:3665–3667`
+}
+
+// C botl.c:703–737 initblstats[].fldname. The JS table stores that string
+// as `name` (copied onto blstats[].fldname by init_blstats).
+function blstatFldName(fld) {
+    return initblstats[fld | 0]?.name ?? '';
+}
+
+// tty_end_menu prepends the prompt and a blank row. Same shape as
+// cond_menu / getpos_menu: the prompt is the inverse title, then a gap,
+// then the add_menu rows in C order.
+function hiliteMenuRows(prompt, rows) {
+    return [
+        { text: prompt, attr: ATR_INVERSE, selectable: false },
+        { text: '', attr: ATR_NONE, selectable: false },
+        ...rows,
+    ];
+}
+
+/**
+ * C ref: botl.c status_hilite_menu_choose_updownboth `:3811–3887`.
+ * PICK_ONE menu of LT/LE/EQ/GE/GT. a_int is `10 + relationship` so a
+ * cancelled menu (res <= 0) stays distinct from EQ_VALUE (0). Returns
+ * the relationship, or NO_LTEQGT on cancel. create/start/end/select/
+ * destroy fold into one select_menu_pick_one (cond_menu precedent);
+ * nul_glyphinfo / NO_COLOR / MENU_ITEMFLAGS_NONE do not change the tty
+ * text row. cg.zeroany is the fresh a_int on each row.
+ *
+ * C callers are both inside status_hilite_menu_add (`:4057`, `:4088`),
+ * which has no JS body (named omission). This export is the call those
+ * sites make.
+ *
+ * @param {number} fld statusfields index
+ * @param {string|null} str threshold text, or null for the up/down menu
+ * @param {boolean} ltok offer less / less-or-equal
+ * @param {boolean} gtok offer greater / greater-or-equal
+ * @returns {Promise<number>}
+ */
+export async function status_hilite_menu_choose_updownboth(fld, str, ltok, gtok) {
+    let ret = NO_LTEQGT; // C `:3816`
+    const rows = [];
+    // C `if (str)` is a pointer test. "" is non-NULL.
+    const hasStr = str != null;
+    const ac = (fld | 0) === BL_AC; // C `:3830` and the other AC ternaries
+
+    if (ltok) { // C `:3827`
+        const buf = hasStr // C `:3828–3832`
+            ? `${ac ? 'Better (lower)' : 'Less'} than ${str}`
+            : 'Value goes down';
+        rows.push({ // C `:3833–3836` a_int = 10 + LT_VALUE
+            text: buf, selectable: true, attr: ATR_NONE, a_int: 10 + LT_VALUE,
+        });
+        if (hasStr) { // C `:3838–3844`
+            rows.push({
+                text: `${str} or ${ac ? 'better (lower)' : 'less'}`,
+                selectable: true, attr: ATR_NONE, a_int: 10 + LE_VALUE,
+            });
+        }
+    }
+
+    rows.push({ // C `:3848–3855` EQ is unconditional
+        text: hasStr ? `Exactly ${str}` : 'Value changes',
+        selectable: true, attr: ATR_NONE, a_int: 10 + EQ_VALUE,
+    });
+
+    if (gtok) { // C `:3857`
+        if (hasStr) { // C `:3858–3864` GE only when a threshold string exists
+            rows.push({
+                text: `${str} or ${ac ? 'worse (higher)' : 'more'}`,
+                selectable: true, attr: ATR_NONE, a_int: 10 + GE_VALUE,
+            });
+        }
+        const buf = hasStr // C `:3866–3870`
+            ? `${ac ? 'Worse (higher)' : 'More'} than ${str}`
+            : 'Value goes up';
+        rows.push({ // C `:3871–3874` a_int = 10 + GT_VALUE
+            text: buf, selectable: true, attr: ATR_NONE, a_int: 10 + GT_VALUE,
+        });
+    }
+
+    const prompt = `Select field ${blstatFldName(fld)} value:`; // C `:3876`
+    // options.js statically imports this module (cond_menu precedent).
+    const { select_menu_pick_one } = await import('./options.js');
+    const res = await select_menu_pick_one(hiliteMenuRows(prompt, rows)); // C `:3877–3880`
+    if (res.kind === 'pick' && res.item) { // C `:3881` res > 0
+        ret = (res.item.a_int | 0) - 10; // C `:3882`
+        // C `:3883` free(picks) — GC.
+    }
+    return ret; // C `:3886`
+}
+
+/**
+ * C ref: botl.c status_hilite_remove `:4305–4354`.
+ * Walk the linestr store for `id`. A condition rule clears the matching
+ * bits in gc.cond_hilites and returns TRUE without unlinking the line
+ * (the caller re-gathers). Any other rule unlinks that hilite_s from
+ * blstats[0][fld].thresholds, mirrors the head into row 1, and drops
+ * hilite_rule / time on both rows when the removed node is the active
+ * rule. free(hl) is GC.
+ *
+ * Sole C caller: status_hilite_menu_fld `:4441` (wired below).
+ * The `:669` line is the prototype.
+ * @param {number} id linestr id
+ * @returns {boolean}
+ */
+export function status_hilite_remove(id) {
+    let hlstr = status_hilite_str; // C `:4307`
+    const want = id | 0;
+    while (hlstr && (hlstr.id | 0) !== want) hlstr = hlstr.next; // C `:4309–4311`
+    if (!hlstr) return false; // C `:4313–4314`
+
+    if ((hlstr.fld | 0) === BL_CONDITION) { // C `:4316`
+        const ch = ensureCondHilites();
+        const mask = hlstr.mask >>> 0;
+        const clearBit = (i) => {
+            ch[i] = ((ch[i] ?? 0) & ~mask) >>> 0;
+        };
+        for (let i = 0; i < CLR_MAX; i++) clearBit(i); // C `:4319–4320`
+        clearBit(HL_ATTCLR_BOLD); // C `:4321`
+        clearBit(HL_ATTCLR_DIM); // C `:4322`
+        clearBit(HL_ATTCLR_ITALIC); // C `:4323`
+        clearBit(HL_ATTCLR_ULINE); // C `:4324`
+        clearBit(HL_ATTCLR_BLINK); // C `:4325`
+        clearBit(HL_ATTCLR_INVERSE); // C `:4326`
+        return true; // C `:4327`
+    }
+
+    const fld = hlstr.fld | 0; // C `:4329`
+    const row0 = game.gb?.blstats?.[0]?.[fld];
+    const row1 = game.gb?.blstats?.[1]?.[fld];
+    let hlprev = null; // C `:4330`
+    for (let hl = row0?.thresholds ?? null; hl; hl = hl.next) { // C `:4332`
+        if (hlstr.hl === hl) { // C `:4333` pointer identity
+            if (hlprev) { // C `:4334–4335`
+                hlprev.next = hl.next;
+            } else if (row0) { // C `:4336–4340`
+                row0.thresholds = hl.next;
+                if (row1) row1.thresholds = row0.thresholds;
+            }
+            if (row0 && row0.hilite_rule === hl) { // C `:4341–4346`
+                row0.hilite_rule = null;
+                if (row1) row1.hilite_rule = null;
+                row0.time = 0;
+                if (row1) row1.time = 0;
+            }
+            // C `:4347` free(hl) — GC.
+            return true; // C `:4348`
+        }
+        hlprev = hl; // C `:4350`
+    }
+    return false; // C `:4353`
+}
+
+/**
+ * C ref: botl.c reset_status_hilites `:2320–2331`.
+ * When hilite_delta is non-zero, zero both blstats rows' time and set
+ * gu.update_all. Always set disp.botlx. This port's bot() reads
+ * flags.botlx (allmain.js), so that store is set too (cond_menu sets
+ * both botl stores the same way).
+ *
+ * Callers: botl.c:4556 → status_hilite_menu below.
+ * botl.c:4300 is the tail of status_hilite_menu_add (named omission,
+ * no JS site). options.c:4035 is optfn_statushilites do_set (optfn
+ * still null — named omission).
+ */
+export function reset_status_hilites() {
+    if (game.iflags?.hilite_delta) { // C `:2323`
+        const b0 = game.gb?.blstats?.[0];
+        const b1 = game.gb?.blstats?.[1];
+        if (b0 && b1) {
+            for (let i = 0; i < MAXBLSTATS; ++i) { // C `:2326–2327`
+                if (b0[i]) b0[i].time = 0;
+                if (b1[i]) b1[i].time = 0;
+            }
+        }
+        if (!game.gu) game.gu = {};
+        game.gu.update_all = true; // C `:2328`
+    }
+    if (!game.disp) game.disp = {};
+    game.disp.botlx = true; // C `:2330`
+    if (!game.flags) game.flags = {};
+    game.flags.botlx = true;
+}
+
+/**
+ * C ref: botl.c status_hilite_menu_fld `:4356–4453`.
+ * PICK_ANY over one field's linestr rows, plus "Remove selected hilites"
+ * (accelerator X, a_int -1) and, except for BL_SCORE, "Add new hilites"
+ * (accelerator Z, a_int -2). SCORE_ON_BOTL is commented out
+ * (config.h:627), so the `#ifndef` arm is live C: score never offers Z.
+ * Delete (mode bit 1) calls status_hilite_remove for each selected id.
+ * Create (mode bit 2) is status_hilite_menu_add — named omission.
+ *
+ * When the field has no lines yet, C calls status_hilite_menu_add first
+ * (`:4370`) and returns FALSE if that returns FALSE. The add function
+ * has no JS body, so this site takes that FALSE return. The
+ * "No current hilites for %s" row (`:4392–4394`) is only reached after
+ * add returns TRUE and the re-gather is still empty; that arm stays
+ * with the omitted function.
+ *
+ * Sole C caller: status_hilite_menu `:4555` (wired below). `:670` is
+ * the prototype.
+ * @param {number} fld
+ * @returns {Promise<boolean>} acted
+ */
+async function status_hilite_menu_fld(fld) {
+    const count = status_hilite_linestr_countfield(fld); // C `:4363`
+    if (!count) { // C `:4369–4376`
+        // Named omission: status_hilite_menu_add (botl.c:3889–4302).
+        // C returns FALSE from here when add returns FALSE (`:4375`).
+        return false;
+    }
+
+    const rows = [];
+    let hlstr = status_hilite_str; // C `:4382`
+    while (hlstr) { // C `:4383–4391`
+        if ((hlstr.fld | 0) === (fld | 0)) {
+            rows.push({
+                text: hlstr.str, selectable: true, attr: ATR_NONE, a_int: hlstr.id | 0,
+            });
+        }
+        hlstr = hlstr.next;
+    }
+    rows.push({ text: '', selectable: false, attr: ATR_NONE }); // C `:4398` separator
+    rows.push({ // C `:4400–4404` a_int -1, accelerator 'X'
+        text: 'Remove selected hilites',
+        selectable: true,
+        selector: 'X',
+        attr: ATR_NONE,
+        a_int: -1,
+    });
+    // C `:4407–4421` #ifndef SCORE_ON_BOTL. The define is off, so score
+    // suppresses Z. Every other field offers it.
+    if ((fld | 0) !== BL_SCORE) {
+        rows.push({
+            text: 'Add new hilites',
+            selectable: true,
+            selector: 'Z',
+            attr: ATR_NONE,
+            a_int: -2,
+        });
+    }
+
+    const prompt = `Current ${blstatFldName(fld)} hilites:`; // C `:4423`
+    const { select_menu_pick_any } = await import('./options.js');
+    const picks = await select_menu_pick_any(hiliteMenuRows(prompt, rows)); // C `:4427`
+    let acted = false; // C `:4426`
+    const res = Array.isArray(picks) ? picks.length : 0; // cancel and finish-empty are both <= 0
+    if (res > 0) { // C `:4427`
+        let mode = 0; // C `:4429` unsigned
+        for (let i = 0; i < res; i++) { // C `:4431–4437`
+            const idx = picks[i].a_int | 0;
+            if (idx === -1) mode |= 1;
+            else if (idx === -2) mode |= 2;
+        }
+        if (mode & 1) { // C `:4438–4443` delete selected hilites
+            for (let i = 0; i < res; i++) {
+                const idx = picks[i].a_int | 0;
+                if (idx > 0 && status_hilite_remove(idx)) acted = true;
+            }
+        }
+        if (mode & 2) { // C `:4445–4447`
+            // Named omission: while (status_hilite_menu_add(fld)) acted = TRUE.
+            // botl.c:3889–4302 has no JS body, so this arm does not set acted.
+        }
+        // C `:4449` free(picks) — GC.
+    }
+    return acted; // C `:4452`
+}
+
+/**
+ * C ref: botl.c status_hilites_viewall `:4455–4474`.
+ * NHW_TEXT of `OPTIONS=hilite_status: %.*s` for each linestr.
+ * Precision is BUFSZ minus sizeof("OPTIONS=hilite_status: ") minus 1
+ * (sizeof counts the NUL). display_nhwindow(..., FALSE): tty ignores
+ * the blocking flag for NHW_TEXT ("all windows are blocking") and
+ * process_text_window always waits. show_text_pages is that wait.
+ * create/destroy fold into the pager. Sole C caller is
+ * status_hilite_menu `:4553` (`:671` is the prototype).
+ */
+async function status_hilites_viewall() {
+    const prefix = 'OPTIONS=hilite_status: '; // C `:4465`
+    const prec = BUFSZ - (prefix.length + 1) - 1; // sizeof includes NUL
+    const lines = [];
+    for (let hlstr = status_hilite_str; hlstr; hlstr = hlstr.next) { // C `:4464–4470`
+        lines.push(prefix + String(hlstr.str ?? '').slice(0, prec));
+    }
+    const { show_text_pages } = await import('./pager.js');
+    await show_text_pages(lines); // C `:4472` display_nhwindow(datawin, FALSE)
+    // C `:4473` destroy_nhwindow — show_text_pages dismisses via docrt.
+}
+
+/**
+ * C ref: botl.c status_hilite_menu `:4498–4578`.
+ * PICK_ONE of "View all" (a_int -1, only when any rule exists) plus one
+ * row per blstats field (`a_int = fld + 1`, `%-18s`, " (N defined)").
+ * SCORE_ON_BOTL is off, so a score field with no rules is skipped
+ * (`:4532–4538`). A negative fld after `a_int - 1` is view-all; otherwise
+ * the field menu, and a TRUE from that resets hilite timers. The menu
+ * repeats until cancel, unless iflags.debug_fuzzer (one try). Then, if
+ * any rule was gathered and hilite_delta is 0, set it to 3.
+ * Always returns TRUE (`:4577`).
+ *
+ * C caller: options.c optfn_o_status_hilites do_handler `:8465`
+ * (js/options.js doset, the "status highlight rules" row).
+ * @returns {Promise<boolean>}
+ */
+export async function status_hilite_menu() {
+    let redo; // C `:4504`
+    let countall = 0; // C `:4505`
+    const { select_menu_pick_one } = await import('./options.js');
+    do {
+        redo = false; // C `:4509` shlmenu_redo
+        status_hilite_linestr_gather(); // C `:4514`
+        countall = status_hilite_linestr_countfield(BL_FLUSH); // C `:4515`
+        const rows = [];
+        if (countall) { // C `:4516–4524`
+            rows.push({
+                text: 'View all hilites in config format',
+                selectable: true, attr: ATR_NONE, a_int: -1,
+            });
+            rows.push({ text: '', selectable: false, attr: ATR_NONE }); // C `:4523` add_menu_str ""
+        }
+        for (let i = 0; i < MAXBLSTATS; i++) { // C `:4526`
+            const fld = initblstats[i].fld | 0; // C `:4530`
+            const count = status_hilite_linestr_countfield(fld); // C `:4531`
+            // C `:4532–4538` #ifndef SCORE_ON_BOTL (the define is off).
+            if (fld === BL_SCORE && !count) continue;
+            let buf = blstatFldName(fld).padEnd(18, ' '); // C `:4542` %-18s
+            if (count) buf += ` (${count} defined)`; // C `:4543–4544`
+            rows.push({ // C `:4540–4546` a_int = fld + 1
+                text: buf, selectable: true, attr: ATR_NONE, a_int: fld + 1,
+            });
+        }
+        const res = await select_menu_pick_one( // C `:4549–4550`
+            hiliteMenuRows('Status hilites:', rows));
+        if (res.kind === 'pick' && res.item) { // C `:4550` res > 0
+            const fld = (res.item.a_int | 0) - 1; // C `:4551`
+            if (fld < 0) { // C `:4552–4553`
+                await status_hilites_viewall();
+            } else if (await status_hilite_menu_fld(fld)) { // C `:4554–4556`
+                reset_status_hilites();
+            }
+            // C `:4558` free(picks) — GC.
+            redo = true; // C `:4559`
+        }
+        // C `:4562` destroy_nhwindow — select_menu_pick_one dismisses.
+        countall = status_hilite_linestr_countfield(BL_FLUSH); // C `:4563`
+        status_hilite_linestr_done(); // C `:4564`
+    } while (redo && !game.iflags?.debug_fuzzer); // C `:4568–4569`
+
+    if (!game.iflags) game.iflags = {};
+    if (countall > 0 && !game.iflags.hilite_delta) // C `:4574–4575`
+        game.iflags.hilite_delta = 3;
+    return true; // C `:4577`
 }

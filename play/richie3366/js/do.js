@@ -1834,7 +1834,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
             await u_on_rndspot(0);
         } else {
             seetrap(ttrap);
-            u_on_newpos(ttrap.tx, ttrap.ty);
+            await u_on_newpos(ttrap.tx, ttrap.ty); // C do.c:1744
         }
     } else if (at_stairs && !In_endgame(u.uz)) {
         const atLadder = !!game.at_ladder;
@@ -1842,7 +1842,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
             // C: stairway_find_from(&u.uz0, at_ladder) else sstairs/dnstairs
             const stway = stairway_find_from(u.uz0, atLadder);
             if (stway) {
-                u_on_newpos(stway.sx, stway.sy);
+                await u_on_newpos(stway.sx, stway.sy); // C do.c:1750
                 stway.u_traversed = true;
             } else if (newdungeon) {
                 // C: u_on_sstairs(1) — dest upstairs implies moving down
@@ -1868,7 +1868,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
             // C ordinary descent: find_from(uz0) else sstairs/upstairs
             const stway = stairway_find_from(u.uz0, atLadder);
             if (stway) {
-                u_on_newpos(stway.sx, stway.sy);
+                await u_on_newpos(stway.sx, stway.sy); // C do.c:1768
                 stway.u_traversed = true;
             } else if (newdungeon) {
                 // C: u_on_sstairs(0) — dest dnstairs implies moving up
@@ -2256,8 +2256,7 @@ export async function u_collide_m(mtmp) {
     const cc = { x: 0, y: 0 };
     if (!rn2(2) && enexto(cc, u.ux, u.uy, game.youmonst?.data || mtmp.data)
         && Math.max(Math.abs(cc.x - u.ux), Math.abs(cc.y - u.uy)) <= 1) {
-        u.ux = cc.x;
-        u.uy = cc.y;
+        await u_on_newpos(cc.x, cc.y); // C do.c:1431
     } else {
         // C: mnexto(mtmp, RLOC_NOMSG) on level-entry collide
         await mnexto(mtmp, RLOC_NOMSG);

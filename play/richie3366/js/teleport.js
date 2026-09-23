@@ -792,15 +792,10 @@ export async function rloc_to(mtmp, x, y, rloc_opts = null) {
     const u = game.u || {};
     if (u.ustuck === mtmp) {
         if (u.uswallow) {
-            /* C dungeon.c u_on_newpos: ux/uy, clear hide, steed.
-             * see_nearby_objects skipped while swallowed. earth_sense named. */
-            u.ux = mtmp.mx | 0;
-            u.uy = mtmp.my | 0;
-            u.uundetected = 0;
-            if (u.usteed) {
-                u.usteed.mx = u.ux;
-                u.usteed.my = u.uy;
-            }
+            // C teleport.c:1692. Dynamic import: mklev already imports
+            // teleport.js.
+            const { u_on_newpos } = await import('./mklev.js');
+            await u_on_newpos(mtmp.mx | 0, mtmp.my | 0);
             await check_special_room(false);
             await docrt();
         } else if (distu_xy(mtmp.mx, mtmp.my) > 2) {
@@ -1526,12 +1521,12 @@ export async function teleds(nux, nuy, teleds_flags) {
         }
     }
 
-    // C: u_on_newpos after drag_ball (needs old ux,uy when allow_drag)
-    u.ux = nux | 0;
-    u.uy = nuy | 0;
-    if (u.usteed) {
-        u.usteed.mx = u.ux;
-        u.usteed.my = u.uy;
+    // C teleport.c:523–525 — u_on_newpos after drag_ball (old ux,uy
+    // still visible while allow_drag). Dynamic import: mklev.js
+    // already imports teleport.js (re-export TDZ if read at top level).
+    {
+        const { u_on_newpos } = await import('./mklev.js');
+        await u_on_newpos(nux | 0, nuy | 0);
     }
     // C: fill_pit(u.ux0, u.uy0) after u_on_newpos (trap.c).
     // Dynamic import: dig.js → trap.js → teleport.js cycle.

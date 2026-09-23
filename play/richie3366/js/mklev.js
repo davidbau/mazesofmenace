@@ -148,7 +148,10 @@ import {
     create_gas_cloud, create_gas_cloud_selection, clear_regions,
     clear_heros_fault,
 } from './region.js';
-import { Norep, newsym, impossible, pline, You, flush_screen, nh_delay_output, monsym, describe_level } from './display.js';
+import {
+    Norep, newsym, impossible, pline, You, flush_screen, nh_delay_output, monsym,
+    describe_level, cliparound, map_location, see_nearby_objects, Hallucination,
+} from './display.js';
 import { buried_ball_to_punishment, fracture_rock } from './dig.js';
 import { obfree } from './shk.js';
 import { block_point, unblock_point, does_block, recalc_block_point, vision_recalc } from './vision.js';
@@ -169,6 +172,9 @@ import { mkmap } from './mkmap.js';
 // Cycle-safe per scripts/imports.mjs: same 98-module SCC, hoisted function
 // used only at runtime (no top-level TDZ read).
 import { makemap_prepost } from './wizcmds.js';
+// imports.mjs --can: Blind and earth_sense are hoisted — cycle-safe.
+import { Blind } from './invent.js';
+import { earth_sense } from './cmd.js';
 
 const GOLD_PIECE = objectNames.indexOf('GOLD_PIECE');
 const ROCK = objectNames.indexOf('ROCK');
@@ -505,11 +511,56 @@ export function stairs_description(sway, stcase = true) {
 
 // ── Hero placement (C ref: stairs.c, mkmaze.c) ──
 
-function u_on_newpos(x, y) {
-    game.u.ux = x;
-    game.u.uy = y;
+/**
+ * C ref: dungeon.c u_on_newpos `:1568–1601`.
+ * `isok` (`cmd.c:4326`) then panic vs impossible (`:1573–1575`):
+ * negative or past COLNO/ROWNO panics (NORETURN); x==0 is impossible
+ * and still places. CLIPPING is defined (`config.h:538`), so cliparound
+ * always runs. `!on_level(uz, uz0)` snaps ux0/uy0, `map_location`
+ * FALSE, and `iflags.terrain_typ = MAX_TYPE`. Same level with
+ * !Blind && !Hallucination && !uswallow calls see_nearby_objects.
+ * earth_sense is last. Async: cliparound, impossible, and earth_sense
+ * can reach nhgetch.
+ */
+export async function u_on_newpos(x, y) {
+    x = x | 0;
+    y = y | 0;
+    // C dungeon.c:1570–1576.
+    if (!isok(x, y)) {
+        const off = (x < 0 || y < 0 || x > COLNO - 1 || y > ROWNO - 1);
+        if (off) {
+            // panic() is NORETURN (extern.h). No JS panic (paniclog is
+            // Rule #2). Do not fall through into ux/uy.
+            throw new Error(
+                `u_on_newpos: trying to place hero off map <${x},${y}>`,
+            );
+        }
+        await impossible(
+            'u_on_newpos: trying to place hero off map <%d,%d>', x, y,
+        );
+    }
+    const u = game.u;
+    u.ux = x; // C :1577
+    u.uy = y; // C :1578
+    await cliparound(u.ux, u.uy); // C :1579–1581
+    u.uundetected = 0; // C :1582
+    // C :1583–1585 — ridden steed shares the hero square.
+    if (u.usteed) {
+        u.usteed.mx = u.ux;
+        u.usteed.my = u.uy;
+    }
+    // C :1586–1599. switch_terrain is a comment here, not a call.
+    if (!on_level(u.uz, u.uz0)) {
+        u.ux0 = u.ux;
+        u.uy0 = u.uy;
+        map_location(u.ux, u.uy, false); // C FALSE
+        if (!game.iflags) game.iflags = {};
+        game.iflags.terrain_typ = MAX_TYPE;
+    } else if (!Blind() && !Hallucination() && !(u.uswallow | 0)) {
+        see_nearby_objects();
+    }
+    await earth_sense(); // C :1600
 }
-export { u_on_newpos };
 
 // C ref: dungeon.h within_bounded_area
 function within_bounded_area(x, y, lx, ly, hx, hy) {
@@ -579,8 +630,10 @@ function put_lregion_here(x, y, nlx, nly, nhx, nhy, rtype, oneshot, lev) {
                 return false;
             }
         }
-        u_on_newpos(x, y);
-        break;
+        // C mkmaze.c:455. Promise so u_on_rndspot can finish cliparound /
+        // map_location / earth_sense before switch_terrain. Non-tele
+        // arms stay synchronous (level loaders do not await).
+        return u_on_newpos(x, y);
     }
     case LR_PORTAL: {
         // C ref: mkmaze.c mkportal — MAGIC_PORTAL + dst dnum/dlevel
@@ -618,18 +671,18 @@ export async function u_on_rndspot(upflag) {
     const updest = game.updest || {};
     if (was_in_W_tower && dndest.nlx) {
         // On_W_tower_level gate deferred — use exclusion region when present
-        place_lregion(
+        await place_lregion(
             dndest.nlx, dndest.nly, dndest.nhx, dndest.nhy,
             0, 0, 0, 0, LR_DOWNTELE, null,
         );
     } else if (up) {
-        place_lregion(
+        await place_lregion(
             updest.lx | 0, updest.ly | 0, updest.hx | 0, updest.hy | 0,
             updest.nlx | 0, updest.nly | 0, updest.nhx | 0, updest.nhy | 0,
             LR_UPTELE, null,
         );
     } else {
-        place_lregion(
+        await place_lregion(
             dndest.lx | 0, dndest.ly | 0, dndest.hx | 0, dndest.hy | 0,
             dndest.nlx | 0, dndest.nly | 0, dndest.nhx | 0, dndest.nhy | 0,
             LR_DOWNTELE, null,
@@ -661,13 +714,15 @@ export function place_lregion(lx, ly, hx, hy, nlx, nly, nhx, nhy, rtype, lev) {
     for (let trycnt = 0; trycnt < 200; trycnt++) {
         const x = rn1((hx - lx) + 1, lx);
         const y = rn1((hy - ly) + 1, ly);
-        if (put_lregion_here(x, y, nlx, nly, nhx, nhy, rtype, oneshot, lev))
-            return;
+        const placed = put_lregion_here(x, y, nlx, nly, nhx, nhy, rtype, oneshot, lev);
+        if (placed) return placed;
     }
-    for (let x = lx; x <= hx; x++)
-        for (let y = ly; y <= hy; y++)
-            if (put_lregion_here(x, y, nlx, nly, nhx, nhy, rtype, true, lev))
-                return;
+    for (let x = lx; x <= hx; x++) {
+        for (let y = ly; y <= hy; y++) {
+            const placed = put_lregion_here(x, y, nlx, nly, nhx, nhy, rtype, true, lev);
+            if (placed) return placed;
+        }
+    }
 }
 
 /** C ref: decl.c gb.bughack — preserve baalz insect legs during wallify. */
@@ -2381,7 +2436,7 @@ function fixup_special() {
 export async function u_on_sstairs(upflag) {
     const stway = stairway_find_special_dir(upflag);
     if (stway) {
-        u_on_newpos(stway.sx, stway.sy);
+        await u_on_newpos(stway.sx, stway.sy); // C stairs.c:118
         return;
     }
     await u_on_rndspot(upflag);
@@ -2394,7 +2449,7 @@ export async function u_on_sstairs(upflag) {
 export async function u_on_upstairs() {
     const stway = stairway_find_dir(true);
     if (stway) {
-        u_on_newpos(stway.sx, stway.sy);
+        await u_on_newpos(stway.sx, stway.sy); // C stairs.c:130
         return;
     }
     await u_on_sstairs(0);
@@ -2407,7 +2462,7 @@ export async function u_on_upstairs() {
 export async function u_on_dnstairs() {
     const stway = stairway_find_dir(false);
     if (stway) {
-        u_on_newpos(stway.sx, stway.sy);
+        await u_on_newpos(stway.sx, stway.sy); // C stairs.c:142
         return;
     }
     await u_on_sstairs(1);
@@ -17731,14 +17786,8 @@ async function mv_bubble(b, dx, dy, gbxmin, gbymin, gbxmax, gbymax, ini) {
                 const mtmp = m_at(cx, cy);
                 const u = game.u || {};
                 const ux0 = u.ux | 0, uy0 = u.uy | 0;
-                u_on_newpos(cx, cy);
-                /* C dungeon.c u_on_newpos same-level core: clear hide,
-                 * steed follows (see_nearby/earth_sense display-deferred). */
-                u.uundetected = 0;
-                if (u.usteed) {
-                    u.usteed.mx = u.ux;
-                    u.usteed.my = u.uy;
-                }
+                // C mkmaze.c:2061 — u_on_newpos then newsym of the old square.
+                await u_on_newpos(cx, cy);
                 newsym(ux0, uy0); /* clean up old position */
                 if (mtmp) await mnexto(mtmp, RLOC_NOMSG);
             } else if (cons.what === CONS_TRAP) {

@@ -7064,15 +7064,14 @@ export async function cnv_trap_obj(otyp, cnt, ttmp, bury_it) {
  * js/hack.js — was the `test_move_ok` doorway-diagonal subset) &&
  * (`!Punished` || `drag_ball(x,y,&bc,&bx,&by,&cx,&cy,&unused,TRUE)` whose JS
  * shape is `{ok,bc_control,ballx,bally,chainx,chainy}`); then `ux0/uy0`,
- * `u_on_newpos(x,y)` (thin mklev.js + steed share — C dungeon.c:1568),
+ * `u_on_newpos(x,y)` (C dungeon.c:1568, js/mklev.js),
  * `umoved`, `newsym(old)`, `vision_recalc(1)`, `check_leash(old)`,
  * `move_bc(0,bc,...)` when punished, `tseen=0` check_here hack,
  * `failing_untrap++`, `spoteffects(TRUE)`, `failing_untrap--`, re-`tseen=1`,
  * `exercise(WIS)`; else `Fortunately, you don't move into/onto it.`
  * Named omissions: `test_move` block_door/block_entry shopkeeper arms
  * (C hack.c `:1141`/`:1209` — stub-false/false, no shop ESHK wire-up);
- * `u_on_newpos` cliparound/uundetected/see_nearby/earth_sense; drag jerk
- * hmon/miss damage (ball.js burns the rnd(20) roll).
+ * drag jerk hmon/miss damage (ball.js burns the rnd(20) roll).
  */
 async function move_into_trap(ttmp) {
     const u = game.u || {};
@@ -7114,14 +7113,10 @@ async function move_into_trap(ttmp) {
     if (canMove) {
         const ux0 = u.ux | 0, uy0 = u.uy | 0;
         u.ux0 = ux0; u.uy0 = uy0;
-        // C dungeon.c:1568 u_on_newpos sets ux,uy (+ CLIPPING) and shares
-        // with steed; JS thin mklev.js sets ux,uy — sync steed here.
+        // C trap.c:5407–5409 — ux0/uy0 then u_on_newpos (steed share
+        // is inside the call). Dynamic import: trap.js ↔ mklev.js.
         const { u_on_newpos } = await import('./mklev.js');
-        u_on_newpos(x, y);
-        if (u.usteed) {
-            u.usteed.mx = x;
-            u.usteed.my = y;
-        }
+        await u_on_newpos(x, y);
         u.umoved = true;
         newsym(ux0, uy0);
         vision_recalc(1);

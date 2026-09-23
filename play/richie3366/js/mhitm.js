@@ -9,7 +9,7 @@ import {
     mtrapped_in_pit, LEVEL_SPECIFIC_NOCORPSE, unlink_minvent,
 } from './mon.js';
 import { game } from './gstate.js';
-import { pline, pline_mon, newsym, canspotmon, canseemon, map_invisible, unmap_object, memory_glyph_is_invisible, glyph_is_invisible, You, You_feel, flush_screen, flush_topl_more, verbalize, sensemon, shieldeff, mon_visible } from './display.js';
+import { pline, pline_mon, newsym, canspotmon, canseemon, map_invisible, unmap_object, memory_glyph_is_invisible, You, You_feel, flush_screen, flush_topl_more, verbalize, sensemon, shieldeff, mon_visible } from './display.js';
 import { cansee } from './vision.js';
 import { dist2, isok } from './hacklib.js';
 import { resist_conflict, set_mon_data, on_fire, mhis, mhe, little_to_big, defended, monsndx } from './mondata.js';
@@ -3237,13 +3237,14 @@ export async function vamp_stone(mtmp) {
  * loop with BOULDER/obj_resists eject via flooreffects-fall else lamplit
  * end_burn + oldminvent chain, FEMALE/MALE/HISTORIC flags, mkcorpstat +
  * mgivenname oname, add_to_container chain, weight) else `:3354` ROCK;
- * `:3356–3361` stackobj + glyph unmap + cansee newsym; `:3364–3370`
+ * `:3356–3361` stackobj + memory-glyph unmap + cansee newsym; `:3364–3370`
  * engulfing wasinside before mondead, digests jump-out pline after.
- * Callers (8, all wired): eat.js:3319 (eat.c:646), mhitm.js:1717/2066/5528
- * (mhitm.c:237/786/1050), mon.js:2409 (mon.c:1439), uhitm.js:843 xkilled
- * (mon.c:3547), trap.js:3449 (trap.c:3879), mhitm.js do_stone_mon:1706
- * (uhitm.c:3963). No map omissions: the `:3319–3322` STATUE arm is
- * `#if 0` compiled out in C; free_mgivenname is mondead's, not this fn's.
+ * Callers wired: eat.js:3319 (eat.c:646), mhitm.js:2069 (mhitm.c:237),
+ * mhitm.js:5520 (mhitm.c:786), mon.js:2409 (mon.c:1439), uhitm.js:846
+ * xkilled (mon.c:3547), trap.js:3449 (trap.c:3879), do_stone_mon
+ * mhitm.js:1720 (uhitm.c:3963). mhitm.c:1050 (mdamagem) is not this
+ * function. The `:3319–3322` STATUE arm is `#if 0` in C;
+ * free_mgivenname is mondead's, not this fn's.
  */
 export async function monstone(mdef) {
     const x = mdef.mx | 0; // C `:3290` — before vamp_stone (it can rloc)
@@ -3299,10 +3300,11 @@ export async function monstone(mdef) {
         otmp = mksobj_at(ROCK, x, y, true, false); // C `:3354`
     }
 
-    if (otmp) stackobj(otmp); // C `:3356`
-    // C `:3357–3358` — mondead() already does this, but before the newsym
-    if (glyph_is_invisible(game.level?.at?.(x, y))) // C `:3358`
-        unmap_object(x, y);
+      if (otmp) stackobj(otmp); // C `:3356`
+      // C `:3357–3358` — glyph_is_invisible(levl[x][y].glyph) before newsym.
+      // display.h:773 is (glyph)==GLYPH_INVISIBLE; memory id only (D-1774).
+      if (memory_glyph_is_invisible(game.level?.at?.(x, y)))
+          unmap_object(x, y);
     if (cansee(x, y)) // C `:3360–3361`
         newsym(x, y);
     if (engulfing_u(mdef)) // C `:3364–3365`, before mondead
@@ -4190,9 +4192,89 @@ async function mhitm_ad_deth(magr, mattk, mdef, mhm) {
     await mhitm_ad_drli(magr, mattk, mdef, mhm);
 }
 
+/**
+ * C ref: mhitm.c attk_protection `:1473–1512` — armor mask that keeps
+ * this attack type from touching. `~0` (`~0L`) means the attack does
+ * not touch, so no defense is required. Bite/sting/engulf/tentacle
+ * (and default) return 0: nothing worn protects.
+ * Callers: mdamagem `:1035`. Named: mhitu.c passiveum `:2484`,
+ * uhitm.c passivemm `:5936` (those arms still defer the worn check).
+ */
+export function attk_protection(aatyp) {
+    /* C `~0L`. JS bitwise `~0` is -1; callers only test == 0 and != ~0. */
+    const NO_TOUCH = ~0;
+    switch (aatyp | 0) {
+    case AT_NONE:
+    case AT_SPIT:
+    case AT_EXPL:
+    case AT_BOOM:
+    case AT_GAZE:
+    case AT_BREA:
+    case AT_MAGC:
+        return NO_TOUCH;
+    case AT_CLAW:
+    case AT_TUCH:
+    case AT_WEAP:
+        return W_ARMG; /* caller ORs a wielded weapon in as gloves */
+    case AT_KICK:
+        return W_ARMF;
+    case AT_BUTT:
+        return W_ARMH;
+    case AT_HUGS:
+        return (W_ARMC | W_ARMG); /* both */
+    case AT_BITE:
+    case AT_STNG:
+    case AT_ENGL:
+    case AT_TENT:
+    default:
+        return 0;
+    }
+}
+
+/**
+ * C ref: mhitm.c mdamagem `:1016–1119`. Touch-petrify head `:1032–1055`
+ * runs after the opening `d()` and before `mhitm_adtyping`. The per-adtyp
+ * dispatch below is that adtyping plus the knockback / done / HP tail
+ * (`:1059–1118`), still split by damage type.
+ */
 async function mdamagem(magr, mdef, mattk, mwep, dieroll) {
+    const pa = magr.data;
+    const pd = mdef.data;
+    /* C `:1025` — dice burn even when the head returns before damage. */
     let damage = d(mattk.damn || 0, mattk.damd || 0);
     let hitflags = M_ATTK_MISS;
+
+    /* C `:1032–1056` — defender touch-petrifies, or digesting Medusa. */
+    if ((touch_petrifies(pd)
+            || ((mattk.adtyp | 0) === AD_DGST && (pd?.mndx | 0) === PM_MEDUSA))
+        && !resists_ston(magr)) {
+        const protector = attk_protection(mattk.aatyp | 0);
+        let wornitems = magr.misc_worn_check | 0;
+        /* wielded weapon gives the same protection as gloves */
+        if (mwep) wornitems |= W_ARMG;
+        const noTouch = ~0;
+        if (protector === 0
+            || (protector !== noTouch && (wornitems & protector) !== protector)) {
+            if (poly_when_stoned(pa, game.mvitals)) {
+                await mon_to_stone(magr);
+                return M_ATTK_HIT; /* no damage during the polymorph */
+            }
+            if (_mm_vis && canspotmon(magr)) {
+                await pline_mon(magr, '%s turns to stone!', Monnam(magr));
+            }
+            await monstone(magr);
+            if (!deadmonster(magr)) {
+                return M_ATTK_HIT; /* lifesaved */
+            } else if (magr.mtame && !_mm_vis) {
+                /* mhitm.c:9 brief_feeling */
+                await You(
+                    'have a %s feeling for a moment, then it passes.',
+                    'peculiarly sad',
+                );
+            }
+            return M_ATTK_AGR_DIED;
+        }
+    }
 
     if (mattk.adtyp === AD_STCK) {
         damage = 0;

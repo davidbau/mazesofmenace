@@ -4244,8 +4244,10 @@ export async function attack_checks(mtmp, wep = null) {
                 await pline("A %s %s %s!", mtmp.mtame ? "tame" : "wild",
                     notseen ? "creature" : lmonbuf,
                     notseen ? "is present" : "appears");
-            else if (Blind || (is_pool(mtmp.mx, mtmp.my) && !((game.u || {}).Underwater)))
-                await pline("Wait!  There's a hidden monster there!");
+              // C uhitm.c:289 `Blind || (is_pool && !Underwater)`;
+              // youprop.h:279 `#define Underwater (u.uinwater)`.
+              else if (Blind || (is_pool(mtmp.mx, mtmp.my) && !(uH.uinwater | 0)))
+                  await pline("Wait!  There's a hidden monster there!");
             else {
                 const obj = objects_at(mtmp.mx, mtmp.my);
                 if (obj)

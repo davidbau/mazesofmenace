@@ -18,7 +18,7 @@ import {
 } from './mkobj.js';
 import {
     losehp, maybe_half_phys, nomul, impact_disturbs_zombies, finish_maybe_wail,
-    switch_terrain, in_rooms,
+    switch_terrain, in_rooms, stop_occupation,
 } from './hack.js';
 import {
     WEAPON_CLASS, TOOL_CLASS, COIN_CLASS, GEM_CLASS, FOOD_CLASS, ARMOR_CLASS,
@@ -45,7 +45,8 @@ import {
     BOLT_LIM, AKLYS_LIM, HAND, THROWN_WEAPON, THROWN_TETHERED_WEAPON,
     xdir, ydir, xytodir, N_DIRS, RIGHT_HANDED, IS_SINK, HI_WOOD, OBJ_MINVENT,
     DISP_FLASH, DISP_CHANGE, DISP_END, DISP_TETHER, BACKTRACK,
-    ARTICLE_A, SUPPRESS_SADDLE, AUGMENT_IT, has_mgivenname, has_oname, RLOC_MSG,
+    ARTICLE_A, ARTICLE_YOUR, EXACT_NAME, SUPPRESS_NAME,
+    SUPPRESS_SADDLE, AUGMENT_IT, has_mgivenname, has_oname, RLOC_MSG,
     W_ARMU, W_ARM, W_ARMC, CXN_PFX_THE,
     ECMD_OK, ECMD_TIME, LARGEST_INT, CQ_CANNED,
     DEAF, SHOPBASE, Is_waterlevel,
@@ -80,7 +81,7 @@ import {
     makeplural, otense, mshot_xname, corpse_xname,
 } from './objnam.js';
 import { m_at, wakeup, seemimic, wake_nearto, distmin, monnear, m_respond, setmangry } from './mon.js';
-import { mon_nam, Monnam, hliquid, Hallucination, Some_Monnam, x_monnam, pmname, rndmonnam } from './do_name.js';
+import { mon_nam, Monnam, a_monnam, hliquid, Hallucination, Some_Monnam, x_monnam, pmname, rndmonnam } from './do_name.js';
 import { noit_mhim, NEUTRAL } from './mondata.js';
 import { which_armor } from './worn.js';
 import {
@@ -100,6 +101,13 @@ import {
     minstapetrify, instapetrify, erode_obj,
 } from './trap.js';
 import { in_out_region, m_in_out_region } from './region.js';
+// imports.mjs --can: steed/monmove/dbridge hoisted-function SAFE.
+// u_on_newpos is `export async function` (hoisted); called from
+// hurtle_step and mhurtle_step only.
+import { remove_monster, place_monster } from './steed.js';
+import { u_on_newpos } from './mklev.js';
+import { set_apparxy } from './monmove.js';
+import { is_waterwall } from './dbridge.js';
 import { u_wipe_engr } from './engrave.js';
 import { getdir } from './lock.js';
 import { hard_helmet, armor_simple_name } from './do_wear.js';
@@ -3058,12 +3066,8 @@ export async function hurtle_step(rangeArg, x, y) {
     /* C dothrow.c:907–917 — u_on_newpos then newsym/vision/flush, then
      * switch_terrain iff dest typ differs from the origin cell. */
     const originTyp = game.level?.at?.(ox, oy)?.typ | 0;
-    u.ux = x;
-    u.uy = y;
-    if (u.usteed) {
-        u.usteed.mx = x;
-        u.usteed.my = y;
-    }
+    // C dothrow.c:909 — u_on_newpos then newsym/vision/flush.
+    await u_on_newpos(x, y);
     newsym(ox, oy);
     vision_recalc(1);
     flush_screen(1);
@@ -3141,47 +3145,86 @@ export function will_hurtle(mon, x, y) {
 }
 
 /**
- * C ref: dothrow.c mhurtle_step — move along hurtle path (thin).
- * will_hurtle && m_in_out_region before place (D-1176; C :1000).
- * Named omit: steed u_on_newpos; set_apparxy; waterwall stop; bump
- * petrify / hero touch; place_monster vs rloc_to.
+ * C ref: dothrow.c mhurtle_step — full body in C order (`:992–1068`).
+ * Move arm (`:1003–1025`): remove_monster/place_monster + newsyms, steed
+ * u_on_newpos + newsym + vision_recalc, set_apparxy, waterwall stop, mintrap.
+ * Bump arm (`:1027–1042`): a_monnam message, touch_petrifies both directions.
+ * Hero arm (`:1044–1066`): Some_Monnam, stop_occupation, Upolyd credit,
+ * x_monnam killer + instapetrify. Region gate is D-1176.
  */
 async function mhurtle_step(mon, x, y) {
-    if (!isok(x, y)) return false;
-    if (will_hurtle(mon, x, y) && m_in_out_region(mon, x, y)) {
-        if (mon !== game.u?.usteed) {
-            await rloc_to(mon, x, y);
+    const u = game.u || {};
+    if (!isok(x, y)) return false; // C :997–998
+    if (will_hurtle(mon, x, y) && m_in_out_region(mon, x, y)) { // C :1000
+        if (mon !== u.usteed) { // C :1003
+            remove_monster(mon.mx | 0, mon.my | 0); // C :1004
+            newsym(mon.mx | 0, mon.my | 0); // C :1005
+            place_monster(mon, x, y); // C :1006
+            newsym(mon.mx | 0, mon.my | 0); // C :1007
         } else {
-            // steed hurtle → move hero; thin: rloc steed only named omit
-            await rloc_to(mon, x, y);
+            // C dothrow.c:1009–1014 — steed hurtles via u_on_newpos
+            // (ux/uy, cliparound, steed share, see_nearby, earth_sense).
+            u.ux0 = u.ux; u.uy0 = u.uy;
+            await u_on_newpos(x, y);
+            newsym(u.ux0, u.uy0); // C :1012 update old position
+            vision_recalc(0); // C :1013 new location => different sight lines
         }
-        flush_screen(1);
-        await nh_delay_output();
-        const res = await mintrap(mon, HURTLING);
+        flush_screen(1); // C :1015
+        await nh_delay_output(); // C :1016
+        set_apparxy(mon); // C :1017
+        if (is_waterwall(x, y)) return false; // C :1018–1019
+        const res = await mintrap(mon, HURTLING); // C :1020
         if (res === Trap_Killed_Mon || res === Trap_Caught_Mon
-            || res === Trap_Moved_Mon) {
+            || res === Trap_Moved_Mon) { // C :1021–1024
             return false;
         }
-        return true;
+        return true; // C :1025
     }
-    const mtmp = m_at(x, y);
+    const mtmp = m_at(x, y); // C :1027
     if (mtmp && mtmp !== mon) {
-        if (canseemon(mon) || canseemon(mtmp)) {
-            await pline(`${Monnam(mon)} bumps into ${mon_nam(mtmp)}.`);
+        if (canseemon(mon) || canseemon(mtmp)) // C :1028–1029
+            await pline(`${Monnam(mon)} bumps into ${a_monnam(mtmp)}.`);
+        await wakeup(mtmp, !game.context?.mon_moving); // C :1030
+        // C :1031–1036 — 'mon' turned to stone by touching 'mtmp'
+        if (touch_petrifies(mtmp.data)
+            && !which_armor(mon, W_ARMU | W_ARM | W_ARMC)) {
+            await minstapetrify(mon, !game.context?.mon_moving); // C :1034
+            newsym(mon.mx | 0, mon.my | 0); // C :1035
         }
-        await wakeup(mtmp, !game.context?.mon_moving);
-        // touch_petrifies arms deferred
-    } else if (u_at(x, y)) {
-        await pline(`${Monnam(mon)} bumps into you.`);
-        // hero petrify / poly touch deferred
+        // C :1037–1042 — 'mtmp' turned to stone by being touched by 'mon'
+        if (touch_petrifies(mon.data)
+            && !which_armor(mtmp, W_ARMU | W_ARM | W_ARMC)) {
+            await minstapetrify(mtmp, !game.context?.mon_moving); // C :1040
+            newsym(mtmp.mx | 0, mtmp.my | 0); // C :1041
+        }
+    } else if (u_at(x, y)) { // C :1044
+        // C :1045–1046 — a monster caused 'mon' to hurtle against hero
+        await pline(`${Some_Monnam(mon)} bumps into you.`);
+        await stop_occupation(); // C :1047
+        // C :1048–1054 — 'mon' turned to stone by touching poly'd hero
+        if (Upolyd(u) && touch_petrifies(game.youmonst?.data)
+            && !which_armor(mon, W_ARMU | W_ARM | W_ARMC)) {
+            // C :1051 — poly'd hero credit/blame despite a monster causing it
+            await minstapetrify(mon, true); // C :1052
+            newsym(mon.mx | 0, mon.my | 0); // C :1053
+        }
+        // C :1055–1065 — hero turned to stone by being touched by 'mon'
+        if (touch_petrifies(mon.data) && !(u.uarmu || u.uarm || u.uarmc)) {
+            // C :1057–1062 — "{your,a} hurtling cockatrice", no assigned name
+            const kbuf = `being hit by ${x_monnam(mon,
+                mon.mtame ? ARTICLE_YOUR : ARTICLE_A,
+                'hurtling', EXACT_NAME | SUPPRESS_NAME, false)}`;
+            await instapetrify(kbuf); // C :1063 (Snprintf svk.killer.name)
+            newsym(u.ux | 0, u.uy | 0); // C :1064
+        }
     }
-    return false;
+    return false; // C :1067
 }
 
 /**
  * C ref: dothrow.c mhurtle — knock monster through air for range steps.
  * mhurtle_step region gate is D-1176. Named omit: NODIAG grid-bug;
- * minliquid after path; full mhurtle_step petrify/steed vision.
+ * minliquid after path.
  */
 export async function mhurtle(mon, dx, dy, range) {
     if (!mon) return;

@@ -99,6 +99,7 @@ import {
     HI_DOMESTIC,
     SYM_HERO_OVERRIDE,
     MALE,
+    MON_OFFMAP,
     FEMALE,
     BOTL_NSIZ,
     CORPSTAT_GENDER,
@@ -426,11 +427,17 @@ function mon_at_display(x, y) {
     const steed = game.u?.usteed;
     // C m_at: level.monsters[][] includes worm segs (place_worm_seg)
     // and heads from place_monster (D-1565). Stale heads ignored.
+    // remove_monster (rm.h) clears that grid cell and leaves mx/my.
+    // JS marks MON_OFFMAP so m_at skips the head (D-1231). This lookup
+    // is what newsym uses (display.c:969); skipping the bit too keeps
+    // the vacated cell empty. The fmon scan is only for heads whose
+    // grid slot was never written.
     const seg = level_mon_at(x, y);
     if (seg && seg !== steed) return seg;
     for (const m of game.fmon || []) {
         // C: remove_monster while mounted — steed not on the map grid
         if (steed && m === steed) continue;
+        if ((m?.mstate | 0) & MON_OFFMAP) continue;
         if (m && m.mx === x && m.my === y && (m.mhp == null || m.mhp > 0))
             return m;
     }
@@ -4935,20 +4942,35 @@ export function feel_location(x, y) {
 
         // C `:894–901` — unlit ROOM/CORR after map_location. S_darkroom
         // paints as S_room (same ch, tty BLACK→NO_COLOR); keep ch.
+        // The predicate is `lev->glyph == cmap_to_glyph(S_room)` (integer),
+        // then `lev->glyph = cmap(dark_room ? S_darkroom : S_stone)`.
+        // DECgraphics room floors are meta-`~`, so a tty compare against
+        // the ASCII '.' cmap misses a real id change (measured
+        // 3992→3993, lastseentyp unchanged). show_glyph's gbuf dirty is
+        // not raised on that id-only arm: the recorder tty is already the
+        // room floor, and S_darkroom shares its symbol.
         const mem = loc.remembered_glyph;
         const darkRoomColor = game.flags?.dark_room !== false
             && game.iflags?.use_color !== false;
         if ((loc.typ | 0) === ROOM
-            && remembered_matches_cmap(mem, S_ROOM_CMAP)
             && (!loc.waslit || darkRoomColor)) {
-            const dark = {
-                ch: mem.ch,
-                color: NO_COLOR,
-                decgfx: !!mem.decgfx,
-            };
-            const darkId = cmap_to_glyph(darkroom_sym());
-            loc.remembered_glyph = { ...dark, glyph: darkId };
-            show_glyph_cell(x, y, dark.ch, dark.color, !!dark.decgfx, 0, darkId);
+            // C `:896–897` writes cmap(dark_room ? S_darkroom : S_stone),
+            // not DARKROOMSYM. The tty-match paint keeps darkroom_sym()
+            // (already fortress-green). The id-only arm is the integer
+            // write C's pick_lock compare reads.
+            if (remembered_matches_cmap(mem, S_ROOM_CMAP)) {
+                const dark = {
+                    ch: mem.ch,
+                    color: NO_COLOR,
+                    decgfx: !!mem.decgfx,
+                };
+                const darkId = cmap_to_glyph(darkroom_sym());
+                loc.remembered_glyph = { ...dark, glyph: darkId };
+                show_glyph_cell(x, y, dark.ch, dark.color, !!dark.decgfx, 0, darkId);
+            } else if (memory_is_cmap(mem, S_room)) {
+                const darkRoom = game.flags?.dark_room !== false;
+                mem.glyph = cmap_to_glyph(darkRoom ? S_darkroom : S_stone);
+            }
         } else if ((loc.typ | 0) === CORR
             && remembered_matches_cmap(mem, S_LITCORR)
             && !loc.waslit) {
@@ -6860,9 +6882,9 @@ export async function newclipping(x, y) {
  * to resend the map (`redraw_map(TRUE)` `:3840`) when the origin moved.
  * Async only because redraw_map awaits flush_screen (nhgetch reach),
  * same shape as redraw_map D-1974.
- * Named: core call sites (allmain.c:546 moveloop, dungeon.c:1580
- * u_on_newpos, getpos.c:851/1146, muse.c:2637, restore.c:629) —
- * function live, unwired.
+ * Named: core call sites still unwired — allmain.c:546 moveloop,
+ * getpos.c:851/1146, muse.c:2637, restore.c:629. dungeon.c:1580
+ * u_on_newpos calls cliparound (js/mklev.js).
  * @param {number} x map x, C `int x`
  * @param {number} y map y, C `int y`
  */

@@ -156,7 +156,7 @@ import { se_faint_chime } from './generated/seffects_data.js';
 import { body_part } from './polyself.js';
 import { rndcurse, take_gold } from './sit.js';
 import { explode } from './explode.js';
-import { getdir } from './lock.js';
+import { getdir, QUITCHARS } from './lock.js';
 import { getpos, getpos_sethilite } from './getpos.js';
 import { cansee } from './vision.js';
 import { m_at, wakeup, iter_mons, mdistu } from './mon.js';
@@ -229,10 +229,15 @@ import {
     ACH_INVK,
     ACH_NOVL,
     LL_CONDUCT,
+    MENU_TRADITIONAL,
+    MENU_FULL,
+    CMDQ_KEY,
+    Never_mind,
 } from './const.js';
 import { objectNames, objectNameStrs } from './generated/objects_data.js';
 import { PM_KNIGHT, PM_WIZARD, monsterNames } from './generated/monsters_data.js';
 import { use_skill } from './weapon.js';
+import { cmdq_pop } from './cmd.js';
 
 /** C: spell.c explodes[] */
 const EXPLODES = 'radiates explosive energy';
@@ -1691,26 +1696,92 @@ export async function dovspell() {
 }
 
 /**
- * C ref: spell.c getspell — pick spell index; menu_style non-traditional → CAST menu.
+ * C ref: spell.c spell_let_to_idx `:114–126` — casting letter to spell index.
+ * C takes a char; JS callers pass a 1-char string (cmdq keys are stored
+ * normalized, `cmdq_add_key`).
+ */
+function spell_let_to_idx(ilet) {
+    const c = typeof ilet === 'string' ? ilet : String.fromCharCode(ilet | 0);
+    const code = c.length ? c.charCodeAt(0) : -1;
+    let indx = code - 97; // 'a'
+    if (indx >= 0 && indx < 26) return indx;
+    indx = code - 65; // 'A'
+    if (indx >= 0 && indx < 26) return indx + 26;
+    return -1;
+}
+
+/**
+ * C ref: spell.c getspell `:714–783` — pick a known-spell index, in C order:
+ * no-spells / rejectcasting guards, cmdq key replay, MENU_TRADITIONAL yn
+ * prompt with retry cap, else CAST menu. C returns boolean via out-param;
+ * JS returns the index or null (sole C caller `docast :824`, wired below).
  * @returns {Promise<number|null>} spell book index or null
  */
 async function getspell() {
     const nspells = num_spells();
     if (!nspells) {
-        await pline("You don't know any spells right now.");
+        // C `:722–725`
+        await You("don't know any spells right now.");
         return null;
     }
+    // C `:726–727` — C prints inside rejectcasting; the JS clone is a sync
+    // predicate, so this site prints the same three messages in C order.
     if (rejectcasting()) {
         if (game.u?.Stunned) {
-            await pline('You are too impaired to cast a spell.');
+            await You('are too impaired to cast a spell.');
         } else if (!can_chant()) {
-            await pline('You are unable to chant the incantation.');
+            await You('are unable to chant the incantation.');
         } else {
-            await pline('Your arms are not free to cast!');
+            await Your('arms are not free to cast!');
         }
         return null;
     }
-    // Traditional yn-path deferred; contest default uses menu
+
+    // C `:729–743` — cmdq replay (C copies the node, then frees it).
+    const cq = cmdq_pop();
+    if (cq) {
+        // C `:734` — 'key' is the legacy JS node tag beside CMDQ_KEY.
+        if (cq.typ === CMDQ_KEY || cq.typ === 'key') {
+            const idx = spell_let_to_idx(cq.key);
+            if (idx < 0 || idx >= nspells) return null;
+            return idx;
+        }
+        return null;
+    }
+
+    // C `:745–781` traditional prompt.
+    if ((game.flags?.menu_style ?? MENU_FULL) === MENU_TRADITIONAL) {
+        // C `:747–755` — assumes at most 52 spells.
+        let lets;
+        if (nspells === 1) lets = 'a';
+        else if (nspells < 27) lets = `a-${String.fromCharCode(97 + nspells - 1)}`;
+        else if (nspells === 27) lets = 'a-zA';
+        else lets = `a-zA-${String.fromCharCode(65 + nspells - 27)}`;
+        const qbuf = `Cast which spell? [${lets} *?]`;
+        for (let retry_limit = 0; ; ++retry_limit) {
+            // C `:758–763` — cap is mainly anti-fuzzer-stuck.
+            if (retry_limit === 10) {
+                await pline("That's enough tries.");
+                return null;
+            }
+            // C `:764` — NULL resp accepts any key.
+            const ilet = await yn_function(qbuf, null, '\0', true);
+            if (ilet === '*' || ilet === '?') break; // C `:765–766` menu mode
+            // C `:767–770` — pline1 ≡ pline here (no % in Never_mind).
+            if (QUITCHARS.indexOf(ilet) >= 0) {
+                await pline(Never_mind);
+                return null;
+            }
+            const idx = spell_let_to_idx(ilet);
+            if (idx < 0 || idx >= nspells) {
+                // C `:773–776` — ask again.
+                await You("don't know that spell.");
+                continue;
+            }
+            return idx; // C `:777–778`
+        }
+    }
+    // C `:782–783`
     const picked = await dospellmenu('Choose which spell to cast', SPELLMENU_CAST);
     if (!picked.ok) return null;
     return picked.splnum;

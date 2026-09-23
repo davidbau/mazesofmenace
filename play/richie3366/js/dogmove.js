@@ -10,14 +10,14 @@ import {
 } from './mon.js';
 import {
     objects_at, obj_extract_self, place_object, splitobj, stackobj, delobj,
-    eaten_stat,
+    eaten_stat, peek_at_iced_corpse_age, is_organic, is_metallic, is_rustprone,
 } from './mkobj.js';
 import { mattackm, max_passive_dmg, mdisplacem, mondied } from './mhitm.js';
 import { mon_reflects } from './mhitu.js';
 import {
     can_carry, // C: mon.c can_carry (notake/touch/glomper/weight), not the removed local clone
     set_apparxy, locomotion, m_digweapon_check, hero_Deaf,
-    should_displace, undesirable_disp, mon_offmap, bee_eat_jelly,
+    should_displace, undesirable_disp, mon_offmap, bee_eat_jelly, find_pmmonst,
 } from './monmove.js';
 import { mattacku } from './mhitu.js';
 import { newsym, pline, canseemon, mon_visible, canspotmon, pline_mon, pline_xy, impossible, You_feel, glyph_is_object, glyph_at, You, Your, more } from './display.js';
@@ -41,7 +41,7 @@ import {
     M_AP_FURNITURE, M_AP_OBJECT, M_AP_MONSTER, M_AP_TYPE,
     COST_CONTENTS,
 } from './const.js';
-import { FOOD_CLASS, BALL_CLASS, CHAIN_CLASS, ROCK_CLASS, COIN_CLASS, objectNames, is_pick, objectDescrs, objectNameStrs } from './objects.js';
+import { FOOD_CLASS, BALL_CLASS, CHAIN_CLASS, ROCK_CLASS, COIN_CLASS, SILVER, objectNames, is_pick, objectDescrs, objectNameStrs } from './objects.js';
 import {
     monsterNames, mons, carnivorous, herbivorous, vegan, acidic, poisonous,
     is_swimmer, likes_lava, throws_rocks, is_rider, humanoid,
@@ -49,7 +49,8 @@ import {
     unsolid, nolimbs, has_head, LOW_PM, NUMMONS,
     PM_LICHEN, MZ_TINY, MZ_SMALL, MZ_MEDIUM, MZ_LARGE, MZ_HUGE,
     is_animal, mindless, tunnels, needspick, nohands, verysmall,
-    haseyes, touch_petrifies, resists_ston, is_flyer, is_floater,
+    haseyes, touch_petrifies, resists_ston, resists_acid, is_flyer, is_floater,
+    flesh_petrifies, likes_fire, slimeproof, metallivorous, mon_hates_silver,
 } from './monsters.js';
 import { MON_WEP } from './weapon.js';
 import { which_armor } from './worn.js';
@@ -65,6 +66,8 @@ import { whimper, beg, domonnoise } from './sounds.js';
 import { Is_qstart } from './quest.js';
 import { goodpos } from './teleport.js';
 import { m_in_out_region } from './region.js';
+import { resists_poison } from './zap.js';
+import { polyfood } from './eat.js';
 
 const PM_FLOATING_EYE = monsterNames.indexOf('PM_FLOATING_EYE');
 const PM_GELATINOUS_CUBE = monsterNames.indexOf('PM_GELATINOUS_CUBE');
@@ -108,10 +111,19 @@ const EGG = objectNames.indexOf('EGG');
 const CORPSE = objectNames.indexOf('CORPSE');
 const TIN = objectNames.indexOf('TIN');
 const SLIME_MOLD = objectNames.indexOf('SLIME_MOLD');
+const GLOB_OF_GREEN_SLIME = objectNames.indexOf('GLOB_OF_GREEN_SLIME');
+const CLOVE_OF_GARLIC = objectNames.indexOf('CLOVE_OF_GARLIC');
+const AMULET_OF_STRANGULATION = objectNames.indexOf('AMULET_OF_STRANGULATION');
+const RIN_SLOW_DIGESTION = objectNames.indexOf('RIN_SLOW_DIGESTION');
+// C ref: obj.h:315 — longest an egg can remain unhatched (stale_egg x2).
+const MAX_EGG_HATCH_TIME = 200;
 // C ref: dogmove.c dog_eat — killer-bee jelly bypass + rust-monster spit arms
 const LUMP_OF_ROYAL_JELLY = objectNames.indexOf('LUMP_OF_ROYAL_JELLY');
 const PM_KILLER_BEE = monsterNames.indexOf('PM_KILLER_BEE');
 const PM_RUST_MONSTER = monsterNames.indexOf('PM_RUST_MONSTER');
+const PM_GHOUL = monsterNames.indexOf('PM_GHOUL');
+const PM_QUEEN_BEE = monsterNames.indexOf('PM_QUEEN_BEE');
+const PM_PYROLISK = monsterNames.indexOf('PM_PYROLISK');
 // C ref: dogmove.c droppables tool-keeping otyps
 const DWARVISH_MATTOCK = objectNames.indexOf('DWARVISH_MATTOCK');
 const PICK_AXE = objectNames.indexOf('PICK_AXE');
@@ -173,81 +185,165 @@ export function obj_resists(obj, ochance, achance) {
     return chance < (obj.oartifact ? achance : ochance);
 }
 
-// C ref: dog.c dogfood() — quest arti short-circuit then obj_resists.
+// C ref: dog.c dogfood() `:995–1133` — whole-body restart (D-2760).
+// Pet food-preference classifier in C order: opoisoned head, quest-arti /
+// obj_resists short-circuit, FOOD_CLASS arms (rider / petrify / royal
+// jelly / !carni&&!herbi / starving+mblind / ghoul / inner otyp switch),
+// then the non-food `default:` TABU/ACCFOOD/DOGFOOD/APPORT arms with
+// FALLTHROUGH to `case ROCK_CLASS: return UNDEF`.
 export function dogfood(mon, obj) {
-    if (!obj) return UNDEF;
-    if (obj.opoisoned) return POISON;
+    if (!obj) return UNDEF; // JS-artifact guard; C callers pass non-null
+    // C `:1002` — tainted food is POISON unless the pet resists poison.
+    if (obj.opoisoned && !resists_poison(mon)) return POISON;
+    // C `:1004` — quest artifact / obj_resists (rn2(100) inside) → TABU/APPORT.
     if (is_quest_artifact(obj) || obj_resists(obj, 0, 95)) {
         return obj.cursed ? TABU : APPORT;
     }
 
     const mptr = mon?.data ?? mons(mon?.mnum);
+    // C `mon->data == &mons[PM_X]` idiom (mons() returns a fresh wrapper).
+    const mndx = mptr?.mndx ?? mon?.mnum;
     const oclass = obj.oclass ?? 0;
     const otyp = obj.otyp ?? -1;
+    // C `:998` — carni/herbi from the pet's mflags1.
     const carni = carnivorous(mptr);
     const herbi = herbivorous(mptr);
-    const starving = !!(mon?.mtame && !mon?.isminion && mon?.edog?.mhpmax_penalty);
 
     if (oclass === FOOD_CLASS) {
-        // C: fx = corpsenm for CORPSE/TIN/EGG else NON_PM; fptr = &mons[fx|NUMMONS]
+        // C `:1009–1015` — fx = corpsenm for CORPSE/TIN/EGG else NON_PM
+        // (special tin / unhatchable egg); fptr falls back to the NUMMONS
+        // entry where predicate tests fail (null here — all are null-safe).
         const fx = (otyp === CORPSE || otyp === TIN || otyp === EGG)
             ? (obj.corpsenm ?? -1) : -1;
-        const fptr = (fx >= 0) ? mons(fx) : null;
-
+        const fptr = (fx >= LOW_PM && fx < NUMMONS) ? mons(fx) : null;
+        // C `:1017` — rider corpses are TABU.
+        if (otyp === CORPSE && is_rider(fptr)) return TABU;
+        // C `:1019–1022` — cockatrice/Medusa flesh petrifies unless resisted.
+        if ((otyp === CORPSE || otyp === EGG)
+            && flesh_petrifies(fptr) && !resists_ston(mon)) {
+            return POISON;
+        }
+        // C `:1023–1030` — killer bee + royal jelly: eat it (grow into a
+        // queen) unless a queen is already on the level.
+        if (otyp === LUMP_OF_ROYAL_JELLY && mndx === PM_KILLER_BEE) {
+            return !find_pmmonst(PM_QUEEN_BEE) ? DOGFOOD : TABU;
+        }
+        // C `:1031` — neither carnivore nor herbivore: only apport-worthy.
+        if (!carni && !herbi) return obj.cursed ? UNDEF : APPORT;
+        // C `:1035` — a starving pet will eat almost anything.
+        const starving = !!(mon?.mtame && !mon?.isminion && mon?.edog?.mhpmax_penalty);
+        // C `:1038` — even carnivores eat carrots when temporarily blind.
+        const mblind = !mon?.mcansee && haseyes(mptr);
+        // C `:1043–1052` — ghouls prefer old corpses and unhatchable eggs;
+        // fresh non-veggy corpses / hatchable eggs only when starving; never
+        // stone-to-flesh'd meat (lizard/lichen corpses stay POISON).
+        if (mndx === PM_GHOUL) {
+            if (otyp === CORPSE) {
+                return (peek_at_iced_corpse_age(obj) + 50 <= (game.moves | 0)
+                        && !(fx === PM_LIZARD || fx === PM_LICHEN)) ? DOGFOOD
+                    : (starving && !vegan(fptr)) ? ACCFOOD
+                    : POISON;
+            }
+            if (otyp === EGG) {
+                // C stale_egg: obj.h:316 — moves-age > 2*MAX_EGG_HATCH_TIME.
+                const stale = ((game.moves | 0) - (obj.age | 0)) > 2 * MAX_EGG_HATCH_TIME;
+                return stale ? CADAVER : starving ? ACCFOOD : POISON;
+            }
+            return TABU;
+        }
+        // C `:1054` — inner otyp switch.
         switch (otyp) {
             case TRIPE_RATION:
             case MEATBALL:
             case MEAT_RING:
             case MEAT_STICK:
             case ENORMOUS_MEATBALL:
-                return carni ? DOGFOOD : MANFOOD;
+                return carni ? DOGFOOD : MANFOOD; // C `:1060`
             case EGG:
-                return carni ? CADAVER : MANFOOD;
-            case CORPSE: {
-                // C ref: dog.c dogfood CORPSE — age/poison/acid → POISON;
-                // vegan(fptr) → herbi?CADAVER:MANFOOD (lichen etc.).
-                // polyfood / rider / petrify deferred.
-                const moves = game.moves ?? 1;
-                const corpseAge = obj.age ?? moves;
-                const agePoison = corpseAge + 50 <= moves
-                    && fx !== PM_LIZARD && fx !== PM_LICHEN
-                    && mptr?.mlet !== 'S_FUNGUS';
-                // resists_poison/acid: Resists_Elem not ported — pets lack them
-                if (agePoison
-                    || (acidic(fptr) /* && !resists_acid(mon) */)
-                    || (poisonous(fptr) /* && !resists_poison(mon) */)) {
+                // C `:1062` — pyrolisk eggs burn unless the pet likes fire.
+                if ((obj.corpsenm | 0) === PM_PYROLISK && !likes_fire(mptr)) {
                     return POISON;
                 }
-                if (vegan(fptr)) return herbi ? CADAVER : MANFOOD;
-                // C `:1080-1083` — most humanoids avoid cannibalism unless
+                return carni ? CADAVER : MANFOOD; // C `:1064`
+            case CORPSE: {
+                // C `:1066–1071` — tainted (iced age + 50 <= moves; lizard/
+                // lichen corpses and fungus eaters exempt), acidic or
+                // poisonous flesh the pet doesn't resist → POISON.
+                if ((peek_at_iced_corpse_age(obj) + 50 <= (game.moves | 0)
+                        && fx !== PM_LIZARD && fx !== PM_LICHEN
+                        && mptr?.mlet !== 'S_FUNGUS')
+                    || (acidic(fptr) && !resists_acid(mon))
+                    || (poisonous(fptr) && !resists_poison(mon))) {
+                    return POISON;
+                }
+                // C `:1074` — avoid polymorph unless starving or abused
+                // (mtame ≤ 1; the pet may risk it for power).
+                if (polyfood(obj) && (mon?.mtame | 0) > 1 && !starving) {
+                    return MANFOOD;
+                }
+                if (vegan(fptr)) return herbi ? CADAVER : MANFOOD; // C `:1076`
+                // C `:1080–1083` — most humanoids avoid cannibalism unless
                 // starving; elves won't eat other elves even then.
                 if (humanoid(mptr) && same_race(mptr, fptr)
                     && (!is_undead(mptr) && fptr?.mlet !== 'S_KOBOLD'
                         && fptr?.mlet !== 'S_ORC' && fptr?.mlet !== 'S_OGRE')) {
                     return (starving && carni && !is_elf(mptr)) ? ACCFOOD : TABU;
                 }
-                return carni ? CADAVER : MANFOOD;
+                return carni ? CADAVER : MANFOOD; // C `:1085`
             }
-            case APPLE:
+            // C `:1086–1088` — other globs use `default:`; turning into
+            // slime beats starvation.
+            case GLOB_OF_GREEN_SLIME:
+                return (starving || slimeproof(mptr)) ? ACCFOOD : POISON;
+            // C `:1089–1092` — undead/vampshifters refuse garlic.
+            case CLOVE_OF_GARLIC:
+                return (is_undead(mptr) || is_vampshifter(mon)) ? TABU
+                    : (herbi || starving) ? ACCFOOD
+                    : MANFOOD;
+            case TIN: // C `:1094`
+                return metallivorous(mptr) ? ACCFOOD : MANFOOD;
+            case APPLE: // C `:1096`
                 return herbi ? DOGFOOD : starving ? ACCFOOD : MANFOOD;
-            case CARROT:
-                return herbi ? DOGFOOD : starving ? ACCFOOD : MANFOOD;
+            case CARROT: // C `:1098` — mblind carnivores eat carrots too.
+                return (herbi || mblind) ? DOGFOOD : starving ? ACCFOOD : MANFOOD;
             case BANANA:
-                return herbi ? ACCFOOD : MANFOOD;
-            case TIN:
-                return MANFOOD;
+                // C `:1102–1104` — monkeys/apes/sasquatch prefer them; yeti
+                // herbivores take DOGFOOD, others only when starving.
+                return (mptr?.mlet === 'S_YETI' && herbi) ? DOGFOOD
+                    : (herbi || starving) ? ACCFOOD
+                    : MANFOOD;
             default:
+                // C `:1106–1109`
                 if (starving) return ACCFOOD;
-                if (otyp > SLIME_MOLD) return carni ? ACCFOOD : MANFOOD;
-                return herbi ? ACCFOOD : MANFOOD;
+                return (otyp > SLIME_MOLD) ? (carni ? ACCFOOD : MANFOOD)
+                    : (herbi ? ACCFOOD : MANFOOD);
         }
     }
-    if (!obj.cursed && oclass !== BALL_CLASS && oclass !== CHAIN_CLASS
-        && oclass !== ROCK_CLASS) {
-        return APPORT;
+    // C `:1111–1132` — non-food `default:` arms; ROCK_CLASS jumps straight
+    // to `case ROCK_CLASS: return UNDEF`, skipping them.
+    if (oclass !== ROCK_CLASS) {
+        // C `:1112` — strangulation / slow-digestion jewelry is TABU.
+        if (otyp === AMULET_OF_STRANGULATION || otyp === RIN_SLOW_DIGESTION) {
+            return TABU;
+        }
+        // C `:1115` — silver-haters refuse silver.
+        if (mon_hates_silver(mon) && (game.objects?.[otyp]?.oc_material | 0) === SILVER) {
+            return TABU;
+        }
+        // C `:1117` — gelatinous cubes dissolve anything organic.
+        if (mndx === PM_GELATINOUS_CUBE && is_organic(obj)) return ACCFOOD;
+        // C `:1119–1124` — metallivores eat metal; rust monsters insist on
+        // rustprone; non-rustproofed ferrous metals are preferred (DOGFOOD).
+        if (metallivorous(mptr) && is_metallic(obj)
+            && (is_rustprone(obj) || mndx !== PM_RUST_MONSTER)) {
+            return (is_rustprone(obj) && !obj.oerodeproof) ? DOGFOOD : ACCFOOD;
+        }
+        // C `:1125` — uncursed non-ball/chain is apport-worthy.
+        if (!obj.cursed && oclass !== BALL_CLASS && oclass !== CHAIN_CLASS) {
+            return APPORT;
+        }
     }
-    if (oclass === ROCK_CLASS) return UNDEF;
-    return UNDEF;
+    return UNDEF; // C `:1132` FALLTHROUGH target
 }
 
 // Goal state for current dog_move (C: gg.gtyp/gx/gy)

@@ -1616,8 +1616,7 @@ export async function postmov(mtmp, omx, omy, mmoved, can_tunnel, can_unlock, ca
         const u = game.u || (game.u = {});
         u.ux0 = u.ux;
         u.uy0 = u.uy;
-        u_on_newpos(mtmp.mx, mtmp.my);
-        // C: u_on_newpos skips see_nearby_objects while uswallow
+        await u_on_newpos(mtmp.mx, mtmp.my); // C monmove.c:1653
     } else if (mtmp.mx) {
         newsym(mtmp.mx, mtmp.my);
     }

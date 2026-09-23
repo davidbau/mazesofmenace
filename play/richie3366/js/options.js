@@ -140,7 +140,10 @@ import { yyyymmddhhmmss } from './calendar.js';
 import { getlin, mungspaces } from './getline.js';
 import { makesingular, fruit_from_name, makeplural } from './objnam.js';
 import { clr2colorname } from './artifact.js';
-import { opt_next_cond, cond_menu, status_hilite_linestr_done, status_hilite_linestr_gather } from './botl.js';
+import {
+    opt_next_cond, cond_menu, status_hilite_menu,
+    status_hilite_linestr_done, status_hilite_linestr_gather,
+} from './botl.js';
 import { get_changed_key_binds } from './cmd.js';
 
 /** C ref: global.h PL_FSIZ — fruit name buffer. */
@@ -3241,13 +3244,26 @@ export async function doset() {
         }
     }
     // C options.c doset Othr rows → optfn do_handler; menu colors
-    // (handler_menu_colors, C `:8383`) and status condition fields
-    // (cond_menu, C optfn_o_status_cond `:8436–8439`) have live handlers.
+    // (handler_menu_colors, C `:8383`), status condition fields
+    // (cond_menu, C optfn_o_status_cond `:8436–8439`), and status
+    // highlight rules (status_hilite_menu, C optfn_o_status_hilites
+    // `:8464–8471`) have live handlers.
     for (const name of othrPicks) {
         if (name === 'menu colors') {
             await handler_menu_colors();
         } else if (name === 'status condition fields') {
             if (await cond_menu()) opt_set_in_config[PFX_COND_IDX] = true;
+        } else if (name === 'status highlight rules') {
+            // C `:8465–8470`. The menu returns TRUE (`botl.c:4577`), so
+            // the optn_err arm is not taken. preference_update runs only
+            // when the window port advertises hilite_status; the contest
+            // tty's wincap2 is 0, so wc2_supported is false.
+            if (await status_hilite_menu()) {
+                if (wc2_supported('hilite_status')) {
+                    // Named omission: preference_update("hilite_status")
+                    // (options.c:8469). No JS body.
+                }
+            }
         }
     }
     // C options.c doset `:8973` reset_needed_visuals after picks.

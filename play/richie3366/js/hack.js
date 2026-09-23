@@ -105,6 +105,7 @@ import { place_monster, remove_monster } from './steed.js';
 import { mundisplaceable } from './uhitm.js';
 import { monsndx } from './mondata.js';
 import { worm_cross } from './worm.js';
+import { Is_qstart } from './quest.js';
 
 export { set_msg_xy };
 
@@ -2016,41 +2017,37 @@ export function SURFACE_AT(x, y) {
 }
 
 /**
- * C ref: pager.c waterbody_name — pool/moat/lava/ice/wall; medusa
- * shallow sea / juiblex swamp / samurai qstart pond (D-0928 #1163).
- * ltyp via SURFACE_AT so a raised drawbridge names its under-typ
- * (D-1103).
+ * C ref: pager.c waterbody_name `:561–611` — describe a pool location's
+ * contents (D-2761). C returns a static buffer or a literal (caller must
+ * use-or-copy, :558); JS returns a fresh string per call.
  */
 export function waterbody_name(x, y) {
-    if (!isok(x, y)) return 'drink';
-    const typ = SURFACE_AT(x, y);
-    const hallucinate = Hallucination() && !game.program_state?.gameover;
-    if (typ === LAVAPOOL) return `molten ${hliquid('lava')}`;
-    if (typ === ICE) {
+    const hallucinate = Hallucination() && !game.program_state?.gameover; // C :565
+    if (!isok(x, y)) return 'drink'; // C :567-568, should never happen
+    const ltyp = SURFACE_AT(x, y); // C :569 (D-1103 raised-drawbridge under-typ)
+    if (ltyp === LAVAPOOL) { // C :571-574
+        return `molten ${hliquid('lava')}`;
+    } else if (ltyp === ICE) { // C :574-579
         if (!hallucinate) return 'ice';
         return `frozen ${hliquid('water')}`;
-    }
-    if (typ === POOL) return `pool of ${hliquid('water')}`;
-    if (typ === MOAT) {
-        if (hallucinate) return `deep ${hliquid('water')}`;
-        if (Is_medusa_level(game.u?.uz)) return 'shallow sea';
-        if (Is_juiblex_level(game.u?.uz)) return 'swamp';
-        // C: Role_if(PM_SAMURAI) && Is_qstart(&u.uz)
-        const qs = game.qstart_level;
-        const uz = game.u?.uz;
-        if (game.urole?.mnum === PM_SAMURAI
-            && qs && uz
-            && uz.dnum === qs.dnum && uz.dlevel === qs.dlevel) {
+    } else if (ltyp === POOL) { // C :579-582
+        return `pool of ${hliquid('water')}`;
+    } else if (ltyp === MOAT) { // C :582-600
+        if (hallucinate) return `deep ${hliquid('water')}`; // C :584-587
+        if (Is_medusa_level(game.u?.uz)) return 'shallow sea'; // C :587-590
+        if (Is_juiblex_level(game.u?.uz)) return 'swamp'; // C :591-592
+        // C :593-596 samurai quest home level's two isolated moat spots.
+        if ((game.urole?.mnum | 0) === PM_SAMURAI && Is_qstart(game.u?.uz)) {
             return 'pond';
         }
-        return 'moat';
+        return 'moat'; // C :597-598
+    } else if (IS_WATERWALL(ltyp)) { // C :600-604
+        if (Is_waterlevel(game.u?.uz)) return 'limitless water'; // C :601-602, even if hallucinating
+        return `wall of ${hliquid('water')}`; // C :603
+    } else if (ltyp === LAVAWALL) { // C :605-608
+        return `wall of ${hliquid('lava')}`;
     }
-    if (IS_WATERWALL(typ)) {
-        if (Is_waterlevel(game.u?.uz)) return 'limitless water';
-        return `wall of ${hliquid('water')}`;
-    }
-    if (typ === LAVAWALL) return `wall of ${hliquid('lava')}`;
-    return 'water';
+    return 'water'; // C :610 default, unreachable; never hallucinated
 }
 
 /**
@@ -2564,7 +2561,7 @@ export function slippery_ice_fumbling() {
  * C hack.c avoid_moving_on_trap `:2443–2460` — seen non-VS trap.
  * mention_walls pline only when msg (run>=2).
  */
-async function avoid_moving_on_trap(x, y, msg) {
+export async function avoid_moving_on_trap(x, y, msg) {
     const trap = t_at(x, y);
     if (trap && trap.tseen && (trap.ttyp | 0) !== VIBRATING_SQUARE) {
         if (msg && game.flags?.mention_walls) {
@@ -2580,7 +2577,7 @@ async function avoid_moving_on_trap(x, y, msg) {
  * C hack.c avoid_moving_on_liquid `:2462–2490`. Known_wwalking /
  * Known_lwalking stay omitted (treat as unknown), matching swim_move_danger.
  */
-async function avoid_moving_on_liquid(x, y, msg) {
+export async function avoid_moving_on_liquid(x, y, msg) {
     const u = game.u || {};
     const in_air = !!(Levitation_st() || Flying_st());
     const dest = game.level?.at(x, y);

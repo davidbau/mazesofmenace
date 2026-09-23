@@ -17,7 +17,8 @@
 // monflee+rloc) and dead-thief unstolenarm restore (thiefdead swap lives
 // in mhitm.js next to the C caller mon.c:2783).
 // **steal** (D-2748): whole C `:343–614` body in C order —
-// nothing_to_steal (Punished uchain / buried-ball / Blind / gold-only),
+// nothing_to_steal (Punished uchain / buried-ball / live Blind() /
+// gold-only),
 // Adornment ring priority, retry pick (!tmp → nothing_to_steal, !otmp →
 // impossible), glove/cloak/shirt substitution, stealoid gate, BOULDER
 // retry-once → cant_take, monkey curse-stickiness/can_carry → cant_take,
@@ -61,7 +62,7 @@ import { nomul, stop_occupation } from './hack.js';
 import { maybe_finished_meal } from './eat.js';
 import { o_unleash } from './apply.js';
 import { openholdingtrap, minstapetrify } from './trap.js';
-import { encumber_msg, freeinv_core } from './invent.js';
+import { Blind, encumber_msg, freeinv_core } from './invent.js';
 import { can_carry } from './monmove.js';
 import { hero_conflict } from './mondata.js';
 import { g_at, add_to_minv, obj_extract_self, splitobj } from './mkobj.js';
@@ -378,7 +379,9 @@ export async function steal(mtmp, objnambuf) {
                at all (hence no uchain to take off) */
             await pline(`${Monnambuf} takes off your unseen chain.`);
             await openholdingtrap(game.youmonst);
-        } else if (Blind_steal()) {
+        } else if (Blind()) {
+            /* C `:384` youprop.h:103 — (HBlinded || EBlinded) && !BBlinded.
+               Live invent.js Blind() (also uroleplay.blind). */
             await pline('Somebody tries to rob you, but finds nothing to steal.');
         } else if (inv_cnt(true) > inv_cnt(false)) {
             await pline(`${Monnambuf} tries to rob you, but isn't interested in gold.`);
@@ -808,9 +811,4 @@ export async function stealamulet(mtmp) {
         }
         await encumber_msg();
     }
-}
-
-function Blind_steal() {
-    const u = game.u || {};
-    return !!(u.Blind || u.ublind);
 }

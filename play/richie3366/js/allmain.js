@@ -293,6 +293,13 @@ export async function moveloop_preamble(resuming) {
     }
     // C: encumber_msg() — sync go.oldcap (auto-pickup / starting load)
     await encumber_msg();
+    // C allmain.c:97 — u_init leaves uz0.dlevel at 0 (u_init.c:984).
+    // Until this copy, on_level(uz, uz0) is false on the starting
+    // level, so u_on_newpos takes the level-change arm every move.
+    if (game.u) {
+        if (!game.u.uz0) game.u.uz0 = { dnum: game.u.uz?.dnum | 0, dlevel: 0 };
+        game.u.uz0.dlevel = game.u.uz?.dlevel | 0;
+    }
     game.context.move = 0;
     // C: program_state.in_moveloop = 1 — gates adjattrib STR/CON encumber_msg
     if (!game.program_state) game.program_state = {};

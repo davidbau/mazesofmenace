@@ -9,19 +9,18 @@ import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import { rn2, rn1, rnd } from './rng.js';
 import {
-    newsym, flush_screen, pline, You, pline_dir, pline_xy, set_msg_xy,
-    see_nearby_objects,
+    newsym, flush_screen, pline, You, pline_dir, pline_xy, pline_The, set_msg_xy,
     clear_nhwindow_message,
     mon_visible, sensemon, canspotmon, glyph_at, hero_glyph, glyph_is_invisible_id,
     glyph_is_warning, unmap_object, map_object,
     look_shown_at, glyph_to_obj_at, Norep, tty_doprev_message, putmsghistory,
     unmap_invisible, map_invisible, custompline,
 } from './display.js';
-import { COLNO, ROWNO, STONE, DOOR, CORR, ROOM, IRONBARS, TREE, SDOOR,
+import { COLNO, ROWNO, STONE, DOOR, CORR, ROOM, IRONBARS, TREE, SDOOR, ICE,
          D_CLOSED, D_LOCKED, D_NODOOR, D_BROKEN, SCORR, LAVAWALL,
          DRAWBRIDGE_UP, ROOMOFFSET,
          IS_DOOR, IS_OBSTRUCTED, IS_FURNITURE, IS_STWALL, IS_WALL, IS_TREE,
-         IS_FOUNTAIN, IS_SINK, IS_THRONE, IS_ALTAR, IS_ROOM, IS_WATERWALL,
+         IS_FOUNTAIN, IS_SINK, IS_THRONE, IS_ALTAR, IS_ROOM, IS_WATERWALL, IS_AIR,
          ACCESSIBLE, isok, Upolyd, Is_container, CLICK_1, CLICK_2,
          ECMD_OK, ECMD_TIME, ECMD_CANCEL, ECMD_FAIL, DOMOVE_RUSH, DOMOVE_WALK,
          CMDQ_EXTCMD, CMDQ_KEY, CMDQ_DIR, CMDQ_USER_INPUT, CQ_CANNED, CQ_REPEAT,
@@ -32,7 +31,7 @@ import { COLNO, ROWNO, STONE, DOOR, CORR, ROOM, IRONBARS, TREE, SDOOR,
          DIR_NW, DIR_NE, DIR_SE, DIR_SW,
          MV_WALK, MV_RUN, MV_RUSH, commandInp, otherInp, getposInp,
          GFILTER_VIEW, GLOC_INTERESTING,
-         M_AP_TYPE, M_AP_FURNITURE, M_AP_OBJECT, VIBRATING_SQUARE,
+         M_AP_TYPE, M_AP_FURNITURE, M_AP_OBJECT, S_hcdoor, S_vcdoor, VIBRATING_SQUARE,
          PARANOID_TRAP, GP_ALLOW_U, NO_TRAP_FLAGS, FOOT, Something,
          LARGEST_INT, GC_NOFLAGS, GC_SAVEHIST, GC_CONDHIST, GC_ECHOFIRST,
          SUPPRESS_HISTORY,
@@ -56,7 +55,7 @@ import { vision_recalc, couldsee, cansee } from './vision.js';
 import {
     ddoinv, dodiscovered, doattributes, dolook, doprgold, doprwep, doprarm,
     doprring, dopramulet, doprtool, doprinuse, doperminv, dotypeinv,
-    cmdq_add_key,
+    cmdq_add_key, Blind,
 } from './invent.js';
 import { dovspell, docast, num_spells } from './spell.js';
 import { doeat, sgn } from './eat.js';
@@ -79,7 +78,7 @@ import { rehumanize, body_part } from './polyself.js';
 import { Levitation, Flying } from './mhitu.js';
 import { doopen, doopen_indir, doclose } from './lock.js';
 import { doextcmd, getlin, mungspaces, extcmd_run_by_txt } from './getline.js';
-import { strstri, strsubst } from './hacklib.js';
+import { strstri, strsubst, upstart } from './hacklib.js';
 import { dosearch, doterrain } from './detect.js';
 import { dotakeoff, doddoremarm, dowear, doputon, doremring } from './do_wear.js';
 import { wiz_wish, wiz_genesis, wiz_level_tele, wiz_map } from './wizcmds.js';
@@ -88,7 +87,7 @@ import { dowield, dowieldquiver, doswapweapon } from './wield.js';
 import { dowhatis, doquickwhatis, dohelp, dowhatdoes, doversion } from './pager.js';
 import { visctrl, key2txt, cmdbind_get, cmd_from_dir } from './dokeylist.js';
 import { an, doname, makeplural } from './objnam.js';
-import { m_monnam, mon_nam, YMonnam, Hallucination, docallcmd } from './do_name.js';
+import { m_monnam, mon_nam, a_monnam, YMonnam, Hallucination, docallcmd } from './do_name.js';
 import { spoteffects, dopickup, doloot, dotip } from './pickup.js';
 import { objects_at } from './mkobj.js';
 import { stairway_at, On_stairs_up, On_stairs_dn, u_on_newpos, maybe_adjust_hero_bubble, selection_new, selection_getpoint, selection_setpoint } from './mklev.js';
@@ -108,6 +107,7 @@ import {
     could_move_onto_boulder, Passes_walls_prop,
     end_running, carrying, runmode_delay_output,
     water_turbulence, move_out_of_bounds, avoid_running_into_trap_or_liquid,
+    closed_door, avoid_moving_on_trap, avoid_moving_on_liquid,
     escape_from_sticky_mon, domove_fight_ironbars, domove_fight_web,
     air_turbulence, slippery_ice_fumbling,
     test_move,
@@ -2095,15 +2095,30 @@ export async function domove_fight_empty(x, y) {
 }
 
 /**
- * C ref: hack.c lookaround()
- * Blind / traps / pools / NODIAG / lookaround mention_walls plines deferred
- * (obstructed bump mention_walls is D-0354).
+ * C ref: hack.c lookaround `:3898–4058` — whole body in C order.
+ * NODIAG head + Blind/run gate; per-cell visible-monster stop (mention_walls
+ * pline_xy), STONE/away skips, trap arm (run==1 → bcorr, infront → stop,
+ * else fall through), terrain else-chain (obstructed/room/air/ice skip;
+ * closed-door-or-mimic mention/stop/bcorr; corridor; pool/lava; objects),
+ * bcorr corridor counting, run==2 widen stop, rush/travel auto-turn.
+ * `stop:` is C `nomul(0)` (live hack.js export, already imported); bcorr is
+ * a flag (C goto into the CORR arm skips the terrain else-chain).
+ * Async only because the C message arms (You/pline_xy/pline_The) and the
+ * trap/liquid helpers reach --More-- (sole caller continue_run awaits).
  */
-function lookaround() {
+async function lookaround() {
     const ctx = game.context;
     const u = game.u;
-    // C: Blind || run==0 → return (Blind path deferred — still gate run==0)
-    if (!ctx?.run) return;
+    // C `:3907–3911` — grid bugs (NODIAG ≡ umonnum==PM_GRID_BUG,
+    // hack.h:1414) cannot move diagonally, even blind.
+    if ((((u?.umonnum) | 0) === PM_GRID_BUG) && (u.dx || 0) && (u.dy || 0)) {
+        await You('cannot move diagonally.');
+        nomul(0);
+        return;
+    }
+    // C `:3913–3914` — Blind || run==0 returns (Blind is the live
+    // invent.js macro: H/EBlinded && !BBlinded + uroleplay.blind).
+    if (Blind() || !ctx?.run) return;
 
     let corrct = 0;
     let noturn = 0;
@@ -2114,62 +2129,117 @@ function lookaround() {
 
     for (let x = u.ux - 1; x <= u.ux + 1; x++) {
         for (let y = u.uy - 1; y <= u.uy + 1; y++) {
+            // C `:3917` — infront: the square we're moving into.
             const infront = (x === u.ux + (u.dx || 0) && y === u.uy + (u.dy || 0));
+            // C `:3920–3921` — ignore out of bounds and our own square (u_at).
             if (!isok(x, y) || (x === u.ux && y === u.uy)) continue;
+            // C `:3923–3924` — grid bugs ignore diagonals.
+            if ((((u?.umonnum) | 0) === PM_GRID_BUG) && x !== u.ux && y !== u.uy) continue;
 
+            // C `:3927–3930` — a visible monster there? (m_at; M_AP
+            // furniture/object mimics don't count; mon_visible — D-0705:
+            // invisible hostiles must not end a run, attack_checks prints
+            // Wait! instead.)
             const mtmp = mon_at(x, y);
-            // C: only stop for mon_visible (not M_AP furniture/object).
-            // Invisible hostiles must not end a run — hero walks in and
-            // attack_checks prints Wait! (D-0705 seed0014 yank More).
             if (mtmp
                 && M_AP_TYPE(mtmp) !== M_AP_FURNITURE
                 && M_AP_TYPE(mtmp) !== M_AP_OBJECT
                 && mon_visible(mtmp)) {
+                // C `:3933–3938` — running (not rush-1) against a
+                // non-safemon, or blocking our move while not traveling.
                 if ((ctx.run !== 1 && !is_safemon(mtmp))
                     || (infront && !ctx.travel)) {
-                    end_running(true);
+                    if (game.flags?.mention_walls) {
+                        await pline_xy(x, y, '%s blocks your path.',
+                            upstart(a_monnam(mtmp)));
+                    }
+                    nomul(0); // C `stop:` `:4020–4022`
                     return;
                 }
             }
 
             const loc = game.level?.at(x, y);
             const typ = loc?.typ ?? STONE;
+            // C `:3943–3944` — stone is never interesting.
             if (typ === STONE) continue;
+            // C `:3946–3947` — ignore the square we're moving away from.
             if (x === u.ux - (u.dx || 0) && y === u.uy - (u.dy || 0)) continue;
 
-            // traps deferred (avoid_moving_on_trap)
-
-            if (IS_OBSTRUCTED(typ) || typ === ROOM) {
-                continue;
+            // C `:3950–3956` — stop for (seen, non-vibrating-square) traps,
+            // sometimes: run==1 treats the trap square as corridor (bcorr);
+            // otherwise stop only when the trap is directly in front; when
+            // neither goto fires C falls through to the terrain chain.
+            // (The helper's own mention_walls pline is the run>=2 msg arm.)
+            let asCorr = false; // C `goto bcorr` `:3978`
+            if (await avoid_moving_on_trap(x, y, infront && ctx.run > 1)) {
+                if (ctx.run === 1) asCorr = true; // C `:3952–3953`
+                else if (infront) { nomul(0); return; } // C `:3954–3955`
             }
 
-            let asCorr = false;
-            if (closed_door_at(x, y)) {
-                if (x !== u.ux && y !== u.uy) continue;
-                if (ctx.run !== 1 && !ctx.travel) {
-                    end_running(true);
-                    return;
-                }
-                asCorr = true; // bcorr
-            } else if (typ === CORR) {
-                asCorr = true;
-            } else {
-                // pool/lava/objects/stairs: run==1 → bcorr; run==8 continue; else stop
-                if (ctx.run === 1) asCorr = true;
-                else if (ctx.run === 8) continue;
-                else {
-                    end_running(true);
-                    return;
+            if (!asCorr) {
+                // C `:3959–3961` — obstructed, room, air, ice: uninteresting.
+                if (IS_OBSTRUCTED(typ) || typ === ROOM || IS_AIR(typ) || typ === ICE) {
+                    continue;
+                // C `:3962` — a closed door (live hack.js export ≡ monmove.c
+                // closed_door: IS_DOOR + D_LOCKED|D_CLOSED), or a mimic
+                // appearing as one (is_door_mappear, monst.h:240 — inlined
+                // like lock.js: the mappearance disjunct, not a clone).
+                } else if (closed_door(x, y)
+                    || (mtmp && M_AP_TYPE(mtmp) === M_AP_FURNITURE
+                        && ((mtmp.mapappearance | 0) === S_hcdoor
+                            || (mtmp.mappearance | 0) === S_vcdoor))) {
+                    // C `:3965–3966` — ignore diagonal doors.
+                    if (x !== u.ux && y !== u.uy) continue;
+                    if (ctx.run !== 1 && !ctx.travel) {
+                        // C `:3968–3971` — mention + stop.
+                        if (game.flags?.mention_walls) {
+                            set_msg_xy(x, y);
+                            await You('stop in front of the door.');
+                        }
+                        nomul(0); return;
+                    }
+                    // C `:3975` — orthogonal door counts as corridor.
+                    asCorr = true;
+                } else if (typ === CORR) {
+                    // C `:3976` — corridor.
+                    asCorr = true;
+                } else if (is_pool(x, y) || is_lava(x, y)) {
+                    // C `:4005–4008` — is_pool_or_lava (dbridge.c:77):
+                    // stop only when the liquid is in front and the hero
+                    // would avoid stepping in; otherwise uninteresting.
+                    // (The helper's edge-of-water pline is the msg=TRUE arm.)
+                    if (infront && await avoid_moving_on_liquid(x, y, true)) {
+                        nomul(0); return;
+                    }
+                    continue;
+                } else {
+                    // C `:4009–4018` — e.g. objects or trap or stairs.
+                    if (ctx.run === 1) asCorr = true; // C `:4010`
+                    else if (ctx.run === 8) continue; // C `:4012`
+                    else if (mtmp) continue; // C `:4014` (unseen monster)
+                    // C `:4016–4017` — diagonally-behind squares don't stop.
+                    else if (((x === u.ux - (u.dx || 0)) && (y !== u.uy + (u.dy || 0)))
+                        || ((y === u.uy - (u.dy || 0)) && (x !== u.ux + (u.dx || 0)))) continue;
+                    else { nomul(0); return; } // C fall-through to stop:
                 }
             }
 
             if (asCorr) {
+                // C `:3979` — corridor counting only when the hero is not
+                // standing in a room.
                 const here = game.level?.at(u.ux, u.uy);
                 if (here && here.typ !== ROOM) {
+                    // C `:3981–3999` — rush/travel corridor tracking.
                     if (ctx.run === 1 || ctx.run === 3 || ctx.run === 8) {
+                        // C `:3984` — distance to the square we're moving to.
                         const i = dist2(x, y, u.ux + (u.dx || 0), u.uy + (u.dy || 0));
+                        // C `:3986–3987` — ignore squares past it.
                         if (i > 2) continue;
+                        // C `:3991` — second corridor not orthogonally
+                        // adjacent to the first: no turn.
                         if (corrct === 1 && dist2(x, y, x0, y0) !== 1) noturn = 1;
+                        // C `:3995–3999` — keep the closest square
+                        // (orthogonal beats diagonal); m0 notes a monster.
                         if (i < i0) {
                             i0 = i;
                             x0 = x;
@@ -2179,28 +2249,39 @@ function lookaround() {
                     }
                     corrct++;
                 }
+                continue; // C `:4004`
             }
         }
     }
 
+    // C `:4025–4029` — run==2 into a widening corridor: mention + stop.
     if (corrct > 1 && ctx.run === 2) {
-        end_running(true);
+        if (game.flags?.mention_walls) {
+            await pline_The('corridor widens here.');
+        }
+        nomul(0);
         return;
     }
 
+    // C `:4030–4057` — rush/travel auto-turn at corridor corners (only
+    // when exactly the tracked corridor(s) were seen, unblocked).
     if ((ctx.run === 1 || ctx.run === 3 || ctx.run === 8)
         && !noturn && !m0 && i0
         && (corrct === 1 || (corrct === 2 && i0 === 1))) {
         let turn;
         if (i0 === 2) {
+            // C `:4034–4037` — straight turn left/right.
             turn = ((u.dx || 0) === y0 - u.uy && (u.dy || 0) === u.ux - x0) ? 2 : -2;
         } else if ((u.dx || 0) && (u.dy || 0)) {
+            // C `:4039–4042` — diagonal half turn.
             turn = (((u.dx || 0) === (u.dy || 0) && y0 === u.uy)
                 || ((u.dx || 0) !== (u.dy || 0) && y0 !== u.uy)) ? -1 : 1;
         } else {
+            // C `:4044–4048` — orthogonal half turn.
             turn = ((x0 - u.ux === y0 - u.uy && !(u.dy || 0))
                 || (x0 - u.ux !== y0 - u.uy && (u.dy || 0))) ? 1 : -1;
         }
+        // C `:4052–4056` — accumulate last_str_turn; turn at most ±2.
         turn += (u.last_str_turn || 0);
         if (turn <= 2 && turn >= -2) {
             u.last_str_turn = turn;
@@ -2500,7 +2581,7 @@ export async function continue_run() {
         end_running(true);
         return false;
     }
-    lookaround();
+    await lookaround();
     // C allmain.c:517 — delay output before testing lookaround's clear
     await runmode_delay_output();
     if (!(game.multi > 0) || !game.context.run) {
@@ -4144,7 +4225,7 @@ async function domove(dx, dy) {
         u.dy = 0;
         newx = u.ustuck.mx | 0;
         newy = u.ustuck.my | 0;
-        u_on_newpos(newx, newy);
+        await u_on_newpos(newx, newy); // C hack.c:2736
         mtmp = u.ustuck;
     } else {
         // C ref: hack.c domove_core `:2742–2745` — air turbulence, then
@@ -4554,13 +4635,10 @@ async function domove(dx, dy) {
         smudgeCoords = { oldx, oldy, newx, newy };
     }
 
-    // C hack.c:2937 dungeon.c u_on_newpos — the tentative occupy above
-    // skipped the full re-position: moving unhides the hero and lets
-    // dwarves earth-sense buried goods. CLIPPING stays deferred (wintty
-    // cliparound singleton, Deferred list); see_nearby_objects below is
-    // the same call's same-level arm.
-    u.uundetected = 0;
-    await earth_sense();
+    // C hack.c:2934 — full re-position after the tentative occupy
+    // (cliparound, uundetected, steed, see_nearby or level-change
+    // map_location, earth_sense). Not gated on did_step.
+    await u_on_newpos(u.ux, u.uy);
     // C hack.c:2939 cmd.c reset_occupations — stepping clears any
     // remarm/pick/trapset occupation (doddrop re-arms its own).
     await reset_occupations();
@@ -4568,12 +4646,6 @@ async function domove(dx, dy) {
     // C ref: hack.c domove — check_leash(u.ux0, u.uy0) after place, before
     // newsym/vision (D-1005). Runs even when swap bounced.
     await check_leash(u.ux0 | 0, u.uy0 | 0);
-
-    // C ref: dungeon.c u_on_newpos — same-level → see_nearby_objects
-    // (upgrade generic potion/gem/spellbook glyphs when within neardist).
-    if (did_step && !u.Blind && !u.Hallucination && !u.uswallow) {
-        see_nearby_objects();
-    }
 
     // C ref: hack.c domove :2708 — kickedloc clears unconditionally at
     // domove() end (finally block below), even on bumps/failed steps.
