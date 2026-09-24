@@ -2593,6 +2593,7 @@ async function handler_pickup_types() {
     const prior = String(game.flags.pickup_types || '');
     const next = await choose_classes_menu('Autopickup what?', prior);
     game.flags.pickup_types = next;
+    return optn_ok; // C handler_pickup_types `:6120`
 }
 
 /**
@@ -3481,15 +3482,20 @@ function optfn_fruit_set(op) {
 async function doset_compound_via_getlin(opt) {
     const name = opt.name;
     if (opt.hasHandler) {
+        // C doset_simple_menu `:8664–8670`: optfn do_handler; optn_ok marks
+        // the row for a later options save (D-2773 full-doset else-arm
+        // pattern). None of these four is pfx_cond_, so no `:8669` guard.
+        let reslt = OPTN_ERR;
         if (name === 'pickup_types') {
-            await handler_pickup_types();
+            reslt = await handler_pickup_types();
         } else if (name === 'perminv_mode') {
-            await handler_perminv_mode();
+            reslt = await handler_perminv_mode();
         } else if (name === 'menu colors') {
-            await handler_menu_colors();
+            reslt = await handler_menu_colors();
         } else if (name === 'number_pad') {
-            await handler_number_pad(); // C optfn_number_pad do_handler `:2642`
+            reslt = await handler_number_pad(); // C optfn_number_pad do_handler `:2642`
         }
+        if (reslt === OPTN_OK) opt_set_in_config[allopt_idx(name)] = true;
         // Other hasHandler compounds deferred (symset/…).
         return;
     }
