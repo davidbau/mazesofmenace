@@ -885,7 +885,7 @@ function vanqsort_cmp(indx1, indx2) {
  * C ref: insight.c vanqorders `:2601–2618` — [key, short, menu-desc].
  * Index is the VANQ_* mode (0..7); the menu shows the long desc.
  */
-const VANQORDERS = [
+export const vanqorders = [
     ['t', 'traditional: by monster level',
         'traditional: by monster level, by internal monster index'],
     ['d', 'by monster difficulty rating',
@@ -930,11 +930,11 @@ export async function set_vanq_order(for_vanq) {
         },
         { text: '', attr: 0, selectable: false },
     ];
-    for (let i = 0; i < VANQORDERS.length; i++) {
+    for (let i = 0; i < vanqorders.length; i++) {
         if (i === VANQ_ALPHA_MIX || i === VANQ_MCLS_HTOL) continue;
         /* suppress some orderings if this menu is for '#genocided' */
         if (!for_vanq && (i === VANQ_COUNT_H_L || i === VANQ_COUNT_L_H)) continue;
-        let desc = VANQORDERS[i][2];
+        let desc = vanqorders[i][2];
         /* unique monsters can't be genocided so "alpha, unique separate"
            and "alpha, unique intermixed" are confusing descriptions when
            this menu is for #genocided rather than for #vanquished */
@@ -943,7 +943,7 @@ export async function set_vanq_order(for_vanq) {
             text: desc,
             attr: 0,
             selectable: true,
-            selector: VANQORDERS[i][0],
+            selector: vanqorders[i][0],
             a_int: i + 1,
             selected: i === cur,
         });

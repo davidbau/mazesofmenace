@@ -289,11 +289,21 @@ function hilite_pet_opt() {
     return !!(game.iflags?.wc_hilite_pet ?? game.iflags?.hilite_pet);
 }
 
+/**
+ * C wintype.h ATR_INVERSE is 7; frozen terminal.js ATR_INVERSE is 1.
+ * null and 0 stay terminal inverse (the pre-existing reader). Any other
+ * stored value is passed through, so a 1 left by an older enable arm
+ * is still inverse. 7 (optfn_petattr and the hilite_pet enable arm)
+ * maps to terminal inverse.
+ */
+function petattr_to_tty(a) {
+    if (a == null || a === 0 || (a | 0) === 7) return ATR_INVERSE;
+    return a | 0;
+}
+
 function mon_map_attr(mtmp) {
     if (mtmp?.mtame && hilite_pet_opt()) {
-        const a = game.iflags?.wc2_petattr;
-        // C: ATR_NONE is 0; init + enable path keep Inverse when hilite is on.
-        return (a == null || a === 0) ? ATR_INVERSE : (a | 0);
+        return petattr_to_tty(game.iflags?.wc2_petattr);
     }
     return wizmgender_inverse(!!mtmp?.female);
 }
@@ -306,8 +316,7 @@ function mon_map_attr(mtmp) {
  */
 export function glyph_tty_attr(mtmp, kind) {
     if (kind === 'pet' && hilite_pet_opt()) {
-        const a = game.iflags?.wc2_petattr;
-        return (a == null || a === 0) ? ATR_INVERSE : (a | 0);
+        return petattr_to_tty(game.iflags?.wc2_petattr);
     }
     if (kind === 'detect' && use_inverse_opt()) return ATR_INVERSE;
     return wizmgender_inverse(!!mtmp?.female);

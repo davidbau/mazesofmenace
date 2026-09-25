@@ -76,7 +76,7 @@ function gotrolefilter() {
 }
 
 /** C ref: role.c clearrolefilter */
-function clearrolefilter(which) {
+export function clearrolefilter(which) {
     if (which === RS_filter || which === RS_ROLE) {
         if (which === RS_filter) rfilter.mask = 0;
         for (let i = 0; i < roles.length; i++) rfilter.roles[i] = false;
@@ -91,7 +91,7 @@ function clearrolefilter(which) {
  * ROLE_RANDOM excluded from every arm (C uses module gr.rfilter; JS keeps its
  * pre-existing module-local rfilter for that state).
  */
-function setrolefilter(bufp) {
+export function setrolefilter(bufp) {
     let i;
     if ((i = str2role(bufp)) !== ROLE_NONE && i !== ROLE_RANDOM) {
         rfilter.roles[i] = true;
@@ -107,6 +107,51 @@ function setrolefilter(bufp) {
         return true;
     }
     return false;
+}
+
+/**
+ * C role.c rolefilterstring `:1316–1355`. Builds " !tok !tok" then drops
+ * the leading space. JS tables omit C's roles/races sentinel and the
+ * aligns "evil" row; genders keeps the pronoun "group" row, so the
+ * gender loop stops one short of the array (C `SIZE(genders) - 1`).
+ * @param {number} which RS_ROLE / RS_RACE / RS_GENDER / RS_ALGNMNT
+ * @returns {string}
+ */
+export function rolefilterstring(which) {
+    // C `:1321` outbuf[0] = outbuf[1] = '\0' (empty). Each hit appends
+    // " !token" via Sprintf. The return is `&outbuf[1]`, which drops the
+    // one leading space so a non-empty filter starts with '!'.
+    let out = '';
+    switch (which) { // C `:1322`
+    case RS_ROLE: // C `:1323`
+        for (let i = 0; i < roles.length; ++i) { // C `:1324` SIZE(roles)-1 (no JS sentinel)
+            if (rfilter.roles[i]) // C `:1325`
+                out += ` !${String(roles[i].name.m).slice(0, 3)}`; // C `:1326` !%.3s
+        }
+        break;
+    case RS_RACE: // C `:1329`
+        for (let i = 0; i < races.length; ++i) { // C `:1330` SIZE(races)-1
+            if ((rfilter.mask & races[i].selfmask) !== 0) // C `:1331`
+                out += ` !${races[i].noun}`; // C `:1332`
+        }
+        break;
+    case RS_GENDER: // C `:1335`
+        for (let i = 0; i < genders.length - 1; ++i) { // C `:1336` SIZE-1 skips "group"
+            if ((rfilter.mask & genders[i].allow) !== 0) // C `:1337`
+                out += ` !${genders[i].adj}`; // C `:1338`
+        }
+        break;
+    case RS_ALGNMNT: // C `:1341`
+        for (let i = 0; i < aligns.length; ++i) { // C `:1342` SIZE-1; JS has no "evil" row
+            if ((rfilter.mask & aligns[i].allow) !== 0) // C `:1343`
+                out += ` !${aligns[i].adj}`; // C `:1344`
+        }
+        break;
+    default: // C `:1347`
+        impossible('rolefilterstring: bad role aspect (%d)', which); // C `:1348`
+        return '?'; // C `:1349` Strcpy " ?" then `&outbuf[1]`
+    }
+    return out.slice(1); // C `:1353–1354` drop the leading space
 }
 
 /**

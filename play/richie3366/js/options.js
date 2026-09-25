@@ -135,14 +135,17 @@ import {
     GPCOORDS_COMPASS,
     GPCOORDS_COMFULL,
     GPCOORDS_SCREEN,
+    VANQ_MLVL_MNDX,
+    WINTYPELEN,
 } from './const.js';
+import { set_vanq_order, vanqorders } from './insight.js';
 import { game } from './gstate.js';
 import { sanitize_name } from './bones.js';
 import { rnd } from './rng.js';
-import { str_end_is, str_start_is, highc, lowc, strstri, strsubst, strNsubst } from './hacklib.js';
+import { str_end_is, str_start_is, highc, lowc, strstri, strsubst, strNsubst, strkitten } from './hacklib.js';
 import { name_to_mon } from './mondata.js';
 import { nhgetch } from './input.js';
-import { flush_screen, pline, docrt, check_gold_symbol, clear_committed_status, set_bot_disabled, tty_wait_synch, update_ov_primary_symset, update_ov_rogue_symset } from './display.js';
+import { flush_screen, pline, docrt, check_gold_symbol, clear_committed_status, set_bot_disabled, tty_wait_synch, update_ov_primary_symset, update_ov_rogue_symset, impossible } from './display.js';
 import { paint_corner_nhw_menu, dismiss_nhw_menu, collect_menu_gacc, process_menu_search, toggle_menu_curr, menu_digit_is_gacc, reassign, update_inventory, invlet_constant, perm_invent_toggled, select_menu_pick_none } from './invent.js';
 import {
     ATR_INVERSE,
@@ -169,8 +172,20 @@ import {
     opt_next_cond, cond_menu, status_hilite_menu,
     status_hilite_linestr_done, status_hilite_linestr_gather,
     match_str2clr, match_str2attr, status_version,
+    config_error_add,
 } from './botl.js';
 import { get_changed_key_binds, handler_rebind_keys, count_bind_keys } from './cmd.js';
+import {
+    ROLE_NONE, ROLE_RANDOM, PL_NSIZ,
+    RS_ROLE, RS_RACE, RS_GENDER, RS_ALGNMNT, RS_filter,
+} from './const.js';
+import {
+    roles, races, aligns, genders,
+    str2role, str2race, str2gend, str2align,
+} from './roles.js';
+import {
+    clearrolefilter, setrolefilter, rolefilterstring,
+} from './player_selection.js';
 
 /** C ref: global.h PL_FSIZ — fruit name buffer. */
 const PL_FSIZ = 32;
@@ -186,48 +201,214 @@ const DISCLOSE_VALID_PREFIX = new Set([
     DISCLOSE_SPECIAL_WITHOUT_PROMPT,
 ]);
 
+/** C decl.c:54 disclosure_options — order matches disclosure_names. */
+const disclosure_names = [
+    'inventory', 'attributes', 'vanquished',
+    'genocides', 'conduct', 'overview',
+];
+
 /**
- * C ref: options.c optfn_disclose do_set — fill flags.end_disclose[6].
- * @returns {string} length-6 string of disclose mode chars
+ * flags.end_disclose is char[NUM_DISCLOSURE_OPTIONS+1] (flag.h:116).
+ * JS stores the six mode chars as a string. Missing/short reads as the
+ * initoptions default 'n' (options.c:7210–7211) so a partial do_set
+ * leaves unspecified categories alone, the way C does.
+ * @param {object|null|undefined} flags
  */
-export function parseDiscloseOption(val, negated = false) {
-    const out = Array(NUM_DISCLOSURE_OPTIONS).fill(DISCLOSE_PROMPT_DEFAULT_NO);
-    const op = String(val ?? '').trim();
-    if (!op || op.toLowerCase() === 'all' || op.toLowerCase() === 'none') {
-        const none = negated || op.toLowerCase() === 'none';
-        const fill = none
-            ? DISCLOSE_NO_WITHOUT_PROMPT
-            : DISCLOSE_PROMPT_DEFAULT_YES;
-        return fill.repeat(NUM_DISCLOSURE_OPTIONS);
+function disclose_home(flags) {
+    const f = flags || game.flags || (game.flags = {});
+    let s = typeof f.end_disclose === 'string' ? f.end_disclose : '';
+    if (s.length < NUM_DISCLOSURE_OPTIONS) {
+        s = (s + DISCLOSE_PROMPT_DEFAULT_NO.repeat(NUM_DISCLOSURE_OPTIONS))
+            .slice(0, NUM_DISCLOSURE_OPTIONS);
+        f.end_disclose = s;
+    } else if (s.length > NUM_DISCLOSURE_OPTIONS) {
+        f.end_disclose = s.slice(0, NUM_DISCLOSURE_OPTIONS);
     }
-    let prefix = null;
-    for (let i = 0; i < op.length; i++) {
-        let c = op[i].toLowerCase();
-        if (c === 'k') c = 'v';
-        if (c === 'd') c = 'o';
-        const idx = DISCLOSURE_OPTIONS.indexOf(c);
-        if (idx >= 0) {
-            if (prefix != null) {
-                let pv = prefix;
-                if (c !== 'v' && c !== 'g') {
-                    if (pv === DISCLOSE_PROMPT_DEFAULT_SPECIAL) {
-                        pv = DISCLOSE_PROMPT_DEFAULT_YES;
-                    }
-                    if (pv === DISCLOSE_SPECIAL_WITHOUT_PROMPT) {
-                        pv = DISCLOSE_YES_WITHOUT_PROMPT;
-                    }
-                }
-                out[idx] = pv;
-                prefix = null;
-            } else {
-                out[idx] = DISCLOSE_YES_WITHOUT_PROMPT;
-            }
-        } else if (DISCLOSE_VALID_PREFIX.has(c)) {
-            prefix = c;
+    return f;
+}
+
+function disclose_put(flags, idx, ch) {
+    const f = disclose_home(flags);
+    const arr = f.end_disclose.split('');
+    arr[idx] = ch;
+    f.end_disclose = arr.join('');
+}
+
+/** C strcmpi — ASCII case-fold, zero iff equal. Uses live lowc. */
+function disclose_strcmpi(a, b) {
+    const as = String(a ?? '');
+    const bs = String(b ?? '');
+    const n = Math.max(as.length, bs.length);
+    for (let i = 0; i < n; i++) {
+        const ca = i < as.length ? as[i] : '\0';
+        const cb = i < bs.length ? bs[i] : '\0';
+        const la = lowc(ca);
+        const lb = lowc(cb);
+        if (la !== lb) return la < lb ? -1 : 1;
+        if (ca === '\0' || cb === '\0') return 0;
+    }
+    return 0;
+}
+
+/**
+ * C options.c optfn_disclose `:1442–1560` (staticfn; NHOPTC wires
+ * &optfn_disclose, optlist.h `:284`). do_handler (`:1556–1557`) is
+ * async in JS and lives in doset_optfn_do_handler → handler_disclose.
+ * @param {number} optidx
+ * @param {number} req
+ * @param {boolean} negated
+ * @param {string|{buf:string}} opts
+ * @param {string} op
+ * @param {object|null} [flags] rc result.flags; omitted → game.flags
+ */
+export function optfn_disclose(optidx, req, negated, opts, op, flags) {
+    if (req === REQ_DO_INIT) { // C `:1450–1451`
+        return OPTN_OK;
+    }
+    if (req === REQ_DO_SET) { // C `:1452`
+        const optstr = typeof opts === 'string' ? opts : '';
+        op = string_for_opt(optstr, true); // C `:1482` empty_optstr when valueless
+        if (op !== EMPTY_OPTSTR && negated) { // C `:1483–1485`
+            bad_negation(allopt_name(optidx), true);
+            return OPTN_ERR; // C `:1485`
         }
-        // spaces ignored (C); other chars skipped
+        /* "disclose" without a value means "all with prompting"
+           and negated means "none without prompting" */
+        if (op === EMPTY_OPTSTR || disclose_strcmpi(op, 'all') === 0
+            || disclose_strcmpi(op, 'none') === 0) { // C `:1488–1489`
+            if (op !== EMPTY_OPTSTR && disclose_strcmpi(op, 'none') === 0) // C `:1490`
+                negated = true;
+            const fill = negated
+                ? DISCLOSE_NO_WITHOUT_PROMPT
+                : DISCLOSE_PROMPT_DEFAULT_YES; // C `:1492–1494`
+            const f = disclose_home(flags);
+            f.end_disclose = fill.repeat(NUM_DISCLOSURE_OPTIONS); // C `:1491–1494`
+            return OPTN_OK; // C `:1495`
+        }
+
+        /* C `:1498–1500` num is never incremented, so
+           `num < sizeof flags.end_disclose - 1` (7-1) stays true and the
+           walk ends only on NUL. Kept as written. */
+        let num = 0; // C `:1498`
+        let prefixVal = -1; // C `:1499`
+        const bound = (NUM_DISCLOSURE_OPTIONS + 1) - 1; // sizeof end_disclose - 1
+        while (op.length > 0 && num < bound) { // C `:1500`
+            let c = lowc(op[0]); // C `:1511`
+            if (c === 'k') c = 'v'; // C `:1512–1513` killed -> vanquished
+            if (c === 'd') c = 'o'; // C `:1514–1515` dungeon -> overview
+            const idx = DISCLOSURE_OPTIONS.indexOf(c); // C `:1516` strchr
+            if (idx >= 0) { // C `:1517`
+                if (idx > NUM_DISCLOSURE_OPTIONS - 1) { // C `:1518–1521`
+                    void impossible(`bad disclosure index ${idx} ${c}`);
+                    continue; // C continue skips op++ (unreachable for "iavgco")
+                }
+                if (prefixVal !== -1) { // C `:1522`
+                    let pv = prefixVal;
+                    const dop = DISCLOSURE_OPTIONS[idx];
+                    if (dop !== 'v' && dop !== 'g') { // C `:1523`
+                        if (pv === DISCLOSE_PROMPT_DEFAULT_SPECIAL) // C `:1524–1525`
+                            pv = DISCLOSE_PROMPT_DEFAULT_YES;
+                        if (pv === DISCLOSE_SPECIAL_WITHOUT_PROMPT) // C `:1526–1527`
+                            pv = DISCLOSE_YES_WITHOUT_PROMPT;
+                    }
+                    disclose_put(flags, idx, pv); // C `:1529`
+                    prefixVal = -1; // C `:1530`
+                } else {
+                    disclose_put(flags, idx, DISCLOSE_YES_WITHOUT_PROMPT); // C `:1532`
+                }
+            } else if (DISCLOSE_VALID_PREFIX.has(c)) { // C `:1533` strchr(valid_settings)
+                prefixVal = c; // C `:1534`
+            } else if (c === ' ') { // C `:1535–1536`
+                /* do nothing */
+            } else {
+                config_error_add( // C `:1538–1539`
+                    `Unknown ${allopt_name(optidx)} parameter '${op[0]}'`);
+                return OPTN_ERR; // C `:1540`
+            }
+            op = op.slice(1); // C `:1542`
+        }
+        return OPTN_OK; // C `:1544`
     }
-    return out.join('');
+    if (req === REQ_GET_VAL || req === REQ_GET_CNF_VAL) { // C `:1546`
+        const ed = disclose_home(flags).end_disclose;
+        let buf = ''; // C `:1547` opts[0] = '\0'
+        for (let i = 0; i < NUM_DISCLOSURE_OPTIONS; i++) { // C `:1548`
+            if (i) buf = strkitten(buf, ' '); // C `:1549–1550`
+            buf = strkitten(buf, ed[i]); // C `:1551`
+            buf = strkitten(buf, DISCLOSURE_OPTIONS[i]); // C `:1552`
+        }
+        set_optbuf(opts, buf);
+        return OPTN_OK; // C `:1554`
+    }
+    /* do_handler `:1556–1557` is handler_disclose(), async-split into
+       doset_optfn_do_handler (optfn_msg_window precedent). */
+    return OPTN_OK; // C `:1559`
+}
+
+/**
+ * C options.c handler_disclose `:5674–5777` (staticfn). Sole C caller is
+ * optfn_disclose do_handler (`:1557`), reached from doset `:8935`.
+ * @returns {Promise<number>}
+ */
+export async function handler_disclose() {
+    const ed0 = disclose_home(null).end_disclose;
+    const discCat = new Array(NUM_DISCLOSURE_OPTIONS).fill(0); // C `:5688`
+    const raw = [{ text: 'Change which disclosure options categories:', selectable: false }];
+    for (let i = 0; i < NUM_DISCLOSURE_OPTIONS; i++) { // C `:5696`
+        const buf = `${disclosure_names[i].padEnd(12, ' ')}[${ed0[i]}${DISCLOSURE_OPTIONS[i]}]`; // C `:5697–5698`
+        raw.push({
+            text: buf,
+            selectable: true,
+            selector: DISCLOSURE_OPTIONS[i], // C `:5700` letter
+            a_int: i + 1, // C `:5699`
+        });
+        discCat[i] = 0; // C `:5703`
+    }
+    const picks = await select_menu_pick_any(raw, { cancelValue: null }); // C `:5705–5706`
+    if (picks && picks.length > 0) { // C `:5707` pick_cnt > 0
+        for (let pickIdx = 0; pickIdx < picks.length; ++pickIdx) { // C `:5708`
+            const optIdx = (picks[pickIdx].a_int | 0) - 1; // C `:5709`
+            if (optIdx >= 0 && optIdx < NUM_DISCLOSURE_OPTIONS)
+                discCat[optIdx] = 1; // C `:5710`
+        }
+        // C `:5712–5713` free — GC
+    }
+    for (let i = 0; i < NUM_DISCLOSURE_OPTIONS; i++) { // C `:5717`
+        if (!discCat[i]) continue; // C `:5718`
+        const c = disclose_home(null).end_disclose[i]; // C `:5719`
+        const prompt = `Disclosure options for ${disclosure_names[i]}:`; // C `:5720–5721`
+        const sub = [{ text: prompt, selectable: false }];
+        const pushMode = (mode, text) => {
+            sub.push({
+                text,
+                selectable: true,
+                selected: c === mode, // C MENU_ITEMFLAGS_SELECTED
+                a_char: mode,
+                gselector: mode, // C letter 0, accelerator a_char
+            });
+        };
+        pushMode(DISCLOSE_NO_WITHOUT_PROMPT, 'Never disclose, without prompting'); // C `:5725–5730`
+        pushMode(DISCLOSE_YES_WITHOUT_PROMPT, 'Always disclose, without prompting'); // C `:5731–5736`
+        const special = disclosure_names[i][0] === 'v' || disclosure_names[i][0] === 'g'; // C `:5737`
+        if (special) {
+            pushMode(DISCLOSE_SPECIAL_WITHOUT_PROMPT, // C `:5738–5743`
+                'Always disclose, pick sort order from menu');
+        }
+        pushMode(DISCLOSE_PROMPT_DEFAULT_NO, 'Prompt, with default answer of "No"'); // C `:5745–5750`
+        pushMode(DISCLOSE_PROMPT_DEFAULT_YES, 'Prompt, with default answer of "Yes"'); // C `:5751–5756`
+        if (special) {
+            pushMode(DISCLOSE_PROMPT_DEFAULT_SPECIAL, // C `:5757–5764`
+                'Prompt, with default answer of "Ask" to request sort menu');
+        }
+        const res = await select_menu_pick_one(sub); // C `:5765–5766`
+        if (res.kind === 'pick') { // C `:5767` n > 0
+            disclose_put(null, i, res.item.a_char); // C `:5768`
+            /* C `:5769–5770` n > 1 keeps the second pick when the first
+               equals the previous mode. select_menu_pick_one returns one
+               item (msg_window precedent) — named. */
+        }
+    }
+    return OPTN_OK; // C `:5776`
 }
 
 /**
@@ -242,6 +423,14 @@ const msgtype_names = [
     { name: 'more', msgtyp: MSGTYP_STOP, descr: null },
     { name: 'norep', msgtyp: MSGTYP_NOREP, descr: 'Do not repeat the message' },
 ];
+
+/**
+ * C ref: sys/share/posixregex.c:52 `regex_id[] = "posixregex"`.
+ * Contest unix links that object (sys/unix/Makefile.src:229); the
+ * pmatchregex.o line is commented out. `basic_menu_colors` compares
+ * this id (`coloratt.c:548`).
+ */
+const REGEX_ID = 'posixregex';
 
 /**
  * C ref: sys/share/posixregex.c — POSIX ERE REG_EXTENDED|REG_NOSUB via
@@ -1082,7 +1271,7 @@ function allopt_name(optidx) {
  * Inverse of allopt_name — allopt idx for an option name, for in-file
  * optfn calls that C makes with the opt_##name enum constant.
  */
-function allopt_idx(name) {
+export function allopt_idx(name) {
     for (const row of allopt) if (row.name === name) return row.idx;
     return -1;
 }
@@ -1688,6 +1877,12 @@ export async function handler_number_pad() {
  * @returns {Promise<number>} optn_* result
  */
 async function doset_optfn_do_handler(name) {
+    if (name === 'disclose') {
+        return handler_disclose(); // C `:1557`
+    }
+    if (name === 'petattr') {
+        return handler_petattr(); // C `:3191`
+    }
     if (name === 'menu_objsyms') {
         return handler_menu_objsyms(); // C `:2284`
     }
@@ -1702,6 +1897,9 @@ async function doset_optfn_do_handler(name) {
     }
     if (name === 'whatis_coord') {
         return handler_whatis_coord(); // C `:4742`
+    }
+    if (name === 'sortvanquished') {
+        return optfn_sortvanquished_do_handler(allopt_idx(name)); // C `:4001–4007`
     }
     if (name === 'versinfo') {
         const optname = allopt_name(allopt_idx('versinfo')); // C `:4476`
@@ -2150,10 +2348,54 @@ function parse_iflags_wizmgender(result, value) {
     result.iflags.wizmgender = !!value;
 }
 
+/**
+ * C `cnf_line_OPTIONS` (`cfgfiles.c:608`) calls `parseoptions(buf, TRUE, TRUE)`.
+ * That sets `go.opt_initial` / `go.opt_from_file` (`options.c:504–505`) and
+ * `duplicate = duplicate_opt_detection(matchidx)` (`:621`) before the optfn.
+ * Role/race/gender/alignment are dupeok, so `:622` does not complain;
+ * `parse_role_opt` `:7987–7990` still reads the flag and rejects a positive
+ * value when the same-phase saved string starts with `'!'`.
+ * The boolean is restored after the call: this reader is not the full
+ * `parseoptions` loop, so a leftover TRUE would not be cleared by a later
+ * non-role option the way C clears it. The per-row counter is what persists
+ * across lines in one file.
+ * @param {string} canonName allopt name (`alignment` for the `align` alias,
+ *   `role` for `character`)
+ * @param {Function} optfn
+ * @param {boolean} negated
+ * @param {string} opts
+ * @param {string} op
+ * @returns {number} optn_* result
+ */
+function rc_do_set_role_family(canonName, optfn, negated, opts, op) {
+    const matchidx = allopt_idx(canonName); // C parseoptions matchidx
+    if (!game.go) game.go = {};
+    const savedInitial = game.go.opt_initial;
+    const savedFromFile = game.go.opt_from_file;
+    const savedDup = duplicateOpt;
+    game.go.opt_initial = true; // C `:504` tinitial TRUE
+    game.go.opt_from_file = true; // C `:505` tfrom_file TRUE
+    duplicateOpt = duplicate_opt_detection(matchidx); // C `:621`
+    if (duplicateOpt && matchidx >= 0 && matchidx < allopt.length
+        && !OPT_DUPEOK_YES.has(allopt[matchidx].name)) // C `:622`
+        complain_about_duplicate(matchidx); // C `:623`
+    const reslt = optfn(matchidx, REQ_DO_SET, negated, opts, op, true);
+    duplicateOpt = savedDup;
+    game.go.opt_initial = savedInitial;
+    game.go.opt_from_file = savedFromFile;
+    return reslt;
+}
+
 export function parseNethackrc(rc) {
     // C cfgfiles.c cnf_line_MSGTYPE → msgtype_parse_add onto gp.plinemsg_types.
     // Free first so a reused Node process does not keep the previous rc list.
     msgtype_free();
+    // C read_config_file `:1633` clears dupdetected before the file is read.
+    // Startup calls this function, not rcfile(), so the bracket lives here.
+    // A reused Node process would otherwise treat the next file's first
+    // role/race/gender/align as a duplicate of the previous file.
+    reset_duplicate_opt_detection();
+    duplicateOpt = false; // C options.c:502, fresh file
     const result = {
         name: '', role: -1, race: -1, gender: -1, align: -1,
         flags: {}, iflags: {},
@@ -2167,6 +2409,20 @@ export function parseNethackrc(rc) {
     };
     // C options.c `:7426–7430` optfn(do_init) pass before the rc file.
     optfn_menu_objsyms(allopt_idx('menu_objsyms'), REQ_DO_INIT, false, '', EMPTY_OPTSTR, result.iflags);
+    // C allopt_array_init `:7428` optfn(do_init). The flags object built in
+    // jsmain replaces game.flags, so the mode is also stored on the rc result.
+    optfn_sortvanquished(allopt_idx('sortvanquished'), REQ_DO_INIT, false, '', EMPTY_OPTSTR);
+    result.flags.vanq_sortmode = game.flags.vanq_sortmode;
+    // C allopt_array_init `:7428` optfn(do_init). soundlib's init is optn_ok.
+    optfn_soundlib(allopt_idx('soundlib'), REQ_DO_INIT, false, '', EMPTY_OPTSTR);
+    // C allopt_array_init `:7428` optfn(do_init). petattr's init is optn_ok.
+    optfn_petattr(allopt_idx('petattr'), REQ_DO_INIT, false, '', EMPTY_OPTSTR);
+    // C allopt_array_init `:7428` do_init. gender/race/role/alignment
+    // inits are optn_ok (no flag write).
+    optfn_gender(allopt_idx('gender'), REQ_DO_INIT, false, '', EMPTY_OPTSTR);
+    optfn_race(allopt_idx('race'), REQ_DO_INIT, false, '', EMPTY_OPTSTR);
+    optfn_role(allopt_idx('role'), REQ_DO_INIT, false, '', EMPTY_OPTSTR);
+    optfn_alignment(allopt_idx('alignment'), REQ_DO_INIT, false, '', EMPTY_OPTSTR);
     result.iflags.getpos_coords = GPCOORDS_NONE; // C initoptions_init `:7190`
     if (!rc) return result;
 
@@ -2231,10 +2487,46 @@ export function parseNethackrc(rc) {
                 const val = stripped.slice(colonIdx + 1).trim();
 
                 if (key === 'name') result.name = val;
-                else if (key === 'role') result.role = val;
-                else if (key === 'race') result.race = val;
-                else if (key === 'gender') result.gender = val;
-                else if (key === 'align') result.align = val;
+                else if (key === 'role') {
+                    // C optfn_role do_set (opt_initial). result.role stays the
+                    // raw spelling so init_role_flags_from_rc still str2role's it.
+                    // parseoptions `:621` sets duplicate first. OPTN_SILENTERR
+                    // (parse_role_opt `:7987–7990`) keeps the previous spelling.
+                    const reslt = rc_do_set_role_family(
+                        'role', optfn_role, negated, stripped, val);
+                    if (reslt !== OPTN_SILENTERR) {
+                        result.role = val;
+                        result.flags.initrole = game.flags?.initrole;
+                        if (game.pl_character != null) result.pl_character = game.pl_character;
+                    }
+                }
+                else if (key === 'race') {
+                    const reslt = rc_do_set_role_family(
+                        'race', optfn_race, negated, stripped, val);
+                    if (reslt !== OPTN_SILENTERR) {
+                        result.race = val;
+                        result.flags.initrace = game.flags?.initrace;
+                        if (game.gp?.pl_race != null) result.pl_race = game.gp.pl_race;
+                    }
+                }
+                else if (key === 'gender') {
+                    const reslt = rc_do_set_role_family(
+                        'gender', optfn_gender, negated, stripped, val);
+                    if (reslt !== OPTN_SILENTERR) {
+                        result.gender = val;
+                        result.flags.initgend = game.flags?.initgend;
+                        if (game.flags && 'female' in game.flags)
+                            result.flags.female = game.flags.female;
+                    }
+                }
+                else if (key === 'align' || key === 'alignment') {
+                    const reslt = rc_do_set_role_family(
+                        'alignment', optfn_alignment, negated, stripped, val);
+                    if (reslt !== OPTN_SILENTERR) {
+                        result.align = val;
+                        result.flags.initalign = game.flags?.initalign;
+                    }
+                }
                 else if (key === 'playmode') {
                     // C ref: options.c optfn_playmode — sets wizard/discover;
                     // set_playmode() later renames plname to "wizard".
@@ -2283,6 +2575,36 @@ export function parseNethackrc(rc) {
                         allopt_idx('number_pad'), REQ_DO_SET, false, stripped, val, result.iflags, true,
                     );
                 }
+                else if (key === 'sortvanquished') {
+                    // C optfn_sortvanquished do_set (opt_initial).
+                    optfn_sortvanquished(
+                        allopt_idx('sortvanquished'), REQ_DO_SET, negated, stripped, val, true,
+                    );
+                    result.flags.vanq_sortmode = game.flags.vanq_sortmode;
+                }
+                else if (key === 'soundlib') {
+                    // C optfn_soundlib do_set (opt_initial). negateok-No:
+                    // parseoptions `:626` rejects before the optfn.
+                    if (negated) continue;
+                    optfn_soundlib(
+                        allopt_idx('soundlib'), REQ_DO_SET, false, stripped, val, true,
+                    );
+                }
+                else if (key === 'fruit') {
+                    // C optfn_fruit do_set (opt_initial): nmcpy pl_fruit only;
+                    // fruitadd waits for initoptions_finish.
+                    optfn_fruit(
+                        allopt_idx('fruit'), REQ_DO_SET, negated, stripped, val, true,
+                    );
+                }
+                else if (key === 'petattr') {
+                    // C optfn_petattr do_set (opt_initial). negateok-No:
+                    // parseoptions `:626` rejects before the optfn.
+                    if (negated) continue;
+                    optfn_petattr(
+                        allopt_idx('petattr'), REQ_DO_SET, false, stripped, val, true,
+                    );
+                }
                 else if (key === 'menuinvertmode') {
                     // C options.c optfn_menuinvertmode do_set: atoi(op),
                     // 0-2 else config error (prior value kept).
@@ -2293,7 +2615,10 @@ export function parseNethackrc(rc) {
                     }
                 }
                 else if (key === 'disclose') {
-                    result.flags.end_disclose = parseDiscloseOption(val, negated);
+                    // C optfn_disclose do_set (opt_initial) on result.flags.
+                    optfn_disclose(
+                        allopt_idx('disclose'), REQ_DO_SET, negated, stripped, val, result.flags,
+                    );
                 }
                 else if (key === 'accessiblemsg') {
                     // C optfn_boolean: negated boolean must not have a
@@ -2378,10 +2703,13 @@ export function parseNethackrc(rc) {
                     );
                 }
                 else if (lname === 'menu_objsyms' || lname === 'use_menu_glyphs') {
-                    // C optfn_menu_objsyms do_set, valueless (opt_initial);
-                    // opts starts with the name, so use_menu_glyphs → entries.
+                    // C optfn_menu_objsyms do_set, valueless (opt_initial).
+                    // opts is the case-preserved name (parseoptions never
+                    // lowercases); `:2249` strncmp(opts, "use_menu_glyphs", 15)
+                    // is case-sensitive, so only a lowercase prefix selects
+                    // entries (2). msg_window site-2 passes stripped.
                     optfn_menu_objsyms(
-                        allopt_idx('menu_objsyms'), REQ_DO_SET, negated, lname, EMPTY_OPTSTR, result.iflags,
+                        allopt_idx('menu_objsyms'), REQ_DO_SET, negated, stripped, EMPTY_OPTSTR, result.iflags,
                     );
                 }
                 else if (lname === 'whatis_coord') {
@@ -2398,6 +2726,62 @@ export function parseNethackrc(rc) {
                     if (negated) continue;
                     optfn_number_pad(
                         allopt_idx('number_pad'), REQ_DO_SET, false, lname, EMPTY_OPTSTR, result.iflags, true,
+                    );
+                }
+                else if (lname === 'sortvanquished') {
+                    // C optfn_sortvanquished do_set, valueless (opt_initial):
+                    // !sortvanquished resets vanq_sortmode to 't'.
+                    optfn_sortvanquished(
+                        allopt_idx('sortvanquished'), REQ_DO_SET, negated, stripped, EMPTY_OPTSTR, true,
+                    );
+                    result.flags.vanq_sortmode = game.flags.vanq_sortmode;
+                }
+                else if (lname === 'soundlib') {
+                    // C optfn_soundlib do_set, valueless (opt_initial):
+                    // empty value → optn_err. negateok-No skips `!soundlib`.
+                    if (negated) continue;
+                    optfn_soundlib(
+                        allopt_idx('soundlib'), REQ_DO_SET, false, stripped, EMPTY_OPTSTR, true,
+                    );
+                }
+                else if (lname === 'role' || lname === 'character') {
+                    // C optfn_role do_set, valueless (opt_initial). `character`
+                    // is the role alias, so the counter is the role row.
+                    rc_do_set_role_family(
+                        'role', optfn_role, negated, stripped, EMPTY_OPTSTR);
+                }
+                else if (lname === 'race') {
+                    rc_do_set_role_family(
+                        'race', optfn_race, negated, stripped, EMPTY_OPTSTR);
+                }
+                else if (lname === 'gender') {
+                    rc_do_set_role_family(
+                        'gender', optfn_gender, negated, stripped, EMPTY_OPTSTR);
+                }
+                else if (lname === 'align' || lname === 'alignment') {
+                    rc_do_set_role_family(
+                        'alignment', optfn_alignment, negated, stripped, EMPTY_OPTSTR);
+                }
+                else if (lname === 'disclose') {
+                    // C optfn_disclose do_set, valueless (opt_initial):
+                    // disclose → prompt-yes; !disclose → never, no prompt.
+                    optfn_disclose(
+                        allopt_idx('disclose'), REQ_DO_SET, negated, stripped, EMPTY_OPTSTR, result.flags,
+                    );
+                }
+                else if (lname === 'fruit') {
+                    // C optfn_fruit do_set, valueless (opt_initial): !fruit
+                    // with no value resets pl_fruit to "slime mold".
+                    optfn_fruit(
+                        allopt_idx('fruit'), REQ_DO_SET, negated, stripped, EMPTY_OPTSTR, true,
+                    );
+                }
+                else if (lname === 'petattr') {
+                    // C optfn_petattr do_set, valueless (opt_initial).
+                    // negateok-No: parseoptions `:626` rejects first.
+                    if (negated) continue;
+                    optfn_petattr(
+                        allopt_idx('petattr'), REQ_DO_SET, false, lname, EMPTY_OPTSTR, true,
                     );
                 }
                 else if (lname === 'accessiblemsg') {
@@ -3097,30 +3481,51 @@ export function color_attr_parse_str(ca, str) {
 
 /**
  * C ref: coloratt.c basic_menu_colors `:530–580` — swap user colorings
- * for `blue`=blue… patterns while picking, then restore. Unix links
- * posixregex (sys/unix/Makefile.src:229) so regex_id != "pmatchregex"
- * and the pattern format is plain "%s" (`:546–548`).
+ * for name=color patterns while picking, then restore.
+ * `saveMenuColorState` / `saveColorings` / `colorColorings` /
+ * `menuColorings` are gs.save_menucolors, gs.save_colorings,
+ * gc.color_colorings, gm.menu_colorings (module lifetime, not saved).
+ * MENU_COLORNAMES is colornames[] up to the null-name sentinel
+ * (`:29`); the alias rows after it are never visited.
  */
 export function basic_menu_colors(load_colors) {
     if (!game.iflags) game.iflags = {};
     const iflags = game.iflags;
-    if (load_colors) {
-        saveMenuColorState = !!iflags.use_menu_color;
-        saveColorings = menuColorings;
-        iflags.use_menu_color = true;
-        if (colorColorings) {
-            menuColorings = colorColorings;
+    if (load_colors) { // C :535
+        /* replace normal menu colors with a set specifically for colors */ // C :536
+        saveMenuColorState = !!iflags.use_menu_color; // C :537 gs.save_menucolors
+        saveColorings = menuColorings; // C :538 gs.save_colorings = gm.menu_colorings
+        iflags.use_menu_color = true; // C :540
+        if (colorColorings) { // C :541 gc.color_colorings
+            /* use the alternate colorings which were set up previously */ // C :542
+            menuColorings = colorColorings; // C :543
         } else {
-            menuColorings = null;
-            for (const [nm, col] of MENU_COLORNAMES) {
-                if (col === CLR_BLACK || col === CLR_WHITE || col === NO_COLOR) continue;
-                add_menu_coloring_parsed(nm, col, MC_ATR_NONE);
+            /* create the alternate colorings once */ // C :545
+            // C :548 !strcmpi(regex_id, "pmatchregex") — ASCII fold, 0 means equal.
+            const pmatchregex = REGEX_ID.toLowerCase() === 'pmatchregex';
+            const patternfmt = pmatchregex ? '*%s' : '%s'; // C :549
+            /* menu_colorings pointer has been saved; clear it in order
+               to add the alternate entries as if from scratch */ // C :551-553
+            menuColorings = null; // C :553
+            /* last-in/first-out: "light <foo>" is prepended before "<foo>" */ // C :555-559
+            for (let i = 0; i < MENU_COLORNAMES.length; i++) { // C :560 SIZE(colornames)
+                const row = MENU_COLORNAMES[i];
+                if (!row || !row[0]) break; // C :561 first alias entry has no name
+                const c = row[1] | 0; // C :563
+                if (c === CLR_BLACK || c === CLR_WHITE || c === NO_COLOR) {
+                    continue; // C :564-565
+                }
+                // C :566 Sprintf(cnm, patternfmt, name) into QBUFSZ.
+                const cnm = patternfmt === '*%s' ? `*${row[0]}` : String(row[0]);
+                add_menu_coloring_parsed(cnm, c, MC_ATR_NONE); // C :567 ATR_NONE
             }
-            colorColorings = menuColorings;
+            /* remember that list for future pick-a-color instances */ // C :570-572
+            colorColorings = menuColorings; // C :573
         }
     } else {
-        iflags.use_menu_color = saveMenuColorState;
-        menuColorings = saveColorings;
+        /* restore normal user-specified menu colors */ // C :576
+        iflags.use_menu_color = saveMenuColorState; // C :577
+        menuColorings = saveColorings; // C :578
     }
 }
 
@@ -3341,8 +3746,9 @@ export async function handler_menu_colors() {
 export function fruitadd(str, replaceFruit) {
     let f;
 
-    let nam = makesingular(String(str || ''));
-    if (nam.length > PL_FSIZ - 1) nam = nam.slice(0, PL_FSIZ - 1);
+    // C `:8192` nmcpy(pl_fruit, makesingular(str), PL_FSIZ). makesingular
+    // returns a copy; the comma is an alternate end and is not stored.
+    let nam = nmcpy(makesingular(String(str || '')), PL_FSIZ);
     game.pl_fruit = nam;
 
     let globpfx = 0;
@@ -3382,7 +3788,9 @@ export function fruitadd(str, replaceFruit) {
         || ((str_end_is(nam, ' corpse') || str_end_is(nam, ' egg'))
             && ismnum(name_to_mon(nam)))) {
         const buf = nam;
-        game.pl_fruit = ('candied ' + buf).slice(0, PL_FSIZ - 1);
+        // C `:8238–8239` Strcpy "candied " (8 chars) then nmcpy into
+        // pl_fruit+8 with room PL_FSIZ-8 (comma stops the tail).
+        game.pl_fruit = 'candied ' + nmcpy(buf, PL_FSIZ - 8);
     }
     if (!game.flags) game.flags = {};
     game.flags.made_fruit = false;
@@ -3444,35 +3852,773 @@ export function init_fruit_chain() {
 }
 
 /**
- * C ref: options.c optfn_fruit do_set (!opt_initial) after doset getlin.
- * give_opt_msg is false inside doset_simple so no "Fruit is now" pline.
+ * C options.c `nmcpy` `:6859–6871`. Copy at most `maxlen - 1` characters
+ * and stop before `','` or `'\0'` (the comma is not stored). JS strings
+ * are immutable, so this returns the copy; C writes `dest` and the
+ * callers assign it. A null src is `""` (C would not be called on NULL).
+ * @param {string} src
+ * @param {number} maxlen
+ * @returns {string}
  */
-function optfn_fruit_set(op) {
-    let s = mungspaces(op);
-    if (!s) s = 'slime mold';
-    s = sanitize_name(s);
-    if (!s) s = 'slime mold';
-    if (s.length > PL_FSIZ - 1) s = s.slice(0, PL_FSIZ - 1);
+function nmcpy(src, maxlen) {
+    const s = src == null ? '' : String(src);
+    const limit = maxlen | 0; // C int maxlen
+    let out = '';
+    // C `:6865` for (count = 1; count < maxlen; count++)
+    for (let count = 1; count < limit; count++) {
+        const ch = s.charCodeAt(count - 1);
+        // past-the-end is NaN, standing in for C's terminating NUL
+        if (Number.isNaN(ch) || ch === 0x2c /* ',' */ || ch === 0 /* '\0' */)
+            break; // C `:6866–6867`
+        out += s.charAt(count - 1); // C `:6868` *dest++ = *src++
+    }
+    return out; // C `:6870` *dest = '\0'
+}
 
-    // C: fruit_from_name(op, FALSE, &fnum) — fnum is max fid, not count
-    const fnum = { fid: 0 };
-    const exists = fruit_from_name(s, false, fnum);
-    let forig = null;
-    if (!exists) {
-        if (!game.flags?.made_fruit) {
-            forig = fruit_from_name(
-                game.pl_fruit || 'slime mold', false, null,
-            );
+/**
+ * C options.c optfn_fruit `:1706–1774` (staticfn; NHOPTC wires
+ * `&optfn_fruit` into the fruit allopt row, optlist.h `:339`).
+ * do_init is optn_ok. do_set copies into `pl_fruit` (mungspaces,
+ * nmcpy, sanitize_name; empty becomes "slime mold"); fruitadd and the
+ * "Fruit is now" pline run only when `!opt_initial`. get_val and
+ * get_cnf_val Sprintf `pl_fruit`. No do_handler arm — falls through
+ * to optn_ok.
+ * `pline` is async, but parseoptions compares the optfn result to
+ * OPTN_OK synchronously, so the message is started and not awaited
+ * (doset keeps `give_opt_msg` false, so that path does not pline).
+ * @param {number} optidx C optidx (UNUSED)
+ * @param {number} req
+ * @param {boolean} negated
+ * @param {string|{buf:string}} opts
+ * @param {string} _op C reassigns op from string_for_opt
+ * @param {boolean} [optInitial] C go.opt_initial; default game.go.opt_initial
+ */
+export function optfn_fruit(optidx, req, negated, opts, _op, optInitial) {
+    void optidx;
+    const optInit = optInitial ?? !!game.go?.opt_initial; // C go.opt_initial
+    let forig = null; // C `:1711`
+
+    if (req === REQ_DO_INIT) { // C `:1713`
+        return OPTN_OK; // C `:1714`
+    }
+    if (req === REQ_DO_SET) { // C `:1716`
+        const valOptional = negated || !optInit; // C `:1717`
+        const optstr = typeof opts === 'string' ? opts : String(opts ?? '');
+        let op = string_for_opt(optstr, valOptional); // C `:1717`
+        // C string_for_opt `:6678` — JS helper omits the sink; this caller
+        // still fires it when the value is required.
+        if (!valOptional && op === EMPTY_OPTSTR)
+            config_error_add("Missing parameter for '%s'", optstr);
+        if (negated) { // C `:1718`
+            if (op !== EMPTY_OPTSTR) { // C `:1719`
+                bad_negation('fruit', true); // C `:1720`
+                return OPTN_ERR; // C `:1721`
+            }
+            op = EMPTY_OPTSTR; // C `:1723` then goto goodfruit `:1724`
+        } else if (op === EMPTY_OPTSTR) { // C `:1726`
+            return OPTN_ERR; // C `:1727`
+        } else {
+            op = mungspaces(op); // C `:1729` in place; JS returns the copy
+            if (!optInit) { // C `:1730`
+                const fnum = { fid: 0 }; // C `:1732` — objnam highest fid
+                const f = fruit_from_name(op, false, fnum); // C `:1736`
+                if (!f) { // C `:1737`
+                    if (!game.flags?.made_fruit) // C `:1738`
+                        forig = fruit_from_name(String(game.pl_fruit || ''), false, null); // C `:1739`
+                    if (!forig && (fnum.fid | 0) >= 100) { // C `:1741`
+                        config_error_add( // C `:1742–1743`
+                            "Doing that so many times isn't very fruitful.");
+                        return OPTN_OK; // C `:1744`
+                    }
+                }
+            }
         }
-        if (!forig && fnum.fid >= 100) {
-            // C: config_error_add fruitful — silent ok return
-            return;
+        // goodfruit `:1748`
+        game.pl_fruit = nmcpy(op, PL_FSIZ); // C `:1748`
+        game.pl_fruit = sanitize_name(game.pl_fruit || ''); // C `:1749`
+        if (!game.pl_fruit) // C `:1752` !*svp.pl_fruit
+            game.pl_fruit = nmcpy('slime mold', PL_FSIZ); // C `:1753`
+        if (!optInit) { // C `:1755`
+            fruitadd(game.pl_fruit, forig); // C `:1759`
+            // C `:1760` give_opt_msg static-init TRUE (options.c `:108`).
+            if (game.give_opt_msg !== false)
+                void pline('Fruit is now "%s".', game.pl_fruit); // C `:1761`
+        }
+        return OPTN_OK; // C `:1768`
+    }
+    if (req === REQ_GET_VAL || req === REQ_GET_CNF_VAL) { // C `:1770`
+        set_optbuf(opts, String(game.pl_fruit || '')); // C `:1771` Sprintf
+        return OPTN_OK; // C `:1772`
+    }
+    return OPTN_OK; // C `:1774`
+}
+
+/**
+ * C initoptions `:7264` stores `ATR_INVERSE` before any get_val. That init
+ * is not a JS function; an unset field reads as wintype.h ATR_INVERSE (7),
+ * which `attr2attrname` spells "inverse" (the doset column).
+ */
+function petattr_read() {
+    const v = game.iflags?.wc2_petattr;
+    if (v == null) return MC_ATR_INVERSE;
+    return v | 0;
+}
+
+/**
+ * C options.c optfn_petattr `:3138–3194` (staticfn; NHOPTC wires
+ * `&optfn_petattr`, optlist.h `:568`, has_handler Yes). do_init is
+ * optn_ok. do_set parses a wintype attribute name (`match_str2attr`,
+ * complain FALSE). Negated-with-value is `bad_negation`; negated-empty
+ * stores ATR_NONE. A successful set copies `wc2_petattr != ATR_NONE`
+ * into `hilite_pet` (`wc_hilite_pet`) and requests a redraw outside
+ * init. get_val / get_cnf_val spell the attribute on tty/curses.
+ * do_handler is async (`query_attr`) and lives in `handler_petattr`.
+ * @param {number} optidx
+ * @param {number} req
+ * @param {boolean} negated
+ * @param {string|{buf:string}} opts
+ * @param {string} _op C reassigns op from string_for_opt
+ * @param {boolean} [optInitial] C go.opt_initial
+ */
+export function optfn_petattr(optidx, req, negated, opts, _op, optInitial) {
+    const optInit = optInitial ?? !!game.go?.opt_initial; // C go.opt_initial
+    let retval = OPTN_OK; // C `:3144`
+    if (!game.iflags) game.iflags = {};
+    const iflags = game.iflags;
+
+    if (req === REQ_DO_INIT) { // C `:3146–3148`
+        return OPTN_OK;
+    }
+    if (req === REQ_DO_SET) { // C `:3149`
+        /* WINCAP2 petattr:string */
+        const optstr = typeof opts === 'string' ? opts : String(opts ?? '');
+        const op = string_for_opt(optstr, negated); // C `:3151` val_optional = negated
+        // C string_for_opt `:6675–6676` when the value is required. The
+        // helper omits the sink; retval stays optn_ok like C (the error
+        // does not select the optn_err arms below).
+        if (!negated && op === EMPTY_OPTSTR)
+            config_error_add("Missing parameter for '%s'", optstr);
+        if (op !== EMPTY_OPTSTR && negated) { // C `:3152–3155`
+            bad_negation(allopt_name(optidx), true);
+            retval = OPTN_ERR;
+        } else if (op !== EMPTY_OPTSTR) { // C `:3156`
+            // C `:3157–3164` TTY_GRAPHICS || CURSES_GRAPHICS (this build).
+            // The `#else` ATR_INVERSE store (`:3165`) is compiled out.
+            const itmp = match_str2attr(op, false); // C `:3158` complain FALSE
+            if (itmp === -1) { // C `:3160–3162` opts, not the value tail
+                config_error_add("Unknown %s parameter '%s'",
+                    allopt_name(optidx), optstr);
+                retval = OPTN_ERR;
+            } else {
+                iflags.wc2_petattr = itmp; // C `:3163` wintype.h ATR_*
+            }
+        } else if (negated) { // C `:3167–3168`
+            iflags.wc2_petattr = MC_ATR_NONE; // C ATR_NONE
+        }
+        if (retval !== OPTN_ERR) { // C `:3170–3174`
+            // C iflags.hilite_pet ≡ wc_hilite_pet (flag.h).
+            iflags.wc_hilite_pet = petattr_read() !== MC_ATR_NONE; // C `:3171`
+            if (!optInit) // C `:3172`
+                mark_opt_need_redraw(); // C `:3173`
+        }
+        return retval; // C `:3175`
+    }
+    if (req === REQ_GET_VAL || req === REQ_GET_CNF_VAL) { // C `:3177`
+        // C `:3178–3181` compiled in; WINDOWPORT(tty) is true here.
+        if (windowport_tty() || windowport_curses()) {
+            const name = attr2attrname(petattr_read()); // C `:3180`
+            set_optbuf(opts, name == null ? '' : name);
+        } else if ((iflags.wc2_petattr | 0) !== 0) { // C `:3183–3184`
+            const hex = (iflags.wc2_petattr | 0) >>> 0;
+            set_optbuf(opts, `0x${hex.toString(16).padStart(8, '0')}`);
+        } else if (req === REQ_GET_CNF_VAL) { // C `:3185–3186`
+            set_optbuf(opts, '');
+        } else {
+            set_optbuf(opts, 'default'); // C `:3188` defopt[]
         }
     }
-    game.pl_fruit = s;
-    fruitadd(game.pl_fruit, forig);
-    // C: if (give_opt_msg) pline("Fruit is now \"%s\".", …) —
-    // doset_simple keeps give_opt_msg false.
+    // C `:3190–3191` do_handler → handler_petattr(), async in
+    // doset_optfn_do_handler (query_attr awaits).
+    return OPTN_OK; // C `:3193`
+}
+
+/**
+ * C options.c handler_petattr `:6152–6164` (staticfn). Sole C caller is
+ * optfn_petattr do_handler (`:3191`), reached from doset `:8935`.
+ * @returns {Promise<number>}
+ */
+export async function handler_petattr() {
+    if (!game.iflags) game.iflags = {};
+    const tmp = await query_attr( // C `:6154–6155`
+        'Select pet highlight attribute', petattr_read());
+    if (tmp !== -1) { // C `:6157`
+        game.iflags.wc2_petattr = tmp; // C `:6158`
+        game.iflags.wc_hilite_pet = (tmp | 0) !== MC_ATR_NONE; // C `:6159`
+        if (!game.go?.opt_initial) // C `:6160`
+            mark_opt_need_redraw(); // C `:6161`
+    }
+    return OPTN_OK; // C `:6163`
+}
+
+/**
+ * C options.c optfn_sortvanquished `:3958–4010` (staticfn; NHOPTC wires
+ * `&optfn_sortvanquished`, optlist.h `:690`, has_handler Yes).
+ * do_init stores VANQ_MLVL_MNDX. do_set parses one character of the
+ * env/config value (`tdaACcnz` or `0`–`7`); negation resets to mode 0.
+ * get_val appends ": " + the short description; get_cnf_val is the key
+ * alone. do_handler is async (set_vanq_order menu + pline) and lives in
+ * optfn_sortvanquished_do_handler so parseoptions stays synchronous.
+ * @param {number} optidx
+ * @param {number} req
+ * @param {boolean} negated
+ * @param {string|{buf:string}} opts
+ * @param {string} _op C reassigns op from string_for_env_opt
+ * @param {boolean} [optInitial] C go.opt_initial; default game.go.opt_initial
+ */
+export function optfn_sortvanquished(optidx, req, negated, opts, _op, optInitial) {
+    const optname = allopt_name(optidx); // C `:3963`
+    const optInit = optInitial ?? !!game.go?.opt_initial;
+    if (!game.flags) game.flags = {};
+
+    if (req === REQ_DO_INIT) { // C `:3965`
+        game.flags.vanq_sortmode = VANQ_MLVL_MNDX; // C `:3966` 0 => 't'
+        return OPTN_OK; // C `:3967`
+    }
+    if (req === REQ_DO_SET) { // C `:3969`
+        const optstr = typeof opts === 'string' ? opts : String(opts ?? '');
+        const op = string_for_env_opt(optname, optstr, false, optInit); // C `:3970`
+        if (negated) { // C `:3971`
+            game.flags.vanq_sortmode = VANQ_MLVL_MNDX; // C `:3972`
+        } else if (op !== EMPTY_OPTSTR) { // C `:3973`
+            const ch = op.charAt(0); // C `*op`
+            const letter = 'tdaACcnz'.indexOf(ch); // C `:3978` strchr(vanqmodes)
+            let vndx = 0; // C `:3976`
+            if (letter >= 0) { // C `:3978` p != 0
+                vndx = letter; // C `:3979` p - vanqmodes
+            } else if ('01234567'.includes(ch)) { // C `:3980`
+                vndx = ch.charCodeAt(0) - 48; // C `:3981` *op - '0'
+            } else { // C `:3982`
+                config_error_add("Unknown %s parameter '%s'", optname, op); // C `:3983`
+                return OPTN_SILENTERR; // C `:3984`
+            }
+            game.flags.vanq_sortmode = vndx & 0xff; // C `:3986` (uchar)
+        } else {
+            return OPTN_ERR; // C `:3988`
+        }
+        return OPTN_OK; // C `:3989`
+    }
+    if (req === REQ_GET_VAL || req === REQ_GET_CNF_VAL) { // C `:3991`
+        const mode = (game.flags.vanq_sortmode ?? VANQ_MLVL_MNDX) & 0xff;
+        const row = vanqorders[mode];
+        let text = row ? row[0] : ''; // C `:3992` vanqorders[][0]
+        if (req === REQ_GET_VAL && row) // C `:3993–3994` Sprintf(eos, ": %s", [1])
+            text = `${text}: ${row[1]}`;
+        set_optbuf(opts, text);
+        return OPTN_OK; // C `:3995`
+    }
+    return OPTN_OK; // C `:4009` (do_handler is the async sibling)
+}
+
+/**
+ * Contest `sounds.c` soundlib table (`:1726–1776`). No `SND_LIB_*` glue is
+ * compiled, so the array is only `nosound_procs` (`SOUNDID(nosound)` →
+ * name `"nosound"`, id `soundlib_nosound` = 0). The `#ifdef` library
+ * slots and `#if 0` `choose_soundlib` (`:1807–1859`) are compiled out.
+ * Lives here, not `js/sounds.js`: that module already imports this file.
+ */
+const SOUNDLIB_NOSOUND = 0;
+const nosound_procs = {
+    soundname: 'nosound',
+    soundlib_id: SOUNDLIB_NOSOUND,
+};
+const soundlib_choices = [
+    { sndprocs: nosound_procs },
+];
+
+/** C hack.h `IndexOk` `:1498–1499`. */
+function soundlibIndexOk(idx) {
+    return idx >= 0 && idx < soundlib_choices.length;
+}
+
+/**
+ * C sounds.c assign_soundlib `:1797–1805`. `idx` is an index into
+ * `soundlib_choices`, not a raw id. Stores that row's `soundlib_id`
+ * in `gc.chosen_soundlib`. Bad index panics (NORETURN).
+ * @param {number} idx
+ */
+export function assign_soundlib(idx) {
+    const i = idx | 0; // C `:1798`
+    if (!soundlibIndexOk(i)) // C `:1800`
+        throw new Error(`assign_soundlib: invalid soundlib (${i})`); // C `:1801`
+    if (!game.gc) game.gc = {};
+    game.gc.chosen_soundlib = // C `:1803–1804` (uint32_t)
+        soundlib_choices[i].sndprocs.soundlib_id >>> 0;
+}
+
+/**
+ * C sounds.c get_soundlib_name `:1863–1880`. Copies `active_soundlib`'s
+ * soundname, at most `maxlen - 1` chars, stopping at comma or NUL.
+ * Returns the copy (JS strings); C writes `dest`.
+ * @param {number} maxlen
+ * @returns {string}
+ */
+export function get_soundlib_name(maxlen) {
+    const idx = (game.ga?.active_soundlib ?? SOUNDLIB_NOSOUND) | 0; // C `:1869` BSS 0
+    if (!soundlibIndexOk(idx)) // C `:1870`
+        throw new Error(`get_soundlib_name: invalid active_soundlib (${idx})`); // C `:1871`
+    const src = soundlib_choices[idx].sndprocs.soundname; // C `:1873`
+    const cap = maxlen | 0;
+    let out = '';
+    for (let count = 1, i = 0; count < cap; count++, i++) { // C `:1874`
+        const ch = src.charAt(i); // '' stands in for the C NUL
+        if (ch === ',' || ch === '') break; // C `:1875–1876`
+        out += ch; // C `:1877`
+    }
+    return out; // C `:1879` *dest = '\0'
+}
+
+/**
+ * C sounds.c soundlib_id_from_opt `:1882–1895`. Exact `strcmp` against
+ * each compiled soundname; unknown names return nosound's id.
+ * @param {string} op
+ * @returns {number}
+ */
+export function soundlib_id_from_opt(op) {
+    const defproc = nosound_procs; // C `:1886`
+    const name = op == null ? '' : String(op);
+    for (let idx = 0; idx < soundlib_choices.length; idx++) { // C `:1889` SIZE
+        const sp = soundlib_choices[idx].sndprocs; // C `:1890`
+        if (sp.soundname === name) // C `:1891` strcmp
+            return sp.soundlib_id; // C `:1892`
+    }
+    return defproc.soundlib_id; // C `:1894`
+}
+
+/**
+ * C options.c optfn_soundlib `:3824–3860` (staticfn; NHOPTC wires
+ * `&optfn_soundlib`, optlist.h `:693`, has_handler No, negateok No,
+ * set_gameview). do_init is optn_ok. do_set only from config
+ * (`string_for_env_opt`); the name lookup result is unused except for
+ * its panic, then `chosen_soundlib` is the id and `assign_soundlib`
+ * rewrites it from the table. get_val / get_cnf_val copy the active
+ * library name. No do_handler.
+ * @param {number} optidx
+ * @param {number} req
+ * @param {boolean} _negated C UNUSED
+ * @param {string|{buf:string}} opts
+ * @param {string} _op C reassigns op from string_for_env_opt
+ * @param {boolean} [optInitial] C go.opt_initial; default game.go.opt_initial
+ */
+export function optfn_soundlib(optidx, req, _negated, opts, _op, optInitial) {
+    const optInit = optInitial ?? !!game.go?.opt_initial;
+    if (req === REQ_DO_INIT) { // C `:3831`
+        return OPTN_OK; // C `:3832`
+    }
+    if (req === REQ_DO_SET) { // C `:3834`
+        const optstr = typeof opts === 'string' ? opts : String(opts ?? '');
+        const op = string_for_env_opt( // C `:3842`
+            allopt_name(optidx), optstr, false, optInit);
+        if (op !== EMPTY_OPTSTR) { // C `:3843`
+            get_soundlib_name(WINTYPELEN); // C `:3846` (buf unused)
+            const optionId = soundlib_id_from_opt(op); // C `:3847`
+            if (!game.gc) game.gc = {};
+            game.gc.chosen_soundlib = optionId >>> 0; // C `:3848`
+            assign_soundlib(game.gc.chosen_soundlib); // C `:3849`
+        } else {
+            return OPTN_ERR; // C `:3851`
+        }
+        return OPTN_OK; // C `:3852`
+    }
+    if (req === REQ_GET_VAL || req === REQ_GET_CNF_VAL) { // C `:3854`
+        set_optbuf(opts, get_soundlib_name(WINTYPELEN)); // C `:3855–3856`
+        return OPTN_OK; // C `:3857`
+    }
+    return OPTN_OK; // C `:3859`
+}
+
+/* C include/global.h option_phases `:592–601`. phase_not_set is 0. */
+export const BUILTIN_OPT = 1, SYSCF_OPT = 2, RC_FILE_OPT = 3, ENVIRON_OPT = 4,
+    CMDLINE_OPT = 5, PLAY_OPT = 6, NUM_OPT_PHASES = 7;
+/* C options.c `:110` MAX_ROLEOPT — role, race, gender, alignment. */
+const MAX_ROLEOPT = 4;
+/* C optlist.h enum opt ordinals (unix allopt idx). */
+const OPT_ROLE = 3, OPT_RACE = 4, OPT_GENDER = 5, OPT_ALIGNMENT = 6;
+/* C options.c `:124` none[] / randomrole[]. */
+const ROLEOPT_NONE = '(none)', ROLEOPT_RANDOM = 'random';
+/** C options.c `:112` roleoptvals[MAX_ROLEOPT][num_opt_phases], BSS null. */
+const roleoptvals = Array.from({ length: MAX_ROLEOPT }, () => (
+    Array.from({ length: NUM_OPT_PHASES }, () => null)
+));
+
+/**
+ * Phase slot for saveoptstr / getoptstr. C stores `go.opt_phase` (cfgfiles
+ * sets `rc_file_opt` while reading the rc file). JS parseNethackrc passes
+ * optInitial instead of writing that global; in-game falls through to
+ * play_opt. An explicit `game.go.opt_phase` wins.
+ * @param {boolean} [optInitial]
+ * @returns {number}
+ */
+function roleOptPhase(optInitial) {
+    const p = game.go?.opt_phase;
+    if (typeof p === 'number' && p > 0) return p | 0;
+    if (optInitial ?? !!game.go?.opt_initial) return RC_FILE_OPT;
+    return PLAY_OPT;
+}
+
+/** C options.c rolestring `:72–73`. `field` is `adj` / `noun` / `name.m`. */
+function rolestring(val, array, field) {
+    const v = val | 0;
+    if (v >= 0) { // C `:73` val >= 0
+        const row = array[v];
+        if (!row) return ROLEOPT_NONE;
+        if (field === 'name.m') return row.name?.m ?? ROLEOPT_NONE;
+        return row[field] ?? ROLEOPT_NONE;
+    }
+    if (v === ROLE_RANDOM) return ROLEOPT_RANDOM; // C randomrole
+    return ROLEOPT_NONE; // C none[]
+}
+
+/** C options.c opt2roleopt `:714–730`. */
+function opt2roleopt(roleopt) {
+    switch (roleopt | 0) { // C `:717`
+    case OPT_ROLE: return 0; // C `:718–719`
+    case OPT_RACE: return 1; // C `:720–721`
+    case OPT_GENDER: return 2; // C `:722–723`
+    case OPT_ALIGNMENT: return 3; // C `:724–725`
+    default: break; // C `:726–727`
+    }
+    return 0; // C `:729`
+}
+
+/**
+ * C options.c getoptstr `:733–754`. `ophase == num_opt_phases` scans for
+ * any non-null slot, newest phase first.
+ * @param {number} optidx
+ * @param {number} ophase
+ * @returns {string|null}
+ */
+function getoptstr(optidx, ophase) {
+    const roleoptindx = opt2roleopt(optidx); // C `:735`
+    let phaseSlot = ophase | 0;
+    if (phaseSlot === NUM_OPT_PHASES) { // C `:738`
+        for (let phase = NUM_OPT_PHASES - 1; phase >= 0; --phase) { // C `:743`
+            if (roleoptvals[roleoptindx][phase]) { // C `:744`
+                phaseSlot = phase; // C `:745`
+                break; // C `:746`
+            }
+        }
+    }
+    if (roleoptindx >= 0 && roleoptindx < MAX_ROLEOPT // C `:749–750`
+        && phaseSlot >= 0 && phaseSlot < NUM_OPT_PHASES)
+        return roleoptvals[roleoptindx][phaseSlot]; // C `:751`
+    throw new Error(`bad index roleoptvals[${roleoptindx}][${phaseSlot}]`); // C `:752`
+}
+
+/**
+ * C options.c saveoptstr `:757–772`. Strips a leading `name:` / `name=`
+ * and replaces the phase slot (C free + dupstr).
+ * @param {number} optidx
+ * @param {string} optstr
+ * @param {number} [phase]
+ */
+function saveoptstr(optidx, optstr, phase) {
+    const ph = (phase == null) ? roleOptPhase() : (phase | 0); // C `:760` go.opt_phase
+    const roleoptindx = opt2roleopt(optidx); // C `:760`
+    let s = optstr == null ? '' : String(optstr);
+    const colon = s.indexOf(':'); // C `:761` strchr ':'
+    const eq = s.indexOf('='); // C `:761` strchr '='
+    let cut = colon;
+    if (cut < 0 || (eq >= 0 && eq < cut)) cut = eq; // C `:764–765`
+    if (cut >= 0) s = s.slice(cut + 1); // C `:766–767`
+    roleoptvals[roleoptindx][ph] = s; // C `:769–771` free + dupstr
+}
+
+/**
+ * C options.c get_cnf_role_opt `:8019–8033`. Newest phase that is not
+ * cmdline, environ, or builtin.
+ * @param {number} optidx
+ * @returns {string|null}
+ */
+function get_cnf_role_opt(optidx) {
+    let op = null; // C `:8024`
+    for (let phase = NUM_OPT_PHASES - 1; phase >= 0 && !op; --phase) { // C `:8026`
+        if (phase === CMDLINE_OPT || phase === ENVIRON_OPT // C `:8027–8028`
+            || phase === BUILTIN_OPT)
+            continue; // C `:8029`
+        op = getoptstr(optidx, phase); // C `:8030`
+    }
+    return op; // C `:8032`
+}
+
+/** C strncmpi(op, "no", 2) == 0. */
+function optStartsWithNo(op) {
+    return op.length >= 2 && op.slice(0, 2).toLowerCase() === 'no';
+}
+
+/**
+ * C options.c parse_role_opt `:7904–8016`. Writes the value the caller
+ * should keep into `opp.op` (`"!"` when the list is a negation filter).
+ * @param {number} optidx
+ * @param {boolean} negated
+ * @param {string} fullname
+ * @param {string} opts
+ * @param {{op:string}} opp
+ * @param {boolean} [optInitial]
+ * @returns {boolean}
+ */
+function parse_role_opt(optidx, negated, fullname, opts, opp, optInitial) {
+    const which = (optidx === OPT_ROLE) ? RS_ROLE // C `:7912–7916`
+        : (optidx === OPT_RACE) ? RS_RACE
+        : (optidx === OPT_GENDER) ? RS_GENDER
+        : (optidx === OPT_ALIGNMENT) ? RS_ALGNMNT
+        : RS_filter;
+    let ok = false; // C `:7917`
+    const optstr = typeof opts === 'string' ? opts : String(opts ?? '');
+    let op = string_for_env_opt(fullname, optstr, false, optInitial); // C `:7932`
+    if (op !== EMPTY_OPTSTR) { // C `:7932`
+        op = mungspaces(op); // C `:7936` in place; JS returns the copy
+        let prevNegated = false, first = true; // C `:7934`
+        while (op.length > 0) { // C `:7937` while (*op)
+            while (op.startsWith(' ')) op = op.slice(1); // C `:7938–7939`
+            let valNegated = false; // C `:7940`
+            while (op.startsWith('!') || optStartsWithNo(op)) { // C `:7941`
+                valNegated = !valNegated; // C `:7942`
+                // C `:7943` '!' skips 1; "no-" skips 3; "no" skips 2.
+                op = op.startsWith('!')
+                    ? op.slice(1)
+                    : op.slice(op.charAt(2) !== '-' ? 2 : 3);
+            }
+            if (!op || op.startsWith(' ')) { // C `:7945`
+                config_error_add("Negated nothing for '%s'", fullname); // C `:7946`
+                return false; // C `:7947`
+            }
+            if (!first) { // C `:7949`
+                if ((valNegated !== prevNegated) // C `:7950` xor
+                    || (negated && valNegated)) { // C `:7951`
+                    config_error_add("Invalid mixed negation for '%s%s'", // C `:7952–7953`
+                        negated ? '!' : '', fullname);
+                    return false; // C `:7954`
+                } else if (!negated && !valNegated) { // C `:7955`
+                    config_error_add( // C `:7956–7957`
+                        'Multiple role values only allowed when list is negated');
+                    return false; // C `:7958`
+                }
+            }
+            first = false; // C `:7960`
+            prevNegated = valNegated; // C `:7961`
+            const sp = op.indexOf(' '); // C `:7964` strchr
+            const token = sp >= 0 ? op.slice(0, sp) : op; // C `:7965–7966` *sp = 0
+            const phase = roleOptPhase(optInitial);
+            const preval = getoptstr(optidx, phase); // C `:7968`
+            if (valNegated || negated) { // C `:7969`
+                if (!preval || preval.charAt(0) !== '!') // C `:7974`
+                    clearrolefilter(which); // C `:7975`
+                if (!setrolefilter(token)) { // C `:7976`
+                    config_error_add("Invalid %s '%s'", fullname, token); // C `:7977`
+                    return false; // C `:7978`
+                }
+                saveoptstr(optidx, rolefilterstring(which), phase); // C `:7980`
+                opp.op = '!'; // C `:7981` *opp = neg_opt
+            } else {
+                if (duplicateOpt) { // C `:7987`
+                    if (preval && preval.charAt(0) === '!') { // C `:7988`
+                        complain_about_duplicate(optidx); // C `:7989`
+                        return false; // C `:7990`
+                    }
+                }
+                saveoptstr(optidx, token, phase); // C `:7995`
+                opp.op = token; // C `:7996` *opp = op
+            }
+            if (sp >= 0) op = op.slice(sp + 1); // C `:8003–8005`
+            else op = ''; // C `:8007` op += strlen(op)
+        }
+        ok = true; // C `:8011`
+    }
+    return ok; // C `:8013`
+}
+
+/**
+ * C options.c optfn_gender `:1777–1812` (staticfn; NHOPTC wires
+ * `&optfn_gender`, optlist.h `:132`). do_init is optn_ok. do_set parses
+ * via parse_role_opt; a positive value stores flags.initgend / female
+ * and the canonical adjective. get_val is rolestring; get_cnf_val is
+ * the config-file slot or "none".
+ * @param {number} optidx
+ * @param {number} req
+ * @param {boolean} negated
+ * @param {string|{buf:string}} opts
+ * @param {string} _op C reassigns op from parse_role_opt
+ * @param {boolean} [optInitial]
+ */
+export function optfn_gender(optidx, req, negated, opts, _op, optInitial) {
+    const optInit = optInitial ?? !!game.go?.opt_initial;
+    if (req === REQ_DO_INIT) { // C `:1785`
+        return OPTN_OK; // C `:1786`
+    }
+    if (req === REQ_DO_SET) { // C `:1788`
+        const opp = { op: '' };
+        if (!parse_role_opt(optidx, negated, allopt_name(optidx), opts, opp, optInit)) // C `:1790`
+            return OPTN_SILENTERR; // C `:1791`
+        if (opp.op.charAt(0) !== '!') { // C `:1793` *op != '!'
+            if (!game.flags) game.flags = {};
+            game.flags.initgend = str2gend(opp.op); // C `:1794`
+            if (game.flags.initgend === ROLE_NONE) { // C `:1794`
+                config_error_add("Unknown %s '%s'", allopt_name(optidx), opp.op); // C `:1795`
+                return OPTN_ERR; // C `:1796`
+            }
+            game.flags.female = game.flags.initgend; // C `:1798`
+            saveoptstr(optidx, rolestring(game.flags.initgend, genders, 'adj'), // C `:1799`
+                roleOptPhase(optInit));
+        }
+        return OPTN_OK; // C `:1801`
+    }
+    if (req === REQ_GET_VAL) { // C `:1803`
+        const g = game.flags?.initgend;
+        set_optbuf(opts, rolestring(g == null ? 0 : (g | 0), genders, 'adj')); // C `:1804`
+        return OPTN_OK; // C `:1805`
+    }
+    if (req === REQ_GET_CNF_VAL) { // C `:1807`
+        const op = get_cnf_role_opt(optidx); // C `:1808`
+        set_optbuf(opts, op ? op : 'none'); // C `:1809` literal "none", not none[]
+        return OPTN_OK; // C `:1810`
+    }
+    return OPTN_OK; // C `:1812`
+}
+
+/**
+ * C options.c optfn_race `:3507–3542`. Same envelope as optfn_gender.
+ * Positive values also store `gp.pl_race` as the first character.
+ */
+export function optfn_race(optidx, req, negated, opts, _op, optInitial) {
+    const optInit = optInitial ?? !!game.go?.opt_initial;
+    if (req === REQ_DO_INIT) { // C `:3515`
+        return OPTN_OK; // C `:3516`
+    }
+    if (req === REQ_DO_SET) { // C `:3518`
+        const opp = { op: '' };
+        if (!parse_role_opt(optidx, negated, allopt_name(optidx), opts, opp, optInit)) // C `:3520`
+            return OPTN_SILENTERR; // C `:3521`
+        if (opp.op.charAt(0) !== '!') { // C `:3523`
+            if (!game.flags) game.flags = {};
+            game.flags.initrace = str2race(opp.op); // C `:3524`
+            if (game.flags.initrace === ROLE_NONE) { // C `:3524`
+                config_error_add("Unknown %s '%s'", allopt_name(optidx), opp.op); // C `:3525`
+                return OPTN_ERR; // C `:3526`
+            }
+            if (!game.gp) game.gp = {};
+            game.gp.pl_race = opp.op.charAt(0); // C `:3528` *op
+            saveoptstr(optidx, rolestring(game.flags.initrace, races, 'noun'), // C `:3529`
+                roleOptPhase(optInit));
+        }
+        return OPTN_OK; // C `:3531`
+    }
+    if (req === REQ_GET_VAL) { // C `:3533`
+        const g = game.flags?.initrace;
+        set_optbuf(opts, rolestring(g == null ? 0 : (g | 0), races, 'noun')); // C `:3534`
+        return OPTN_OK; // C `:3535`
+    }
+    if (req === REQ_GET_CNF_VAL) { // C `:3537`
+        const op = get_cnf_role_opt(optidx); // C `:3538`
+        set_optbuf(opts, op ? op : 'none'); // C `:3539`
+        return OPTN_OK; // C `:3540`
+    }
+    return OPTN_OK; // C `:3542`
+}
+
+/**
+ * C options.c optfn_role `:3589–3624`. Positive values also nmcpy into
+ * `pl_character` (backwards compatibility).
+ */
+export function optfn_role(optidx, req, negated, opts, _op, optInitial) {
+    const optInit = optInitial ?? !!game.go?.opt_initial;
+    if (req === REQ_DO_INIT) { // C `:3597`
+        return OPTN_OK; // C `:3598`
+    }
+    if (req === REQ_DO_SET) { // C `:3600`
+        const opp = { op: '' };
+        if (!parse_role_opt(optidx, negated, allopt_name(optidx), opts, opp, optInit)) // C `:3602`
+            return OPTN_SILENTERR; // C `:3603`
+        if (opp.op.charAt(0) !== '!') { // C `:3605`
+            if (!game.flags) game.flags = {};
+            game.flags.initrole = str2role(opp.op); // C `:3606`
+            if (game.flags.initrole === ROLE_NONE) { // C `:3606`
+                config_error_add("Unknown %s '%s'", allopt_name(optidx), opp.op); // C `:3607`
+                return OPTN_ERR; // C `:3608`
+            }
+            game.pl_character = nmcpy(opp.op, PL_NSIZ); // C `:3609`
+            saveoptstr(optidx, rolestring(game.flags.initrole, roles, 'name.m'), // C `:3611`
+                roleOptPhase(optInit));
+        }
+        return OPTN_OK; // C `:3613`
+    }
+    if (req === REQ_GET_VAL) { // C `:3615`
+        const g = game.flags?.initrole;
+        set_optbuf(opts, rolestring(g == null ? 0 : (g | 0), roles, 'name.m')); // C `:3616`
+        return OPTN_OK; // C `:3617`
+    }
+    if (req === REQ_GET_CNF_VAL) { // C `:3619`
+        const op = get_cnf_role_opt(optidx); // C `:3620`
+        set_optbuf(opts, op ? op : 'none'); // C `:3621`
+        return OPTN_OK; // C `:3622`
+    }
+    return OPTN_OK; // C `:3624`
+}
+
+/**
+ * C options.c optfn_alignment `:885–919`. Same envelope; no pl_* side write.
+ */
+export function optfn_alignment(optidx, req, negated, opts, _op, optInitial) {
+    const optInit = optInitial ?? !!game.go?.opt_initial;
+    if (req === REQ_DO_INIT) { // C `:893`
+        return OPTN_OK; // C `:894`
+    }
+    if (req === REQ_DO_SET) { // C `:896`
+        const opp = { op: '' };
+        if (!parse_role_opt(optidx, negated, allopt_name(optidx), opts, opp, optInit)) // C `:898`
+            return OPTN_SILENTERR; // C `:899`
+        if (opp.op.charAt(0) !== '!') { // C `:901`
+            if (!game.flags) game.flags = {};
+            game.flags.initalign = str2align(opp.op); // C `:902`
+            if (game.flags.initalign === ROLE_NONE) { // C `:902`
+                config_error_add("Unknown %s '%s'", allopt_name(optidx), opp.op); // C `:903`
+                return OPTN_ERR; // C `:904`
+            }
+            saveoptstr(optidx, rolestring(game.flags.initalign, aligns, 'adj'), // C `:906`
+                roleOptPhase(optInit));
+        }
+        return OPTN_OK; // C `:908`
+    }
+    if (req === REQ_GET_VAL) { // C `:910`
+        const g = game.flags?.initalign;
+        set_optbuf(opts, rolestring(g == null ? 0 : (g | 0), aligns, 'adj')); // C `:911`
+        return OPTN_OK; // C `:912`
+    }
+    if (req === REQ_GET_CNF_VAL) { // C `:914`
+        const op = get_cnf_role_opt(optidx); // C `:915`
+        set_optbuf(opts, op ? op : 'none'); // C `:916`
+        return OPTN_OK; // C `:917`
+    }
+    return OPTN_OK; // C `:919`
+}
+
+/**
+ * C options.c optfn_sortvanquished do_handler `:3997–4008`.
+ * Async split: set_vanq_order and pline. Callers are doset `:8935`
+ * (doset_optfn_do_handler) and doset_simple_menu (doset_compound_via_getlin).
+ * @param {number} optidx
+ * @returns {Promise<number>}
+ */
+export async function optfn_sortvanquished_do_handler(optidx) {
+    if (!game.flags) game.flags = {};
+    const prev = (game.flags.vanq_sortmode ?? VANQ_MLVL_MNDX) & 0xff; // C `:3998`
+    await set_vanq_order(true); // C `:4001` (void)
+    const mode = (game.flags.vanq_sortmode ?? VANQ_MLVL_MNDX) & 0xff;
+    const row = vanqorders[mode] || vanqorders[VANQ_MLVL_MNDX];
+    const optname = allopt_name(optidx); // C `:3963`
+    await pline("'%s' %s \"%s: %s\".", optname, // C `:4002–4007`
+        mode === prev ? 'not changed, still' : 'changed to',
+        row[0], row[1]);
+    return OPTN_OK; // C `:4009`
 }
 
 /**
@@ -3494,6 +4640,8 @@ async function doset_compound_via_getlin(opt) {
             reslt = await handler_menu_colors();
         } else if (name === 'number_pad') {
             reslt = await handler_number_pad(); // C optfn_number_pad do_handler `:2642`
+        } else if (name === 'sortvanquished') {
+            reslt = await optfn_sortvanquished_do_handler(allopt_idx(name)); // C `:4001–4007`
         }
         if (reslt === OPTN_OK) opt_set_in_config[allopt_idx(name)] = true;
         // Other hasHandler compounds deferred (symset/…).
@@ -3504,9 +4652,10 @@ async function doset_compound_via_getlin(opt) {
         // C: ESC still counts as pickedone — caller returns 1
         return;
     }
-    // C: parseoptions("%s:%s") — fruit via optfn_fruit; other Comp deferred
+    // C: parseoptions("%s:%s") — fruit via optfn_fruit; other Comp deferred.
+    // In-game: !opt_initial so fruitadd runs. doset has give_opt_msg false.
     if (name === 'fruit') {
-        optfn_fruit_set(abuf);
+        optfn_fruit(allopt_idx('fruit'), REQ_DO_SET, false, `fruit:${abuf}`, abuf, false);
     }
     // Named omission: remaining Comp/Othr getlin → parseoptions arms
 }
@@ -3523,14 +4672,16 @@ function currently_set_val(n) {
 
 /**
  * C ref: options.c optfn_* get_val for doset_simple_menu compound/othr rows.
- * Named omissions: full handlers for fruit/autounlock/symset/
+ * Named omissions: full handlers for autounlock/symset/
  * statuslines/exceptions/status rules — display values only until those
  * handlers are ported (menu colors and number_pad handlers are live).
  */
 function simple_opt_get_val(opt) {
     const name = opt.name;
     if (name === 'fruit') {
-        return String(game.pl_fruit || game.flags?.fruit || 'slime mold');
+        const holder = { buf: '' };
+        optfn_fruit(allopt_idx('fruit'), REQ_GET_VAL, false, holder, EMPTY_OPTSTR);
+        return holder.buf || 'slime mold';
     }
     if (name === 'number_pad') {
         // C optfn_number_pad get_val — live (delegates so both O-menus agree).
@@ -3596,9 +4747,11 @@ function simple_bool_toggle(opt) {
     if (!game[opt.addr.obj]) game[opt.addr.obj] = {};
     const bag = game[opt.addr.obj];
     bag[opt.addr.key] = !simple_bool_value(opt);
-    // C options.c opt_hilite_pet: enabling with unset petattr → ATR_INVERSE
+    // C options.c opt_hilite_pet `:5307–5308`: enabling with unset
+    // petattr stores wintype.h ATR_INVERSE (7). display.js maps that
+    // to terminal ATR_INVERSE.
     if (opt.name === 'hilite_pet' && bag[opt.addr.key] && !bag.wc2_petattr) {
-        bag.wc2_petattr = ATR_INVERSE;
+        bag.wc2_petattr = MC_ATR_INVERSE;
     }
     // C optfn_boolean `:5376–5385` then doset_simple reset_needed_visuals.
     if (OPT_GLYPH_RESET.has(opt.name)) {
@@ -4462,10 +5615,22 @@ export async function doset() {
         ['horsename', '(none)'],
         ['msghistory', '20'],
         ['pettype', 'random'],
-        ['soundlib', 'nosound'],
+        ['soundlib', null],
     ]) {
         if (doset_skip_unsupported(name)) continue;
-        raw.push(doset_add_menu(name, val, 0));
+        // C doset_add_menu `:9038` get_val. soundlib is set_gameview
+        // (non-selectable); the column is the active library name.
+        const roleOptfn = name === 'soundlib' ? optfn_soundlib
+            : name === 'gender' ? optfn_gender
+            : name === 'race' ? optfn_race
+            : name === 'role' ? optfn_role
+            : name === 'alignment' ? optfn_alignment
+            : null;
+        // C doset_add_menu `:9038` get_val for a live optfn.
+        const shown = roleOptfn
+            ? doset_compopt_get_val(roleOptfn, name)
+            : val;
+        raw.push(doset_add_menu(name, shown, 0));
     }
     const compounds = [
         { name: 'autounlock', val: 'apply-key' },
@@ -4473,7 +5638,7 @@ export async function doset() {
         { name: 'crash_email', val: 'unknown' },
         { name: 'crash_name', val: 'unknown' },
         { name: 'crash_urlmax', val: '-1' },
-        { name: 'disclose', val: 'ni na nv ng nc no' },
+        { name: 'disclose', get_val: () => doset_compopt_get_val(optfn_disclose, 'disclose'), handler: true },
         { name: 'fruit', val: 'slime mold' },
         { name: 'glyph', val: '(to be done)' },
         { name: 'hilite_status', val: '(none)' },
@@ -4488,7 +5653,7 @@ export async function doset() {
         // C optlist.h NHOPTC perminv_mode set_in_game before petattr.
         // doset_skip_unsupported when !WC_PERM_INVENT (contest tty).
         { name: 'perminv_mode', get_val: optfn_perminv_mode_get_val_display, handler: true },
-        { name: 'petattr', val: 'inverse' },
+        { name: 'petattr', get_val: () => doset_compopt_get_val(optfn_petattr, 'petattr'), handler: true },
         { name: 'pickup_burden', val: 'stressed' },
         { name: 'pickup_types', val: pickup_types_display(), handler: true },
         { name: 'pile_limit', val: '5' },
@@ -4497,7 +5662,7 @@ export async function doset() {
         { name: 'scores', val: '3 top/2 around' },
         { name: 'sortdiscoveries', val: 'by order of discovery within each class' },
         { name: 'sortloot', val: 'loot' },
-        { name: 'sortvanquished', val: 't: traditional: by monster level' },
+        { name: 'sortvanquished', get_val: () => doset_compopt_get_val(optfn_sortvanquished, 'sortvanquished'), handler: true },
         { name: 'statushilites', val: '0 (off: don\'t highlight status fields)' },
         { name: 'statuslines', val: '2' },
         { name: 'suppress_alert', val: '(none)' },
@@ -4719,13 +5884,13 @@ const allopt = [
     // optlist.h:123 NHOPTC(name)
     { name: 'name', opttyp: CompOpt, idx: 2, setwhere: SET_GAMEVIEW, initval: false, addr: null, optfn: null },
     // optlist.h:126 NHOPTC(role)
-    { name: 'role', opttyp: CompOpt, idx: 3, setwhere: SET_GAMEVIEW, initval: false, addr: null, optfn: null },
+    { name: 'role', opttyp: CompOpt, idx: 3, setwhere: SET_GAMEVIEW, initval: false, addr: null, optfn: optfn_role },
     // optlist.h:129 NHOPTC(race)
-    { name: 'race', opttyp: CompOpt, idx: 4, setwhere: SET_GAMEVIEW, initval: false, addr: null, optfn: null },
+    { name: 'race', opttyp: CompOpt, idx: 4, setwhere: SET_GAMEVIEW, initval: false, addr: null, optfn: optfn_race },
     // optlist.h:132 NHOPTC(gender)
-    { name: 'gender', opttyp: CompOpt, idx: 5, setwhere: SET_GAMEVIEW, initval: false, addr: null, optfn: null },
+    { name: 'gender', opttyp: CompOpt, idx: 5, setwhere: SET_GAMEVIEW, initval: false, addr: null, optfn: optfn_gender },
     // optlist.h:135 NHOPTC(alignment)
-    { name: 'alignment', opttyp: CompOpt, idx: 6, setwhere: SET_GAMEVIEW, initval: false, addr: null, optfn: null },
+    { name: 'alignment', opttyp: CompOpt, idx: 6, setwhere: SET_GAMEVIEW, initval: false, addr: null, optfn: optfn_alignment },
     // optlist.h:140 NHOPTB(accessiblemsg)
     { name: 'accessiblemsg', opttyp: BoolOpt, idx: 7, setwhere: SET_IN_GAME, initval: false, addr: { obj: 'a11y', key: 'accessiblemsg' }, optfn: null },
     // optlist.h:143 NHOPTB(acoustics)
@@ -4803,7 +5968,7 @@ const allopt = [
     // optlist.h:281 NHOPTB(debug_overwrite_stairs)
     { name: 'debug_overwrite_stairs', opttyp: BoolOpt, idx: 44, setwhere: SET_WIZNOFUZ, initval: false, addr: null /* C: &iflags.debug_overwrite_stairs, no live field */, optfn: null },
     // optlist.h:284 NHOPTC(disclose)
-    { name: 'disclose', opttyp: CompOpt, idx: 45, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: null },
+    { name: 'disclose', opttyp: CompOpt, idx: 45, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: optfn_disclose },
     // optlist.h:288 NHOPTC(dogname)
     { name: 'dogname', opttyp: CompOpt, idx: 46, setwhere: SET_GAMEVIEW, initval: false, addr: null, optfn: null },
     // optlist.h:291 NHOPTB(dropped_nopick)
@@ -4845,7 +6010,7 @@ const allopt = [
     // optlist.h:336 NHOPTB(force_invmenu)
     { name: 'force_invmenu', opttyp: BoolOpt, idx: 65, setwhere: SET_IN_GAME, initval: false, addr: { obj: 'flags', key: 'force_invmenu' }, optfn: null },
     // optlist.h:339 NHOPTC(fruit)
-    { name: 'fruit', opttyp: CompOpt, idx: 66, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: null },
+    { name: 'fruit', opttyp: CompOpt, idx: 66, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: optfn_fruit },
     // optlist.h:341 NHOPTB(fullscreen)
     { name: 'fullscreen', opttyp: BoolOpt, idx: 67, setwhere: SET_IN_CONFIG, initval: false, addr: null /* C: &iflags.wc2_fullscreen, no live field */, optfn: null },
     // optlist.h:345 NHOPTC(glyph)
@@ -4971,7 +6136,7 @@ const allopt = [
     // optlist.h:565 NHOPTC(perminv_mode)
     { name: 'perminv_mode', opttyp: CompOpt, idx: 128, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: null },
     // optlist.h:568 NHOPTC(petattr)
-    { name: 'petattr', opttyp: CompOpt, idx: 129, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: null },
+    { name: 'petattr', opttyp: CompOpt, idx: 129, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: optfn_petattr },
     // optlist.h:571 NHOPTC(pettype)
     { name: 'pettype', opttyp: CompOpt, idx: 130, setwhere: SET_GAMEVIEW, initval: false, addr: null, optfn: null },
     // optlist.h:573 NHOPTC(pickup_burden)
@@ -5043,9 +6208,9 @@ const allopt = [
     // optlist.h:687 NHOPTB(sortpack)
     { name: 'sortpack', opttyp: BoolOpt, idx: 164, setwhere: SET_IN_GAME, initval: true, addr: { obj: 'flags', key: 'sortpack' }, optfn: null },
     // optlist.h:690 NHOPTC(sortvanquished)
-    { name: 'sortvanquished', opttyp: CompOpt, idx: 165, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: null },
+    { name: 'sortvanquished', opttyp: CompOpt, idx: 165, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: optfn_sortvanquished },
     // optlist.h:693 NHOPTC(soundlib)
-    { name: 'soundlib', opttyp: CompOpt, idx: 166, setwhere: SET_GAMEVIEW, initval: false, addr: null, optfn: null },
+    { name: 'soundlib', opttyp: CompOpt, idx: 166, setwhere: SET_GAMEVIEW, initval: false, addr: null, optfn: optfn_soundlib },
     // optlist.h:701 NHOPTB(sounds)
     { name: 'sounds', opttyp: BoolOpt, idx: 167, setwhere: SET_IN_GAME, initval: false, addr: { obj: 'flags', key: 'sounds' }, optfn: null },
     // optlist.h:705 NHOPTB(sparkle)
@@ -5291,8 +6456,8 @@ function bad_negation(_optname, _withParameter) {
 /* C options.c `determine_ambiguities` `:6703–6737` (staticfn) — pairwise
  * common-prefix scan over the option names (sentinel excluded via SIZE-1 in
  * C; JS has no sentinel row so every row is covered), minimum 3, clamped to
- * the name length. C runs it from allopt_array_init (unported); JS computes
- * it once ahead of the first match loop, which is the only reader. */
+ * the name length. Called from allopt_array_init (`:7412`) and, if that
+ * has not run yet, once ahead of the first parseoptions match loop. */
 let ambiguitiesComputed = false;
 function determine_ambiguities() {
     if (ambiguitiesComputed) return;
@@ -5323,6 +6488,52 @@ function determine_ambiguities() {
  * Per-row `dupdetected` starts undefined (C starts 0 via static init). */
 export function reset_duplicate_opt_detection() {
     for (let k = 0; k < OPTCOUNT; ++k) allopt[k].dupdetected = 0; // C `:6777–6778`
+}
+
+/* C options.c `:10182–10211` heed/disregard. `disregarded` starts unset
+ * (C static FALSE). parseoptions already reads the field (`:619–620`). */
+export function heed_all_options() {
+    for (let i = 0; i < OPTCOUNT; i++) // C `:10187–10188`
+        allopt[i].disregarded = false;
+}
+
+export function disregard_all_options() {
+    for (let i = 0; i < OPTCOUNT; i++) // C `:10196–10197`
+        allopt[i].disregarded = true;
+}
+
+export function heed_this_option(optidx) {
+    if (optidx >= 0 && optidx < OPTCOUNT) // C `:10203–10204`
+        allopt[optidx].disregarded = false;
+}
+
+export function disregard_this_option(optidx) {
+    if (optidx >= 0 && optidx < OPTCOUNT) // C `:10209–10210`
+        allopt[optidx].disregarded = true;
+}
+
+/* C options.c allopt_array_init `:7404–7433`. One-shot: copy is the live
+ * table (no separate allopt_init image), then initval writes, ambiguity
+ * scan, heed, and every optfn(do_init). Caller options.c:7130 is
+ * initoptions_init — not a JS function (map-named); do not call from the
+ * partial optfn do_init list at `:2187`. */
+let optionsArrayInited = false;
+export function allopt_array_init() {
+    if (optionsArrayInited) return; // C `:7410`
+    determine_ambiguities(); // C `:7412` (memcpy of allopt_init is the live table)
+    for (let i = 0; allopt[i] && allopt[i].name; i++) { // C `:7413–7416`
+        const addr = allopt[i].addr;
+        if (!addr) continue;
+        if (!game[addr.obj] || typeof game[addr.obj] !== 'object')
+            game[addr.obj] = {};
+        game[addr.obj][addr.key] = allopt[i].initval;
+    }
+    heed_all_options(); // C `:7417`
+    for (let i = 0; i < OPTCOUNT; ++i) { // C `:7426–7430`
+        if (allopt[i].optfn)
+            allopt[i].optfn(i, REQ_DO_INIT, false, EMPTY_OPTSTR, EMPTY_OPTSTR);
+    }
+    optionsArrayInited = true; // C `:7431`
 }
 
 /* C options.c `duplicate_opt_detection` `:6782–6788` (staticfn) — only
@@ -5360,8 +6571,9 @@ function complain_about_duplicate(_optidx) {
  * duplicate detection state, opt_set_in_config marking (fires once an optfn
  * ships), and the S_ → parsesymbols/check_gold_symbol fallback (both live).
  * Named omissions (map): config_error_add sink (6 sites), switch_symbols
- * application, disregard/heed setters (rows read `disregarded`, never set
- * here). Sync like C (no prompts in-body).
+ * application. disregard/heed setters are live (`heed_all_options` and
+ * siblings); rows still start unset (C FALSE) until one of them runs.
+ * Sync like C (no prompts in-body).
  * Sole wired JS caller: itself (recursion `:519`); every other C caller is
  * named in the map with its JS counterpart.
  */

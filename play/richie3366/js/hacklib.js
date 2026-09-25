@@ -161,6 +161,19 @@ export function lowc(c) {
     return ch;
 }
 
+/**
+ * C hacklib.c strkitten `:275–283` — append one char at eos(s).
+ * JS strings are immutable, so this returns the new string (eos is
+ * `s.length`; the C `*p = '\\0'` is the string terminator).
+ * @param {string} s
+ * @param {string|number} c
+ */
+export function strkitten(s, c) {
+    const str = String(s ?? '');
+    const ch = typeof c === 'string' ? (c.charAt(0) || '') : String.fromCharCode(c & 0xff);
+    return str + ch;
+}
+
 /** C hacklib.c highc — ASCII a-z → A-Z. */
 export function highc(c) {
     if (c == null || c === '') return c;

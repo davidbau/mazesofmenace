@@ -1079,7 +1079,8 @@ export async function jump(magic = 0, state = game) {
         await ttyPline("You can't jump very far.", state);
         return ECMD_OK;
     }
-    if (!magic && state.u.usteed && stucksteed(false, state)) return ECMD_OK;
+    if (!magic && state.u.usteed
+        && await stucksteed(false, state)) return ECMD_OK;
     if (state.u.uswallow) {
         if (magic) {
             await ttyPline('You bounce around a little.', state);
@@ -1192,7 +1193,7 @@ export async function jump(magic = 0, state = game) {
         default:
             throw new Error(`Jumping out of strange trap (${state.u.utraptype})?`);
         }
-        reset_utrap(true, state);
+        await reset_utrap(true, state);
     }
 
     if (u_at(target.x, target.y, state)) {
