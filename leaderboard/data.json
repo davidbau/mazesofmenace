@@ -1,17 +1,17 @@
 {
-  "timestamp": "2026-09-25T01:57:17.134Z",
+  "timestamp": "2026-09-25T07:39:20.278Z",
   "contestPhase": "open",
   "teams": [
     {
       "name": "Hoimar",
       "fork": "Hoimar/teleport-contest",
       "category": "agentic",
-      "lastScored": "2026-09-25T01:33:48.681Z",
+      "lastScored": "2026-09-25T07:15:40.841Z",
       "speed": {
-        "startup_ms": 284.8,
-        "per_move_ms": 1.5857,
-        "r2": 0.744,
-        "label": "285+1.59/turn",
+        "startup_ms": 281.8,
+        "per_move_ms": 1.4905,
+        "r2": 0.745,
+        "label": "282+1.49/turn",
         "sessions": 88
       },
       "playability": {
@@ -21,7 +21,7 @@
         "interaction_checked": true,
         "error_class": null,
         "error_message": null,
-        "ms_per_move": 1.935,
+        "ms_per_move": 1.838,
         "threshold_ms_per_move": 25,
         "sessions": 88,
         "sessions_skipped": 0,
@@ -32,9 +32,9 @@
         "timing_error": null,
         "aborted_early": false,
         "total_moves": 19666,
-        "total_cumulative_ms": 38063,
+        "total_cumulative_ms": 36151,
         "total_startup_moves": 260,
-        "total_startup_ms": 4297
+        "total_startup_ms": 4212
       },
       "public": {
         "points": 11405,
@@ -59,12 +59,6 @@
         "animTotal": 2959
       },
       "history": [
-        {
-          "ts": "2026-08-05T03:45:55.774Z",
-          "points": 11405,
-          "maxPoints": 11405,
-          "passing": 44
-        },
         {
           "ts": "2026-08-05T09:06:34.890Z",
           "points": 11405,
@@ -1255,6 +1249,12 @@
         },
         {
           "ts": "2026-09-25T01:33:48.681Z",
+          "points": 11405,
+          "maxPoints": 11405,
+          "passing": 44
+        },
+        {
+          "ts": "2026-09-25T07:15:40.841Z",
           "points": 11405,
           "maxPoints": 11405,
           "passing": 44
@@ -2500,12 +2500,12 @@
       "name": "NoahBPeterson",
       "fork": "NoahBPeterson/teleport-contest",
       "category": "transpiled",
-      "lastScored": "2026-09-25T01:15:38.344Z",
+      "lastScored": "2026-09-25T06:57:45.051Z",
       "speed": {
-        "startup_ms": 2088.1,
-        "per_move_ms": 3.4868,
-        "r2": 0.539,
-        "label": "2088+3.49/turn",
+        "startup_ms": 1985.1,
+        "per_move_ms": 3.3568,
+        "r2": 0.561,
+        "label": "1985+3.36/turn",
         "sessions": 88
       },
       "playability": {
@@ -2515,7 +2515,7 @@
         "interaction_checked": true,
         "error_class": null,
         "error_message": null,
-        "ms_per_move": 8.114,
+        "ms_per_move": 7.589,
         "threshold_ms_per_move": 25,
         "sessions": 88,
         "sessions_skipped": 0,
@@ -2526,9 +2526,9 @@
         "timing_error": null,
         "aborted_early": false,
         "total_moves": 19926,
-        "total_cumulative_ms": 161687,
+        "total_cumulative_ms": 151228,
         "total_startup_moves": 0,
-        "total_startup_ms": 157110
+        "total_startup_ms": 151284
       },
       "public": {
         "points": 11405,
@@ -2553,12 +2553,6 @@
         "animTotal": 2959
       },
       "history": [
-        {
-          "ts": "2026-08-05T03:31:40.684Z",
-          "points": 15,
-          "maxPoints": 11405,
-          "passing": 0
-        },
         {
           "ts": "2026-08-05T08:52:32.378Z",
           "points": 15,
@@ -3749,6 +3743,12 @@
         },
         {
           "ts": "2026-09-25T01:15:38.344Z",
+          "points": 11405,
+          "maxPoints": 11405,
+          "passing": 44
+        },
+        {
+          "ts": "2026-09-25T06:57:45.051Z",
           "points": 11405,
           "maxPoints": 11405,
           "passing": 44
@@ -4994,12 +4994,12 @@
       "name": "kevinjosethomas",
       "fork": "kevinjosethomas/teleport-contest",
       "category": "agentic",
-      "lastScored": "2026-09-25T01:27:41.665Z",
+      "lastScored": "2026-09-25T07:09:42.741Z",
       "speed": {
-        "startup_ms": 385.5,
-        "per_move_ms": 0.114,
-        "r2": 0.216,
-        "label": "386+0.11/turn",
+        "startup_ms": 401.2,
+        "per_move_ms": 0.1168,
+        "r2": 0.212,
+        "label": "401+0.12/turn",
         "sessions": 88
       },
       "playability": {
@@ -5009,7 +5009,7 @@
         "interaction_checked": true,
         "error_class": null,
         "error_message": null,
-        "ms_per_move": 0.446,
+        "ms_per_move": 0.457,
         "threshold_ms_per_move": 25,
         "sessions": 88,
         "sessions_skipped": 0,
@@ -5020,9 +5020,9 @@
         "timing_error": null,
         "aborted_early": false,
         "total_moves": 19745,
-        "total_cumulative_ms": 8801,
+        "total_cumulative_ms": 9029,
         "total_startup_moves": 181,
-        "total_startup_ms": 1748
+        "total_startup_ms": 1745
       },
       "public": {
         "points": 11405,
@@ -5047,12 +5047,6 @@
         "animTotal": 2959
       },
       "history": [
-        {
-          "ts": "2026-08-05T03:40:47.226Z",
-          "points": 11405,
-          "maxPoints": 11405,
-          "passing": 44
-        },
         {
           "ts": "2026-08-05T09:01:32.072Z",
           "points": 11405,
@@ -6243,6 +6237,12 @@
         },
         {
           "ts": "2026-09-25T01:27:41.665Z",
+          "points": 11405,
+          "maxPoints": 11405,
+          "passing": 44
+        },
+        {
+          "ts": "2026-09-25T07:09:42.741Z",
           "points": 11405,
           "maxPoints": 11405,
           "passing": 44
@@ -7488,12 +7488,12 @@
       "name": "richie3366",
       "fork": "richie3366/teleport-contest",
       "category": "agentic",
-      "lastScored": "2026-09-25T01:31:06.044Z",
+      "lastScored": "2026-09-25T07:13:02.951Z",
       "speed": {
-        "startup_ms": 664.7,
-        "per_move_ms": 1.8812,
-        "r2": 0.684,
-        "label": "665+1.88/turn",
+        "startup_ms": 672.6,
+        "per_move_ms": 1.7947,
+        "r2": 0.692,
+        "label": "673+1.79/turn",
         "sessions": 88
       },
       "playability": {
@@ -7503,7 +7503,7 @@
         "interaction_checked": true,
         "error_class": null,
         "error_message": null,
-        "ms_per_move": 2.483,
+        "ms_per_move": 2.37,
         "threshold_ms_per_move": 25,
         "sessions": 88,
         "sessions_skipped": 0,
@@ -7514,9 +7514,9 @@
         "timing_error": "TypeError: Cannot set properties of null (setting 'wx') | at place_wsegs (file:///home/runner/work/teleport-judge/teleport-judge/play/richie3366/js/worm.js:273:13)",
         "aborted_early": false,
         "total_moves": 18883,
-        "total_cumulative_ms": 46888,
+        "total_cumulative_ms": 44760,
         "total_startup_moves": 434,
-        "total_startup_ms": 9213
+        "total_startup_ms": 9054
       },
       "public": {
         "points": 11405,
@@ -7541,12 +7541,6 @@
         "animTotal": 2959
       },
       "history": [
-        {
-          "ts": "2026-08-05T03:43:11.841Z",
-          "points": 11369,
-          "maxPoints": 11405,
-          "passing": 32
-        },
         {
           "ts": "2026-08-05T09:03:54.654Z",
           "points": 11366,
@@ -8737,6 +8731,12 @@
         },
         {
           "ts": "2026-09-25T01:31:06.044Z",
+          "points": 11405,
+          "maxPoints": 11405,
+          "passing": 44
+        },
+        {
+          "ts": "2026-09-25T07:13:02.951Z",
           "points": 11405,
           "maxPoints": 11405,
           "passing": 44
@@ -9982,12 +9982,12 @@
       "name": "rohitgandikota",
       "fork": "rohitgandikota/teleport-contest",
       "category": "agentic",
-      "lastScored": "2026-09-25T01:19:52.003Z",
+      "lastScored": "2026-09-25T07:01:57.164Z",
       "speed": {
-        "startup_ms": 825.8,
-        "per_move_ms": 2.4251,
-        "r2": 0.747,
-        "label": "826+2.43/turn",
+        "startup_ms": 857.1,
+        "per_move_ms": 2.4073,
+        "r2": 0.714,
+        "label": "857+2.41/turn",
         "sessions": 88
       },
       "playability": {
@@ -9997,7 +9997,7 @@
         "interaction_checked": true,
         "error_class": null,
         "error_message": null,
-        "ms_per_move": 2.841,
+        "ms_per_move": 2.686,
         "threshold_ms_per_move": 25,
         "sessions": 88,
         "sessions_skipped": 0,
@@ -10008,9 +10008,9 @@
         "timing_error": "Error: nh_terminate | at really_done (file:///home/runner/work/teleport-judge/teleport-judge/play/rohitgandikota/js/end.js:968:17)",
         "aborted_early": false,
         "total_moves": 18444,
-        "total_cumulative_ms": 52406,
+        "total_cumulative_ms": 49532,
         "total_startup_moves": 389,
-        "total_startup_ms": 20930
+        "total_startup_ms": 20620
       },
       "public": {
         "points": 11405,
@@ -10035,12 +10035,6 @@
         "animTotal": 2959
       },
       "history": [
-        {
-          "ts": "2026-08-05T03:33:17.581Z",
-          "points": 2732,
-          "maxPoints": 11405,
-          "passing": 10
-        },
         {
           "ts": "2026-08-05T08:54:07.581Z",
           "points": 2734,
@@ -11231,6 +11225,12 @@
         },
         {
           "ts": "2026-09-25T01:19:52.003Z",
+          "points": 11405,
+          "maxPoints": 11405,
+          "passing": 44
+        },
+        {
+          "ts": "2026-09-25T07:01:57.164Z",
           "points": 11405,
           "maxPoints": 11405,
           "passing": 44
@@ -12476,12 +12476,12 @@
       "name": "serteal",
       "fork": "serteal/teleport-contest",
       "category": "transpiled",
-      "lastScored": "2026-09-25T01:51:16.523Z",
+      "lastScored": "2026-09-25T07:33:15.954Z",
       "speed": {
-        "startup_ms": 1238,
-        "per_move_ms": 1.8024,
-        "r2": 0.663,
-        "label": "1238+1.80/turn",
+        "startup_ms": 1255,
+        "per_move_ms": 1.7142,
+        "r2": 0.659,
+        "label": "1255+1.71/turn",
         "sessions": 88
       },
       "playability": {
@@ -12491,20 +12491,20 @@
         "interaction_checked": true,
         "error_class": null,
         "error_message": null,
-        "ms_per_move": 118.419,
+        "ms_per_move": 127.189,
         "threshold_ms_per_move": 25,
         "sessions": 16,
         "sessions_skipped": 72,
-        "sessions_killed": 6,
-        "sessions_failed": 6,
-        "session_failure_rate": 0.375,
+        "sessions_killed": 8,
+        "sessions_failed": 8,
+        "session_failure_rate": 0.5,
         "max_session_failure_rate": 0.25,
         "timing_error": "per-session budget 74250ms exceeded",
         "aborted_early": true,
-        "total_moves": 1639,
-        "total_cumulative_ms": 194089,
+        "total_moves": 557,
+        "total_cumulative_ms": 70844,
         "total_startup_moves": 0,
-        "total_startup_ms": 4698
+        "total_startup_ms": 4096
       },
       "public": {
         "points": 11405,
@@ -12529,12 +12529,6 @@
         "animTotal": 2959
       },
       "history": [
-        {
-          "ts": "2026-08-05T04:03:23.090Z",
-          "points": 11405,
-          "maxPoints": 11405,
-          "passing": 44
-        },
         {
           "ts": "2026-08-05T09:23:55.721Z",
           "points": 11405,
@@ -13725,6 +13719,12 @@
         },
         {
           "ts": "2026-09-25T01:51:16.523Z",
+          "points": 11405,
+          "maxPoints": 11405,
+          "passing": 44
+        },
+        {
+          "ts": "2026-09-25T07:33:15.954Z",
           "points": 11405,
           "maxPoints": 11405,
           "passing": 44
@@ -14967,2509 +14967,15 @@
       "bitcomplexity": null
     },
     {
-      "name": "lockwo",
-      "fork": "lockwo/teleport-contest",
-      "category": "agentic",
-      "lastScored": "2026-09-25T01:04:54.525Z",
-      "speed": {
-        "startup_ms": 615.6,
-        "per_move_ms": 1.6688,
-        "r2": 0.728,
-        "label": "616+1.67/turn",
-        "sessions": 88
-      },
-      "playability": {
-        "playable": true,
-        "not_playable_reason": null,
-        "browser_ok": true,
-        "interaction_checked": true,
-        "error_class": null,
-        "error_message": null,
-        "ms_per_move": 2.179,
-        "threshold_ms_per_move": 25,
-        "sessions": 88,
-        "sessions_skipped": 0,
-        "sessions_killed": 0,
-        "sessions_failed": 0,
-        "session_failure_rate": 0,
-        "max_session_failure_rate": 0.25,
-        "timing_error": null,
-        "aborted_early": false,
-        "total_moves": 19452,
-        "total_cumulative_ms": 42377,
-        "total_startup_moves": 472,
-        "total_startup_ms": 6197
-      },
-      "public": {
-        "points": 11404,
-        "maxPoints": 11405,
-        "passing": 43,
-        "total": 44,
-        "rngPct": 100,
-        "rngStepsPct": 100,
-        "screenPct": 99.99123191582639,
-        "animMatched": 0,
-        "animTotal": 1483
-      },
-      "heldOut": {
-        "points": 5252,
-        "maxPoints": 11265,
-        "passing": 8,
-        "total": 44,
-        "rngPct": 33.74482610107826,
-        "rngStepsPct": 81.52289669861554,
-        "screenPct": 46.622281402574345,
-        "animMatched": 0,
-        "animTotal": 2959
-      },
-      "history": [
-        {
-          "ts": "2026-08-03T07:32:58.281Z",
-          "points": 7296,
-          "maxPoints": 11405,
-          "passing": 16
-        },
-        {
-          "ts": "2026-08-03T13:26:24.552Z",
-          "points": 7294,
-          "maxPoints": 11405,
-          "passing": 15
-        },
-        {
-          "ts": "2026-08-03T19:00:00.851Z",
-          "points": 7469,
-          "maxPoints": 11405,
-          "passing": 16
-        },
-        {
-          "ts": "2026-08-04T01:02:23.467Z",
-          "points": 7466,
-          "maxPoints": 11405,
-          "passing": 15
-        },
-        {
-          "ts": "2026-08-04T07:18:54.493Z",
-          "points": 7465,
-          "maxPoints": 11405,
-          "passing": 15
-        },
-        {
-          "ts": "2026-08-04T13:02:24.351Z",
-          "points": 7470,
-          "maxPoints": 11405,
-          "passing": 16
-        },
-        {
-          "ts": "2026-08-04T18:57:10.998Z",
-          "points": 7469,
-          "maxPoints": 11405,
-          "passing": 16
-        },
-        {
-          "ts": "2026-08-05T03:38:34.455Z",
-          "points": 7471,
-          "maxPoints": 11405,
-          "passing": 16
-        },
-        {
-          "ts": "2026-08-05T08:59:20.790Z",
-          "points": 7470,
-          "maxPoints": 11405,
-          "passing": 16
-        },
-        {
-          "ts": "2026-08-05T14:38:36.872Z",
-          "points": 7468,
-          "maxPoints": 11405,
-          "passing": 15
-        },
-        {
-          "ts": "2026-08-05T20:00:26.310Z",
-          "points": 7470,
-          "maxPoints": 11405,
-          "passing": 15
-        },
-        {
-          "ts": "2026-08-06T03:47:08.243Z",
-          "points": 7468,
-          "maxPoints": 11405,
-          "passing": 15
-        },
-        {
-          "ts": "2026-08-06T09:19:52.971Z",
-          "points": 7470,
-          "maxPoints": 11405,
-          "passing": 15
-        },
-        {
-          "ts": "2026-08-06T14:47:38.745Z",
-          "points": 7468,
-          "maxPoints": 11405,
-          "passing": 16
-        },
-        {
-          "ts": "2026-08-07T00:27:42.595Z",
-          "points": 7469,
-          "maxPoints": 11405,
-          "passing": 16
-        },
-        {
-          "ts": "2026-08-07T03:28:40.811Z",
-          "points": 7469,
-          "maxPoints": 11405,
-          "passing": 16
-        },
-        {
-          "ts": "2026-08-07T07:54:02.515Z",
-          "points": 7467,
-          "maxPoints": 11405,
-          "passing": 16
-        },
-        {
-          "ts": "2026-08-07T13:51:57.995Z",
-          "points": 7471,
-          "maxPoints": 11405,
-          "passing": 16
-        },
-        {
-          "ts": "2026-08-07T19:27:33.267Z",
-          "points": 7470,
-          "maxPoints": 11405,
-          "passing": 16
-        },
-        {
-          "ts": "2026-08-08T02:31:31.356Z",
-          "points": 7471,
-          "maxPoints": 11405,
-          "passing": 15
-        },
-        {
-          "ts": "2026-08-08T07:23:41.339Z",
-          "points": 7468,
-          "maxPoints": 11405,
-          "passing": 16
-        },
-        {
-          "ts": "2026-08-08T13:24:29.592Z",
-          "points": 7470,
-          "maxPoints": 11405,
-          "passing": 16
-        },
-        {
-          "ts": "2026-08-08T19:11:21.661Z",
-          "points": 7468,
-          "maxPoints": 11405,
-          "passing": 16
-        },
-        {
-          "ts": "2026-08-09T02:42:40.639Z",
-          "points": 7469,
-          "maxPoints": 11405,
-          "passing": 16
-        },
-        {
-          "ts": "2026-08-09T07:28:48.918Z",
-          "points": 7469,
-          "maxPoints": 11405,
-          "passing": 16
-        },
-        {
-          "ts": "2026-08-09T13:28:45.110Z",
-          "points": 7465,
-          "maxPoints": 11405,
-          "passing": 16
-        },
-        {
-          "ts": "2026-08-09T19:14:30.609Z",
-          "points": 7468,
-          "maxPoints": 11405,
-          "passing": 16
-        },
-        {
-          "ts": "2026-08-10T02:43:04.724Z",
-          "points": 7466,
-          "maxPoints": 11405,
-          "passing": 15
-        },
-        {
-          "ts": "2026-08-10T08:15:36.658Z",
-          "points": 7469,
-          "maxPoints": 11405,
-          "passing": 15
-        },
-        {
-          "ts": "2026-08-10T13:55:25.175Z",
-          "points": 7471,
-          "maxPoints": 11405,
-          "passing": 16
-        },
-        {
-          "ts": "2026-08-10T19:28:03.793Z",
-          "points": 7465,
-          "maxPoints": 11405,
-          "passing": 16
-        },
-        {
-          "ts": "2026-08-11T02:39:19.191Z",
-          "points": 7467,
-          "maxPoints": 11405,
-          "passing": 15
-        },
-        {
-          "ts": "2026-08-11T07:45:19.836Z",
-          "points": 7471,
-          "maxPoints": 11405,
-          "passing": 16
-        },
-        {
-          "ts": "2026-08-11T13:53:18.380Z",
-          "points": 7470,
-          "maxPoints": 11405,
-          "passing": 16
-        },
-        {
-          "ts": "2026-08-11T19:31:25.155Z",
-          "points": 7469,
-          "maxPoints": 11405,
-          "passing": 15
-        },
-        {
-          "ts": "2026-08-12T02:55:07.984Z",
-          "points": 7567,
-          "maxPoints": 11405,
-          "passing": 16
-        },
-        {
-          "ts": "2026-08-12T08:03:09.835Z",
-          "points": 7568,
-          "maxPoints": 11405,
-          "passing": 16
-        },
-        {
-          "ts": "2026-08-12T13:57:10.333Z",
-          "points": 7561,
-          "maxPoints": 11405,
-          "passing": 15
-        },
-        {
-          "ts": "2026-08-12T19:30:41.285Z",
-          "points": 7566,
-          "maxPoints": 11405,
-          "passing": 16
-        },
-        {
-          "ts": "2026-08-13T02:55:47.324Z",
-          "points": 7792,
-          "maxPoints": 11405,
-          "passing": 15
-        },
-        {
-          "ts": "2026-08-13T08:04:25.963Z",
-          "points": 7842,
-          "maxPoints": 11405,
-          "passing": 16
-        },
-        {
-          "ts": "2026-08-13T13:58:12.124Z",
-          "points": 7839,
-          "maxPoints": 11405,
-          "passing": 16
-        },
-        {
-          "ts": "2026-08-13T19:31:09.860Z",
-          "points": 7840,
-          "maxPoints": 11405,
-          "passing": 16
-        },
-        {
-          "ts": "2026-08-14T02:57:44.554Z",
-          "points": 8085,
-          "maxPoints": 11405,
-          "passing": 16
-        },
-        {
-          "ts": "2026-08-14T08:02:21.686Z",
-          "points": 8104,
-          "maxPoints": 11405,
-          "passing": 16
-        },
-        {
-          "ts": "2026-08-14T13:53:23.353Z",
-          "points": 8106,
-          "maxPoints": 11405,
-          "passing": 16
-        },
-        {
-          "ts": "2026-08-14T19:24:47.911Z",
-          "points": 8836,
-          "maxPoints": 11405,
-          "passing": 18
-        },
-        {
-          "ts": "2026-08-15T02:01:54.727Z",
-          "points": 9086,
-          "maxPoints": 11405,
-          "passing": 18
-        },
-        {
-          "ts": "2026-08-15T07:06:55.340Z",
-          "points": 9399,
-          "maxPoints": 11405,
-          "passing": 18
-        },
-        {
-          "ts": "2026-08-15T13:10:42.009Z",
-          "points": 9454,
-          "maxPoints": 11405,
-          "passing": 18
-        },
-        {
-          "ts": "2026-08-15T19:00:03.385Z",
-          "points": 9454,
-          "maxPoints": 11405,
-          "passing": 18
-        },
-        {
-          "ts": "2026-08-16T02:09:37.936Z",
-          "points": 10057,
-          "maxPoints": 11405,
-          "passing": 18
-        },
-        {
-          "ts": "2026-08-16T07:10:52.760Z",
-          "points": 10061,
-          "maxPoints": 11405,
-          "passing": 18
-        },
-        {
-          "ts": "2026-08-16T13:08:43.042Z",
-          "points": 10056,
-          "maxPoints": 11405,
-          "passing": 18
-        },
-        {
-          "ts": "2026-08-16T18:56:16.237Z",
-          "points": 10061,
-          "maxPoints": 11405,
-          "passing": 19
-        },
-        {
-          "ts": "2026-08-17T02:07:30.013Z",
-          "points": 10716,
-          "maxPoints": 11405,
-          "passing": 18
-        },
-        {
-          "ts": "2026-08-17T07:28:22.011Z",
-          "points": 10716,
-          "maxPoints": 11405,
-          "passing": 18
-        },
-        {
-          "ts": "2026-08-17T13:17:46.776Z",
-          "points": 10716,
-          "maxPoints": 11405,
-          "passing": 18
-        },
-        {
-          "ts": "2026-08-17T19:07:19.299Z",
-          "points": 10719,
-          "maxPoints": 11405,
-          "passing": 18
-        },
-        {
-          "ts": "2026-08-18T02:02:21.832Z",
-          "points": 10719,
-          "maxPoints": 11405,
-          "passing": 18
-        },
-        {
-          "ts": "2026-08-18T07:16:51.451Z",
-          "points": 10721,
-          "maxPoints": 11405,
-          "passing": 19
-        },
-        {
-          "ts": "2026-08-18T13:19:39.361Z",
-          "points": 10715,
-          "maxPoints": 11405,
-          "passing": 18
-        },
-        {
-          "ts": "2026-08-18T14:45:34.569Z",
-          "points": 10775,
-          "maxPoints": 11405,
-          "passing": 21
-        },
-        {
-          "ts": "2026-08-18T19:08:19.058Z",
-          "points": 10775,
-          "maxPoints": 11405,
-          "passing": 21
-        },
-        {
-          "ts": "2026-08-19T02:05:14.197Z",
-          "points": 10775,
-          "maxPoints": 11405,
-          "passing": 22
-        },
-        {
-          "ts": "2026-08-19T07:17:48.304Z",
-          "points": 10775,
-          "maxPoints": 11405,
-          "passing": 22
-        },
-        {
-          "ts": "2026-08-19T13:20:25.995Z",
-          "points": 10775,
-          "maxPoints": 11405,
-          "passing": 22
-        },
-        {
-          "ts": "2026-08-19T19:05:34.552Z",
-          "points": 10786,
-          "maxPoints": 11405,
-          "passing": 22
-        },
-        {
-          "ts": "2026-08-20T02:04:46.162Z",
-          "points": 10786,
-          "maxPoints": 11405,
-          "passing": 22
-        },
-        {
-          "ts": "2026-08-20T07:16:21.093Z",
-          "points": 11191,
-          "maxPoints": 11405,
-          "passing": 23
-        },
-        {
-          "ts": "2026-08-20T13:19:13.099Z",
-          "points": 11191,
-          "maxPoints": 11405,
-          "passing": 23
-        },
-        {
-          "ts": "2026-08-20T19:11:26.675Z",
-          "points": 11199,
-          "maxPoints": 11405,
-          "passing": 23
-        },
-        {
-          "ts": "2026-08-21T02:09:34.512Z",
-          "points": 11199,
-          "maxPoints": 11405,
-          "passing": 23
-        },
-        {
-          "ts": "2026-08-21T07:19:27.834Z",
-          "points": 11199,
-          "maxPoints": 11405,
-          "passing": 23
-        },
-        {
-          "ts": "2026-08-21T13:23:31.542Z",
-          "points": 11199,
-          "maxPoints": 11405,
-          "passing": 23
-        },
-        {
-          "ts": "2026-08-21T19:08:39.814Z",
-          "points": 11199,
-          "maxPoints": 11405,
-          "passing": 23
-        },
-        {
-          "ts": "2026-08-22T02:02:18.209Z",
-          "points": 11199,
-          "maxPoints": 11405,
-          "passing": 23
-        },
-        {
-          "ts": "2026-08-22T07:09:24.154Z",
-          "points": 11199,
-          "maxPoints": 11405,
-          "passing": 23
-        },
-        {
-          "ts": "2026-08-22T13:13:04.851Z",
-          "points": 11199,
-          "maxPoints": 11405,
-          "passing": 23
-        },
-        {
-          "ts": "2026-08-22T18:59:12.426Z",
-          "points": 11199,
-          "maxPoints": 11405,
-          "passing": 23
-        },
-        {
-          "ts": "2026-08-23T02:13:18.244Z",
-          "points": 11199,
-          "maxPoints": 11405,
-          "passing": 23
-        },
-        {
-          "ts": "2026-08-23T07:12:42.329Z",
-          "points": 11199,
-          "maxPoints": 11405,
-          "passing": 23
-        },
-        {
-          "ts": "2026-08-23T13:13:57.306Z",
-          "points": 11199,
-          "maxPoints": 11405,
-          "passing": 23
-        },
-        {
-          "ts": "2026-08-23T18:57:53.615Z",
-          "points": 11199,
-          "maxPoints": 11405,
-          "passing": 23
-        },
-        {
-          "ts": "2026-08-24T02:10:03.032Z",
-          "points": 11199,
-          "maxPoints": 11405,
-          "passing": 23
-        },
-        {
-          "ts": "2026-08-24T07:28:31.036Z",
-          "points": 11199,
-          "maxPoints": 11405,
-          "passing": 23
-        },
-        {
-          "ts": "2026-08-24T13:26:21.990Z",
-          "points": 11199,
-          "maxPoints": 11405,
-          "passing": 23
-        },
-        {
-          "ts": "2026-08-24T19:09:37.426Z",
-          "points": 11199,
-          "maxPoints": 11405,
-          "passing": 23
-        },
-        {
-          "ts": "2026-08-25T02:06:16.977Z",
-          "points": 11199,
-          "maxPoints": 11405,
-          "passing": 23
-        },
-        {
-          "ts": "2026-08-27T09:48:02.682Z",
-          "points": 11199,
-          "maxPoints": 11405,
-          "passing": 23
-        },
-        {
-          "ts": "2026-08-27T22:17:54.269Z",
-          "points": 11117,
-          "maxPoints": 11405,
-          "passing": 23
-        },
-        {
-          "ts": "2026-08-27T23:39:27.396Z",
-          "points": 11117,
-          "maxPoints": 11405,
-          "passing": 23
-        },
-        {
-          "ts": "2026-08-28T11:24:25.244Z",
-          "points": 11117,
-          "maxPoints": 11405,
-          "passing": 23
-        },
-        {
-          "ts": "2026-08-28T22:21:33.730Z",
-          "points": 11117,
-          "maxPoints": 11405,
-          "passing": 23
-        },
-        {
-          "ts": "2026-08-29T07:06:28.744Z",
-          "points": 11117,
-          "maxPoints": 11405,
-          "passing": 23
-        },
-        {
-          "ts": "2026-08-29T16:45:54.956Z",
-          "points": 11117,
-          "maxPoints": 11405,
-          "passing": 23
-        },
-        {
-          "ts": "2026-08-29T20:57:41.125Z",
-          "points": 11117,
-          "maxPoints": 11405,
-          "passing": 23
-        },
-        {
-          "ts": "2026-08-30T05:25:51.347Z",
-          "points": 11231,
-          "maxPoints": 11405,
-          "passing": 23
-        },
-        {
-          "ts": "2026-08-30T11:55:41.382Z",
-          "points": 11231,
-          "maxPoints": 11405,
-          "passing": 23
-        },
-        {
-          "ts": "2026-08-30T13:55:53.606Z",
-          "points": 11231,
-          "maxPoints": 11405,
-          "passing": 23
-        },
-        {
-          "ts": "2026-08-30T16:42:53.814Z",
-          "points": 11231,
-          "maxPoints": 11405,
-          "passing": 23
-        },
-        {
-          "ts": "2026-08-30T21:07:15.907Z",
-          "points": 11231,
-          "maxPoints": 11405,
-          "passing": 23
-        },
-        {
-          "ts": "2026-08-31T05:34:47.777Z",
-          "points": 11231,
-          "maxPoints": 11405,
-          "passing": 23
-        },
-        {
-          "ts": "2026-08-31T13:48:04.113Z",
-          "points": 11337,
-          "maxPoints": 11405,
-          "passing": 23
-        },
-        {
-          "ts": "2026-08-31T22:52:29.412Z",
-          "points": 11337,
-          "maxPoints": 11405,
-          "passing": 23
-        },
-        {
-          "ts": "2026-09-01T05:08:26.466Z",
-          "points": 11337,
-          "maxPoints": 11405,
-          "passing": 23
-        },
-        {
-          "ts": "2026-09-01T11:40:57.018Z",
-          "points": 11337,
-          "maxPoints": 11405,
-          "passing": 23
-        },
-        {
-          "ts": "2026-09-01T16:40:59.794Z",
-          "points": 11337,
-          "maxPoints": 11405,
-          "passing": 23
-        },
-        {
-          "ts": "2026-09-01T21:04:27.610Z",
-          "points": 11337,
-          "maxPoints": 11405,
-          "passing": 23
-        },
-        {
-          "ts": "2026-09-02T04:34:10.603Z",
-          "points": 11337,
-          "maxPoints": 11405,
-          "passing": 23
-        },
-        {
-          "ts": "2026-09-02T11:18:40.894Z",
-          "points": 11341,
-          "maxPoints": 11405,
-          "passing": 24
-        },
-        {
-          "ts": "2026-09-02T16:37:11.523Z",
-          "points": 11341,
-          "maxPoints": 11405,
-          "passing": 24
-        },
-        {
-          "ts": "2026-09-02T21:04:54.714Z",
-          "points": 11341,
-          "maxPoints": 11405,
-          "passing": 24
-        },
-        {
-          "ts": "2026-09-03T04:24:04.502Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 41
-        },
-        {
-          "ts": "2026-09-03T11:15:39.444Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 41
-        },
-        {
-          "ts": "2026-09-03T16:27:49.558Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 41
-        },
-        {
-          "ts": "2026-09-03T21:04:16.341Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 41
-        },
-        {
-          "ts": "2026-09-04T04:34:09.563Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 41
-        },
-        {
-          "ts": "2026-09-04T11:19:31.639Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 41
-        },
-        {
-          "ts": "2026-09-04T16:23:46.181Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 41
-        },
-        {
-          "ts": "2026-09-04T20:48:39.884Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 41
-        },
-        {
-          "ts": "2026-09-05T04:28:32.263Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 41
-        },
-        {
-          "ts": "2026-09-05T10:36:16.336Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 41
-        },
-        {
-          "ts": "2026-09-05T15:15:12.607Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 41
-        },
-        {
-          "ts": "2026-09-05T20:22:19.297Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 41
-        },
-        {
-          "ts": "2026-09-06T04:39:51.150Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 41
-        },
-        {
-          "ts": "2026-09-06T10:57:53.599Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 41
-        },
-        {
-          "ts": "2026-09-06T15:30:39.364Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 41
-        },
-        {
-          "ts": "2026-09-06T20:26:42.360Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 41
-        },
-        {
-          "ts": "2026-09-07T04:41:44.562Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 41
-        },
-        {
-          "ts": "2026-09-07T12:32:50.155Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 41
-        },
-        {
-          "ts": "2026-09-07T21:33:34.553Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 41
-        },
-        {
-          "ts": "2026-09-08T04:36:26.762Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 41
-        },
-        {
-          "ts": "2026-09-08T11:19:50.289Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 41
-        },
-        {
-          "ts": "2026-09-08T16:40:39.534Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 41
-        },
-        {
-          "ts": "2026-09-08T21:12:02.836Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 41
-        },
-        {
-          "ts": "2026-09-09T04:43:17.359Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 41
-        },
-        {
-          "ts": "2026-09-09T11:24:04.026Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 41
-        },
-        {
-          "ts": "2026-09-09T16:40:48.921Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 41
-        },
-        {
-          "ts": "2026-09-09T20:58:23.382Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 41
-        },
-        {
-          "ts": "2026-09-10T04:44:29.682Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 41
-        },
-        {
-          "ts": "2026-09-10T11:21:32.800Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 41
-        },
-        {
-          "ts": "2026-09-10T16:27:19.885Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 41
-        },
-        {
-          "ts": "2026-09-10T20:55:07.007Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 41
-        },
-        {
-          "ts": "2026-09-11T04:42:15.694Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 41
-        },
-        {
-          "ts": "2026-09-11T11:22:46.537Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 41
-        },
-        {
-          "ts": "2026-09-11T16:31:20.917Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 41
-        },
-        {
-          "ts": "2026-09-11T20:59:56.184Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 41
-        },
-        {
-          "ts": "2026-09-12T04:37:04.151Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 41
-        },
-        {
-          "ts": "2026-09-12T10:47:38.659Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 41
-        },
-        {
-          "ts": "2026-09-12T15:35:10.628Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 41
-        },
-        {
-          "ts": "2026-09-12T20:37:06.845Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 41
-        },
-        {
-          "ts": "2026-09-13T04:49:39.935Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 41
-        },
-        {
-          "ts": "2026-09-13T11:54:04.332Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 41
-        },
-        {
-          "ts": "2026-09-13T16:19:52.462Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 41
-        },
-        {
-          "ts": "2026-09-13T20:52:58.796Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 41
-        },
-        {
-          "ts": "2026-09-14T04:58:12.543Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 41
-        },
-        {
-          "ts": "2026-09-14T12:47:52.998Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 41
-        },
-        {
-          "ts": "2026-09-14T21:53:56.664Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 41
-        },
-        {
-          "ts": "2026-09-15T04:56:37.732Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 41
-        },
-        {
-          "ts": "2026-09-15T11:46:39.268Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 41
-        },
-        {
-          "ts": "2026-09-15T17:01:44.957Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 41
-        },
-        {
-          "ts": "2026-09-15T21:24:52.920Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 41
-        },
-        {
-          "ts": "2026-09-16T04:51:43.254Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 41
-        },
-        {
-          "ts": "2026-09-16T11:34:55.942Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 42
-        },
-        {
-          "ts": "2026-09-16T16:58:33.208Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 42
-        },
-        {
-          "ts": "2026-09-16T18:35:28.732Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 42
-        },
-        {
-          "ts": "2026-09-17T01:04:40.777Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 42
-        },
-        {
-          "ts": "2026-09-17T06:47:07.478Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 42
-        },
-        {
-          "ts": "2026-09-17T12:41:45.042Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 42
-        },
-        {
-          "ts": "2026-09-17T18:36:54.427Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 42
-        },
-        {
-          "ts": "2026-09-18T01:04:17.866Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 42
-        },
-        {
-          "ts": "2026-09-18T06:45:09.526Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 42
-        },
-        {
-          "ts": "2026-09-18T12:39:54.522Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 42
-        },
-        {
-          "ts": "2026-09-18T18:34:55.523Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 42
-        },
-        {
-          "ts": "2026-09-19T01:02:42.319Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 42
-        },
-        {
-          "ts": "2026-09-19T06:42:11.414Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 42
-        },
-        {
-          "ts": "2026-09-19T12:38:15.434Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 42
-        },
-        {
-          "ts": "2026-09-19T18:30:42.221Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 42
-        },
-        {
-          "ts": "2026-09-20T01:10:17.184Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 42
-        },
-        {
-          "ts": "2026-09-20T06:42:28.260Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 43
-        },
-        {
-          "ts": "2026-09-20T12:38:41.314Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 43
-        },
-        {
-          "ts": "2026-09-20T18:33:24.660Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 43
-        },
-        {
-          "ts": "2026-09-21T01:09:33.421Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 43
-        },
-        {
-          "ts": "2026-09-21T06:56:03.915Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 43
-        },
-        {
-          "ts": "2026-09-21T12:39:05.511Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 43
-        },
-        {
-          "ts": "2026-09-21T18:36:27.230Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 43
-        },
-        {
-          "ts": "2026-09-22T01:04:29.253Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 43
-        },
-        {
-          "ts": "2026-09-22T06:45:39.068Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 43
-        },
-        {
-          "ts": "2026-09-22T12:40:41.176Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 43
-        },
-        {
-          "ts": "2026-09-22T18:37:08.061Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 43
-        },
-        {
-          "ts": "2026-09-23T01:02:55.731Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 43
-        },
-        {
-          "ts": "2026-09-23T06:46:46.977Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 43
-        },
-        {
-          "ts": "2026-09-23T12:42:20.850Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 43
-        },
-        {
-          "ts": "2026-09-23T18:36:55.886Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 43
-        },
-        {
-          "ts": "2026-09-24T01:03:05.886Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 43
-        },
-        {
-          "ts": "2026-09-24T06:46:55.973Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 43
-        },
-        {
-          "ts": "2026-09-24T12:43:29.152Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 43
-        },
-        {
-          "ts": "2026-09-24T18:37:23.648Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 43
-        },
-        {
-          "ts": "2026-09-25T01:04:54.525Z",
-          "points": 11404,
-          "maxPoints": 11405,
-          "passing": 43
-        }
-      ],
-      "sessions": [
-        {
-          "name": "seed0002-healer-reflection-drummer.session.json",
-          "passed": true,
-          "rng": {
-            "matched": 27158,
-            "total": 27158
-          },
-          "rngSteps": {
-            "matched": 595,
-            "total": 595
-          },
-          "screen": {
-            "matched": 595,
-            "total": 595
-          },
-          "cellsOnly": {
-            "matched": 595,
-            "total": 595
-          },
-          "cursors": {
-            "matched": 595,
-            "total": 595
-          },
-          "animFrames": {
-            "matched": 0,
-            "total": 128
-          }
-        },
-        {
-          "name": "seed0004-feeding-pony.session.json",
-          "passed": true,
-          "rng": {
-            "matched": 12084,
-            "total": 12084
-          },
-          "rngSteps": {
-            "matched": 409,
-            "total": 409
-          },
-          "screen": {
-            "matched": 409,
-            "total": 409
-          },
-          "cellsOnly": {
-            "matched": 409,
-            "total": 409
-          },
-          "cursors": {
-            "matched": 409,
-            "total": 409
-          },
-          "animFrames": {
-            "matched": 0,
-            "total": 47
-          }
-        },
-        {
-          "name": "seed0006-wizard-water-demon.session.json",
-          "passed": true,
-          "rng": {
-            "matched": 6736,
-            "total": 6736
-          },
-          "rngSteps": {
-            "matched": 123,
-            "total": 123
-          },
-          "screen": {
-            "matched": 123,
-            "total": 123
-          },
-          "cellsOnly": {
-            "matched": 123,
-            "total": 123
-          },
-          "cursors": {
-            "matched": 123,
-            "total": 123
-          },
-          "animFrames": {
-            "matched": 0,
-            "total": 8
-          }
-        },
-        {
-          "name": "seed0007-rogue-snake-swamp.session.json",
-          "passed": true,
-          "rng": {
-            "matched": 16373,
-            "total": 16373
-          },
-          "rngSteps": {
-            "matched": 302,
-            "total": 302
-          },
-          "screen": {
-            "matched": 302,
-            "total": 302
-          },
-          "cellsOnly": {
-            "matched": 302,
-            "total": 302
-          },
-          "cursors": {
-            "matched": 302,
-            "total": 302
-          },
-          "animFrames": {
-            "matched": 0,
-            "total": 58
-          }
-        },
-        {
-          "name": "seed0009-swimmer-mforce.session.json",
-          "passed": true,
-          "rng": {
-            "matched": 3713,
-            "total": 3713
-          },
-          "rngSteps": {
-            "matched": 73,
-            "total": 73
-          },
-          "screen": {
-            "matched": 73,
-            "total": 73
-          },
-          "cellsOnly": {
-            "matched": 73,
-            "total": 73
-          },
-          "cursors": {
-            "matched": 73,
-            "total": 73
-          },
-          "animFrames": {
-            "matched": 0,
-            "total": 0
-          }
-        },
-        {
-          "name": "seed0012-monk-vault-escort.session.json",
-          "passed": true,
-          "rng": {
-            "matched": 13878,
-            "total": 13878
-          },
-          "rngSteps": {
-            "matched": 308,
-            "total": 308
-          },
-          "screen": {
-            "matched": 308,
-            "total": 308
-          },
-          "cellsOnly": {
-            "matched": 308,
-            "total": 308
-          },
-          "cursors": {
-            "matched": 308,
-            "total": 308
-          },
-          "animFrames": {
-            "matched": 0,
-            "total": 49
-          }
-        },
-        {
-          "name": "seed0013-friday13-save-then-fullmoon-restore.session.json",
-          "passed": true,
-          "rng": {
-            "matched": 4804,
-            "total": 4804
-          },
-          "rngSteps": {
-            "matched": 99,
-            "total": 99
-          },
-          "screen": {
-            "matched": 99,
-            "total": 99
-          },
-          "cellsOnly": {
-            "matched": 99,
-            "total": 99
-          },
-          "cursors": {
-            "matched": 99,
-            "total": 99
-          },
-          "animFrames": {
-            "matched": 0,
-            "total": 10
-          }
-        },
-        {
-          "name": "seed0013-rogue-friday13-combat.session.json",
-          "passed": true,
-          "rng": {
-            "matched": 4838,
-            "total": 4838
-          },
-          "rngSteps": {
-            "matched": 59,
-            "total": 59
-          },
-          "screen": {
-            "matched": 59,
-            "total": 59
-          },
-          "cellsOnly": {
-            "matched": 59,
-            "total": 59
-          },
-          "cursors": {
-            "matched": 59,
-            "total": 59
-          },
-          "animFrames": {
-            "matched": 0,
-            "total": 10
-          }
-        },
-        {
-          "name": "seed0014-dequa-fountain-explore.session.json",
-          "passed": true,
-          "rng": {
-            "matched": 59178,
-            "total": 59178
-          },
-          "rngSteps": {
-            "matched": 714,
-            "total": 714
-          },
-          "screen": {
-            "matched": 714,
-            "total": 714
-          },
-          "cellsOnly": {
-            "matched": 714,
-            "total": 714
-          },
-          "cursors": {
-            "matched": 714,
-            "total": 714
-          },
-          "animFrames": {
-            "matched": 0,
-            "total": 995
-          }
-        },
-        {
-          "name": "seed0015-valk-level2-pit-dog-wait.session.json",
-          "passed": true,
-          "rng": {
-            "matched": 8563,
-            "total": 8563
-          },
-          "rngSteps": {
-            "matched": 44,
-            "total": 44
-          },
-          "screen": {
-            "matched": 44,
-            "total": 44
-          },
-          "cellsOnly": {
-            "matched": 44,
-            "total": 44
-          },
-          "cursors": {
-            "matched": 44,
-            "total": 44
-          },
-          "animFrames": {
-            "matched": 0,
-            "total": 0
-          }
-        },
-        {
-          "name": "seed0016-healer-newmoon-eat-zap.session.json",
-          "passed": true,
-          "rng": {
-            "matched": 3656,
-            "total": 3656
-          },
-          "rngSteps": {
-            "matched": 36,
-            "total": 36
-          },
-          "screen": {
-            "matched": 36,
-            "total": 36
-          },
-          "cellsOnly": {
-            "matched": 36,
-            "total": 36
-          },
-          "cursors": {
-            "matched": 36,
-            "total": 36
-          },
-          "animFrames": {
-            "matched": 0,
-            "total": 4
-          }
-        },
-        {
-          "name": "seed0017-samurai-altar-pray.session.json",
-          "passed": true,
-          "rng": {
-            "matched": 3465,
-            "total": 3465
-          },
-          "rngSteps": {
-            "matched": 67,
-            "total": 67
-          },
-          "screen": {
-            "matched": 67,
-            "total": 67
-          },
-          "cellsOnly": {
-            "matched": 67,
-            "total": 67
-          },
-          "cursors": {
-            "matched": 67,
-            "total": 67
-          },
-          "animFrames": {
-            "matched": 0,
-            "total": 33
-          }
-        },
-        {
-          "name": "seed0030-ten-diverse-deaths.session.json",
-          "passed": true,
-          "rng": {
-            "matched": 105529,
-            "total": 105529
-          },
-          "rngSteps": {
-            "matched": 1953,
-            "total": 1953
-          },
-          "screen": {
-            "matched": 1953,
-            "total": 1953
-          },
-          "cellsOnly": {
-            "matched": 1953,
-            "total": 1953
-          },
-          "cursors": {
-            "matched": 1953,
-            "total": 1953
-          },
-          "animFrames": {
-            "matched": 0,
-            "total": 40
-          }
-        },
-        {
-          "name": "seed0060-orc-rogue-kick-search.session.json",
-          "passed": true,
-          "rng": {
-            "matched": 3626,
-            "total": 3626
-          },
-          "rngSteps": {
-            "matched": 41,
-            "total": 41
-          },
-          "screen": {
-            "matched": 41,
-            "total": 41
-          },
-          "cellsOnly": {
-            "matched": 41,
-            "total": 41
-          },
-          "cursors": {
-            "matched": 41,
-            "total": 41
-          },
-          "animFrames": {
-            "matched": 0,
-            "total": 4
-          }
-        },
-        {
-          "name": "seed0077-rogue-chargen.session.json",
-          "passed": true,
-          "rng": {
-            "matched": 3242,
-            "total": 3242
-          },
-          "rngSteps": {
-            "matched": 33,
-            "total": 33
-          },
-          "screen": {
-            "matched": 33,
-            "total": 33
-          },
-          "cellsOnly": {
-            "matched": 33,
-            "total": 33
-          },
-          "cursors": {
-            "matched": 33,
-            "total": 33
-          },
-          "animFrames": {
-            "matched": 0,
-            "total": 0
-          }
-        },
-        {
-          "name": "seed0101-ranger-quiver-throw-travel-engrave.session.json",
-          "passed": true,
-          "rng": {
-            "matched": 2371,
-            "total": 2371
-          },
-          "rngSteps": {
-            "matched": 27,
-            "total": 27
-          },
-          "screen": {
-            "matched": 27,
-            "total": 27
-          },
-          "cellsOnly": {
-            "matched": 27,
-            "total": 27
-          },
-          "cursors": {
-            "matched": 27,
-            "total": 27
-          },
-          "animFrames": {
-            "matched": 0,
-            "total": 0
-          }
-        },
-        {
-          "name": "seed0102-ranger-name-cancel.session.json",
-          "passed": true,
-          "rng": {
-            "matched": 4485,
-            "total": 4485
-          },
-          "rngSteps": {
-            "matched": 25,
-            "total": 25
-          },
-          "screen": {
-            "matched": 25,
-            "total": 25
-          },
-          "cellsOnly": {
-            "matched": 25,
-            "total": 25
-          },
-          "cursors": {
-            "matched": 25,
-            "total": 25
-          },
-          "animFrames": {
-            "matched": 0,
-            "total": 0
-          }
-        },
-        {
-          "name": "seed0103-knight-ride-pony.session.json",
-          "passed": true,
-          "rng": {
-            "matched": 2640,
-            "total": 2640
-          },
-          "rngSteps": {
-            "matched": 60,
-            "total": 60
-          },
-          "screen": {
-            "matched": 60,
-            "total": 60
-          },
-          "cellsOnly": {
-            "matched": 60,
-            "total": 60
-          },
-          "cursors": {
-            "matched": 60,
-            "total": 60
-          },
-          "animFrames": {
-            "matched": 0,
-            "total": 0
-          }
-        },
-        {
-          "name": "seed0104-knight-ride-combat.session.json",
-          "passed": true,
-          "rng": {
-            "matched": 3223,
-            "total": 3223
-          },
-          "rngSteps": {
-            "matched": 43,
-            "total": 43
-          },
-          "screen": {
-            "matched": 43,
-            "total": 43
-          },
-          "cellsOnly": {
-            "matched": 43,
-            "total": 43
-          },
-          "cursors": {
-            "matched": 43,
-            "total": 43
-          },
-          "animFrames": {
-            "matched": 0,
-            "total": 2
-          }
-        },
-        {
-          "name": "seed0105-valk-chat-lamp-ration.session.json",
-          "passed": true,
-          "rng": {
-            "matched": 2499,
-            "total": 2499
-          },
-          "rngSteps": {
-            "matched": 30,
-            "total": 30
-          },
-          "screen": {
-            "matched": 30,
-            "total": 30
-          },
-          "cellsOnly": {
-            "matched": 30,
-            "total": 30
-          },
-          "cursors": {
-            "matched": 30,
-            "total": 30
-          },
-          "animFrames": {
-            "matched": 0,
-            "total": 0
-          }
-        },
-        {
-          "name": "seed0106-priest-extcmd-sweep.session.json",
-          "passed": true,
-          "rng": {
-            "matched": 4194,
-            "total": 4194
-          },
-          "rngSteps": {
-            "matched": 267,
-            "total": 267
-          },
-          "screen": {
-            "matched": 267,
-            "total": 267
-          },
-          "cellsOnly": {
-            "matched": 267,
-            "total": 267
-          },
-          "cursors": {
-            "matched": 267,
-            "total": 267
-          },
-          "animFrames": {
-            "matched": 0,
-            "total": 6
-          }
-        },
-        {
-          "name": "seed0107-samurai-twoweapon-enhance.session.json",
-          "passed": true,
-          "rng": {
-            "matched": 2902,
-            "total": 2902
-          },
-          "rngSteps": {
-            "matched": 98,
-            "total": 98
-          },
-          "screen": {
-            "matched": 98,
-            "total": 98
-          },
-          "cellsOnly": {
-            "matched": 98,
-            "total": 98
-          },
-          "cursors": {
-            "matched": 98,
-            "total": 98
-          },
-          "animFrames": {
-            "matched": 0,
-            "total": 0
-          }
-        },
-        {
-          "name": "seed0108-wizard-extcmd-wishlist.session.json",
-          "passed": true,
-          "rng": {
-            "matched": 16958,
-            "total": 16958
-          },
-          "rngSteps": {
-            "matched": 303,
-            "total": 303
-          },
-          "screen": {
-            "matched": 303,
-            "total": 303
-          },
-          "cellsOnly": {
-            "matched": 303,
-            "total": 303
-          },
-          "cursors": {
-            "matched": 303,
-            "total": 303
-          },
-          "animFrames": {
-            "matched": 0,
-            "total": 4
-          }
-        },
-        {
-          "name": "seed0116-wizard-wear-shop.session.json",
-          "passed": true,
-          "rng": {
-            "matched": 12562,
-            "total": 12562
-          },
-          "rngSteps": {
-            "matched": 127,
-            "total": 127
-          },
-          "screen": {
-            "matched": 127,
-            "total": 127
-          },
-          "cellsOnly": {
-            "matched": 127,
-            "total": 127
-          },
-          "cursors": {
-            "matched": 127,
-            "total": 127
-          },
-          "animFrames": {
-            "matched": 0,
-            "total": 8
-          }
-        },
-        {
-          "name": "seed0200-monk-north-search.session.json",
-          "passed": true,
-          "rng": {
-            "matched": 3822,
-            "total": 3822
-          },
-          "rngSteps": {
-            "matched": 40,
-            "total": 40
-          },
-          "screen": {
-            "matched": 40,
-            "total": 40
-          },
-          "cellsOnly": {
-            "matched": 40,
-            "total": 40
-          },
-          "cursors": {
-            "matched": 40,
-            "total": 40
-          },
-          "animFrames": {
-            "matched": 0,
-            "total": 0
-          }
-        },
-        {
-          "name": "seed0360-wizard-world-tour.session.json",
-          "passed": true,
-          "rng": {
-            "matched": 120639,
-            "total": 120639
-          },
-          "rngSteps": {
-            "matched": 833,
-            "total": 833
-          },
-          "screen": {
-            "matched": 833,
-            "total": 833
-          },
-          "cellsOnly": {
-            "matched": 833,
-            "total": 833
-          },
-          "cursors": {
-            "matched": 833,
-            "total": 833
-          },
-          "animFrames": {
-            "matched": 0,
-            "total": 12
-          }
-        },
-        {
-          "name": "seed0361-archeologist-tour.session.json",
-          "passed": true,
-          "rng": {
-            "matched": 53865,
-            "total": 53865
-          },
-          "rngSteps": {
-            "matched": 366,
-            "total": 366
-          },
-          "screen": {
-            "matched": 366,
-            "total": 366
-          },
-          "cellsOnly": {
-            "matched": 366,
-            "total": 366
-          },
-          "cursors": {
-            "matched": 366,
-            "total": 366
-          },
-          "animFrames": {
-            "matched": 0,
-            "total": 10
-          }
-        },
-        {
-          "name": "seed0367-priest-quest-tour.session.json",
-          "passed": true,
-          "rng": {
-            "matched": 50125,
-            "total": 50125
-          },
-          "rngSteps": {
-            "matched": 324,
-            "total": 324
-          },
-          "screen": {
-            "matched": 324,
-            "total": 324
-          },
-          "cellsOnly": {
-            "matched": 324,
-            "total": 324
-          },
-          "cursors": {
-            "matched": 324,
-            "total": 324
-          },
-          "animFrames": {
-            "matched": 0,
-            "total": 0
-          }
-        },
-        {
-          "name": "seed0373-barbarian-quest-tour.session.json",
-          "passed": true,
-          "rng": {
-            "matched": 35386,
-            "total": 35386
-          },
-          "rngSteps": {
-            "matched": 124,
-            "total": 124
-          },
-          "screen": {
-            "matched": 124,
-            "total": 124
-          },
-          "cellsOnly": {
-            "matched": 124,
-            "total": 124
-          },
-          "cursors": {
-            "matched": 124,
-            "total": 124
-          },
-          "animFrames": {
-            "matched": 0,
-            "total": 0
-          }
-        },
-        {
-          "name": "seed0383-wizard-hallucinate.session.json",
-          "passed": true,
-          "rng": {
-            "matched": 16915,
-            "total": 16915
-          },
-          "rngSteps": {
-            "matched": 219,
-            "total": 219
-          },
-          "screen": {
-            "matched": 219,
-            "total": 219
-          },
-          "cellsOnly": {
-            "matched": 219,
-            "total": 219
-          },
-          "cursors": {
-            "matched": 219,
-            "total": 219
-          },
-          "animFrames": {
-            "matched": 0,
-            "total": 1
-          }
-        },
-        {
-          "name": "seed0398-wizard-wandpoly-pile.session.json",
-          "passed": true,
-          "rng": {
-            "matched": 3026,
-            "total": 3026
-          },
-          "rngSteps": {
-            "matched": 87,
-            "total": 87
-          },
-          "screen": {
-            "matched": 87,
-            "total": 87
-          },
-          "cellsOnly": {
-            "matched": 87,
-            "total": 87
-          },
-          "cursors": {
-            "matched": 87,
-            "total": 87
-          },
-          "animFrames": {
-            "matched": 0,
-            "total": 0
-          }
-        },
-        {
-          "name": "seed0399-wizard-hallu-actions.session.json",
-          "passed": false,
-          "rng": {
-            "matched": 11409,
-            "total": 11409
-          },
-          "rngSteps": {
-            "matched": 532,
-            "total": 532
-          },
-          "screen": {
-            "matched": 531,
-            "total": 532
-          },
-          "cellsOnly": {
-            "matched": 531,
-            "total": 532
-          },
-          "cursors": {
-            "matched": 532,
-            "total": 532
-          },
-          "animFrames": {
-            "matched": 0,
-            "total": 0
-          }
-        },
-        {
-          "name": "seed0501-priest-cast-read-turn.session.json",
-          "passed": true,
-          "rng": {
-            "matched": 2238,
-            "total": 2238
-          },
-          "rngSteps": {
-            "matched": 28,
-            "total": 28
-          },
-          "screen": {
-            "matched": 28,
-            "total": 28
-          },
-          "cellsOnly": {
-            "matched": 28,
-            "total": 28
-          },
-          "cursors": {
-            "matched": 28,
-            "total": 28
-          },
-          "animFrames": {
-            "matched": 0,
-            "total": 0
-          }
-        },
-        {
-          "name": "seed0700-samurai-explore-descend.session.json",
-          "passed": true,
-          "rng": {
-            "matched": 3230,
-            "total": 3230
-          },
-          "rngSteps": {
-            "matched": 51,
-            "total": 51
-          },
-          "screen": {
-            "matched": 51,
-            "total": 51
-          },
-          "cellsOnly": {
-            "matched": 51,
-            "total": 51
-          },
-          "cursors": {
-            "matched": 51,
-            "total": 51
-          },
-          "animFrames": {
-            "matched": 0,
-            "total": 0
-          }
-        },
-        {
-          "name": "seed0900-tourist-explore-actions.session.json",
-          "passed": true,
-          "rng": {
-            "matched": 2983,
-            "total": 2983
-          },
-          "rngSteps": {
-            "matched": 84,
-            "total": 84
-          },
-          "screen": {
-            "matched": 84,
-            "total": 84
-          },
-          "cellsOnly": {
-            "matched": 84,
-            "total": 84
-          },
-          "cursors": {
-            "matched": 84,
-            "total": 84
-          },
-          "animFrames": {
-            "matched": 0,
-            "total": 3
-          }
-        },
-        {
-          "name": "seed1150-caveman-explore-move.session.json",
-          "passed": true,
-          "rng": {
-            "matched": 3137,
-            "total": 3137
-          },
-          "rngSteps": {
-            "matched": 51,
-            "total": 51
-          },
-          "screen": {
-            "matched": 51,
-            "total": 51
-          },
-          "cellsOnly": {
-            "matched": 51,
-            "total": 51
-          },
-          "cursors": {
-            "matched": 51,
-            "total": 51
-          },
-          "animFrames": {
-            "matched": 0,
-            "total": 6
-          }
-        },
-        {
-          "name": "seed1500-rogue-explore-move.session.json",
-          "passed": true,
-          "rng": {
-            "matched": 2768,
-            "total": 2768
-          },
-          "rngSteps": {
-            "matched": 40,
-            "total": 40
-          },
-          "screen": {
-            "matched": 40,
-            "total": 40
-          },
-          "cellsOnly": {
-            "matched": 40,
-            "total": 40
-          },
-          "cursors": {
-            "matched": 40,
-            "total": 40
-          },
-          "animFrames": {
-            "matched": 0,
-            "total": 0
-          }
-        },
-        {
-          "name": "seed1800-tourist-eat-throw.session.json",
-          "passed": true,
-          "rng": {
-            "matched": 2458,
-            "total": 2458
-          },
-          "rngSteps": {
-            "matched": 26,
-            "total": 26
-          },
-          "screen": {
-            "matched": 26,
-            "total": 26
-          },
-          "cellsOnly": {
-            "matched": 26,
-            "total": 26
-          },
-          "cursors": {
-            "matched": 26,
-            "total": 26
-          },
-          "animFrames": {
-            "matched": 0,
-            "total": 0
-          }
-        },
-        {
-          "name": "seed2200-wizard-quaff-zap-read.session.json",
-          "passed": true,
-          "rng": {
-            "matched": 3018,
-            "total": 3018
-          },
-          "rngSteps": {
-            "matched": 230,
-            "total": 230
-          },
-          "screen": {
-            "matched": 230,
-            "total": 230
-          },
-          "cellsOnly": {
-            "matched": 230,
-            "total": 230
-          },
-          "cursors": {
-            "matched": 230,
-            "total": 230
-          },
-          "animFrames": {
-            "matched": 0,
-            "total": 0
-          }
-        },
-        {
-          "name": "seed2600-wizard-custom-binds.session.json",
-          "passed": true,
-          "rng": {
-            "matched": 11647,
-            "total": 11647
-          },
-          "rngSteps": {
-            "matched": 38,
-            "total": 38
-          },
-          "screen": {
-            "matched": 38,
-            "total": 38
-          },
-          "cellsOnly": {
-            "matched": 38,
-            "total": 38
-          },
-          "cursors": {
-            "matched": 38,
-            "total": 38
-          },
-          "animFrames": {
-            "matched": 0,
-            "total": 0
-          }
-        },
-        {
-          "name": "seed4500-knight-coverage.session.json",
-          "passed": true,
-          "rng": {
-            "matched": 108275,
-            "total": 108275
-          },
-          "rngSteps": {
-            "matched": 1814,
-            "total": 1814
-          },
-          "screen": {
-            "matched": 1814,
-            "total": 1814
-          },
-          "cellsOnly": {
-            "matched": 1814,
-            "total": 1814
-          },
-          "cursors": {
-            "matched": 1814,
-            "total": 1814
-          },
-          "animFrames": {
-            "matched": 0,
-            "total": 37
-          }
-        },
-        {
-          "name": "seed5002-wizard-coverage-pair.session.json",
-          "passed": true,
-          "rng": {
-            "matched": 12167,
-            "total": 12167
-          },
-          "rngSteps": {
-            "matched": 410,
-            "total": 410
-          },
-          "screen": {
-            "matched": 410,
-            "total": 410
-          },
-          "cellsOnly": {
-            "matched": 410,
-            "total": 410
-          },
-          "cursors": {
-            "matched": 410,
-            "total": 410
-          },
-          "animFrames": {
-            "matched": 0,
-            "total": 8
-          }
-        },
-        {
-          "name": "seed5006-tourist-stress-disaster.session.json",
-          "passed": true,
-          "rng": {
-            "matched": 13923,
-            "total": 13923
-          },
-          "rngSteps": {
-            "matched": 249,
-            "total": 249
-          },
-          "screen": {
-            "matched": 249,
-            "total": 249
-          },
-          "cellsOnly": {
-            "matched": 249,
-            "total": 249
-          },
-          "cursors": {
-            "matched": 249,
-            "total": 249
-          },
-          "animFrames": {
-            "matched": 0,
-            "total": 0
-          }
-        },
-        {
-          "name": "seed8000-tourist-starter.session.json",
-          "passed": true,
-          "rng": {
-            "matched": 3130,
-            "total": 3130
-          },
-          "rngSteps": {
-            "matched": 23,
-            "total": 23
-          },
-          "screen": {
-            "matched": 23,
-            "total": 23
-          },
-          "cellsOnly": {
-            "matched": 23,
-            "total": 23
-          },
-          "cursors": {
-            "matched": 23,
-            "total": 23
-          },
-          "animFrames": {
-            "matched": 0,
-            "total": 0
-          }
-        }
-      ],
-      "bitcomplexity": null
-    },
-    {
       "name": "vtjeng",
       "fork": "vtjeng/teleport-contest",
       "category": "agentic",
-      "lastScored": "2026-09-25T01:23:29.976Z",
+      "lastScored": "2026-09-25T07:05:30.246Z",
       "speed": {
-        "startup_ms": 501.3,
-        "per_move_ms": 2.9673,
-        "r2": 0.533,
-        "label": "501+2.97/turn",
+        "startup_ms": 544.9,
+        "per_move_ms": 2.7133,
+        "r2": 0.544,
+        "label": "545+2.71/turn",
         "sessions": 88
       },
       "playability": {
@@ -17479,7 +14985,7 @@
         "interaction_checked": true,
         "error_class": null,
         "error_message": null,
-        "ms_per_move": 5.092,
+        "ms_per_move": 4.777,
         "threshold_ms_per_move": 25,
         "sessions": 88,
         "sessions_skipped": 0,
@@ -17490,39 +14996,33 @@
         "timing_error": "UnsupportedHeroCommandBranchBoundaryError [UnsupportedHeroCommandBoundaryError]: unsupported hero command: an unported branch of this command: kicking reached an unported branch: kick_nondoor()'s altar arm, which needs altar_wrath() | at failClosedCommand (file:///home/runner/work/teleport-judge/teleport-judge/play/vtjeng/js/cmd.js:3056:19)",
         "aborted_early": false,
         "total_moves": 7588,
-        "total_cumulative_ms": 38637,
+        "total_cumulative_ms": 36249,
         "total_startup_moves": 338,
-        "total_startup_ms": 6242
+        "total_startup_ms": 5955
       },
       "public": {
-        "points": 11346,
+        "points": 11405,
         "maxPoints": 11405,
-        "passing": 27,
+        "passing": 44,
         "total": 44,
         "rngPct": 100,
         "rngStepsPct": 100,
-        "screenPct": 99.48268303375713,
+        "screenPct": 100,
         "animMatched": 1417,
         "animTotal": 1483
       },
       "heldOut": {
-        "points": 3631,
+        "points": 3650,
         "maxPoints": 11265,
-        "passing": 8,
+        "passing": 9,
         "total": 44,
         "rngPct": 20.62682848770459,
         "rngStepsPct": 79.66808661696841,
-        "screenPct": 32.23257878384376,
+        "screenPct": 32.40124278739459,
         "animMatched": 560,
         "animTotal": 2959
       },
       "history": [
-        {
-          "ts": "2026-08-05T03:34:40.410Z",
-          "points": 1197,
-          "maxPoints": 11405,
-          "passing": 2
-        },
         {
           "ts": "2026-08-05T08:55:29.913Z",
           "points": 1198,
@@ -18716,12 +16216,18 @@
           "points": 11346,
           "maxPoints": 11405,
           "passing": 27
+        },
+        {
+          "ts": "2026-09-25T07:05:30.246Z",
+          "points": 11405,
+          "maxPoints": 11405,
+          "passing": 44
         }
       ],
       "sessions": [
         {
           "name": "seed0002-healer-reflection-drummer.session.json",
-          "passed": false,
+          "passed": true,
           "rng": {
             "matched": 27158,
             "total": 27158
@@ -18731,11 +16237,11 @@
             "total": 595
           },
           "screen": {
-            "matched": 594,
+            "matched": 595,
             "total": 595
           },
           "cellsOnly": {
-            "matched": 594,
+            "matched": 595,
             "total": 595
           },
           "cursors": {
@@ -18777,7 +16283,7 @@
         },
         {
           "name": "seed0006-wizard-water-demon.session.json",
-          "passed": false,
+          "passed": true,
           "rng": {
             "matched": 6736,
             "total": 6736
@@ -18787,11 +16293,11 @@
             "total": 123
           },
           "screen": {
-            "matched": 108,
+            "matched": 123,
             "total": 123
           },
           "cellsOnly": {
-            "matched": 108,
+            "matched": 123,
             "total": 123
           },
           "cursors": {
@@ -18861,7 +16367,7 @@
         },
         {
           "name": "seed0012-monk-vault-escort.session.json",
-          "passed": false,
+          "passed": true,
           "rng": {
             "matched": 13878,
             "total": 13878
@@ -18871,11 +16377,11 @@
             "total": 308
           },
           "screen": {
-            "matched": 303,
+            "matched": 308,
             "total": 308
           },
           "cellsOnly": {
-            "matched": 303,
+            "matched": 308,
             "total": 308
           },
           "cursors": {
@@ -18945,7 +16451,7 @@
         },
         {
           "name": "seed0014-dequa-fountain-explore.session.json",
-          "passed": false,
+          "passed": true,
           "rng": {
             "matched": 59178,
             "total": 59178
@@ -18955,11 +16461,11 @@
             "total": 714
           },
           "screen": {
-            "matched": 712,
+            "matched": 714,
             "total": 714
           },
           "cellsOnly": {
-            "matched": 712,
+            "matched": 714,
             "total": 714
           },
           "cursors": {
@@ -19001,7 +16507,7 @@
         },
         {
           "name": "seed0016-healer-newmoon-eat-zap.session.json",
-          "passed": false,
+          "passed": true,
           "rng": {
             "matched": 3656,
             "total": 3656
@@ -19011,11 +16517,11 @@
             "total": 36
           },
           "screen": {
-            "matched": 35,
+            "matched": 36,
             "total": 36
           },
           "cellsOnly": {
-            "matched": 35,
+            "matched": 36,
             "total": 36
           },
           "cursors": {
@@ -19281,7 +16787,7 @@
         },
         {
           "name": "seed0106-priest-extcmd-sweep.session.json",
-          "passed": false,
+          "passed": true,
           "rng": {
             "matched": 4194,
             "total": 4194
@@ -19291,11 +16797,11 @@
             "total": 267
           },
           "screen": {
-            "matched": 266,
+            "matched": 267,
             "total": 267
           },
           "cellsOnly": {
-            "matched": 266,
+            "matched": 267,
             "total": 267
           },
           "cursors": {
@@ -19337,7 +16843,7 @@
         },
         {
           "name": "seed0108-wizard-extcmd-wishlist.session.json",
-          "passed": false,
+          "passed": true,
           "rng": {
             "matched": 16958,
             "total": 16958
@@ -19347,11 +16853,11 @@
             "total": 303
           },
           "screen": {
-            "matched": 302,
+            "matched": 303,
             "total": 303
           },
           "cellsOnly": {
-            "matched": 302,
+            "matched": 303,
             "total": 303
           },
           "cursors": {
@@ -19365,7 +16871,7 @@
         },
         {
           "name": "seed0116-wizard-wear-shop.session.json",
-          "passed": false,
+          "passed": true,
           "rng": {
             "matched": 12562,
             "total": 12562
@@ -19375,11 +16881,11 @@
             "total": 127
           },
           "screen": {
-            "matched": 126,
+            "matched": 127,
             "total": 127
           },
           "cellsOnly": {
-            "matched": 126,
+            "matched": 127,
             "total": 127
           },
           "cursors": {
@@ -19393,7 +16899,7 @@
         },
         {
           "name": "seed0200-monk-north-search.session.json",
-          "passed": false,
+          "passed": true,
           "rng": {
             "matched": 3822,
             "total": 3822
@@ -19403,11 +16909,11 @@
             "total": 40
           },
           "screen": {
-            "matched": 39,
+            "matched": 40,
             "total": 40
           },
           "cellsOnly": {
-            "matched": 39,
+            "matched": 40,
             "total": 40
           },
           "cursors": {
@@ -19421,7 +16927,7 @@
         },
         {
           "name": "seed0360-wizard-world-tour.session.json",
-          "passed": false,
+          "passed": true,
           "rng": {
             "matched": 120639,
             "total": 120639
@@ -19431,11 +16937,11 @@
             "total": 833
           },
           "screen": {
-            "matched": 832,
+            "matched": 833,
             "total": 833
           },
           "cellsOnly": {
-            "matched": 832,
+            "matched": 833,
             "total": 833
           },
           "cursors": {
@@ -19477,7 +16983,7 @@
         },
         {
           "name": "seed0367-priest-quest-tour.session.json",
-          "passed": false,
+          "passed": true,
           "rng": {
             "matched": 50125,
             "total": 50125
@@ -19487,11 +16993,11 @@
             "total": 324
           },
           "screen": {
-            "matched": 321,
+            "matched": 324,
             "total": 324
           },
           "cellsOnly": {
-            "matched": 321,
+            "matched": 324,
             "total": 324
           },
           "cursors": {
@@ -19533,7 +17039,7 @@
         },
         {
           "name": "seed0383-wizard-hallucinate.session.json",
-          "passed": false,
+          "passed": true,
           "rng": {
             "matched": 16915,
             "total": 16915
@@ -19543,11 +17049,11 @@
             "total": 219
           },
           "screen": {
-            "matched": 218,
+            "matched": 219,
             "total": 219
           },
           "cellsOnly": {
-            "matched": 218,
+            "matched": 219,
             "total": 219
           },
           "cursors": {
@@ -19589,7 +17095,7 @@
         },
         {
           "name": "seed0399-wizard-hallu-actions.session.json",
-          "passed": false,
+          "passed": true,
           "rng": {
             "matched": 11409,
             "total": 11409
@@ -19599,11 +17105,11 @@
             "total": 532
           },
           "screen": {
-            "matched": 531,
+            "matched": 532,
             "total": 532
           },
           "cellsOnly": {
-            "matched": 531,
+            "matched": 532,
             "total": 532
           },
           "cursors": {
@@ -19617,7 +17123,7 @@
         },
         {
           "name": "seed0501-priest-cast-read-turn.session.json",
-          "passed": false,
+          "passed": true,
           "rng": {
             "matched": 2238,
             "total": 2238
@@ -19627,11 +17133,11 @@
             "total": 28
           },
           "screen": {
-            "matched": 26,
+            "matched": 28,
             "total": 28
           },
           "cellsOnly": {
-            "matched": 26,
+            "matched": 28,
             "total": 28
           },
           "cursors": {
@@ -19785,7 +17291,7 @@
         },
         {
           "name": "seed2200-wizard-quaff-zap-read.session.json",
-          "passed": false,
+          "passed": true,
           "rng": {
             "matched": 3018,
             "total": 3018
@@ -19795,11 +17301,11 @@
             "total": 230
           },
           "screen": {
-            "matched": 229,
+            "matched": 230,
             "total": 230
           },
           "cellsOnly": {
-            "matched": 229,
+            "matched": 230,
             "total": 230
           },
           "cursors": {
@@ -19813,7 +17319,7 @@
         },
         {
           "name": "seed2600-wizard-custom-binds.session.json",
-          "passed": false,
+          "passed": true,
           "rng": {
             "matched": 11647,
             "total": 11647
@@ -19823,11 +17329,11 @@
             "total": 38
           },
           "screen": {
-            "matched": 37,
+            "matched": 38,
             "total": 38
           },
           "cellsOnly": {
-            "matched": 37,
+            "matched": 38,
             "total": 38
           },
           "cursors": {
@@ -19841,7 +17347,7 @@
         },
         {
           "name": "seed4500-knight-coverage.session.json",
-          "passed": false,
+          "passed": true,
           "rng": {
             "matched": 108275,
             "total": 108275
@@ -19851,11 +17357,11 @@
             "total": 1814
           },
           "screen": {
-            "matched": 1793,
+            "matched": 1814,
             "total": 1814
           },
           "cellsOnly": {
-            "matched": 1793,
+            "matched": 1814,
             "total": 1814
           },
           "cursors": {
@@ -19955,15 +17461,15 @@
       "bitcomplexity": null
     },
     {
-      "name": "xeophon",
-      "fork": "xeophon/teleport-contest",
+      "name": "lockwo",
+      "fork": "lockwo/teleport-contest",
       "category": "agentic",
-      "lastScored": "2026-09-25T01:37:08.551Z",
+      "lastScored": "2026-09-25T06:47:29.059Z",
       "speed": {
-        "startup_ms": 472.5,
-        "per_move_ms": 2.8245,
-        "r2": 0.772,
-        "label": "472+2.82/turn",
+        "startup_ms": 632.1,
+        "per_move_ms": 1.6482,
+        "r2": 0.734,
+        "label": "632+1.65/turn",
         "sessions": 88
       },
       "playability": {
@@ -19973,7 +17479,2501 @@
         "interaction_checked": true,
         "error_class": null,
         "error_message": null,
-        "ms_per_move": 2.819,
+        "ms_per_move": 2.01,
+        "threshold_ms_per_move": 25,
+        "sessions": 88,
+        "sessions_skipped": 0,
+        "sessions_killed": 0,
+        "sessions_failed": 0,
+        "session_failure_rate": 0,
+        "max_session_failure_rate": 0.25,
+        "timing_error": null,
+        "aborted_early": false,
+        "total_moves": 19452,
+        "total_cumulative_ms": 39102,
+        "total_startup_moves": 472,
+        "total_startup_ms": 6042
+      },
+      "public": {
+        "points": 11404,
+        "maxPoints": 11405,
+        "passing": 43,
+        "total": 44,
+        "rngPct": 100,
+        "rngStepsPct": 100,
+        "screenPct": 99.99123191582639,
+        "animMatched": 0,
+        "animTotal": 1483
+      },
+      "heldOut": {
+        "points": 5252,
+        "maxPoints": 11265,
+        "passing": 8,
+        "total": 44,
+        "rngPct": 33.74482610107826,
+        "rngStepsPct": 81.52289669861554,
+        "screenPct": 46.622281402574345,
+        "animMatched": 0,
+        "animTotal": 2959
+      },
+      "history": [
+        {
+          "ts": "2026-08-03T13:26:24.552Z",
+          "points": 7294,
+          "maxPoints": 11405,
+          "passing": 15
+        },
+        {
+          "ts": "2026-08-03T19:00:00.851Z",
+          "points": 7469,
+          "maxPoints": 11405,
+          "passing": 16
+        },
+        {
+          "ts": "2026-08-04T01:02:23.467Z",
+          "points": 7466,
+          "maxPoints": 11405,
+          "passing": 15
+        },
+        {
+          "ts": "2026-08-04T07:18:54.493Z",
+          "points": 7465,
+          "maxPoints": 11405,
+          "passing": 15
+        },
+        {
+          "ts": "2026-08-04T13:02:24.351Z",
+          "points": 7470,
+          "maxPoints": 11405,
+          "passing": 16
+        },
+        {
+          "ts": "2026-08-04T18:57:10.998Z",
+          "points": 7469,
+          "maxPoints": 11405,
+          "passing": 16
+        },
+        {
+          "ts": "2026-08-05T03:38:34.455Z",
+          "points": 7471,
+          "maxPoints": 11405,
+          "passing": 16
+        },
+        {
+          "ts": "2026-08-05T08:59:20.790Z",
+          "points": 7470,
+          "maxPoints": 11405,
+          "passing": 16
+        },
+        {
+          "ts": "2026-08-05T14:38:36.872Z",
+          "points": 7468,
+          "maxPoints": 11405,
+          "passing": 15
+        },
+        {
+          "ts": "2026-08-05T20:00:26.310Z",
+          "points": 7470,
+          "maxPoints": 11405,
+          "passing": 15
+        },
+        {
+          "ts": "2026-08-06T03:47:08.243Z",
+          "points": 7468,
+          "maxPoints": 11405,
+          "passing": 15
+        },
+        {
+          "ts": "2026-08-06T09:19:52.971Z",
+          "points": 7470,
+          "maxPoints": 11405,
+          "passing": 15
+        },
+        {
+          "ts": "2026-08-06T14:47:38.745Z",
+          "points": 7468,
+          "maxPoints": 11405,
+          "passing": 16
+        },
+        {
+          "ts": "2026-08-07T00:27:42.595Z",
+          "points": 7469,
+          "maxPoints": 11405,
+          "passing": 16
+        },
+        {
+          "ts": "2026-08-07T03:28:40.811Z",
+          "points": 7469,
+          "maxPoints": 11405,
+          "passing": 16
+        },
+        {
+          "ts": "2026-08-07T07:54:02.515Z",
+          "points": 7467,
+          "maxPoints": 11405,
+          "passing": 16
+        },
+        {
+          "ts": "2026-08-07T13:51:57.995Z",
+          "points": 7471,
+          "maxPoints": 11405,
+          "passing": 16
+        },
+        {
+          "ts": "2026-08-07T19:27:33.267Z",
+          "points": 7470,
+          "maxPoints": 11405,
+          "passing": 16
+        },
+        {
+          "ts": "2026-08-08T02:31:31.356Z",
+          "points": 7471,
+          "maxPoints": 11405,
+          "passing": 15
+        },
+        {
+          "ts": "2026-08-08T07:23:41.339Z",
+          "points": 7468,
+          "maxPoints": 11405,
+          "passing": 16
+        },
+        {
+          "ts": "2026-08-08T13:24:29.592Z",
+          "points": 7470,
+          "maxPoints": 11405,
+          "passing": 16
+        },
+        {
+          "ts": "2026-08-08T19:11:21.661Z",
+          "points": 7468,
+          "maxPoints": 11405,
+          "passing": 16
+        },
+        {
+          "ts": "2026-08-09T02:42:40.639Z",
+          "points": 7469,
+          "maxPoints": 11405,
+          "passing": 16
+        },
+        {
+          "ts": "2026-08-09T07:28:48.918Z",
+          "points": 7469,
+          "maxPoints": 11405,
+          "passing": 16
+        },
+        {
+          "ts": "2026-08-09T13:28:45.110Z",
+          "points": 7465,
+          "maxPoints": 11405,
+          "passing": 16
+        },
+        {
+          "ts": "2026-08-09T19:14:30.609Z",
+          "points": 7468,
+          "maxPoints": 11405,
+          "passing": 16
+        },
+        {
+          "ts": "2026-08-10T02:43:04.724Z",
+          "points": 7466,
+          "maxPoints": 11405,
+          "passing": 15
+        },
+        {
+          "ts": "2026-08-10T08:15:36.658Z",
+          "points": 7469,
+          "maxPoints": 11405,
+          "passing": 15
+        },
+        {
+          "ts": "2026-08-10T13:55:25.175Z",
+          "points": 7471,
+          "maxPoints": 11405,
+          "passing": 16
+        },
+        {
+          "ts": "2026-08-10T19:28:03.793Z",
+          "points": 7465,
+          "maxPoints": 11405,
+          "passing": 16
+        },
+        {
+          "ts": "2026-08-11T02:39:19.191Z",
+          "points": 7467,
+          "maxPoints": 11405,
+          "passing": 15
+        },
+        {
+          "ts": "2026-08-11T07:45:19.836Z",
+          "points": 7471,
+          "maxPoints": 11405,
+          "passing": 16
+        },
+        {
+          "ts": "2026-08-11T13:53:18.380Z",
+          "points": 7470,
+          "maxPoints": 11405,
+          "passing": 16
+        },
+        {
+          "ts": "2026-08-11T19:31:25.155Z",
+          "points": 7469,
+          "maxPoints": 11405,
+          "passing": 15
+        },
+        {
+          "ts": "2026-08-12T02:55:07.984Z",
+          "points": 7567,
+          "maxPoints": 11405,
+          "passing": 16
+        },
+        {
+          "ts": "2026-08-12T08:03:09.835Z",
+          "points": 7568,
+          "maxPoints": 11405,
+          "passing": 16
+        },
+        {
+          "ts": "2026-08-12T13:57:10.333Z",
+          "points": 7561,
+          "maxPoints": 11405,
+          "passing": 15
+        },
+        {
+          "ts": "2026-08-12T19:30:41.285Z",
+          "points": 7566,
+          "maxPoints": 11405,
+          "passing": 16
+        },
+        {
+          "ts": "2026-08-13T02:55:47.324Z",
+          "points": 7792,
+          "maxPoints": 11405,
+          "passing": 15
+        },
+        {
+          "ts": "2026-08-13T08:04:25.963Z",
+          "points": 7842,
+          "maxPoints": 11405,
+          "passing": 16
+        },
+        {
+          "ts": "2026-08-13T13:58:12.124Z",
+          "points": 7839,
+          "maxPoints": 11405,
+          "passing": 16
+        },
+        {
+          "ts": "2026-08-13T19:31:09.860Z",
+          "points": 7840,
+          "maxPoints": 11405,
+          "passing": 16
+        },
+        {
+          "ts": "2026-08-14T02:57:44.554Z",
+          "points": 8085,
+          "maxPoints": 11405,
+          "passing": 16
+        },
+        {
+          "ts": "2026-08-14T08:02:21.686Z",
+          "points": 8104,
+          "maxPoints": 11405,
+          "passing": 16
+        },
+        {
+          "ts": "2026-08-14T13:53:23.353Z",
+          "points": 8106,
+          "maxPoints": 11405,
+          "passing": 16
+        },
+        {
+          "ts": "2026-08-14T19:24:47.911Z",
+          "points": 8836,
+          "maxPoints": 11405,
+          "passing": 18
+        },
+        {
+          "ts": "2026-08-15T02:01:54.727Z",
+          "points": 9086,
+          "maxPoints": 11405,
+          "passing": 18
+        },
+        {
+          "ts": "2026-08-15T07:06:55.340Z",
+          "points": 9399,
+          "maxPoints": 11405,
+          "passing": 18
+        },
+        {
+          "ts": "2026-08-15T13:10:42.009Z",
+          "points": 9454,
+          "maxPoints": 11405,
+          "passing": 18
+        },
+        {
+          "ts": "2026-08-15T19:00:03.385Z",
+          "points": 9454,
+          "maxPoints": 11405,
+          "passing": 18
+        },
+        {
+          "ts": "2026-08-16T02:09:37.936Z",
+          "points": 10057,
+          "maxPoints": 11405,
+          "passing": 18
+        },
+        {
+          "ts": "2026-08-16T07:10:52.760Z",
+          "points": 10061,
+          "maxPoints": 11405,
+          "passing": 18
+        },
+        {
+          "ts": "2026-08-16T13:08:43.042Z",
+          "points": 10056,
+          "maxPoints": 11405,
+          "passing": 18
+        },
+        {
+          "ts": "2026-08-16T18:56:16.237Z",
+          "points": 10061,
+          "maxPoints": 11405,
+          "passing": 19
+        },
+        {
+          "ts": "2026-08-17T02:07:30.013Z",
+          "points": 10716,
+          "maxPoints": 11405,
+          "passing": 18
+        },
+        {
+          "ts": "2026-08-17T07:28:22.011Z",
+          "points": 10716,
+          "maxPoints": 11405,
+          "passing": 18
+        },
+        {
+          "ts": "2026-08-17T13:17:46.776Z",
+          "points": 10716,
+          "maxPoints": 11405,
+          "passing": 18
+        },
+        {
+          "ts": "2026-08-17T19:07:19.299Z",
+          "points": 10719,
+          "maxPoints": 11405,
+          "passing": 18
+        },
+        {
+          "ts": "2026-08-18T02:02:21.832Z",
+          "points": 10719,
+          "maxPoints": 11405,
+          "passing": 18
+        },
+        {
+          "ts": "2026-08-18T07:16:51.451Z",
+          "points": 10721,
+          "maxPoints": 11405,
+          "passing": 19
+        },
+        {
+          "ts": "2026-08-18T13:19:39.361Z",
+          "points": 10715,
+          "maxPoints": 11405,
+          "passing": 18
+        },
+        {
+          "ts": "2026-08-18T14:45:34.569Z",
+          "points": 10775,
+          "maxPoints": 11405,
+          "passing": 21
+        },
+        {
+          "ts": "2026-08-18T19:08:19.058Z",
+          "points": 10775,
+          "maxPoints": 11405,
+          "passing": 21
+        },
+        {
+          "ts": "2026-08-19T02:05:14.197Z",
+          "points": 10775,
+          "maxPoints": 11405,
+          "passing": 22
+        },
+        {
+          "ts": "2026-08-19T07:17:48.304Z",
+          "points": 10775,
+          "maxPoints": 11405,
+          "passing": 22
+        },
+        {
+          "ts": "2026-08-19T13:20:25.995Z",
+          "points": 10775,
+          "maxPoints": 11405,
+          "passing": 22
+        },
+        {
+          "ts": "2026-08-19T19:05:34.552Z",
+          "points": 10786,
+          "maxPoints": 11405,
+          "passing": 22
+        },
+        {
+          "ts": "2026-08-20T02:04:46.162Z",
+          "points": 10786,
+          "maxPoints": 11405,
+          "passing": 22
+        },
+        {
+          "ts": "2026-08-20T07:16:21.093Z",
+          "points": 11191,
+          "maxPoints": 11405,
+          "passing": 23
+        },
+        {
+          "ts": "2026-08-20T13:19:13.099Z",
+          "points": 11191,
+          "maxPoints": 11405,
+          "passing": 23
+        },
+        {
+          "ts": "2026-08-20T19:11:26.675Z",
+          "points": 11199,
+          "maxPoints": 11405,
+          "passing": 23
+        },
+        {
+          "ts": "2026-08-21T02:09:34.512Z",
+          "points": 11199,
+          "maxPoints": 11405,
+          "passing": 23
+        },
+        {
+          "ts": "2026-08-21T07:19:27.834Z",
+          "points": 11199,
+          "maxPoints": 11405,
+          "passing": 23
+        },
+        {
+          "ts": "2026-08-21T13:23:31.542Z",
+          "points": 11199,
+          "maxPoints": 11405,
+          "passing": 23
+        },
+        {
+          "ts": "2026-08-21T19:08:39.814Z",
+          "points": 11199,
+          "maxPoints": 11405,
+          "passing": 23
+        },
+        {
+          "ts": "2026-08-22T02:02:18.209Z",
+          "points": 11199,
+          "maxPoints": 11405,
+          "passing": 23
+        },
+        {
+          "ts": "2026-08-22T07:09:24.154Z",
+          "points": 11199,
+          "maxPoints": 11405,
+          "passing": 23
+        },
+        {
+          "ts": "2026-08-22T13:13:04.851Z",
+          "points": 11199,
+          "maxPoints": 11405,
+          "passing": 23
+        },
+        {
+          "ts": "2026-08-22T18:59:12.426Z",
+          "points": 11199,
+          "maxPoints": 11405,
+          "passing": 23
+        },
+        {
+          "ts": "2026-08-23T02:13:18.244Z",
+          "points": 11199,
+          "maxPoints": 11405,
+          "passing": 23
+        },
+        {
+          "ts": "2026-08-23T07:12:42.329Z",
+          "points": 11199,
+          "maxPoints": 11405,
+          "passing": 23
+        },
+        {
+          "ts": "2026-08-23T13:13:57.306Z",
+          "points": 11199,
+          "maxPoints": 11405,
+          "passing": 23
+        },
+        {
+          "ts": "2026-08-23T18:57:53.615Z",
+          "points": 11199,
+          "maxPoints": 11405,
+          "passing": 23
+        },
+        {
+          "ts": "2026-08-24T02:10:03.032Z",
+          "points": 11199,
+          "maxPoints": 11405,
+          "passing": 23
+        },
+        {
+          "ts": "2026-08-24T07:28:31.036Z",
+          "points": 11199,
+          "maxPoints": 11405,
+          "passing": 23
+        },
+        {
+          "ts": "2026-08-24T13:26:21.990Z",
+          "points": 11199,
+          "maxPoints": 11405,
+          "passing": 23
+        },
+        {
+          "ts": "2026-08-24T19:09:37.426Z",
+          "points": 11199,
+          "maxPoints": 11405,
+          "passing": 23
+        },
+        {
+          "ts": "2026-08-25T02:06:16.977Z",
+          "points": 11199,
+          "maxPoints": 11405,
+          "passing": 23
+        },
+        {
+          "ts": "2026-08-27T09:48:02.682Z",
+          "points": 11199,
+          "maxPoints": 11405,
+          "passing": 23
+        },
+        {
+          "ts": "2026-08-27T22:17:54.269Z",
+          "points": 11117,
+          "maxPoints": 11405,
+          "passing": 23
+        },
+        {
+          "ts": "2026-08-27T23:39:27.396Z",
+          "points": 11117,
+          "maxPoints": 11405,
+          "passing": 23
+        },
+        {
+          "ts": "2026-08-28T11:24:25.244Z",
+          "points": 11117,
+          "maxPoints": 11405,
+          "passing": 23
+        },
+        {
+          "ts": "2026-08-28T22:21:33.730Z",
+          "points": 11117,
+          "maxPoints": 11405,
+          "passing": 23
+        },
+        {
+          "ts": "2026-08-29T07:06:28.744Z",
+          "points": 11117,
+          "maxPoints": 11405,
+          "passing": 23
+        },
+        {
+          "ts": "2026-08-29T16:45:54.956Z",
+          "points": 11117,
+          "maxPoints": 11405,
+          "passing": 23
+        },
+        {
+          "ts": "2026-08-29T20:57:41.125Z",
+          "points": 11117,
+          "maxPoints": 11405,
+          "passing": 23
+        },
+        {
+          "ts": "2026-08-30T05:25:51.347Z",
+          "points": 11231,
+          "maxPoints": 11405,
+          "passing": 23
+        },
+        {
+          "ts": "2026-08-30T11:55:41.382Z",
+          "points": 11231,
+          "maxPoints": 11405,
+          "passing": 23
+        },
+        {
+          "ts": "2026-08-30T13:55:53.606Z",
+          "points": 11231,
+          "maxPoints": 11405,
+          "passing": 23
+        },
+        {
+          "ts": "2026-08-30T16:42:53.814Z",
+          "points": 11231,
+          "maxPoints": 11405,
+          "passing": 23
+        },
+        {
+          "ts": "2026-08-30T21:07:15.907Z",
+          "points": 11231,
+          "maxPoints": 11405,
+          "passing": 23
+        },
+        {
+          "ts": "2026-08-31T05:34:47.777Z",
+          "points": 11231,
+          "maxPoints": 11405,
+          "passing": 23
+        },
+        {
+          "ts": "2026-08-31T13:48:04.113Z",
+          "points": 11337,
+          "maxPoints": 11405,
+          "passing": 23
+        },
+        {
+          "ts": "2026-08-31T22:52:29.412Z",
+          "points": 11337,
+          "maxPoints": 11405,
+          "passing": 23
+        },
+        {
+          "ts": "2026-09-01T05:08:26.466Z",
+          "points": 11337,
+          "maxPoints": 11405,
+          "passing": 23
+        },
+        {
+          "ts": "2026-09-01T11:40:57.018Z",
+          "points": 11337,
+          "maxPoints": 11405,
+          "passing": 23
+        },
+        {
+          "ts": "2026-09-01T16:40:59.794Z",
+          "points": 11337,
+          "maxPoints": 11405,
+          "passing": 23
+        },
+        {
+          "ts": "2026-09-01T21:04:27.610Z",
+          "points": 11337,
+          "maxPoints": 11405,
+          "passing": 23
+        },
+        {
+          "ts": "2026-09-02T04:34:10.603Z",
+          "points": 11337,
+          "maxPoints": 11405,
+          "passing": 23
+        },
+        {
+          "ts": "2026-09-02T11:18:40.894Z",
+          "points": 11341,
+          "maxPoints": 11405,
+          "passing": 24
+        },
+        {
+          "ts": "2026-09-02T16:37:11.523Z",
+          "points": 11341,
+          "maxPoints": 11405,
+          "passing": 24
+        },
+        {
+          "ts": "2026-09-02T21:04:54.714Z",
+          "points": 11341,
+          "maxPoints": 11405,
+          "passing": 24
+        },
+        {
+          "ts": "2026-09-03T04:24:04.502Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 41
+        },
+        {
+          "ts": "2026-09-03T11:15:39.444Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 41
+        },
+        {
+          "ts": "2026-09-03T16:27:49.558Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 41
+        },
+        {
+          "ts": "2026-09-03T21:04:16.341Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 41
+        },
+        {
+          "ts": "2026-09-04T04:34:09.563Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 41
+        },
+        {
+          "ts": "2026-09-04T11:19:31.639Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 41
+        },
+        {
+          "ts": "2026-09-04T16:23:46.181Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 41
+        },
+        {
+          "ts": "2026-09-04T20:48:39.884Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 41
+        },
+        {
+          "ts": "2026-09-05T04:28:32.263Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 41
+        },
+        {
+          "ts": "2026-09-05T10:36:16.336Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 41
+        },
+        {
+          "ts": "2026-09-05T15:15:12.607Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 41
+        },
+        {
+          "ts": "2026-09-05T20:22:19.297Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 41
+        },
+        {
+          "ts": "2026-09-06T04:39:51.150Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 41
+        },
+        {
+          "ts": "2026-09-06T10:57:53.599Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 41
+        },
+        {
+          "ts": "2026-09-06T15:30:39.364Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 41
+        },
+        {
+          "ts": "2026-09-06T20:26:42.360Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 41
+        },
+        {
+          "ts": "2026-09-07T04:41:44.562Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 41
+        },
+        {
+          "ts": "2026-09-07T12:32:50.155Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 41
+        },
+        {
+          "ts": "2026-09-07T21:33:34.553Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 41
+        },
+        {
+          "ts": "2026-09-08T04:36:26.762Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 41
+        },
+        {
+          "ts": "2026-09-08T11:19:50.289Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 41
+        },
+        {
+          "ts": "2026-09-08T16:40:39.534Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 41
+        },
+        {
+          "ts": "2026-09-08T21:12:02.836Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 41
+        },
+        {
+          "ts": "2026-09-09T04:43:17.359Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 41
+        },
+        {
+          "ts": "2026-09-09T11:24:04.026Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 41
+        },
+        {
+          "ts": "2026-09-09T16:40:48.921Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 41
+        },
+        {
+          "ts": "2026-09-09T20:58:23.382Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 41
+        },
+        {
+          "ts": "2026-09-10T04:44:29.682Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 41
+        },
+        {
+          "ts": "2026-09-10T11:21:32.800Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 41
+        },
+        {
+          "ts": "2026-09-10T16:27:19.885Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 41
+        },
+        {
+          "ts": "2026-09-10T20:55:07.007Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 41
+        },
+        {
+          "ts": "2026-09-11T04:42:15.694Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 41
+        },
+        {
+          "ts": "2026-09-11T11:22:46.537Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 41
+        },
+        {
+          "ts": "2026-09-11T16:31:20.917Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 41
+        },
+        {
+          "ts": "2026-09-11T20:59:56.184Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 41
+        },
+        {
+          "ts": "2026-09-12T04:37:04.151Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 41
+        },
+        {
+          "ts": "2026-09-12T10:47:38.659Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 41
+        },
+        {
+          "ts": "2026-09-12T15:35:10.628Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 41
+        },
+        {
+          "ts": "2026-09-12T20:37:06.845Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 41
+        },
+        {
+          "ts": "2026-09-13T04:49:39.935Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 41
+        },
+        {
+          "ts": "2026-09-13T11:54:04.332Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 41
+        },
+        {
+          "ts": "2026-09-13T16:19:52.462Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 41
+        },
+        {
+          "ts": "2026-09-13T20:52:58.796Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 41
+        },
+        {
+          "ts": "2026-09-14T04:58:12.543Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 41
+        },
+        {
+          "ts": "2026-09-14T12:47:52.998Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 41
+        },
+        {
+          "ts": "2026-09-14T21:53:56.664Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 41
+        },
+        {
+          "ts": "2026-09-15T04:56:37.732Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 41
+        },
+        {
+          "ts": "2026-09-15T11:46:39.268Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 41
+        },
+        {
+          "ts": "2026-09-15T17:01:44.957Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 41
+        },
+        {
+          "ts": "2026-09-15T21:24:52.920Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 41
+        },
+        {
+          "ts": "2026-09-16T04:51:43.254Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 41
+        },
+        {
+          "ts": "2026-09-16T11:34:55.942Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 42
+        },
+        {
+          "ts": "2026-09-16T16:58:33.208Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 42
+        },
+        {
+          "ts": "2026-09-16T18:35:28.732Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 42
+        },
+        {
+          "ts": "2026-09-17T01:04:40.777Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 42
+        },
+        {
+          "ts": "2026-09-17T06:47:07.478Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 42
+        },
+        {
+          "ts": "2026-09-17T12:41:45.042Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 42
+        },
+        {
+          "ts": "2026-09-17T18:36:54.427Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 42
+        },
+        {
+          "ts": "2026-09-18T01:04:17.866Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 42
+        },
+        {
+          "ts": "2026-09-18T06:45:09.526Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 42
+        },
+        {
+          "ts": "2026-09-18T12:39:54.522Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 42
+        },
+        {
+          "ts": "2026-09-18T18:34:55.523Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 42
+        },
+        {
+          "ts": "2026-09-19T01:02:42.319Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 42
+        },
+        {
+          "ts": "2026-09-19T06:42:11.414Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 42
+        },
+        {
+          "ts": "2026-09-19T12:38:15.434Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 42
+        },
+        {
+          "ts": "2026-09-19T18:30:42.221Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 42
+        },
+        {
+          "ts": "2026-09-20T01:10:17.184Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 42
+        },
+        {
+          "ts": "2026-09-20T06:42:28.260Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 43
+        },
+        {
+          "ts": "2026-09-20T12:38:41.314Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 43
+        },
+        {
+          "ts": "2026-09-20T18:33:24.660Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 43
+        },
+        {
+          "ts": "2026-09-21T01:09:33.421Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 43
+        },
+        {
+          "ts": "2026-09-21T06:56:03.915Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 43
+        },
+        {
+          "ts": "2026-09-21T12:39:05.511Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 43
+        },
+        {
+          "ts": "2026-09-21T18:36:27.230Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 43
+        },
+        {
+          "ts": "2026-09-22T01:04:29.253Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 43
+        },
+        {
+          "ts": "2026-09-22T06:45:39.068Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 43
+        },
+        {
+          "ts": "2026-09-22T12:40:41.176Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 43
+        },
+        {
+          "ts": "2026-09-22T18:37:08.061Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 43
+        },
+        {
+          "ts": "2026-09-23T01:02:55.731Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 43
+        },
+        {
+          "ts": "2026-09-23T06:46:46.977Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 43
+        },
+        {
+          "ts": "2026-09-23T12:42:20.850Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 43
+        },
+        {
+          "ts": "2026-09-23T18:36:55.886Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 43
+        },
+        {
+          "ts": "2026-09-24T01:03:05.886Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 43
+        },
+        {
+          "ts": "2026-09-24T06:46:55.973Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 43
+        },
+        {
+          "ts": "2026-09-24T12:43:29.152Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 43
+        },
+        {
+          "ts": "2026-09-24T18:37:23.648Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 43
+        },
+        {
+          "ts": "2026-09-25T01:04:54.525Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 43
+        },
+        {
+          "ts": "2026-09-25T06:47:29.059Z",
+          "points": 11404,
+          "maxPoints": 11405,
+          "passing": 43
+        }
+      ],
+      "sessions": [
+        {
+          "name": "seed0002-healer-reflection-drummer.session.json",
+          "passed": true,
+          "rng": {
+            "matched": 27158,
+            "total": 27158
+          },
+          "rngSteps": {
+            "matched": 595,
+            "total": 595
+          },
+          "screen": {
+            "matched": 595,
+            "total": 595
+          },
+          "cellsOnly": {
+            "matched": 595,
+            "total": 595
+          },
+          "cursors": {
+            "matched": 595,
+            "total": 595
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 128
+          }
+        },
+        {
+          "name": "seed0004-feeding-pony.session.json",
+          "passed": true,
+          "rng": {
+            "matched": 12084,
+            "total": 12084
+          },
+          "rngSteps": {
+            "matched": 409,
+            "total": 409
+          },
+          "screen": {
+            "matched": 409,
+            "total": 409
+          },
+          "cellsOnly": {
+            "matched": 409,
+            "total": 409
+          },
+          "cursors": {
+            "matched": 409,
+            "total": 409
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 47
+          }
+        },
+        {
+          "name": "seed0006-wizard-water-demon.session.json",
+          "passed": true,
+          "rng": {
+            "matched": 6736,
+            "total": 6736
+          },
+          "rngSteps": {
+            "matched": 123,
+            "total": 123
+          },
+          "screen": {
+            "matched": 123,
+            "total": 123
+          },
+          "cellsOnly": {
+            "matched": 123,
+            "total": 123
+          },
+          "cursors": {
+            "matched": 123,
+            "total": 123
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 8
+          }
+        },
+        {
+          "name": "seed0007-rogue-snake-swamp.session.json",
+          "passed": true,
+          "rng": {
+            "matched": 16373,
+            "total": 16373
+          },
+          "rngSteps": {
+            "matched": 302,
+            "total": 302
+          },
+          "screen": {
+            "matched": 302,
+            "total": 302
+          },
+          "cellsOnly": {
+            "matched": 302,
+            "total": 302
+          },
+          "cursors": {
+            "matched": 302,
+            "total": 302
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 58
+          }
+        },
+        {
+          "name": "seed0009-swimmer-mforce.session.json",
+          "passed": true,
+          "rng": {
+            "matched": 3713,
+            "total": 3713
+          },
+          "rngSteps": {
+            "matched": 73,
+            "total": 73
+          },
+          "screen": {
+            "matched": 73,
+            "total": 73
+          },
+          "cellsOnly": {
+            "matched": 73,
+            "total": 73
+          },
+          "cursors": {
+            "matched": 73,
+            "total": 73
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
+          }
+        },
+        {
+          "name": "seed0012-monk-vault-escort.session.json",
+          "passed": true,
+          "rng": {
+            "matched": 13878,
+            "total": 13878
+          },
+          "rngSteps": {
+            "matched": 308,
+            "total": 308
+          },
+          "screen": {
+            "matched": 308,
+            "total": 308
+          },
+          "cellsOnly": {
+            "matched": 308,
+            "total": 308
+          },
+          "cursors": {
+            "matched": 308,
+            "total": 308
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 49
+          }
+        },
+        {
+          "name": "seed0013-friday13-save-then-fullmoon-restore.session.json",
+          "passed": true,
+          "rng": {
+            "matched": 4804,
+            "total": 4804
+          },
+          "rngSteps": {
+            "matched": 99,
+            "total": 99
+          },
+          "screen": {
+            "matched": 99,
+            "total": 99
+          },
+          "cellsOnly": {
+            "matched": 99,
+            "total": 99
+          },
+          "cursors": {
+            "matched": 99,
+            "total": 99
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 10
+          }
+        },
+        {
+          "name": "seed0013-rogue-friday13-combat.session.json",
+          "passed": true,
+          "rng": {
+            "matched": 4838,
+            "total": 4838
+          },
+          "rngSteps": {
+            "matched": 59,
+            "total": 59
+          },
+          "screen": {
+            "matched": 59,
+            "total": 59
+          },
+          "cellsOnly": {
+            "matched": 59,
+            "total": 59
+          },
+          "cursors": {
+            "matched": 59,
+            "total": 59
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 10
+          }
+        },
+        {
+          "name": "seed0014-dequa-fountain-explore.session.json",
+          "passed": true,
+          "rng": {
+            "matched": 59178,
+            "total": 59178
+          },
+          "rngSteps": {
+            "matched": 714,
+            "total": 714
+          },
+          "screen": {
+            "matched": 714,
+            "total": 714
+          },
+          "cellsOnly": {
+            "matched": 714,
+            "total": 714
+          },
+          "cursors": {
+            "matched": 714,
+            "total": 714
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 995
+          }
+        },
+        {
+          "name": "seed0015-valk-level2-pit-dog-wait.session.json",
+          "passed": true,
+          "rng": {
+            "matched": 8563,
+            "total": 8563
+          },
+          "rngSteps": {
+            "matched": 44,
+            "total": 44
+          },
+          "screen": {
+            "matched": 44,
+            "total": 44
+          },
+          "cellsOnly": {
+            "matched": 44,
+            "total": 44
+          },
+          "cursors": {
+            "matched": 44,
+            "total": 44
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
+          }
+        },
+        {
+          "name": "seed0016-healer-newmoon-eat-zap.session.json",
+          "passed": true,
+          "rng": {
+            "matched": 3656,
+            "total": 3656
+          },
+          "rngSteps": {
+            "matched": 36,
+            "total": 36
+          },
+          "screen": {
+            "matched": 36,
+            "total": 36
+          },
+          "cellsOnly": {
+            "matched": 36,
+            "total": 36
+          },
+          "cursors": {
+            "matched": 36,
+            "total": 36
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 4
+          }
+        },
+        {
+          "name": "seed0017-samurai-altar-pray.session.json",
+          "passed": true,
+          "rng": {
+            "matched": 3465,
+            "total": 3465
+          },
+          "rngSteps": {
+            "matched": 67,
+            "total": 67
+          },
+          "screen": {
+            "matched": 67,
+            "total": 67
+          },
+          "cellsOnly": {
+            "matched": 67,
+            "total": 67
+          },
+          "cursors": {
+            "matched": 67,
+            "total": 67
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 33
+          }
+        },
+        {
+          "name": "seed0030-ten-diverse-deaths.session.json",
+          "passed": true,
+          "rng": {
+            "matched": 105529,
+            "total": 105529
+          },
+          "rngSteps": {
+            "matched": 1953,
+            "total": 1953
+          },
+          "screen": {
+            "matched": 1953,
+            "total": 1953
+          },
+          "cellsOnly": {
+            "matched": 1953,
+            "total": 1953
+          },
+          "cursors": {
+            "matched": 1953,
+            "total": 1953
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 40
+          }
+        },
+        {
+          "name": "seed0060-orc-rogue-kick-search.session.json",
+          "passed": true,
+          "rng": {
+            "matched": 3626,
+            "total": 3626
+          },
+          "rngSteps": {
+            "matched": 41,
+            "total": 41
+          },
+          "screen": {
+            "matched": 41,
+            "total": 41
+          },
+          "cellsOnly": {
+            "matched": 41,
+            "total": 41
+          },
+          "cursors": {
+            "matched": 41,
+            "total": 41
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 4
+          }
+        },
+        {
+          "name": "seed0077-rogue-chargen.session.json",
+          "passed": true,
+          "rng": {
+            "matched": 3242,
+            "total": 3242
+          },
+          "rngSteps": {
+            "matched": 33,
+            "total": 33
+          },
+          "screen": {
+            "matched": 33,
+            "total": 33
+          },
+          "cellsOnly": {
+            "matched": 33,
+            "total": 33
+          },
+          "cursors": {
+            "matched": 33,
+            "total": 33
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
+          }
+        },
+        {
+          "name": "seed0101-ranger-quiver-throw-travel-engrave.session.json",
+          "passed": true,
+          "rng": {
+            "matched": 2371,
+            "total": 2371
+          },
+          "rngSteps": {
+            "matched": 27,
+            "total": 27
+          },
+          "screen": {
+            "matched": 27,
+            "total": 27
+          },
+          "cellsOnly": {
+            "matched": 27,
+            "total": 27
+          },
+          "cursors": {
+            "matched": 27,
+            "total": 27
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
+          }
+        },
+        {
+          "name": "seed0102-ranger-name-cancel.session.json",
+          "passed": true,
+          "rng": {
+            "matched": 4485,
+            "total": 4485
+          },
+          "rngSteps": {
+            "matched": 25,
+            "total": 25
+          },
+          "screen": {
+            "matched": 25,
+            "total": 25
+          },
+          "cellsOnly": {
+            "matched": 25,
+            "total": 25
+          },
+          "cursors": {
+            "matched": 25,
+            "total": 25
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
+          }
+        },
+        {
+          "name": "seed0103-knight-ride-pony.session.json",
+          "passed": true,
+          "rng": {
+            "matched": 2640,
+            "total": 2640
+          },
+          "rngSteps": {
+            "matched": 60,
+            "total": 60
+          },
+          "screen": {
+            "matched": 60,
+            "total": 60
+          },
+          "cellsOnly": {
+            "matched": 60,
+            "total": 60
+          },
+          "cursors": {
+            "matched": 60,
+            "total": 60
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
+          }
+        },
+        {
+          "name": "seed0104-knight-ride-combat.session.json",
+          "passed": true,
+          "rng": {
+            "matched": 3223,
+            "total": 3223
+          },
+          "rngSteps": {
+            "matched": 43,
+            "total": 43
+          },
+          "screen": {
+            "matched": 43,
+            "total": 43
+          },
+          "cellsOnly": {
+            "matched": 43,
+            "total": 43
+          },
+          "cursors": {
+            "matched": 43,
+            "total": 43
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 2
+          }
+        },
+        {
+          "name": "seed0105-valk-chat-lamp-ration.session.json",
+          "passed": true,
+          "rng": {
+            "matched": 2499,
+            "total": 2499
+          },
+          "rngSteps": {
+            "matched": 30,
+            "total": 30
+          },
+          "screen": {
+            "matched": 30,
+            "total": 30
+          },
+          "cellsOnly": {
+            "matched": 30,
+            "total": 30
+          },
+          "cursors": {
+            "matched": 30,
+            "total": 30
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
+          }
+        },
+        {
+          "name": "seed0106-priest-extcmd-sweep.session.json",
+          "passed": true,
+          "rng": {
+            "matched": 4194,
+            "total": 4194
+          },
+          "rngSteps": {
+            "matched": 267,
+            "total": 267
+          },
+          "screen": {
+            "matched": 267,
+            "total": 267
+          },
+          "cellsOnly": {
+            "matched": 267,
+            "total": 267
+          },
+          "cursors": {
+            "matched": 267,
+            "total": 267
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 6
+          }
+        },
+        {
+          "name": "seed0107-samurai-twoweapon-enhance.session.json",
+          "passed": true,
+          "rng": {
+            "matched": 2902,
+            "total": 2902
+          },
+          "rngSteps": {
+            "matched": 98,
+            "total": 98
+          },
+          "screen": {
+            "matched": 98,
+            "total": 98
+          },
+          "cellsOnly": {
+            "matched": 98,
+            "total": 98
+          },
+          "cursors": {
+            "matched": 98,
+            "total": 98
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
+          }
+        },
+        {
+          "name": "seed0108-wizard-extcmd-wishlist.session.json",
+          "passed": true,
+          "rng": {
+            "matched": 16958,
+            "total": 16958
+          },
+          "rngSteps": {
+            "matched": 303,
+            "total": 303
+          },
+          "screen": {
+            "matched": 303,
+            "total": 303
+          },
+          "cellsOnly": {
+            "matched": 303,
+            "total": 303
+          },
+          "cursors": {
+            "matched": 303,
+            "total": 303
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 4
+          }
+        },
+        {
+          "name": "seed0116-wizard-wear-shop.session.json",
+          "passed": true,
+          "rng": {
+            "matched": 12562,
+            "total": 12562
+          },
+          "rngSteps": {
+            "matched": 127,
+            "total": 127
+          },
+          "screen": {
+            "matched": 127,
+            "total": 127
+          },
+          "cellsOnly": {
+            "matched": 127,
+            "total": 127
+          },
+          "cursors": {
+            "matched": 127,
+            "total": 127
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 8
+          }
+        },
+        {
+          "name": "seed0200-monk-north-search.session.json",
+          "passed": true,
+          "rng": {
+            "matched": 3822,
+            "total": 3822
+          },
+          "rngSteps": {
+            "matched": 40,
+            "total": 40
+          },
+          "screen": {
+            "matched": 40,
+            "total": 40
+          },
+          "cellsOnly": {
+            "matched": 40,
+            "total": 40
+          },
+          "cursors": {
+            "matched": 40,
+            "total": 40
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
+          }
+        },
+        {
+          "name": "seed0360-wizard-world-tour.session.json",
+          "passed": true,
+          "rng": {
+            "matched": 120639,
+            "total": 120639
+          },
+          "rngSteps": {
+            "matched": 833,
+            "total": 833
+          },
+          "screen": {
+            "matched": 833,
+            "total": 833
+          },
+          "cellsOnly": {
+            "matched": 833,
+            "total": 833
+          },
+          "cursors": {
+            "matched": 833,
+            "total": 833
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 12
+          }
+        },
+        {
+          "name": "seed0361-archeologist-tour.session.json",
+          "passed": true,
+          "rng": {
+            "matched": 53865,
+            "total": 53865
+          },
+          "rngSteps": {
+            "matched": 366,
+            "total": 366
+          },
+          "screen": {
+            "matched": 366,
+            "total": 366
+          },
+          "cellsOnly": {
+            "matched": 366,
+            "total": 366
+          },
+          "cursors": {
+            "matched": 366,
+            "total": 366
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 10
+          }
+        },
+        {
+          "name": "seed0367-priest-quest-tour.session.json",
+          "passed": true,
+          "rng": {
+            "matched": 50125,
+            "total": 50125
+          },
+          "rngSteps": {
+            "matched": 324,
+            "total": 324
+          },
+          "screen": {
+            "matched": 324,
+            "total": 324
+          },
+          "cellsOnly": {
+            "matched": 324,
+            "total": 324
+          },
+          "cursors": {
+            "matched": 324,
+            "total": 324
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
+          }
+        },
+        {
+          "name": "seed0373-barbarian-quest-tour.session.json",
+          "passed": true,
+          "rng": {
+            "matched": 35386,
+            "total": 35386
+          },
+          "rngSteps": {
+            "matched": 124,
+            "total": 124
+          },
+          "screen": {
+            "matched": 124,
+            "total": 124
+          },
+          "cellsOnly": {
+            "matched": 124,
+            "total": 124
+          },
+          "cursors": {
+            "matched": 124,
+            "total": 124
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
+          }
+        },
+        {
+          "name": "seed0383-wizard-hallucinate.session.json",
+          "passed": true,
+          "rng": {
+            "matched": 16915,
+            "total": 16915
+          },
+          "rngSteps": {
+            "matched": 219,
+            "total": 219
+          },
+          "screen": {
+            "matched": 219,
+            "total": 219
+          },
+          "cellsOnly": {
+            "matched": 219,
+            "total": 219
+          },
+          "cursors": {
+            "matched": 219,
+            "total": 219
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 1
+          }
+        },
+        {
+          "name": "seed0398-wizard-wandpoly-pile.session.json",
+          "passed": true,
+          "rng": {
+            "matched": 3026,
+            "total": 3026
+          },
+          "rngSteps": {
+            "matched": 87,
+            "total": 87
+          },
+          "screen": {
+            "matched": 87,
+            "total": 87
+          },
+          "cellsOnly": {
+            "matched": 87,
+            "total": 87
+          },
+          "cursors": {
+            "matched": 87,
+            "total": 87
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
+          }
+        },
+        {
+          "name": "seed0399-wizard-hallu-actions.session.json",
+          "passed": false,
+          "rng": {
+            "matched": 11409,
+            "total": 11409
+          },
+          "rngSteps": {
+            "matched": 532,
+            "total": 532
+          },
+          "screen": {
+            "matched": 531,
+            "total": 532
+          },
+          "cellsOnly": {
+            "matched": 531,
+            "total": 532
+          },
+          "cursors": {
+            "matched": 532,
+            "total": 532
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
+          }
+        },
+        {
+          "name": "seed0501-priest-cast-read-turn.session.json",
+          "passed": true,
+          "rng": {
+            "matched": 2238,
+            "total": 2238
+          },
+          "rngSteps": {
+            "matched": 28,
+            "total": 28
+          },
+          "screen": {
+            "matched": 28,
+            "total": 28
+          },
+          "cellsOnly": {
+            "matched": 28,
+            "total": 28
+          },
+          "cursors": {
+            "matched": 28,
+            "total": 28
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
+          }
+        },
+        {
+          "name": "seed0700-samurai-explore-descend.session.json",
+          "passed": true,
+          "rng": {
+            "matched": 3230,
+            "total": 3230
+          },
+          "rngSteps": {
+            "matched": 51,
+            "total": 51
+          },
+          "screen": {
+            "matched": 51,
+            "total": 51
+          },
+          "cellsOnly": {
+            "matched": 51,
+            "total": 51
+          },
+          "cursors": {
+            "matched": 51,
+            "total": 51
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
+          }
+        },
+        {
+          "name": "seed0900-tourist-explore-actions.session.json",
+          "passed": true,
+          "rng": {
+            "matched": 2983,
+            "total": 2983
+          },
+          "rngSteps": {
+            "matched": 84,
+            "total": 84
+          },
+          "screen": {
+            "matched": 84,
+            "total": 84
+          },
+          "cellsOnly": {
+            "matched": 84,
+            "total": 84
+          },
+          "cursors": {
+            "matched": 84,
+            "total": 84
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 3
+          }
+        },
+        {
+          "name": "seed1150-caveman-explore-move.session.json",
+          "passed": true,
+          "rng": {
+            "matched": 3137,
+            "total": 3137
+          },
+          "rngSteps": {
+            "matched": 51,
+            "total": 51
+          },
+          "screen": {
+            "matched": 51,
+            "total": 51
+          },
+          "cellsOnly": {
+            "matched": 51,
+            "total": 51
+          },
+          "cursors": {
+            "matched": 51,
+            "total": 51
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 6
+          }
+        },
+        {
+          "name": "seed1500-rogue-explore-move.session.json",
+          "passed": true,
+          "rng": {
+            "matched": 2768,
+            "total": 2768
+          },
+          "rngSteps": {
+            "matched": 40,
+            "total": 40
+          },
+          "screen": {
+            "matched": 40,
+            "total": 40
+          },
+          "cellsOnly": {
+            "matched": 40,
+            "total": 40
+          },
+          "cursors": {
+            "matched": 40,
+            "total": 40
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
+          }
+        },
+        {
+          "name": "seed1800-tourist-eat-throw.session.json",
+          "passed": true,
+          "rng": {
+            "matched": 2458,
+            "total": 2458
+          },
+          "rngSteps": {
+            "matched": 26,
+            "total": 26
+          },
+          "screen": {
+            "matched": 26,
+            "total": 26
+          },
+          "cellsOnly": {
+            "matched": 26,
+            "total": 26
+          },
+          "cursors": {
+            "matched": 26,
+            "total": 26
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
+          }
+        },
+        {
+          "name": "seed2200-wizard-quaff-zap-read.session.json",
+          "passed": true,
+          "rng": {
+            "matched": 3018,
+            "total": 3018
+          },
+          "rngSteps": {
+            "matched": 230,
+            "total": 230
+          },
+          "screen": {
+            "matched": 230,
+            "total": 230
+          },
+          "cellsOnly": {
+            "matched": 230,
+            "total": 230
+          },
+          "cursors": {
+            "matched": 230,
+            "total": 230
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
+          }
+        },
+        {
+          "name": "seed2600-wizard-custom-binds.session.json",
+          "passed": true,
+          "rng": {
+            "matched": 11647,
+            "total": 11647
+          },
+          "rngSteps": {
+            "matched": 38,
+            "total": 38
+          },
+          "screen": {
+            "matched": 38,
+            "total": 38
+          },
+          "cellsOnly": {
+            "matched": 38,
+            "total": 38
+          },
+          "cursors": {
+            "matched": 38,
+            "total": 38
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
+          }
+        },
+        {
+          "name": "seed4500-knight-coverage.session.json",
+          "passed": true,
+          "rng": {
+            "matched": 108275,
+            "total": 108275
+          },
+          "rngSteps": {
+            "matched": 1814,
+            "total": 1814
+          },
+          "screen": {
+            "matched": 1814,
+            "total": 1814
+          },
+          "cellsOnly": {
+            "matched": 1814,
+            "total": 1814
+          },
+          "cursors": {
+            "matched": 1814,
+            "total": 1814
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 37
+          }
+        },
+        {
+          "name": "seed5002-wizard-coverage-pair.session.json",
+          "passed": true,
+          "rng": {
+            "matched": 12167,
+            "total": 12167
+          },
+          "rngSteps": {
+            "matched": 410,
+            "total": 410
+          },
+          "screen": {
+            "matched": 410,
+            "total": 410
+          },
+          "cellsOnly": {
+            "matched": 410,
+            "total": 410
+          },
+          "cursors": {
+            "matched": 410,
+            "total": 410
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 8
+          }
+        },
+        {
+          "name": "seed5006-tourist-stress-disaster.session.json",
+          "passed": true,
+          "rng": {
+            "matched": 13923,
+            "total": 13923
+          },
+          "rngSteps": {
+            "matched": 249,
+            "total": 249
+          },
+          "screen": {
+            "matched": 249,
+            "total": 249
+          },
+          "cellsOnly": {
+            "matched": 249,
+            "total": 249
+          },
+          "cursors": {
+            "matched": 249,
+            "total": 249
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
+          }
+        },
+        {
+          "name": "seed8000-tourist-starter.session.json",
+          "passed": true,
+          "rng": {
+            "matched": 3130,
+            "total": 3130
+          },
+          "rngSteps": {
+            "matched": 23,
+            "total": 23
+          },
+          "screen": {
+            "matched": 23,
+            "total": 23
+          },
+          "cellsOnly": {
+            "matched": 23,
+            "total": 23
+          },
+          "cursors": {
+            "matched": 23,
+            "total": 23
+          },
+          "animFrames": {
+            "matched": 0,
+            "total": 0
+          }
+        }
+      ],
+      "bitcomplexity": null
+    },
+    {
+      "name": "xeophon",
+      "fork": "xeophon/teleport-contest",
+      "category": "agentic",
+      "lastScored": "2026-09-25T07:18:56.841Z",
+      "speed": {
+        "startup_ms": 492.7,
+        "per_move_ms": 2.6748,
+        "r2": 0.767,
+        "label": "493+2.67/turn",
+        "sessions": 88
+      },
+      "playability": {
+        "playable": true,
+        "not_playable_reason": null,
+        "browser_ok": true,
+        "interaction_checked": true,
+        "error_class": null,
+        "error_message": null,
+        "ms_per_move": 2.723,
         "threshold_ms_per_move": 25,
         "sessions": 88,
         "sessions_skipped": 0,
@@ -19984,9 +19984,9 @@
         "timing_error": "TypeError: Cannot read properties of undefined (reading 'ranks') | at questPagerText (file:///home/runner/work/teleport-judge/teleport-judge/play/xeophon/js/cmd.js:5564:23)",
         "aborted_early": false,
         "total_moves": 19205,
-        "total_cumulative_ms": 54135,
+        "total_cumulative_ms": 52286,
         "total_startup_moves": 0,
-        "total_startup_ms": 5228
+        "total_startup_ms": 5276
       },
       "public": {
         "points": 10591,
@@ -20011,12 +20011,6 @@
         "animTotal": 2959
       },
       "history": [
-        {
-          "ts": "2026-08-05T03:48:57.632Z",
-          "points": 11405,
-          "maxPoints": 11405,
-          "passing": 44
-        },
         {
           "ts": "2026-08-05T09:09:35.726Z",
           "points": 11405,
@@ -21207,6 +21201,12 @@
         },
         {
           "ts": "2026-09-25T01:37:08.551Z",
+          "points": 10591,
+          "maxPoints": 11405,
+          "passing": 43
+        },
+        {
+          "ts": "2026-09-25T07:18:56.841Z",
           "points": 10591,
           "maxPoints": 11405,
           "passing": 43
@@ -22452,12 +22452,12 @@
       "name": "daoa0601",
       "fork": "daoa0601/teleport-contest",
       "category": "agentic",
-      "lastScored": "2026-09-25T01:25:38.970Z",
+      "lastScored": "2026-09-25T07:07:36.740Z",
       "speed": {
-        "startup_ms": 321.7,
-        "per_move_ms": 1.4879,
-        "r2": 0.657,
-        "label": "322+1.49/turn",
+        "startup_ms": 331.7,
+        "per_move_ms": 1.4058,
+        "r2": 0.659,
+        "label": "332+1.41/turn",
         "sessions": 88
       },
       "playability": {
@@ -22467,7 +22467,7 @@
         "interaction_checked": true,
         "error_class": null,
         "error_message": null,
-        "ms_per_move": 1.908,
+        "ms_per_move": 1.852,
         "threshold_ms_per_move": 25,
         "sessions": 88,
         "sessions_skipped": 0,
@@ -22478,9 +22478,9 @@
         "timing_error": "QueueEmpty [Error] | at display.onEmptyQueue (file:///home/runner/work/teleport-judge/teleport-judge/sandbox/playability_runner.mjs:40:38)",
         "aborted_early": false,
         "total_moves": 19633,
-        "total_cumulative_ms": 37462,
+        "total_cumulative_ms": 36351,
         "total_startup_moves": 260,
-        "total_startup_ms": 3351
+        "total_startup_ms": 3398
       },
       "public": {
         "points": 8709,
@@ -22505,12 +22505,6 @@
         "animTotal": 2959
       },
       "history": [
-        {
-          "ts": "2026-08-05T03:36:47.076Z",
-          "points": 11405,
-          "maxPoints": 11405,
-          "passing": 44
-        },
         {
           "ts": "2026-08-05T08:57:35.159Z",
           "points": 11405,
@@ -23701,6 +23695,12 @@
         },
         {
           "ts": "2026-09-25T01:25:38.970Z",
+          "points": 8709,
+          "maxPoints": 11405,
+          "passing": 27
+        },
+        {
+          "ts": "2026-09-25T07:07:36.740Z",
           "points": 8709,
           "maxPoints": 11405,
           "passing": 27
@@ -24946,12 +24946,12 @@
       "name": "chanting-monks",
       "fork": "chanting-monks/teleport-contest",
       "category": "transpiled",
-      "lastScored": "2026-09-25T01:57:17.042Z",
+      "lastScored": "2026-09-25T07:39:20.162Z",
       "speed": {
-        "startup_ms": 1072.6,
-        "per_move_ms": 2.2631,
-        "r2": 0.542,
-        "label": "1073+2.26/turn",
+        "startup_ms": 1128.1,
+        "per_move_ms": 2.1513,
+        "r2": 0.551,
+        "label": "1128+2.15/turn",
         "sessions": 88
       },
       "playability": {
@@ -24961,7 +24961,7 @@
         "interaction_checked": true,
         "error_class": null,
         "error_message": null,
-        "ms_per_move": 3.146,
+        "ms_per_move": 3.016,
         "threshold_ms_per_move": 25,
         "sessions": 88,
         "sessions_skipped": 0,
@@ -24972,9 +24972,9 @@
         "timing_error": null,
         "aborted_early": false,
         "total_moves": 19060,
-        "total_cumulative_ms": 59965,
+        "total_cumulative_ms": 57487,
         "total_startup_moves": 542,
-        "total_startup_ms": 23092
+        "total_startup_ms": 21938
       },
       "public": {
         "points": 2073,
@@ -24999,12 +24999,6 @@
         "animTotal": 2959
       },
       "history": [
-        {
-          "ts": "2026-08-05T04:09:45.954Z",
-          "points": 2072,
-          "maxPoints": 11405,
-          "passing": 15
-        },
         {
           "ts": "2026-08-05T09:30:12.787Z",
           "points": 2072,
@@ -26195,6 +26189,12 @@
         },
         {
           "ts": "2026-09-25T01:57:17.042Z",
+          "points": 2073,
+          "maxPoints": 11405,
+          "passing": 15
+        },
+        {
+          "ts": "2026-09-25T07:39:20.162Z",
           "points": 2073,
           "maxPoints": 11405,
           "passing": 15
@@ -27440,12 +27440,12 @@
       "name": "aganders3",
       "fork": "aganders3/teleport-contest",
       "category": "transpiled",
-      "lastScored": "2026-09-25T01:31:42.183Z",
+      "lastScored": "2026-09-25T07:13:38.772Z",
       "speed": {
-        "startup_ms": 104.8,
-        "per_move_ms": 0.1943,
-        "r2": 0.874,
-        "label": "105+0.19/turn",
+        "startup_ms": 108.4,
+        "per_move_ms": 0.2013,
+        "r2": 0.892,
+        "label": "108+0.20/turn",
         "sessions": 88
       },
       "playability": {
@@ -27455,7 +27455,7 @@
         "interaction_checked": true,
         "error_class": null,
         "error_message": null,
-        "ms_per_move": 0.215,
+        "ms_per_move": 0.221,
         "threshold_ms_per_move": 25,
         "sessions": 88,
         "sessions_skipped": 0,
@@ -27466,9 +27466,9 @@
         "timing_error": null,
         "aborted_early": false,
         "total_moves": 19849,
-        "total_cumulative_ms": 4274,
+        "total_cumulative_ms": 4379,
         "total_startup_moves": 77,
-        "total_startup_ms": 2205
+        "total_startup_ms": 2191
       },
       "public": {
         "points": 169,
@@ -27493,12 +27493,6 @@
         "animTotal": 2959
       },
       "history": [
-        {
-          "ts": "2026-08-05T03:43:48.474Z",
-          "points": 169,
-          "maxPoints": 11405,
-          "passing": 1
-        },
         {
           "ts": "2026-08-05T09:04:29.972Z",
           "points": 169,
@@ -28689,6 +28683,12 @@
         },
         {
           "ts": "2026-09-25T01:31:42.183Z",
+          "points": 169,
+          "maxPoints": 11405,
+          "passing": 1
+        },
+        {
+          "ts": "2026-09-25T07:13:38.772Z",
           "points": 169,
           "maxPoints": 11405,
           "passing": 1
@@ -29934,12 +29934,12 @@
       "name": "jburnhams",
       "fork": "jburnhams/teleport-contest",
       "category": "agentic",
-      "lastScored": "2026-09-25T01:37:47.694Z",
+      "lastScored": "2026-09-25T07:19:36.893Z",
       "speed": {
-        "startup_ms": 113.4,
-        "per_move_ms": 0.2325,
-        "r2": 0.916,
-        "label": "113+0.23/turn",
+        "startup_ms": 117,
+        "per_move_ms": 0.2503,
+        "r2": 0.919,
+        "label": "117+0.25/turn",
         "sessions": 88
       },
       "playability": {
@@ -29949,7 +29949,7 @@
         "interaction_checked": true,
         "error_class": null,
         "error_message": null,
-        "ms_per_move": 0.345,
+        "ms_per_move": 0.371,
         "threshold_ms_per_move": 25,
         "sessions": 88,
         "sessions_skipped": 0,
@@ -29960,9 +29960,9 @@
         "timing_error": null,
         "aborted_early": false,
         "total_moves": 19726,
-        "total_cumulative_ms": 6801,
+        "total_cumulative_ms": 7317,
         "total_startup_moves": 200,
-        "total_startup_ms": 1566
+        "total_startup_ms": 1560
       },
       "public": {
         "points": 21,
@@ -29987,12 +29987,6 @@
         "animTotal": 2959
       },
       "history": [
-        {
-          "ts": "2026-08-05T03:49:38.353Z",
-          "points": 21,
-          "maxPoints": 11405,
-          "passing": 0
-        },
         {
           "ts": "2026-08-05T09:10:15.161Z",
           "points": 21,
@@ -31183,6 +31177,12 @@
         },
         {
           "ts": "2026-09-25T01:37:47.694Z",
+          "points": 21,
+          "maxPoints": 11405,
+          "passing": 0
+        },
+        {
+          "ts": "2026-09-25T07:19:36.893Z",
           "points": 21,
           "maxPoints": 11405,
           "passing": 0
@@ -32428,12 +32428,12 @@
       "name": "JadenFiotto-Kaufman",
       "fork": "JadenFiotto-Kaufman/teleport-contest",
       "category": "none",
-      "lastScored": "2026-09-25T01:01:45.383Z",
+      "lastScored": "2026-09-25T06:44:23.586Z",
       "speed": {
-        "startup_ms": 101.5,
-        "per_move_ms": 0.2213,
-        "r2": 0.947,
-        "label": "101+0.22/turn",
+        "startup_ms": 103.1,
+        "per_move_ms": 0.2425,
+        "r2": 0.957,
+        "label": "103+0.24/turn",
         "sessions": 88
       },
       "playability": {
@@ -32443,7 +32443,7 @@
         "interaction_checked": true,
         "error_class": null,
         "error_message": null,
-        "ms_per_move": 0.313,
+        "ms_per_move": 0.33,
         "threshold_ms_per_move": 25,
         "sessions": 88,
         "sessions_skipped": 0,
@@ -32454,9 +32454,9 @@
         "timing_error": null,
         "aborted_early": false,
         "total_moves": 19926,
-        "total_cumulative_ms": 6247,
+        "total_cumulative_ms": 6585,
         "total_startup_moves": 0,
-        "total_startup_ms": 1420
+        "total_startup_ms": 1417
       },
       "public": {
         "points": 15,
@@ -33119,6 +33119,12 @@
         },
         {
           "ts": "2026-09-25T01:01:45.383Z",
+          "points": 15,
+          "maxPoints": 11405,
+          "passing": 0
+        },
+        {
+          "ts": "2026-09-25T06:44:23.586Z",
           "points": 15,
           "maxPoints": 11405,
           "passing": 0
@@ -34364,12 +34370,12 @@
       "name": "alazarteka",
       "fork": "alazarteka/teleport-contest",
       "category": "none",
-      "lastScored": "2026-09-25T01:05:30.861Z",
+      "lastScored": "2026-09-25T06:48:06.214Z",
       "speed": {
-        "startup_ms": 101.4,
-        "per_move_ms": 0.2265,
-        "r2": 0.949,
-        "label": "101+0.23/turn",
+        "startup_ms": 104.1,
+        "per_move_ms": 0.239,
+        "r2": 0.96,
+        "label": "104+0.24/turn",
         "sessions": 88
       },
       "playability": {
@@ -34379,7 +34385,7 @@
         "interaction_checked": true,
         "error_class": null,
         "error_message": null,
-        "ms_per_move": 0.318,
+        "ms_per_move": 0.329,
         "threshold_ms_per_move": 25,
         "sessions": 88,
         "sessions_skipped": 0,
@@ -34390,9 +34396,9 @@
         "timing_error": null,
         "aborted_early": false,
         "total_moves": 19926,
-        "total_cumulative_ms": 6327,
+        "total_cumulative_ms": 6564,
         "total_startup_moves": 0,
-        "total_startup_ms": 1472
+        "total_startup_ms": 1445
       },
       "public": {
         "points": 15,
@@ -35583,6 +35589,12 @@
         },
         {
           "ts": "2026-09-25T01:05:30.861Z",
+          "points": 15,
+          "maxPoints": 11405,
+          "passing": 0
+        },
+        {
+          "ts": "2026-09-25T06:48:06.214Z",
           "points": 15,
           "maxPoints": 11405,
           "passing": 0
@@ -36828,12 +36840,12 @@
       "name": "holonicbio",
       "fork": "holonicbio/teleport-contest",
       "category": "none",
-      "lastScored": "2026-09-25T01:38:22.706Z",
+      "lastScored": "2026-09-25T07:20:12.907Z",
       "speed": {
-        "startup_ms": 98.7,
-        "per_move_ms": 0.2202,
-        "r2": 0.953,
-        "label": "99+0.22/turn",
+        "startup_ms": 103.6,
+        "per_move_ms": 0.2359,
+        "r2": 0.962,
+        "label": "104+0.24/turn",
         "sessions": 88
       },
       "playability": {
@@ -36843,7 +36855,7 @@
         "interaction_checked": true,
         "error_class": null,
         "error_message": null,
-        "ms_per_move": 0.311,
+        "ms_per_move": 0.33,
         "threshold_ms_per_move": 25,
         "sessions": 88,
         "sessions_skipped": 0,
@@ -36854,9 +36866,9 @@
         "timing_error": null,
         "aborted_early": false,
         "total_moves": 19926,
-        "total_cumulative_ms": 6200,
+        "total_cumulative_ms": 6576,
         "total_startup_moves": 0,
-        "total_startup_ms": 1422
+        "total_startup_ms": 1432
       },
       "public": {
         "points": 15,
@@ -36881,12 +36893,6 @@
         "animTotal": 2959
       },
       "history": [
-        {
-          "ts": "2026-08-05T03:50:14.196Z",
-          "points": 15,
-          "maxPoints": 11405,
-          "passing": 0
-        },
         {
           "ts": "2026-08-05T09:10:50.591Z",
           "points": 15,
@@ -38077,6 +38083,12 @@
         },
         {
           "ts": "2026-09-25T01:38:22.706Z",
+          "points": 15,
+          "maxPoints": 11405,
+          "passing": 0
+        },
+        {
+          "ts": "2026-09-25T07:20:12.907Z",
           "points": 15,
           "maxPoints": 11405,
           "passing": 0
@@ -39322,12 +39334,12 @@
       "name": "jon-bell",
       "fork": "jon-bell/teleport-contest-soln",
       "category": "none",
-      "lastScored": "2026-09-25T01:00:33.477Z",
+      "lastScored": "2026-09-25T06:43:10.185Z",
       "speed": {
-        "startup_ms": 102.8,
-        "per_move_ms": 0.2244,
-        "r2": 0.949,
-        "label": "103+0.22/turn",
+        "startup_ms": 106.5,
+        "per_move_ms": 0.2451,
+        "r2": 0.964,
+        "label": "106+0.25/turn",
         "sessions": 88
       },
       "playability": {
@@ -39337,7 +39349,7 @@
         "interaction_checked": true,
         "error_class": null,
         "error_message": null,
-        "ms_per_move": 0.317,
+        "ms_per_move": 0.334,
         "threshold_ms_per_move": 25,
         "sessions": 88,
         "sessions_skipped": 0,
@@ -39348,9 +39360,9 @@
         "timing_error": null,
         "aborted_early": false,
         "total_moves": 19926,
-        "total_cumulative_ms": 6322,
+        "total_cumulative_ms": 6648,
         "total_startup_moves": 0,
-        "total_startup_ms": 1464
+        "total_startup_ms": 1459
       },
       "public": {
         "points": 15,
@@ -39689,6 +39701,12 @@
         },
         {
           "ts": "2026-09-25T01:00:33.477Z",
+          "points": 15,
+          "maxPoints": 11405,
+          "passing": 0
+        },
+        {
+          "ts": "2026-09-25T06:43:10.185Z",
           "points": 15,
           "maxPoints": 11405,
           "passing": 0
@@ -40934,12 +40952,12 @@
       "name": "khaiwang",
       "fork": "khaiwang/teleport-contest",
       "category": "none",
-      "lastScored": "2026-09-25T01:01:09.402Z",
+      "lastScored": "2026-09-25T06:43:47.045Z",
       "speed": {
-        "startup_ms": 99.3,
-        "per_move_ms": 0.2282,
-        "r2": 0.957,
-        "label": "99+0.23/turn",
+        "startup_ms": 106.8,
+        "per_move_ms": 0.2415,
+        "r2": 0.963,
+        "label": "107+0.24/turn",
         "sessions": 88
       },
       "playability": {
@@ -40949,7 +40967,7 @@
         "interaction_checked": true,
         "error_class": null,
         "error_message": null,
-        "ms_per_move": 0.315,
+        "ms_per_move": 0.332,
         "threshold_ms_per_move": 25,
         "sessions": 88,
         "sessions_skipped": 0,
@@ -40960,9 +40978,9 @@
         "timing_error": null,
         "aborted_early": false,
         "total_moves": 19926,
-        "total_cumulative_ms": 6270,
+        "total_cumulative_ms": 6608,
         "total_startup_moves": 0,
-        "total_startup_ms": 1447
+        "total_startup_ms": 1452
       },
       "public": {
         "points": 15,
@@ -41349,6 +41367,12 @@
         },
         {
           "ts": "2026-09-25T01:01:09.402Z",
+          "points": 15,
+          "maxPoints": 11405,
+          "passing": 0
+        },
+        {
+          "ts": "2026-09-25T06:43:47.045Z",
           "points": 15,
           "maxPoints": 11405,
           "passing": 0
@@ -42594,12 +42618,12 @@
       "name": "sldas",
       "fork": "sldas/teleport-contest",
       "category": "agentic",
-      "lastScored": "2026-09-25T00:59:57.229Z",
+      "lastScored": "2026-09-25T06:42:32.971Z",
       "speed": {
-        "startup_ms": 103.2,
-        "per_move_ms": 0.2303,
-        "r2": 0.961,
-        "label": "103+0.23/turn",
+        "startup_ms": 106,
+        "per_move_ms": 0.2464,
+        "r2": 0.96,
+        "label": "106+0.25/turn",
         "sessions": 88
       },
       "playability": {
@@ -42609,7 +42633,7 @@
         "interaction_checked": true,
         "error_class": null,
         "error_message": null,
-        "ms_per_move": 0.321,
+        "ms_per_move": 0.333,
         "threshold_ms_per_move": 25,
         "sessions": 88,
         "sessions_skipped": 0,
@@ -42620,9 +42644,9 @@
         "timing_error": null,
         "aborted_early": false,
         "total_moves": 19926,
-        "total_cumulative_ms": 6403,
+        "total_cumulative_ms": 6636,
         "total_startup_moves": 0,
-        "total_startup_ms": 1544
+        "total_startup_ms": 1508
       },
       "public": {
         "points": 15,
@@ -42895,6 +42919,12 @@
         },
         {
           "ts": "2026-09-25T00:59:57.229Z",
+          "points": 15,
+          "maxPoints": 11405,
+          "passing": 0
+        },
+        {
+          "ts": "2026-09-25T06:42:32.971Z",
           "points": 15,
           "maxPoints": 11405,
           "passing": 0
@@ -44140,12 +44170,12 @@
       "name": "venkatasg",
       "fork": "venkatasg/teleport-contest",
       "category": "none",
-      "lastScored": "2026-09-25T01:51:51.885Z",
+      "lastScored": "2026-09-25T07:33:51.822Z",
       "speed": {
-        "startup_ms": 98.3,
-        "per_move_ms": 0.2143,
-        "r2": 0.957,
-        "label": "98+0.21/turn",
+        "startup_ms": 103.2,
+        "per_move_ms": 0.2364,
+        "r2": 0.961,
+        "label": "103+0.24/turn",
         "sessions": 88
       },
       "playability": {
@@ -44155,7 +44185,7 @@
         "interaction_checked": true,
         "error_class": null,
         "error_message": null,
-        "ms_per_move": 0.31,
+        "ms_per_move": 0.329,
         "threshold_ms_per_move": 25,
         "sessions": 88,
         "sessions_skipped": 0,
@@ -44166,9 +44196,9 @@
         "timing_error": null,
         "aborted_early": false,
         "total_moves": 19926,
-        "total_cumulative_ms": 6167,
+        "total_cumulative_ms": 6555,
         "total_startup_moves": 0,
-        "total_startup_ms": 1410
+        "total_startup_ms": 1428
       },
       "public": {
         "points": 15,
@@ -44193,12 +44223,6 @@
         "animTotal": 2959
       },
       "history": [
-        {
-          "ts": "2026-08-05T04:03:59.199Z",
-          "points": 15,
-          "maxPoints": 11405,
-          "passing": 0
-        },
         {
           "ts": "2026-08-05T09:24:31.138Z",
           "points": 15,
@@ -45389,6 +45413,12 @@
         },
         {
           "ts": "2026-09-25T01:51:51.885Z",
+          "points": 15,
+          "maxPoints": 11405,
+          "passing": 0
+        },
+        {
+          "ts": "2026-09-25T07:33:51.822Z",
           "points": 15,
           "maxPoints": 11405,
           "passing": 0
@@ -46634,12 +46664,12 @@
       "name": "vtomnet",
       "fork": "vtomnet/teleport-contest",
       "category": "none",
-      "lastScored": "2026-09-25T01:26:14.824Z",
+      "lastScored": "2026-09-25T07:08:13.671Z",
       "speed": {
-        "startup_ms": 100.6,
-        "per_move_ms": 0.2226,
-        "r2": 0.952,
-        "label": "101+0.22/turn",
+        "startup_ms": 103.8,
+        "per_move_ms": 0.2393,
+        "r2": 0.964,
+        "label": "104+0.24/turn",
         "sessions": 88
       },
       "playability": {
@@ -46649,7 +46679,7 @@
         "interaction_checked": true,
         "error_class": null,
         "error_message": null,
-        "ms_per_move": 0.317,
+        "ms_per_move": 0.327,
         "threshold_ms_per_move": 25,
         "sessions": 88,
         "sessions_skipped": 0,
@@ -46660,9 +46690,9 @@
         "timing_error": null,
         "aborted_early": false,
         "total_moves": 19926,
-        "total_cumulative_ms": 6313,
+        "total_cumulative_ms": 6521,
         "total_startup_moves": 0,
-        "total_startup_ms": 1433
+        "total_startup_ms": 1438
       },
       "public": {
         "points": 15,
@@ -46687,12 +46717,6 @@
         "animTotal": 2959
       },
       "history": [
-        {
-          "ts": "2026-08-05T03:39:10.919Z",
-          "points": 15,
-          "maxPoints": 11405,
-          "passing": 0
-        },
         {
           "ts": "2026-08-05T08:59:56.717Z",
           "points": 15,
@@ -47883,6 +47907,12 @@
         },
         {
           "ts": "2026-09-25T01:26:14.824Z",
+          "points": 15,
+          "maxPoints": 11405,
+          "passing": 0
+        },
+        {
+          "ts": "2026-09-25T07:08:13.671Z",
           "points": 15,
           "maxPoints": 11405,
           "passing": 0
@@ -49128,22 +49158,22 @@
       "name": "jolly-borg",
       "fork": "jolly-borg/teleport-contest",
       "category": "none",
-      "lastScored": "2026-09-25T01:52:28.433Z",
+      "lastScored": "2026-09-25T07:34:29.064Z",
       "speed": {
-        "startup_ms": 118.6,
-        "per_move_ms": 0.1469,
-        "r2": 0.514,
-        "label": "119+0.15/turn",
+        "startup_ms": 126.6,
+        "per_move_ms": 0.1627,
+        "r2": 0.525,
+        "label": "127+0.16/turn",
         "sessions": 88
       },
       "playability": {
-        "playable": false,
-        "not_playable_reason": "browser",
-        "browser_ok": false,
+        "playable": true,
+        "not_playable_reason": null,
+        "browser_ok": true,
         "interaction_checked": true,
-        "error_class": "not_ready",
-        "error_message": "/: play page rendered Error: fs.readFileSync() was called in the browser. This fork uses Node-only APIs that aren't available here. The judge runs your fork under Node, where these work; the in-browser Play view and Session Viewer cannot. Open this fork on GitHub or test under Node locally.",
-        "ms_per_move": 0.306,
+        "error_class": null,
+        "error_message": null,
+        "ms_per_move": 0.33,
         "threshold_ms_per_move": 25,
         "sessions": 88,
         "sessions_skipped": 0,
@@ -49154,9 +49184,9 @@
         "timing_error": "Error: Access to this API has been restricted. Use --allow-fs-read to manage permissions. | at readFileSync (node:fs:440:20)",
         "aborted_early": false,
         "total_moves": 18620,
-        "total_cumulative_ms": 5706,
+        "total_cumulative_ms": 6149,
         "total_startup_moves": 255,
-        "total_startup_ms": 1729
+        "total_startup_ms": 1764
       },
       "public": {
         "points": 3,
@@ -49181,12 +49211,6 @@
         "animTotal": 2959
       },
       "history": [
-        {
-          "ts": "2026-08-05T04:04:37.016Z",
-          "points": 3,
-          "maxPoints": 11405,
-          "passing": 0
-        },
         {
           "ts": "2026-08-05T09:25:07.866Z",
           "points": 3,
@@ -50377,6 +50401,12 @@
         },
         {
           "ts": "2026-09-25T01:52:28.433Z",
+          "points": 3,
+          "maxPoints": 11405,
+          "passing": 0
+        },
+        {
+          "ts": "2026-09-25T07:34:29.064Z",
           "points": 3,
           "maxPoints": 11405,
           "passing": 0
