@@ -129,7 +129,7 @@ import {
 import { paint_corner_nhw_menu, dismiss_nhw_menu, discover_object, makeknown, near_capacity, update_inventory, observe_object, useup as useup_inv } from './invent.js';
 import { yn_function } from './getline.js';
 import { ATR_INVERSE, NO_COLOR } from './terminal.js';
-import { weight, mksobj, delobj, noveltitle } from './mkobj.js';
+import { weight, mksobj, delobj, noveltitle, set_bknown } from './mkobj.js';
 import { acurr, A_WIS, A_STR, A_INT, exercise } from './attrib.js';
 import { SPBOOK_CLASS, NODIR } from './objects.js';
 import { d, rnd, rn2, rn1, rnl, rn2_on_display_rng } from './rng.js';
@@ -140,9 +140,9 @@ import { make_blinded } from './do.js';
 import { aggravate } from './wizard.js';
 import { make_confused, make_stunned, healup, make_slimed, peffects } from './potion.js';
 import { trycall, hcolor, hliquid, Hallucination, mon_nam, Monnam } from './do_name.js';
-import { an, makeplural } from './objnam.js';
+import { an, makeplural, Tobjnam } from './objnam.js';
 import { is_whirly, is_animal, eyecount, mons, is_undead, is_vampshifter } from './monsters.js';
-import { nomul, losehp, maybe_half_phys, fall_asleep, You_hear, invocation_pos, On_stairs } from './hack.js';
+import { nomul, losehp, maybe_half_phys, fall_asleep, You_hear, invocation_pos, On_stairs, stop_occupation } from './hack.js';
 import { uhim } from './roles.js';
 import { erode_obj } from './trap.js';
 import { set_occupation } from './engrave.js';
@@ -896,6 +896,30 @@ async function confused_book(spellbook) {
         );
     }
     return gone;
+}
+
+/**
+ * C ref: spell.c book_cursed `:342–351` — the spellbook just became cursed.
+ * Slam it shut only when it is the book `learn` is reading.
+ * Returns a Promise only when that arm runs (pline, then set_bknown,
+ * then stop_occupation). A miss returns undefined so `curse` does not
+ * yield on ordinary spellbook creation.
+ * @param {object} book
+ * @returns {Promise<void>|undefined}
+ */
+export function book_cursed(book) {
+    // C `:345–346` — short-circuit: cursed, not in negative multi,
+    // occupation is learn, and this is the open book.
+    if (!(book && book.cursed && (game.multi | 0) >= 0
+        && game.occupation === learn
+        && game.context?.spbook?.book === book)) {
+        return undefined;
+    }
+    return (async () => {
+        await pline(`${Tobjnam(book, 'slam')} shut!`);
+        set_bknown(book, 1);
+        await stop_occupation();
+    })();
 }
 
 /**

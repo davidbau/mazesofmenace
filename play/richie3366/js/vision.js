@@ -2,7 +2,8 @@
 // Partial: underwater view_from named (pit TT_PIT 3x3 live, D-1863); nv_range circle live (D-1583);
 // `new_angle` live-macro live, all 3 main-loop sites wired (D-1955; EXTEND_SPINE body compiled out, named).
 // mimic_light_blocking See_invisible block/unblock live (D-1587).
-// BOULDER + is_lightblocker_mappear (mimic boulder/door/wall) in does_block.
+// does_block: terrain, boulder, mimic, underwater moat, gas cloud (D-2883).
+// vision_reset: cs0 + both could-see planes, then the dig loop (D-2883).
 
 import { game } from './gstate.js';
 import {
@@ -24,6 +25,9 @@ import { objectNames } from './objects.js';
 import { do_light_sources } from './light.js';
 import { visible_region_at } from './region.js';
 import { detecting } from './detect.js';
+import { is_moat } from './hack.js';
+import { m_at } from './mon.js';
+import { objects_at } from './mkobj.js';
 
 const COULD_SEE = 0x1;
 const IN_SIGHT = 0x2;
@@ -119,20 +123,28 @@ export function is_lightblocker_mappear(mon) {
 }
 
 /**
+ * C youprop.h See_invisible = HSee_invisible || ESee_invisible
+ * (uprops[SEE_INVIS] intrinsic/extrinsic). This file also honors the
+ * sticky `u.See_invisible` flat and the same uprops bits, one helper
+ * for mimic_light_blocking and does_block.
+ */
+function hero_see_invisible() {
+    const u = game.u || {};
+    const p = u.uprops?.[SEE_INVIS];
+    return !!((p?.intrinsic | 0) || (p?.extrinsic | 0)
+        || (u.HSee_invisible | 0) || (u.ESee_invisible | 0)
+        || u.See_invisible);
+}
+
+/**
  * C ref: display.c mimic_light_blocking — See_invisible toggles light
  * block for invisible lightblocker mimics. Not does_block/recalc:
  * when See_invisible, block_point; else unblock_point (C `:1531–1540`).
- * C youprop.h See_invisible = H || E (uprops[SEE_INVIS]); JS also
- * reads H/E/sticky flats. Do not add a 7th named See_invisible clone.
  */
 function mimic_light_blocking(mtmp) {
     if (!mtmp) return;
     if (mtmp.minvis && is_lightblocker_mappear(mtmp)) {
-        const u = game.u || {};
-        const p = u.uprops?.[SEE_INVIS];
-        if ((p?.intrinsic | 0) || (p?.extrinsic | 0)
-            || (u.HSee_invisible | 0) || (u.ESee_invisible | 0)
-            || u.See_invisible)
+        if (hero_see_invisible())
             block_point(mtmp.mx | 0, mtmp.my | 0);
         else
             unblock_point(mtmp.mx | 0, mtmp.my | 0);
@@ -151,50 +163,79 @@ export function set_mimic_blocking() {
 }
 
 /**
- * C ref: vision.c does_block — terrain/door + BOULDER + lightblocker mimic
- * + visible_region_at gas cloud (return 2). Occupancy via fmon (no
- * vision→mon.js `m_at`; cycle). Underwater moat deferred.
+ * C ref: vision.c does_block `:153–202`.
+ * 0 = sight passes, 1 = terrain / boulder / mimic, 2 = opaque gas.
+ * `#ifdef DEBUG` seethru is not compiled (no `#define DEBUG`).
+ * A missing JS cell blocks; C `levl[][]` is always present.
  */
 export function does_block(x, y, lev) {
-    const loc = lev ?? game.level?.at?.(x, y);
+    const xx = x | 0;
+    const yy = y | 0;
+    const loc = lev ?? game.level?.at?.(xx, yy);
     if (!loc) return 1;
-    const typ = loc.typ ?? 0;
-    // C: IS_OBSTRUCTED || TREE || closed/locked/trapped door
+    const typ = loc.typ | 0;
+
+    /* Features that block. */
     if (IS_OBSTRUCTED(typ) || typ === TREE
         || (IS_DOOR(typ)
-            && ((loc.doormask ?? 0) & (D_CLOSED | D_LOCKED | D_TRAPPED)))) {
+            && ((loc.doormask | 0) & (D_CLOSED | D_LOCKED | D_TRAPPED)))) {
         return 1;
     }
-    if (typ === CLOUD || IS_WATERWALL(typ) || typ === LAVAWALL) return 1;
-    // Boulders block light (level.objects nexthere chain)
-    const head = game._objects_at?.get?.(`${x},${y}`);
-    for (let obj = head; obj; obj = obj.nexthere) {
-        if (obj.otyp === BOULDER) return 1;
+
+    /* Clouds, water/lava walls, and a moat while the hero is underwater.
+     * is_moat reads levl[x][y], not the passed `lev` (dbridge.c:100). */
+    if (typ === CLOUD || IS_WATERWALL(typ) || typ === LAVAWALL
+        || ((game.u?.uinwater | 0) && is_moat(xx, yy))) {
+        return 1;
     }
-    // C: m_at + (!minvis || See_invisible) && is_lightblocker_mappear
-    const steed = game.u?.usteed;
-    for (const mon of game.fmon || []) {
-        if (!mon || mon === steed) continue;
-        if (mon.mx !== x || mon.my !== y) continue;
-        if (mon.minvis && !game.u?.See_invisible) continue;
-        if (is_lightblocker_mappear(mon)) return 1;
+
+    /* Boulders block light (svl.level.objects[x][y] nexthere chain). */
+    for (let obj = objects_at(xx, yy); obj; obj = obj.nexthere) {
+        if ((obj.otyp | 0) === BOULDER) return 1;
     }
-    // C: visible_region_at → return 2 (opaque gas cloud)
-    if (visible_region_at(x, y)) return 2;
+
+    /* Mimics mimicking a door or boulder or wall block light.
+     * m_at is level.monsters[x][y] (rm.h; worm segs included). */
+    const mon = m_at(xx, yy);
+    if (mon && (!(mon.minvis | 0) || hero_see_invisible())
+        && is_lightblocker_mappear(mon)) {
+        return 1;
+    }
+
+    /* Clouds (poisonous or not) block light. */
+    if (visible_region_at(xx, yy)) return 2;
+
     return 0;
 }
 
-// C ref: vision_reset() — rebuild viz_clear and left/right ptrs
+/**
+ * C ref: vision.c vision_reset `:211–265`.
+ * cs0 becomes the current could-see plane (both planes zeroed), then
+ * the dig loop rebuilds viz_clear and the left/right pointers.
+ * `||` is 0/1, so a gas cloud (does_block returns 2) still counts.
+ */
 export function vision_reset() {
-    const level = game.level;
-    if (!level) return;
+    game.viz_array = cs_buf0;
+    game.active_buf = 0;
+    game._viz_rmin = cs_rmin0;
+    game._viz_rmax = cs_rmax0;
+    for (let row = 0; row < ROWNO; row++) {
+        cs_buf0[row].fill(0);
+        cs_buf1[row].fill(0);
+    }
 
+    const level = game.level;
     for (let y = 0; y < ROWNO; y++) {
         viz_clear[y].fill(0);
         let dig_left = 0;
+        /* location (0,y) is always stone; it's !isok() */
         let block = true;
         for (let x = 1; x < COLNO; x++) {
-            const cur_block = !!does_block(x, y, level.at(x, y));
+            const loc = level?.at?.(x, y);
+            const typ = loc ? (loc.typ | 0) : 0;
+            const cur_block = !loc
+                ? true
+                : !!(IS_OBSTRUCTED(typ) || does_block(x, y, loc));
             if (block !== cur_block) {
                 if (block) {
                     for (let i = dig_left; i < x; i++) {
@@ -214,6 +255,7 @@ export function vision_reset() {
                 block = !block;
             }
         }
+        /* right boundary; almost identical for blocked/unblocked */
         let i = dig_left;
         if (!block && dig_left) dig_left--;
         for (; i < COLNO; i++) {
@@ -222,8 +264,10 @@ export function vision_reset() {
             viz_clear[y][i] = block ? 0 : 1;
         }
     }
-    game._viz_rmin = null;
-    game._viz_rmax = null;
+
+    if (!game.iflags) game.iflags = {};
+    game.iflags.vision_inited = true;
+    game.vision_full_recalc = 1;
 }
 
 /**

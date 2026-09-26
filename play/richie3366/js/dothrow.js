@@ -4,6 +4,7 @@
 // throw_obj u_wipe_engr(2) D-1374 (C `:138`).
 
 import { game } from './gstate.js';
+import { surface } from './sit.js';
 import {
     flush_screen, pline, newsym, mark_topline_seen,
     canseemon, canspotmon, nh_delay_output, tmp_at, obj_glyph, verbalize,
@@ -980,11 +981,8 @@ export async function throw_gold(obj) {
         }
     }
     if ((u.dz | 0) > 0) {
-        // C surface() — room → floor; full dungeon.c surface named
-        const loc = game.level?.at?.(bhitpos.x | 0, bhitpos.y | 0);
-        const typ = loc?.typ | 0;
-        const surf = (IS_ROOM(typ) && !Is_earthlevel(u.uz)) ? 'floor' : 'ground';
-        await pline(`The gold hits the ${surf}.`);
+        // C dothrow.c:2724 surface(bhitpos.x, bhitpos.y)
+        await pline(`The gold hits the ${surface(bhitpos.x | 0, bhitpos.y | 0)}.`);
     }
     place_object(obj, bhitpos.x | 0, bhitpos.y | 0);
     if (u.ushops) {
@@ -1566,17 +1564,6 @@ export async function breaks(obj, x, y) {
     return breakobj(obj, x, y, false, false);
 }
 
-/** C dungeon.c surface — hitfloor verbose wording (soft/altar skipped). */
-function hitfloor_surface(x, y) {
-    const loc = game.level?.at?.(x, y);
-    const typ = loc?.typ ?? 0;
-    if (typ === ICE) return 'ice';
-    if (IS_FOUNTAIN(typ)) return 'fountain';
-    if (IS_ALTAR(typ)) return 'altar';
-    if (IS_ROOM(typ) && !Is_earthlevel(game.u?.uz)) return 'floor';
-    return 'ground';
-}
-
 /**
  * C ref: dothrow.c hitfloor — object hits floor at hero's feet.
  * Soft/water/swallow → dropy; altar doaltarobj then continues;
@@ -1605,7 +1592,7 @@ export async function hitfloor(obj, verbosely) {
         await doaltarobj(obj);
     } else if (verbosely) {
         const verb = ((obj.otyp | 0) === WAN_STRIKING) ? 'strike' : 'hit';
-        let surf = hitfloor_surface(ux, uy);
+        let surf = surface(ux, uy);
         const t = t_at(ux, uy);
         if (t && t.tseen) {
             switch (t.ttyp | 0) {
@@ -1907,7 +1894,10 @@ async function return_throw_to_inv(obj, wep_mask, twoweap, oldslot) {
         }
         // C `:1899–1904` — re-wield what was worn before the throw.
         const u = game.u || {};
-        if ((wep_mask & W_WEP) && !u.uwep) setuwep(obj);
+        if ((wep_mask & W_WEP) && !u.uwep) {
+            const shine = setuwep(obj);
+            if (shine) await shine;
+        }
         else if ((wep_mask & W_SWAPWEP) && !u.uswapwep) setuswapwep(obj);
         else if ((wep_mask & W_QUIVER) && !u.uquiver) setuqwep(obj);
         // C `:1906–1909` — reinstate dual-wield after a successful catch
@@ -2004,7 +1994,10 @@ async function throwit_returning_missile(
         const { encumber_msg } = await import('./invent.js');
         await encumber_msg();
         if ((obj.owornmask || 0) & W_QUIVER) setuqwep(null);
-        setuwep(obj);
+        {
+            const shine = setuwep(obj);
+            if (shine) await shine;
+        }
         set_twoweap(!!twoweap);
         if (cansee(x, y)) newsym(x, y);
         throwit_return(true);
@@ -3120,8 +3113,8 @@ export async function hurtle_step(rangeArg, x, y) {
 /**
  * C ref: dothrow.c hurtle — knock hero through air for range steps.
  * endmultishot after verbose (C :1119). Named omit: Punished
- * diagonal-chain slack beyond !carried(uball); surface() vs "floor"
- * for TT_INFLOOR.
+ * diagonal-chain slack beyond !carried(uball). TT_INFLOOR uses
+ * dungeon.c surface (D-2884).
  */
 export async function hurtle(dx, dy, range, verbose) {
     const u = game.u || {};
@@ -3134,7 +3127,7 @@ export async function hurtle(dx, dy, range, verbose) {
         const t = u.utraptype | 0;
         const what = t === TT_WEB ? 'web'
             : t === TT_LAVA ? hliquid('lava')
-                : t === TT_INFLOOR ? 'floor'
+                : t === TT_INFLOOR ? surface(u.ux, u.uy)
                     : t === TT_BURIEDBALL ? 'buried ball'
                         : 'trap';
         await pline(`You are anchored by the ${what}.`);

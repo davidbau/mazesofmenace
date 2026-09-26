@@ -102,7 +102,10 @@ export async function ballrelease(showmsg) {
     const uball = u.uball;
     if (!carried(uball) || welded(uball)) return;
     if (showmsg) await pline('Startled, you drop the iron ball.');
-    if (u.uwep === uball) setuwep(null);
+    if (u.uwep === uball) {
+        const shine = setuwep(null);
+        if (shine) await shine;
+    }
     if (u.uswapwep === uball) setuswapwep(null);
     if (u.uquiver === uball) setuqwep(null);
     freeinv_ball(uball);
@@ -174,7 +177,10 @@ async function litter() {
             + `${plural ? 'fall' : 'falls'} down the stairs with you.`,
         );
         // setnotworn subset
-        if (u.uwep === otmp) setuwep(null);
+        if (u.uwep === otmp) {
+            const shine = setuwep(null);
+            if (shine) await shine;
+        }
         if (u.uswapwep === otmp) setuswapwep(null);
         if (u.uquiver === otmp) setuqwep(null);
         for (const slot of [

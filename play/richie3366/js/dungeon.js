@@ -144,7 +144,7 @@ import {
     VISITED,
     In_V_tower,
 } from './const.js';
-import { builds_up, strsubst, trimspaces } from './hacklib.js';
+import { builds_up, strsubst, trimspaces, strstri } from './hacklib.js';
 import { align_gname } from './roles.js';
 import { altarmask_at } from './pray.js';
 import { is_drawbridge_wall } from './dbridge.js';
@@ -1125,9 +1125,10 @@ export function lev_by_name(nam0) {
     } else {
         /* allow strings like "the oracle level" to find "oracle" */
         if (nam.slice(0, 4).toLowerCase() === 'the ') nam = nam.slice(4);
-        // C: strstri(nam, " level") only when it sits at eos - 6
-        if (nam.length >= 6 && nam.slice(-6).toLowerCase() === ' level') {
-            nam = nam.slice(0, -6);
+        // C dungeon.c:2117 — strstri(" level") and p == eos(nam) - 6.
+        const levelTail = strstri(nam, ' level');
+        if (levelTail != null && levelTail.length === 6) {
+            nam = nam.slice(0, nam.length - 6);
         }
         const low = nam.toLowerCase();
         if (low === 'gehennom' || low === 'hell') {
@@ -1150,9 +1151,10 @@ export function lev_by_name(nam0) {
     } else { /* not a specific level; try branch names */
         let idx = find_branch(nam, null);
         /* "<branch> to Xyzzy" */
+        // C dungeon.c:2149 — strstri(nam, " to ") then find_branch(p + 4).
         if (idx < 0) {
-            const at = nam.toLowerCase().indexOf(' to ');
-            if (at >= 0) idx = find_branch(nam.slice(at + 4), null);
+            const toTail = strstri(nam, ' to ');
+            if (toTail != null) idx = find_branch(toTail.slice(4), null);
         }
         if (idx >= 0) {
             const idxtoo = (idx >> 8) & 0x00FF;
@@ -1933,6 +1935,84 @@ function count_feat_lastseentyp(mptr, x, y) {
 export function update_mapseen_for(x, y) {
     recalc_mapseen();
     return game.lastseentyp?.[x | 0]?.[y | 0] | 0;
+}
+
+/* C struct sizes for overview_stats, LP64, BITFIELDS on (config.h:521).
+ * gcc probe of the pinned structs (not committed): mapseen=384
+ * (dungeon.h:246; feat/flags/rooms each 4; 82 msrooms), cemetery=184
+ * (rm.h:418 — same constant as wizcmds.js SIZEOF_CEMETERY). */
+const SIZEOF_MAPSEEN = 384;
+const SIZEOF_CEMETERY_STATS = 184;
+
+/**
+ * Format one `#stats` row the way wizcmds.c `template[]` (`:1112`
+ * `"%-27s  %4ld  %6ld"`) does. `%-27s` does not truncate; `%4ld` /
+ * `%6ld` pad on the left. overview_stats's only caller passes that
+ * template (`wizcmds.c:1668`).
+ */
+function overview_stats_row(hdr, count, size) {
+    return `${hdr.padEnd(27)}  ${String(count).padStart(4)}  ${String(size).padStart(6)}`;
+}
+
+/**
+ * C ref: dungeon.c overview_stats `:2761–2801`.
+ * Count and size the mapseen chain, the cemetery list hung off each
+ * node, and each custom annotation, then append the `#stats` Overview
+ * rows. Signature adaptation (NHW_TEXT idiom, same as misc_stats):
+ * `win` plus `statsfmt` are the caller's line array; the two `long *`
+ * out-params are `total` ({ count, size }), mutated in place.
+ * `svm.mapseenchn` is `game.mapseenchn`. C walks `->next`; JS stores
+ * the chain as an array (init_mapseen) and `.next` stays null, so
+ * array order is the chain. A non-array head is the C linked shape.
+ *
+ * @param {string[]} lines
+ * @param {{ count: number, size: number }} total
+ */
+export function overview_stats(lines, total) {
+    // C `:2768–2771` — six counters, one assignment.
+    let ocount = 0;
+    let bcount = 0;
+    let acount = 0;
+    let osize = 0;
+    let bsize = 0;
+    let asize = 0;
+    // C `:2773–2783` — for (mptr = svm.mapseenchn; mptr; mptr = mptr->next).
+    const head = game.mapseenchn;
+    const visit = (mptr) => {
+        // C `:2774–2775` — one mapseen node.
+        ++ocount;
+        osize += SIZEOF_MAPSEEN;
+        // C `:2776–2779` — cemetery chain on this level.
+        for (let ce = mptr.final_resting_place; ce; ce = ce.next) {
+            ++bcount;
+            bsize += SIZEOF_CEMETERY_STATS;
+        }
+        // C `:2780–2782` — custom annotation text, length plus the NUL.
+        if (mptr.custom_lth) {
+            ++acount;
+            asize += (mptr.custom_lth | 0) + 1;
+        }
+    };
+    if (Array.isArray(head)) {
+        for (let i = 0; i < head.length; ++i) visit(head[i]);
+    } else {
+        for (let mptr = head; mptr; mptr = mptr.next) visit(mptr);
+    }
+    // C `:2784–2786` — general row is unconditional, even at count 0.
+    lines.push(overview_stats_row(
+        `general, size ${SIZEOF_MAPSEEN}`, ocount, osize));
+    // C `:2787–2792` — cemetery row only when bcount is nonzero.
+    if (bcount) {
+        lines.push(overview_stats_row(
+            `cemetery, size ${SIZEOF_CEMETERY_STATS}`, bcount, bsize));
+    }
+    // C `:2793–2797` — annotations row only when acount is nonzero.
+    if (acount) {
+        lines.push(overview_stats_row('annotations, text', acount, asize));
+    }
+    // C `:2798–2799` — add this section into the caller's totals.
+    total.count += ocount + bcount + acount;
+    total.size += osize + bsize + asize;
 }
 
 /**

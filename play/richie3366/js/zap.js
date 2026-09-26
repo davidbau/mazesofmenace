@@ -241,7 +241,7 @@ import { mstatusline, ustatusline } from './insight.js';
 import { setnotworn, boulder_hits_pool } from './do.js';
 import { doname, xname, yname, distant_name, cxname_singular, vtense, The, the, an, An, aobjnam, killer_xname, ansimpleoname, makeplural } from './objnam.js';
 import { uhim, uhis } from './roles.js';
-import { upstart } from './hacklib.js';
+import { str_start_is, upstart } from './hacklib.js';
 import { Soundeffect } from './sndprocs.js';
 import { se_crumbling_sound } from './generated/seffects_data.js';
 import { fix_wall_spines } from './mklev.js';
@@ -319,7 +319,7 @@ import {
     corpse_revive_type,
     oc_merge_of, uncurse, unbless, attach_egg_hatch_timeout, obj_extract_self,
     eaten_stat, start_timer, spot_stop_timers, spot_time_left, obj_stop_timers,
-    obj_ice_effects, place_object, stackobj, mergable, merged, set_corpsenm, kill_egg,
+    obj_ice_effects, place_object, recreate_pile_at, stackobj, mergable, merged, set_corpsenm, kill_egg,
     get_mtraits, free_omonst, free_omid, is_metallic, is_crackable,
     mksobj_at, is_flammable, is_rottable, is_rustprone, is_corrodeable,
     erosion_matters, is_damageable, fixup_oil,
@@ -2320,7 +2320,7 @@ export async function dobuzz(
                             // verbosity).
                             if ((type | 0) < 0) {
                                 await monkilled(
-                                    mon, flash_str(fltyp), AD_RBRE,
+                                    mon, flash_str(fltyp, false), AD_RBRE,
                                 );
                             } else {
                                 let xkflags = XKILL_GIVEMSG;
@@ -4896,34 +4896,64 @@ function obj_shudders(obj) {
     return !rn2(zap_odds);
 }
 
-/**
- * C ref: zap.c do_osshock — destroy via shudder; poly_zapped material roll.
- * Shop bill / hideunder cover deferred.
- */
-function do_osshock(obj) {
-    if (!obj) return;
-    game._obj_zapped = true;
+  /**
+   * C ref: zap.c do_osshock `:1637–1674`.
+   * MAIL_STRUCTURES mail returns before `obj_zapped`. Otherwise mark the
+   * zap, maybe record `oc_material` via `rn2(Luck+45)`, split a stack
+   * (`rnd(quan-1)`, or `rnd(30000)` above `LARGEST_INT`), bill a costly
+   * spot, then `delobj` the piece that dies.
+   * Shop `addtobill` / `stolen_value` are async. That arm returns a
+   * Promise which already includes `delobj`; a non-shop call stays sync
+   * so `bhito`'s following `hideunder` is not reordered. Caller:
+   * `if (p) await p`.
+   * @returns {Promise<void>|undefined}
+   */
+  function do_osshock(obj) {
+      if (!obj) return;
+      /* C zap.c:1642–1644 — MAIL_STRUCTURES is defined (global.h:430). */
+      if ((obj.otyp | 0) === objectNames.indexOf('SCR_MAIL')) return;
 
-    if ((game._poly_zapped ?? -1) < 0) {
-        const luck = game.u?.uluck | 0;
-        for (let i = obj.quan | 0; i; i--) {
-            if (!rn2(luck + 45)) {
-                const mat = game.objects?.[obj.otyp]?.oc_material;
-                game._poly_zapped = mat ?? 0;
-                break;
-            }
-        }
-    }
+      game._obj_zapped = true; /* C :1646 */
 
-    // C: split off rnd(quan-1), then delobj the split portion
-    let victim = obj;
-    if ((obj.quan | 0) > 1) {
-        const q = obj.quan | 0;
-        victim = splitobj(obj, rnd(q - 1)) || obj;
-    }
-    // costly_spot / addtobill deferred
-    delobj(victim);
-}
+      /* C :1648–1656 — first shudder of this zap may pick a material.
+         Luck is u.uluck + u.moreluck (you.h:464). */
+      if ((game._poly_zapped ?? -1) < 0) {
+          for (let i = obj.quan | 0; i; i--) {
+              if (!rn2((Luck() + 45) | 0)) {
+                  game._poly_zapped = game.objects?.[obj.otyp]?.oc_material | 0;
+                  break;
+              }
+          }
+      }
+
+      /* C :1658–1664 — quan > 1 leaves a survivor. The returned piece
+         is what gets billed and destroyed. C splitobj panics when it
+         cannot split (mkobj.c:463); no live panic export. */
+      let victim = obj;
+      const q = obj.quan | 0;
+      if (q > 1) {
+          const n = q > LARGEST_INT ? rnd(30000) : rnd((q - 1) | 0);
+          const piece = splitobj(obj, n);
+          if (!piece) {
+              throw new Error(
+                  `splitobj [cobj=${obj.cobj ? 'non-empty container' : '(null)'} num=${n} quan=${q}]`);
+          }
+          victim = piece;
+      }
+
+      /* C :1666–1674 — bill, then destroy. costly_spot is sync. */
+      if (costly_spot(victim.ox | 0, victim.oy | 0)) {
+          const piece = victim;
+          return (async () => {
+              if ((game.u?.ushops || '')[0])
+                  await addtobill(piece, false, false, false);
+              else
+                  await stolen_value(piece, piece.ox | 0, piece.oy | 0, false, false);
+              delobj(piece);
+          })();
+      }
+      delobj(victim);
+  }
 
 /**
  * C zap.c stone_to_flesh_obj :1991–2112 — mineral/gemstone then
@@ -5233,7 +5263,8 @@ export async function poly_obj(obj, id) {
                 const u = game.u || {};
                 if ((new_wornmask & W_WEP) !== 0) {
                     if (was_twohanded || !bimanual(otmp) || !u.uarms) {
-                        setuwep(otmp);
+                        const shine = setuwep(otmp);
+                        if (shine) await shine;
                     }
                     if (was_twoweap && u.uwep && !bimanual(u.uwep)) {
                         set_twoweap(true);
@@ -5461,7 +5492,9 @@ async function bhito(obj, otmp) {
                 && !!(game.u?.uundetected)
                 && hides_under(game.youmonst?.data);
             if (cansee(obj.ox, obj.oy)) learn_it = true;
-            do_osshock(obj);
+            /* C zap.c:2213 — shop bill is the only await inside. */
+            const shocked = do_osshock(obj);
+            if (shocked) await shocked;
             if (cover) hideunder(game.youmonst);
             break;
         }
@@ -5764,9 +5797,10 @@ async function create_polymon(obj, okind) {
  * bhito -> break_statue -> activate_statue_trap sequence could
  * otherwise operate on next_obj below the current statue), first=FALSE
  * when the pile head changed, hidingunder up/down skips in the walk,
- * maybe_unhide_at tail.
- * Named omit (tails, own rows): recreate_pile restack, fill_pit
- * (`create_polymon` live above).
+ * maybe_unhide_at tail. Boulder restack (`:2487–2494`) calls
+ * `recreate_pile_at`. Named omit: `fill_pit` (`trap.c:4018` is
+ * `flooreffects`; the live `js/dig.js` body deletes the trap and
+ * the boulder directly).
  */
 export async function bhitpile(wand, fhito, tx, ty, zz) {
     let hitanything = 0;
@@ -5819,8 +5853,20 @@ export async function bhitpile(wand, fhito, tx, ty, zz) {
     /* C :2484–2485 — polymorph aftermath: a golem arises from the pile. */
     if ((game._poly_zapped | 0) >= 0)
         await create_polymon(objects_at(tx, ty), game._poly_zapped);
+    /* C :2487–2494 — boulders belong on top. A non-boulder above one
+       means polymorph or stone-to-flesh left the pile inverted. */
+    let prevotyp = BOULDER;
+    for (let otmp = objects_at(tx, ty); otmp; otmp = otmp.nexthere) {
+        if ((otmp.otyp | 0) === BOULDER && prevotyp !== BOULDER) {
+            recreate_pile_at(tx, ty);
+            break;
+        }
+        prevotyp = otmp.otyp | 0;
+    }
     /* C :2495–2497 — pile might have been destroyed or dispersed. */
     if (hidingunder) await maybe_unhide_at(tx, ty);
+    /* C :2499 fill_pit — named: js/dig.js fill_pit does not call
+       flooreffects (trap.c:4018). */
     return hitanything;
 }
 
@@ -7118,11 +7164,46 @@ export async function wishcmdassist(triesleft) {
     await show_text_pages(lines);
 }
 
+/** C zap.c:6221 — ring length for wizard wish text. */
+const MAX_WISH_HISTORY = 20;
+
 /**
- * C ref: zap.c wish_history_menu :6275-6309 (staticfn; caller makewish :6335).
- * Entire body is #ifdef DEBUG (menu of wish_history[] into buf); in the
- * production build it is a no-op and buf is never modified. JS keeps the
- * no-op so the symbol exists; the DEBUG menu is deferred.
+ * C ref: zap.c wish_history_add :6227–6255.
+ * `DEBUG` is defined in `patchlevel.h`, so this body is compiled.
+ * A stored line that is a case-blind prefix of `buf` is a duplicate
+ * (`strncmpi(hist, buf, strlen(hist)) == 0`), which is
+ * `str_start_is(buf, hist, true)`. `alloc`/`strcpy`/`free` are the
+ * string in that ring slot.
+ */
+export function wish_history_add(buf) {
+    // C :6232–6233 — wizard is flags.debug; non-wizard leaves the ring alone.
+    if (!game.flags?.debug) return;
+    if (!Array.isArray(game.wish_history) || game.wish_history.length !== MAX_WISH_HISTORY) {
+        game.wish_history = new Array(MAX_WISH_HISTORY).fill(null);
+        game.wish_history_idx = 0;
+    }
+    const hist = game.wish_history;
+    const text = String(buf ?? '');
+    let wish_history_idx = game.wish_history_idx | 0;
+    let i = 0;
+    // C :6235–6243 — skip empty slots; break on a prefix match.
+    for (; i < MAX_WISH_HISTORY; i++) {
+        const idx = (wish_history_idx + i) % MAX_WISH_HISTORY;
+        if (hist[idx] == null) continue;
+        if (str_start_is(text, hist[idx], true)) break;
+    }
+    // C :6245–6253 — no match: replace the ring slot and advance.
+    if (i === MAX_WISH_HISTORY) {
+        const idx = (wish_history_idx + i) % MAX_WISH_HISTORY;
+        hist[idx] = text;
+        game.wish_history_idx = (wish_history_idx + 1) % MAX_WISH_HISTORY;
+    }
+}
+
+/**
+ * C ref: zap.c wish_history_menu :6275–6309 (staticfn; caller makewish :6335).
+ * `DEBUG` is defined, so the menu is in the C build. This remains a no-op:
+ * `buf` is not modified. The menu body is named in the map.
  */
 export function wish_history_menu(_buf) {
 }
@@ -7131,8 +7212,8 @@ export function wish_history_menu(_buf) {
  * C ref: zap.c makewish — prompt + readobjnam + hold_another_object.
  * Terrain wish via readobjnam_wish → wizterrainwish traps (D-1289) +
  * door/wall (D-1290) + secret corridor (D-1304) + switch_terrain
- * (D-1279). wishcmdassist help arm live; history still named;
- * wish livelog arms live (D-1892).
+ * (D-1279). wishcmdassist help arm live; wish_history_add live (D-2873);
+ * wish_history_menu still the no-op; wish livelog arms live (D-1892).
  */
 export async function makewish() {
     // C zap.c:6323 — makewish clears resume_wish at entry (zap.c:6341 sets
@@ -7171,6 +7252,8 @@ export async function makewish() {
         break;
     }
 
+    // C zap.c:6359 — history and the livelog quote the line before readobjnam.
+    const bufcpy = buf;
     let otmp = await readobjnam_wish(buf, nothing);
     if (!otmp) {
         await pline('Nothing fitting that description exists in the game.');
@@ -7187,14 +7270,15 @@ export async function makewish() {
         return;
     }
     if (otmp === HANDS_OBJ) {
-        // C zap.c makewish: wizard-mode terrain wish — wish_history_add,
-        // then return with no livelog event. History still deferred (header).
+        // C zap.c:6375–6377 — terrain wish is recorded, then no livelog.
+        wish_history_add(bufcpy);
         return;
     }
 
     if (!game.u) game.u = {};
     if (!game.u.uconduct) game.u.uconduct = {};
-    // C zap.c makewish: wish_history_add(bufcpy) deferred (see header).
+    // C zap.c:6379 — record the wish text before artifact bookkeeping.
+    wish_history_add(bufcpy);
     if (otmp.oartifact) {
         // C: update artifact bookkeeping; doesn't produce a livelog event.
         artifact_origin(otmp, ONAME_WISH | ONAME_KNOW_ARTI);

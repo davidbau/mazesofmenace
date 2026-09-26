@@ -130,7 +130,7 @@ import { flooreffects } from './do.js';
 import { end_burn } from './timeout.js';
 import { obj_resists } from './dogmove.js';
 import { munslime, mon_adjust_speed, munstone } from './muse.js';
-import { Monnam, mon_nam, mon_nam_too, Adjmonnam, Amonnam, oname, pmname, x_monnam, hliquid, YMonnam, s_suffix, Mgender, free_mgivenname, a_monnam, y_monnam, some_mon_nam, minimal_monnam } from './do_name.js';
+import { Monnam, mon_nam, mon_nam_too, Adjmonnam, Amonnam, oname, pmname, x_monnam, hliquid, YMonnam, s_suffix, Mgender, free_mgivenname, a_monnam, y_monnam, some_mon_nam, minimal_monnam, noit_mon_nam } from './do_name.js';
 import { an, xname, makeplural, cxname, vtense, The, simpleonames, doname } from './objnam.js';
 import { mon_explodes } from './explode.js';
 import { makemon, newcham, pm_to_cham, is_home_elemental, clone_mon } from './makemon.js';
@@ -2902,10 +2902,22 @@ function attacktype_mm(ptr, aatyp) {
     return false;
 }
 
-/** C ref: mondata.c completelyburns — paper/straw golem. */
+/** C ref: mondata.h completelyburns — paper or straw golem. */
 function completelyburns_mm(data) {
     const mndx = data?.mndx ?? data?.mnum;
     return mndx === PM_PAPER_GOLEM || mndx === PM_STRAW_GOLEM;
+}
+
+/** C ref: mondata.h completelyrusts — iron golem. */
+function completelyrusts_mm(data) {
+    const mndx = data?.mndx ?? data?.mnum;
+    return mndx === PM_IRON_GOLEM;
+}
+
+/** C ref: mondata.h completelyrots — wood or leather golem. */
+function completelyrots_mm(data) {
+    const mndx = data?.mndx ?? data?.mnum;
+    return mndx === PM_WOOD_GOLEM || mndx === PM_LEATHER_GOLEM;
 }
 
 /** C ref: mon.c mlifesaver — worn AMULET_OF_LIFE_SAVING on living/vampshift. */
@@ -3880,32 +3892,55 @@ export async function mondied(mdef) {
 }
 
 /**
- * C ref: mon.c monkilled — pline then mondied (or mondead if disintegested).
- * D-1244: AD_DGST / -AD_RBRE / FIRE completelyburns → mondead, no corpse.
- * D-1548: wormno ? worm_known : cansee(head) (`:3384–3385`).
- * C `:3381` gates the pline on non-null fltxt (mhitm_ad_dcay passes
- * `(char *) 0` after its own «falls to pieces»); '' still plines.
- * Named omissions: pet roast/rust/rot «May … in peace» pline; pline_mon vs pline.
+ * C ref: mon.c monkilled `:3377–3418` — another monster killed mdef.
+ * Visible non-null fltxt uses pline_mon (destroyed vs killed). Otherwise
+ * sad_feeling is tame ? TRUE : FALSE, consumed later by mondead.
+ * AD_DGST / -AD_RBRE / fire that completelyburns → mondead, no corpse.
+ * A life-saved monster returns before the pet roast/rust/rot line.
+ * Named omission: wiz_kill (`wizcmds.c:326`) is not ported.
  */
 export async function monkilled(mdef, fltxt, how) {
-    const txt = fltxt || '';
+    // C mon.c:3382
+    const mptr = mdef.data;
+    // C `:3384–3388` — null fltxt skips the kill line (caller already spoke).
+    // Empty fltxt still speaks, without " by the ".
     if (fltxt != null && (mdef.wormno ? worm_known(mdef) : cansee(mdef.mx, mdef.my))) {
-        const verb = nonliving(mdef.data) ? 'destroyed' : 'killed';
-        await pline(
-            `${Monnam(mdef)} is ${verb}${txt ? ' by the ' : ''}${txt}!`,
+        await pline_mon(
+            mdef,
+            '%s is %s%s%s!',
+            Monnam(mdef),
+            nonliving(mptr) ? 'destroyed' : 'killed',
+            fltxt[0] ? ' by the ' : '',
+            fltxt,
         );
-    } else if (mdef.mtame) {
-        game.iflags = game.iflags || {};
-        game.iflags.sad_feeling = true;
+    } else {
+        // C `:3389–3391` — sad feeling waits until after life-saving.
+        if (!game.iflags) game.iflags = {};
+        game.iflags.sad_feeling = mdef.mtame ? true : false;
     }
+
+    // C `:3393–3403` — digested, disintegrated, or a flammable golem burnt up
+    // leaves no corpse. Rusted and rotted golems still do.
     const howi = how | 0;
     const disintegested = howi === AD_DGST || howi === -AD_RBRE
-        || (howi === AD_FIRE && completelyburns_mm(mdef.data));
-    // C mon.c monkilled `:3398` — gd.disintegested for vamprises wording
-    // (no reset here in C; xkilled resets after its own mondead call).
+        || (howi === AD_FIRE && completelyburns_mm(mptr));
+    // gd.disintegested — vamprises wording. xkilled clears its own copy.
     game.disintegested = disintegested;
     if (disintegested) await mondead(mdef);
     else await mondied(mdef);
+
+    // C `:3405–3406` — life-saved (or rose). No epitaph.
+    if (!deadmonster(mdef)) return;
+
+    // C `:3407–3415` — pet golem completely destroyed. If it was not
+    // visible, this follows "You have a sad feeling...".
+    if (mdef.mtame) {
+        const rxt = (howi === AD_FIRE && completelyburns_mm(mptr)) ? 'roast'
+            : (howi === AD_RUST && completelyrusts_mm(mptr)) ? 'rust'
+                : (howi === AD_DCAY && completelyrots_mm(mptr)) ? 'rot'
+                    : null;
+        if (rxt) await pline(`May ${noit_mon_nam(mdef)} ${rxt} in peace.`);
+    }
 }
 
 // C ref: makemon.c grow_up() `:2049–2178` — monster earned experience: HP gain

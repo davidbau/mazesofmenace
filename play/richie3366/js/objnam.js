@@ -30,7 +30,7 @@ import {
     pmnames, MALE, FEMALE, NEUTRAL, NON_PM, NUMMONS, LOW_PM, NUM_MGENDERS,
 } from './monsters.js';
 import { BOGUSMON_BUF } from './generated/bogusmon_data.js';
-import { upstart, highc, ordin } from './hacklib.js';
+import { upstart, highc, ordin, strstri } from './hacklib.js';
 import { genders } from './roles.js';
 import {
     PM_SAMURAI, PM_CLERIC, PM_ARCHEOLOGIST, PM_LICHEN, PM_ACID_BLOB, PM_LONG_WORM_TAIL,
@@ -60,7 +60,6 @@ import {
 } from './const.js';
 import { currency } from './invent.js';
 
-const PM_ALIGNED_CLERIC = monsterNames.indexOf('PM_ALIGNED_CLERIC');
 const BOULDER = objectNames.indexOf('BOULDER');
 const POT_OIL = objectNames.indexOf('POT_OIL');
 const POT_WATER = objectNames.indexOf('POT_WATER');
@@ -1196,30 +1195,18 @@ function mungspaces_objnam(s) {
 }
 
 /**
- * C ref: do_name.c obj_pmname — CORPSE/STATUE/FIGURINE pmnames + gender.
- * Aligned-cleric + CORPSTAT_RANDOM remaps to PM_CLERIC (avoid "aligned").
- * Named omit: omonst traits (#if 0 in C).
+ * Late-bound `do_name.js` `obj_pmname`. This file cannot import do_name.js:
+ * do_name already imports `xname`, and a static back-edge TDZ-faults
+ * `let _shk_owns_prefix` (D-2491). The body lives only in do_name.js.
  */
+let _obj_pmname = null;
+export function set_obj_pmname(fn) {
+    _obj_pmname = fn;
+}
+
+/** @param {object} obj @returns {string} */
 export function obj_pmname_corpse(obj) {
-    const otypName = objectNames[obj?.otyp];
-    const omndx = obj?.corpsenm;
-    if ((otypName === 'CORPSE' || otypName === 'STATUE' || otypName === 'FIGURINE')
-        && ismnum(omndx)) {
-        const cgend = (obj.spe | 0) & CORPSTAT_GENDER;
-        const mgend = cgend === CORPSTAT_MALE ? MALE
-            : cgend === CORPSTAT_FEMALE ? FEMALE
-                : NEUTRAL;
-        let mndx = omndx;
-        if (mndx === PM_ALIGNED_CLERIC && cgend === CORPSTAT_RANDOM) {
-            mndx = PM_CLERIC;
-        }
-        const names = pmnames[mndx];
-        if (!names) return 'thing';
-        let g = mgend;
-        if (g < MALE || g >= 3 || !names[g]) g = NEUTRAL;
-        return names[g] || names[NEUTRAL] || names[MALE] || names[FEMALE] || 'thing';
-    }
-    return 'thing';
+    return _obj_pmname(obj);
 }
 
 /**
@@ -1257,9 +1244,8 @@ export function corpse_xname(obj, adjective, cxn_flags) {
         // null/negative guard is JS null-safety for unset corpsenm.
         mnam = 'thing';
     } else {
-        // C :1847: mnam = obj_pmname(otmp) — do_name.c valid arm
-        // (gender-aware pmname + aligned-cleric remap); the impossible/
-        // glorkum-seeker fallback is map-named (unreachable for CORPSE).
+        // C :1847: mnam = obj_pmname(otmp) — do_name.js obj_pmname
+        // (late-bound; the impossible / glorkum-seeker arm is in that body).
         mnam = obj_pmname_corpse(obj);
         const ptr = mons(omndx);
         // C :1848: unique or pname → s_suffix possessive
@@ -1348,11 +1334,6 @@ export function cxname_singular(obj) {
     return xname_flags(obj, CXN_SINGULAR);
 }
 
-/** C ref: hacklib.c strstri — case-insensitive substring. */
-function strstri_objnam(hay, needle) {
-    return String(hay ?? '').toLowerCase().includes(String(needle).toLowerCase());
-}
-
 /**
  * C ref: objnam.c gloves_simple_name `:5531–5547` — "gauntlets" iff
  * dknown and (oc_name_known ? OBJ_NAME : OBJ_DESCR) contains
@@ -1366,7 +1347,7 @@ export function gloves_simple_name(gloves) {
         const actualn = objectNameStrs[otyp] || '';
         const descrpn = objectDescrs[otyp] || '';
         const s = ocl?.oc_name_known ? actualn : descrpn;
-        if (strstri_objnam(s, 'gauntlets')) return 'gauntlets';
+        if (strstri(s, 'gauntlets')) return 'gauntlets';
     }
     return 'gloves';
 }
@@ -1443,8 +1424,8 @@ export function killer_xname(obj) {
         }
         // C: article iff quan==1 and not already possessive; KILLED_BY caller
         if ((obj.quan | 0) === 1
-            && !strstri_objnam(buf, "'s ")
-            && !strstri_objnam(buf, "s' ")) {
+            && !strstri(buf, "'s ")
+            && !strstri(buf, "s' ")) {
             buf = (obj_is_pname(obj) || the_unique_obj(obj)) ? the(buf) : an(buf);
         }
     } finally {

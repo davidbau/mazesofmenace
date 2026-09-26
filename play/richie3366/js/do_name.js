@@ -30,7 +30,7 @@ import { nhgetch } from './input.js';
 import {
     flush_screen, flush_topl_more, docrt, canspotmon, pline,
     glyph_to_obj_at, glyph_is_swallow_at, see_with_infrared, sensemon,
-    verbalize,
+    verbalize, impossible,
 } from './display.js';
 import {
     paint_corner_nhw_menu, discover_object,
@@ -54,6 +54,7 @@ import {
     NON_PM, Is_astralevel, In_endgame,
     EPRI, EMIN, A_NONE, A_LAWFUL, A_CHAOTIC, A_NEUTRAL,
     PL_PSIZ,
+    CORPSTAT_GENDER, CORPSTAT_MALE, CORPSTAT_FEMALE, CORPSTAT_RANDOM,
 } from './const.js';
 import { ATR_INVERSE, NO_COLOR } from './terminal.js';
 import { shkname } from './shknam.js';
@@ -70,6 +71,7 @@ import { objects_at, SIR_TERRY_NOVELS } from './mkobj.js';
 import { rank_of, genders, align_gname } from './roles.js';
 import {
     an, just_an, xname, simpleonames, ansimpleoname, set_y_monnam, set_noit_mon_nam,
+    set_obj_pmname,
     The, is_plural, safe_qbuf, body_part_latebound, vtense, makeplural,
 } from './objnam.js';
 import {
@@ -92,6 +94,7 @@ const PM_WIZARD_OF_YENDOR = monsterNames.indexOf('PM_WIZARD_OF_YENDOR');
 const PM_SHOPKEEPER = monsterNames.indexOf('PM_SHOPKEEPER');
 const PM_HIGH_CLERIC = monsterNames.indexOf('PM_HIGH_CLERIC');
 const PM_ALIGNED_CLERIC = monsterNames.indexOf('PM_ALIGNED_CLERIC');
+const PM_CLERIC = monsterNames.indexOf('PM_CLERIC');
 const PM_JUIBLEX = monsterNames.indexOf('PM_JUIBLEX');
 const PM_LONG_WORM = monsterNames.indexOf('PM_LONG_WORM');
 const PM_LONG_WORM_TAIL = monsterNames.indexOf('PM_LONG_WORM_TAIL');
@@ -99,6 +102,7 @@ export const PM_COYOTE = monsterNames.indexOf('PM_COYOTE');
 const SPE_NOVEL = objectNames.indexOf('SPE_NOVEL');
 const STRANGE_OBJECT = objectNames.indexOf('STRANGE_OBJECT');
 const TOWEL = objectNames.indexOf('TOWEL');
+const CORPSE = objectNames.indexOf('CORPSE');
 const STATUE = objectNames.indexOf('STATUE');
 const TIN = objectNames.indexOf('TIN');
 const FIGURINE = objectNames.indexOf('FIGURINE');
@@ -638,6 +642,44 @@ export function mon_pmname(mtmp) {
     const raw = mtmp?.data?.name || 'monster';
     return String(raw).replace(/^PM_/, '').replace(/_/g, ' ').toLowerCase();
 }
+
+/**
+ * C ref: do_name.c obj_pmname `:1321–1359`.
+ * pmname for a corpse, statue, or figurine. The `#if 0` saved-montraits
+ * arm (`:1323–1334`, `has_omonst` / `OMONST` / `Mgender`) is compiled out.
+ * `ismnum` is the `monst.h:285` macro (`LOW_PM <= x < NUMMONS`); the
+ * `const.js` helper omits the upper bound, so this site spells the macro.
+ * A missing `corpsenm` is not monster 0. `impossible` is not awaited:
+ * `xname`, `corpse_xname`, and `selftouch` use the returned string
+ * synchronously. JS `impossible` expands `%d`, not C `%i`.
+ * @param {object} obj
+ * @returns {string}
+ */
+export function obj_pmname(obj) {
+    const otyp = obj.otyp | 0;
+    const raw = obj.corpsenm;
+    const corpsenm = (typeof raw === 'number') ? (raw | 0) : (NON_PM | 0);
+    /* C `:1335–1336` — CORPSE / STATUE / FIGURINE and ismnum(corpsenm). */
+    if ((otyp === CORPSE || otyp === STATUE || otyp === FIGURINE)
+        && corpsenm >= LOW_PM && corpsenm < NUMMONS) {
+        const cgend = (obj.spe | 0) & CORPSTAT_GENDER;
+        const mgend = (cgend === CORPSTAT_MALE) ? MALE
+            : (cgend === CORPSTAT_FEMALE) ? FEMALE
+                : NEUTRAL;
+        let mndx = corpsenm;
+        /* Aligned cleric's neuter pmname is "aligned cleric". Random
+           gender must not print that; an explicit neuter flag stays.
+           Do not roll a gender: splitting the stack would change it. */
+        if (mndx === PM_ALIGNED_CLERIC && cgend === CORPSTAT_RANDOM) {
+            mndx = PM_CLERIC;
+        }
+        return pmname(mndx, mgend);
+    }
+    void impossible('obj_pmname otyp:%d,corpsenm:%d', otyp, corpsenm);
+    return 'two-legged glorkum-seeker';
+}
+
+set_obj_pmname(obj_pmname);
 
 /**
  * C ref: do_name.c minimal_monnam `:1254–1285` — debug monster tag with map

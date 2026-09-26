@@ -1697,12 +1697,18 @@ function useup_invent(otmp) {
         otmp.quan--;
         return;
     }
-    if (game.u?.uwep === otmp) setuwep(null);
-    const inv = game.invent || [];
-    const idx = inv.indexOf(otmp);
-    if (idx >= 0) inv.splice(idx, 1);
-    otmp.quan = 0;
-    otmp.where = OBJ_FREE;
+    const finish = () => {
+        const inv = game.invent || [];
+        const idx = inv.indexOf(otmp);
+        if (idx >= 0) inv.splice(idx, 1);
+        otmp.quan = 0;
+        otmp.where = OBJ_FREE;
+    };
+    if (game.u?.uwep === otmp) {
+        const shine = setuwep(null);
+        if (shine) return shine.then(finish);
+    }
+    finish();
 }
 
 /**
@@ -1839,7 +1845,10 @@ export async function breakchestlock(box, destroyit) {
                 otmp.where = OBJ_FREE;
                 continue;
             }
-            useup_invent(otmp);
+            {
+                const used = useup_invent(otmp);
+                if (used) await used;
+            }
             // remaining stack still placed below when quan>1 after useup
             if ((otmp.quan || 0) <= 0) continue;
         }
@@ -1896,7 +1905,10 @@ async function forcelock() {
             await pline(
                 `${plural ? 'One of y' : 'Y'}our ${xname(uwep)} broke!`,
             );
-            useup_invent(uwep);
+            {
+                const used = useup_invent(uwep);
+                if (used) await used;
+            }
             await pline('You give up your attempt to force the lock.');
             exercise(A_DEX, true);
             xl.usedtime = 0;

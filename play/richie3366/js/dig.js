@@ -2408,7 +2408,9 @@ async function dig() {
             return 0;
         }
 
-        recalc_block_point(dpx, dpy);
+        /* C dig.c:520 — unblock only; a cell that still blocks stays blocked. */
+        if (!does_block(dpx, dpy, lev))
+            unblock_point(dpx, dpy);
         feel_newsym(dpx, dpy);
         if (digtxt && !digging.quiet) await pline(digtxt);
         if (dmgtxt) {

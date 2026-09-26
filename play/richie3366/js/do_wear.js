@@ -11,7 +11,7 @@ import {
     newsym, see_monsters, urgent_pline, impossible, Hallucination, pline_The,
 } from './display.js';
 import { yn_function, paranoid_ynq } from './getline.js';
-import { an, doname, the, xname, xprname, vtense, makeplural, makesingular, otense, gloves_simple_name, obj_pmname_corpse, simpleonames, body_part_latebound, Tobjnam, Yname2, corpse_xname, killer_xname, arti_light_description, set_doffing_predicates, safe_typename } from './objnam.js';
+import { an, doname, the, xname, xprname, vtense, makeplural, makesingular, otense, gloves_simple_name, simpleonames, body_part_latebound, Tobjnam, Yname2, corpse_xname, killer_xname, arti_light_description, set_doffing_predicates, safe_typename } from './objnam.js';
 import { find_ac } from './u_init.js';
 import {
     A_STR, A_INT, A_WIS, A_CON, A_CHA, A_DEX, acurr, extremeattr, change_luck, Fast, Very_fast,
@@ -66,7 +66,7 @@ import {
     GETOBJ_NOFLAGS, Upolyd,
     A_CURRENT, A_CG_HELM_OFF,
 } from './const.js';
-import { x_monnam, trycall, hcolor, hliquid } from './do_name.js';
+import { x_monnam, trycall, hcolor, hliquid, obj_pmname } from './do_name.js';
 import { PM_CLERIC } from './generated/monsters_data.js';
 import { change_sex, poly_gender, Unchanging, float_vs_flight, body_part } from './polyself.js';
 import {
@@ -2000,7 +2000,7 @@ export function carrying_stoning_corpse() {
 async function better_not_take_that_off(otmp) {
     const corpse = carrying_stoning_corpse();
     if (corpse && !u_safe_from_fatal_corpse(corpse, st_corpse | st_petrifies)) {
-        const buf = `Take off your ${gloves_simple_name(otmp)} despite carrying a dead ${obj_pmname_corpse(corpse)}?`;
+        const buf = `Take off your ${gloves_simple_name(otmp)} despite carrying a dead ${obj_pmname(corpse)}?`;
         return (await paranoid_ynq(true, buf, false)) !== 'y';
     }
     return false;
@@ -2188,7 +2188,10 @@ async function do_takeoff() {
     doff.mask = (doff.mask | 0) | I_SPECIAL;
     if (doff.what === W_WEP) {
         if (!(await cursed_blocks(u.uwep))) {
-            setuwep(null);
+            {
+                const shine = setuwep(null);
+                if (shine) await shine;
+            }
             if (was_twoweap) {
                 await pline('You are no longer wielding either weapon.');
             } else {
@@ -3403,7 +3406,10 @@ export async function Ring_on(obj) {
     const oprop = game.objects?.[obj.otyp]?.oc_oprop | 0;
     let oldprop = u.uprops?.[oprop]?.extrinsic | 0;
     // make sure ring isn't wielded
-    if (obj === u.uwep) setuwep(null);
+    if (obj === u.uwep) {
+        const shine = setuwep(null);
+        if (shine) await shine;
+    }
     else if (obj === u.uswapwep) setuswapwep(null);
     else if (obj === u.uquiver) setuqwep(null);
 
@@ -3683,7 +3689,10 @@ export async function glibr() {
             + `${otense(otmp, 'slip')} from your ${which}${hand}.`,
         );
         otmp.quan = savequan;
-        setuwep(null);
+        {
+            const shine = setuwep(null);
+            if (shine) await shine;
+        }
         cmdq_clear();
         if (await canletgo(otmp, '')) await dropx(otmp);
     }

@@ -240,6 +240,7 @@ import {
     NON_PM,
     FEMALE,
     MALE,
+    QBUFSZ,
 } from './const.js';
 import { ATR_INVERSE, NO_COLOR } from './terminal.js';
 import {
@@ -247,7 +248,7 @@ import {
     from_what, stone_luck, set_moreluck,
     A_STR, A_INT, A_WIS, A_DEX, A_CON, A_CHA,
 } from './attrib.js';
-import { depth, ing_suffix, strstri, ordin, highc, lcase } from './hacklib.js';
+import { depth, ing_suffix, strstri, strsubst, ordin, highc, lcase } from './hacklib.js';
 import { visctrl } from './dokeylist.js';
 import { select_menu_pick_any, select_menu_pick_one, hide_unhide_msgtypes } from './options.js';
 import { rn2 } from './rng.js';
@@ -2551,56 +2552,121 @@ export const DEF_INV_ORDER = [
     TOOL_CLASS, GEM_CLASS, ROCK_CLASS, BALL_CLASS, CHAIN_CLASS,
 ];
 
-// C invent.c let_to_name names[] (`:4789–4793`) — index is oclass
-const CLASS_NAMES = {
-    [ILLOBJ_CLASS]: 'Illegal objects',
-    [WEAPON_CLASS]: 'Weapons',
-    [ARMOR_CLASS]: 'Armor',
-    [RING_CLASS]: 'Rings',
-    [AMULET_CLASS]: 'Amulets',
-    [TOOL_CLASS]: 'Tools',
-    [FOOD_CLASS]: 'Comestibles',
-    [POTION_CLASS]: 'Potions',
-    [SCROLL_CLASS]: 'Scrolls',
-    [SPBOOK_CLASS]: 'Spellbooks',
-    [WAND_CLASS]: 'Wands',
-    [COIN_CLASS]: 'Coins',
-    [GEM_CLASS]: 'Gems/Stones',
-    [ROCK_CLASS]: 'Boulders/Statues',
-    [BALL_CLASS]: 'Iron balls',
-    [CHAIN_CLASS]: 'Chains',
-    [VENOM_CLASS]: 'Venoms',
-};
+/*
+ * C invent.c names[] `:4789–4793` — index is oclass.
+ * Slot 0 is the C null pointer (RANDOM_CLASS); it is never selected.
+ */
+const LET_CLASS_NAMES = [
+    null,
+    'Illegal objects',
+    'Weapons',
+    'Armor',
+    'Rings',
+    'Amulets',
+    'Tools',
+    'Comestibles',
+    'Potions',
+    'Scrolls',
+    'Spellbooks',
+    'Wands',
+    'Coins',
+    'Gems/Stones',
+    'Boulders/Statues',
+    'Iron balls',
+    'Chains',
+    'Venoms',
+];
 
-/** C invent.c oth_symbols / oth_names (`:4794–4795`). */
-const OTH_NAMES = { [CONTAINED_SYM]: 'Bagged/Boxed items' };
+/* C invent.c oth_symbols / oth_names `:4794–4795`. The trailing NUL is
+   strchr's terminator, not a second name. */
+const OTH_SYMBOLS = [CONTAINED_SYM.charCodeAt(0) & 255, 0];
+const OTH_CLASS_NAMES = ['Bagged/Boxed items'];
+
+/** C `char` on this ABI is signed; strchr then compares unsigned char. */
+function let_to_name_let(letch) {
+    let code;
+    if (typeof letch === 'string') {
+        code = letch.length ? letch.charCodeAt(0) : 0;
+    } else {
+        code = letch | 0;
+    }
+    code &= 255;
+    return code > 127 ? code - 256 : code;
+}
 
 /**
  * C invent.c let_to_name `:4799–4839`.
- * `let` in 1..MAXOCLASSES-1 is an oclass (flags.inv_order bytes).
- * showsym → pad to 8 then `"  ('%c')"` via def_oc_syms (BALL `'0'`).
- * Named omit: unpaid shop prefix callers still rare; gi.invbuf realloc.
+ * `let` in 1..MAXOCLASSES-1 is an oclass (`flags.inv_order` bytes).
+ * Else `strchr(oth_symbols)` (`CONTAINED_SYM` → "Bagged/Boxed items"),
+ * else `names[ILLOBJ_CLASS]`.
+ * `unpaid` writes "Unpaid " (the size test uses sizeof "unpaid_").
+ * `showsym` pads from `class_name`'s length toward 8, then
+ * `"  ('%c')"` from `def_oc_syms[oclass].sym` (BALL `'0'`).
+ * The text is kept in `game.invbuf` (`gi.invbuf` / `gi.invbufsiz`).
+ * JS strings are immutable, so a caller that stored the previous
+ * return keeps that text; every C caller copies before the next call
+ * (`add_menu_heading`, `putstr`, `Strcpy`, `Sprintf`).
+ * A NUL `let` hits strchr's terminator, one past `oth_names`; that
+ * slot is not a name, so the illegal-object string is used.
  */
 export function let_to_name(letch, unpaid = false, showsym = false) {
-    const letv = typeof letch === 'string' ? letch.charCodeAt(0) : (letch | 0);
-    const oclass = (letv >= 1 && letv < MAXOCLASSES) ? letv : 0;
+    const ocsymfmt = "  ('%c')";
+    const invbuf_sympadding = 8; /* arbitrary, invent.c:4803 */
+    const oclet = let_to_name_let(letch);
+    const oclass = (oclet >= 1 && oclet < MAXOCLASSES) ? oclet : 0;
     let class_name;
     if (oclass) {
-        class_name = CLASS_NAMES[oclass] || CLASS_NAMES[ILLOBJ_CLASS];
+        class_name = LET_CLASS_NAMES[oclass];
     } else {
-        const ch = typeof letch === 'string' ? letch : String.fromCharCode(letv);
-        class_name = OTH_NAMES[ch] || CLASS_NAMES[ILLOBJ_CLASS];
+        const want = oclet & 255;
+        let pos = -1;
+        for (let i = 0; i < OTH_SYMBOLS.length; i++) {
+            if (OTH_SYMBOLS[i] === want) {
+                pos = i;
+                break;
+            }
+        }
+        if (pos >= 0 && pos < OTH_CLASS_NAMES.length) {
+            class_name = OTH_CLASS_NAMES[pos];
+        } else {
+            class_name = LET_CLASS_NAMES[ILLOBJ_CLASS];
+        }
     }
-    let invbuf = unpaid ? `Unpaid ${class_name}` : class_name;
+
+    /* sizeof "unpaid_" is 8, sizeof "" is 1; Strlen("  ('%c')") is 8. */
+    const len = class_name.length
+        + (unpaid ? 8 : 1)
+        + (oclass ? (ocsymfmt.length + invbuf_sympadding) : 0);
+    if (len > (game.invbufsiz | 0)) {
+        if (game.invbuf != null) game.invbuf = null;
+        game.invbufsiz = len + 10; /* slop, invent.c:4821 */
+        game.invbuf = '';
+    }
+    if (unpaid) {
+        game.invbuf = `Unpaid ${class_name}`;
+    } else {
+        game.invbuf = class_name;
+    }
     if (oclass !== 0 && showsym) {
-        const invbuf_sympadding = 8;
         let mlen = invbuf_sympadding - class_name.length;
         let pad = '';
-        while (--mlen > 0) pad += ' ';
-        const ocsym = def_oc_syms[oclass]?.sym || '\0';
-        invbuf += `${pad}  ('${ocsym}')`;
+        while (--mlen > 0) {
+            pad += ' ';
+        }
+        const sym = def_oc_syms[oclass].sym;
+        const ch = typeof sym === 'string'
+            ? sym.charAt(0)
+            : String.fromCharCode(sym & 255);
+        /* eos() then Sprintf(ocsymfmt, sym) — invent.c:4829–4836 */
+        game.invbuf = `${game.invbuf}${pad}  ('${ch}')`;
     }
-    return invbuf;
+    return game.invbuf;
+}
+
+/** C invent.c free_invbuf `:4844–4850` — release gi.invbuf. */
+export function free_invbuf() {
+    if (game.invbuf != null) game.invbuf = null;
+    game.invbufsiz = 0;
 }
 
 const GOLD_SYM = '$';
@@ -3871,7 +3937,8 @@ export async function display_pickinv_reply(lets, out_cnt = null, xtra = null, o
     const pickItems = [];
     // C display_pickinv wizid = wizard && override_ID; getobj path is 0
     const wizid = false;
-    const withsym = !!(game.iflags?.menu_head_objsym);
+    /* C display_pickinv `:3291` — withsym only when the menu answers. */
+    const withsym = !!(want_reply && game.iflags?.menu_head_objsym);
     const headingAttr = add_menu_heading_attr();
     if (usextra) {
         // C display_pickinv :3253–3260 — wizard ID and xtra_choice exclusive
@@ -4484,18 +4551,21 @@ export async function display_binventory(x, y, as_if_seen) {
     return n + n2;
 }
 
-/** C invent.c cinv_doname :5391–5418 — insert "trapped" before lock word. */
+/** C invent.c cinv_doname :5391–5418 — insert "trapped" before the earlier lock word. */
 function cinv_doname(obj) {
     let result = doname(obj);
-    if (!obj?.otrapped) return result;
-    const p = result.indexOf(' locked');
-    const q = result.indexOf(' unlocked');
+    // C: strlen(result) + sizeof "trapped " <= QBUFSZ (sizeof includes NUL).
+    if (!obj?.otrapped || result.length + 9 > QBUFSZ) return result;
+    const pTail = strstri(result, ' locked');
+    const qTail = strstri(result, ' unlocked');
+    const p = pTail == null ? -1 : result.length - pTail.length;
+    const q = qTail == null ? -1 : result.length - qTail.length;
     if (p >= 0 && (q < 0 || p < q)) {
-        result = result.replace(' locked ', ' trapped locked ');
+        result = result.slice(0, p) + strsubst(pTail, ' locked ', ' trapped locked ');
     } else if (q >= 0) {
-        result = result.replace(' unlocked ', ' trapped unlocked ');
+        result = result.slice(0, q) + strsubst(qTail, ' unlocked ', ' trapped unlocked ');
     }
-    return result.replace('an trapped ', 'a trapped ');
+    return strsubst(result, 'an trapped ', 'a trapped ');
 }
 
 /**

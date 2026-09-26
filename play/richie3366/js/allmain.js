@@ -10,7 +10,7 @@ import {
     docrt, cls, bot, timebot, curs_on_u, flush_screen, pline, Norep,
     flush_topl_more, see_monsters, You,
     see_objects, see_traps, swallowed, Hallucination, Warn_of_mon,
-    clear_glyph_buffer,
+    clear_glyph_buffer, glyph_to_cmap,
 } from './display.js';
 import { vision_recalc, vision_reset, init_vision_globals } from './vision.js';
 import { initrack, settrack } from './track.js';
@@ -76,10 +76,15 @@ import {
     WARNING, HALF_PHDAM, Is_waterlevel, Is_airlevel, In_endgame,
     WIN_ERR, MENU_BEHAVE_STANDARD, MENU_BEHAVE_PERMINV,
     WC2_HILITE_STATUS, WC2_FLUSH_STATUS,
+    COLNO, S_upstair, S_brdnladder,
 } from './const.js';
 
 // C ref: allmain.c static mvl_change — delayed polyself(1) / you_were(2).
 let mvl_change = 0;
+
+// C pcconf.h:284 defines POSITIONBAR. unixconf.h (the contest tty build)
+// does not, so moveloop_core's call stays behind this guard.
+const POSITIONBAR = false;
 
 /** C ref: youprop.h Teleportation — H || E via flat + uprops. */
 function Teleportation(u = game.u || {}) {
@@ -1006,6 +1011,80 @@ async function maybe_do_tutorial() {
     game.iflags.nofollowers = false;
 }
 
+/** C allmain.c:944 — static char pbar[COLNO], reused across calls. */
+const positionbarBuf = new Array(COLNO).fill(0);
+
+/** C sym.h:107 is_cmap_stairs — S_upstair through S_brdnladder. */
+function is_cmap_stairs(symbol) {
+    return symbol >= S_upstair && symbol <= S_brdnladder;
+}
+
+/**
+ * C winprocs.h:145 update_positionbar → tty_update_positionbar
+ * (wintty.c:4159–4167). The tty body is video_update_positionbar only
+ * under MSDOS (sys/msdos/video.c:701–716, then vga/vesa). The contest
+ * unix tty compiles that function empty, so the buffer is not painted.
+ * @param {number[]} _posbar static pbar, 0-terminated
+ */
+function update_positionbar(_posbar) {
+    // unix tty has no statement here. MSDOS would call
+    // video_update_positionbar(_posbar) (sys/msdos/video.c:703).
+}
+
+/**
+ * Truncate to C signed char, the `(char)` store in do_positionbar.
+ * x86_64 char is signed; columns above 127 become negative.
+ * @param {number} n
+ */
+function positionbar_char(n) {
+    return (n << 24) >> 24;
+}
+
+/**
+ * C allmain.c:933–972 do_positionbar.
+ * #ifdef POSITIONBAR (pcconf.h:284). unixconf.h does not define it, so
+ * moveloop_core does not enter this on the contest tty build.
+ *
+ * The C FIXME stays: a coordinate wider than char does not fit; the
+ * buffer is direction/x pairs, not a line of spaces; levl.glyph is used
+ * as stored, so an object covering a stair hides it (the getpos() TODO
+ * is not implemented in C); the stairs list skips mimics that only pose
+ * as stairs.
+ */
+export function do_positionbar() {
+    // C :936–943 — (char) cannot hold a wide coordxy. MS-DOS video reads
+    // that byte as unsigned char. The buffer stays static pairs of
+    // direction and x, not a line of spaces.
+    let p = 0;
+    // C :949 — the getpos() method that would ignore objects covering
+    // stairs is a TODO in C and is not called.
+    // C :950 — walking gs.stairs skips mimics that only pose as stairs.
+    // C :951–961 — glyph is levl[x][y].glyph, the remembered int.
+    for (let stway = game.stairs; stway; stway = stway.next) {
+        const x = stway.sx | 0;
+        const y = stway.sy | 0;
+        const loc = game.level?.at?.(x, y);
+        const memg = loc?.remembered_glyph?.glyph;
+        const glyph = typeof memg === 'number' ? (memg | 0) : 0;
+        const symbol = glyph_to_cmap(glyph);
+        if (is_cmap_stairs(symbol)) {
+            // C :958 — upstairs '<', otherwise '>'.
+            positionbarBuf[p++] = stway.up ? 60 : 62;
+            // C :959 — (char) x.
+            positionbarBuf[p++] = positionbar_char(x);
+        }
+    }
+    // C :963–967 — hero column. ux 0 is omitted.
+    const ux = game.u?.ux | 0;
+    if (ux) {
+        positionbarBuf[p++] = 64; // '@'
+        positionbarBuf[p++] = positionbar_char(ux);
+    }
+    // C :968–969 — fence post. Bytes past the NUL stay, as in the static buf.
+    positionbarBuf[p] = 0;
+    update_positionbar(positionbarBuf);
+}
+
 // C ref: allmain.c moveloop_core()
 export async function moveloop_core() {
     const g = game;
@@ -1019,9 +1098,11 @@ export async function moveloop_core() {
         return;
     }
 
-    // C allmain.c:186–201 — get_nh_event is a tty no-op (wintty.c:758) and
-    // POSITIONBAR is off in unixconf.h, so the spine starts at dobjsfree,
-    // then bypasses, sanity_check, resume_wish in C order.
+    // C allmain.c:185–201 — get_nh_event is a tty no-op (wintty.c:758).
+    // do_positionbar() at :187 is inside #ifdef POSITIONBAR. That macro
+    // is pcconf.h only, so the unix tty call is not compiled.
+    if (POSITIONBAR) do_positionbar();
+    // Then dobjsfree, bypasses, sanity_check, resume_wish in C order.
     dobjsfree();
     // C allmain.c:194–196 — bypass flags left by bypass_objlist /
     // nxt_unbypassed_obj (worn.c:1067); worm mcorpsenm back to NON_PM.

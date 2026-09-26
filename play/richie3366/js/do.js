@@ -113,9 +113,9 @@ import { place_object, stackobj, weight, delobj, obj_extract_self,
 import { ship_object, obj_delivery, container_impact_dmg, impact_drop } from './dokick.js';
 import {
     doname, xname, the, The, vtense, an, yname, corpse_xname, is_plural,
-    otense, makeplural, body_part_latebound, obj_pmname_corpse, Tobjnam,
+    otense, makeplural, body_part_latebound, Tobjnam,
 } from './objnam.js';
-import { Monnam, Amonnam, Adjmonnam, mon_nam, hliquid, rndmonnam, trycall } from './do_name.js';
+import { Monnam, Amonnam, Adjmonnam, mon_nam, hliquid, rndmonnam, trycall, obj_pmname } from './do_name.js';
 import { revive } from './zap.js';
 import {
     near_capacity, learn_unseen_invent, encumber_msg,
@@ -1058,11 +1058,13 @@ function useupall_gamestate(obj) {
  */
 function setworn_restore(otmp, wornmask) {
     if (!otmp || !wornmask) return;
-    if (wornmask & W_WEP) setuwep(otmp);
+    let shine;
+    if (wornmask & W_WEP) shine = setuwep(otmp);
     if (wornmask & W_SWAPWEP) setuswapwep(otmp);
     if (wornmask & W_QUIVER) setuqwep(otmp);
     const rest = wornmask & ~(W_WEP | W_SWAPWEP | W_QUIVER);
     if (rest) setworn(otmp, rest);
+    return shine;
 }
 
 /**
@@ -1126,7 +1128,10 @@ async function tutorial_leave_gamestate() {
         const wornmask = otmp.owornmask || 0;
         otmp.owornmask = 0;
         await addinv_nomerge(otmp);
-        if (wornmask) setworn_restore(otmp, wornmask);
+        if (wornmask) {
+            const shine = setworn_restore(otmp, wornmask);
+            if (shine) await shine;
+        }
     }
     restore_you(game.u, game.gmst_ubak);
     restore_disco(game.gmst_disco);
@@ -2392,7 +2397,10 @@ function freeinv_drop(obj) {
 export async function dropz(obj, with_impact) {
     if (!obj) return;
     const u = game.u || {};
-    if (obj === u.uwep) setuwep(null);
+    if (obj === u.uwep) {
+        const shine = setuwep(null);
+        if (shine) await shine;
+    }
     if (obj === u.uquiver) setuqwep(null);
     if (obj === u.uswapwep) setuswapwep(null);
 
@@ -2519,16 +2527,14 @@ export async function dropx(obj) {
  * non-petrifying / stone resistance via st_all) prompts
  * "Drop the %s corpse without %s protection on?" through paranoid_ynq;
  * anything but 'y' aborts the drop. u_safe_from_fatal_corpse/st_all are
- * imported from pickup.js (no clone #2); obj_pmname_corpse from objnam.js
- * is the C-faithful obj_pmname (aligned-cleric remap; trap.js keeps its
- * subset clone for the wielded-corpse touch path).
+ * imported from pickup.js (no clone #2). obj_pmname is do_name.c `:1321`.
  */
 export async function better_not_try_to_drop_that(otmp) {
     const CORPSE = objectNames.indexOf('CORPSE');
     /* C: u_safe_from_fatal_corpse() with st_all checks for gloves and
      * stoning resistance before bothering to prompt you. */
     if ((otmp?.otyp | 0) === CORPSE && !u_safe_from_fatal_corpse(otmp, st_all)) {
-        const buf = `Drop the ${obj_pmname_corpse(otmp)} corpse without ${body_part(HAND)} protection on?`;
+        const buf = `Drop the ${obj_pmname(otmp)} corpse without ${body_part(HAND)} protection on?`;
         return (await paranoid_ynq(true, buf, false)) !== 'y';
     }
     return false;
@@ -2776,7 +2782,8 @@ export async function drop(obj) {
     const u = game.u || {};
     if (obj === u.uwep) {
         // canletgo already rejected welded uwep
-        setuwep(null);
+        const shine = setuwep(null);
+        if (shine) await shine;
     }
     if (obj === u.uquiver) setuqwep(null);
     if (obj === u.uswapwep) setuswapwep(null);

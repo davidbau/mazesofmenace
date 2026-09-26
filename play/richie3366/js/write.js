@@ -10,6 +10,7 @@
 // wording polish; new_book_description composition "into " prefix.
 
 import { game } from './gstate.js';
+import { strstri } from './hacklib.js';
 import { nhgetch } from './input.js';
 import { flush_screen, flush_topl_more, pline } from './display.js';
 import {
@@ -86,13 +87,6 @@ function strncmpi(a, b, n) {
 
 function mungspaces(s) {
     return String(s || '').trim().replace(/\s+/g, ' ');
-}
-
-function strstri(hay, needle) {
-    const h = String(hay || '').toLowerCase();
-    const n = String(needle || '').toLowerCase();
-    const i = h.indexOf(n);
-    return i < 0 ? null : { index: i, len: needle.length };
 }
 
 function obj_name(otyp) {
@@ -304,10 +298,12 @@ export async function dowrite(pen) {
     else if (strncmpi(nm, 'spellbook ', 10)) nm = nm.slice(10);
     if (strncmpi(nm, 'of ', 3)) nm = nm.slice(3);
 
-    const armour = strstri(nm, ' armour');
-    if (armour) {
-        nm = `${nm.slice(0, armour.index)} armor ${nm.slice(armour.index + armour.len)}`;
-        nm = mungspaces(nm);
+    // C write.c:139–142 — memcpy the match to " armor ", then mungspaces(bp+1).
+    const bp = strstri(nm, ' armour');
+    if (bp != null) {
+        const headLen = nm.length - bp.length;
+        const replaced = `${nm.slice(0, headLen)} armor ${bp.slice(7)}`;
+        nm = replaced.slice(0, headLen + 1) + mungspaces(replaced.slice(headLen + 1));
     }
 
     let deferred = 0;

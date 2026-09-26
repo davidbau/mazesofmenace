@@ -117,7 +117,7 @@ import { xname, the, The, vtense, makeplural } from './objnam.js';
 import { body_part } from './polyself.js';
 import {
     amorphous, mons, M1_SLITHY, is_prince, is_vampire, eggs_in_water,
-    lays_eggs, humanoid, likes_lava, is_hider, monsterNames,
+    lays_eggs, humanoid, likes_lava, is_hider, is_animal, monsterNames,
     eyecount,
 } from './monsters.js';
 import { spec_ability, SPFX_INTEL } from './artifact.js';
@@ -131,6 +131,7 @@ import { losehp, finish_maybe_wail, is_pool, is_lava, On_stairs, db_under_typ } 
 import { burn_away_slime } from './timeout.js';
 import { hliquid, christen_monst, mon_nam, Monnam, s_suffix } from './do_name.js';
 import { mhis } from './mondata.js';
+import { digests, enfolds } from './mhitu.js';
 
 const CORPSE = objectNames.indexOf('CORPSE');
 const TOWEL = objectNames.indexOf('TOWEL');
@@ -459,15 +460,14 @@ function slithy(ptr) {
 }
 
 /**
- * C ref: dungeon.c surface `:1750–1788` in exact C branch order (D-2008).
- * `typ` is rm.h:146 SURFACE_AT (DRAWBRIDGE_UP looks through via live
- * hack.js db_under_typ); only the bridge arm reads the raw lev->typ.
- * Stairs arm via stairs.c:148 On_stairs (hack.js stairway_at walk):
- * STAIRS >= ROOM so IS_ROOM alone misread stairs as 'floor' — the
- * scen-poly-Ranger-92133 step-91 break_armor helm fall (`to the floor`
- * vs C `to the stairs`). Swallow maw/husk arm named: digests/enfolds
- * live in mhitu.js, which sit cannot statically import (header cycle
- * note); it fires only while swallowed by an animal.
+ * C ref: dungeon.c surface `:1750–1788` in exact C branch order (D-2008,
+ * swallow arm D-2884). `typ` is rm.h:146 SURFACE_AT (DRAWBRIDGE_UP looks
+ * through via live hack.js db_under_typ); only the bridge arm reads the
+ * raw lev->typ. Stairs arm via stairs.c:148 On_stairs (hack.js stairway_at
+ * walk): STAIRS >= ROOM so IS_ROOM alone misread stairs as 'floor'.
+ * Swallow arm is first: u_at && uswallow && is_animal → digests "maw",
+ * enfolds "husk", else "nonesuch". digests/enfolds are the mhitu.js
+ * exports (hoisted; imports.mjs --can sit.js mhitu.js is cycle-safe).
  * Exported for polyself.js break_armor helm fall + hack.js
  * moverock_core Sokoban diagonal wording (D-1859); C has one surface
  * (dungeon.c:1750), this is the shared home.
@@ -478,6 +478,14 @@ export function surface(x, y) {
     const rawtyp = loc?.typ ?? 0;
     const typ = rawtyp === DRAWBRIDGE_UP
         ? db_under_typ(loc.drawbridgemask) : rawtyp;
+    // C dungeon.c:1754–1758 — you.h u_at; mondata.h is_animal/digests/enfolds.
+    if ((x | 0) === (u.ux | 0) && (y | 0) === (u.uy | 0)
+        && u.uswallow && is_animal(u.ustuck.data)) {
+        const data = u.ustuck.data;
+        return digests(data) ? 'maw'
+            : enfolds(data) ? 'husk'
+            : 'nonesuch';
+    }
     if (IS_AIR(typ)) {
         return Is_waterlevel(u.uz) ? 'air bubble'
             : typ === CLOUD ? 'cloud' : 'air';

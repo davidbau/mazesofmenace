@@ -5,7 +5,7 @@
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import { flush_screen, flush_topl_more, pline, You } from './display.js';
-import { xprname, xname, yname, aobjnam, makeplural, vtense, an, doname, The, body_part_latebound, simpleonames, is_plural, otense, Yname2, arti_light_description } from './objnam.js';
+import { xprname, xname, yname, aobjnam, makeplural, vtense, an, doname, The, body_part_latebound, simpleonames, is_plural, otense, Yname2, arti_light_description, Tobjnam as objnam_Tobjnam } from './objnam.js';
 import { strstri } from './hacklib.js';
 import { yn_function } from './getline.js';
 import { hands_obj, is_wet_towel } from './weapon.js';
@@ -19,14 +19,14 @@ import {
     objectNames, is_sword,
 } from './objects.js';
 import {
-    W_WEP, W_SWAPWEP, W_QUIVER, W_ARMOR, W_ACCESSORY, W_SADDLE,
+    W_WEP, W_SWAPWEP, W_QUIVER, W_ARM, W_ARMOR, W_ACCESSORY, W_SADDLE,
     P_NONE, P_BOW, P_CROSSBOW, P_DART, P_BOOMERANG, P_POLEARMS, P_LANCE,
     ECMD_OK, ECMD_TIME, Upolyd, HAND, RIGHT_HANDED,
     has_oname, ONAME, COST_DEGRD, COST_DECHNT,
 } from './const.js';
-import { retouch_object, set_artifact_intrinsic, is_art, restrict_name } from './artifact.js';
+import { retouch_object, set_artifact_intrinsic, is_art, u_wield_art, restrict_name } from './artifact.js';
 import { setworn, reset_remarm } from './do_wear.js';
-import { ART_SNICKERSNEE, ART_MAGICBANE } from './generated/artifacts_data.js';
+import { ART_SNICKERSNEE, ART_MAGICBANE, ART_OGRESMASHER, ART_SUNSWORD } from './generated/artifacts_data.js';
 import { makeknown, encumber_msg, compactify_invlets, update_inventory, getobj_take_count, getobj_apply_count, getobj_from_cmdq, getobj_display_pickinv, splittable, freeinv, prinv } from './invent.js';
 import { uncurse, weight, unsplitobj, clear_splitobjs, splitobj } from './mkobj.js';
 import { trycall } from './do_name.js';
@@ -264,7 +264,10 @@ export async function wield_tool(obj, verb) {
             await ready_weapon(obj);
         } else {
             await pline(`You now wield ${doname(obj)}.`);
-            setuwep(obj);
+            {
+                const shine = setuwep(obj);
+                if (shine) await shine;
+            }
         }
         if (game.flags?.pushweapon && oldwep && game.u?.uwep !== oldwep) {
             setuswapwep(oldwep);
@@ -282,9 +285,63 @@ export async function wield_tool(obj, verb) {
     return true;
 }
 
+const GOLD_DRAGON_SCALE_MAIL = objectNames.indexOf('GOLD_DRAGON_SCALE_MAIL');
+const GOLD_DRAGON_SCALES = objectNames.indexOf('GOLD_DRAGON_SCALES');
+
+/** C display.h disp.botl — bot() reads flags.botl; keep disp in step. */
+function mark_disp_botl() {
+    if (!game.flags) game.flags = {};
+    game.flags.botl = true;
+    if (!game.disp) game.disp = {};
+    game.disp.botl = true;
+}
+
 /**
- * C ref: wield.c setuwep — W_WEP via setworn; unweapon after.
- * Ogresmasher/Sunsword light deferred.
+ * C artifact.c artifact_light && lamplit, evaluated after setworn so
+ * gold DSM still sees W_ARM. Used only to stay synchronous when the
+ * shine pline cannot run (timeout.js → trap.js → wield.js).
+ */
+function olduwep_still_shining(obj) {
+    if (!obj || !(obj.lamplit | 0)) return false;
+    const t = obj.otyp | 0;
+    if ((t === GOLD_DRAGON_SCALE_MAIL || t === GOLD_DRAGON_SCALES)
+        && ((obj.owornmask | 0) & W_ARM) !== 0) {
+        return true;
+    }
+    return is_art(obj, ART_SUNSWORD);
+}
+
+/** C wield.c setuwep `:120–134` — second Ogresmasher botl, then unweapon. */
+function setuwep_after_shine(obj, olduwep, u) {
+    if (u.uwep === obj
+        && (u_wield_art(ART_OGRESMASHER)
+            || is_art(olduwep, ART_OGRESMASHER))) {
+        mark_disp_botl();
+    }
+    if (!game.gu) game.gu = {};
+    if (obj) {
+        // C `:128–131` — pole arm exempts Snickersnee; non-weapons exempt
+        // wet towels. is_pole already includes Snickersnee; the is_art
+        // test is still the one C writes.
+        game.gu.unweapon = (obj.oclass === WEAPON_CLASS)
+            ? (is_launcher(obj) || is_ammo(obj) || is_missile(obj)
+                || (is_pole(obj) && !u.usteed
+                    && !is_art(obj, ART_SNICKERSNEE)))
+            : (!is_weptool(obj) && !is_wet_towel(obj));
+    } else {
+        game.gu.unweapon = true; /* bare hands */
+    }
+}
+
+/**
+ * C ref: wield.c setuwep `:100–135` — setworn(W_WEP), Ogresmasher botl
+ * before the shine line, end_burn + "stop shining" whenever a lit
+ * light-artifact leaves the slot, Ogresmasher botl again, then unweapon.
+ * Returns a Promise only when that pline can block. Callers that are
+ * already async must `if (p) await p` so the common path does not insert
+ * a microtask. Dynamic import: timeout.js → trap.js → wield.js.
+ * @param {object|null} obj
+ * @returns {Promise<void>|undefined}
  */
 export function setuwep(obj) {
     const u = game.u || (game.u = {});
@@ -292,20 +349,29 @@ export function setuwep(obj) {
     if (obj === olduwep) return; /* necessary to not set gu.unweapon */
 
     setworn(obj, W_WEP);
-    // C: Ogresmasher botl / Sunsword end_burn named omit
-    if (obj) {
-        if (!game.gu) game.gu = {};
-        // C wield.c setuwep `:128–134` — pole arm exempts Snickersnee
-        // (is_pole already includes it); non-weapons exempt wet towels.
-        game.gu.unweapon = (obj.oclass === WEAPON_CLASS)
-            ? (is_launcher(obj) || is_ammo(obj) || is_missile(obj)
-                || (is_pole(obj) && !u.usteed
-                    && !is_art(obj, ART_SNICKERSNEE)))
-            : (!is_weptool(obj) && !is_wet_towel(obj));
-    } else {
-        if (!game.gu) game.gu = {};
-        game.gu.unweapon = true;
+    /* Ogresmasher before Sunsword: botl before the pline. */
+    if (u.uwep === obj
+        && ((u.uwep && (u.uwep.oartifact | 0) === ART_OGRESMASHER)
+            || (olduwep && (olduwep.oartifact | 0) === ART_OGRESMASHER))) {
+        mark_disp_botl();
     }
+    if (!(u.uwep === obj && olduwep_still_shining(olduwep))) {
+        setuwep_after_shine(obj, olduwep, u);
+        return;
+    }
+    return import('./timeout.js').then(async ({ artifact_light, end_burn }) => {
+        try {
+            /* C `:115–118` — artifact_light then lamplit; pline if !Blind. */
+            if (u.uwep === obj && artifact_light(olduwep) && olduwep.lamplit) {
+                end_burn(olduwep, false);
+                if (!Blind_w()) {
+                    await pline(`${objnam_Tobjnam(olduwep, 'stop')} shining.`);
+                }
+            }
+        } finally {
+            setuwep_after_shine(obj, olduwep, u);
+        }
+    });
 }
 
 /**
@@ -343,8 +409,10 @@ function Blind_w() {
 
 /**
  * C ref: wield.c uwepgone — clear W_WEP before destroying last wielded item.
- * artifact_light end_burn + Tobjnam shine before setuwep (D-1204).
- * Named omissions: setuwep-path Sunsword begin_burn / ready_weapon shine.
+ * artifact_light end_burn + Tobjnam shine before clearing the slot (D-1204).
+ * C calls setworn here, not setuwep; this still calls setuwep so unweapon
+ * matches. lamplit is already cleared, so setuwep does not pline again.
+ * begin_burn stays in ready_weapon (wield.c:245).
  */
 export async function uwepgone() {
     const u = game.u || (game.u = {});
@@ -358,7 +426,10 @@ export async function uwepgone() {
             await pline(`${Tobjnam(uwep, 'stop')} shining.`);
         }
     }
-    setuwep(null);
+    {
+        const shine = setuwep(null);
+        if (shine) await shine;
+    }
     if (!game.gu) game.gu = {};
     game.gu.unweapon = true;
     update_inventory();
@@ -449,7 +520,10 @@ async function ready_weapon(wep) {
     if (!wep) {
         if (u.uwep) {
             await pline(`You are ${empty_handed()}.`);
-            setuwep(null);
+            {
+                const shine = setuwep(null);
+                if (shine) await shine;
+            }
             return 1; // C: ECMD_TIME
         }
         await pline(`You are already ${empty_handed()}.`);
@@ -492,7 +566,10 @@ async function ready_weapon(wep) {
         wep.owornmask = dummy;
     }
 
-    setuwep(wep);
+    {
+        const shine = setuwep(wep);
+        if (shine) await shine;
+    }
     // C :231–237 — was_twoweap && !u.twoweap && verbose → are/can_no_longer
     if (was_twoweap && !game.u?.twoweap && game.flags?.verbose !== false && game.u?.uwep) {
         const ok = TWOWEAPOK(game.u.uwep) && !bimanual(game.u.uwep);
@@ -939,7 +1016,10 @@ export async function doquiver_core(verb) {
                 );
                 return 0;
             }
-            setuwep(null);
+            {
+                const shine = setuwep(null);
+                if (shine) await shine;
+            }
             await untwoweapon();
             was_uwep = true;
         }
@@ -1181,7 +1261,10 @@ async function strange_feeling(obj, txt) {
         const inv = game.invent || [];
         const idx = inv.indexOf(obj);
         if (idx >= 0) inv.splice(idx, 1);
-        if (game.u?.uwep === obj) setuwep(null);
+        if (game.u?.uwep === obj) {
+            const shine = setuwep(null);
+            if (shine) await shine;
+        }
     }
 }
 
@@ -1292,7 +1375,10 @@ export async function chwepon(otmp, amount) {
         const inv = game.invent || [];
         const idx = inv.indexOf(uwep);
         if (idx >= 0) inv.splice(idx, 1);
-        setuwep(null);
+        {
+            const shine = setuwep(null);
+            if (shine) await shine;
+        }
         return 1;
     }
 

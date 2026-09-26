@@ -4,6 +4,7 @@
 // (seen_resistance) + resist_conflict + cantvomit (D-1127).
 
 import { game } from './gstate.js';
+import { strstri } from './hacklib.js';
 import { couldsee } from './vision.js';
 import { rnd, rn2 } from './rng.js';
 import { acurr, A_CHA } from './attrib.js';
@@ -747,9 +748,11 @@ export function name_to_monplus(in_str, remainder_p = null, gender_name_var = nu
     let slow = str.toLowerCase();
 
     // C `:930–940` plural pre-fixes (mutate + truncate, then recompute slen)
-    const vort = slow.indexOf('vortices'); // C strstri
-    if (vort >= 0) {
-        str = str.slice(0, vort + 4) + 'ex'; // C Strcpy(s + 4, "ex")
+    // C mondata.c:933 — strstri("vortices"); Strcpy(s + 4, "ex") drops the tail.
+    const vortTail = strstri(str, 'vortices');
+    if (vortTail != null) {
+        const vort = str.length - vortTail.length;
+        str = `${str.slice(0, vort + 4)}ex`;
         slow = str.toLowerCase();
     } else if (str.length > 3 && slow.endsWith('ies') // beware "priest"/"zombies"
                && !(str.length >= 7 && slow.endsWith('zombies'))) {
@@ -936,17 +939,17 @@ export function name_to_monclass(in_str, mndx_p = null) {
     }
     if (strcmpi_eq(in_str_s, 'bug')) return 'S_XAN';
     if (strcmpi_eq(in_str_s, 'fish')) return 'S_EEL';
-    const needle = in_str_s.toLowerCase();
-    const nlen = needle.length;
+    const len = in_str_s.length;
     for (let i = 1; i < DEF_MONSYM_EXPLAIN.length; i++) {
         const x = DEF_MONSYM_EXPLAIN[i];
-        const xl = x.toLowerCase();
-        const p = xl.indexOf(needle);
-        if (p < 0) continue;
-        if (p !== 0 && x[p - 1] !== ' ') continue;
-        if (x.length - p < nlen) continue;
-        const after = x[p + nlen];
-        if (after !== undefined && after !== ' ') continue;
+        // C mondata.c:1162 — strstri, previous char is start or space, next is end or space.
+        const tail = strstri(x, in_str_s);
+        if (tail == null) continue;
+        const p = x.length - tail.length;
+        if (p !== 0 && x.charAt(p - 1) !== ' ') continue;
+        if (tail.length < len) continue;
+        const after = tail.charAt(len);
+        if (after !== '' && after !== ' ') continue;
         return DEF_MONSYM_MLET[i];
     }
     const i = name_to_mon(in_str_s);

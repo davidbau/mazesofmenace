@@ -1601,7 +1601,7 @@ export async function pickup_object(obj, count, telekinesis) {
  * single pick at once (tty PICK_ONE ends on first selection), prompt is
  * the title. count fix-up (C `:1189–1190`) and the force-to-N correction
  * (C `:772`) live with the caller.
- * Named omissions: menu_head_objsym; INCLUDE_VENOM;
+ * Named omissions: INCLUDE_VENOM;
  * loot_classify subclass/disco/BUCX; SKIPINVERT;
  * page invert/search; doloot Blind !uarmg feel before containers.
  * Floor TRADITIONAL query_classes is D-1620 (`pickup_traditional_floor`).
@@ -1684,7 +1684,9 @@ async function query_objlist_pickup(objList, extraAllow = null, opts = null) {
             for (const it of items) {
                 if (it.oclass !== lastClass) {
                     entries.push({
-                        text: let_to_name(it.oclass, false, false),
+                        text: let_to_name(it.oclass, false,
+                            how !== PICK_NONE
+                            && !!game.iflags?.menu_head_objsym),
                         attr: ATR_INVERSE,
                     });
                     lastClass = it.oclass;
@@ -3176,7 +3178,10 @@ async function in_container(obj) {
             await weldmsg(obj);
             return 0;
         }
-        setuwep(null);
+        {
+            const shine = setuwep(null);
+            if (shine) await shine;
+        }
         /* C: this uwep check is obsolete (3.0 Firebrand) — unwielded, died,
            rewielded by life-saving. */
         if (game.u?.uwep) return 0;

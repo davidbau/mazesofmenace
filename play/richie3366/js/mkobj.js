@@ -89,7 +89,13 @@ import { hands_obj, MON_WEP, setmnotwielded } from './weapon.js';
 /* C invent.c merged `:878–913` worn-slot fixup (imports.mjs --can SAFE,
    hoisted cycle-safe, same 96-module SCC). */
 import { setnotworn } from './do.js';
-import { setworn } from './do_wear.js';
+import { setworn, reset_remarm } from './do_wear.js';
+/* C wield.c bimanual / drop_uswapwep — hoisted, same SCC
+   (`imports.mjs --can mkobj.js wield.js` SAFE). */
+import { bimanual, drop_uswapwep } from './wield.js';
+/* C spell.c book_cursed — hoisted function, called only from curse
+   (`imports.mjs --can mkobj.js spell.js` SAFE). */
+import { book_cursed } from './spell.js';
 import { obj_resists } from './dogmove.js';
 import { newsym, pline, Hallucination, impossible } from './display.js';
 import { maybe_unhide_at } from './monmove.js';
@@ -580,30 +586,50 @@ export function unsplitobj(obj) {
 }
 
 /**
- * C ref: mkobj.c curse `:1782–1819` — async only for the lamplit tail
- * (`maybe_adjust_light` plines); every state change below precedes the
- * first await, so long-standing sync callers (mksobj_init, mklev gen,
- * mplayer loadout — always unlit there) observe identical behavior.
- * Named omit: COIN_CLASS guard, BAG_OF_HOLDING weight, uwep
- * bimanual/reset_remarm, uswapwep drop, SPBOOK book_cursed
- * (luck arm live via set_moreluck, D-2287).
+ * C ref: mkobj.c curse `:1783–1819`.
+ * Awaits only when an arm calls an async callee (`drop_uswapwep`,
+ * `book_cursed` while this book is the study occupation, lamplit
+ * `maybe_adjust_light`). Those awaits are inside the taken arm, so a
+ * caller that does not await still sees every earlier write: coin
+ * return, bless/curse flags, `reset_remarm`, luck, bag weight, figurine
+ * timer. `drop_uswapwep` runs before the luck/bag/figurine/book chain
+ * because the drop clears `carried` first (C `:1800` then `:1803`).
  */
 export async function curse(otmp) {
     if (!otmp) return;
-    // C `:1786–1791` old_light before the bless/curse flags flip
-    // (arti_light_radius reads the pre-change state).
-    const old_light = otmp.lamplit ? arti_light_radius(otmp) : 0;
-    otmp.cursed = true;
+    // C `:1788–1789` — gold is never blessed or cursed.
+    if ((otmp.oclass | 0) === COIN_CLASS) return;
+    // C `:1790–1791` — radius before the flags flip.
+    let old_light = 0;
+    if (otmp.lamplit) old_light = arti_light_radius(otmp);
+    // C `:1792–1794`
+    const already_cursed = otmp.cursed;
+    // Bitfield 0/1. JS stores the same flags as booleans (bless/uncurse).
     otmp.blessed = false;
-    // C mkobj.c curse `:1803–1804` — carried luck-conferrer → set_moreluck;
-    // FIGURINE attach when carried/mcarried + typed (else-if: no obj is both).
-    if ((otmp.where | 0) === OBJ_INVENT && confers_luck(otmp)) {
+    otmp.cursed = true;
+    const u = game.u;
+    // C `:1796–1797` — welded two-hander blocks armor removal in progress.
+    if (u && otmp === u.uwep && bimanual(u.uwep)) reset_remarm();
+    // C `:1800–1801` — cursed off-hand while twoweaponing is dropped.
+    if (u && otmp === u.uswapwep && u.twoweap) await drop_uswapwep();
+    // C `:1803–1815` — luck, bag weight, figurine timer, or reading book.
+    if (((otmp.where | 0) === OBJ_INVENT) && confers_luck(otmp)) {
         set_moreluck();
-    } else if ((otmp.otyp | 0) === FIGURINE
-        && (otmp.corpsenm | 0) !== NON_PM
-        && !dead_species(otmp.corpsenm | 0, true)
-        && figurine_is_carried(otmp)) {
-        attach_fig_transform_timeout(otmp);
+    } else if ((otmp.otyp | 0) === BAG_OF_HOLDING) {
+        otmp.owt = weight(otmp);
+    } else if ((otmp.otyp | 0) === FIGURINE) {
+        if ((otmp.corpsenm | 0) !== NON_PM
+            && !dead_species(otmp.corpsenm | 0, true)
+            && (((otmp.where | 0) === OBJ_INVENT) || ((otmp.where | 0) === OBJ_MINVENT))) {
+            attach_fig_transform_timeout(otmp);
+        }
+    } else if ((otmp.oclass | 0) === SPBOOK_CLASS) {
+        if (!already_cursed) {
+            // No await when the hero is not studying this book: book_cursed
+            // returns undefined and the creation callers stay in this turn.
+            const pending = book_cursed(otmp);
+            if (pending) await pending;
+        }
     }
     if (otmp.lamplit) await maybe_adjust_light(otmp, old_light);
 }
@@ -1440,14 +1466,6 @@ export function attach_fig_transform_timeout(figurine) {
     stop_timer(FIG_TRANSFORM, figurine);
     const i = rnd(9000) + 200;
     start_timer(i, TIMER_OBJECT, FIG_TRANSFORM, figurine);
-}
-
-/** C invent.c carried / mcarried — invent or monster inventory. */
-function figurine_is_carried(obj) {
-    if (!obj) return false;
-    const where = obj.where | 0;
-    if (where === OBJ_INVENT || where === OBJ_MINVENT) return true;
-    return (game.invent || []).includes(obj);
 }
 
 /**
@@ -2675,6 +2693,32 @@ export function place_object(otmp, x, y) {
     if (firstBoulder) recalc_block_point(x, y);
     // C `:2365–2366` — timed objects join the timer system
     if (otmp.timed) obj_timer_checks(otmp, x, y, 0);
+}
+
+/**
+ * C ref: mkobj.c recreate_pile_at `:2371–2388` — tear the floor pile
+ * down into a reversed list, then `place_object` it back so boulders
+ * land on top. `remove_object` leaves `where == OBJ_FREE`.
+ * Caller: `bhitpile` (`zap.c:2494`).
+ */
+export function recreate_pile_at(x, y) {
+    x |= 0;
+    y |= 0;
+    let reversed = null;
+    for (let otmp = objects_at(x, y); otmp; ) {
+        const next_obj = otmp.nexthere; /* C :2377 */
+        remove_object(otmp); /* C :2378 — extract floor + fobj */
+        otmp.nobj = reversed; /* C :2379 */
+        reversed = otmp;
+        otmp = next_obj;
+    }
+    /* C :2384–2388 — re-reverse; place_object forces boulders on top. */
+    for (let otmp = reversed; otmp; ) {
+        const next_obj = otmp.nobj;
+        otmp.nobj = null;
+        place_object(otmp, x, y);
+        otmp = next_obj;
+    }
 }
 
 /**

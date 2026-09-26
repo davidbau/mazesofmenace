@@ -3,6 +3,7 @@
 //        poisoned / poisontell, adjabil / role_abil (partial).
 
 import { game } from './gstate.js';
+import { strstri } from './hacklib.js';
 import { rn2, rnd, d, rn1 } from './rng.js';
 import {
     FROMEXPER,
@@ -36,6 +37,7 @@ import {
     WARNING,
     FUMBLING,
     TIMEOUT,
+    STRANGLED,
     W_ARMF,
     KILLED_BY,
     KILLED_BY_AN,
@@ -380,12 +382,6 @@ export async function losestr(num, knam, k_format) {
     if ((num | 0) > 0 && (Upolyd(u) || !waspolyd)) {
         await adjattrib(A_STR, -(num | 0), 1);
     }
-}
-
-/** C hacklib.c strstri — case-insensitive substring (poison reason gate). */
-function strstri(hay, needle) {
-    if (!hay || !needle) return false;
-    return String(hay).toLowerCase().includes(String(needle).toLowerCase());
 }
 
 /**
@@ -1138,8 +1134,7 @@ export function is_innate(propidx) {
  * equipment arms; what_gives extrinsic worn/artifact; " pair of " strip;
  * negative BLINDED Eyes-of-the-Overworld arm.
  * Named omissions: birth blind/deaf; Blindfolded_only / cream;
- * negative INVIS (mummy wrapping) / CLAIRVOYANT (cornuthaum) blocking;
- * strangulation trim.
+ * negative INVIS (mummy wrapping) / CLAIRVOYANT (cornuthaum) blocking.
  */
 export function from_what(propidx) {
     const wizard = !!(game.flags?.wizard || game.flags?.debug);
@@ -1197,10 +1192,18 @@ export function from_what(propidx) {
             buf = ` because of ${because}`;
         }
     }
-    // C: strstri(buf, " pair of ") → collapse to single space
-    const pair = buf.indexOf(' pair of ');
-    if (pair >= 0) {
-        buf = `${buf.slice(0, pair)} ${buf.slice(pair + ' pair of '.length)}`;
+    // C attrib.c:971–975 — copynchars(p+1, p+9) keeps the match's first
+    // char and the tail after " pair of "; STRANGLED truncates at the match.
+    const pairTail = strstri(buf, ' pair of ');
+    if (pairTail != null) {
+        const at = buf.length - pairTail.length;
+        let tail = pairTail.slice(' pair of '.length);
+        const nl = tail.indexOf('\n');
+        if (nl >= 0) tail = tail.slice(0, nl);
+        buf = buf.slice(0, at + 1) + tail;
+    } else if (propidx === STRANGLED) {
+        const choke = strstri(buf, ' of strangulation');
+        if (choke != null) buf = buf.slice(0, buf.length - choke.length);
     }
     return buf;
 }

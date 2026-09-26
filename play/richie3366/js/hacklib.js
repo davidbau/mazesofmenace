@@ -330,20 +330,57 @@ export function fuzzymatch(s1, s2, ignore_chars = ' -_', caseblind = true) {
 }
 
 /**
- * C ref: hacklib.c strstri `:739–779` — case-insensitive substring.
- * Empty sub returns `str` (C `return (char *) str`). Else the first
- * matching tail, or null. ASCII fold only (C `lowc`).
+ * C ref: hacklib.c strstri `:739–779`.
+ * `!*sub` returns `str`. Otherwise signed-char nibble histograms
+ * (`TABSIZ` 0x20; `char` counters wrap like gcc) reject an impossible
+ * match, then a `lowc` window returns the matching tail (`&str[i]`)
+ * or null. The `#if 0` asserts are not compiled. A null argument is
+ * `""` (C is NONNULL). Embedded NUL ends the C string.
  * @param {string | null | undefined} str
  * @param {string | null | undefined} sub
  * @returns {string | null}
  */
 export function strstri(str, sub) {
-    if (sub == null || sub === '') return str == null ? '' : String(str);
-    if (str == null || str === '') return null;
+    if (sub == null) sub = '';
+    if (str == null) str = '';
     const s = String(str);
     const n = String(sub);
-    const i = s.toLowerCase().indexOf(n.toLowerCase());
-    return i >= 0 ? s.slice(i) : null;
+    const endAt = (text) => {
+        const z = text.indexOf('\0');
+        return z < 0 ? text.length : z;
+    };
+    const sEnd = endAt(s);
+    const nEnd = endAt(n);
+    /* :752–753 empty substring */
+    if (nEnd === 0) return s;
+
+    const TABSIZ = 0x20;
+    const tstr = new Int8Array(TABSIZ);
+    const tsub = new Int8Array(TABSIZ);
+    let k = 0;
+    /* :758–761 lengths and nibble counts; index is `*s & (TABSIZ-1)` */
+    for (let s1 = 0; s1 < sEnd; s1++) {
+        tstr[s.charCodeAt(s1) & (TABSIZ - 1)]++;
+        k++;
+    }
+    for (let s2 = 0; s2 < nEnd; s2++) {
+        tsub[n.charCodeAt(s2) & (TABSIZ - 1)]++;
+        k--;
+    }
+    /* :764–768 sub longer, or some nibble is over-subscribed */
+    if (k < 0) return null;
+    for (let i = 0; i < TABSIZ; i++) {
+        if (tsub[i] > tstr[i]) return null;
+    }
+    /* :771–777 lowc window; success is the tail at `&str[i]` */
+    for (let i = 0; i <= k; i++) {
+        let p1 = i;
+        let p2 = 0;
+        while (ascii_lowc_ch(s.charCodeAt(p1++)) === ascii_lowc_ch(n.charCodeAt(p2++))) {
+            if (p2 >= nEnd) return s.slice(i, sEnd);
+        }
+    }
+    return null;
 }
 
 /**

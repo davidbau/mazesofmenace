@@ -155,7 +155,7 @@ import {
 } from './display.js';
 import { buried_ball_to_punishment, fracture_rock } from './dig.js';
 import { obfree } from './shk.js';
-import { block_point, unblock_point, does_block, recalc_block_point, vision_recalc } from './vision.js';
+import { block_point, unblock_point, does_block, recalc_block_point, vision_recalc, vision_reset } from './vision.js';
 import { emits_light, new_light_source, del_light_source } from './light.js';
 import { monst_to_any, is_pool, is_lava, in_rooms } from './hack.js';
 import { begin_burn, end_burn } from './timeout.js';
@@ -19129,6 +19129,8 @@ function flip_level(flp, _extras) {
     // match the new orientation (TLCORNER moved to the right must become
     // TRCORNER). flip_visuals only when extras (wizfliplevel) — deferred.
     fix_wall_spines(1, 0, COLNO - 1, ROWNO - 1);
+    /* C sp_lev.c:921 — block map matches the flipped terrain. */
+    vision_reset();
 }
 
 /**
@@ -21855,18 +21857,90 @@ function lspo_object_from_string(paramstr, arg2, arg3) {
 }
 
 /**
+ * C lua_isnumber for get_table_int_or_random. Same predicate as
+ * luaL_checkinteger_unpacked in this file: a finite number, or a string
+ * whose trimmed form is a finite Number (Lua skips leading and trailing
+ * spaces). A non-finite number is not an integer in that stand-in.
+ * @param {*} v
+ * @returns {boolean}
+ */
+function lua_isnumber_unpacked(v) {
+    if (typeof v === 'number' && Number.isFinite(v)) return true;
+    if (typeof v === 'string' && v.trim() !== '' && Number.isFinite(Number(v)))
+        return true;
+    return false;
+}
+
+/**
+ * C lua_tostring on the non-number arm of get_table_int_or_random.
+ * A string is returned unchanged. Numbers do not reach this arm
+ * (lua_isnumber already accepted them). Boolean, table, and function
+ * yield NULL, which is Lua 5.4 lua_tolstring.
+ * @param {*} v
+ * @returns {string|null}
+ */
+function lua_tostring_unpacked(v) {
+    if (typeof v === 'string') return v;
+    return null;
+}
+
+/**
+ * C ref: sp_lev.c get_table_int_or_random :3407–3437.
+ * Unpacked stand-in: there is no lua_State, so lua_getfield(L, 1, name)
+ * is a property read and lua_pop of that slot is not a value.
+ * Nil (null or undefined) returns rndval. A value lua_isnumber rejects
+ * is lua_tostring'd; strcmpi("random", tmp) — strncmpi with n = -1
+ * (global.h:113), ASCII fold via lspo_strcmpi — also returns rndval and
+ * does not call the RNG. Any other non-number is nhl_error. The lua_pop
+ * and `return 0` after that call are NOTREACHED. A number is
+ * luaL_optinteger, which is checkinteger once nil has returned.
+ * Sprintf, eos (hacklib.c:194), and Strcat build that one error buffer
+ * inline; they are not symbols in js/.
+ * @param {object} tab lua stack index 1
+ * @param {string} name
+ * @param {number} rndval
+ * @returns {number}
+ */
+function get_table_int_or_random(tab, name, rndval) {
+    const dflt = rndval | 0; // C int rndval, widened to lua_Integer
+    // C :3414 lua_getfield(L, 1, name)
+    const v = (tab != null && typeof tab === 'object') ? tab[name] : undefined;
+    // C :3415–3418 LUA_TNIL → rndval
+    if (v == null) return dflt;
+    // C :3419–3434 !lua_isnumber
+    if (!lua_isnumber_unpacked(v)) {
+        const tmp = lua_tostring_unpacked(v); // C :3420
+        // C :3422–3425. "random" is the default, not an RNG call.
+        if (tmp != null && lspo_strcmpi('random', tmp)) return dflt;
+        // C :3426–3431 Sprintf(buf, …); Sprintf(eos(buf), …) or Strcat.
+        let buf = `Expected integer or "random" for "${name}", got `;
+        if (tmp != null) buf += `"${tmp}"`;
+        else buf += '<Null>';
+        nhl_error(buf); // C :3432
+        return 0; // C :3434 NOTREACHED
+    }
+    // C :3436 luaL_optinteger(L, -1, rndval). Nil already returned.
+    return luaL_checkinteger_unpacked(v);
+}
+
+/**
  * C ref: sp_lev.c lspo_object table form (unpacked; not lua_State).
  * contentsFn runs after the create_object loop like Lua contents=function.
  * Named omit: other load_* des.object still hand-rolled.
  */
 function lspo_object_normalize_table(tmp) {
-    if (tmp.spe == null) tmp.spe = -127;
+    // C :3634 — absent and "random" are -127 (create_object: NOT RANDOM).
+    tmp.spe = get_table_int_or_random(tmp, 'spe', -127);
     if (tmp.trapped == null) tmp.trapped = -1;
     if (tmp.locked == null) tmp.locked = -1;
     if (tmp.eroded == null) tmp.eroded = 0;
     if (tmp.buc != null) tmp.curse_state = get_table_buc(tmp.buc);
     if (tmp.curse_state == null) tmp.curse_state = 0;
-    if (typeof tmp.quan !== 'number') tmp.quan = -1;
+    // C :3638 field "quantity". Hand-rolled des.object tables store that
+    // lua key as quan (tut-1, minetown, themerms). Copy it when quantity
+    // itself is nil so the call uses C's field name.
+    if (tmp.quantity == null && tmp.quan != null) tmp.quantity = tmp.quan;
+    tmp.quan = get_table_int_or_random(tmp, 'quantity', -1);
     if (tmp.lit == null) tmp.lit = 0;
     if (tmp.corpsenm == null) tmp.corpsenm = NON_PM;
 

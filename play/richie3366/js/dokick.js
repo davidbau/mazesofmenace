@@ -46,6 +46,7 @@ import {
 } from './uhitm.js';
 import { AT_KICK } from './mhitm.js';
 import { digests } from './mhitu.js';
+import { surface } from './sit.js';
 import {
     overexertion, losehp, maybe_half_phys, in_rooms, in_town, is_pool,
     impact_disturbs_zombies,
@@ -241,17 +242,6 @@ function closed_door(x, y) {
     if (!loc || !IS_DOOR(loc.typ)) return false;
     const dm = loc.doormask | 0;
     return !!(dm & (D_LOCKED | D_CLOSED));
-}
-
-/** C ref: dungeon.c surface — kick slide wording. */
-function surface(x, y) {
-    if (is_ice(x, y)) return 'ice';
-    const loc = game.level?.at?.(x, y);
-    const typ = loc?.typ ?? 0;
-    if (IS_FOUNTAIN(typ)) return 'fountain';
-    if (IS_ALTAR(typ)) return 'altar';
-    if (IS_ROOM(typ) && !Is_earthlevel(game.u?.uz)) return 'floor';
-    return 'ground';
 }
 
 /** C ref: objnam.c Doname2 — doname with leading capital. */

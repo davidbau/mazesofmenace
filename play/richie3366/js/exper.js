@@ -298,29 +298,49 @@ export function experience(mtmp, nk) {
     return tmp; // C :165
 }
 
-/** C ref: exper.c more_experienced(exper, rexp) */
+// C limits.h LONG_MAX. JS doubles are exact through 2^53-1 (botl.js
+// get_hilite); the same analogue as end.js nowrap_add.
+const EXP_LONG_MAX = Number.MAX_SAFE_INTEGER;
+
+/**
+ * C ref: exper.c more_experienced `:169–203`.
+ * `long` add, then cap at LONG_MAX when a positive addend wraps the sum
+ * negative (`:178–181`). JS Number does not wrap, so the same cap also
+ * fires when the sum would pass EXP_LONG_MAX. `4 * exper + rexp` is C
+ * `int` math (Math.imul, then int32 add) before the widen to `long`.
+ * SCORE_ON_BOTL has no `#define` in the pinned tree, so the showscore
+ * arm is not compiled. `disp.botl` is `game.flags.botl` (the bit bot()
+ * reads). Role_if(PM_WIZARD) is `urole.mnum == PM_WIZARD` (you.h:247).
+ */
 export function more_experienced(exper, rexp) {
     const u = game.u || (game.u = {});
     if (!game.flags) game.flags = {};
-    const oldexp = u.uexp | 0;
-    const oldrexp = u.urexp | 0;
-    const newexp = oldexp + (exper | 0);
-    const rexpincr = 4 * (exper | 0) + (rexp | 0);
-    const newrexp = oldrexp + rexpincr;
-    // LONG_MAX wrap deferred — JS Number stays finite for early-game totals
+    const experI = exper | 0;
+    const rexpI = rexp | 0;
+    const oldexp = Math.trunc(Number(u.uexp) || 0);
+    const oldrexp = Math.trunc(Number(u.urexp) || 0);
+    // C `:173–175` — newexp / rexpincr / newrexp, then the wrap caps.
+    let newexp = oldexp + experI;
+    const rexpincr = (Math.imul(4, experI) + rexpI) | 0;
+    let newrexp = oldrexp + rexpincr;
+    if ((newexp < 0 && experI > 0)
+        || (experI > 0 && oldexp > EXP_LONG_MAX - experI)) {
+        newexp = EXP_LONG_MAX;
+    }
+    if ((newrexp < 0 && rexpincr > 0)
+        || (rexpincr > 0 && oldrexp > EXP_LONG_MAX - rexpincr)) {
+        newrexp = EXP_LONG_MAX;
+    }
     if (newexp !== oldexp) {
         u.uexp = newexp;
-        if (game.flags.showexp) game.flags.botl = true; // C :185-186 disp.botl
-        // C :187-191 — Xp percentage highlight can request a refresh when
-        // experience points themselves are not on the status line.
+        if (game.flags.showexp) game.flags.botl = true;
         if (!game.flags.botl && exp_percent_changing()) game.flags.botl = true;
     }
     if (newrexp !== oldrexp) {
         u.urexp = newrexp;
-        // SCORE_ON_BOTL showscore deferred
     }
     const beginnerCap = game.urole?.mnum === PM_WIZARD ? 1000 : 2000;
-    if ((u.urexp | 0) >= beginnerCap) game.flags.beginner = false;
+    if (Math.trunc(Number(u.urexp) || 0) >= beginnerCap) game.flags.beginner = false;
 }
 
 /** C ref: exper.c newexplevel() */

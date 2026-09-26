@@ -38,7 +38,7 @@ import {
 } from './objects.js';
 import { exercise, A_STR, A_DEX, A_WIS, A_CON, acurr, adjalign, change_luck, ALIGNLIM, Fumbling } from './attrib.js';
 import { overexertion, nomul, losehp, is_pool, maybe_half_phys, noattacks } from './hack.js';
-import { ing_suffix, upstart, highc } from './hacklib.js';
+import { ing_suffix, upstart, highc, strstri } from './hacklib.js';
 import { pline, pline_mon, newsym, canseemon, canspotmon, sensemon, tp_sensemon, map_invisible, unmap_object, unmap_invisible, memory_glyph_is_invisible, glyph_at, glyph_is_warning, glyph_is_invisible_id, flush_topl_more, You_feel, tmp_at, map_location, nh_delay_output, mon_glyph, shieldeff, impossible, see_monsters, hero_Blind_telepat, You, Your, pline_The } from './display.js';
 import { cansee } from './vision.js';
 import {
@@ -1678,7 +1678,8 @@ async function hmon_hitmon_msg_silver(hmd, mon) {
         await pline(`Your silver rings sear ${whom}!`);
     } else if (hmd.silverobj && hmd.saved_oname) {
         const oname = String(hmd.saved_oname);
-        const silverWord = /silver/i.test(oname) ? '' : 'silver ';
+        // C uhitm.c:1681 — strstri(saved_oname, "silver") skips a second "silver ".
+        const silverWord = strstri(oname, 'silver') ? '' : 'silver ';
         await pline(`Your ${silverWord}${oname} ${vtense(oname, 'sear')} ${whom}!`);
     } else {
         await pline(`The silver sears ${whom}!`);
@@ -4458,7 +4459,7 @@ export async function light_hits_gremlin(mon, dmg) {
     await wake_nearto(mx, my, 30);
     if ((mon.mhp | 0) < 1) {
         if (game.context?.mon_moving) {
-            await monkilled(mon, null, 10 /* AD_BLND */);
+            await monkilled(mon, null, AD_BLND);
         } else {
             await killed(mon);
         }

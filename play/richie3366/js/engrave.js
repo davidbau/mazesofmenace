@@ -26,7 +26,9 @@
 // allmain DEX timeout D-1372; dokick(2) D-1360;
 // uhitm do_attack(3) D-1373; dothrow throw_obj(2) D-1374;
 // dig.c still stubbed;
-// Blind feel path for engrave/burn; full surface()/ceiling()/is_ice;
+// Blind feel path for engrave/burn; ceiling(); is_ice is file-local
+// (drawbridge-under ice stays the zap.js body). surface() is the
+// dungeon.c:1750 export in sit.js (D-2884), not a floor stub.
 // wipeout_text seeded (non-zero) path; invent lookhere / pickup() still
 // pass FALSE/TRUE vs C `trap && is_pit` at those callers;
 // display.js feel_can_reach_floor clone still omits hugs / ceiling /
@@ -40,6 +42,7 @@
 // Engraving map glyphs (S_engroom/S_engrcorr) live in display.js newsym.
 
 import { game } from './gstate.js';
+import { surface } from './sit.js';
 import { sanitize_name } from './bones.js';
 import { rn1, rn2, rnd } from './rng.js';
 import { pline, You, newsym, impossible, Hallucination } from './display.js';
@@ -114,14 +117,6 @@ function Stunned() {
 function is_ice(x, y) {
     const typ = game.level?.locations?.[x]?.[y]?.typ;
     return typ === ICE;
-}
-
-/**
- * C ref: description.c surface — floor noun under engraving.
- * Branch envelope: room/corridor/door → floor; ice deferred via is_ice.
- */
-function surface(_x, _y) {
-    return 'floor';
 }
 
 /** C ref: engrave.c engr_at */

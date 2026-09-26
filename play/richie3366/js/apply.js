@@ -76,7 +76,7 @@ import {
 import { xname, the, The, makeplural, vtense, doname, an, singular, cxname, thesimpleoname, simpleonames, simple_typename, yname, shk_your, Tobjnam, gloves_simple_name, otense } from './objnam.js';
 import { obj_resists } from './dogmove.js';
 import { acurr, A_CHA, A_STR, A_DEX, A_CON, change_luck, Fumbling } from './attrib.js';
-import { Monnam, mon_nam, x_monnam, y_monnam, Hallucination, a_monnam, Amonnam, monverbself, l_monnam, type_is_pname, pmname, Mgender, hliquid, YMonnam } from './do_name.js';
+import { Monnam, mon_nam, x_monnam, y_monnam, Hallucination, a_monnam, Amonnam, monverbself, l_monnam, type_is_pname, pmname, Mgender, hliquid, YMonnam, obj_pmname } from './do_name.js';
 import { monflee } from './monmove.js';
 import { nomul, confdir, losehp, maybe_half_phys, is_pool, is_lava, overexertion, in_rooms, You_hear } from './hack.js';
 import { getpos, getpos_sethilite } from './getpos.js';
@@ -112,7 +112,7 @@ import { vault_summon_gd } from './vault.js';
 import { fill_pit, buried_ball_to_freedom } from './dig.js';
 import {
     mintrap, Trap_Killed_Mon, reset_utrap, instapetrify, t_at,
-    activate_statue_trap, maketrap, feeltrap, dotrap, trapname, obj_pmname,
+    activate_statue_trap, maketrap, feeltrap, dotrap, trapname,
     deltrap, set_wounded_legs, legs_in_no_shape,
 } from './trap.js';
 import { stucksteed } from './steed.js';

@@ -9,7 +9,7 @@
 // trapeffect_magic_trap /
 // trapeffect_fire_trap / trapeffect_slp_gas_trap / trapeffect_rust_trap /
 // trapeffect_web / trapeffect_landmine / blow_up_landmine /
-// trapeffect_anti_magic /
+// trapeffect_anti_magic / trapeffect_vibrating_square /
 // mu_maybe_destroy_web, b_trapped, sokoban_guilt (D-1239),
 // uteetering_at_seen_pit / uescaped_shaft (D-1073 sit OBJ_AT gate +
 // do.c flooreffects; D-1083 can_reach_floor(check_pit)),
@@ -27,33 +27,33 @@ import {
     objects_at, sobj_at, splitobj, nxtobj, add_to_migration,
     obj_ice_effects, spot_stop_timers, stop_timer, spot_time_left,
 } from './mkobj.js';
-import { find_mac, make_corpse, mon_to_stone, vamp_stone, monstone, mondead, AT_MAGC, AT_BREA } from './mhitm.js';
-import { mon_explodes, scatter } from './explode.js';
+import { find_mac, make_corpse, mon_to_stone, vamp_stone, monstone, monkilled, AT_MAGC, AT_BREA } from './mhitm.js';
+import { scatter } from './explode.js';
 import {
     newsym, pline, pline_mon, pline_xy, urgent_pline, mon_visible, see_with_infrared,
     You_feel, unmap_object, glyph_is_invisible, tmp_at, nh_delay_output,
     obj_glyph, flush_topl_more, feel_newsym, canspotmon, map_invisible, under_water,
-    set_msg_xy, shieldeff, Hallucination, Norep, impossible, You,
+    set_msg_xy, shieldeff, Hallucination, Norep, impossible, You, You_see,
 } from './display.js';
 import { doname, an, the, The, xname, yname, cxname, makeplural, vtense, otense, simpleonames, ansimpleoname, safe_qbuf, gloves_simple_name, aobjnam, Yname2, Yobjnam2 } from './objnam.js';
 import {
     Amonnam, Monnam, mon_nam, x_monnam, y_monnam, noit_Monnam, pmname,
     christen_monst, rndmonnam, hliquid, rndcolor, mon_pmname, YMonnam,
-    s_suffix,
+    s_suffix, obj_pmname,
 } from './do_name.js';
-import { dist2, distmin, m_at, wakeup, seemimic, m_carrying, LEVEL_SPECIFIC_NOCORPSE, bad_rock, setmangry } from './mon.js';
+import { dist2, distmin, m_at, wakeup, seemimic, m_carrying, bad_rock, setmangry } from './mon.js';
 import { cansee, couldsee, m_cansee, recalc_block_point, unblock_point, vision_recalc } from './vision.js';
 import { del_engr_at, can_reach_floor } from './engrave.js';
 import {
-    G_FREQ, G_UNIQ, verysmall, grounded, passes_walls,
+    G_UNIQ, grounded, passes_walls,
     is_flyer, is_floater, is_clinger,
     mon_knows_traps, mon_learns_traps,
     amorphous, unsolid, is_whirly, breathless, can_teleport, MZ_SMALL, MZ_HUGE,
     likes_gems, mons, webmaker, throws_rocks,
     is_animal, mindless, haseyes,
-    bigmonst, is_golem, is_mplayer, is_rider,
-    nohands, extra_nasty, strongmonst, acidic, poly_when_stoned, touch_petrifies,
-    resists_ston, MALE, FEMALE, NEUTRAL, nonliving, is_vampshifter,
+    bigmonst, is_golem,
+    nohands, nolimbs, extra_nasty, strongmonst, acidic, poly_when_stoned, touch_petrifies,
+    resists_ston, NEUTRAL, nonliving, is_vampshifter,
     hides_under, metallivorous, is_neuter,
 } from './monsters.js';
 import {
@@ -138,7 +138,7 @@ import {
 import { tamedog, wary_dog, abuse_dog } from './dog.js';
 import { welded, uwepgone, uswapwepgone } from './wield.js';
 import { count_wsegs, worm_known } from './worm.js';
-import { level_difficulty, depth, ordin } from './hacklib.js';
+import { level_difficulty, depth, ordin, strsubst } from './hacklib.js';
 import { make_stunned, make_hallucinated } from './potion.js';
 import { monstseesu, monstunseesu, defended, resists_magm } from './mondata.js';
 import { get_obj_location, burn_away_slime } from './timeout.js';
@@ -184,7 +184,6 @@ const PM_BLACK_LIGHT = monsterNames.indexOf('PM_BLACK_LIGHT');
 const PM_OWLBEAR = monsterNames.indexOf('PM_OWLBEAR');
 const PM_BUGBEAR = monsterNames.indexOf('PM_BUGBEAR');
 const PM_GREMLIN = monsterNames.indexOf('PM_GREMLIN');
-const PM_LIZARD = monsterNames.indexOf('PM_LIZARD');
 const PM_GELATINOUS_CUBE = monsterNames.indexOf('PM_GELATINOUS_CUBE');
 const PM_FIRE_VORTEX = monsterNames.indexOf('PM_FIRE_VORTEX');
 const PM_FLAMING_SPHERE = monsterNames.indexOf('PM_FLAMING_SPHERE');
@@ -1136,12 +1135,13 @@ function canseemon(mtmp) {
     return loc_seen && mon_visible(mtmp);
 }
 
-// C ref: mon.c m_in_air — flyer/floater; cling+ceiling mundetected deferred
+// C ref: mon.c:2130–2135 m_in_air — flyer, floater, or a clinger that is
+// mundetected under a ceiling (dungeon.c has_ceiling via has_ceiling_trap).
 function m_in_air(mtmp) {
     const ptr = mtmp?.data;
     if (!ptr) return false;
     if (is_flyer(ptr) || is_floater(ptr)) return true;
-    return !!(is_clinger(ptr) && mtmp.mundetected);
+    return !!(is_clinger(ptr) && has_ceiling_trap(game.u?.uz) && mtmp.mundetected);
 }
 
 // C ref: trap.c trapnote — "an F note" / "a C note" (+ noprefix bare name)
@@ -1179,58 +1179,8 @@ function wake_nearto(x, y, distance) {
     }
 }
 
-// C ref: mon.c corpse_chance — AT_BOOM then always-TRUE arms then !rn2(tmp).
-// Named omissions: Vlad/lich dust; swallowed boom.
-async function corpse_chance(mon) {
-    const mdat = mon.data;
-    if (!mdat) return false;
-    const slots = mdat.mattk;
-    if (slots) {
-        for (let i = 0; i < 6; i++) {
-            const at = slots[i];
-            if (!at || (at.aatyp | 0) !== 14 /* AT_BOOM */) continue;
-            if (at.damn) d(at.damn | 0, at.damd | 0);
-            else if (at.damd) d((mdat.mlevel | 0) + 1, at.damd | 0);
-            await mon_explodes(mon, at);
-            return false;
-        }
-    }
-    if (LEVEL_SPECIFIC_NOCORPSE(mdat)) return false;
-    if ((((bigmonst(mdat) || (mdat.mndx ?? -1) === PM_LIZARD) && !mon.mcloned)
-        || is_golem(mdat) || is_mplayer(mdat) || is_rider(mdat) || mon.isshk)) {
-        return true;
-    }
-    const tmp = 2 + (((mdat.geno ?? 0) & G_FREQ) < 2 ? 1 : 0)
-        + (verysmall(mdat) ? 1 : 0);
-    return !rn2(tmp);
-}
-
-// mon.c mondead lives in mhitm.js — imported above (D-2147; no third clone).
-
-// C ref: mon.c mondied → mondead + maybe make_corpse
-async function mondied(mdef) {
-    await mondead(mdef);
-    if ((mdef.mhp | 0) > 0) return; /* lifesaved */
-    if (await corpse_chance(mdef)) await make_corpse(mdef);
-}
-
-// C ref: mon.c monkilled :3384–3385 — trap fltxt path (D-1550).
-// Sight is wormno ? worm_known : cansee(head), not infrared (same as
-// mhitm.js). Named omit: nonliving "destroyed"; pet roast; pline_mon;
-// disintegested mondead.
-async function monkilled(mdef, fltxt, _how) {
-    const mptr = mdef.data;
-    const txt = fltxt || '';
-    if (mdef.wormno ? worm_known(mdef) : cansee(mdef.mx, mdef.my)) {
-        const verb = 'killed'; /* nonliving → destroyed deferred */
-        void mptr;
-        await pline(`${Monnam(mdef)} is ${verb}${txt ? ' by the ' : ''}${txt}!`);
-    } else if (mdef.mtame) {
-        game.iflags = game.iflags || {};
-        game.iflags.sad_feeling = true;
-    }
-    await mondied(mdef);
-}
+// mon.c monkilled / mondied / corpse_chance live in mhitm.js.
+// Trap callers use that export (thitm, rust, fire, anti-magic).
 
 // C ref: trap.c mselftouch — MON_WEP CORPSE + touch_petrifies → minstapetrify
 export async function mselftouch(mon, arg, byplayer) {
@@ -3016,9 +2966,9 @@ export function ice_descr(x, y) {
 
 /**
  * C ref: trap.c back_on_ground `:4976–5008` — full surface wording matrix.
- * surface() is the shared sit.js port (D-2008, C dungeon.c:1750); the
- * uswallow maw/husk arm stays its named omission (fires only while
- * swallowed by an animal). C compares with strcmpi; both surface() sides
+ * surface() is the shared sit.js port (D-2008 / D-2884, C dungeon.c:1750),
+ * including the uswallow maw/husk/nonesuch arm. C compares with strcmpi;
+ * both surface() sides
  * return lowercase literals so === is exact (the lone `air` arm is
  * strcmp in C).
  */
@@ -3126,8 +3076,8 @@ function Flying_fu() {
  * lose-control; float_vs_flight; encumber_msg.
  * D-0956 residuals retired here: buried_ball exact coord (exported from
  * dig.js, C dig.c:1884–1932); Lev_at_will steed float (youprop.h:242–245);
- * surface() wording via dungeon.c maw/husk inline (shared sit.js surface
- * still names that arm). WEB arm kept dead per C: `:3963` compares
+ * surface() wording via dungeon.c (sit.js, including maw/husk). WEB arm
+ * kept dead per C: `:3963` compares
  * utraptype against trap-type WEB=18 (trap.h:77), not TT_WEB=3
  * (you.h:349), so a TT_WEB hero falls through to the bear-trap arm.
  * Flying via canonical mhitu.js export (C youprop.h:253–255 incl. steed
@@ -3179,13 +3129,8 @@ export async function float_up() {
     } else if (u.uswallow) {
         const stuck = u.ustuck;
         if (stuck && is_animal(stuck.data)) {
-            // C trap.c:3974-3975 via dungeon.c surface():1749-1759 — u_at
-            // && uswallow && is_animal always holds here, so surface is
-            // maw/husk/nonesuch, never the terrain word.
-            const { digests, enfolds } = await import('./mhitu.js');
-            const surf = digests(stuck.data) ? 'maw'
-                : enfolds(stuck.data) ? 'husk' : 'nonesuch';
-            await pline(`You float away from the ${surf}.`);
+            // C trap.c:3980 — surface(u.ux, u.uy) while swallowed by an animal.
+            await pline(`You float away from the ${surface(u.ux, u.uy)}.`);
         } else if (stuck) {
             await pline(`You spiral up into ${mon_nam(stuck)}.`);
         }
@@ -3537,25 +3482,6 @@ export async function instapetrify(str) {
     game.killer.format = KILLED_BY;
     game.killer.name = str != null ? String(str) : '';
     await done(STONING);
-}
-
-/**
- * C ref: do_name.c obj_pmname — CORPSE/STATUE/FIGURINE pmnames subset.
- * Named omission: aligned-cleric → cleric remap; omonst traits.
- */
-export function obj_pmname(obj) {
-    const CORPSE = objectNames.indexOf('CORPSE');
-    const STATUE = objectNames.indexOf('STATUE');
-    const FIGURINE = objectNames.indexOf('FIGURINE');
-    const otyp = obj?.otyp | 0;
-    const cnm = obj?.corpsenm;
-    if ((otyp === CORPSE || otyp === STATUE || otyp === FIGURINE)
-        && cnm != null && cnm >= 0) {
-        const cgend = (obj.spe | 0) & 0x03; // CORPSTAT_GENDER
-        const mgend = cgend === 1 ? MALE : cgend === 2 ? FEMALE : NEUTRAL;
-        return pmname(cnm, mgend);
-    }
-    return 'thing';
 }
 
 /**
@@ -5856,7 +5782,63 @@ async function trapeffect_landmine(mtmp, trap, trflags) {
         : (mtmp.mtrapped ? Trap_Caught_Mon : Trap_Effect_Finished);
 }
 
-// C ref: trap.c trapeffect_selector — dart/arrow/rock/pit/sqky/hole/magic/anti-magic/fire/slp/telep/bear/rust/web/landmine/poly
+/**
+ * C ref: trap.c:2725–2764 trapeffect_vibrating_square.
+ * Hero: feeltrap only — the symbol marks the square; messages are
+ * elsewhere. Monster: in_sight (canseemon or the steed) is computed
+ * before see_it. see_it && !Blind reveals with seetrap, then either
+ * the in-sight "beneath" line or the heard ground line. nolimbs or
+ * m_in_air (mon.c:2130) uses the monster's name; otherwise
+ * s_suffix, a space, and the plural foot with "rear " stripped from
+ * the foot text only (hacklib.c eos is the end of that prefix).
+ * mdistu <= 2*2 is squared distance (hack.h). trflags is unused.
+ * Returns Trap_Effect_Finished.
+ */
+async function trapeffect_vibrating_square(mtmp, trap, _trflags) {
+    if (is_youmonst(mtmp)) {
+        feeltrap(trap);
+        /* messages handled elsewhere; the trap symbol marks the square */
+    } else {
+        const in_sight = canseemon(mtmp) || (mtmp === game.u?.usteed);
+        const see_it = cansee(mtmp.mx, mtmp.my);
+
+        if (see_it && !Blind()) {
+            seetrap(trap); /* before messages */
+            if (in_sight) {
+                const monnm = mon_nam(mtmp);
+                let buf;
+                if (nolimbs(mtmp.data) || m_in_air(mtmp)) {
+                    /* just "beneath <mon>" */
+                    buf = monnm;
+                } else {
+                    /* Strcpy(s_suffix); eos(strcat " "); Strcpy plural feet;
+                       strsubst starts at the feet, not the name. */
+                    const feet = strsubst(
+                        makeplural(mbodypart(mtmp, FOOT)),
+                        'rear ',
+                        '',
+                    );
+                    buf = `${s_suffix(monnm)} ${feet}`;
+                }
+                await You_see('a strange vibration beneath %s.', buf);
+            } else {
+                /* notice something (hearing uses a larger threshold
+                   for 'nearby') */
+                const nearby = dist2(
+                    mtmp.mx | 0, mtmp.my | 0,
+                    game.u?.ux | 0, game.u?.uy | 0,
+                ) <= 2 * 2;
+                await You_see(
+                    'the ground vibrate %s.',
+                    nearby ? 'nearby' : 'in the distance',
+                );
+            }
+        }
+    }
+    return Trap_Effect_Finished;
+}
+
+// C ref: trap.c trapeffect_selector — dart/arrow/rock/pit/sqky/hole/magic/anti-magic/fire/slp/telep/bear/rust/web/landmine/poly/vibrating square
 async function trapeffect_selector(mtmp, trap, trflags) {
     switch (trap.ttyp) {
     case DART_TRAP:
@@ -5901,6 +5883,8 @@ async function trapeffect_selector(mtmp, trap, trflags) {
         return trapeffect_web(mtmp, trap, trflags);
     case STATUE_TRAP:
         return trapeffect_statue_trap(mtmp, trap, trflags);
+    case VIBRATING_SQUARE:
+        return trapeffect_vibrating_square(mtmp, trap, trflags);
     default:
         return Trap_Effect_Finished;
     }

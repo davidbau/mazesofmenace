@@ -44,6 +44,7 @@ import { show_nhw_menu_text, strip_newline } from './pager.js';
 import { TRIBUTE_TEXT } from './generated/tribute_data.js';
 import { maxledgerno } from './dungeon.js';
 import { pmatch } from './cmd.js';
+import { wish_history_add } from './zap.js';
 
 const INVLET_BASIC = 52;
 const SCR_SCARE_MONSTER = objectNames.indexOf('SCR_SCARE_MONSTER');
@@ -137,14 +138,22 @@ async function wizkit_addinv(obj) {
 
 /**
  * C ref: files.c proc_wizkit_line — readobjnam; hands_obj skip; else
- * add. Named omit: wish_history_add; config_error_add "Bad wizkit item".
+ * wish_history_add then wizkit_addinv. Named omit: config_error_add
+ * "Bad wizkit item".
  */
 export async function proc_wizkit_line(buf) {
     let line = String(buf ?? '');
     if (line.length >= BUFSZ) line = line.slice(0, BUFSZ - 1);
-    const otmp = readobjnam(line, null);
+    // C files.c:2568–2573 — readobjnam mutates buf (mungspaces at
+    // objnam.c:4919, then Strcpy / NUL through that same pointer).
+    // wish_history_add records that buffer, not the text before the parse.
+    const parsed = {};
+    const otmp = readobjnam(line, null, parsed);
     if (!otmp || otmp === NOTHING_OBJ || otmp._nothing_obj) return false;
-    if (!is_hands_obj(otmp)) await wizkit_addinv(otmp);
+    if (!is_hands_obj(otmp)) {
+        wish_history_add(parsed.wishbuf != null ? parsed.wishbuf : line);
+        await wizkit_addinv(otmp);
+    }
     return true;
 }
 

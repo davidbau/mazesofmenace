@@ -2743,7 +2743,8 @@ export async function domove_fight_ironbars(x, y) {
             const piece = splitobj(obj, 1);
             if (piece) obj = piece;
         } else {
-            setuwep(null);
+            const shine = setuwep(null);
+            if (shine) await shine;
         }
         freeinv(obj);
         breakflags |= BRK_KNOWN2BREAK;

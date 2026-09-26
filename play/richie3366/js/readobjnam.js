@@ -138,6 +138,44 @@ function mungspaces(s) {
     return String(s || '').trim().replace(/\s+/g, ' ');
 }
 
+/**
+ * C `readobjnam` takes `char *bp` and mutates that buffer.
+ * `d.bp` is a cursor into it (`d->bp += n` does not erase the prefix).
+ * `Strcpy` / `*p = 0` / `strsubst` write at the cursor and drop the tail.
+ * `_cbuf` is the caller's string; `_boff` is the cursor. Absent `_cbuf`
+ * (a direct `postparse*` caller) is a no-op.
+ */
+function cbufAdvance(d, n) {
+    if (!d || d._cbuf == null || !n) return;
+    d._boff = (d._boff | 0) + n;
+}
+
+function cbufReplace(d, view) {
+    if (!d || d._cbuf == null) return;
+    const off = d._boff | 0;
+    d._cbuf = d._cbuf.slice(0, off) + String(view ?? '');
+}
+
+function cbufText(d) {
+    if (!d || d._cbuf == null) return null;
+    const z = d._cbuf.indexOf('\0');
+    return z < 0 ? d._cbuf : d._cbuf.slice(0, z);
+}
+
+/** `name_to_monplus` rest is a pointer into the same buffer. */
+function cbufSkipToSuffix(d, rest) {
+    if (!d || d._cbuf == null) return;
+    const view = String(d.bp ?? '');
+    const tail = String(rest ?? '');
+    if (view.endsWith(tail)) cbufAdvance(d, view.length - tail.length);
+}
+
+function publishWishbuf(missOut, d, munged) {
+    if (!missOut) return;
+    const text = d ? cbufText(d) : munged;
+    if (text != null) missOut.wishbuf = text;
+}
+
 /** C objnam.c BSTRCMPI(bp, eos(bp)-n, suff) — case-insensitive suffix. */
 function bstrcmpi_end(bp, suff) {
     const s = String(bp || '');
@@ -325,7 +363,12 @@ function readobjnam_parse_charges(d) {
             p = p.slice(1); // past ')'
         }
     }
-    d.bp = keeptrailing ? head + p : head;
+    // C objnam.c:4186–4220 — NUL at '(' (or the space before it), then
+    // copy the characters after ')' onto that end. The prefix before
+    // the cursor stays.
+    const charged = keeptrailing ? head + p : head;
+    cbufReplace(d, charged);
+    d.bp = charged;
     if (d.spe < 0) {
         d.spesgn = -1;
         d.spe = Math.abs(d.spe);
@@ -372,7 +415,11 @@ function readobjnam_parse_class_words(d) {
             if (d.oclass !== AMULET_CLASS) {
                 let cut = bp.length - j;
                 if (cut > 0 && bp[cut - 1] === ' ') cut -= 1;
-                d.bp = bp.slice(0, cut);
+                // C objnam.c:4591–4594 — NUL the class word (and the space
+                // before it) in the shared buffer.
+                const trimmed = bp.slice(0, cut);
+                cbufReplace(d, trimmed);
+                d.bp = trimmed;
                 d.actualn = d.dn = d.bp;
             } else {
                 d.actualn = d.dn = bp;
@@ -761,14 +808,24 @@ function readobjnam_preparse(d) {
         } else if (!d.cnt && isDigit(s[0]) && s !== '0') { // C `:3983–3991`
             const m = s.match(/^(\d+)/);
             d.cnt = parseInt(m[1], 10); // C atoi
-            d.bp = s.slice(m[1].length).replace(/^ +/, '');
+            // C `:3984–3987` — digit and space walks advance the pointer.
+            // The characters stay in the caller's buffer.
+            const afterDigits = s.slice(m[1].length);
+            const sp = afterDigits.match(/^ */)[0].length;
+            cbufAdvance(d, m[1].length + sp);
+            d.bp = afterDigits.replace(/^ +/, '');
             l = 0;
         } else if (s[0] === '+' || s[0] === '-') { // C `:3992–3996`
             d.spesgn = (s[0] === '+') ? 1 : -1;
             const rest = s.slice(1);
             const m = rest.match(/^(\d+)/);
             d.spe = m ? parseInt(m[1], 10) : 0; // C atoi
-            d.bp = rest.slice(m ? m[1].length : 0).replace(/^ +/, '');
+            // C `:3990–3995` — `*d->bp++` then digit and space walks.
+            const dlen = m ? m[1].length : 0;
+            const afterSign = rest.slice(dlen);
+            const sp = afterSign.match(/^ */)[0].length;
+            cbufAdvance(d, 1 + dlen + sp);
+            d.bp = afterSign.replace(/^ +/, '');
             l = 0;
         } else if (strncmpi_start(s, 'blessed ')) { // C `:3997–3999`
             d.blessed = 1; d.uncursed = 0; d.iscursed = 0;
@@ -964,6 +1021,7 @@ function readobjnam_preparse(d) {
                 // C edits the shared buffer in place: the saved prefix is
                 // untouched, the current tail shrinks.
                 save_bp = save_bp.slice(0, save_bp.length - d.bp.length) + nb;
+                cbufReplace(d, nb);
                 d.bp = nb;
                 l = 0;
             } else {
@@ -974,6 +1032,7 @@ function readobjnam_preparse(d) {
             if (save_bp !== null) {
                 const nb = strsubst(d.bp, 'male ', '');
                 save_bp = save_bp.slice(0, save_bp.length - d.bp.length) + nb;
+                cbufReplace(d, nb);
                 d.bp = nb;
                 l = 0;
             } else {
@@ -984,6 +1043,7 @@ function readobjnam_preparse(d) {
             if (save_bp !== null) {
                 const nb = strsubst(d.bp, 'neuter ', '');
                 save_bp = save_bp.slice(0, save_bp.length - d.bp.length) + nb;
+                cbufReplace(d, nb);
                 d.bp = nb;
                 l = 0;
             } else {
@@ -998,6 +1058,7 @@ function readobjnam_preparse(d) {
                now and backtracking to save_bp after the loop. */
             more_l = 3;
             save_bp = d.bp; // we'll backtrack to here later
+            d._saveOff = d._boff | 0;
             l += more_l; more_l = 0;
             if (strncmpi_start(s.slice(l), 'a ')) {
                 more_l = 2;
@@ -1010,10 +1071,13 @@ function readobjnam_preparse(d) {
         } else { // C `:4167–4169`
             break;
         }
-        d.bp = d.bp.slice(l); // C `:4170` — d->bp += l (no-op when l = 0)
+        cbufAdvance(d, l); // C `:4170` — d->bp += l (bytes before the cursor stay)
+        d.bp = d.bp.slice(l);
     }
-    if (save_bp !== null) // C `:4172–4173`
+    if (save_bp !== null) { // C `:4172–4173` — pointer back into the same buffer
         d.bp = save_bp;
+        if (d._cbuf != null && d._saveOff != null) d._boff = d._saveOff | 0;
+    }
     return res; // C `:4174`
 }
 
@@ -1071,7 +1135,10 @@ export function readobjnam_postparse2(d) {
     if (bstrcmpi_end(d.bp, ' stone') || bstrcmpi_end(d.bp, ' gem')) { // C: BSTRCMPI
         // C `:4680` — cut 4 (" gem") else 6 (" stone").
         const bp = String(d.bp || '');
-        d.bp = bp.slice(0, bp.length - (bstrcmpi_end(bp, ' gem') ? 4 : 6));
+        // C `:4680` — `d->p[idx] = 0` cuts " gem" / " stone" out of the buffer.
+        const gemCut = bp.slice(0, bp.length - (bstrcmpi_end(bp, ' gem') ? 4 : 6));
+        cbufReplace(d, gemCut);
+        d.bp = gemCut;
         d.oclass = GEM_CLASS;
         d.dn = d.actualn = d.bp;
         return 1; // C: goto srch
@@ -1102,7 +1169,9 @@ export function readobjnam_postparse2(d) {
             else
                 d.typ = 0; // C: somebody changed objects[]? punt
         } else { // C `:4710–4716` — rebuild the canonical form for srch
-            d.bp = 'worthless piece of ' + s; // C: Strcpy(d->bp, tbuf)
+            const canon = 'worthless piece of ' + s;
+            cbufReplace(d, canon); // C: Strcpy(d->bp, tbuf) at the cursor
+            d.bp = canon;
         }
     }
 
@@ -1170,7 +1239,8 @@ export function readobjnam_postparse3(d) {
     // to catch "plate armor" / "yellow dragon scale armor".
     if (d.oclass === ARMOR_CLASS && strstri(d.bp, 'mail') === null) {
         // C: modifying bp's string is ok; random armor follows if this fails.
-        d.bp += ' mail'; // C: Strcat `:4779`
+        d.bp += ' mail'; // C: Strcat `:4779` — appends at the cursor's NUL
+        cbufReplace(d, d.bp);
         return 6; // C: goto retry
     }
 
@@ -1317,25 +1387,36 @@ function wish_otyp_by_wpnskill_prefix(bp) {
 }
 
 export function readobjnam(bp, no_wish, missOut) {
+    // Caller's char* after mungspaces and in-place writes (files.c:2568).
+    let d = null;
+    let munged = null;
+    const ret = (value) => {
+        publishWishbuf(missOut, d, munged);
+        return value;
+    };
     // C: readobjnam_init + if (!bp) goto any
     if (bp == null) {
         return readobjnam_any({
             typ: 0, oclass: 0, otmp: null,
         });
     }
-    bp = mungspaces(bp);
+    munged = mungspaces(bp);
+    bp = munged;
     // C: "nothing"/"nil"/"none" → return no_wish (wishless conduct)
-    if (/^(nothing|nil|none)$/i.test(bp)) return no_wish || NOTHING_OBJ;
+    if (/^(nothing|nil|none)$/i.test(bp)) return ret(no_wish || NOTHING_OBJ);
     // C: empty bp (or ESC already cleared by makewish) → preparse returns 1 → any
     if (!bp || bp === '\x1b') {
-        return readobjnam_any({
+        return ret(readobjnam_any({
             typ: 0, oclass: 0, otmp: null,
-        });
+        }));
     }
 
-    const d = {
+    d = {
         bp,
         origbp: bp,
+        // C objnam.c:3955 — d->bp and d->origbp alias the caller's buffer.
+        _cbuf: bp,
+        _boff: 0,
         // C ref: objnam.c readobjnam `:4926` + readobjnam_init `:3958` —
         // fruitbuf is the mungspaced wish before prefix stripping; ftype
         // defaults to the current fruit id.
@@ -1392,7 +1473,7 @@ export function readobjnam(bp, no_wish, missOut) {
     // C ref: objnam.c readobjnam `:4928` — preparse strips wish prefixes;
     // nonzero (empty bp) goes `any` (C `goto any`).
     if (readobjnam_preparse(d)) {
-        return readobjnam_any(d);
+        return ret(readobjnam_any(d));
     }
     if (!d.cnt) d.cnt = 1;
 
@@ -1432,7 +1513,10 @@ export function readobjnam(bp, no_wish, missOut) {
                 if (mtmp >= LOW_PM) {
                     d.mntmp = mtmp;
                     d.mgend = gbox.gender;
-                    d.bp = d.bp.slice(0, d.bp.length - ofTail.length);
+                    // C `:4395` — `*d->p = 0` at " of ".
+                    const ofCut = d.bp.slice(0, d.bp.length - ofTail.length);
+                    cbufReplace(d, ofCut);
+                    d.bp = ofCut;
                 }
             }
         }
@@ -1471,7 +1555,11 @@ export function readobjnam(bp, no_wish, missOut) {
                     d.mntmp = NON_PM;
                     rest = d.bp;
                 }
-                if (d.mntmp >= LOW_PM) d.bp = rest;
+                if (d.mntmp >= LOW_PM) {
+                    // C `:4415` — rest points into the same buffer.
+                    cbufSkipToSuffix(d, rest);
+                    d.bp = rest;
+                }
             }
         }
     }
@@ -1509,6 +1597,8 @@ export function readobjnam(bp, no_wish, missOut) {
         const sng = makesingular(d.bp);
         if (sng !== d.bp) {
             if (d.cnt === 1) d.cnt = 2;
+            // C `:4453` — Strcpy(d->bp, sng) at the cursor, not at origbp.
+            cbufReplace(d, sng);
             d.bp = sng;
         }
     }
@@ -1541,10 +1631,10 @@ export function readobjnam(bp, no_wish, missOut) {
             if (cnt > 5000 && !wizardMode()) cnt = 5000;
             else if (cnt < 1) cnt = 1;
             d.otmp = mksobj(GOLD_PIECE, false, false);
-            if (!d.otmp) return null;
+            if (!d.otmp) return ret(null);
             d.otmp.quan = cnt;
             d.otmp.owt = weight(d.otmp);
-            return d.otmp;
+            return ret(d.otmp);
         }
     }
 
@@ -1562,7 +1652,7 @@ export function readobjnam(bp, no_wish, missOut) {
     // d.typ set so the srch block below skips on its !d.typ gate; 0/1 run
     // srch (1 carries the truncated bp + GEM_CLASS).
     if (!d.typ && !classWord) {
-        if (readobjnam_postparse2(d) === 3) return d.otmp;
+        if (readobjnam_postparse2(d) === 3) return ret(d.otmp);
     }
 
     // C ref: objnam.c readobjnam `srch:` `:4958–4967` — postparse1's
@@ -1580,7 +1670,7 @@ export function readobjnam(bp, no_wish, missOut) {
             const rc3 = readobjnam_postparse3(d);
             if (rc3 !== 6) break;
             const rc2 = readobjnam_postparse2(d);
-            if (rc2 === 3) return d.otmp; // C retry-switch: return otmp
+            if (rc2 === 3) return ret(d.otmp); // C retry-switch: return otmp
             if (d.typ) break; // C retry-switch case 2 → typfnd (0/1 → srch)
         }
     }
@@ -1603,11 +1693,11 @@ export function readobjnam(bp, no_wish, missOut) {
         }
         if (!skillHit) {
             if (missOut) missOut.d = d;
-            return null;
+            return ret(null);
         }
     }
 
-    return readobjnam_finish(d);
+    return ret(readobjnam_finish(d));
 }
 
 /**
