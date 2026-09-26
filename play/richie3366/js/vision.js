@@ -942,6 +942,40 @@ function apply_nv_range_in_sight(next, next_rmin, next_rmax, u, has_night_vision
     }
 }
 
+/**
+ * C ref: vision.c get_unused_cs :274–299.
+ * The could-see work area `viz_array` is not using. Zeros every cell
+ * (C `memset` of `ROWNO * COLNO * sizeof (seenV)`), then sets each row
+ * min to `COLNO - 1` and max to `1` (empty span: min > max).
+ * Returns `{ rows, rmin, rmax }` for C's three out-pointers.
+ * `cs_buf0` / `cs_buf1` are `cs_rows0` / `cs_rows1`.
+ */
+export function get_unused_cs() {
+    let rows;
+    let rmin;
+    let rmax;
+
+    if (game.viz_array === cs_buf0) {
+        rows = cs_buf1;
+        rmin = cs_rmin1;
+        rmax = cs_rmax1;
+    } else {
+        rows = cs_buf0;
+        rmin = cs_rmin0;
+        rmax = cs_rmax0;
+    }
+
+    /* see nothing */
+    for (let row = 0; row < ROWNO; row++)
+        rows[row].fill(0);
+    /* set row min & max */
+    for (let row = 0; row < ROWNO; row++) {
+        rmin[row] = COLNO - 1;
+        rmax[row] = 1;
+    }
+    return { rows, rmin, rmax };
+}
+
 // C ref: vision_recalc(control)
 export function vision_recalc(control = 0) {
     const u = game.u;
@@ -949,16 +983,11 @@ export function vision_recalc(control = 0) {
     game.vision_full_recalc = 0;
     if (game.in_mklev) return;
 
-    // Swap to unused buffer
-    const next = game.active_buf === 0 ? cs_buf1 : cs_buf0;
-    const next_rmin = game.active_buf === 0 ? cs_rmin1 : cs_rmin0;
-    const next_rmax = game.active_buf === 0 ? cs_rmax1 : cs_rmax0;
-
-    for (let y = 0; y < ROWNO; y++) {
-        next[y].fill(0);
-        next_rmin[y] = COLNO;
-        next_rmax[y] = 0;
-    }
+    /* C vision.c:542 — unused could-see, row min, and row max. */
+    const unused = get_unused_cs();
+    const next = unused.rows;
+    const next_rmin = unused.rmin;
+    const next_rmax = unused.rmax;
 
     // C youprop.h Blind ≡ (HBlinded || EBlinded) && !BBlinded (D-0716: no sticky)
     const heroBlind = !!(u.uroleplay?.blind
@@ -973,7 +1002,7 @@ export function vision_recalc(control = 0) {
 
         const old_array = game.viz_array;
         game.viz_array = next;
-        game.active_buf = game.active_buf === 0 ? 1 : 0;
+        game.active_buf = next === cs_buf0 ? 0 : 1;
 
         const old_rmin = game._viz_rmin;
         const old_rmax = game._viz_rmax;
@@ -1063,7 +1092,7 @@ export function vision_recalc(control = 0) {
     // Swap viz_array and run newsym updates
     const old_array = game.viz_array;
     game.viz_array = next;
-    game.active_buf = game.active_buf === 0 ? 1 : 0;
+    game.active_buf = next === cs_buf0 ? 0 : 1;
 
     const old_rmin = game._viz_rmin;
     const old_rmax = game._viz_rmax;

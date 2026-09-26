@@ -59,6 +59,7 @@ import {
     BL_MASK_TERMILL, BL_MASK_TETHERED, BL_MASK_TRAPPED, BL_MASK_UNCONSC,
     BL_MASK_WOUNDEDL, BL_MASK_HOLDING,
     MENU_ITEMFLAGS_SKIPINVERT,
+    NOW, BEFORE, MAXCO, WIN_ERR, REASSESS_ONLY,
 } from './const.js';
 import {
     NO_COLOR, ATR_NONE, ATR_INVERSE,
@@ -71,7 +72,7 @@ import {
     A_STR, A_DEX, A_CON, A_INT, A_WIS, A_CHA,
     acurr, get_strength_str,
 } from './attrib.js';
-import { describe_level, objnum_to_glyph, Hallucination } from './display.js';
+import { describe_level, objnum_to_glyph, Hallucination, impossible } from './display.js';
 import { rank_of, roles } from './roles.js';
 import { money_cnt } from './shk.js';
 import { pmname } from './do_name.js';
@@ -195,10 +196,213 @@ export function init_blstats() {
         }
     }
     blstatsInitalready = true;
-    // C status_initialize() (botl.c:1692-1697) sets gb.blinit after the full
-    // init; JS has no status_initialize port, so the boot point carries it —
-    // bot_via_windowport() panics without it (botl.c:970).
-    game.gb.blinit = true;
+    // gb.blinit is set by status_initialize() after win_status_init
+    // (botl.c:1697), not here.
+}
+
+// C windows.c:887-890 — genl status tables (window-port side).
+// status_vals is a JS string; C alloc(MAXCO) is a fixed buffer. The cap
+// is MAXCO; writers must not treat the string as longer than that.
+const statusFieldnm = new Array(MAXBLSTATS).fill(null);
+const statusFieldfmt = new Array(MAXBLSTATS).fill(null);
+const statusVals = new Array(MAXBLSTATS).fill(null);
+const statusActivefields = new Array(MAXBLSTATS).fill(false);
+
+// C wintty.c:4261-4300 — tty status field cache and row order.
+// blPAD is BL_FLUSH. A short C initializer zero-fills; enum 0 is BL_TITLE.
+const BL_PAD = BL_FLUSH;
+const MAX_PER_ROW = 19;
+const twolineorder = [
+    [BL_TITLE, BL_STR, BL_DX, BL_CO, BL_IN, BL_WI, BL_CH, BL_ALIGN,
+        BL_SCORE, BL_FLUSH,
+        BL_PAD, BL_PAD, BL_PAD, BL_PAD, BL_PAD, BL_PAD, BL_PAD, BL_PAD, BL_PAD],
+    [BL_LEVELDESC, BL_GOLD, BL_HP, BL_HPMAX, BL_ENE, BL_ENEMAX,
+        BL_AC, BL_XP, BL_EXP, BL_HD, BL_TIME, BL_HUNGER, BL_CAP,
+        BL_CONDITION, BL_WEAPON, BL_ARMOR, BL_TERRAIN, BL_VERS, BL_FLUSH],
+    // Third row is unused for two-line status. C lists 17 slots; the
+    // last two zero-fill to BL_TITLE (0).
+    [BL_FLUSH, BL_PAD, BL_PAD, BL_PAD, BL_PAD, BL_PAD, BL_PAD, BL_PAD,
+        BL_PAD, BL_PAD, BL_PAD, BL_PAD, BL_PAD, BL_PAD, BL_PAD, BL_PAD, BL_PAD,
+        BL_TITLE, BL_TITLE],
+];
+const threelineorder = [
+    [BL_TITLE, BL_STR, BL_DX, BL_CO, BL_IN, BL_WI, BL_CH, BL_SCORE, BL_FLUSH,
+        BL_PAD, BL_PAD, BL_PAD, BL_PAD, BL_PAD, BL_PAD, BL_PAD, BL_PAD, BL_PAD, BL_PAD],
+    [BL_ALIGN, BL_GOLD, BL_HP, BL_HPMAX, BL_ENE, BL_ENEMAX,
+        BL_AC, BL_XP, BL_EXP, BL_HD, BL_HUNGER, BL_CAP,
+        BL_FLUSH, BL_PAD, BL_PAD, BL_PAD, BL_PAD, BL_PAD, BL_PAD],
+    [BL_LEVELDESC, BL_TIME, BL_CONDITION, BL_WEAPON, BL_ARMOR, BL_TERRAIN,
+        BL_VERS, BL_FLUSH, BL_PAD,
+        BL_PAD, BL_PAD, BL_PAD, BL_PAD, BL_PAD, BL_PAD, BL_PAD, BL_PAD, BL_PAD, BL_PAD],
+];
+for (const row of [...twolineorder, ...threelineorder]) {
+    if (row.length !== MAX_PER_ROW) {
+        throw new Error(`status field order width ${row.length}`);
+    }
+}
+let ttyFieldorder = twolineorder;
+let ttyConditionBits = 0;
+let hpbarPercent = 0;
+let hpbarCritHp = 0;
+// tty_status[NOW|BEFORE][fld]. lth is not cleared by tty_status_init.
+let ttyStatus = [
+    new Array(MAXBLSTATS).fill(null),
+    new Array(MAXBLSTATS).fill(null),
+];
+
+// Same sentinel allmain.js uses for create_nhwindow(NHW_STATUS).
+const WIN_STATUS_ID = 11;
+
+// C wintty.c:229 StatusRows — wc2_statuslines <= 2 → 2 else 3.
+function statusRows() {
+    const n = game.iflags?.wc2_statuslines | 0;
+    return n <= 2 ? 2 : 3;
+}
+
+function emptyTtyStatusField(lth) {
+    return {
+        idx: BL_FLUSH,
+        color: NO_COLOR,
+        attr: ATR_NONE,
+        x: 0,
+        y: 0,
+        lth: lth | 0,
+        valid: false,
+        dirty: false,
+        redraw: false,
+        sanitycheck: false,
+    };
+}
+
+// C windows.c:893-906 genl_status_init.
+// Named: display_nhwindow(WIN_STATUS, FALSE) — no nhwindow object;
+// init paints stay the allmain omission (no grid snapshot, D-1831).
+export function genl_status_init() {
+    for (let i = 0; i < MAXBLSTATS; ++i) {
+        statusVals[i] = '';
+        if ((statusVals[i]?.length | 0) > MAXCO) {
+            statusVals[i] = statusVals[i].slice(0, MAXCO);
+        }
+        statusActivefields[i] = false;
+        statusFieldfmt[i] = null;
+    }
+    game.WIN_STATUS = WIN_STATUS_ID;
+}
+
+// C windows.c:909-919 genl_status_finish. fieldnm / fmt / active stay.
+export function genl_status_finish() {
+    for (let i = 0; i < MAXBLSTATS; ++i) {
+        if (statusVals[i] != null) statusVals[i] = null;
+    }
+}
+
+// C windows.c:922-931 genl_status_enablefield.
+export function genl_status_enablefield(fieldidx, nm, fmt, enable) {
+    statusFieldfmt[fieldidx] = fmt;
+    statusFieldnm[fieldidx] = nm;
+    statusActivefields[fieldidx] = !!enable;
+}
+
+// C wintty.c:4364-4371 tty_status_enablefield — forwards to genl.
+export function tty_status_enablefield(fieldidx, nm, fmt, enable) {
+    genl_status_enablefield(fieldidx, nm, fmt, enable);
+}
+
+// C wintty.c:4336-4361 tty_status_init. STATUS_HILITES is on
+// (config.h:616), so the field cache is live. DISABLE_TTY_FIELD_OPT
+// is unset; do_field_opt stays 1 and is read by render_status (not
+// this function).
+export function tty_status_init() {
+    const num_rows = statusRows();
+    ttyFieldorder = (num_rows !== 3) ? twolineorder : threelineorder;
+    for (let i = 0; i < MAXBLSTATS; ++i) {
+        const lth = ttyStatus[NOW][i]?.lth | 0;
+        const now = emptyTtyStatusField(lth);
+        ttyStatus[NOW][i] = now;
+        ttyStatus[BEFORE][i] = emptyTtyStatusField(now.lth);
+    }
+    ttyConditionBits = 0;
+    hpbarPercent = 0;
+    hpbarCritHp = 0;
+    genl_status_init();
+}
+
+// C botl.h:185 status_enablefield → windowprocs.win_status_enablefield.
+// tty_procs installs tty_status_enablefield (wintty.c:156). The scored
+// port has no proc table, so the tty function is the call.
+function status_enablefield(fld, fieldname, fieldfmt, fldenabl) {
+    tty_status_enablefield(fld, fieldname, fieldfmt, fldenabl);
+}
+
+// C botl.c:1683-1720 status_initialize.
+// reassessment TRUE (REASSESS_ONLY): skip blstats/window init, panic
+// if blinit is still false, then recompute every field's enable bit.
+// Full init impossibles on a second call but does not return: init_blstats
+// refuses the second copy, then win_status_init and the field loop still run.
+export function status_initialize(reassessment) {
+    if (!reassessment) {
+        if (game.gb?.blinit) {
+            // C :1691. impossible returns; this is not an error return.
+            // Not awaited (sync caller). The double-init path is the only
+            // arm, and it still continues into init_blstats.
+            void impossible('2nd status_initialize with full init.');
+        }
+        init_blstats();
+        // C :1695 (*windowprocs.win_status_init)() — tty_status_init.
+        tty_status_init();
+        if (!game.gb) game.gb = {};
+        game.gb.blinit = true;
+    } else if (!game.gb?.blinit) {
+        // C :1698 panic — does not return.
+        throw new Error("status 'reassess' before init");
+    }
+    const polyd = !!Upolyd(game.u);
+    const flags = game.flags ?? {};
+    for (let i = 0; i < MAXBLSTATS; ++i) {
+        const fld = initblstats[i].fld;
+        // C :1704-1714 nested ?: — one predicate per field, else TRUE.
+        const fldenabl = (fld === BL_SCORE) ? !!flags.showscore
+            : (fld === BL_TIME) ? !!flags.time
+                : (fld === BL_EXP) ? !!(flags.showexp && !polyd)
+                    : (fld === BL_XP) ? !polyd
+                        : (fld === BL_HD) ? polyd
+                            : (fld === BL_VERS) ? !!flags.showvers
+                                : (fld === BL_WEAPON) ? !!flags.weaponstatus
+                                    : (fld === BL_ARMOR) ? !!flags.armorstatus
+                                        : (fld === BL_TERRAIN) ? !!flags.terrainstatus
+                                            : true;
+        const fieldname = initblstats[i].name;
+        const fieldfmt = (fld === BL_TITLE && game.iflags?.wc2_hitpointbar)
+            ? '%-30.30s'
+            : initblstats[i].fmt;
+        status_enablefield(fld, fieldname, fieldfmt, fldenabl);
+    }
+    if (!game.gu) game.gu = {};
+    game.gu.update_all = true; // C :1718
+    if (!game.disp) game.disp = {};
+    game.disp.botlx = true; // C :1719
+    // bot() reads flags.botlx (reset_status_hilites, same store).
+    if (!game.flags) game.flags = {};
+    game.flags.botlx = true;
+}
+
+// C wintty.c:491-507 new_status_window (static). STATUS_HILITES is on,
+// so the reassess call is live. Callers winch_handler (wintty.c:431)
+// and tty_preference_update (wintty.c:602) have no JS site.
+export function new_status_window() {
+    const win = game.WIN_STATUS;
+    if (win != null && (win | 0) !== WIN_ERR) {
+        // tty_clear_nhwindow (wintty.c:1034) and tty_destroy_nhwindow
+        // (wintty.c:2009) are not ported. Drop the sentinel the way
+        // destroy assigns WIN_ERR.
+        game.WIN_STATUS = WIN_ERR;
+    }
+    genl_status_finish();
+    tty_status_init();
+    // Second tty_clear_nhwindow(WIN_STATUS) (wintty.c:503) blanks the
+    // status rows and sets disp.botlx (wintty.c:1072). The clear is
+    // named; status_initialize sets botlx on the next line.
+    status_initialize(REASSESS_ONLY);
 }
 
 // C botl.c:1809-1884 — compare_blstats(): prev-vs-new change direction
@@ -381,6 +585,32 @@ export function exp_percentage() {
     return res;
 }
 
+// C botl.c:2090-2125 — exp_percent_changing(). STATUS_HILITES is on
+// (config.h:616), so the thresholds gate and the get_hilite compare are
+// the compiled body. disp.botl is game.flags.botl, the bit bot() reads.
+// A BL_XP slot the hilite parser created before init_blstats() has no
+// percent_matters; the INIT_BLSTATP row is TRUE (botl.c:717).
+export function exp_percent_changing() {
+    if (!game.flags?.botl) { // C :2099
+        const curr = game.gb?.blstats?.[now_or_before_idx]?.[BL_XP] ?? null; // C :2106
+        const percentMatters = curr
+            ? (curr.percent_matters ?? initblstats[BL_XP].pct)
+            : initblstats[BL_XP].pct;
+        const thresholds = curr ? curr.thresholds : null; // C :2112
+        if (percentMatters && thresholds) { // C :2110-2113
+            const pc = exp_percentage(); // C :2113
+            if (pc !== (curr.percent_value ?? 0)) {
+                const a = zeroAnything(); // C :2114 cg.zeroany
+                a.a_int = (game.u?.ulevel | 0); // C :2115
+                const colorBox = { v: NO_COLOR }; // C :2095 color_dummy
+                const rule = get_hilite(now_or_before_idx, BL_XP, a, 0, pc, colorBox); // C :2117-2118
+                if (rule !== (curr.hilite_rule ?? null)) return true; // C :2119-2120
+            }
+        }
+    }
+    return false; // C :2124
+}
+
 // Named omissions — live C under STATUS_HILITES / the windowport registry,
 // unwired in JS. Loud forwarders (never silent divergence); replace with the
 // real ports when their campaigns land.
@@ -409,7 +639,7 @@ function noneoftheabove(hl_text) {
 // percentage pc of max (BL_TH_VAL_PERCENTAGE). Returns the rule or null;
 // the windowport color rides out through colorBox (`{ v }` holder mirroring
 // C `int *colorptr`). Callers: eval_notify_windowport_field (C :1597) and
-// exp_percent_changing (C :2117, not yet ported — named omit).
+// exp_percent_changing (C :2117).
 // Rule nodes (`struct hilite_s`) use C field names: behavior/rel/value
 // (a_int/a_long)/textmatch/coloridx/next.
 function get_hilite(idx, fldidx, vp, chg, pc, colorBox) {

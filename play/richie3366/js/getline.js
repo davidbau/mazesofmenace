@@ -24,7 +24,7 @@ import {
 import { key2txt, visctrl, cmd_from_func } from './dokeylist.js';
 import { rn2 } from './rng.js';
 import {
-    BUFSZ, COLNO, QBUFSZ, PARANOID_CONFIRM,
+    BUFSZ, COLNO, ROWNO, QBUFSZ, PARANOID_CONFIRM,
     ECM_IGNOREAC, ECM_EXACTMATCH, ECM_NO1CHARCMD,
     INTERNALCMD, AUTOCOMPLETE, WIZMODECMD, CMD_NOT_AVAILABLE,
     CMD_M_PREFIX,
@@ -527,6 +527,17 @@ const EXT_CMDS = [
         run: async () => {
             const { enhance_weapon_skill } = await import('./weapon.js');
             return enhance_weapon_skill();
+        },
+    },
+    {
+        // C: cmd.c:1718–1721 M('X') "exploremode" → enter_explore_mode.
+        // Not AUTOCOMPLETE: #e must stay enhance (C comment at :1718).
+        name: 'exploremode',
+        wiz: false,
+        autocomplete: false,
+        run: async () => {
+            const { enter_explore_mode } = await import('./cmd.js');
+            return enter_explore_mode();
         },
     },
     {
@@ -1236,6 +1247,143 @@ function extCmdAutocomplete(base) {
     return null;
 }
 
+/** C `strncmp` of the first `n` chars. A short string's NUL loses. */
+function strncmpPrefix(a, b, n) {
+    const lim = n | 0;
+    for (let i = 0; i < lim; i++) {
+        const ca = i < a.length ? a.charCodeAt(i) : 0;
+        const cb = i < b.length ? b.charCodeAt(i) : 0;
+        if (ca !== cb) return ca < cb ? -1 : 1;
+        if (ca === 0) return 0;
+    }
+    return 0;
+}
+
+/**
+ * C ref: cmd.c extcmd_via_menu `:752–882`.
+ * `#if NH_DEVEL_STATUS != RELEASED` is false (`patchlevel.h:33`), so both
+ * `impossible` arms are compiled out. Overflow still clears `extmenu`
+ * and returns -1. Each menu row's selector is the command's character
+ * at `matchlevel` (`add_menu` `a_char`), kept by `select_menu_pick_one`.
+ * The `end_menu` prompt is the header row. A cancel while `matchlevel`
+ * is set zeroes it and leaves `cbuf` (`cmd.c:874–876`), so the next
+ * header is still `Extended Command:` plus that prefix. Return is an
+ * `EXTCMDLIST` index (`choices[0] - extcmdlist`), or -1.
+ * Caller: `getline.c:301` `tty_get_ext_cmd` when `iflags.extmenu`,
+ * wired in `get_ext_cmd`. `win/tty/getline.c:24` is the extern.
+ * @returns {Promise<number>}
+ */
+export async function extcmd_via_menu() {
+    const MAX_EXT_CMD = 200; // C cmd.c:737
+    let ret = 0; // C `:770`
+    let cbuf = ''; // C `:771` cbuf[0] = 0
+    let biggest = 0; // C `:772` — not cleared between passes
+    let matchlevel = 0; // C `:776`
+    const wizard = wizardMode(); // C `wizard` (flags.debug)
+
+    while (!ret) { // C `:779`
+        let i = 0; // C `:780`
+        const choices = [];
+        for (let e = 0; e < EXTCMDLIST.length; e++) { // C `:782` ef_txt
+            const efp = EXTCMDLIST[e];
+            if (!efp.txt) break;
+            const flags = efp.flags | 0;
+            if ((flags & (CMD_NOT_AVAILABLE | INTERNALCMD)) // C `:783–784`
+                || !(flags & AUTOCOMPLETE) // C `:785`
+                || (!wizard && (flags & WIZMODECMD))) { // C `:786`
+                continue;
+            }
+            if (!matchlevel || strncmpPrefix(efp.txt, cbuf, matchlevel) === 0) { // C `:788`
+                choices.push({ efp, index: e });
+                const len = efp.desc.length; // C `:790` strlen(ef_desc)
+                if (len > biggest) biggest = len;
+                if (++i > MAX_EXT_CMD) { // C `:793`
+                    // impossible() compiled out (NH_STATUS_RELEASED).
+                    if (!game.iflags) game.iflags = {};
+                    game.iflags.extmenu = false; // C `:800`
+                    return -1; // C `:801`
+                }
+            }
+        }
+        const nchoices = i; // C `:805`
+        if (nchoices <= 1) { // C `:807`
+            ret = nchoices === 1 ? choices[0].index : -1; // C `:808`
+            break;
+        }
+
+        const width = biggest + 15; // C `:814` "%-<biggest+15>s"
+        const pad = (s) => {
+            const t = String(s);
+            return t.length >= width ? t : t + ' '.repeat(width - t.length);
+        };
+        const onePerLine = nchoices < ROWNO - 3; // C `:820`
+        let prevAccel = 0; // C `:821`
+        let acount = 0; // C `:822`
+        let prompt = ''; // C `:815`
+        let wastoolong = false; // C `:816`
+        const raw = [];
+        const flush = (accel) => {
+            raw.push({
+                text: pad(prompt), // C Sprintf(buf, fmtstr, prompt)
+                selectable: true,
+                selector: String.fromCharCode(accel & 0xff), // C any.a_char
+                accel: accel & 0xff,
+            });
+        };
+
+        for (let ci = 0; ci < nchoices; ci++) { // C `:823`
+            const txt = choices[ci].efp.txt;
+            const accel = matchlevel < txt.length
+                ? txt.charCodeAt(matchlevel)
+                : 0; // C `:824` ef_txt[matchlevel]
+            if (accel !== prevAccel || onePerLine) wastoolong = false; // C `:825–826`
+            const tooWide = acount >= 2
+                && (prompt.length + 4 + txt.length
+                    >= Math.min(QBUFSZ, COLNO - 6)); // C `:830–836`
+            if (accel !== prevAccel || onePerLine || tooWide) { // C `:827–836`
+                if (acount) { // C `:837`
+                    flush(prevAccel); // C `:839–844`
+                    acount = 0;
+                    if (!(accel !== prevAccel || onePerLine)) wastoolong = true; // C `:846–847`
+                }
+            }
+            prevAccel = accel; // C `:850`
+            if (!acount || onePerLine) { // C `:851`
+                prompt = `${wastoolong ? 'or ' : ''}${txt} [${choices[ci].efp.desc}]`; // C `:852–853`
+            } else if (acount === 1) { // C `:854`
+                prompt = `${wastoolong ? 'or ' : ''}${choices[ci - 1].efp.txt} or ${txt}`; // C `:855–856`
+            } else { // C `:857`
+                prompt += ' or ';
+                prompt += txt;
+            }
+            acount++; // C `:860`
+        }
+        if (acount) flush(prevAccel); // C `:862–868`
+
+        raw.unshift({
+            text: `Extended Command: ${cbuf}`, // C cmd.c:856 end_menu prompt
+            selectable: false,
+        });
+        const res = await select_menu_pick_one(raw); // C `:871` PICK_ONE + destroy
+        if (res.kind === 'pick') { // C `:873` n == 1
+            if (matchlevel > (QBUFSZ - 2)) { // C `:874`
+                // impossible() compiled out.
+                ret = -1; // C `:879`
+            } else {
+                const ch = res.item.accel & 0xff; // C `:881` pick_list[0].item.a_char
+                cbuf = cbuf.slice(0, matchlevel) + String.fromCharCode(ch);
+                matchlevel++; // C `:881–882`
+            }
+        } else if (matchlevel) { // C cmd.c:874–876 — leave cbuf; next header keeps the prefix
+            ret = 0;
+            matchlevel = 0;
+        } else {
+            ret = -1; // C cmd.c:878
+        }
+    }
+    return ret; // C `:892`
+}
+
 /**
  * C ref: getline.c tty_get_ext_cmd — '#' prompt with NEWAUTOCOMP hook.
  * Returns ext-cmd index or -1.
@@ -1245,6 +1393,15 @@ function extCmdAutocomplete(base) {
  * from that point, truncating the prior expansion, then re-hooks.
  */
 export async function get_ext_cmd() {
+    if (game.iflags?.extmenu) { // C getline.c:300–301
+        const extIdx = await extcmd_via_menu();
+        if (extIdx < 0) return -1;
+        // C returns the extcmdlist index to doextcmd. JS doextcmd indexes
+        // availableExtCmds, same translation as the getlin path below.
+        const txt = EXTCMDLIST[extIdx]?.txt?.toLowerCase();
+        if (!txt) return -1;
+        return availableExtCmds().findIndex((ec) => ec.name === txt);
+    }
     await flush_topl_more();
     clear_win_stop();
     hooked_getlin_begin();

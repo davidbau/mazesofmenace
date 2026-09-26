@@ -5,7 +5,7 @@ import { game } from './gstate.js';
 import { rnd, rn2, rn1 } from './rng.js';
 import { mklev, l_nhcore_init, u_on_upstairs, fumaroles, movebubbles } from './mklev.js';
 import { dobjsfree, clear_splitobjs } from './mkobj.js';
-import { rhack, continue_run, run_active, continue_search, search_repeat_active, dolookaround, end_of_input } from './cmd.js';
+import { rhack, continue_run, run_active, continue_search, search_repeat_active, dolookaround, end_of_input, enter_explore_mode } from './cmd.js';
 import {
     docrt, cls, bot, timebot, curs_on_u, flush_screen, pline, Norep,
     flush_topl_more, see_monsters, You,
@@ -48,6 +48,7 @@ import { near_capacity, paint_corner_nhw_menu, encumber_msg, update_inventory, p
 import { sanity_check } from './wizcmds.js';
 import { com_pager_legacy } from './questpgr.js';
 import { snapshot_status_lines } from './display.js';
+import { status_initialize } from './botl.js';
 import { Hello, align_str, role_init } from './roles.js';
 import { livelog_printf } from './pline.js';
 import { phase_of_the_moon, friday_13th, night, getnow, FULL_MOON, NEW_MOON } from './calendar.js';
@@ -193,16 +194,15 @@ export function init_sound_disp_gamewindows() {
     // C `:719` WIN_MESSAGE = create_nhwindow(NHW_MESSAGE) — sentinel id.
     game.WIN_MESSAGE = 10;
     // C `:720–724` if (VIA_WINDOWPORT()) status_initialize(FALSE) else
-    // WIN_STATUS = create_nhwindow(NHW_STATUS). VIA_WINDOWPORT() is
-    // botl.h:213 wincap2 & (WC2_HILITE_STATUS|WC2_FLUSH_STATUS); contest
-    // JS sets no wincap2, so the else arm runs like the tty build.
+    // WIN_STATUS = create_nhwindow(NHW_STATUS). tty_procs sets
+    // WC2_HILITE_STATUS|WC2_FLUSH_STATUS (wintty.c:116), so C tty takes
+    // status_initialize. The scored port leaves wincap2 unset, so this
+    // stays on the else arm until that capability is installed.
     const wincap2 = game.windowprocs?.wincap2 | 0;
     const viaWindowport = (wincap2 & (WC2_HILITE_STATUS | WC2_FLUSH_STATUS)) !== 0;
     if (viaWindowport) {
-        // C botl.c:1683–1720 status_initialize(FALSE): init_blstats +
-        // win_status_init + per-field enable + update_all + botlx. JS status
-        // fields are enabled implicitly; keep the observable tail.
-        if (game.flags) game.flags.botlx = true;
+        // C allmain.c:721 status_initialize(FALSE).
+        status_initialize(false);
     } else {
         game.WIN_STATUS = 11;
     }
@@ -254,6 +254,12 @@ export function init_sound_disp_gamewindows() {
 export async function moveloop_preamble(resuming) {
     if (!game.context) game.context = {};
     game.flags = game.flags || {};
+
+    // C allmain.c:53–54 — a normal save restored under an explore request
+    // is a normal restore, then the 'X' command (uses the save, confirms).
+    if (resuming && game.iflags?.deferred_X) {
+        await enter_explore_mode();
+    }
 
     // C: flags.moonphase = phase_of_the_moon();
     game.flags.moonphase = phase_of_the_moon();

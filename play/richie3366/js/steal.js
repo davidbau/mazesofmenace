@@ -8,6 +8,9 @@
 // **stealamulet** (D-1945): quest-artifact sweep else uhave amulet/bell/book/
 // menorah otyp sweep, outer-gear strip, shop subfrombill, mpickobj steal
 // pline, teleporter rloc(RLOC_MSG), encumber_msg.
+// **maybe_absorb_item** (D-2869): steal.c:772–810 in C order — ball/chain/
+// rock/resist/touch_artifact return, carried doff + bill + seen/unseen
+// plines, freeinv + encumber, else canspotmon absorb line, then mpickobj.
 // **remove_worn_item** (D-2812): steal.c:213–290 in C order — donning/
 // cancel_don, in_use around the body, uskin impossible+skinback, *_off,
 // Amulet_off, Ring_gone, Blindf_off, *gone, unpunish, setnotworn.
@@ -37,11 +40,11 @@ import {
     W_ARMOR, W_ACCESSORY, W_WEAPONS, W_ARMG,
     W_AMUL, W_RING, W_TOOL, W_BALL, W_CHAIN,
     LEFT_RING, RIGHT_RING, LEFT_HANDED, TT_BURIEDBALL, ADORNED, LOST_STOLEN,
-    LARGEST_INT, PLNMSG_MON_TAKES_OFF_ITEM, FAINTED, RLOC_MSG, FOOT,
+    LARGEST_INT, PLNMSG_MON_TAKES_OFF_ITEM, FAINTED, RLOC_MSG, FOOT, HAND,
 } from './const.js';
 import {
     COIN_CLASS, ARMOR_CLASS, WEAPON_CLASS, TOOL_CLASS, AMULET_CLASS, RING_CLASS,
-    FOOD_CLASS, objectNames, objects,
+    FOOD_CLASS, ROCK_CLASS, objectNames, objects,
 } from './objects.js';
 import { monnear, dist2 } from './mon.js';
 import { is_animal, throws_rocks, can_teleport, slithy, dmgtype, touch_petrifies, mons } from './monsters.js';
@@ -50,26 +53,30 @@ import { tele_restrict, rloc } from './teleport.js';
 import { ART_ORB_OF_DETECTION } from './generated/artifacts_data.js';
 import { canspotmon, pline, urgent_pline, newsym, impossible } from './display.js';
 import { Monnam, Some_Monnam, Adjmonnam, s_suffix, y_monnam } from './do_name.js';
-import { doname, yname, makeplural } from './objnam.js';
+import { doname, yname, makeplural, otense } from './objnam.js';
 import {
     setworn, armor_simple_name, doffing, stop_donning,
     Armor_off, Cloak_off, Boots_off, Gloves_off,
     Helmet_off, Shield_off, Shirt_off, Amulet_off,
     donning, cancel_don, Ring_gone, Blindf_off,
 } from './do_wear.js';
-import { uwepgone, uswapwepgone, uqwepgone, welded } from './wield.js';
+import { uwepgone, uswapwepgone, uqwepgone, welded, bimanual as bimanual_obj } from './wield.js';
 import { mpickobj } from './makemon.js';
 import { nomul, stop_occupation } from './hack.js';
-import { maybe_finished_meal } from './eat.js';
+import { maybe_finished_meal, carried } from './eat.js';
 import { o_unleash } from './apply.js';
 import { openholdingtrap, minstapetrify } from './trap.js';
-import { Blind, encumber_msg, freeinv_core } from './invent.js';
+import { Blind, encumber_msg, freeinv as hero_freeinv, freeinv_core } from './invent.js';
 import { can_carry } from './monmove.js';
 import { hero_conflict } from './mondata.js';
 import { g_at, add_to_minv, obj_extract_self, splitobj } from './mkobj.js';
 import { mbodypart, body_part, skinback } from './polyself.js';
 import { monflee } from './monmove.js';
 import { Levitation, Flying } from './mhitu.js';
+import { obj_resists } from './dogmove.js';
+import { touch_artifact } from './artifact.js';
+import { cansee } from './vision.js';
+import { upstart } from './hacklib.js';
 
 const GOLD_PIECE = objectNames.indexOf('GOLD_PIECE');
 const BOULDER = objectNames.indexOf('BOULDER');
@@ -328,6 +335,57 @@ function freeinv(otmp) {
     if (idx >= 0) inv.splice(idx, 1);
     otmp.nobj = null;
     freeinv_core(otmp);
+}
+
+/**
+ * C ref: steal.c maybe_absorb_item `:772–810`.
+ * A mimic the hero pokes may take the object (lock.c:575).
+ * `ochance` / `achance` are absorb percents; `obj_resists` receives
+ * `100 -` those (ordinary, then artifact). Short-circuit is C's: the
+ * resist `rn2(100)` runs only after ball, chain, and rock fail, and
+ * `touch_artifact` runs only when the object does not resist.
+ * Null `obj` returns before any of that (C NONNULL; `pick_lock`'s
+ * missing tool is not an object).
+ * @param {object} mon
+ * @param {object|null} obj
+ * @param {number} ochance percent chance an ordinary item is absorbed
+ * @param {number} achance percent chance an artifact is absorbed
+ */
+export async function maybe_absorb_item(mon, obj, ochance, achance) {
+    /* C `:777–780` */
+    if (!obj) return;
+    const u = game.u || {};
+    if (obj === u.uball || obj === u.uchain
+        || (obj.oclass | 0) === ROCK_CLASS
+        || obj_resists(obj, 100 - (ochance | 0), 100 - (achance | 0))
+        || !(await touch_artifact(obj, mon))) {
+        return;
+    }
+
+    if (carried(obj)) { /* C `:782` */
+        if (obj.owornmask) await remove_worn_item(obj, true); /* C `:783–784` */
+        if (obj.unpaid) { /* C `:785–786` *u.ushops */
+            subfrombill(obj, shop_keeper((u.ushops || '')[0]));
+        }
+        if (cansee(mon.mx | 0, mon.my | 0)) { /* C `:787–792` */
+            /* Some_Monnam avoids "It pulls ..." when the square is seen
+               but the monster is not. */
+            await pline(`${Some_Monnam(mon)} pulls ${yname(obj)} away from you and absorbs ${(obj.quan | 0) > 1 ? 'them' : 'it'}!`);
+        } else { /* C `:793–800` */
+            let hand_s = body_part(HAND);
+            if (bimanual_obj(obj)) hand_s = makeplural(hand_s);
+            await pline(`${upstart(yname(obj))} ${otense(obj, 'are')} pulled from your ${hand_s}!`);
+        }
+        hero_freeinv(obj); /* C `:801` invent.c freeinv */
+        await encumber_msg(); /* C `:802` */
+    } else {
+        /* C `:803–806` not carried; presumably thrown or kicked */
+        if (canspotmon(mon)) {
+            await pline(`${Monnam(mon)} absorbs ${yname(obj)}!`);
+        }
+    }
+    /* C `:808–809` add to mon's inventory */
+    mpickobj(mon, obj);
 }
 
 /**

@@ -91,7 +91,7 @@
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import {
-    flush_screen, flush_topl_more, pline, You_feel, verbalize, canspotmon,
+    flush_screen, flush_topl_more, pline, You, You_feel, verbalize, canspotmon,
     canseemon, see_monsters, see_objects, see_traps, swallowed,
     unmap_object, glyph_is_invisible, newsym,
     map_invisible, impossible,
@@ -130,6 +130,7 @@ import {
     nothing_seems_to_happen,
     OBJ_FREE,
     POTHIT_HERO_THROW, POTHIT_OTHER_THROW, KILLED_BY_AN, KILLED_BY,
+    FIRE_RES, COLD_RES,
     TIMEOUT, I_SPECIAL, HALLUC_RES, GLIB, FAST, FROMOUTSIDE, INTRINSIC, LEG,
     EYE, SEE_INVIS,
     DETECT_MONSTERS, LEVITATION, INVIS, HEAD, COLNO, ROWNO,
@@ -152,11 +153,12 @@ import {
 } from './const.js';
 import { hands_obj, P_SKILL } from './weapon.js';
 import { rn2, rnd, d, rn1, rnl } from './rng.js';
-import { losehp, nomul, maybe_half_phys, is_pool, waterbody_name, fall_asleep, in_rooms } from './hack.js';
+import { losehp, finish_maybe_wail, nomul, maybe_half_phys, is_pool, waterbody_name, fall_asleep, in_rooms } from './hack.js';
+import { burn_away_slime } from './timeout.js';
 import { monstseesu, monstunseesu, Resists_Elem } from './mondata.js';
 import { cansee } from './vision.js';
 import {
-    mons, mon_hates_blessings, pmnames, is_swimmer, monsterNames,
+    mons, mon_hates_blessings, pmnames, is_swimmer, monsterNames, likes_fire,
     has_head, is_were, is_vampshifter, is_human, breathless, haseyes,
     eyecount,
     dmgtype, MR_ACID, MR_SLEEP,
@@ -180,16 +182,16 @@ import { objdescr_is } from './apply.js';
 import { explode_oil } from './explode.js';
 import { remove_worn_item } from './steal.js';
 import { newuhs, fix_petrification, Unaware } from './eat.js';
-import { heal_legs, water_damage, float_up, self_invis_message, ceiling } from './trap.js';
+import { heal_legs, water_damage, float_up, self_invis_message, ceiling, Fire_resistance } from './trap.js';
 import { aggravate } from './wizard.js';
 import {
-    delayed_killer, find_delayed_killer, dealloc_killer,
+    delayed_killer, find_delayed_killer, dealloc_killer, finish_losehp_done,
 } from './end.js';
 import { you_were, you_unwere, set_ulycn, new_were } from './were.js';
 import { which_armor, mon_set_minvis } from './worn.js';
 import { polyself, body_part } from './polyself.js';
 import { permapoisoned } from './artifact.js';
-import { poly_obj, obj_unpolyable } from './zap.js';
+import { poly_obj, obj_unpolyable, Cold_resistance } from './zap.js';
 import { obj_resists } from './dogmove.js';
 import { livelog_printf } from './pline.js';
 import { uhis } from './roles.js';
@@ -343,15 +345,64 @@ function useup(otmp) {
 }
 
 /**
- * C ref: potion.c peffect_oil()
- * Lit/fire-resist and burn_away_slime paths deferred.
+ * C youprop.h Fire_resistance / Cold_resistance are
+ * uprops[prop].intrinsic || extrinsic. confer_oc_oprop writes that
+ * slot and does not mirror EFire_resistance / ECold_resistance.
+ * trap.js Fire_resistance and zap.js Cold_resistance read the flats
+ * only (corpse / poly). OR the slot, as Shock_resistance does.
+ * @param {() => boolean} flatFn
+ * @param {number} prop
+ */
+function hero_element_resistance(flatFn, prop) {
+    const u = game.u || {};
+    const slot = u.uprops?.[prop];
+    return !!(flatFn()
+        || (slot?.intrinsic | 0)
+        || (slot?.extrinsic | 0));
+}
+
+/**
+ * C ref: potion.c peffect_oil() :1260–1294.
+ * Lit + likes_fire: refreshing, good_for_you. Lit otherwise: burn
+ * body_part(FACE), then d((!Fire_resistance || Cold_resistance) ? 4 : 2, 4).
+ * Cold_resistance is read only when Fire_resistance is set, so fire
+ * plus cold is 4d4 and fire alone is 2d4. Then burn_away_slime.
+ * Unlit cursed: castor oil. Else: smooth. exercise(A_WIS, good_for_you)
+ * runs when done(DIED) returns (life-save) or was not called.
+ * C's green-slime extra damage is a comment only: drinking in that
+ * form is impossible, so there is no arm.
  */
 async function peffect_oil(otmp) {
     let good_for_you = false;
+
     if (otmp.lamplit) {
-        // C: likes_fire → refreshing; else burn face + losehp + burn_away_slime
-        // Lit-oil body deferred (starting kit oil is unlit)
-        await pline('That was smooth!');
+        if (likes_fire(game.youmonst?.data)) {
+            await pline('Ahh, a refreshing drink.');
+            good_for_you = true;
+        } else {
+            /* C: poly'd green slime would take extra damage; not reachable. */
+            await You('burn your %s.', body_part(FACE));
+            /* C: !Fire_resistance || Cold_resistance — Cold is not read
+             * when fire resistance is absent. */
+            let vulnerable = !hero_element_resistance(Fire_resistance, FIRE_RES);
+            if (!vulnerable) {
+                vulnerable = hero_element_resistance(Cold_resistance, COLD_RES);
+            }
+            losehp(
+                d(vulnerable ? 4 : 2, 4),
+                'quaffing a burning potion of oil',
+                KILLED_BY,
+            );
+            /* C losehp calls done(DIED) (noreturn unless life-saved)
+             * or maybe_wail before it returns. */
+            if (game._losehp_needs_done) {
+                await finish_losehp_done();
+                if (game.program_state?.gameover) return;
+            } else {
+                await finish_maybe_wail();
+            }
+        }
+        await burn_away_slime();
     } else if (otmp.cursed) {
         await pline('This tastes like castor oil.');
     } else {
@@ -1874,7 +1925,8 @@ async function peffect_sleeping(otmp) {
     } else {
         await pline('You suddenly fall asleep!');
         monstunseesu(M_SEEN_SLEEP);
-        fall_asleep(-rn1(10, 25 - 12 * bcsign(otmp)), true);
+        /* C potion.c:909 — fall_asleep(-rn1(10, 25 - 12 * bcsign), TRUE). */
+        await fall_asleep(-rn1(10, 25 - 12 * bcsign(otmp)), true);
     }
 }
 
@@ -1983,8 +2035,10 @@ async function peffect_hallucination(otmp) {
  */
 export async function peffects(otmp) {
     switch (otmp.otyp) {
-    case POT_OIL:
+    case POT_OIL: /* P. Winner — potion.c:1411 */
         await peffect_oil(otmp);
+        /* C done(DIED) does not return to peffects' `return -1`. */
+        if (game.program_state?.gameover) return 0;
         return -1;
     case POT_SEE_INVISIBLE:
     case POT_FRUIT_JUICE:

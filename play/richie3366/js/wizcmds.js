@@ -580,7 +580,7 @@ export async function makemap_prepost(pre, wiztower) {
         // C: Punished ≡ uball != 0
         if (u.uball) {
             await ballrelease(false);
-            unplacebc();
+            await unplacebc();
         }
         if (!game.iflags) game.iflags = {};
         if (!game.iflags.travelcc) game.iflags.travelcc = { x: 0, y: 0 };
@@ -623,7 +623,7 @@ export async function makemap_prepost(pre, wiztower) {
     if (mtmp) await u_collide_m(mtmp);
     initrack();
     if (u.uball) {
-        unplacebc();
+        await unplacebc();
         await placebc();
     }
     await docrt();

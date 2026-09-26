@@ -27,6 +27,7 @@ import {
 import { achieve_rank, count_achievements, record_achievement } from './insight.js';
 import { livelog_printf } from './pline.js';
 import { done } from './end.js';
+import { exp_percent_changing } from './botl.js';
 
 // C ref: monattk.h — experience() compares against these exact values
 const AT_BUTT = 4;
@@ -309,8 +310,10 @@ export function more_experienced(exper, rexp) {
     // LONG_MAX wrap deferred — JS Number stays finite for early-game totals
     if (newexp !== oldexp) {
         u.uexp = newexp;
-        if (game.flags.showexp) game.flags.botl = true;
-        // exp_percent_changing deferred
+        if (game.flags.showexp) game.flags.botl = true; // C :185-186 disp.botl
+        // C :187-191 — Xp percentage highlight can request a refresh when
+        // experience points themselves are not on the status line.
+        if (!game.flags.botl && exp_percent_changing()) game.flags.botl = true;
     }
     if (newrexp !== oldrexp) {
         u.urexp = newrexp;

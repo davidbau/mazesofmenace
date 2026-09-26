@@ -2,12 +2,12 @@
 // C ref: ball.c placebc / placebc_core / move_bc / drag_ball / bc_order /
 //         set_bc / drag_down / ballrelease / litter / drop_ball.
 //
-// **Blind move_bc glyph/felt arms + unplacebc Blind glyph restore
-// D-1777** (set_bc D-1769 takes the bglyph/cglyph snapshots; those are
-// remembered *cells* here, not int ids, because this port's map memory
-// stores rendered cells). Named omissions: maybe_unhide_at (sync
-// callers, same deferral as hack.c movobj);
-// unplacebc's restriction impossible; BREADCRUMBS Placebc/Lift_covet
+// **Blind move_bc glyph/felt arms + unplacebc_core Blind glyph restore
+// D-1777 / D-2857** (set_bc D-1769 takes the bglyph/cglyph snapshots;
+// those are remembered *cells* here, not int ids, because this port's
+// map memory stores rendered cells). `unplacebc` refuses a live
+// `bcrestriction`; the core is what covet calls after the pin.
+// Named omissions: BREADCRUMBS Placebc/Unplacebc/Lift_covet
 // (config.h leaves BREADCRUMBS undefined); **ballfall D-1778**
 // (C `:42–67`; `hard_helmet` is one export now, `js/do_wear.js`);
 // **drop_ball D-2329** (C `:881–961`; callers do.c:834 dropz +
@@ -48,6 +48,7 @@ import { body_part } from './polyself.js';
 import { Soundeffect } from './sndprocs.js';
 import { se_destroy_web } from './generated/seffects_data.js';
 import { mon_at } from './uhitm.js';
+import { maybe_unhide_at } from './monmove.js';
 import { hard_helmet } from './do_wear.js';
 import { welded, setuwep, setuswapwep, setuqwep } from './wield.js';
 import { exercise } from './attrib.js';
@@ -311,7 +312,7 @@ function set_levl_glyph(x, y, saved) {
 /**
  * C ref: ball.c set_bc `:379–424` — hero is about to go blind, or
  * already blind and just punished. Snapshot glyphs under ball&chain
- * so Blind move_bc / unplacebc can restore them (those arms still named).
+ * so Blind move_bc / unplacebc_core can restore them.
  * @param {number} already_blind C int; 0 = still sighted peek
  */
 export function set_bc(already_blind) {
@@ -433,52 +434,61 @@ export async function placebc() {
 }
 
 /**
- * C ref: ball.c unplacebc `:211–219` → unplacebc_core `:146–177`.
- * Extract ball&chain from the floor before leaving a level (goto_level).
- * Blind: whichever of ball/chain the hero currently *feels* has its
- * saved under-glyph dropped back onto the map before the extract, so
- * the felt marker does not outlive the object (set_bc took the
- * snapshot — D-1769). `u.bc_felt = 0` last: feel nothing.
- * Named omissions: `maybe_unhide_at` (sync callers — same deferral as
- * `hack.c` `movobj`); `bcrestriction` impossible().
+ * C ref: ball.c unplacebc_core `:147–177` (staticfn).
+ * Take the ball and chain off the floor. Swallowed: only the water
+ * level still extracts them, so movebubbles() will not pick them up,
+ * and the vision work is skipped. Otherwise a ball whose `where` is
+ * not `OBJ_INVENT` (`carried`, obj.h:332) is extracted, a felt
+ * under-glyph is put back, then `maybe_unhide_at` and `newsym`. The
+ * chain follows. `u.bc_felt = 0` last: feel nothing.
+ * Under-glyphs are remembered cells (`set_levl_glyph`, D-1769), not
+ * C glyph ids. Coords are read after `obj_extract_self`; that call
+ * does not clear `ox`/`oy`.
+ * A missing ball or chain returns. C would dereference it.
  */
-export function unplacebc() {
+export async function unplacebc_core() {
     const u = game.u || {};
     const uball = u.uball;
     const uchain = u.uchain;
     if (!uball || !uchain) return;
 
     if (u.uswallow | 0) {
-        // C `:149–159`: on the water level the removal still has to
-        // happen so movebubbles() disregards them; ignore vision there.
+        /* C `:149–160` — water level still removes them from the floor
+         * so movebubbles() disregards them. Ignore vision. */
         if (Is_waterlevel(u.uz)) {
-            if (!carried(uball)) obj_extract_self(uball);
+            if ((uball.where | 0) !== OBJ_INVENT)
+                obj_extract_self(uball);
             obj_extract_self(uchain);
         }
         /* ball&chain not unplaced while swallowed */
         return;
     }
 
-    const Blind = Blind_bc();
-    if (!carried(uball)) {
-        const bx = uball.ox | 0;
-        const by = uball.oy | 0;
+    if ((uball.where | 0) !== OBJ_INVENT) {
         obj_extract_self(uball);
-        if (Blind && ((u.bc_felt | 0) & BC_BALL)) { /* drop glyph */
-            set_levl_glyph(bx, by, u.bglyph);
-        }
-        // maybe_unhide_at(bx, by) named
-        newsym(bx, by);
+        if (Blind_bc() && ((u.bc_felt | 0) & BC_BALL)) /* drop glyph */
+            set_levl_glyph(uball.ox | 0, uball.oy | 0, u.bglyph);
+        await maybe_unhide_at(uball.ox | 0, uball.oy | 0);
+        newsym(uball.ox | 0, uball.oy | 0);
     }
-    const cx = uchain.ox | 0;
-    const cy = uchain.oy | 0;
     obj_extract_self(uchain);
-    if (Blind && ((u.bc_felt | 0) & BC_CHAIN)) { /* drop glyph */
-        set_levl_glyph(cx, cy, u.cglyph);
-    }
-    // maybe_unhide_at(cx, cy) named
-    newsym(cx, cy);
+    if (Blind_bc() && ((u.bc_felt | 0) & BC_CHAIN)) /* drop glyph */
+        set_levl_glyph(uchain.ox | 0, uchain.oy | 0, u.cglyph);
+    await maybe_unhide_at(uchain.ox | 0, uchain.oy | 0);
+    newsym(uchain.ox | 0, uchain.oy | 0);
     u.bc_felt = 0; /* feel nothing */
+}
+
+/**
+ * C ref: ball.c unplacebc `:211–219` (BREADCRUMBS off; the paniclog
+ * build is not this one). A live covet pin refuses. Otherwise the core.
+ */
+export async function unplacebc() {
+    if (game.bcrestriction | 0) {
+        await impossible('unplacebc denied, restriction in place');
+        return;
+    }
+    await unplacebc_core();
 }
 
 /**
@@ -496,10 +506,11 @@ function check_restriction(pin) {
 /**
  * C ref: ball.c unplacebc_and_covet_placebc `:222–234` — pin a fresh
  * `rnd(400)` restriction, then unplacebc_core, so movebubbles() pickup
- * disregards the attached ball&chain (mkmaze.c:1563–1564). JS unplacebc()
- * above is that core (its restriction check stays a named omission), so
- * it runs after the pin is set. Async: the denied arm impossibles.
- * Named omissions: BREADCRUMBS crumb variants (build uses this path).
+ * disregards the attached ball&chain (mkmaze.c:1563–1564). The core,
+ * not `unplacebc`: the pin is already set, and `unplacebc` would refuse.
+ * Async: the denied arm impossibles.
+ * Named omissions: BREADCRUMBS `Unplacebc_and_covet_placebc`
+ * (`ball.c:305–324`; config.h leaves BREADCRUMBS undefined).
  */
 export async function unplacebc_and_covet_placebc() {
     let restriction = 0;
@@ -507,7 +518,7 @@ export async function unplacebc_and_covet_placebc() {
         await impossible('unplacebc_and_covet_placebc denied, already restricted');
     } else {
         restriction = game.bcrestriction = rnd(400);
-        unplacebc();
+        await unplacebc_core();
     }
     return restriction;
 }

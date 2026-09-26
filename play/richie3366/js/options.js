@@ -100,6 +100,8 @@ import {
     WC2_SOFTKEYBOARD,
     WC2_WRAPTEXT,
     WC2_HILITE_STATUS,
+    WC2_FLUSH_STATUS,
+    REASSESS_ONLY,
     WC2_DARKGRAY,
     WC2_HITPOINTBAR,
     WC2_MENU_SHIFT,
@@ -191,9 +193,13 @@ import {
     opt_next_cond, cond_menu, status_hilite_menu,
     status_hilite_linestr_done, status_hilite_linestr_gather,
     match_str2clr, match_str2attr, status_version,
-    config_error_add,
+    config_error_add, status_initialize,
 } from './botl.js';
-import { get_changed_key_binds, handler_rebind_keys, count_bind_keys } from './cmd.js';
+import { classify_terrain } from './hack.js';
+import {
+    get_changed_key_binds, handler_rebind_keys, count_bind_keys,
+    reset_commands, update_rest_on_space,
+} from './cmd.js';
 import { cmd_from_func, cmdname_from_func, visctrl } from './dokeylist.js';
 import {
     ROLE_NONE, ROLE_RANDOM, PL_NSIZ,
@@ -1044,6 +1050,11 @@ export const wc2_options = [
     { wc_name: 'windowborders', wc_bit: WC2_WINDOWBORDERS },
     { wc_name: 'wraptext', wc_bit: WC2_WRAPTEXT },
 ];
+
+/** C botl.h:213 VIA_WINDOWPORT(). Unset wincap2 → contest tty, false. */
+function via_windowport() {
+    return (windowprocs_wincap2() & (WC2_HILITE_STATUS | WC2_FLUSH_STATUS)) !== 0;
+}
 
 /** C `windowprocs.wincap2`; unset bag → contest tty (no wincap2 bits). */
 function windowprocs_wincap2() {
@@ -2004,10 +2015,15 @@ export function optfn_number_pad(optidx, req, negated, opts, _op, iflagsBag, opt
                     iflags.num_pad_mode |= 2; // C `:2615`
             }
         }
-        /* Named (map): reset_commands(FALSE) `:2618` (cmd.c `:3344–3476`,
-           own coverage row — cmdbind key-rebinding unported) and
-           number_pad(iflags.num_pad ? 1 : 0) `:2619` (winprocs.h `:161`
-           tty platform no-op, mark_synch precedent). */
+        if (iflags !== game.iflags) {
+            // RC parse stages iflags on the result bag. C writes the global
+            // `iflags` that reset_commands reads (`:3377`).
+            if (!game.iflags) game.iflags = {};
+            game.iflags.num_pad = !!iflags.num_pad;
+            game.iflags.num_pad_mode = iflags.num_pad_mode | 0;
+        }
+        reset_commands(false); // C `:2618`
+        // number_pad(iflags.num_pad ? 1 : 0) `:2619` — winprocs.h:161 tty no-op.
         return OPTN_OK; // C `:2620`
     }
     if (req === REQ_GET_VAL || req === REQ_GET_CNF_VAL) { // C `:2622`
@@ -2017,15 +2033,18 @@ export function optfn_number_pad(optidx, req, negated, opts, _op, iflagsBag, opt
             '4=on, phone layout, MSDOS compatible',
             '-1=off, y & z swapped', /*[5]*/
         ];
-        /* C `:2629–2632` reads gc.Cmd.*, which reset_commands syncs from
-           iflags after every change (`:3377`/`:3384`/`:3397`/`:3416` — pure
-           functions of (num_pad, num_pad_mode)), so the index below is
-           output-identical; switch to game.Cmd when reset_commands ports. */
-        const numPad = !!iflags.num_pad;
-        const npm = iflags.num_pad_mode | 0;
-        const phone = ((npm & 2) !== 0) ? numPad : false; // C `:3416`
-        const pcHack = ((npm & 1) !== 0) ? numPad : false; // C `:3397`
-        const swapYz = ((npm & 1) !== 0) ? !numPad : false; // C `:3384`
+        // C `:2629–2632` reads gc.Cmd.* after reset_commands has synced it.
+        // Before that boot, Cmd fields are unset and match the all-false
+        // init, so iflags (same bits) is the stand-in.
+        const cmd = game.Cmd;
+        const haveCmd = typeof cmd?.num_pad === 'boolean';
+        const numPad = haveCmd ? !!cmd.num_pad : !!iflags.num_pad;
+        const phone = haveCmd ? !!cmd.phone_layout
+            : (((iflags.num_pad_mode | 0) & 2) !== 0 ? !!iflags.num_pad : false);
+        const pcHack = haveCmd ? !!cmd.pcHack_compat
+            : (((iflags.num_pad_mode | 0) & 1) !== 0 ? !!iflags.num_pad : false);
+        const swapYz = haveCmd ? !!cmd.swap_yz
+            : (((iflags.num_pad_mode | 0) & 1) !== 0 ? !iflags.num_pad : false);
         const indx = numPad // C `:2629–2632`
             ? (phone ? (pcHack ? 4 : 3) : (pcHack ? 2 : 1))
             : swapYz ? 5 : 0;
@@ -2097,8 +2116,8 @@ export async function handler_number_pad() {
             game.iflags.num_pad_mode = 1; // C `:5941`
             break;
         }
-        /* Named (map): reset_commands(FALSE) `:5944` (own coverage row) and
-           number_pad(iflags.num_pad ? 1 : 0) `:5945` (tty platform no-op). */
+        reset_commands(false); // C `:5944`
+        // number_pad(iflags.num_pad ? 1 : 0) `:5945` — winprocs.h:161 tty no-op.
         // C `:5946` free — GC
     }
     // C `:5948` destroy_nhwindow — inside the helper
@@ -7133,7 +7152,7 @@ const DOSET_BOOL_ADDR = {
     herecmd_menu: { obj: 'flags', key: 'herecmd_menu' },
     hilite_pet: { obj: 'iflags', key: 'hilite_pet' },
     hilite_pile: { obj: 'iflags', key: 'hilite_pile' },
-    hitpointbar: { obj: 'iflags', key: 'hitpointbar' },
+    hitpointbar: { obj: 'iflags', key: 'wc2_hitpointbar' }, // C: &iflags.wc2_hitpointbar
     idlecheckpoint: { obj: 'iflags', key: 'idlecheckpoint' },
     ignintr: { obj: 'flags', key: 'ignintr' },
     implicit_uncursed: { obj: 'flags', key: 'implicit_uncursed' },
@@ -7287,10 +7306,34 @@ export function optfn_boolean_do_set(name, negated, initial = false) {
     if (!game[addr.obj]) game[addr.obj] = {};
     game[addr.obj][addr.key] = !negated;
     if (initial) return;
+    // C options.c:5330–5351. terrainstatus falls through weapon/armor
+    // (wc2_supported gate) into showscore/showvers/showexp/time:
+    // VIA_WINDOWPORT() status_initialize(REASSESS_ONLY), then disp.botl.
+    // JS bot() reads flags.botl.
+    if (name === 'terrainstatus') {
+        classify_terrain(); // C :5332
+    }
+    if (name === 'terrainstatus' || name === 'weaponstatus' || name === 'armorstatus') {
+        if (!wc2_supported(name)) {
+            config_error_add("'%s' is not supported.", name); // C :5338–5341
+        } else {
+            if (via_windowport()) status_initialize(REASSESS_ONLY); // C :5350
+            if (!game.flags) game.flags = {};
+            game.flags.botl = true; // C :5351 disp.botl
+        }
+    }
     if (name === 'showexp' || name === 'time' || name === 'showscore'
         || name === 'showvers') {
+        if (via_windowport()) status_initialize(REASSESS_ONLY); // C :5350
         if (!game.flags) game.flags = {};
-        game.flags.botl = true;
+        game.flags.botl = true; // C :5351 disp.botl
+    }
+    if (name === 'hitpointbar' && via_windowport()) {
+        status_initialize(REASSESS_ONLY); // C :5389
+        mark_opt_need_redraw(); // C :5390 go.opt_need_redraw
+    }
+    if (name === 'rest_on_space') {
+        update_rest_on_space(); // C options.c:5426 case opt_rest_on_space
     }
     if (name === 'accessiblemsg') {
         // C options.c:5428–5430 case opt_accessiblemsg (!opt_initial)

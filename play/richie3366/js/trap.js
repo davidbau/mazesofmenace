@@ -17,6 +17,7 @@
 // openholdingtrap (D-0981) / closeholdingtrap (D-1425).
 
 import { game } from './gstate.js';
+import { livelog_printf } from './pline.js';
 import { rn2, rnd, rn1, d, rnl, rn2_on_display_rng } from './rng.js';
 import { rank_of } from './roles.js';
 import {
@@ -82,6 +83,7 @@ import {
     Can_fall_thru, NO_MM_FLAGS, FROMOUTSIDE, TIMEOUT, Upolyd,
     UTOTYPE_NONE, UTOTYPE_FALLING, Is_stronghold,
     KILLED_BY, KILLED_BY_AN, NO_KILLER_PREFIX, NO_PART, STONING,
+    LL_MINORAC, LL_DUMP,
     ARTICLE_NONE, ARTICLE_THE, SUPPRESS_SADDLE, has_mgivenname,
     DISMOUNT_POLY, DISMOUNT_FELL, DISMOUNT_GENERIC,
     WATER, BURNING, DROWNING, DISSOLVED, PLNMSG_BACK_ON_GROUND,
@@ -105,17 +107,18 @@ import {
     ECMD_OK, ECMD_TIME, MON_DETACH,
     Is_container, Waterproof_container, Is_box,
     xytodir, DIR_180, DIR_ERR,
-    OBJ_FLOOR, OBJ_FREE, VAULT, TEMPLE, SHOPBASE, ESHK, M_SEEN_ELEC, M_SEEN_FIRE, CONTAINED_TOO, BURIED_TOO,
+    OBJ_FLOOR, OBJ_FREE, VAULT, TEMPLE, SHOPBASE, ESHK, M_SEEN_ELEC, M_SEEN_FIRE, M_SEEN_SLEEP, CONTAINED_TOO, BURIED_TOO,
     GETOBJ_PROMPT, GETOBJ_SUGGEST, GETOBJ_EXCLUDE, GETOBJ_DOWNPLAY,
     P_RIDING, P_BASIC, M_AP_FURNITURE, M_AP_OBJECT,
     A_LAWFUL, XKILL_NOMSG, SHOP_HOLE_COST,
     COST_BURN, COST_RUST, COST_ROT, COST_CORRODE, COST_CRACK, COST_DECHNT,
     TEST_MOVE,
+    SET_LIT_RANDOM, SET_LIT_NOCHANGE,
 } from './const.js';
 import {
     is_pool, is_lava, waterbody_name, crawl_destination, SURFACE_AT,
     maybe_half_phys, nomul, unmul, losehp, finish_maybe_wail, stop_occupation,
-    in_rooms, set_uinwater, test_move,
+    in_rooms, set_uinwater, test_move, fall_asleep,
 } from './hack.js';
 import { goodpos, mlevel_tele_trap, mtele_trap, tele_trap, level_tele_trap, domagicportal, rloco, random_teleport_level, teleds, safe_teleds, noteleport_level, dotele, unconscious } from './teleport.js';
 import { get_level, on_level, at_dgn_entrance, update_lastseentyp } from './dungeon.js';
@@ -135,7 +138,7 @@ import {
 import { tamedog, wary_dog, abuse_dog } from './dog.js';
 import { welded, uwepgone, uswapwepgone } from './wield.js';
 import { count_wsegs, worm_known } from './worm.js';
-import { level_difficulty, depth } from './hacklib.js';
+import { level_difficulty, depth, ordin } from './hacklib.js';
 import { make_stunned, make_hallucinated } from './potion.js';
 import { monstseesu, monstunseesu, defended, resists_magm } from './mondata.js';
 import { get_obj_location, burn_away_slime } from './timeout.js';
@@ -895,6 +898,35 @@ export function set_levltyp(x, y, newtyp) {
 }
 
 /**
+ * C ref: mkmaze.c set_levltyp_lit :125–145 — set_levltyp, then when that
+ * returned and the cell isok, apply lit unless SET_LIT_NOCHANGE.
+ * Lava forces 1 (:137–138). SET_LIT_RANDOM draws rn2(2) (:139–140).
+ * EXTRA_SANITY_CHECKS (config.h:637) calls impossible when lit is
+ * outside [SET_LIT_NOCHANGE, 1] (:132–134), then still assigns.
+ * impossible is not awaited (sync level-gen; the predicate is an
+ * out-of-range lit).
+ */
+export function set_levltyp_lit(x, y, typ, lit) {
+    const ret = set_levltyp(x, y, typ); // C :127
+    if (ret && isok(x, y)) { // C :129
+        if (lit !== SET_LIT_NOCHANGE) { // C :130
+            if (lit < SET_LIT_NOCHANGE || lit > 1) { // C :132
+                void impossible(
+                    'set_levltyp_lit(%d,%d,%d,%d)',
+                    x | 0, y | 0, typ | 0, lit | 0,
+                );
+            }
+            let l = lit;
+            if (IS_LAVA(typ)) l = 1; // C :137-138
+            else if (lit === SET_LIT_RANDOM) l = rn2(2); // C :139-140
+            const lev = game.level?.at?.(x, y);
+            if (lev) lev.lit = l; // C :141
+        }
+    }
+    return ret; // C :144
+}
+
+/**
  * C ref: dig.c unearth_objs — buriedobjlist at <x,y> → floor.
  * Local copy: trap.js cannot import dig.js (cycle). Named omit:
  * buried_ball_to_punishment arm.
@@ -928,8 +960,8 @@ export function fixed_tele_trap(ttmp) {
 // ROLLING_BOULDER_TRAP mkroll_launch / STATUE_TRAP mk_trap_statue +
 // PIT/HOLE set_levltyp (D-1280) + DRAWBRIDGE_UP ice→floor (D-1296) +
 // shop add_damage (D-1300).
-// Named omissions: overwrite reset_utrap / Knox LEVEL_TELEP /
-// Sokoban finish; mongone full body.
+// Named omissions: overwrite reset_utrap / Knox LEVEL_TELEP;
+// mongone full body. Sokoban finish is maybe_finish_sokoban below.
 // TELEP teledest may be set by caller after create (themerms make_a_trap).
 export function maketrap(x, y, typ) {
     // C ref: trap.c maketrap — reject door/chest map traps; terrain gates.
@@ -1055,6 +1087,10 @@ export function maketrap(x, y, typ) {
         if (!game.level) return ttmp;
         if (!game.level.traps) game.level.traps = [];
         game.level.traps.push(ttmp);
+    } else if (Sokoban_rules()) {
+        // C trap.c:581–585 — overwrite of an existing trap; the new
+        // ttyp is already stored, so the scan sees the replacement.
+        maybe_finish_sokoban();
     }
     return ttmp;
 }
@@ -1323,13 +1359,20 @@ function clear_conjoined_pits(trap) {
     }
 }
 
-// C ref: trap.c deltrap — remove from ftrap list (shop/region cleanup deferred)
+// C ref: trap.c deltrap — unlink from ftrap, then Sokoban finish.
+// Named: dealloc_trap (trap.c:6548) still has no JS body.
 export function deltrap(trap) {
     const traps = game.level?.traps;
     if (!traps || !trap) return;
     clear_conjoined_pits(trap);
     const i = traps.indexOf(trap);
-    if (i >= 0) traps.splice(i, 1);
+    if (i < 0) return;
+    traps.splice(i, 1);
+    // C trap.c:6546–6547 — after the trap is off gf.ftrap, before dealloc.
+    if (Sokoban_rules()
+        && ((trap.ttyp | 0) === PIT || (trap.ttyp | 0) === HOLE)) {
+        maybe_finish_sokoban();
+    }
 }
 
 /**
@@ -1537,9 +1580,79 @@ const HALU_TRAPNAMES = [
 ];
 
 /**
+ * C rm.h:538 — `#define Sokoban svl.level.flags.sokoban_rules`.
+ * Level gen stores the same bit on `flags.sokoban` and `game.Sokoban`
+ * (mklev.js clear_level_structures / lspo flag 'sokoban').
+ */
+function Sokoban_rules() {
+    const lf = game.level ? game.level.flags : null;
+    return !!((lf && (lf.sokoban_rules || lf.sokoban)) || game.Sokoban);
+}
+
+/**
+ * C ref: trap.c maybe_finish_sokoban (staticfn :7059–7095).
+ * After the last non-hero pit or hole leaves the level, Sokoban rules
+ * end. livelog_printf and ordin are the live exports.
+ */
+function maybe_finish_sokoban() {
+    // C :7063 — Sokoban && !gi.in_mklev. Level build deletes pits too.
+    if (Sokoban_rules() && !game.in_mklev) {
+        /* scan all remaining traps, ignoring any created by the hero;
+           if this level has no more pits or holes, the current sokoban
+           puzzle has been solved */
+        // C `for (t = ftrap; t; t = t->ntrap)` leaves t null when the
+        // walk ends without break, including after a final madeby_u.
+        // JS ftrap is level.traps (t_at / count_traps / deltrap).
+        let t = null;
+        const traps = (game.level && game.level.traps) || [];
+        for (let i = 0; i < traps.length; i++) {
+            const tr = traps[i];
+            if (tr.madeby_u)
+                continue;
+            if ((tr.ttyp | 0) === PIT || (tr.ttyp | 0) === HOLE) {
+                t = tr;
+                break;
+            }
+        }
+        if (!t) {
+            /* for livelog to report the sokoban depth in the way that
+               players tend to think about it: 1 for entry level, 4 for top */
+            const uz = game.u.uz;
+            const dun = game.dungeons[uz.dnum | 0];
+            const sokonum = ((dun.entry_lev | 0) - (uz.dlevel | 0) + 1) | 0;
+
+            /* we've passed the last trap without finding a pit or hole;
+               clear the sokoban_rules flag so that luck penalties for
+               things like breaking boulders or jumping will no longer
+               be given, and restrictions on diagonal moves are lifted */
+            // C :7084 Sokoban = 0. Clear the JS aliases of that one bit.
+            const lf = game.level ? game.level.flags : null;
+            if (lf) {
+                lf.sokoban_rules = 0;
+                lf.sokoban = 0;
+            }
+            game.Sokoban = 0;
+            /*
+             * TODO: give some feedback about solving the sokoban puzzle
+             * (perhaps say "congratulations" in Japanese?).
+             */
+
+            /* log the completion event regardless of whether or not
+               any normal in-game feedback has just been given */
+            livelog_printf(
+                LL_MINORAC | LL_DUMP,
+                'completed %d%s Sokoban level',
+                sokonum,
+                ordin(sokonum),
+            );
+        }
+    }
+}
+
+/**
  * C ref: trap.c sokoban_guilt — Sokoban ≡ level.flags.sokoban_rules.
- * Conduct + luck only; C TODO feedback still unnamed. maybe_finish_sokoban
- * and other callers (zap/read/steed/dig) still named. nopick m-dir D-1262.
+ * Conduct + luck only. Puzzle completion is maybe_finish_sokoban
+ * (no player pline; C leaves that as a comment). nopick m-dir D-1262.
  */
 export function sokoban_guilt() {
     const Sokoban = !!(game.Sokoban || game.level?.flags?.sokoban_rules);
@@ -1922,8 +2035,7 @@ async function finish_hero_losehp() {
  * only writes mx/my. Wired at every C call site: dart/arrow `!rn2(2)`
  * (`:1211/:1276`), pit (`:1921`), magic (`:2313`), poly (`:2491`),
  * landmine under the recursive_mine guard (`:2578`). The slp-gas hero
- * arm (incl. its steedintrap call `:1578`) stays deferred with the
- * Sleep_resistance/fall_asleep body.
+ * arm calls this after `fall_asleep` (`trapeffect_slp_gas_trap`).
  */
 async function steedintrap(trap, otmp) {
     const u = game.u || {};
@@ -2213,7 +2325,7 @@ async function trapeffect_pit(mtmp, trap, trflags) {
             // && !carried(uball): unplacebc, ballfall, placebc
             // (D-1778 / D-1786). Never sticky u.Punished.
             if (game.u?.uball && !carried(game.u?.uball)) {
-                unplacebc();
+                await unplacebc();
                 await ballfall();
                 await placebc();
             }
@@ -5040,14 +5152,26 @@ async function trapeffect_magic_trap(mtmp, trap, trflags) {
 }
 
 /**
- * C ref: trap.c trapeffect_slp_gas_trap
- * Envelope: monsters — !resists_sleep && !breathless && !helpless →
- * sleep_monst(rnd(25), -1); pline+seetrap when in sight. Hero —
- * Sleep_resistance/fall_asleep/steedintrap deferred.
+ * C ref: trap.c trapeffect_slp_gas_trap `:1562–1591`.
+ * Hero: seetrap, then Sleep_resistance || breathless(youmonst.data)
+ * → You enveloped + monstseesu(M_SEEN_SLEEP), else the gas pline,
+ * fall_asleep(-rnd(25), TRUE), monstunseesu. Then steedintrap.
+ * Monsters: !resists_sleep && !breathless && !helpless →
+ * sleep_monst(rnd(25), -1); pline+seetrap when in sight.
  */
 async function trapeffect_slp_gas_trap(mtmp, trap, _trflags) {
     if (is_youmonst(mtmp)) {
-        // Hero cloud / fall_asleep deferred
+        seetrap(trap);
+        if (Sleep_resistance() || breathless(game.youmonst?.data)) {
+            await You('are enveloped in a cloud of gas!');
+            monstseesu(M_SEEN_SLEEP);
+        } else {
+            await pline('A cloud of gas puts you to sleep!');
+            /* C trap.c:1575 — argument rnd happens before the call. */
+            await fall_asleep(-rnd(25), true);
+            monstunseesu(M_SEEN_SLEEP);
+        }
+        await steedintrap(trap, null);
         return Trap_Effect_Finished;
     }
     const in_sight = canseemon(mtmp) || (mtmp === game.u?.usteed);
@@ -6337,7 +6461,7 @@ export async function drown() {
             }
         }
         if (u.uball) {
-            unplacebc();
+            await unplacebc();
             await placebc();
         }
         vision_recalc(2); /* unsee old position */
@@ -7093,8 +7217,9 @@ export async function cnv_trap_obj(otyp, cnt, ttmp, bury_it) {
  * `move_bc(0,bc,...)` when punished, `tseen=0` check_here hack,
  * `failing_untrap++`, `spoteffects(TRUE)`, `failing_untrap--`, re-`tseen=1`,
  * `exercise(WIS)`; else `Fortunately, you don't move into/onto it.`
- * Named omissions: `test_move` block_door/block_entry shopkeeper arms
- * (C hack.c `:1141`/`:1209` — stub-false/false, no shop ESHK wire-up);
+ * Named omissions: `test_move` `block_door` shopkeeper arm
+ * (C hack.c `:1141` — stub-false, no shop ESHK wire-up);
+ * `block_entry` is live (`shk.c:5826`);
  * drag jerk hmon/miss damage (ball.js burns the rnd(20) roll).
  */
 async function move_into_trap(ttmp) {

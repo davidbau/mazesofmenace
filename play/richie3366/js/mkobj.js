@@ -100,7 +100,7 @@ import { maybe_unhide_at } from './monmove.js';
    SAFE on each name; no top-level TDZ read). */
 import { is_ice } from './zap.js';
 import { remove_worn_item } from './steal.js';
-import { stop_occupation } from './hack.js';
+import { stop_occupation, obj_to_any } from './hack.js';
 
 const GOLD_PIECE = objectNames.indexOf('GOLD_PIECE');
 const HORN_OF_PLENTY = objectNames.indexOf('HORN_OF_PLENTY');
@@ -1594,14 +1594,33 @@ export async function run_timers() {
 }
 
 /**
- * C ref: mkobj.c start_glob_timeout — schedule SHRINK_GLOB (~25 turns).
+ * C ref: mkobj.c start_glob_timeout `:1473–1491`.
+ * Non-glob: impossible, then skip the timer. A live timer is stopped
+ * first (`obj->timed` is any timer, not only SHRINK_GLOB). `when < 1`
+ * (callers usually pass 0) becomes 25+rn2(5)-2, which is 23..27.
+ * One new glob weighs 20 and loses 1 unit about every 25 turns.
+ * Sync so that rn2 stays in the caller turn. impossible() is async
+ * and runs only on the error return (same fire-and-forget as weight()).
+ * obj_to_any is hack.c:96–102, collapsed to the object.
+ * @param {object} obj glob (C NONNULLARG1)
+ * @param {number} [when] turns until shrink; 0 rolls 23..27
  */
 export function start_glob_timeout(obj, when = 0) {
-    if (!obj?.globby) return;
-    if (obj.timed) stop_timer(SHRINK_GLOB, obj);
-    let w = when | 0;
-    if (w < 1) w = 25 + rn2(5) - 2; // 23..27
-    start_timer(w, TIMER_OBJECT, SHRINK_GLOB, obj);
+    /* C :1478–1481 — not a glob: report and do not arm a timer. */
+    if (!obj.globby) {
+        void impossible('start_glob_timeout for non-glob [%d: %s]?',
+            obj.otyp | 0, simpleonames(obj));
+        return;
+    }
+    /* C :1482–1484 — sanity precaution. */
+    if (obj.timed)
+        stop_timer(SHRINK_GLOB, obj_to_any(obj));
+
+    /* C :1486–1487 — 25+[0..4]-2 => 23..27, average 25. */
+    if ((when | 0) < 1)
+        when = 25 + rn2(5) - 2;
+    /* C :1488–1490 */
+    start_timer(when, TIMER_OBJECT, SHRINK_GLOB, obj_to_any(obj));
 }
 
 /* C ref: mkobj.c obj_on_ice `:1435–1439` — file-local enum used by

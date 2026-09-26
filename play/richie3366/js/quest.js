@@ -1,8 +1,8 @@
 // quest.js — quest branch arrival hooks + leader talk.
 // C ref: quest.c onquest / on_start / on_locate / on_goal / artitouch /
 //        quest_talk / leader_speaks / chat_with_leader / is_pure / expulsion.
-// Named omissions: locate_next beyond Bar/Arc/Pri/Wiz; chat_with_nemesis/guardian;
-// nemesis_speaks (quest_talk MS_NEMESIS arm); posthanks/banished pager texts
+// Named omissions: locate_next beyond Bar/Arc/Pri/Wiz; chat_with_nemesis/guardian
+// (quest_chat MS_NEMESIS / MS_GUARDIAN — not nemesis_speaks); posthanks/banished pager texts
 // (calls live in chat_with_leader — miss no-ops after the C nhl_init shuffle);
 // exercise side-effects beyond call; full convert_arg
 // catalogue for assignquest; find_quest_artifact OBJ_INVENT/MIGRATING.
@@ -24,7 +24,8 @@ import { create_gas_cloud } from './region.js';
 import { pline, verbalize, canseemon } from './display.js';
 import { Monnam, noit_mon_nam } from './do_name.js';
 import { SetVoice } from './sndprocs.js';
-import { angry_guards } from './mon.js';
+import { angry_guards, monnear } from './mon.js';
+import { rn2 } from './rng.js';
 import { monsterNames } from './monsters.js';
 import { yn_function } from './getline.js';
 import { nomul } from './hack.js';
@@ -40,6 +41,8 @@ const BELL_OF_OPENING = objectNames.indexOf('BELL_OF_OPENING');
 const PM_PRISONER = monsterNames.indexOf('PM_PRISONER');
 /** C ref: monflag.h enum ms_sounds — MS_DJINNI (local const; sounds.js keeps the table local too). */
 const MS_DJINNI = 29;
+/** C ref: monflag.h:52 MS_NEMESIS (local const; mhitm.js / sounds.js keep the same value). */
+const MS_NEMESIS = 37;
 
 /** C ref: dungeon.c on_level */
 function on_level(a, b) {
@@ -520,8 +523,39 @@ async function prisoner_speaks(mtmp) {
 }
 
 /**
+ * C ref: quest.c nemesis_speaks `:403–422`.
+ * Not in battle: one quest text (wantsit / first / next / other / rare
+ * discourage), then bump made_goal while it is still below 7 and latch
+ * met_nemesis. In battle: discourage on 1-in-5 and leave the scorecard
+ * alone. rn2 runs only on those two arms. qt_pager is async; each await
+ * is the C call returning before the next statement.
+ * Caller: quest_talk MS_NEMESIS (`quest.c:503`).
+ */
+export async function nemesis_speaks() {
+    const u = game.u || {};
+    const qs = game.quest_status || (game.quest_status = {});
+    if (!qs.in_battle) { // :405
+        if (u.uhave?.questart) // :406
+            await qt_pager('nemesis_wantsit'); // :407
+        else if ((qs.made_goal | 0) === 1 || !qs.met_nemesis) // :408
+            await qt_pager('nemesis_first'); // :409
+        else if ((qs.made_goal | 0) < 4) // :410
+            await qt_pager('nemesis_next'); // :411
+        else if ((qs.made_goal | 0) < 7) // :412
+            await qt_pager('nemesis_other'); // :413
+        else if (!rn2(5)) // :414
+            await qt_pager('discourage'); // :415
+        if ((qs.made_goal | 0) < 7) // :416
+            qs.made_goal = (qs.made_goal | 0) + 1; // :417  3-bit field, guard stops the wrap
+        qs.met_nemesis = 1; // :418 TRUE
+    } else if (!rn2(5)) { // :419–420 random maledictions
+        await qt_pager('discourage'); // :421
+    }
+}
+
+/**
  * C ref: quest.c quest_talk `:495–511` — leader by m_id; nemesis/djinn
- * switch. Named omission: MS_NEMESIS → nemesis_speaks (no live export).
+ * switch. MS_NEMESIS calls nemesis_speaks (`:503`).
  */
 export async function quest_talk(mtmp) {
     if (!mtmp) return;
@@ -531,6 +565,9 @@ export async function quest_talk(mtmp) {
         return;
     }
     switch (mtmp.data?.msound | 0) {
+    case MS_NEMESIS: // :502
+        await nemesis_speaks(); // :503
+        break;
     case MS_DJINNI:
         await prisoner_speaks(mtmp);
         break;
@@ -540,11 +577,20 @@ export async function quest_talk(mtmp) {
 }
 
 /**
- * C ref: quest.c quest_stat_check — nemesis in_battle flag.
+ * C ref: quest.c quest_stat_check `:513–518`.
+ * Nemesis only: in_battle is set when it is not helpless and monnear
+ * the hero. helpless is the monst.h:251 macro (msleeping || !mcanmove),
+ * inlined here — the six file-local clones stay where they are.
+ * A non-nemesis leaves the flag unchanged. Caller: dochug before the
+ * frozen early-out (`monmove.c:715`).
  */
 export function quest_stat_check(mtmp) {
-    // Full MS_NEMESIS in_battle deferred
-    void mtmp;
+    if ((mtmp?.data?.msound | 0) === MS_NEMESIS) { // :516
+        const u = game.u || {};
+        const qs = game.quest_status || (game.quest_status = {});
+        const isHelpless = !!(mtmp.msleeping || !mtmp.mcanmove); // monst.h:251
+        qs.in_battle = (!isHelpless && monnear(mtmp, u.ux, u.uy)) ? 1 : 0; // :517
+    }
 }
 
 /**

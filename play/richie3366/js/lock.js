@@ -43,6 +43,7 @@ import { PM_ROGUE, PM_WIZARD, PM_GRID_BUG, monsterNames } from './generated/mons
 import { mon_nam, hliquid } from './do_name.js';
 import { SetVoice } from './sndprocs.js';
 import { stumble_onto_mimic } from './uhitm.js';
+import { maybe_absorb_item } from './steal.js';
 // C youprop.h:355-360 Protection_from_shape_changers = H || E
 // (uprops[PROT_FROM_SHAPE_CHANGERS].intrinsic || .extrinsic); canonical
 // export, hoisted fn cycle-safe per imports.mjs (D-2373 follow-up).
@@ -1128,7 +1129,7 @@ function cellGlyph(loc) {
 
 /**
  * C ref: lock.c pick_lock `:358–656` — whole C body in C order.
- * Named omissions: `maybe_absorb_item` (steal.c:772, no JS port — map).
+ * `maybe_absorb_item` is the live `steal.js` export (D-2869).
  * Callers: apply.c:4288 (`apply.js`), lock.c:882 (`doopen_indir` below),
  * pickup.c:2125 (`pickup.js`).
  * @param {object|null} pick key / lock pick / credit card (null/0 = autounlock untrap probe)
@@ -1315,7 +1316,9 @@ export async function pick_lock(pick, rx = 0, ry = 0, container = null) {
                 || (mtmp.mappearance | 0) === S_vcdoor)) {
             // C `:572` "The door actually was a <mimic>!"
             await stumble_onto_mimic(mtmp); // C `:573`
-            // C `:574–575` mimic might keep the key (50%, 10% PYEC/MKoT) — maybe_absorb_item named omit
+            /* C `:574–575` mimic might keep the key (50% ordinary, 10% artifact).
+               A null tool is the #loot untrap probe; the dummy is not an object. */
+            await maybe_absorb_item(mtmp, hasTool ? pick : null, 50, 10);
             return PICKLOCK_LEARNED_SOMETHING;
         }
         if (!door || !IS_DOOR(door.typ)) { // C `:578–593`

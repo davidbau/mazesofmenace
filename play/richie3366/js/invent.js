@@ -55,7 +55,7 @@ import {
     clear_committed_status,
     docorner, dxdy_to_dist_descr,
 } from './display.js';
-import { xprname, an, the, just_an, vtense, doname, distant_name, Japanese_item_name, xname, cxname_singular, set_xname_observe, set_distant_cansee, ansimpleoname, simpleonames, set_not_fully_identified, makeplural, makesingular, body_part_latebound, corpse_xname, killer_xname } from './objnam.js';
+import { xprname, an, the, just_an, vtense, doname, distant_name, Japanese_item_name, xname, cxname_singular, set_xname_observe, set_distant_cansee, ansimpleoname, simpleonames, set_not_fully_identified, makeplural, makesingular, body_part_latebound, corpse_xname, killer_xname, maybereleaseobuf } from './objnam.js';
 import { yn_function, y_n, getlin, mungspaces } from './getline.js';
 import { get_count, pmatchi, cmdq_pop, cmdq_clear } from './cmd.js';
 import { mergable, merged, is_damageable, stop_timer, splitobj, unsplitobj, clear_splitobjs, unknwn_contnr_contents, weight, delobj, curse } from './mkobj.js';
@@ -2365,9 +2365,8 @@ let sortlootmode = 0;
  * C ref: invent.c sortloot_cmp `:403–547` — qsort comparator for sortloot().
  * Reads the module sortlootmode (C gs.sortlootmode). Tie paths return the
  * original-index difference directly (C `goto tiebreak` `:543–546`).
- * dupstr/maybereleaseobuf are no-ops here: JS strings are immutable
- * values, so the loot_xname result is already an owned copy and there is
- * no static obuf to release.
+ * dupstr is the string itself: JS strings are immutable. The
+ * maybereleaseobuf calls are the C sites (`:492`, `:498`).
  */
 export function sortloot_cmp(sli1, sli2) {
     const obj1 = sli1.obj;
@@ -2435,12 +2434,16 @@ export function sortloot_cmp(sli1, sli2) {
      * comparisons it gets subjected to. // :481-486
      */
     if (!sli1.str) { // :487
-        // C: tmpstr = loot_xname(obj1); sli1->str = dupstr(tmpstr);
-        // maybereleaseobuf(tmpstr) — both no-ops per the doc comment. // :488-491
-        sli1.str = loot_xname(obj1);
+        /* C `:490–492` — loot_xname, dupstr, maybereleaseobuf. */
+        const tmpstr = loot_xname(obj1);
+        sli1.str = tmpstr;
+        maybereleaseobuf(tmpstr);
     }
     if (!sli2.str) { // :493
-        sli2.str = loot_xname(obj2); // :494-497
+        /* C `:496–498` */
+        const tmpstr = loot_xname(obj2);
+        sli2.str = tmpstr;
+        maybereleaseobuf(tmpstr);
     }
     // C: strcmpi = hacklib strncmpi A-Z fold; loot names are ASCII so
     // lowercase ordering equals the C byte order. // :498-499
@@ -3291,9 +3294,9 @@ export async function learn_unseen_invent() {
             && (((otmp.oclass | 0) !== SCROLL_CLASS) || !archeologist))
             continue; /* already seen */
         invupdated = true;
-        /* C :2762–2765 — xname() will set dknown, perhaps bknown (for
-           priest[ess]); result immediately released for re-use */
-        xname(otmp);
+        /* C :2762–2765 — xname() sets dknown, perhaps bknown; the
+           result is released for re-use. */
+        maybereleaseobuf(xname(otmp));
         await addinv_core2(otmp); /* C :2766 you react to seeing the object */
         /*
          * C :2770–2774 — If object->eknown gets implemented (see
@@ -3666,6 +3669,8 @@ function pickinv_build_inuse(lets, wizid, opts = null) {
                 text: xprname(null, HANDS_SYM, false, 0, barehands),
                 attr: 0,
             });
+            /* C invent.c:3313–3330 — formattedobj is the makeplural obuf. */
+            maybereleaseobuf(hands);
             continue;
         }
         if (!Blind()) observe_object(otmp);
@@ -3684,6 +3689,8 @@ function pickinv_build_inuse(lets, wizid, opts = null) {
             desc = xprname(otmp);
         }
         entries.push({ text: desc, attr: 0 });
+        /* C invent.c:3322–3330 — release the doname/xprname obuf. */
+        maybereleaseobuf(desc);
     }
     if (doing_perm_invent && !inusecount) {
         entries.push({ text: 'Not using any items', attr: 0 });
@@ -3725,6 +3732,8 @@ function pickinv_build_perm() {
         obj_glyph(otmp);
         listed.push(otmp);
         const desc = doname(otmp);
+        /* C invent.c:3322–3330 */
+        maybereleaseobuf(desc);
         ttyinv_add_menu(otmp.invlet || '?', NO_COLOR, desc);
         entries.push({ text: desc, attr: 0 });
     }
@@ -3905,7 +3914,10 @@ export async function display_pickinv_reply(lets, out_cnt = null, xtra = null, o
                     selector: letch,
                     gselector: pickinv_item_gacc(otmp, wizid),
                 });
-                entries.push({ text: xprname(otmp), attr: 0 });
+                const formattedobj = xprname(otmp);
+                /* C invent.c:3322–3330 */
+                maybereleaseobuf(formattedobj);
+                entries.push({ text: formattedobj, attr: 0 });
             }
         }
     }
@@ -4168,8 +4180,11 @@ export function build_wizid_pickinv_items() {
         if (!Blind()) observe_object(otmp);
         obj_glyph(otmp);
         const letch = otmp.invlet || '?';
+        const formattedobj = doname(otmp);
+        /* C invent.c:3322–3330 */
+        maybereleaseobuf(formattedobj);
         items.push({
-            text: doname(otmp),
+            text: formattedobj,
             attr: 0,
             selectable: true,
             selector: letch,

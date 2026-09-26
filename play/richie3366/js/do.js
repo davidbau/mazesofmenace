@@ -49,11 +49,12 @@ import {
     UNPAID_TYPES, JUSTPICKED, INCLUDE_VENOM, PICK_ANY,
     USE_INVLET, INVORDER_SORT, BUC_BLESSED, BUC_CURSED, BUC_UNCURSED,
     BUC_UNKNOWN, SELL_DELIBERATE, SELL_NORMAL,
+    NO_NC_FLAGS, NC_SHOW_MSG,
 } from './const.js';
 import {
     seetrap, t_at, delfloortrap, reset_utrap, water_damage, erode_obj,
     selftouch, uteetering_at_seen_pit, uescaped_shaft, maketrap, climb_pit,
-    dotrap, float_down, clamp_hole_destination,
+    dotrap, float_down, clamp_hole_destination, minstapetrify,
 } from './trap.js';
 import {
     COIN_CLASS, SCROLL_CLASS, SPBOOK_CLASS, POTION_CLASS, RING_CLASS, objectNames,
@@ -94,7 +95,7 @@ import { livelog_printf } from './pline.js';
 import { com_pager, convert_line } from './questpgr.js';
 import { keepdogs, losedogs, mon_catchup_elapsed_time, update_mlstmv, discard_migrations } from './dog.js';
 import { save_track, rest_track } from './track.js';
-import { m_at, mnexto, m_into_limbo, hide_monst, hideunder, restore_cham, wake_nearto, dist2, kill_genocided_monsters, ceiling_hider, dmonsfree } from './mon.js';
+import { m_at, mnexto, m_into_limbo, hide_monst, hideunder, restore_cham, wake_nearto, dist2, kill_genocided_monsters, ceiling_hider, dmonsfree, healmon } from './mon.js';
 import { enexto, rloc } from './teleport.js';
 import {
     monster_nearby, losehp, finish_maybe_wail, maybe_half_phys,
@@ -112,7 +113,7 @@ import { place_object, stackobj, weight, delobj, obj_extract_self,
 import { ship_object, obj_delivery, container_impact_dmg, impact_drop } from './dokick.js';
 import {
     doname, xname, the, The, vtense, an, yname, corpse_xname, is_plural,
-    otense, makeplural, body_part_latebound, obj_pmname_corpse,
+    otense, makeplural, body_part_latebound, obj_pmname_corpse, Tobjnam,
 } from './objnam.js';
 import { Monnam, Amonnam, Adjmonnam, mon_nam, hliquid, rndmonnam, trycall } from './do_name.js';
 import { revive } from './zap.js';
@@ -138,7 +139,7 @@ import {
 import { bypass_objlist, nxt_unbypassed_obj, w_blocks } from './worn.js';
 import { monstunseesu_prop } from './mondata.js';
 import { reset_pick } from './lock.js';
-import { Unaware, carried } from './eat.js';
+import { Unaware, carried, polyfood } from './eat.js';
 import { addinv_nomerge } from './u_init.js';
 import {
     set_artifact_intrinsic, revoke_invoked_property, Sting_effects,
@@ -150,7 +151,7 @@ import {
 } from './generated/monsters_data.js';
 import { dismount_steed, place_monster, stucksteed } from './steed.js';
 import { place_wsegs } from './worm.js';
-import { set_residency, costly_alteration } from './shk.js';
+import { set_residency, costly_alteration, is_unpaid, stolen_value } from './shk.js';
 import { set_ustuck, gulp_blnd_check, digests, Flying } from './mhitu.js';
 import { onquest, ok_to_quest } from './quest.js';
 import { resurrect } from './wizard.js';
@@ -161,7 +162,7 @@ import { bones_include_name } from './bones.js';
 import {
     olfaction, passes_walls, throws_rocks, is_flyer, is_floater,
     amorphous, nolimbs, M1_SLITHY, MZ_SMALL, MZ_HUGE, mons, is_rider, hides_under,
-    haseyes, eyecount,
+    haseyes, eyecount, touch_petrifies,
 } from './monsters.js';
 import {
     placebc, unplacebc, drag_down, ballrelease, set_bc, ballfall, drop_ball,
@@ -175,11 +176,17 @@ import { strange_feeling } from './detect.js';
 import { surface } from './sit.js';
 import { use_pick_axe2 } from './dig.js';
 import { set_move_cmd, u_rooted } from './cmd.js';
+import { newcham, mpickobj } from './makemon.js';
+import { grow_up } from './mhitm.js';
+import { mcureblindness } from './muse.js';
 
 const PM_DEATH = monsterNames.indexOf('PM_DEATH');
 const PM_PESTILENCE = monsterNames.indexOf('PM_PESTILENCE');
 const PM_FAMINE = monsterNames.indexOf('PM_FAMINE');
 const PM_CROESUS = monsterNames.indexOf('PM_CROESUS');
+const PM_WRAITH = monsterNames.indexOf('PM_WRAITH');
+const PM_NURSE = monsterNames.indexOf('PM_NURSE');
+const PM_GREEN_SLIME = monsterNames.indexOf('PM_GREEN_SLIME');
 const BOULDER = objectNames.indexOf('BOULDER');
 const SPE_BOOK_OF_THE_DEAD = objectNames.indexOf('SPE_BOOK_OF_THE_DEAD');
 const WAN_FIRE = objectNames.indexOf('WAN_FIRE');
@@ -224,6 +231,12 @@ const RIN_SEE_INVISIBLE = objectNames.indexOf('RIN_SEE_INVISIBLE');
 const RIN_PROTECTION_FROM_SHAPE_CHAN =
     objectNames.indexOf('RIN_PROTECTION_FROM_SHAPE_CHAN');
 const MEAT_RING = objectNames.indexOf('MEAT_RING');
+/** C do.c engulfer_digests_food — corpse / meat / green-slime glob. */
+const CORPSE = objectNames.indexOf('CORPSE');
+const MEATBALL = objectNames.indexOf('MEATBALL');
+const MEAT_STICK = objectNames.indexOf('MEAT_STICK');
+const ENORMOUS_MEATBALL = objectNames.indexOf('ENORMOUS_MEATBALL');
+const GLOB_OF_GREEN_SLIME = objectNames.indexOf('GLOB_OF_GREEN_SLIME');
 /** C do_name.c color prefs — hcolor identity when !Hallu (cf. read.js). */
 const NH_BLACK = 'black';
 const NH_SILVER = 'silver';
@@ -463,12 +476,6 @@ function Luck() {
 /** C potion.c hcolor — Hallucination synonym deferred. */
 function hcolor(colorword) {
     return colorword;
-}
-/** C objnam.c Tobjnam — The(xname) + optional otense verb. */
-function Tobjnam(obj, verb) {
-    let bp = The(xname(obj));
-    if (verb) bp += ` ${otense(obj, verb)}`;
-    return bp;
 }
 /** C objnam.c Yname2 — capitalized yname; floor ≈ The(xname). */
 function Yname2(obj) {
@@ -1573,7 +1580,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     // C: do.c goto_level — Punished unplacebc before savelev so ball&chain
     // are not left on the departing floor (D-0915).
     // C: Punished ≡ (uball != 0)
-    if (u.uball || u.Punished) unplacebc();
+    if (u.uball || u.Punished) await unplacebc();
     // C: reset_utrap / fill_pit / set_ustuck / u.uundetected still named.
     // set_uinwater(0) (D-1267; C do.c:1621). Same-value is a no-op.
     await set_uinwater(0);
@@ -2378,7 +2385,8 @@ function freeinv_drop(obj) {
  * C ref: do.c dropz — place at hero feet; always encumber_msg (polyself
  * break_armor armor-drop More packs load before gloves).
  * Punished uball → drop_ball (C do.c:834, D-2329); else shop sell (D-0994).
- * Named omissions: engulf digest; altar; Blind+Levitation map_object.
+ * Swallow: unpaid theft, then engulfer_digests_food or mpickobj (do.c:816–825).
+ * Named omissions: Blind+Levitation map_object.
  * hitfloor dropz(TRUE) is D-1263.
  */
 export async function dropz(obj, with_impact) {
@@ -2389,7 +2397,17 @@ export async function dropz(obj, with_impact) {
     if (obj === u.uswapwep) setuswapwep(null);
 
     if (u.uswallow) {
-        // engulfer inventory deferred — leave free
+        /* C do.c:816–825 — inside an engulfer the ball stays put; anything
+           else is theft if unpaid, then digested or added to minvent. */
+        if (obj !== u.uball) {
+            if (is_unpaid(obj)) {
+                await stolen_value(obj, u.ux | 0, u.uy | 0, true, false);
+            }
+            if (!(await engulfer_digests_food(obj))) {
+                mpickobj(u.ustuck, obj);
+            }
+        }
+        await encumber_msg();
         return;
     }
     // C: flooreffects before place (D-0987)
@@ -2414,6 +2432,61 @@ export async function dropz(obj, with_impact) {
     newsym(u.ux, u.uy);
     // C dropz → encumber_msg() after place (capacity may cross on poly form)
     await encumber_msg();
+}
+
+/**
+ * C ref: do.c engulfer_digests_food `:849–888` (staticfn).
+ * An animal swallower (purple worm) eats a corpse, glob, or special meat
+ * item dropped inside it. TRUE when the object is used up.
+ * Callees: digests (mondata.h:71), touch_petrifies, polyfood, pline,
+ * Tobjnam, newcham, minstapetrify, grow_up, healmon, mcureblindness, delobj.
+ */
+export async function engulfer_digests_food(obj) {
+    const ustuck = game.u?.ustuck;
+    /* C do.c:853–856 — corpse, glob, or meat item; not other food. */
+    if (digests(ustuck?.data)
+        && ((obj.otyp | 0) === CORPSE || obj.globby
+            || (obj.otyp | 0) === MEATBALL
+            || (obj.otyp | 0) === ENORMOUS_MEATBALL
+            || (obj.otyp | 0) === MEAT_RING
+            || (obj.otyp | 0) === MEAT_STICK)) {
+        let could_petrify = false;
+        let could_poly = false;
+        let could_slime = false;
+        let could_grow = false;
+        let could_heal = false;
+
+        if ((obj.otyp | 0) === CORPSE) {
+            could_petrify = touch_petrifies(mons(obj.corpsenm | 0));
+            could_poly = !!polyfood(obj);
+            could_grow = (obj.corpsenm | 0) === PM_WRAITH;
+            could_heal = (obj.corpsenm | 0) === PM_NURSE;
+        } else if ((obj.otyp | 0) === GLOB_OF_GREEN_SLIME) {
+            could_slime = true;
+        }
+        /* C do.c:869–870 — see or feel the effect. */
+        await pline(`${Tobjnam(obj, 'are')} instantly digested!`);
+
+        if (could_poly || could_slime) {
+            /* C do.c:872–874 — slime forces green slime; polyfood passes 0. */
+            await newcham(
+                ustuck,
+                could_slime ? mons(PM_GREEN_SLIME) : 0,
+                could_slime ? NC_SHOW_MSG : NO_NC_FLAGS,
+            );
+        } else if (could_petrify) {
+            await minstapetrify(ustuck, true);
+        } else if (could_grow) {
+            await grow_up(ustuck, null);
+        } else if (could_heal) {
+            healmon(ustuck, ustuck.mhpmax | 0, 0);
+            /* C do.c:881–882 — False: don't realize sight is cured from inside. */
+            await mcureblindness(ustuck, false);
+        }
+        delobj(obj); /* always used up */
+        return true;
+    }
+    return false;
 }
 
 /** C ref: do.c dropy */

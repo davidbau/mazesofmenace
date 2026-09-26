@@ -2159,7 +2159,8 @@ async function fpostfx(otmp) {
                 Soundeffect(se_sinister_laughter, 100);
                 await You_hear('sinister laughter as you fall asleep...');
             }
-            fall_asleep(-rn1(11, 20), true);
+            /* C eat.c:2595 — fall_asleep(-rn1(11, 20), TRUE). */
+            await fall_asleep(-rn1(11, 20), true);
         }
         break;
     }

@@ -62,6 +62,7 @@ import {
     NO_TRAP, TRAPNUM, ROCKTRAP, is_hole, Can_fall_thru,
     D_NODOOR, D_BROKEN, D_ISOPEN, D_CLOSED, D_LOCKED, D_TRAPPED,
     WM_MASK, W_NONDIGGABLE, W_NONPASSWALL, RANDOM_TIN,
+    P_HAMMER, P_POLEARMS,
 } from './const.js';
 
 const STRANGE_OBJECT = 0;
@@ -687,21 +688,39 @@ async function wizterrainwish(d) {
     return null;
 }
 
+/** True only while `readobjnam_wish` is inside `readobjnam`, so the
+ * skill prefix waits until `wizterrainwish` returns 0. Direct callers
+ * (`proc_wizkit_line`, special-level escape items) run the prefix. */
+let deferSkillPrefixForWiztrap = false;
+
 /**
  * C ref: objnam.c readobjnam wiztrap — wizard && !wizkit_wishing &&
  * !d.oclass then wizterrainwish (D-1279 furniture; D-1289 traps;
  * D-1290 door/wall; D-1304 secret corridor).
  * Object-only readobjnam stays sync for wizkit/mklev (C skips terrain
- * when wizkit_wishing).
+ * when wizkit_wishing). After a null terrain wish, `polearm` / `hammer`
+ * still take `rnd_otyp_by_wpnskill` (C `:4982–4989`).
  */
 export async function readobjnam_wish(bp, no_wish) {
     const missOut = {};
-    const otmp = readobjnam(bp, no_wish, missOut);
+    deferSkillPrefixForWiztrap = true;
+    let otmp;
+    try {
+        otmp = readobjnam(bp, no_wish, missOut);
+    } finally {
+        deferSkillPrefixForWiztrap = false;
+    }
     if (otmp) return otmp;
     if (wizardMode() && !(game.program_state?.wizkit_wishing | 0)
         && missOut.d && !(missOut.d.oclass | 0) && !(missOut.d.typ | 0)) {
         const t = await wizterrainwish(missOut.d);
         if (t) return t;
+        /* C objnam.c:4982–4989 — wiztrap returned 0; prefix still applies. */
+        const picked = wish_otyp_by_wpnskill_prefix(missOut.d.bp);
+        if (picked !== null) {
+            missOut.d.typ = picked | 0;
+            return readobjnam_finish(missOut.d);
+        }
     }
     return otmp;
 }
@@ -1245,6 +1264,58 @@ export function readobjnam_postparse3(d) {
  * Terrain wish is readobjnam_wish (D-1279 furniture; D-1289 traps;
  * D-1290 door/wall; D-1304 secret corridor).
  */
+/**
+ * C ref: objnam.c rnd_otyp_by_wpnskill `:3432–3452` (staticfn).
+ * Walk `bases[WEAPON_CLASS]` while `oc_class` stays `WEAPON_CLASS`.
+ * Count `oc_skill == skill`, then `rn2(n)` selects that slot in
+ * the same order (`--n < 0`). No match returns `STRANGE_OBJECT`
+ * (the first walk's last hit is the fallback if the second walk
+ * does not return).
+ * @param {number} skill
+ * @returns {number}
+ */
+function rnd_otyp_by_wpnskill(skill) {
+    const objects = game.objects || [];
+    const bases = game.bases || [];
+    const skillN = skill | 0;
+    let n = 0;
+    let otyp = STRANGE_OBJECT;
+    const start = bases[WEAPON_CLASS] | 0;
+    for (let i = start;
+        i < NUM_OBJECTS && (objects[i]?.oc_class | 0) === WEAPON_CLASS;
+        i++) {
+        if ((objects[i].oc_skill | 0) === skillN) {
+            n++;
+            otyp = i;
+        }
+    }
+    if (n > 0) {
+        n = rn2(n);
+        for (let i = start;
+            i < NUM_OBJECTS && (objects[i]?.oc_class | 0) === WEAPON_CLASS;
+            i++) {
+            if ((objects[i].oc_skill | 0) === skillN) {
+                if (--n < 0) return i;
+            }
+        }
+    }
+    return otyp;
+}
+
+/**
+ * C objnam.c readobjnam `:4982–4989`. `null` means the prefix did
+ * not match. A number, including `STRANGE_OBJECT`, means it did.
+ * `strncmpi(bp, "polearm", 7)` / `strncmpi(bp, "hammer", 6)`.
+ * @returns {number|null}
+ */
+function wish_otyp_by_wpnskill_prefix(bp) {
+    /* C `:4983` — first 7 characters, case-insensitive. */
+    if (strncmpi_start(bp, 'polearm')) return rnd_otyp_by_wpnskill(P_POLEARMS);
+    /* C `:4986` */
+    if (strncmpi_start(bp, 'hammer')) return rnd_otyp_by_wpnskill(P_HAMMER);
+    return null;
+}
+
 export function readobjnam(bp, no_wish, missOut) {
     // C: readobjnam_init + if (!bp) goto any
     if (bp == null) {
@@ -1514,16 +1585,48 @@ export function readobjnam(bp, no_wish, missOut) {
         }
     }
 
-    /* C wiztrap: object miss then wizard terrain. Stash d for readobjnam_wish. */
-    if (!d.typ && !d.oclass) {
-        if (missOut) missOut.d = d;
-        return null;
+    /* C objnam.c:4976–4992. Wizard && !wizkit leaves the miss for
+       readobjnam_wish so wizterrainwish runs before the prefix
+       (C `wiztrap:`). Non-wizard and wizkit resolve it here. A hit
+       falls through even when the pick is STRANGE_OBJECT. */
+    if (!(d.typ | 0) && !(d.oclass | 0)) {
+        const deferWiztrap = deferSkillPrefixForWiztrap
+            && wizardMode()
+            && !(game.program_state?.wizkit_wishing | 0);
+        let skillHit = false;
+        if (!deferWiztrap) {
+            const picked = wish_otyp_by_wpnskill_prefix(d.bp);
+            if (picked !== null) {
+                skillHit = true;
+                d.typ = picked | 0;
+            }
+        }
+        if (!skillHit) {
+            if (missOut) missOut.d = d;
+            return null;
+        }
     }
 
-    if (d.typ) d.oclass = game.objects?.[d.typ]?.oc_class ?? 0;
-    d.otmp = mksobj(d.typ, true, false);
-    d.typ = d.otmp.otyp;
-    d.oclass = d.otmp.oclass;
+    return readobjnam_finish(d);
+}
+
+/**
+ * C objnam.c readobjnam `typfnd` `:4997` through the object return.
+ * `rnd_otyp_by_wpnskill` is the only path that arrives with both
+ * `typ` and `oclass` still 0: C `:5037` then `mkobj`s `RANDOM_CLASS`.
+ * Every other arrival keeps the previous `mksobj(d.typ)` line.
+ */
+function readobjnam_finish(d) {
+    if (!(d.typ | 0) && !(d.oclass | 0)) {
+        d.otmp = mkobj(0, false);
+        d.typ = d.otmp.otyp;
+        d.oclass = d.otmp.oclass;
+    } else {
+        if (d.typ) d.oclass = game.objects?.[d.typ]?.oc_class ?? 0;
+        d.otmp = mksobj(d.typ, true, false);
+        d.typ = d.otmp.otyp;
+        d.oclass = d.otmp.oclass;
+    }
 
     // C ref: objnam.c readobjnam :5071–5083 — honor d.cnt when oc_merge
     // (wizard unrestricted; else rnd(6) / candle <=7 / ammo-or-rock <=20).

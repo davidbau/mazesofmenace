@@ -8,7 +8,7 @@ import { depth as depth_of_level } from './hacklib.js';
 import { builds_up, In_hell, Is_special, level_difficulty_c } from './dungeon.js';
 import { roles } from './role.js';
 import { DART, mksobj, mkobj, next_ident, mkobj_at, weight, curse, bless,
-         rnd_class, objects,
+         rnd_class, objects, set_corpsenm, add_to_container,
          // Both spellings are imported on purpose: the pre-existing call sites
          // use the *_OTYP aliases while m_initinv_full() (ported later) uses the
          // plain names.  ESM allows binding one export to two local names.
@@ -39,7 +39,7 @@ import {
     STRAT_CLOSE, STRAT_WAITFORU, STRAT_APPEARMSG, W_SADDLE,
     IS_ALTAR, HEADSTONE, LR_MONGEN, MM_APPARXY_BYYOU,
     MM_NOMSG, MM_NOEXCLAM, M_AP_NOTHING, M_AP_MONSTER,
-    MHID_ARTICLE, MHID_ALTMON, BOLT_LIM,
+    MHID_ARTICLE, MHID_ALTMON, BOLT_LIM, DF_NONE,
 } from './const.js';
 // set_mimic_sym() needs the room/trap/vision helpers.  These modules sit below
 // makemon.js in the import graph except vision.js, which imports two function
@@ -68,6 +68,7 @@ import {
 } from './monflags_data.js';
 import { AT_EXPL, attacktype, is_armed, MATTK,
          AT_WEAP, AT_MAGC, AD_DRST, AD_SPEL } from './monattk_data.js';
+// Species delivery uses the hooks registry to avoid a dokick import cycle.
 const MM_NOWAIT = 0x00000002; // C ref: makemon.h MM_NOWAIT — suppress STRAT_WAITFORU/STRAT_CLOSE
 
 const G_UNIQ = 0x1000;
@@ -2341,10 +2342,11 @@ function m_initinv_full(mtmp) {
             const catcorpse = mksobj(265 /*CORPSE*/, true, false);
             if (box && catcorpse) {
                 box.spe = 1;            /* flag for special SchroedingersBox */
-                catcorpse.corpsenm = 16 /*PM_HOUSECAT*/;
-                if (!box.cobj) box.cobj = [];
-                box.cobj.push(catcorpse);
-                catcorpse.where = 'contained';
+                set_corpsenm(catcorpse, 16 /*PM_HOUSECAT*/);
+                // The unobserved cat does not rot inside Schroedinger's box.
+                catcorpse.timed = false;
+                delete catcorpse.timer;
+                add_to_container(box, catcorpse);
                 box.owt = weight(box);
             }
             if (box) { mtmp._hasinv = true; mpickobj(mtmp, box); }
@@ -3696,6 +3698,11 @@ export function makemon(mdat = null, x = 0, y = 0, mmflags = 0) {
         // nemesis silently skipped its first-appearance message.
         if (f3 & (M3_WAITMASK | M3_COVETOUS))
             mtmp.mstrategy = (mtmp.mstrategy | STRAT_APPEARMSG) >>> 0;
+    }
+    // C makemon.c:1469: claim waiting loot before placement. This may name
+    // the captain even though stolen_booty() renames it immediately afterward.
+    if (allow_minvent && game.migrating_objs && game.migrating_objs.length) {
+        hooks.deliver_obj_to_mon(mtmp, 1, DF_NONE);
     }
     // C ref: makemon.c:1248 `mtmp->nmon = fmon; fmon = mtmp;` and :1295
     // `place_monster(mtmp, x, y);` — BOTH unconditional, and the link happens even

@@ -23,6 +23,7 @@ import { nhl_nhlib_align_shuffle } from './dungeon.js';
 import { show_text_pages } from './pager.js';
 import { mons, M2_PNAME } from './monsters.js';
 import { NON_PM, pmnames } from './generated/monsters_data.js';
+import { QUEST_NEMESIS_SPEECH } from './generated/quest_nemesis_speech.js';
 import { an, An, the, makeplural, makesingular } from './objnam.js';
 
 /**
@@ -581,6 +582,14 @@ const QUEST_ROLE_TEXT = {
     goal_next: QUEST_GOAL_NEXT,
     goal_alt: QUEST_GOAL_ALT,
     killed_nemesis: QUEST_KILLED_NEMESIS,
+    // C ref: dat/quest.lua role tables, all 13 filecodes (D-2853).
+    // discourage is a string array (com_pager_core rn2 arm). nemesis_* are
+    // {text, synopsis?, output?} so the first filecode lookup hits.
+    discourage: QUEST_NEMESIS_SPEECH.discourage,
+    nemesis_first: QUEST_NEMESIS_SPEECH.nemesis_first,
+    nemesis_next: QUEST_NEMESIS_SPEECH.nemesis_next,
+    nemesis_other: QUEST_NEMESIS_SPEECH.nemesis_other,
+    nemesis_wantsit: QUEST_NEMESIS_SPEECH.nemesis_wantsit,
 };
 
 /** C ref: questpgr.c ldrname */
@@ -953,17 +962,31 @@ function lookup_quest_entry(section, msgid, fallbackTried) {
         return { text: raw, synopsis: null, output: 'default' };
     }
     const table = QUEST_ROLE_TEXT[msgid];
-    const text = table?.[section];
-    if (!text) {
+    const raw = table?.[section];
+    // Empty string is a miss, same as a missing role key (C: not a lua table).
+    if (raw == null || raw === '') {
         if (!fallbackTried) {
             const fb = QUEST_MSG_FALLBACKS[msgid];
             if (fb) return lookup_quest_entry(section, fb, true);
         }
         return null;
     }
+    // C :552–568 — no "text" field: entry is an array of strings. discourage
+    // is that shape (quest.lua). text stays null so the rn2(nelems) arm runs.
+    if (Array.isArray(raw)) {
+        return { text: null, synopsis: null, output: 'default', array: raw };
+    }
+    // nemesis_* tables carry text / synopsis / output on the entry itself.
+    if (typeof raw === 'object') {
+        return {
+            text: raw.text ?? null,
+            synopsis: raw.synopsis ?? null,
+            output: raw.output ?? 'default',
+        };
+    }
     const meta = QUEST_MSG_META[msgid]?.[section] || {};
     return {
-        text,
+        text: raw,
         synopsis: meta.synopsis || null,
         output: meta.output || 'default',
     };
@@ -1014,7 +1037,8 @@ async function deliver_by_window(raw, _how) {
  * covers unported role bodies (map-named) where C shows text and never
  * calls impossible(), so misses stay silent-FALSE; NHW_MENU except legacy
  * (legacy/pauper_legacy own com_pager_legacy); TEST_PATTERN (lua self-test
- * only); other-role bodies; convert_arg catalogue is D-1649;
+ * only); other-role bodies except the five nemesis msgids (D-2853, all 13
+ * filecodes); convert_arg catalogue is D-1649;
  * convert_line pronoun %Xh is D-1634. qt_pager common retry is D-1662.
  * Lua helpers with no JS counterpart: nhl_init/nhl_loadlua/nhl_done
  * (no VM — embedded tables), get_table_str_opt/get_table_option

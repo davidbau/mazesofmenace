@@ -69,7 +69,7 @@ import {
 import { ART_STING } from './generated/artifacts_data.js';
 import { hliquid, Hallucination, y_monnam, x_monnam, type_is_pname, YMonnam } from './do_name.js';
 import { get_level } from './dungeon.js';
-import { costly_spot, shop_keeper, addtobill, subfrombill, onshopbill, find_objowner, stolen_value } from './shk.js';
+import { costly_spot, shop_keeper, addtobill, subfrombill, onshopbill, find_objowner, stolen_value, block_entry } from './shk.js';
 import { se_monster_behind_boulder, se_kerplunk_boulder_gone } from './generated/seffects_data.js';
 import { near_capacity, inv_weight, freeinv, weapon_descr, useupf } from './invent.js';
 import { record_achievement } from './insight.js';
@@ -190,6 +190,18 @@ export async function You_hear(line) {
  */
 export function monst_to_any(mtmp) {
     return mtmp;
+}
+
+/**
+ * C ref: hack.c obj_to_any `:96–102` — `&gt.tmp_anything` with
+ * `a_obj = obj` after zeroing the union. C `start_timer` /
+ * `stop_timer` copy that union and match the object pointer.
+ * JS timers key `TIMER_OBJECT` entries by the object itself
+ * (same identity), so the collapsed handle is `obj`, as
+ * `monst_to_any` collapses `a_monst`. Caller: `start_glob_timeout`.
+ */
+export function obj_to_any(obj) {
+    return obj;
 }
 
 /**
@@ -349,13 +361,13 @@ function test_move_known_lwalking() {
 /**
  * C ref: hack.c test_move :991–1255 — whole-function port in C order.
  * mode is DO_MOVE / TEST_MOVE / TEST_TRAV / TEST_TRAP (const.js). TEST_*
- * modes are message-free in C (every pline gated on DO_MOVE); the entry
+ * modes skip this function's own plines (each gated on DO_MOVE).
+ * `block_entry` still plines when it returns true, on every mode. The entry
  * `door_opened = FALSE` clear runs on all modes and is kept.
  * You_cant / Your / There / pline_The have no JS export (lock.js:602
  * precedent) — rendered as net-identical pline text, never new clones.
  * Named omissions (c-js-map turns): block_door (shk.c:5791 — stub-false
- * js/cmd.js:1176, no shop ESHK wire-up) / block_entry (shk.c:5826 — no JS
- * impl) / ECMD_OK + canned-kick fake (JS doopen_indir returns bool, not
+ * js/cmd.js, no shop ESHK wire-up) / ECMD_OK + canned-kick fake (JS doopen_indir returns bool, not
  * ECMD codes; cmdq_peek is cmd.js-local) / defsyms[].explanation prose
  * (tree/wall/solid-stone heuristic, cmd.js:1201 stand-in) / autodig flag
  * (no JS option; arm live on game.flags.autodig).
@@ -549,7 +561,7 @@ export async function test_move(ux, uy, dx, dy, mode) {
 
     // C :1229–1231 diagonal out of a doorway that still has a door.
     if (dx && dy && !Passes_walls_prop() && ust && IS_DOOR(ust.typ | 0)
-        && (!doorless_door(ux, uy) || false)) { // block_entry named omit (shk.c:5826)
+        && (!doorless_door(ux, uy) || await block_entry(x, y))) { // C :1209 block_entry
         if (mode === DO_MOVE && game.flags?.mention_walls) // C :1233–1234
             await pline("You can't move diagonally out of an intact doorway."); // C You_cant
         return false; // C :1235
@@ -1506,7 +1518,8 @@ export async function overexert_hp() {
     } else {
         await pline('You pass out from exertion!');
         exercise(A_CON, false);
-        fall_asleep(-10, false);
+        /* C hack.c:3045 — fall_asleep(-10, FALSE). */
+        await fall_asleep(-10, false);
     }
 }
 
@@ -1655,17 +1668,22 @@ export async function runmode_delay_output() {
 }
 
 /**
- * C ref: timeout.c fall_asleep — nomul(how_long) with sleeping reason.
- * Deafness / Hear_again afternmv (#if 0 in C) deferred.
+ * C ref: timeout.c fall_asleep `:951–974`.
+ * `stop_occupation` (meal finish or "You stop", else `nomul(0)` when
+ * `multi >= 0`, then `cmdq_clear`), then `nomul(how_long)`,
+ * `multi_reason = "sleeping"`, `u.usleep = moves`,
+ * `nomovemsg` "You wake up." or `You_can_move_again` (`decl.c:47`).
+ * The `#if 0` `Hear_again` / `incr_itimeout(&HDeaf)` block is not
+ * compiled in this tree.
  * @param {number} how_long negative multi turns
- * @param {boolean} wakeup_msg if true, nomovemsg is "You wake up."
+ * @param {boolean} wakeup_msg
  */
-export function fall_asleep(how_long, wakeup_msg) {
-    // stop_occupation — clear multi-turn occupation without message
-    if (typeof game.occupation === 'function') game.occupation = null;
+export async function fall_asleep(how_long, wakeup_msg) {
+    await stop_occupation();
     nomul(how_long);
     game.multi_reason = 'sleeping';
     if (!game.u) game.u = {};
+    /* C: u.usleep = svm.moves — early combat wakeup waits until the next turn. */
     game.u.usleep = game.moves | 0;
     game.nomovemsg = wakeup_msg ? 'You wake up.' : 'You can move again.';
 }

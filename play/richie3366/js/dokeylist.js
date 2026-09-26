@@ -5,9 +5,13 @@
 // Builds NHW_TEXT lines from extracted extcmdlist[] + default !num_pad
 // bindings (commands_init + reset_commands). rhack cmdbind_get of those
 // defaults (M('?') → "?" / doextlist) is D-1643. Overlay BIND= on if/else
-// keys is D-1657 (`rhack_user_overlay_key` + EXT_CMDS runners). Named
-// omissions: number_pad layouts, swap_yz, rest_on_space wait binding,
-// CMD_PARAM bound-key param display, overlay on walk keys.
+// keys is D-1657 (`rhack_user_overlay_key` + EXT_CMDS runners). After
+// `reset_commands` (D-2861), `cmdbinds_live` uses `_layoutSlots` for
+// number_pad, phone, swap_yz, pcHack, and the rest_on_space clone.
+// `keylist_putcmds` reads that live table (`cmdbind_get`) and
+// `game.Cmd._bindParam` (set by `bind_key`). Named omission: rc
+// `parsebindings` still strips `(param)` before the overlay is stored.
+// rhack movement still walks letter keys rather than the slot table.
 
 import {
     EXTCMDLIST,
@@ -260,13 +264,21 @@ function build_default_cmdbinds() {
 /**
  * Default cmdbinds plus BIND=/BINDINGS= overlays from parsebindings.
  * C ref: cmd.c commands_init + reset_commands(!num_pad) + bind_key.
- * null overlay value is bind_key "nothing" (unbind). Named omissions:
- * number_pad/phone/swap_yz/pcHack dir layouts; rest_on_space;
- * initoptions_finish rebinding dirchars after RC (C overwrites hjkl
- * BIND=; this overlay can stick on walk keys).
+ * null overlay value is bind_key "nothing" (unbind). When
+ * `game.Cmd._layoutSlots` is set (`reset_commands`), that array is the
+ * base instead of the !num_pad default: a null slot is unbound, and a
+ * `_nullBind` sentinel is C's null-cmd node (lookup still unbound).
+ * Named omissions: until `reset_commands` runs, number_pad/phone/swap_yz/
+ * pcHack layouts and the rest_on_space clone are not in this default;
+ * a BIND= parsed before `number_pad` is installed onto the overlay
+ * after `reset_commands` returns (jsmain), so it can mask a restored key.
  */
 function cmdbinds_live() {
-    const binds = build_default_cmdbinds();
+    const slots = game.Cmd?._layoutSlots;
+    /** @type {(typeof EXTCMDLIST[number] | null)[]} */
+    const binds = slots
+        ? slots.map((s) => (s && !s._nullBind ? s : null))
+        : build_default_cmdbinds();
     const overlay = game.Cmd?.binds;
     if (overlay instanceof Map) {
         const byTxt = new Map(EXTCMDLIST.map((e) => [e.txt.toLowerCase(), e]));
@@ -295,6 +307,48 @@ export function cmdbind_get(key) {
     const k = key & 0xff;
     if (!k) return null;
     return cmdbinds_live()[k] || null;
+}
+
+/**
+ * C `struct Cmd_bind.param` (`func_tab.h:37`). The JS node is the extcmd
+ * object itself (`cmdbind_get`), so the string lives beside it, indexed
+ * by key. `bind_key` stores at most 30 characters (`cmd.c:2701–2707`).
+ * `cmdbind_add` / `cmdbind_remove` clear the slot; `cmdbind_swapkeys`
+ * swaps the two slots with the nodes.
+ * @param {number} key
+ * @returns {string|null}
+ */
+export function bind_param_get(key) {
+    const arr = game.Cmd?._bindParam;
+    if (!arr) return null;
+    const p = arr[key & 0xff];
+    return p ? p : null;
+}
+
+/** @param {number} key @param {string|null} param */
+export function bind_param_set(key, param) {
+    const k = key & 0xff;
+    if (!k) return;
+    if (!game.Cmd) game.Cmd = {};
+    if (!game.Cmd._bindParam) game.Cmd._bindParam = new Array(256).fill(null);
+    game.Cmd._bindParam[k] = param ? String(param) : null;
+}
+
+/** @param {number} key */
+export function bind_param_clear(key) {
+    const arr = game.Cmd?._bindParam;
+    if (arr) arr[key & 0xff] = null;
+}
+
+/** @param {number} key1 @param {number} key2 */
+export function bind_param_swap(key1, key2) {
+    const arr = game.Cmd?._bindParam;
+    if (!arr) return;
+    const a = key1 & 0xff;
+    const b = key2 & 0xff;
+    const t = arr[a];
+    arr[a] = arr[b];
+    arr[b] = t;
 }
 
 /**
@@ -512,56 +566,88 @@ export function cmd_from_ecname(ecname) {
     return `#${ecname}`;
 }
 
-function keylist_func_has_key(extcmd, skipKeys, binds) {
-    for (let i = 0; i < 256; i++) {
-        if (skipKeys[i]) continue;
-        if (binds[i] === extcmd) return true;
+/**
+ * C ref: cmd.c keylist_func_has_key `:2784–2799`.
+ * Skip keys already claimed, then `cmdbind_get(i)->cmd == extcmd`.
+ * JS `cmdbind_get` returns that cmd (null when unbound or cmd is null).
+ * @param {typeof EXTCMDLIST[number]} extcmd
+ * @param {boolean[]} skipKeysUsed snapshot from before this listing
+ * @returns {boolean}
+ */
+function keylist_func_has_key(extcmd, skipKeysUsed) {
+    for (let i = 0; i < 256; i++) { // C `:2791`
+        if (skipKeysUsed[i]) continue; // C `:2792–2793`
+        const cmd = cmdbind_get(i); // C `:2795` bind = cmdbind_get(i)
+        if (cmd && cmd === extcmd) return true; // C `:2795` bind->cmd == extcmd
     }
-    return false;
+    return false; // C `:2797`
 }
 
-function keylist_putcmds(lines, docount, inclFlags, exclFlags, keysUsed, binds) {
-    const already = keysUsed.slice();
-    let count = 0;
-    for (let i = 0; i < 256; i++) {
-        if (keysUsed[i]) continue;
-        // rest_on_space false: skip space
-        if (i === 32) continue;
-        const bind = binds[i];
-        if (!bind) continue;
-        if ((inclFlags && !(bind.flags & inclFlags))
-            || (exclFlags && (bind.flags & exclFlags))) {
-            continue;
+/**
+ * C ref: cmd.c keylist_putcmds `:2802–2863`.
+ * `lines` is the NHW_TEXT sink (`putstr(datawin, 0, buf)` — dokeylist
+ * collects lines for `show_text_pages`). Live binds via `cmdbind_get`,
+ * not a caller-supplied default table. Space is skipped only when
+ * `!flags.rest_on_space` (`:2818`). `CMD_PARAM` prints `bind->param`
+ * (`:2830–2833`); an unset param is an empty string (C would pass NULL
+ * to `%s` only when `bind_key` never stored one).
+ * @param {string[]} lines
+ * @param {boolean} docount
+ * @param {number} inclFlags
+ * @param {number} exclFlags
+ * @param {boolean[]} keysUsed mutated when listing (not when counting)
+ * @returns {number}
+ */
+function keylist_putcmds(lines, docount, inclFlags, exclFlags, keysUsed) {
+    const keysAlreadyUsed = new Array(256); // C `:2810` copy before updates
+    let count = 0; // C `:2811`
+    for (let i = 0; i < 256; i++) { // C `:2814`
+        const key = i & 0xff; // C `:2815` uchar key
+        keysAlreadyUsed[i] = !!keysUsed[i]; // C `:2817`
+        if (keysUsed[i]) continue; // C `:2818–2819`
+        if (key === 32 && !game.flags?.rest_on_space) continue; // C `:2820–2821`
+        const cmd = cmdbind_get(key); // C `:2822` bind = cmdbind_get; JS returns bind->cmd
+        if (cmd) { // C `:2823` bind && bind->cmd
+            const flags = cmd.flags | 0;
+            if ((inclFlags && !(flags & inclFlags))
+                || (exclFlags && (flags & exclFlags))) {
+                continue; // C `:2824–2826`
+            }
+            if (docount) { // C `:2827`
+                count++;
+                continue;
+            }
+            const keyTxt = key2txt(key); // C key2txt(key, buf2)
+            if ((flags & CMD_PARAM) !== 0) { // C `:2830`
+                const param = bind_param_get(key) ?? ''; // C `:2833` bind->param
+                lines.push(
+                    `${fmtLeft(keyTxt, 7)} ${fmtLeft(cmd.txt, 13)} ${cmd.desc} "${param}"`,
+                ); // C `:2831–2833` putstr
+            } else {
+                lines.push(
+                    `${fmtLeft(keyTxt, 7)} ${fmtLeft(cmd.txt, 13)} ${cmd.desc}`,
+                ); // C `:2835–2836`
+            }
+            keysUsed[i] = true; // C `:2838`
         }
-        if (docount) {
-            count++;
-            continue;
-        }
-        if (bind.flags & CMD_PARAM) {
-            // no bound params in default binds
-            lines.push(
-                `${fmtLeft(key2txt(i), 7)} ${fmtLeft(bind.txt, 13)} ${bind.desc} ""`,
-            );
-        } else {
-            lines.push(
-                `${fmtLeft(key2txt(i), 7)} ${fmtLeft(bind.txt, 13)} ${bind.desc}`,
-            );
-        }
-        keysUsed[i] = true;
     }
-    for (const extcmd of EXTCMDLIST) {
-        if ((inclFlags && !(extcmd.flags & inclFlags))
-            || (exclFlags && (extcmd.flags & exclFlags))) {
-            continue;
+    // C `:2840` commands that lack a key assignment
+    for (const extcmd of EXTCMDLIST) { // C `:2841` extcmd->ef_txt
+        if (!extcmd.txt) break;
+        const flags = extcmd.flags | 0;
+        if ((inclFlags && !(flags & inclFlags))
+            || (exclFlags && (flags & exclFlags))) {
+            continue; // C `:2842–2844`
         }
-        if (keylist_func_has_key(extcmd, already, binds)) continue;
-        if (docount) {
+        if (keylist_func_has_key(extcmd, keysAlreadyUsed)) continue; // C `:2850`
+        if (docount) { // C `:2853`
             count++;
             continue;
         }
+        // C `:2858` "#%-20s %s"
         lines.push(`#${fmtLeft(extcmd.txt, 20)} ${extcmd.desc}`);
     }
-    return count;
+    return count; // C `:2862`
 }
 
 function show_direction_keys(lines) {
@@ -603,7 +689,6 @@ function show_direction_keys(lines) {
  * C ref: cmd.c dokeylist — Full Current Key Bindings List lines.
  */
 export function dokeylist_lines() {
-    const binds = build_default_cmdbinds();
     const keysUsed = new Array(256).fill(false);
     const numPad = false;
 
@@ -628,7 +713,7 @@ export function dokeylist_lines() {
     lines.push('');
     lines.push(`${' '.repeat(7)} ${'    Full Current Key Bindings List'}`);
     for (const extcmd of EXTCMDLIST) {
-        if (spkeyGap || !keylist_func_has_key(extcmd, keysUsed, binds)) {
+        if (spkeyGap || !keylist_func_has_key(extcmd, keysUsed)) {
             lines.push(`${' '.repeat(7)} ${'(also commands with no key assignment)'}`);
             break;
         }
@@ -679,24 +764,25 @@ export function dokeylist_lines() {
     lines.push('');
     show_menu_controls_lines(lines, true);
 
-    if (keylist_putcmds(lines, true, GENERALCMD, IGNORECMD, keysUsed.slice(), binds)) {
+    // C cmd.c:2987–3008 — same keys_used array; docount does not write it.
+    if (keylist_putcmds(lines, true, GENERALCMD, IGNORECMD, keysUsed)) {
         lines.push('');
         lines.push('General commands:');
-        keylist_putcmds(lines, false, GENERALCMD, IGNORECMD, keysUsed, binds);
+        keylist_putcmds(lines, false, GENERALCMD, IGNORECMD, keysUsed);
     }
 
-    if (keylist_putcmds(lines, true, 0, GENERALCMD | IGNORECMD, keysUsed.slice(), binds)) {
+    if (keylist_putcmds(lines, true, 0, GENERALCMD | IGNORECMD, keysUsed)) {
         lines.push('');
         lines.push('Game commands:');
-        keylist_putcmds(lines, false, 0, GENERALCMD | IGNORECMD, keysUsed, binds);
+        keylist_putcmds(lines, false, 0, GENERALCMD | IGNORECMD, keysUsed);
     }
 
     const wizard = !!(game.wizard || game.flags?.debug);
     if (wizard
-        && keylist_putcmds(lines, true, WIZMODECMD, INTERNALCMD, keysUsed.slice(), binds)) {
+        && keylist_putcmds(lines, true, WIZMODECMD, INTERNALCMD, keysUsed)) {
         lines.push('');
         lines.push('Debug mode commands:');
-        keylist_putcmds(lines, false, WIZMODECMD, INTERNALCMD, keysUsed, binds);
+        keylist_putcmds(lines, false, WIZMODECMD, INTERNALCMD, keysUsed);
     }
 
     return lines;

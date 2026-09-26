@@ -852,8 +852,14 @@ export async function miss(str, mtmp) {
     await pline(`${The(str)} ${vtense(str, 'miss')} ${whom}.`);
 }
 
-/** C ref: zap.c hit — missile hit message. */
-async function hit(str, mtmp, force) {
+/**
+ * C ref: zap.c hit `:3555–3568` — The(str) vtense "hit", then the
+ * target name or "it", then force (usually exclam).
+ * Named omissions: `mtmp == &gy.youmonst` is always verbose; `engulfing_u`
+ * counts as seen. Callers: ohitmon (`mthrowu.c:479`) and
+ * hmon_hitmon_msg_hit (`uhitm.c:1647`).
+ */
+export async function hit(str, mtmp, force) {
     const bx = game.bhitpos?.x ?? mtmp.mx;
     const by = game.bhitpos?.y ?? mtmp.my;
     const verbosely = game.flags?.verbose !== false

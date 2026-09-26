@@ -37,7 +37,7 @@
 // multi-shk getpos pay-whom (D-1704); mute/Deaf nod is D-1716;
 // container bill_box_content (D-1705);
 // traditional itemize ynq (D-1715); FullyUsedUp/PartlyUsedUp (D-1714);
-// remaining SetVoice (pick_pick / kops / pay-bill); Izchak candle special_stock polish; safe_qbuf sell prompt;
+// remaining SetVoice (pick_pick / kops / pay-bill); safe_qbuf sell prompt;
 // money2u invent-full dropy; break_seq simultaneous shop shatter;
 // nextoid shop-price
 // oid match; stolen_value callers beyond revive/kick/dig/lock/costly_alteration
@@ -60,7 +60,7 @@ import {
     OBJ_ONBILL,
     NO_ROOM, TEMPLE, RLOC_MSG, RLOC_NOMSG,
     DISPLACED, LOW_PM, Has_contents, Is_container, has_omid, OMID, MAXULEV, ECMD_OK, ECMD_TIME, ECMD_CANCEL,
-    EYE, M_AP_NOTHING, M_AP_MONSTER, M_AP_TYPE, HAND,
+    EYE, M_AP_NOTHING, M_AP_MONSTER, M_AP_TYPE, HAND, HEAD,
     COST_CONTENTS, COST_SINGLEOBJ, COST_UNBLSS, COST_UNCURS, TELEPAT,
     FIRE_RES, SLEEP_RES, COLD_RES, DISINT_RES, SHOCK_RES, POISON_RES,
     ACID_RES, STONE_RES, TELEPORT, TELEPORT_CONTROL, ismnum,
@@ -84,8 +84,10 @@ import {
 import {
     newsym, pline, Norep, verbalize, Your, You_feel, docrt, flush_screen,
     canspotmon, canseemon, sensemon, impossible, bot,
+    map_invisible, nh_delay_output,
 } from './display.js';
 import { cansee, recalc_block_point } from './vision.js';
+import { mbodypart } from './polyself.js';
 import { objectNames } from './generated/objects_data.js';
 import { mattacku } from './mhitu.js';
 import { PM_GRID_BUG, PM_TOURIST, PM_KNIGHT, PM_ROGUE } from './generated/monsters_data.js';
@@ -118,13 +120,13 @@ import {
 import { ATR_INVERSE } from './terminal.js';
 import { yn_function } from './getline.js';
 import { getpos } from './getpos.js';
-import { m_at, angry_guards, unique_corpstat } from './mon.js';
+import { m_at, angry_guards, unique_corpstat, mnearto } from './mon.js';
 import { intrinsic_possible } from './eat.js';
 import { Soundeffect, se_alarm, SetVoice } from './sndprocs.js';
 import { livelog_printf } from './pline.js';
 import { enexto, rloc_to_flag, migrate_to_level } from './teleport.js';
 import { ledger_no } from './dungeon.js';
-import { Is_candle, get_obj_location as shk_full_get_obj_location } from './timeout.js';
+import { Is_candle, Invis, get_obj_location as shk_full_get_obj_location } from './timeout.js';
 import { addinv } from './u_init.js';
 import { SchroedingersBox } from './pickup.js';
 import { arti_cost } from './artifact.js';
@@ -792,6 +794,61 @@ function IS_SHOP(roomIdx) {
 }
 
 /**
+ * C ref: shk.c block_entry `:5826–5858` — diagonal entry off a broken
+ * shop door. `IS_SHOP(roomno)` indexes `rooms[roomno]` with the raw
+ * `*in_rooms` char (the C macro does not subtract `ROOMOFFSET`);
+ * `shop_keeper` then does. `pline` may `--More--`, so this is async.
+ * Callers: hack.c test_move `:1209` (js/hack.js, js/cmd.js domove and
+ * travel_test_move).
+ */
+export async function block_entry(x, y) {
+    x |= 0;
+    y |= 0;
+    const u = game.u;
+    if (!u) return false;
+    const here = game.level?.at(u.ux | 0, u.uy | 0);
+    // C :5832–5834 — hero stands on a door whose mask is exactly D_BROKEN.
+    if (!(here && IS_DOOR(here.typ | 0) && (here.doormask | 0) === D_BROKEN))
+        return false;
+
+    // C :5836 *in_rooms. An empty buffer is NUL (0). Signed char so a
+    // byte >= 128 is negative and takes the roomno < 0 return.
+    const roomStr = in_rooms(x, y, SHOPBASE);
+    let roomno = 0;
+    if (roomStr) {
+        roomno = roomStr.charCodeAt(0);
+        if (roomno > 127) roomno -= 256;
+    }
+    // C :5837
+    if (roomno < 0 || !IS_SHOP(roomno))
+        return false;
+
+    const shkp = shop_keeper(roomno); // C :5839 (char) roomno
+    if (!shkp || !inhishop(shkp)) // C :5840
+        return false;
+
+    const eshk = ESHK(shkp);
+    // C :5843 — the keeper's shop door is the square the hero is on.
+    if ((eshk?.shd?.x | 0) !== (u.ux | 0) || (eshk?.shd?.y | 0) !== (u.uy | 0))
+        return false;
+
+    const sx = eshk?.shk?.x | 0; // C :5846
+    const sy = eshk?.shk?.y | 0; // C :5847
+
+    // C :5849–5852 — left-to-right short-circuit, including the two carrying calls.
+    if ((shkp.mx | 0) === sx && (shkp.my | 0) === sy && !helpless(shkp)
+        && (x === sx - 1 || x === sx + 1 || y === sy - 1 || y === sy + 1)
+        && (Invis() || carrying(PICK_AXE) || carrying(DWARVISH_MATTOCK)
+            || u.usteed)) {
+        // C :5853–5854 — "%s%s blocks your way!"
+        await pline(
+            `${Shknam(shkp)}${Invis() ? ' senses your motion and' : ''} blocks your way!`);
+        return true;
+    }
+    return false; // C :5857
+}
+
+/**
  * C ref: shk.c inside_shop — roomno char, or NO_ROOM if not in shop proper.
  * Truthy when in a shop (callers use as boolean or shop_keeper arg).
  */
@@ -1410,7 +1467,7 @@ async function litter_scatter(litter, x, y, shkp) {
             await verbalize('Get your junk out of my wall!');
         }
         const { unplacebc, placebc } = await import('./ball.js');
-        unplacebc();
+        await unplacebc();
         await placebc();
     }
     let otmp;
@@ -2637,20 +2694,93 @@ function dropped_container(obj, shkp, sale) {
 }
 
 /**
- * C ref: shk.c special_stock — candelabrum in candle shop refuse.
- * Named omit: Izchak invoked-path candle count; SetVoice; mbodypart.
+ * C ref: shk.c special_stock `:3103–3144` — candle shop refuses the
+ * Candelabrum. Izchak, before the invocation, asks the hero to keep it
+ * and names the missing candles; anyone else orders it out. Deaf or
+ * mute shopkeepers shake their head. Caller: sellobj (`shk.c:3994`).
+ * The "already carrying enough candles" note at `:3124–3125` is a
+ * comment, not an arm. SetVoice is the live !SND_LIB no-op.
  */
 async function special_stock(obj, shkp, quietly) {
-    if ((ESHK(shkp)?.shoptype | 0) !== CANDLESHOP) return false;
-    if ((obj?.otyp | 0) !== CANDELABRUM_OF_INVOCATION) return false;
-    if (!quietly) {
-        if (!hero_deaf() && !muteshk(shkp)) {
-            await verbalize("I won't stock that.  Take it out of here!");
-        } else {
-            await pline(`${Shknam(shkp)} shakes in refusal.`);
+    // C :3109–3110 — both must match; shoptype is tested first.
+    const eshk = ESHK(shkp);
+    if (eshk && (eshk.shoptype | 0) === CANDLESHOP
+        && (obj.otyp | 0) === CANDELABRUM_OF_INVOCATION) {
+        if (!quietly) { // C :3111
+            // C :3112 — town Izchak, and the invocation has not happened.
+            if (is_izchak(shkp, true) && !game.u?.uevent?.invoked) {
+                if (hero_deaf() || muteshk(shkp)) { // C :3113 Deaf || muteshk
+                    await pline(
+                        `${Shknam(shkp)} seems ${(obj.spe | 0) < 7 ? 'horrified' : 'concerned'} that you want to sell that.`,
+                    );
+                } else {
+                    SetVoice(shkp, 0, 80, 0); // C :3118
+                    await verbalize("No thanks, I'd hang onto that if I were you.");
+                    if ((obj.spe | 0) < 7) { // C :3120
+                        const need = 7 - (obj.spe | 0);
+                        SetVoice(shkp, 0, 80, 0); // C :3121
+                        await verbalize(
+                            `You'll need ${need}${(obj.spe | 0) > 0 ? ' more' : ''} candle${plur(need)} to go along with it.`,
+                        );
+                    }
+                }
+            } else if (!hero_deaf() && !muteshk(shkp)) { // C :3128
+                SetVoice(shkp, 0, 80, 0); // C :3129
+                await verbalize("I won't stock that.  Take it out of here!");
+            } else { // C :3131–3134
+                await pline(
+                    `${Shknam(shkp)} shakes ${noit_mhis(shkp)} ${mbodypart(shkp, HEAD)} in refusal.`,
+                );
+            }
         }
+        return true; // C :3137
     }
-    return true;
+    return false; // C :3139
+}
+
+/**
+ * C ref: shk.c shkcatch `:4362–4396` — a shopkeeper snatches a pick
+ * thrown or kicked into the shop from outside, when standing within
+ * dist2 < 3 and not already on that square. Caller: zap.c bhit
+ * `:3885–3890`. mark_synch (`:4389`) is tty_mark_synch fflush
+ * (wintty.c:3617); the JS window has no stdout to flush.
+ */
+export async function shkcatch(obj, x, y) {
+    const shkp = shop_keeper(inside_shop(x, y)); // C :4368
+    if (!shkp || !inhishop(shkp)) return null; // C :4369–4370
+
+    const eshk = ESHK(shkp);
+    const ushops = game.u?.ushops || '';
+    // C :4373 — *u.ushops is '\0' when the hero is in no shop.
+    const heroShop = ushops.length ? ushops.charCodeAt(0) : 0;
+    const ux = game.u?.ux | 0;
+    const uy = game.u?.uy | 0;
+    // C :4372–4376 — helpless, then "not in this shop" (short-circuit),
+    // then adjacent (squared distance < 3), then not already there.
+    if (!helpless(shkp)
+        && (heroShop !== (eshk.shoproom | 0) || !inside_shop(ux, uy))
+        && dist2(shkp.mx | 0, shkp.my | 0, x | 0, y | 0) < 3
+        && ((shkp.mx | 0) !== (x | 0) || (shkp.my | 0) !== (y | 0))) {
+        // C :4377–4381 — return 2 means another monster was moved aside.
+        if ((await mnearto(shkp, x | 0, y | 0, true, RLOC_NOMSG)) === 2
+            && !hero_deaf() && !muteshk(shkp)) {
+            SetVoice(shkp, 0, 80, 0);
+            await verbalize('Out of my way, scum!');
+        }
+        if (cansee(x, y)) { // C :4382
+            const landed = (x | 0) === (shkp.mx | 0) && (y | 0) === (shkp.my | 0);
+            await pline(
+                `${Shknam(shkp)} nimbly${landed ? '' : ' reaches over and'} catches ${the(xname(obj))}.`,
+            );
+            if (!canspotmon(shkp)) map_invisible(x, y); // C :4387
+            await nh_delay_output(); // C :4388
+            // C :4389 mark_synch — tty fflush; no JS stdout.
+        }
+        subfrombill(obj, shkp); // C :4391
+        mpickobj(shkp, obj); // C :4392
+        return shkp;
+    }
+    return null; // C :4395
 }
 
 /**

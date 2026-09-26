@@ -613,13 +613,13 @@ export function auto_describe_text(cx, cy) {
  * " (invalid target)" if getpos_getvalid fails; " (no travel path)" if
  * getloc_travelmode && !is_valid_travelpt. getpos_getvalid deferred.
  */
-function auto_describe_suffix(cx, cy) {
+async function auto_describe_suffix(cx, cy) {
     let s = '';
     // C ref: getpos.c auto_describe — getpos_getvalid → " (invalid target)"
     if (getpos_getvalid && !getpos_getvalid(cx, cy)) {
         s += ' (invalid target)';
     }
-    if (game.iflags?.getloc_travelmode && !is_valid_travelpt(cx, cy)) {
+    if (game.iflags?.getloc_travelmode && !await is_valid_travelpt(cx, cy)) {
         s += ' (no travel path)';
     }
     return s;
@@ -1338,7 +1338,7 @@ export async function getpos(ccp, force, goal, describeAt) {
             if (brief) {
                 const coords = coord_desc(cx, cy, g.iflags?.getpos_coords);
                 if (coords) brief += ` ${coords}`;
-                brief += auto_describe_suffix(cx, cy);
+                brief += await auto_describe_suffix(cx, cy);
             }
             g._pending_message = brief || '';
             // Full rebuild keeps map/topline in sync for walk frames; then

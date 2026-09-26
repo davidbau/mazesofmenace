@@ -1471,7 +1471,7 @@ export async function teleds(nux, nuy, teleds_flags) {
             && distmin(nux | 0, nuy | 0, uball.ox | 0, uball.oy | 0) <= 2) {
             ball_still_in_range = true;
         } else if (!allow_drag) {
-            unplacebc();
+            await unplacebc();
         }
     }
 
@@ -1518,7 +1518,7 @@ export async function teleds(nux, nuy, teleds_flags) {
         } else {
             // C: drag fail may clear Punished; re-check then unplacebc
             ball_active = !!(u.uball && (u.uball.where | 0) !== OBJ_FREE);
-            if (ball_active) unplacebc();
+            if (ball_active) await unplacebc();
         }
     }
 

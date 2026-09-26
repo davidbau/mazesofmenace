@@ -90,7 +90,7 @@ import {
 } from './invent.js';
 import { burn_away_slime } from './timeout.js';
 import {
-    get_mattk, mhitm_knockback, mhitm_mgc_atk_negated, mhitm_ad_drst, mhitm_ad_dren, mattackm, rustm,
+    get_mattk, mhitm_knockback, mhitm_mgc_atk_negated, mhitm_ad_drst, mhitm_ad_dren, mhitm_ad_deth, mhitm_ad_dise, mhitm_ad_pest, mhitm_ad_stck, mattackm, rustm,
     could_seduce, failed_grab, SYSOPT_SEDUCE, mon_poly, mondead, erode_armor,
     golemeffects_mm,
     AT_NONE, AT_CLAW, AT_KICK, AT_BITE, AT_STNG, AT_TUCH, AT_BUTT, AT_WEAP,
@@ -101,7 +101,7 @@ import {
     AD_SAMU,
 } from './mhitm.js';
 import { morehungry, is_fainted } from './eat.js';
-import { castmu, buzzmu, touch_of_death, Antimagic } from './mcastu.js';
+import { castmu, buzzmu } from './mcastu.js';
 import { rehumanize, polymon, body_part, Unchanging } from './polyself.js';
 import { set_wounded_legs, burnarmor, ignite_items, ceiling, drain_en, t_at, reset_utrap, minstapetrify } from './trap.js';
 import { mon_explodes } from './explode.js';
@@ -166,7 +166,6 @@ const IRON = 11;
 const METAL = 12;
 const PM_BLACK_PUDDING = monsterNames.indexOf('PM_BLACK_PUDDING');
 const PM_BROWN_PUDDING = monsterNames.indexOf('PM_BROWN_PUDDING');
-const PM_BARBED_DEVIL = monsterNames.indexOf('PM_BARBED_DEVIL');
 const PM_PAPER_GOLEM = monsterNames.indexOf('PM_PAPER_GOLEM');
 const PM_STRAW_GOLEM = monsterNames.indexOf('PM_STRAW_GOLEM');
 
@@ -1842,7 +1841,7 @@ async function gulpmu(mtmp, mattk) {
         if (await failed_grab(mtmp, game.youmonst, mattk)) return M_ATTK_MISS;
 
         if (Punished())
-            unplacebc(); /* ball&chain go away */
+            await unplacebc(); /* ball&chain go away */
         remove_monster(omx, omy);
         mtmp.mtrapped = 0; /* no longer on old trap */
         place_monster(mtmp, u.ux | 0, u.uy | 0);
@@ -2542,7 +2541,8 @@ async function mhitm_ad_slee_u(mtmp, mattk, mhm) {
             return;
         }
         monstunseesu(M_SEEN_SLEEP);
-        fall_asleep(-rnd(10), true);
+        /* C uhitm.c:3502 — fall_asleep(-rnd(10), TRUE) before the You line. */
+        await fall_asleep(-rnd(10), true);
         if (Blind()) {
             await pline('You are put to sleep!');
         } else {
@@ -2602,26 +2602,6 @@ async function mhitm_ad_corr_u(mtmp, mattk, mhm) {
         return;
     }
     await erode_armor(game.youmonst, ERODE_CORRODE);
-}
-
-/**
- * C ref: uhitm.c mhitm_ad_stck `:3321–3328` — mhitu (monster→you) arm.
- * The mhitm_mgc_atk_negated(FALSE) gate burns first (function top, all
- * three C branches); hitmsg, then stick (set_ustuck) when !negated,
- * hero not already stuck, and hero form lacks sticks(); barbed devils
- * add the barbs line. Damage untouched.
- */
-async function mhitm_ad_stck_u(mtmp, mattk, mhm) {
-    void mhm;
-    const negated = await mhitm_mgc_atk_negated(mtmp, null, false);
-    const pd = game.youmonst?.data;
-    const barbs = (((mtmp.data?.mndx ?? mtmp.mnum) | 0) === PM_BARBED_DEVIL);
-    await hitmsg(mtmp, mattk);
-    const u = game.u || {};
-    if (!negated && !u.ustuck && !sticks(pd)) {
-        set_ustuck(mtmp);
-        if (barbs) await pline('The barbs stick to you!');
-    }
 }
 
 /**
@@ -2692,7 +2672,7 @@ async function mhitm_ad_samu_u(mtmp, mattk, mhm) {
  * mdat->pmnames[NEUTRAL], TRUE, SICK_NONVOMITABLE), TRUE. Cause falls back
  * to 'a Rider' (eat.js Rider-corpse idiom) when the mndx lookup misses.
  */
-async function diseasemu(mdat) {
+export async function diseasemu(mdat) {
     const u = game.u || {};
     const e = u.uprops?.[SICK_RES];
     const Sick_resistance = !!((u.HSick_resistance | 0) || (u.ESick_resistance | 0)
@@ -2707,36 +2687,6 @@ async function diseasemu(mdat) {
     const cause = (mndx != null && pmnames[mndx]?.[NEUTRAL]) || 'a Rider';
     await make_sick(xtime, cause, true, SICK_NONVOMITABLE);
     return true;
-}
-
-/**
- * C ref: uhitm.c mhitm_ad_dise `:4593–4619` — mhitu (monster→you) arm only
- * (`:4604–4608`). hitmsg always (unconditional, like the SAMU/WERE arms);
- * then `if (!diseasemu(pa)) mhm->damage = 0` — sickness keeps the leftover
- * hitmu d() ("plus the normal damage"), resistance zeroes it. The uhitm
- * arm cannot happen (hero never polymorphs into a DISE attacker — C
- * `:4599–4603` comment); the mhitm arm (S_FUNGUS/GHOUL/defended gate,
- * `:4610–4618`) lives in mhitm.js.
- */
-async function mhitm_ad_dise_u(mtmp, mattk, mhm) {
-    await hitmsg(mtmp, mattk);
-    if (!(await diseasemu(mtmp?.data))) mhm.damage = 0;
-}
-
-/**
- * C ref: uhitm.c mhitm_ad_pest `:3808–3834` — mhitu (monster→you) arm only.
- * No hitmsg (C goes straight to pline_mon, like the FAMN arm, unlike the
- * STON/SLEE arms); pline_mon reach-out, then diseasemu(pa). Leftover
- * hitmu d() is kept ("plus the normal damage", unlike the default zero).
- * The uhitm arm cannot happen (hero never polymorphs into a PEST
- * attacker — C `:3815–3819` comment); the mhitm arm is AD_DISE damage
- * in mhitm.js.
- */
-async function mhitm_ad_pest_u(mtmp, mattk, mhm) {
-    void mattk;
-    void mhm; /* leftover d() stays */
-    await pline_mon(mtmp, `${Monnam(mtmp)} reaches out, and you feel fever and chills.`);
-    await diseasemu(mtmp?.data);
 }
 
 /**
@@ -3027,53 +2977,6 @@ async function mhitm_ad_slim_u(mtmp, mattk, mhm) {
 }
 
 /**
- * C ref: uhitm.c mhitm_ad_deth `:3836–3894` — mhitu arm (Death).
- * Reach-out pline_mon always (no hitmsg); undead hero form → half
- * damage rounded up + «Was that the touch of death?»; else one rn2(20):
- * 17–19 without Antimagic → touch_of_death, zero damage; 17–19 with
- * Antimagic fall through to 5–16 → life-force drain (permdmg = 1, the
- * hitmu caller rolls the max-HP cut); 0–4 → shieldeff if Antimagic +
- * «Lucky for you», zero damage. The mhitm (drli) arm stays named.
- */
-async function mhitm_ad_deth_u(mtmp, mattk, mhm) {
-    void mattk;
-    const pd = game.youmonst?.data ?? null;
-    await pline_mon(mtmp, `${Monnam(mtmp)} reaches out with its deadly touch.`);
-    if (is_undead(pd)) {
-        /* still does some damage */
-        mhm.damage = Math.trunc(((mhm.damage | 0) + 1) / 2);
-        await pline('Was that the touch of death?');
-        return;
-    }
-    switch (rn2(20)) {
-    case 19:
-    case 18:
-    case 17:
-        if (!Antimagic()) {
-            await touch_of_death(mtmp);
-            mhm.damage = 0;
-            return;
-        }
-        /* FALLTHROUGH */
-    default: /* case 16: ... case 5: */
-        await You_feel('your life force draining away...');
-        mhm.permdmg = 1; /* actual damage done by caller */
-        return;
-    case 4:
-    case 3:
-    case 2:
-    case 1:
-    case 0: {
-        const u = game.u || {};
-        if (Antimagic()) await shieldeff(u.ux, u.uy);
-        await pline("Lucky for you, it didn't work!");
-        mhm.damage = 0;
-        return;
-    }
-    }
-}
-
-/**
  * C ref: uhitm.c mhitm_adtyping — mhitu (monster→you) subset.
  * PHYS + ELEC + COLD + FIRE + ACID + TLPT + DRST/DRDX/DRCO + SITM/SEDU + SSEX (D-1750)
  * + BLND + STON + LEGS + POLY (D-1004) + DRIN (D-1329) + WRAP (D-1331) + SLEE
@@ -3151,7 +3054,9 @@ async function mhitm_adtyping_u(mtmp, mattk, mhm) {
         await mhitm_ad_corr_u(mtmp, mattk, mhm);
         break;
     case AD_STCK:
-        await mhitm_ad_stck_u(mtmp, mattk, mhm);
+        /* C ref: uhitm.c mhitm_adtyping `:4813` → mhitm_ad_stck
+           mhitu arm (mdef is youmonst). */
+        await mhitm_ad_stck(mtmp, mattk, game.youmonst, mhm);
         break;
     case AD_PLYS:
         await mhitm_ad_plys_u(mtmp, mattk, mhm);
@@ -3178,13 +3083,15 @@ async function mhitm_adtyping_u(mtmp, mattk, mhm) {
         await mhitm_ad_ench_u(mtmp, mattk, mhm);
         break;
     case AD_PEST:
-        await mhitm_ad_pest_u(mtmp, mattk, mhm);
+        /* C mhitm_adtyping `:4825` — mhitu arm is inside mhitm_ad_pest. */
+        await mhitm_ad_pest(mtmp, mattk, game.youmonst, mhm);
         break;
     case AD_STUN:
         await mhitm_ad_stun_u(mtmp, mattk, mhm);
         break;
     case AD_DISE:
-        await mhitm_ad_dise_u(mtmp, mattk, mhm);
+        /* C mhitm_adtyping `:4822` — mhitu arm is inside mhitm_ad_dise. */
+        await mhitm_ad_dise(mtmp, mattk, game.youmonst, mhm);
         break;
     case AD_SGLD:
         await mhitm_ad_sgld_u(mtmp, mattk, mhm);
@@ -3199,7 +3106,8 @@ async function mhitm_adtyping_u(mtmp, mattk, mhm) {
         await mhitm_ad_slim_u(mtmp, mattk, mhm);
         break;
     case AD_DETH:
-        await mhitm_ad_deth_u(mtmp, mattk, mhm);
+        /* C uhitm.c mhitm_adtyping `:4824` → mhitm_ad_deth mhitu arm. */
+        await mhitm_ad_deth(mtmp, mattk, game.youmonst, mhm);
         break;
     case AD_DGST: /* C uhitm.c:4502–4504 mhitu arm: damage = 0 */
     case AD_HALU: /* C uhitm.c:3907–3909 mhitu arm: damage = 0 */

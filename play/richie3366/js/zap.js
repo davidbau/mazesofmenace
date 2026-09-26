@@ -300,7 +300,7 @@ import { newcham, makemon, create_critters, monhp_per_lvl, neweshk, add_to_minv,
 import { tele, u_teleport_mon, rloco, enexto } from './teleport.js';
 import { find_ac, addinv_core1, addinv_core2 } from './u_init.js';
 import { rehumanize, polymon, body_part } from './polyself.js';
-import { costly_alteration, stolen_value, costly_spot, shop_keeper, hot_pursuit, obfree, delete_contents, addtobill } from './shk.js';
+import { costly_alteration, stolen_value, costly_spot, shop_keeper, hot_pursuit, obfree, delete_contents, addtobill, inside_shop, shkcatch } from './shk.js';
 import { dryup } from './fountain.js';
 import { explode, completelyburns } from './explode.js';
 import { unpunish, litroom } from './read.js';
@@ -327,7 +327,7 @@ import {
 import {
     WAND_CLASS, SPBOOK_CLASS, WEAPON_CLASS, ARMOR_CLASS, POTION_CLASS,
     TOOL_CLASS, GEM_CLASS, SCROLL_CLASS, RING_CLASS, FOOD_CLASS, COIN_CLASS,
-    ROCK_CLASS, NODIR, IMMEDIATE, objectNames, is_poisonable,
+    ROCK_CLASS, NODIR, IMMEDIATE, objectNames, is_poisonable, is_pick,
 } from './objects.js';
 import {
     WAND_BACKFIRE_CHANCE, WAND_WREST_CHANCE, nothing_happens, LARGEST_INT,
@@ -2071,7 +2071,8 @@ async function zhitu(type, nd, fltxt, sx, sy) {
         if (Sleep_resistance()) {
             await pline("You don't feel sleepy.");
         } else {
-            fall_asleep(-d(nd, 25), true);
+            /* C zap.c:4461 — fall_asleep(-d(nd, 25), TRUE). */
+            await fall_asleep(-d(nd, 25), true);
         }
         break;
     case ZT_DEATH:
@@ -4466,7 +4467,8 @@ export async function zapyourself(obj, ordinary) {
             if (ordinary) await pline('The sleep ray hits you!');
             else await pline('You fall asleep!');
             // monstunseesu deferred
-            fall_asleep(-rnd(50), true);
+            /* C zap.c:2864 — fall_asleep(-rnd(50), TRUE). */
+            await fall_asleep(-rnd(50), true);
         }
         break;
 
@@ -5884,9 +5886,9 @@ function bhit_skiprange(range) {
  * callee staticfn `:3579–3588` file-local `bhit_skiprange`;
  * M_IN_WATER is zap.c:61 `S_EEL || cant_drown`, canonical import).
  * Named omit: THROWN_WEAPON fly callers (throwit still inlines those
- * and still skips WEB / shade / mimic-object); shkcatch pick
- * (`:3887–3892`, no JS export); HEAVY_IRON_BALL boulder/uball stop
- * (`:4102–4121`, needs sobj_at export + test_move).
+ * and still skips WEB / shade / mimic-object); HEAVY_IRON_BALL
+ * boulder/uball stop (`:4102–4121`, needs sobj_at export + test_move).
+ * shkcatch is `shk.c:4362` (`:3885–3890`), before terrain.
  * show_transient_light is D-1597; bhit `!Blind` is youprop.h:103 (D-1604).
  * pobj is `{ obj }` — may set `.obj = null` when destroyed (kicked).
  */
@@ -5945,6 +5947,19 @@ async function bhit(ddx, ddy, range, weapon, fhitm, fhito, pobj) {
                 bhitpos.x -= ddx;
                 bhitpos.y -= ddy;
                 break;
+            }
+
+            // C zap.c bhit :3885–3890 — a pick entering a shop is
+            // caught before terrain. goto bhit_done skips shopdoor pay;
+            // tmp_at END runs here, including for a tethered weapon.
+            if (is_pick(obj) && inside_shop(x, y)) {
+                const caught = await shkcatch(obj, x, y);
+                if (caught) {
+                    tmp_at(DISP_END, 0);
+                    result = caught;
+                    bhit_done = true;
+                    break;
+                }
             }
 
             const loc = game.level?.at?.(x, y);

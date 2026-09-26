@@ -43,6 +43,7 @@ import { pline, putmsghistory, You_feel, impossible, flush_topl_more, raw_printf
 import { show_nhw_menu_text, strip_newline } from './pager.js';
 import { TRIBUTE_TEXT } from './generated/tribute_data.js';
 import { maxledgerno } from './dungeon.js';
+import { pmatch } from './cmd.js';
 
 const INVLET_BASIC = 52;
 const SCR_SCARE_MONSTER = objectNames.indexOf('SCR_SCARE_MONSTER');
@@ -1251,5 +1252,62 @@ export function delete_convertedfile(basefilename) {
          * in scored ESM (Rule #2; delete_levelfile precedent). */
     }
     return 0; // `:2164`
+}
+
+/**
+ * C ref: files.c nh_basename `:199–229`. Strip the directory. When
+ * `keep_suffix` is false, also drop the last `.suffix` if the name
+ * part fits in C's 80-byte `basebuf`. VMS and WIN32 backslash arms
+ * are compiled out on this host. JS returns a string; C's static
+ * `basebuf` is not aliased across calls.
+ * @param {string} fname
+ * @param {boolean} keep_suffix
+ * @returns {string}
+ */
+export function nh_basename(fname, keep_suffix) {
+    let name = String(fname ?? ''); // `:205` strrchr('/')
+    const slash = name.lastIndexOf('/');
+    if (slash >= 0) name = name.slice(slash + 1); // `:206` fname = p + 1
+    /* C `:207–210` WIN32/MSDOS '\\' — not this host. */
+    if (!keep_suffix) { // `:211`
+        const dot = name.lastIndexOf('.');
+        if (dot >= 0) {
+            const ln = dot; // `:212` p - fname
+            if (ln < 80) name = name.slice(0, ln); // `:219–222` strncpy basebuf
+            /* else C returns the unsliced name (`:217`). */
+        }
+    }
+    return name; // `:228`
+}
+
+/**
+ * C ref: files.c debugcore `:3126–3166` (`#ifdef DEBUG`, on via
+ * `patchlevel.h:36`). Wizard only. Empty `sysopt.debugfiles` is the
+ * usual case and returns false before any match. `wildcards` false
+ * skips `pmatch` (explicitdebug). The `strstr` hit is only the first
+ * one, and it must be a whole token (start, space, or '/') ending at
+ * space or NUL.
+ * @param {string} filename
+ * @param {boolean} wildcards
+ * @returns {boolean}
+ */
+export function debugcore(filename, wildcards) {
+    if (!wizard_mode()) return false; // `:3132–3133` !wizard
+    if (filename == null || filename === '') return false; // `:3135–3136`
+    const debugfiles = game.sysopt?.debugfiles; // `:3138`
+    if (debugfiles == null || debugfiles === '') return false; // `:3140–3141`
+    const base = nh_basename(filename, true); // `:3144` keep suffix
+    if (wildcards && pmatch(String(debugfiles), base)) return true; // `:3154`
+    const p = String(debugfiles).indexOf(base); // `:3158` strstr, first hit
+    if (p >= 0) {
+        const l = base.length; // `:3159`
+        const prevOk = p === 0
+            || debugfiles[p - 1] === ' '
+            || debugfiles[p - 1] === '/'; // `:3161`
+        const end = debugfiles[p + l];
+        const nextOk = end === ' ' || end === undefined; // `:3162` ' ' or '\0'
+        if (prevOk && nextOk) return true; // `:3163`
+    }
+    return false; // `:3165`
 }
 

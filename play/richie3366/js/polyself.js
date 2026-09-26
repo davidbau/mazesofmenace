@@ -84,7 +84,7 @@ import {
     SICK_ALL, LL_CONDUCT, LL_MINORAC, NECK, STRANGLED, PL_CSIZ,
 } from './const.js';
 // change_sex :287 callee (imports.mjs: IN-SCC, runtime-only call — no TDZ read).
-import { max_rank_sz } from './botl.js';
+import { max_rank_sz, status_initialize } from './botl.js';
 import { livelog_printf } from './pline.js';
 import {
     make_stoned, make_sick, make_slimed, make_glib,
@@ -215,6 +215,7 @@ import {
     AD_RBRE,
     WC2_HILITE_STATUS,
     WC2_FLUSH_STATUS,
+    REASSESS_ONLY,
     KILLED_BY_AN,
     BOLT_LIM,
     BZ_OFS_AD,
@@ -880,11 +881,11 @@ export function set_uasmon() {
     // C :112
     polysense();
 
-    // C :121–124 STATUS_HILITES is on (config.h:616). Contest tty
-    // wincap2 is 0, so VIA_WINDOWPORT() is false and status_initialize
-    // (botl.c:1682) is not called. Named until a windowport sets the bits.
+    // C polyself.c:121–124. STATUS_HILITES is on (config.h:616).
+    // Contest tty leaves wincap2 unset, so VIA_WINDOWPORT() is false
+    // and this call does not run until a windowport sets the bits.
     if (via_windowport()) {
-        /* status_initialize(REASSESS_ONLY) — botl.c:1682, not ported */
+        status_initialize(REASSESS_ONLY); // C :123
     }
 
     // C :126

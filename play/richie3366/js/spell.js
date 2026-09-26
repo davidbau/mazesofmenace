@@ -124,9 +124,9 @@ import { nhgetch } from './input.js';
 import {
     flush_screen, pline, You, Your, pline_The, You_feel, impossible, canspotmon, tmp_at,
     clear_nhwindow_message, canseemon, map_invisible, zapdir_to_glyph,
-    nh_delay_output,
+    nh_delay_output, flush_topl_more,
 } from './display.js';
-import { paint_corner_nhw_menu, dismiss_nhw_menu, discover_object, makeknown, near_capacity, update_inventory, observe_object } from './invent.js';
+import { paint_corner_nhw_menu, dismiss_nhw_menu, discover_object, makeknown, near_capacity, update_inventory, observe_object, useup as useup_inv } from './invent.js';
 import { yn_function } from './getline.js';
 import { ATR_INVERSE, NO_COLOR } from './terminal.js';
 import { weight, mksobj, delobj, noveltitle } from './mkobj.js';
@@ -865,11 +865,46 @@ async function deadbook(book2) {
 }
 
 /**
+ * C ref: spell.c confused_book `:189–207`.
+ * `!rn2(3)` tears the book unless it is the Book of the Dead; the
+ * roll is not skipped for that book. Otherwise the hero rereads the
+ * next line when this object is the one `learn` is studying, else
+ * the first. `display_nhwindow(WIN_MESSAGE, FALSE)` is `flush_topl_more`.
+ * Destruction uses invent.c `useup` (the file-local clone stays on
+ * the older cursed-book path).
+ * @param {object} spellbook
+ * @returns {Promise<boolean>} true when the book is destroyed
+ */
+async function confused_book(spellbook) {
+    let gone = false;
+    // C `:194` — left-to-right &&, so rn2(3) always runs.
+    if (!rn2(3) && (spellbook.otyp | 0) !== SPE_BOOK_OF_THE_DEAD) {
+        spellbook.in_use = true; // in case called from learn()
+        await pline(
+            'Being confused you have difficulties in controlling your actions.',
+        );
+        await flush_topl_more(); // display_nhwindow(WIN_MESSAGE, FALSE)
+        await You('accidentally tear the spellbook to pieces.');
+        await trycall(spellbook);
+        useup_inv(spellbook);
+        gone = true;
+    } else {
+        const studying = game.context?.spbook?.book;
+        await You(
+            'find yourself reading the %s line over and over again.',
+            spellbook === studying ? 'next' : 'first',
+        );
+    }
+    return gone;
+}
+
+/**
  * C ref: spell.c learn() — occupation while studying a spellbook.
  * Branch envelope: delay++ while nonzero; finish → learn/relearn spell
- * + makeknown; cursed_book on finish may destroy.
- * Named omissions: lenses rn2(2) faster read; Confusion→confused_book
- * + nomul remainder; faded-blank spestudied rn2 polish; check_unpaid.
+ * + makeknown; cursed_book on finish may destroy; Confusion →
+ * confused_book then nomul of the remaining delay.
+ * Named omissions: lenses rn2(2) faster read; faded-blank
+ * update_inventory; check_unpaid.
  * @returns {Promise<number>} 1 = still busy, 0 = done
  */
 async function learn() {
@@ -880,7 +915,9 @@ async function learn() {
 
     // lenses faster-read deferred (ublindf LENSES && rn2(2) → delay++)
     if (game.u?.Confusion) {
-        // confused_book deferred — clear study + nomul remainder
+        // C spell.c `:368–376` — confused_book while spbook.book is
+        // still this object ("next"), then drop the study.
+        if (book) await confused_book(book);
         spbook.book = null;
         spbook.o_id = 0;
         nomul(spbook.delay | 0);
@@ -980,8 +1017,8 @@ async function learn() {
  * SPE_NOVEL read_tribute (D-1633); already-known refresh yn (KEEN/10);
  * delay by oc_level; uncursed rnd(20) fail gate; too_hard → cursed_book
  * + nomul + !rn2(3) crumble; begin-memorize + set_occupation(learn)
- * (D-0907); interrupted continue same-book skips fail gate.
- * Named omissions: confused_book body.
+ * (D-0907); interrupted continue same-book skips fail gate;
+ * confused → confused_book then nomul.
  * @returns {Promise<number>} 1 = took time, 0 = cancel / no time
  */
 export async function study_book(spellbook) {
@@ -1009,7 +1046,8 @@ export async function study_book(spellbook) {
                 if (eyecount(game.youmonst?.data) > 1) eyes = makeplural(eyes);
                 await pline(`This book is so dull that you can't keep your ${eyes} open.`);
                 dullbook += rnd(2 * ocLevel);
-                fall_asleep(-dullbook, true);
+                /* C spell.c:491 — fall_asleep(-dullbook, TRUE). */
+                await fall_asleep(-dullbook, true);
                 return 1;
             }
         }
@@ -1142,8 +1180,13 @@ export async function study_book(spellbook) {
         return 1;
     }
     if (confused) {
-        // confused_book deferred
-        spellbook.in_use = false;
+        // C spell.c `:620–628` — clear in_use only when the book survives.
+        if (!(await confused_book(spellbook))) {
+            spellbook.in_use = false;
+        }
+        nomul(game.context.spbook.delay | 0);
+        game.multi_reason = 'reading a book';
+        game.nomovemsg = null;
         game.context.spbook.delay = 0;
         return 1;
     }

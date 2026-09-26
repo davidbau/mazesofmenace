@@ -36,7 +36,8 @@ import {
     DISMOUNT_FELL, W_SADDLE, SUPPRESS_SADDLE, NEUTRAL,
 } from './const.js';
 import { heal_legs, float_down, instapetrify } from './trap.js';
-import { stop_occupation, nomul, is_pool, is_lava, carrying, You_hear, monst_to_any, confdir } from './hack.js';
+import { unconscious } from './teleport.js';
+import { stop_occupation, nomul, is_pool, is_lava, carrying, You_hear, monst_to_any, confdir, fall_asleep } from './hack.js';
 import { run_timers, start_timer, stop_timer, weight,
     obj_extract_self, delobj, objects_at, attach_egg_hatch_timeout,
     obj_has_timer, rider_revival_time, rot_corpse, set_corpsenm,
@@ -48,7 +49,7 @@ import { hurtle } from './dothrow.js';
 import { make_confused, make_deaf, make_hallucinated, make_sick, make_slimed, make_stoned, make_stunned, make_vomiting, set_itimeout } from './potion.js';
 import { make_blinded } from './do.js';
 import { Fumbling, Fast, Very_fast, acurr, adjattrib, exercise, stone_luck, A_STR, A_DEX, A_CON } from './attrib.js';
-import { pline, You_feel, newsym, canseemon, verbalize, Norep, see_monsters, impossible, urgent_pline, Hallucination } from './display.js';
+import { pline, You, You_feel, newsym, canseemon, verbalize, Norep, see_monsters, impossible, urgent_pline, Hallucination } from './display.js';
 import { inv_weight, update_inventory, useup, useupall } from './invent.js';
 import { doname, makeplural, xname, an, The, the, vtense } from './objnam.js';
 import { rn2, rnd, rn1, d } from './rng.js';
@@ -377,6 +378,47 @@ function incr_itimeout_HDeaf(incr) {
     if (val > TIMEOUT) val = TIMEOUT;
     if (val < 1) val = 0;
     set_itimeout_HDeaf((cur & ~TIMEOUT) | (val & TIMEOUT));
+}
+
+/** C youprop.h HSleepy ≡ uprops[SLEEPY].intrinsic — one field. */
+function set_HSleepy(val) {
+    const u = game.u || (game.u = {});
+    u.HSleepy = val | 0;
+    if (!u.uprops) u.uprops = {};
+    const prop = u.uprops[SLEEPY] || (u.uprops[SLEEPY] = {
+        intrinsic: 0, extrinsic: 0, blocked: 0,
+    });
+    prop.intrinsic = u.HSleepy;
+}
+
+/**
+ * C potion.c incr_itimeout(&HSleepy, incr) — TIMEOUT bits only.
+ * `itimeout` clamps `>= TIMEOUT` to TIMEOUT and `< 1` to 0.
+ */
+function incr_itimeout_HSleepy(incr) {
+    const u = game.u || (game.u = {});
+    const cur = (u.HSleepy | 0) | (u.uprops?.[SLEEPY]?.intrinsic | 0);
+    let val = (cur & TIMEOUT) + (incr | 0);
+    if (val >= TIMEOUT) val = TIMEOUT;
+    else if (val < 1) val = 0;
+    set_HSleepy((cur & ~TIMEOUT) | (val & TIMEOUT));
+}
+
+/** C youprop.h Sleepy — HSleepy || ESleepy (any nonzero bit). */
+function Sleepy() {
+    const u = game.u || {};
+    const p = u.uprops?.[SLEEPY];
+    return !!((u.HSleepy | 0) || (u.ESleepy | 0)
+        || (p?.intrinsic | 0) || (p?.extrinsic | 0));
+}
+
+/** C youprop.h Sleep_resistance — HSleep_resistance || ESleep_resistance. */
+function Sleep_resistance() {
+    const u = game.u || {};
+    const p = u.uprops?.[SLEEP_RES];
+    return !!((u.HSleep_resistance | 0) || (u.ESleep_resistance | 0)
+        || u.Sleep_resistance
+        || (p?.intrinsic | 0) || (p?.extrinsic | 0));
 }
 
 /**
@@ -912,8 +954,9 @@ function nh_timeout_luck(u) {
  * ACID_RES/STONE_RES TIMEOUT → meal-extension (`eating_dangerous_corpse`,
  * eat.c `:472–493`) else expiry message unless resistant/Unaware (D-2229).
  * Named omissions: region_dialogue;
- * STUNNED/SEE_INVIS/HALLUC/SLEEPY/…
- * expiry messages; STONE_RES `wielding_corpse` pair (do_wear.c:606);
+ * STUNNED/SEE_INVIS/HALLUC/…
+ * expiry messages; SLEEPY expiry is the `fall_asleep` arm below;
+ * STONE_RES `wielding_corpse` pair (do_wear.c:606);
  * FLYING timed-land (wizintrinsic); GLIB `make_glib(0)`
  * inventory on expiry; ublesscnt (in allmain); ugallop; delayed killers;
  * full ice/mount slip_or_trip arms; you_unwere callers
@@ -1286,6 +1329,22 @@ export async function nh_timeout() {
                         'You no longer feel secure from petrification.',
                     );
                 }
+            }
+        }
+        if (!(next & TIMEOUT) && p === SLEEPY) {
+            /* C timeout.c:784–792 — sleepy timeout runs out. Still
+             * unconscious or sleep-resistant: extend HSleepy by rnd(100).
+             * Else if still Sleepy (extrinsic or leftover intrinsic bits):
+             * You("fall asleep."), sleeptime = rnd(20), fall_asleep, then
+             * incr_itimeout(sleeptime + rnd(100)). A bare timeout that
+             * leaves Sleepy false just ends. */
+            if (unconscious() || Sleep_resistance()) {
+                incr_itimeout_HSleepy(rnd(100));
+            } else if (Sleepy()) {
+                await You('fall asleep.');
+                const sleeptime = rnd(20);
+                await fall_asleep(-sleeptime, true);
+                incr_itimeout_HSleepy(sleeptime + rnd(100));
             }
         }
     }

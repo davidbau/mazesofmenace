@@ -100,7 +100,7 @@ import {
 } from './objects.js';
 import { shtypes, stock_room } from './shknam.js';
 import { setgemprobs } from './o_init.js';
-import { maketrap, t_at, undestroyable_trap, deltrap, reset_utrap, mintrap, set_levltyp } from './trap.js';
+import { maketrap, t_at, undestroyable_trap, deltrap, reset_utrap, mintrap, set_levltyp, set_levltyp_lit } from './trap.js';
 import {
     mkobj, mksobj, mksobj_at, mksobj_migr_to_species, mkobj_at, mkgold,
     mkcorpstat, next_ident,
@@ -1251,9 +1251,12 @@ export function lspo_gold(a, b, c) {
         y = c | 0;
     } else if (argc === 2 && b !== null && typeof b === 'object') { // C :4493-4496
         amount = a | 0;
-        const cc = get_coord_unpacked(b); // C get_coord(L, 2, ...)
-        x = cc.x;
-        y = cc.y;
+        // C :4486 gldx/gldy are unset until get_coord writes them. A nil
+        // leaves the -1 seed (this arm only runs for a table).
+        const gld = { x: -1, y: -1 };
+        get_coord(b, gld); // C :4496 get_coord(L, 2, &gldx, &gldy)
+        x = gld.x;
+        y = gld.y;
     } else if (argc === 0 || (argc === 1 && a !== null && typeof a === 'object')) { // C :4497-4501
         create_des_coder();
         const o = a ?? {}; // C lcheck_param_table
@@ -1378,7 +1381,8 @@ export function lspo_trap(a, b, c) {
     } else if (argc === 2 && typeof a === 'string' // C :4414-4420
         && b !== null && typeof b === 'object') {
         tmp.type = lspo_traptype_byname(a);
-        const cc = get_coord_unpacked(b); // C :4419 get_coord
+        const cc = { x, y }; // C :4400 x,y; this arm starts from the -1 seed
+        get_coord(b, cc); // C :4419 get_coord(L, 2, &x, &y)
         x = cc.x;
         y = cc.y;
     } else if (argc === 3) { // C :4421-4427 (C checks argc only)
@@ -1397,16 +1401,18 @@ export function lspo_trap(a, b, c) {
         tmp.seen = !!splev_opt_boolean(o.seen, 0); // C :4434
         tmp.novictim = !splev_opt_boolean(o.victim, 1); // C :4435
         if (o.launchfrom != null && typeof o.launchfrom === 'object') { // C :4437-4446
-            const lc = get_coord_unpacked(o.launchfrom);
+            const lc = { x: -1, y: -1 }; // C :4438
+            get_coord(o.launchfrom, lc); // C :4439 get_coord(L, -1, &lx, &ly)
             const lp = game.launchplace ?? (game.launchplace = { x: 0, y: 0 });
-            lp.x = lc.x;
-            lp.y = lc.y;
+            lp.x = lc.x; // C :4442
+            lp.y = lc.y; // C :4443
         }
         if (o.teledest != null && typeof o.teledest === 'object') { // C :4448-4460
-            const lc = get_coord_unpacked(o.teledest);
+            const lc = { x: -1, y: -1 }; // C :4449
+            get_coord(o.teledest, lc); // C :4450 get_coord(L, -1, &lx, &ly)
             const lp = game.launchplace ?? (game.launchplace = { x: 0, y: 0 });
-            lp.x = lc.x;
-            lp.y = lc.y;
+            lp.x = lc.x; // C :4453
+            lp.y = lc.y; // C :4454
         }
     }
     if (tmp.type === NO_TRAP) throw new Error('lspo_trap: Unknown trap type'); // C :4463-4464
@@ -1501,9 +1507,10 @@ export function lspo_feature(a, b, c) {
     } else if (argc === 2 && typeof a === 'string' // C :4861-4867
         && b !== null && typeof b === 'object') {
         typ = LSPO_FEATURES2I[splev_opt_index(a, null, LSPO_FEATURES)];
-        const cc = get_coord_unpacked(b); // C get_coord(L, 2, ...)
-        x = cc.x;
-        y = cc.y;
+        const fx = { x: -1, y: -1 }; // C :4864 fx, fy
+        get_coord(b, fx); // C :4866 get_coord(L, 2, &fx, &fy)
+        x = fx.x;
+        y = fx.y;
     } else if (argc === 3) { // C :4868-4872
         typ = LSPO_FEATURES2I[splev_opt_index(a, null, LSPO_FEATURES)];
         x = b | 0;
@@ -1604,9 +1611,10 @@ export function lspo_engraving(a, b, c) {
         wipeout = (o.degrade == null ? 1 : splev_feature_boolopt(o.degrade, 'degrade')) !== 0;
         guardobjs = (o.guardobjects == null ? 0 : splev_feature_boolopt(o.guardobjects, 'guardobjects')) !== 0;
     } else if (argc === 3) { // C :3911-3917
-        const cc = get_coord_unpacked(a); // C :3913 (void) get_coord
-        x = cc.x;
-        y = cc.y;
+        const ex = { x, y }; // C :3912 ex, ey; nil leaves the -1 seed
+        get_coord(a, ex); // C :3913 (void) get_coord(L, 1, &ex, &ey)
+        x = ex.x;
+        y = ex.y;
         etyp = LSPO_ENGRTYPES2I[splev_opt_index(b, 'engrave', LSPO_ENGRTYPES)]; // C :3916
         if (typeof c !== 'string') // C :3917 dupstr(luaL_checkstring)
             throw new Error('bad argument #3 (string expected)');
@@ -1724,24 +1732,6 @@ function mapfrag_error(mf) {
 }
 
 /**
- * C ref: mkmaze.c set_levltyp_lit `:125–145` lit tail — the set_levltyp
- * half (typ/flags/roomno/edge) rides sel_set_ter, which already covers
- * NOCHANGE-keep and truthy-set; this tail ports what it does not:
- * explicit 0 clears (JS sel_set_ter leaves legacy false alone — the
- * lspo_map inline idiom), SET_LIT_RANDOM draws rn2(2) (C `:139–140`),
- * lava forces lit (C `:137–138`). Assigned when the cell isok like C
- * `:129` (sel bounds are isok-gated; the guard mirrors C's ret).
- */
-function set_levltyp_lit_tail(x, y, typ, lit) {
-    if (lit === SET_LIT_NOCHANGE) return; // C :131
-    let l = lit;
-    if (IS_LAVA(typ)) l = 1; // C :137-138
-    else if (lit === SET_LIT_RANDOM) l = rn2(2); // C :139-140
-    const loc = game.level.at(x, y);
-    if (loc && isok(x, y)) loc.lit = !!l; // C :142
-}
-
-/**
  * C ref: sp_lev.c lspo_replace_terrain `:5051–5143` — des.replace_terrain
  * entry in C order. Table form only (C `:5064` lcheck_param_table ≡
  * table-or-empty + object check). toterrain is required (C nhlua.c:241
@@ -1834,17 +1824,13 @@ export function lspo_replace_terrain(opts) {
         for (let y = rect.ly; y <= rect.hy; y++) // C :5124 (no lower clamp, like C)
             if (selection_getpoint(x, y, sel)) { // C :5125
                 if (mf) { // C :5126
-                    if (mapfrag_match(mf, x, y) && rn2(100) < chance) { // C :5127-5128
-                        sel_set_ter(x, y, totyp, tolit === SET_LIT_RANDOM ? SET_LIT_NOCHANGE : tolit); // C :5129 set_levltyp half
-                        set_levltyp_lit_tail(x, y, totyp, tolit); // C :5129 lit half
-                    }
+                    if (mapfrag_match(mf, x, y) && rn2(100) < chance) // C :5127-5128
+                        set_levltyp_lit(x, y, totyp, tolit); // C :5128
                 } else { // C :5130
                     const t = game.level.at(x, y)?.typ; // C levl[x][y].typ
                     if (((fromtyp === MATCH_WALL && IS_STWALL(t)) || t === fromtyp) // C :5131-5132
-                        && rn2(100) < chance) { // C :5133
-                        sel_set_ter(x, y, totyp, tolit === SET_LIT_RANDOM ? SET_LIT_NOCHANGE : tolit); // C :5134 set_levltyp half
-                        set_levltyp_lit_tail(x, y, totyp, tolit); // C :5134 lit half
-                    }
+                        && rn2(100) < chance) // C :5133
+                        set_levltyp_lit(x, y, totyp, tolit); // C :5133
                 }
             }
     if (freesel) selection_free(sel, true); // C :5138-5139
@@ -19535,8 +19521,11 @@ function load_tut1() {
     // mklev.c mineralize(-1,-1,-1,-1,FALSE) in level_finalize_topology
     // after makelevel (map 'P'→POOL / 'W'→WATER; D-1059).
 
-    // C load_special: noflip → skip flip; fixup_special copies TELE dests.
-    // wallify / map_cleanup / count_level_features deferred (not this cluster).
+    // C load_special `:6479–6480` — wallification when !corrmaze, before
+    // flip (noflip) and fixup_special. map_cleanup / count_level_features
+    // stay deferred.
+    if (!game.level.flags.corrmaze)
+        wallification(1, 0, COLNO - 1, ROWNO - 1);
     return fixup_special();
 }
 
@@ -19618,7 +19607,10 @@ function load_tut2() {
         }
     }
 
-    // C load_special: noflip → skip flip; fixup_special copies TELE dests.
+    // C load_special `:6479–6480` — wallification when !corrmaze, before
+    // flip (noflip) and fixup_special.
+    if (!game.level?.flags?.corrmaze)
+        wallification(1, 0, COLNO - 1, ROWNO - 1);
     return fixup_special();
 }
 
@@ -19727,23 +19719,17 @@ function nhlib_shuffle_align() {
     game.splev_align = align;
 }
 
-/** C ref: sp_lev.c lvlfill_solid → set_levltyp_lit */
+/** C ref: sp_lev.c lvlfill_solid :373–388 — set_levltyp_lit, then clear flags. */
 function lvlfill_solid(filling, lit) {
-    const map = game.level;
     for (let x = 2; x <= X_MAZE_MAX; x++) {
         for (let y = 0; y <= Y_MAZE_MAX; y++) {
-            const loc = map.at(x, y);
+            if (!set_levltyp_lit(x, y, filling, lit)) continue; // C :380-381
+            const loc = game.level.at(x, y);
             if (!loc) continue;
-            loc.typ = filling;
-            loc.flags = 0;
-            loc.horizontal = false;
-            loc.roomno = 0;
-            loc.edge = false;
-            // C set_levltyp_lit: always assign when lit != SET_LIT_NOCHANGE
-            let l = lit;
-            if (IS_LAVA(filling)) l = 1;
-            else if (l === SET_LIT_RANDOM) l = rn2(2);
-            loc.lit = !!l;
+            loc.flags = 0; // C :383
+            loc.horizontal = false; // C :384
+            loc.roomno = 0; // C :385
+            loc.edge = false; // C :386
         }
     }
 }
@@ -19911,42 +19897,23 @@ function lvlfill_swamp(fg, bg, lit) {
         for (let y = 0; y <= ymax; y += 2) {
             let c = 0;
             const map = game.level;
-            {
-                const loc = map.at(x, y);
-                if (loc) {
-                    loc.typ = fg;
-                    loc.flags = 0;
-                    loc.horizontal = false;
-                    loc.roomno = 0;
-                    loc.edge = false;
-                    let l = lit;
-                    if (IS_LAVA(fg)) l = 1;
-                    else if (l === SET_LIT_RANDOM) l = rn2(2);
-                    loc.lit = !!l;
-                }
-            }
-            if (map.at(x + 1, y)?.typ === bg) ++c;
-            if (map.at(x, y + 1)?.typ === bg) ++c;
-            if (map.at(x + 1, y + 1)?.typ === bg) ++c;
+            set_levltyp_lit(x, y, fg, lit); // C :402
+            if (map.at(x + 1, y)?.typ === bg) ++c; // C :403-404
+            if (map.at(x, y + 1)?.typ === bg) ++c; // C :405-406
+            if (map.at(x + 1, y + 1)?.typ === bg) ++c; // C :407-408
             if (c === 3) {
-                let ox = x, oy = y;
-                switch (rn2(3)) {
-                case 0: ox = x + 1; oy = y; break;
-                case 1: ox = x; oy = y + 1; break;
-                case 2: ox = x + 1; oy = y + 1; break;
-                default: break;
-                }
-                const loc = map.at(ox, oy);
-                if (loc) {
-                    loc.typ = fg;
-                    loc.flags = 0;
-                    loc.horizontal = false;
-                    loc.roomno = 0;
-                    loc.edge = false;
-                    let l = lit;
-                    if (IS_LAVA(fg)) l = 1;
-                    else if (l === SET_LIT_RANDOM) l = rn2(2);
-                    loc.lit = !!l;
+                switch (rn2(3)) { // C :410
+                case 0:
+                    set_levltyp_lit(x + 1, y, fg, lit); // C :412
+                    break;
+                case 1:
+                    set_levltyp_lit(x, y + 1, fg, lit); // C :415
+                    break;
+                case 2:
+                    set_levltyp_lit(x + 1, y + 1, fg, lit); // C :418
+                    break;
+                default:
+                    break;
                 }
             }
         }
@@ -21692,32 +21659,107 @@ function lspo_strcmpi(a, b) {
 }
 
 /**
- * C ref: sp_lev.c get_coord (unpacked table / 2-array). Non-table → -1,-1.
+ * C ref: nhlua.c nhl_error :198–218.
+ * Unpacked stand-in: there is no lua_State, so lua_getstack / lua_getinfo
+ * (the "line N short_src" suffix) is omitted. lua_error does not return.
+ * The #if 0 panictrace_setsignals block is not in this build.
  */
-function get_coord_unpacked(coord) {
-    if (coord == null || typeof coord !== 'object') return { x: -1, y: -1 };
-    if (Array.isArray(coord)) {
-        if (coord.length !== 2) return { x: -1, y: -1 };
-        return { x: coord[0] | 0, y: coord[1] | 0 };
-    }
-    if (coord.x != null && coord.y != null) {
-        return { x: coord.x | 0, y: coord.y | 0 };
-    }
-    return { x: -1, y: -1 };
+function nhl_error(msg) {
+    throw new Error(String(msg));
 }
 
 /**
- * C ref: sp_lev.c get_table_xy_or_coord — x/y else coord.
+ * C ref: lauxlib luaL_checkinteger, as get_coord calls it on the "x"/"y"
+ * fields (:5331, :5339). A finite number truncates toward 0 like the
+ * file's other checkinteger stand-in; a numeric string converts the same
+ * way lua_isnumber does. Anything else is nhl_error (C typeerror).
+ */
+function luaL_checkinteger_unpacked(v) {
+    if (typeof v === 'number' && Number.isFinite(v)) return Math.trunc(v);
+    if (typeof v === 'string' && v.trim() !== '' && Number.isFinite(Number(v)))
+        return Math.trunc(Number(v));
+    const got = (v == null) ? 'nil'
+        : (typeof v === 'object' ? 'table' : typeof v);
+    nhl_error(`bad argument (number expected, got ${got})`);
+}
+
+/**
+ * C ref: sp_lev.c get_coord :5319–5366.
+ * Unpacked stand-in for (lua_State, stack index, *x, *y): a JS object or
+ * array is LUA_TTABLE, null/undefined is LUA_TNIL, anything else is a
+ * non-nil non-table. Writes xy.x and xy.y only on a success arm (C
+ * out-params). Nil returns false and leaves xy untouched — that is the
+ * "non-existent coord is ok" case. A bad table or a non-nil non-table
+ * throws via nhl_error; the C returns after those calls are NOTREACHED.
+ * Field "x" is tested before the array length (:5326–5354), so a table
+ * with x set never falls through to the {x,y} pair form.
+ */
+export function get_coord(coord, xy) {
+    let ret = false; // C :5322
+    // C :5323 lua_type. null is typeof "object" in JS; it is LUA_TNIL.
+    let ltyp;
+    if (coord == null) ltyp = 'nil';
+    else if (typeof coord === 'object') ltyp = 'table';
+    else ltyp = 'other';
+
+    if (ltyp === 'table') { // C :5325 LUA_TTABLE
+        let gotx = false; // C :5327
+
+        // C :5329–5334 lua_getfield(L, i, "x"); nil skips; else checkinteger.
+        // lua_pop of that field has no unpacked equivalent.
+        if (coord.x != null) {
+            xy.x = luaL_checkinteger_unpacked(coord.x); // C :5331
+            gotx = true; // C :5332
+        }
+
+        if (gotx) { // C :5336
+            // C :5337–5341 lua_getfield "y". Both fields set → TRUE.
+            if (coord.y != null) {
+                xy.y = luaL_checkinteger_unpacked(coord.y); // C :5339
+                ret = true; // C :5341
+            } else {
+                nhl_error('Not a coordinate'); // C :5343
+                return false; // C :5345 NOTREACHED
+            }
+        } else {
+            // C :5347–5350 lua_len + lua_tointeger. A JS array's length is
+            // the sequence length; a {x=,y=} object has no array part (0).
+            // The callee's negative-index shift (:5263–5264) is a stack
+            // adjustment and does not apply to a value we already hold.
+            const arrlen = Array.isArray(coord) ? (coord.length | 0) : 0;
+            if (arrlen !== 2) { // C :5351
+                nhl_error('Not a coordinate'); // C :5352
+                return false; // C :5354 NOTREACHED
+            }
+
+            // C :5358–5359 get_table_intarray_entry(L, i, 1) then entry 2.
+            xy.x = get_table_intarray_entry_unpacked(coord, 1);
+            xy.y = get_table_intarray_entry_unpacked(coord, 2);
+            return true; // C :5361
+        }
+    } else if (ltyp !== 'nil') { // C :5363
+        /* non-existent coord is ok */ // C :5362
+        nhl_error('non-table coord specified'); // C :5364
+    }
+    return ret; // C :5366
+}
+
+/**
+ * C ref: sp_lev.c get_table_xy_or_coord :3188–3203 — x/y else coord.
+ * get_table_int_opt default -1 is the `!= null` seed. When both are -1,
+ * lua_getfield "coord" then get_coord; a missing field is nil and the
+ * -1,-1 seed stays (FALSE does not write the outs).
  */
 function get_table_xy_or_coord(o) {
-    let mx = o.x != null ? (o.x | 0) : -1;
-    let my = o.y != null ? (o.y | 0) : -1;
-    if (mx === -1 && my === -1) {
-        const xy = get_coord_unpacked(o.coord);
-        mx = xy.x;
-        my = xy.y;
+    let mx = o.x != null ? (o.x | 0) : -1; // C :3193 get_table_int_opt "x", -1
+    let my = o.y != null ? (o.y | 0) : -1; // C :3194
+    if (mx === -1 && my === -1) { // C :3196
+        const out = { x: mx, y: my };
+        get_coord(o.coord, out); // C :3198 get_coord(L, -1, &mx, &my)
+        mx = out.x;
+        my = out.y;
     }
-    return { x: mx, y: my };
+    return { x: mx, y: my }; // C :3202–3203
 }
 
 /**
@@ -21791,7 +21833,8 @@ function lspo_object_from_string(paramstr, arg2, arg3) {
         if (arg2.lx != null && arg2.ly != null && arg2.hx != null) {
             croom = arg2;
         } else {
-            const xy = get_coord_unpacked(arg2);
+            const xy = { x: ox, y: oy }; // C :3578 ox, oy start at -1
+            get_coord(arg2, xy); // C :3608 get_coord(L, 2, &ox, &oy)
             ox = xy.x;
             oy = xy.y;
             if (arg3 != null && typeof arg3 === 'object' && arg3.lx != null) {
@@ -21934,7 +21977,7 @@ function get_table_intarray_entry_unpacked(arr, entrynum) {
     if (typeof v === 'string' && v.trim() !== '' && !Number.isNaN(Number(v)))
         return Math.trunc(Number(v)); // C lua_isnumber coerces numeric strings
     const typename = v == null ? 'nil' : (Array.isArray(v) ? 'table' : typeof v);
-    throw new Error(`Array entry #1 is ${typename}, expected number`); // :5272–5276
+    nhl_error(`Array entry #1 is ${typename}, expected number`); // C :5273–5276
 }
 
 /**
@@ -21999,7 +22042,8 @@ function lspo_monster_from_string(paramstr, arg2, arg3) {
         if (arg2.lx != null && arg2.ly != null && arg2.hx != null) {
             croom = arg2;
         } else {
-            const xy = get_coord_unpacked(arg2);
+            const xy = { x: rx, y: ry }; // C :3218 mx, my start at -1
+            get_coord(arg2, xy); // C :3262 get_coord(L, 2, &mx, &my)
             rx = xy.x;
             ry = xy.y;
             if (arg3 != null && typeof arg3 === 'object' && arg3.lx != null) {
@@ -26197,7 +26241,7 @@ function hellfill_replace_terrain_all(fromtyp, totyp, chance = 100) {
             const match = (fromtyp === MATCH_WALL && IS_STWALL(loc.typ))
                 || loc.typ === fromtyp;
             if (match && rn2(100) < ch)
-                sel_set_ter(x, y, totyp, SET_LIT_NOCHANGE);
+                set_levltyp_lit(x, y, totyp, SET_LIT_NOCHANGE); // C :5133
         }
     }
 }
@@ -26842,14 +26886,15 @@ async function makelevel() {
         await makemaz('');
     } else {
         await makelevel_ordinary();
-        return; // ordinary already runs fill_special + themerms_post + wallify
+        return; // ordinary already runs fill_special + themerooms_post
     }
 
-    // C ref: mklev.c:1416-1420 — common tail after makemaz
+    // C ref: mklev.c:1416-1420 — common tail after makemaz.
+    // wallification lives inside themerooms_post_level_generate, and
+    // only when this branch's themes are loaded.
     for (let i = 0; i < (g.level?.nroom | 0); i++)
         await fill_special_room(g.level.rooms[i]);
-    run_themerms_post_level_generate();
-    wallification(1, 0, COLNO - 1, ROWNO - 1);
+    themerooms_post_level_generate();
 }
 
 // C ref: mklev.c makelevel() regular-room branch
@@ -26998,10 +27043,9 @@ async function makelevel_ordinary() {
     for (let i = 0; i < g.level.nroom; i++)
         await fill_special_room(g.level.rooms[i]);
 
-    // C ref: mklev.c themerooms_post_level_generate() — after fill, Lua
-    // post_level_generate then full-map wallification.
-    run_themerms_post_level_generate();
-    wallification(1, 0, COLNO - 1, ROWNO - 1);
+    // C ref: mklev.c:1420 — themerooms_post_level_generate (wallification
+    // is inside, after the themes-null return).
+    themerooms_post_level_generate();
 }
 
 /**
@@ -28171,32 +28215,23 @@ function light_region(x1, y1, x2, y2, lit) {
 }
 
 /**
- * C ref: sp_lev.c sel_set_ter + mkmaze.c set_levltyp / set_levltyp_lit.
- * C set_levltyp: IS_LAVA(newtyp) → lit=1 always (even before lit arg).
- * set_levltyp_lit: lit!=NOCHANGE then IS_LAVA forces lit=1 again.
- * tlit truthy → lit; SET_LIT_NOCHANGE → leave (except lava); falsey
- * still nochange for legacy map callers (tut-1 wall display relies on
- * solidfill BOOL_RANDOM until vision wall-hack matches C; D-0928 #1173
- * clears lit explicitly in load_sanctum / Pri-loca / fire after map).
+ * C ref: sp_lev.c sel_set_ter :4608–4630 — set_levltyp_lit, then door /
+ * wall / ice / cloud. Boolean false is the hand-rolled map idiom for
+ * "leave lit" (C's unset lit is SET_LIT_NOCHANGE; numeric 0 is unlit
+ * and is passed through to set_levltyp_lit). The flag/roomno/edge clear
+ * is not in C sel_set_ter; lspo_map (:6288–6291) and lvlfill_solid do
+ * it. Kept here so the hand-rolled paints that call this helper still
+ * reset those fields.
  */
 function sel_set_ter(x, y, ter, tlit) {
+    const lit = tlit === false ? SET_LIT_NOCHANGE : tlit;
+    if (!set_levltyp_lit(x, y, ter, lit)) return; // C :4614-4615
     const loc = game.level.at(x, y);
-    if (!loc || !isok(x, y)) return;
-    loc.typ = ter;
+    if (!loc) return;
     loc.flags = 0;
     loc.horizontal = false;
     loc.roomno = NO_ROOM;
     loc.edge = false;
-    // C mkmaze.c set_levltyp: IS_LAVA(newtyp) → lit=1 (hell_tweaks /
-    // des.terrain with SET_LIT_NOCHANGE still leave lava lit).
-    if (IS_LAVA(ter)) {
-        loc.lit = true;
-    } else if (tlit === SET_LIT_NOCHANGE) {
-        /* keep loc.lit */
-    } else if (tlit) {
-        loc.lit = true;
-    }
-    // else: legacy false → nochange (not C lit=FALSE; see load_fire)
     if (ter === SDOOR || IS_DOOR(ter)) {
         if (ter === SDOOR) loc.doormask = D_CLOSED;
         const left = game.level.at(x - 1, y);
@@ -30125,17 +30160,41 @@ function make_dig_engraving_postprocess(data) {
     make_engr_at(pos.x, pos.y, `Dig${dig}`, null, 0, BURN);
 }
 
-// C ref: themerms.lua post_level_generate + mklev.c themerooms_post_level_generate
-function run_themerms_post_level_generate() {
-    // C mklev.c themerooms_post_level_generate — reset before lua
-    // post_level_generate, then wallification in the caller.
+/**
+ * C ref: mklev.c themerooms_post_level_generate `:1174–1194`.
+ * `gl.luathemes[u.uz.dnum]` is `game._luathemes_loaded[dnum]` (true once
+ * makerooms / makelevel_ordinary has loaded this branch). A missing
+ * branch returns before reset, the post hook, and wallification.
+ * `post_level_generate` is the compiled themerms.lua handler list:
+ * there is no Lua state, so `lua_getglobal` / `nhl_pcall_handle` /
+ * `lua_gc` do not run. `iflags.in_lua` is an error-prefix flag with
+ * no reader here.
+ */
+function themerooms_post_level_generate() {
+    const dnum = game.u?.uz?.dnum | 0;
+    const themes = game._luathemes_loaded?.[dnum];
+    // C :1178–1179 — themes should already be loaded by makerooms().
+    if (!themes) return;
+
     reset_xystart_size();
+    // C :1182 — iflags.in_lua = gi.in_mk_themerooms = TRUE.
+    game.in_mk_themerooms = true;
+    game.themeroom_failed = false;
+    // C :1183–1184 — lua_getglobal(themes, "post_level_generate")
+    // then nhl_pcall_handle(..., NHLpa_panic).
     for (const v of themerms_postprocess) {
         if (v.handler === 'make_a_trap') make_a_trap_postprocess(v.data);
         else if (v.handler === 'make_garden_walls') make_garden_walls_postprocess(v.data);
         else if (v.handler === 'make_dig_engraving') make_dig_engraving_postprocess(v.data);
     }
     themerms_postprocess.length = 0;
+    // C :1186 — iflags.in_lua = gi.in_mk_themerooms = FALSE.
+    game.in_mk_themerooms = false;
+
+    wallification(1, 0, COLNO - 1, ROWNO - 1);
+    // C :1191 — if (gc.coder) free(gc.coder), gc.coder = NULL.
+    if (game.gc?.coder) game.gc.coder = null;
+    // C :1192 — lua_gc(themes, LUA_GCCOLLECT): no Lua heap.
 }
 
 const THEMEROOM_FILL_BODIES = {
@@ -30340,10 +30399,8 @@ function lspo_replace_terrain_region(rx1, ry1, rx2, ry2, fromtyp, totyp, chance)
             if (!loc) continue;
             const match = (fromtyp === MATCH_WALL && IS_STWALL(loc.typ))
                 || loc.typ === fromtyp;
-            if (match && rn2(100) < ch) {
-                // C replace_terrain default lit=SET_LIT_NOCHANGE
-                sel_set_ter(x, y, totyp, SET_LIT_NOCHANGE);
-            }
+            if (match && rn2(100) < ch)
+                set_levltyp_lit(x, y, totyp, SET_LIT_NOCHANGE); // C :5133 default lit
         }
     }
 }
@@ -30364,7 +30421,7 @@ function lspo_replace_terrain_sel(sel, fromtyp, totyp, chance) {
             const match = (fromtyp === MATCH_WALL && IS_STWALL(loc.typ))
                 || loc.typ === fromtyp;
             if (match && rn2(100) < ch)
-                sel_set_ter(x, y, totyp, SET_LIT_NOCHANGE);
+                set_levltyp_lit(x, y, totyp, SET_LIT_NOCHANGE); // C :5133
         }
     }
 }

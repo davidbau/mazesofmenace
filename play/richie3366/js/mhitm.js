@@ -145,10 +145,16 @@ import { m_unleash } from './apply.js';
 import { update_inventory } from './invent.js';
 import { bury_an_obj } from './dig.js';
 import { is_pole, is_weptool } from './wield.js';
-import { mswings_verb, Conflict, unstuck, set_ustuck, digests, hitmsg } from './mhitu.js';
+import { mswings_verb, Conflict, unstuck, set_ustuck, digests, hitmsg, diseasemu } from './mhitu.js';
+import { sticks } from './engrave.js';
 import { mon_offmap, set_apparxy, mb_trapped, itsstuck } from './monmove.js';
 import { hurtle, mhurtle, will_hurtle } from './dothrow.js';
 import { make_stunned } from './potion.js';
+// imports.mjs --can mhitm.js mcastu.js touch_of_death Antimagic: SAFE
+// (hoisted functions; same 98-module SCC). Aliased because this file's
+// local Antimagic is the flat H||E clone; mcastu's also reads uprops
+// (D-1089), which the mhitu arm of mhitm_ad_deth already used.
+import { touch_of_death, Antimagic as hero_Antimagic } from './mcastu.js';
 import { m_is_steadfast, can_blnd, steal_it, xdrainenergym } from './uhitm.js';
 import { mintrap, acid_damage, minstapetrify, mselftouch, drain_en } from './trap.js';
 import { breamm, spitmm, thrwmm } from './mthrowu.js';
@@ -227,6 +233,7 @@ const PM_WRAITH = monsterNames.indexOf('PM_WRAITH');
 const PM_NURSE = monsterNames.indexOf('PM_NURSE');
 const PM_FAMINE = monsterNames.indexOf('PM_FAMINE');
 const PM_PESTILENCE = monsterNames.indexOf('PM_PESTILENCE');
+const PM_GHOUL = monsterNames.indexOf('PM_GHOUL');
 const PM_PAPER_GOLEM = monsterNames.indexOf('PM_PAPER_GOLEM');
 const PM_STRAW_GOLEM = monsterNames.indexOf('PM_STRAW_GOLEM');
 const AMULET_OF_LIFE_SAVING = objectNames.indexOf('AMULET_OF_LIFE_SAVING');
@@ -245,6 +252,7 @@ const PM_SILVER_DRAGON = monsterNames.indexOf('PM_SILVER_DRAGON');
 const PM_CHROMATIC_DRAGON = monsterNames.indexOf('PM_CHROMATIC_DRAGON');
 const PM_MEDUSA = monsterNames.indexOf('PM_MEDUSA');
 const PM_ARCHON = monsterNames.indexOf('PM_ARCHON');
+const PM_BARBED_DEVIL = monsterNames.indexOf('PM_BARBED_DEVIL');
 const SHIELD_OF_REFLECTION = objectNames.indexOf('SHIELD_OF_REFLECTION');
 const AMULET_OF_REFLECTION = objectNames.indexOf('AMULET_OF_REFLECTION');
 const SILVER_DRAGON_SCALES = objectNames.indexOf('SILVER_DRAGON_SCALES');
@@ -1902,6 +1910,45 @@ export async function mhitm_ad_drst(magr, mattk, mdef, mhm) {
 }
 
 /**
+ * C ref: uhitm.c mhitm_ad_stck `:3306–3334` — all three arms, in C order.
+ * Gate is mhitm_mgc_atk_negated(FALSE): rn2(10) unless the attacker is
+ * cancelled, and a youmonst defender is passed as null (hero MC).
+ * uhitm sticks the defender when adjacent and the form does not already
+ * stick. mhitu prints hitmsg then sticks the attacker unless the hero
+ * is already held or the hero form sticks. mhitm only zeroes leftover
+ * dice when the attack is negated. Barbed devil adds the barbs line.
+ * sticks is mondata.c:653 (engrave.js export; AT_HUGS=7 / AT_ENGL=11).
+ */
+export async function mhitm_ad_stck(magr, mattk, mdef, mhm) {
+    /* C :3309 — FALSE: no "avoids harm" pline. */
+    const negated = await mhitm_mgc_atk_negated(
+        magr, is_youmonst(mdef) ? null : mdef, false,
+    );
+    const pd = is_youmonst(mdef) ? game.youmonst?.data : mdef?.data;
+    /* C :3311 — magr->data == &mons[PM_BARBED_DEVIL]. */
+    const barbs = ((magr?.data?.mndx ?? magr?.mnum) | 0) === PM_BARBED_DEVIL;
+
+    if (is_youmonst(magr)) {
+        /* uhitm — C :3313–3318. Leftover d() stays. */
+        if (!negated && !sticks(pd) && m_next2u_mm(mdef)) {
+            set_ustuck(mdef);
+            if (barbs) await Your('barbs stick to %s!', y_monnam(mdef));
+        }
+    } else if (is_youmonst(mdef)) {
+        /* mhitu — C :3320–3328. Leftover d() stays for mdamageu. */
+        await hitmsg(magr, mattk);
+        const u = game.u || {};
+        if (!negated && !u.ustuck && !sticks(pd)) {
+            set_ustuck(magr);
+            if (barbs) await pline('The barbs stick to you!');
+        }
+    } else if (negated) {
+        /* mhitm — C :3330–3332. Un-negated dice stand. */
+        mhm.damage = 0;
+    }
+}
+
+/**
  * C ref: uhitm.c mhitm_ad_phys mhitm arm :4128–4198 (D-1394 shade;
  * D-1402 mwep dmgval; D-1403 AT_KICK thick_skinned; D-1415 artifact_hit;
  * D-1442 rustm; D-1447 poison leftover).
@@ -2686,8 +2733,8 @@ function is_blunt_weapon_mm(o) {
  * C's boolean. RNG order kept: rn2(3) distance, rn2(chance) gate, message
  * rn2(2)+rn2(2), effect rn2(4) stun. Called from mhitu hitmu, mhitm mdamagem,
  * and uhitm hmon (maybe_knockback).
- * Named omissions: test_move block_door/block_entry shopkeeper arms
- * (stub-false/false); rogue-level arm of doorless_door is inlined here
+ * Named omissions: test_move block_door shopkeeper arm (stub-false);
+ * block_entry is live via test_move. rogue-level arm of doorless_door is inlined here
  * (steed.js clone omits it).
  */
 export async function mhitm_knockback(magr, mdef, mattk, mhm, weapon_used) {
@@ -3969,12 +4016,46 @@ export async function grow_up(mtmp, victim) {
     return ptr;
 }
 
-// C ref: mhitm.c pre_mm_attack — reveal + map_invisible when gv.vis
-// Named omission: seemimic / mundetected clear + showit newsym arms
+/**
+ * C ref: mhitm.c:41–72 pre_mm_attack.
+ * Unhide or unmimic the defender, then the attacker, even when the
+ * hero cannot see the fight. `seemimic` already `newsym`s. When
+ * `gv.vis` (`_mm_vis`) is set, an unspottable monster is mapped
+ * invisible; a monster that just came out of hiding and can be
+ * spotted is `newsym`'d again. `showit |= gv.vis` only on a reveal
+ * arm, so a visible fight with nothing concealed does not redraw.
+ */
 function pre_mm_attack(magr, mdef) {
-    if (!_mm_vis) return;
-    if (!canspotmon(magr)) map_invisible(magr.mx, magr.my);
-    if (!canspotmon(mdef)) map_invisible(mdef.mx, mdef.my);
+    // C: boolean showit = FALSE
+    let showit = false;
+
+    /* unhiding or unmimicking happens even if hero can't see it
+       because the formerly concealed monster is now in action */
+    if (M_AP_TYPE(mdef)) {
+        seemimic(mdef);
+        showit = showit || !!_mm_vis;
+    } else if (mdef.mundetected) {
+        mdef.mundetected = 0;
+        showit = showit || !!_mm_vis;
+    }
+    if (M_AP_TYPE(magr)) {
+        seemimic(magr);
+        showit = showit || !!_mm_vis;
+    } else if (magr.mundetected) {
+        magr.mundetected = 0;
+        showit = showit || !!_mm_vis;
+    }
+
+    if (_mm_vis) {
+        if (!canspotmon(magr))
+            map_invisible(magr.mx, magr.my);
+        else if (showit)
+            newsym(magr.mx, magr.my);
+        if (!canspotmon(mdef))
+            map_invisible(mdef.mx, mdef.my);
+        else if (showit)
+            newsym(mdef.mx, mdef.my);
+    }
 }
 
 /**
@@ -4271,13 +4352,98 @@ async function mhitm_ad_drli(magr, mattk, mdef, mhm) {
 }
 
 /**
- * C ref: uhitm.c mhitm_ad_deth `:3836–3894` — mhitm arm (the uhitm arm
- * `goto`s here; no hero form has AD_DETH). Undead target with leftover
- * > 1 → rnd(leftover/2); then mhitm_ad_drli with is_death. mhitu arm is
- * mhitm_ad_deth_u (mhitu.js).
+ * C ref: uhitm.c mhitm_ad_dise `:4592–4619`.
+ * uhitm (magr == &gy.youmonst) gotos the mhitm arm — no hero form has
+ * AD_DISE, and the message would differ only if one did. mhitu: hitmsg,
+ * then diseasemu; resistance zeroes the leftover and sickness keeps it.
+ * mhitm: a fungus, a ghoul, or defended(AD_DISE) zeroes the leftover;
+ * anything else keeps it.
  */
-async function mhitm_ad_deth(magr, mattk, mdef, mhm) {
+export async function mhitm_ad_dise(magr, mattk, mdef, mhm) {
+    const pd = mdef?.data;
+    /* C `:4599` magr == &gy.youmonst → goto mhitm_dise. */
+    if (!is_youmonst(magr) && is_youmonst(mdef)) {
+        await hitmsg(magr, mattk);
+        if (!(await diseasemu(magr?.data))) mhm.damage = 0;
+        return;
+    }
+    const mndx = pd?.mndx ?? pd?.mnum;
+    if (pd?.mlet === 'S_FUNGUS' || mndx === PM_GHOUL
+        || defended(mdef, AD_DISE)) {
+        mhm.damage = 0;
+    }
+}
+
+/**
+ * C ref: uhitm.c mhitm_ad_pest `:3807–3834`.
+ * uhitm gotos the mhitm arm (no hero form has AD_PEST). mhitu: no
+ * hitmsg; pline_mon reach-out, then diseasemu; the leftover d() stays
+ * ("plus the normal damage"). mhitm: copy mattk, set adtyp to AD_DISE,
+ * and call mhitm_ad_dise.
+ */
+export async function mhitm_ad_pest(magr, mattk, mdef, mhm) {
+    /* C `:3814` magr == &gy.youmonst → goto mhitm_pest. */
+    if (!is_youmonst(magr) && is_youmonst(mdef)) {
+        await pline_mon(magr, `${Monnam(magr)} reaches out, and you feel fever and chills.`);
+        await diseasemu(magr?.data);
+        return;
+    }
+    const alt_attk = { ...mattk, adtyp: AD_DISE };
+    await mhitm_ad_dise(magr, alt_attk, mdef, mhm);
+}
+
+/**
+ * C ref: uhitm.c mhitm_ad_deth `:3836–3894`.
+ * uhitm (magr == &gy.youmonst) gotos the mhitm arm — no hero form has
+ * AD_DETH, and the message would differ only if one did. mhitu: reach-out
+ * (no hitmsg); undead hero form halves leftover rounding up and asks
+ * «Was that the touch of death?»; else one rn2(20): 17–19 without
+ * Antimagic → touch_of_death and zero damage, with Antimagic fall
+ * through; 5–16 «life force draining» and permdmg = 1 (hitmu rolls the
+ * max-HP cut); 0–4 shieldeff when Antimagic, «Lucky for you», zero
+ * damage. mhitm: undead target with leftover > 1 → rnd(leftover/2),
+ * then mhitm_ad_drli (is_death keeps the leftover as the drain).
+ */
+export async function mhitm_ad_deth(magr, mattk, mdef, mhm) {
     const pd = mdef.data;
+    /* C `:3844` magr == &gy.youmonst → goto mhitm_deth. */
+    if (!is_youmonst(magr) && is_youmonst(mdef)) {
+        await pline_mon(magr, `${Monnam(magr)} reaches out with its deadly touch.`);
+        if (is_undead(pd)) {
+            /* still does some damage */
+            mhm.damage = Math.trunc(((mhm.damage | 0) + 1) / 2);
+            await pline('Was that the touch of death?');
+            return;
+        }
+        switch (rn2(20)) {
+        case 19:
+        case 18:
+        case 17:
+            if (!hero_Antimagic()) {
+                await touch_of_death(magr);
+                mhm.damage = 0;
+                return;
+            }
+            /* FALLTHROUGH */
+        default: /* case 16: ... case 5: */
+            await You_feel('your life force draining away...');
+            mhm.permdmg = 1; /* actual damage done by caller */
+            return;
+        case 4:
+        case 3:
+        case 2:
+        case 1:
+        case 0:
+            if (hero_Antimagic()) {
+                const u = game.u || {};
+                await shieldeff(u.ux, u.uy);
+            }
+            await pline("Lucky for you, it didn't work!");
+            mhm.damage = 0;
+            return;
+        }
+    }
+    /* mhitm_deth: Death hitting another monster (uhitm lands here too). */
     if (is_undead(pd) && (mhm.damage | 0) > 1)
         mhm.damage = rnd(Math.trunc((mhm.damage | 0) / 2));
     /* simulate Death's touch with drain life attack */
@@ -4368,8 +4534,19 @@ async function mdamagem(magr, mdef, mattk, mwep, dieroll) {
         }
     }
 
-    if (mattk.adtyp === AD_STCK) {
-        damage = 0;
+    /* C: mhitm_adtyping `:4813` → mhitm_ad_stck. The mhitm arm zeroes
+       leftover only when negated; otherwise the opening d() stands.
+       Knockback + HP stay the shared tail (adtyp ≠ PHYS, so knockback
+       returns after its two rolls). */
+    if ((mattk.adtyp | 0) === AD_STCK) {
+        const mhm = {
+            damage,
+            hitflags: M_ATTK_MISS,
+            done: false,
+        };
+        await mhitm_ad_stck(magr, mattk, mdef, mhm);
+        damage = mhm.damage | 0;
+        hitflags = mhm.hitflags | 0;
     }
 
     // C: mhitm_adtyping → mhitm_ad_poly for AD_POLY (D-1006)
@@ -5068,6 +5245,43 @@ async function mdamagem(magr, mdef, mattk, mwep, dieroll) {
             done: false,
         };
         await mhitm_ad_slim(magr, mattk, mdef, mhm);
+        // C mhitm.c:1061-1065 — knockback preempts damage on HIT/DEF_DIED/offmap
+        if (await mhitm_knockback(magr, mdef, mattk, mhm, !!mwep)
+            && (((mhm.hitflags & (M_ATTK_DEF_DIED | M_ATTK_HIT)) !== 0) || mon_offmap(mdef))) {
+            return mhm.hitflags;
+        }
+        if (mhm.done) return mhm.hitflags;
+        damage = mhm.damage | 0;
+        hitflags = mhm.hitflags | 0;
+        if (!damage) return hitflags;
+        mdef.mhp -= damage;
+        if (mdef.mhp < 1) {
+            mdef.mhp = 0;
+            await mdamagem_monkilled(magr, mdef, mattk, mwep);
+            if ((mdef.mhp | 0) > 0) return hitflags; /* lifesaved */
+            if (hitflags === M_ATTK_AGR_DIED) {
+                return M_ATTK_DEF_DIED | M_ATTK_AGR_DIED;
+            }
+            const grew = await grow_up(magr, mdef);
+            return M_ATTK_DEF_DIED | (grew ? 0 : M_ATTK_AGR_DIED);
+        }
+        return (hitflags === M_ATTK_AGR_DIED) ? M_ATTK_AGR_DIED : M_ATTK_HIT;
+    }
+
+    // C: mhitm_adtyping → mhitm_ad_dise / mhitm_ad_pest (uhitm.c:4822
+    // and :4825). Disease zeroes leftover for fungus, ghoul, or
+    // defended(AD_DISE). Pest's mhitm arm is that same disease check
+    // (the mhitu arm is the fever line and does not zero leftover).
+    if ((mattk.adtyp | 0) === AD_DISE || (mattk.adtyp | 0) === AD_PEST) {
+        const mhm = {
+            damage,
+            hitflags: M_ATTK_MISS,
+            done: false,
+        };
+        if ((mattk.adtyp | 0) === AD_PEST)
+            await mhitm_ad_pest(magr, mattk, mdef, mhm);
+        else
+            await mhitm_ad_dise(magr, mattk, mdef, mhm);
         // C mhitm.c:1061-1065 — knockback preempts damage on HIT/DEF_DIED/offmap
         if (await mhitm_knockback(magr, mdef, mattk, mhm, !!mwep)
             && (((mhm.hitflags & (M_ATTK_DEF_DIED | M_ATTK_HIT)) !== 0) || mon_offmap(mdef))) {

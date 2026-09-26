@@ -3920,3 +3920,24 @@ export function disco_typename(otyp) {
     }
     return `${result} [${actualn}]`;
 }
+
+/**
+ * C objnam.c releaseobuf `:150–160` (staticfn). Rewind `obufidx` when
+ * `bufp` lies inside `obufs[obufidx]` (PREFIX may point into the
+ * middle of that buffer). Scored JS names are immutable strings;
+ * there is no `obufs[]` / `obufidx`, so the range test is false and
+ * the index is not rewound. `nextobuf` stays the by-design string path.
+ */
+function releaseobuf(_bufp) {
+    /* C `:157–159` — no obuf pool to rewind. */
+}
+
+/**
+ * C objnam.c maybereleaseobuf `:167–198`. The executable body is
+ * `releaseobuf`; the rest of the C function is the bullwhip and
+ * `hold_another_object` commentary on why the pool must be released
+ * before `perm_invent` reformats an item.
+ */
+export function maybereleaseobuf(obuffer) {
+    releaseobuf(obuffer);
+}

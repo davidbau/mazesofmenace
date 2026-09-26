@@ -12,7 +12,7 @@ import {
     STRAT_WAITFORU, AD_SPEL,
     XKILL_GIVEMSG, XKILL_NOMSG, XKILL_NOCORPSE, XKILL_NOCONDUCT,
     LL_CONDUCT, LL_KILLEDPET, Upolyd, P_BARE_HANDED_COMBAT, P_TWO_WEAPON_COMBAT, P_BASIC, P_WHIP,
-    A_CHAOTIC, A_NONE, INTRINSIC, CORPSTAT_BURIED, CORPSTAT_NONE, OBJ_BURIED, ONAME_NO_FLAGS,
+    A_CHAOTIC, A_NONE, INTRINSIC, CORPSTAT_BURIED, CORPSTAT_NONE, OBJ_BURIED, ONAME, ONAME_NO_FLAGS,
     P_DAGGER, P_KNIFE, P_AXE, P_SABER, P_LANCE, P_NONE, P_SKILLED, P_ISRESTRICTED, P_UNSKILLED, NEED_WEAPON,
     STUNNED,
     M_ATTK_MISS, M_ATTK_HIT, M_ATTK_DEF_DIED, NATTK, MSLOW,
@@ -26,7 +26,7 @@ import {
     MON_EXPLODE, NO_MM_FLAGS, NO_TRAP_FLAGS, DISP_ALWAYS, DISP_END, STOMACH, DIED, NO_KILLER_PREFIX, ERODE_CORRODE, ERODE_BURN, EF_GREASE, EF_NONE, STONING,
     KILLED_BY_AN, PASSES_WALLS, SLOW_DIGESTION, MALE, FEMALE, MMOVE_DIED, CXN_ARTICLE,
     ERODE_ROT, NO_NC_FLAGS, AD_CURS, EDOG, is_pit, FACE, NEUTRAL, CXN_PFX_THE,
-    EXPL_FIERY, ismnum, EXT_ENCUMBER,
+    EXPL_FIERY, ismnum, EXT_ENCUMBER, NOTELL,
     isok, xytodir, xdir, ydir,
     DIR_LEFT, DIR_RIGHT, DIR_LEFT2, DIR_RIGHT2, DIR_ERR,
     something,
@@ -34,11 +34,11 @@ import {
 import {
     WEAPON_CLASS, ARMOR_CLASS, TOOL_CLASS, FOOD_CLASS, COIN_CLASS, RANDOM_CLASS, POTION_CLASS,
     GEM_CLASS, SPBOOK_CLASS,
-    objectNameStrs, objectNames, is_poisonable,
+    objectNames, is_poisonable,
 } from './objects.js';
 import { exercise, A_STR, A_DEX, A_WIS, A_CON, acurr, adjalign, change_luck, ALIGNLIM, Fumbling } from './attrib.js';
 import { overexertion, nomul, losehp, is_pool, maybe_half_phys, noattacks } from './hack.js';
-import { ing_suffix, upstart } from './hacklib.js';
+import { ing_suffix, upstart, highc } from './hacklib.js';
 import { pline, pline_mon, newsym, canseemon, canspotmon, sensemon, tp_sensemon, map_invisible, unmap_object, unmap_invisible, memory_glyph_is_invisible, glyph_at, glyph_is_warning, glyph_is_invisible_id, flush_topl_more, You_feel, tmp_at, map_location, nh_delay_output, mon_glyph, shieldeff, impossible, see_monsters, hero_Blind_telepat, You, Your, pline_The } from './display.js';
 import { cansee } from './vision.js';
 import {
@@ -57,14 +57,14 @@ import {
     find_mac, get_mattk, make_corpse, monstone, mhitm_knockback, monkilled, mondead,
     troll_baned, mhitm_ad_poly, mhitm_ad_slee, mhitm_ad_heal, mhitm_ad_blnd, mhitm_ad_ston, mhitm_ad_elec, mhitm_ad_sedu, mhitm_ad_tlpt, mhitm_ad_rust, mhitm_ad_fire, mhitm_ad_dren, could_seduce, failed_grab, shade_miss,
     shade_aware, paralyze_monst,
-    mhitm_mgc_atk_negated, mhitm_ad_drst, erode_armor, golemeffects_mm,
+    mhitm_mgc_atk_negated, mhitm_ad_drst, mhitm_ad_deth, mhitm_ad_dise, mhitm_ad_pest, mhitm_ad_stck, erode_armor, golemeffects_mm,
     attk_protection,
     AT_NONE, AT_WEAP, AT_KICK, AT_CLAW, AT_SPIT, AT_HUGS,
     AT_TUCH, AT_BITE, AT_BUTT, AT_STNG, AT_MAGC, AT_TENT,
     AT_EXPL, AT_ENGL, AT_BREA, AT_GAZE, AD_PHYS, AD_POLY, AD_DRIN, AD_SLEE,
     AD_DRST, AD_DRDX, AD_DRCO, AD_SAMU, AD_DRLI, AD_SITM, AD_SEDU, AD_SSEX,
 } from './mhitm.js';
-import { resists_drli, resists_cold, resists_poison, destroy_items } from './zap.js';
+import { resists_drli, resists_cold, resists_poison, destroy_items, resist } from './zap.js';
 import {
     verysmall, nohands, G_FREQ, G_NOCORPSE, M2_COLLECT, MZ_MEDIUM, MZ_HUGE,
     bigmonst, thick_skinned, monsterNames, nonliving, haseyes, dmgtype, hides_under,
@@ -72,7 +72,7 @@ import {
     is_demon, NON_PM, NUMMONS, has_head, mindless, unsolid, breathless, mons,
     flaming, touch_petrifies, is_neuter, is_vampshifter, is_animal, amphibious,
     is_swimmer, slithy,
-    amorphous, noncorporeal, is_whirly, passes_walls, hates_silver, mon_hates_silver, humanoid,
+    amorphous, noncorporeal, is_whirly, passes_walls, hates_silver, mon_hates_silver, mon_hates_light, humanoid,
     is_human, is_orc, is_elf, always_hostile, is_unicorn, slimeproof,
     MR_FIRE, MR_COLD, MR_ELEC, MR_ACID,
     resists_ston, resists_acid, mon_hates_blessings, poly_when_stoned,
@@ -92,15 +92,17 @@ import { livelog_printf } from './pline.js';
 import { experience, more_experienced, newexplevel } from './exper.js';
 import { explode, mon_explodes, adtyp_to_expltype } from './explode.js';
 import { rehumanize, body_part, mbodypart, uunstick } from './polyself.js';
-import { mon_nam, l_monnam, Monnam, x_monnam, x_monnam_tame, Hallucination, type_is_pname, pmname, Mgender, a_monnam, safe_oname, s_suffix } from './do_name.js';
-import { artifact_hit, youmonst, is_art, artifact_exists, shade_glare, find_artifact, u_wield_art, permapoisoned } from './artifact.js';
-import { xname, vtense, The, the, An, an, singular, makeplural, cxname, simpleonames, otense, mshot_xname, Yobjnam2, Yname2, doname, corpse_xname, ysimple_name } from './objnam.js';
+import { mon_nam, l_monnam, Monnam, x_monnam, x_monnam_tame, Hallucination, type_is_pname, pmname, Mgender, a_monnam, safe_oname, s_suffix, hcolor } from './do_name.js';
+import { artifact_hit, youmonst, is_art, artifact_exists, shade_glare, find_artifact, u_wield_art, permapoisoned, bare_artifactname } from './artifact.js';
+// imports.mjs --can uhitm.js timeout.js artifact_light: SAFE (hoisted).
+import { artifact_light } from './timeout.js';
+import { xname, vtense, The, the, An, an, singular, makeplural, cxname, simpleonames, obj_is_pname, otense, mshot_xname, Yobjnam2, Yname2, doname, corpse_xname, ysimple_name } from './objnam.js';
 import { abuse_dog, tamedog } from './dog.js';
 import { makemon, makemon_appear_msg, newcham, adj_lev, clone_mon, mpickobj } from './makemon.js';
 import { ndemon } from './minion.js';
 import { ART_GIANTSLAYER, ART_STORMBRINGER, ART_SNICKERSNEE, ART_CLEAVER } from './generated/artifacts_data.js';
 import { paranoid_query } from './getline.js';
-import { which_armor, is_flimsy, extract_from_minvent } from './worn.js';
+import { which_armor, is_flimsy, extract_from_minvent, is_shield } from './worn.js';
 import { obj_resists } from './dogmove.js';
 import { u_wipe_engr } from './engrave.js';
 import { cutworm } from './worm.js';
@@ -121,6 +123,9 @@ import { munslime, mon_adjust_speed } from './muse.js';
 import { night } from './calendar.js';
 import { p_coaligned, ghod_hitsu } from './priest.js';
 import { Soundeffect } from './sndprocs.js';
+// imports.mjs --can uhitm.js mthrowu.js hit: IN-SCC, hoisted function,
+// call-time only (no top-level read). zap.c hit, one clone.
+import { hit } from './mthrowu.js';
 import { uhis } from './roles.js';
 import { se_distant_thunder, se_applause } from './generated/seffects_data.js';
 
@@ -180,6 +185,9 @@ const AD_CORR = 42;
 const AD_TLPT = 23; /* teleports victim (quantum mechanic) — monattk.h */
 const AD_SGLD = 20; /* steals gold (leprechaun) — monattk.h */
 const AD_DCAY = 34; /* decays organics (brown pudding) — monattk.h */
+const AD_DETH = 37; /* for Death only — monattk.h */
+const AD_DISE = 33; /* confers diseases — monattk.h */
+const AD_PEST = 38; /* for Pestilence only — monattk.h */
 const AD_SLIM = 40; /* turns victim into green slime — monattk.h */
 const AD_HEAL = 27; /* heals opponent's wounds (nurse) — monattk.h */
 const AD_LEGS = 17; /* damages legs (xan) — monattk.h:59 */
@@ -424,31 +432,11 @@ export function can_blnd(magr, mdef, aatyp, obj) {
     return true; // C :398
 }
 
-/** C ref: zap.c exclam — punctuation by damage force. */
+/** C ref: zap.c exclam `:3546–3553` — punctuation by damage force. */
 function exclam(force) {
     if (force < 0) return '?';
     if (force <= 4) return '.';
     return '!';
-}
-
-/**
- * C ref: uhitm.c hmon_hitmon_msg_hit verb — bash/lash/smite/hit.
- * is_shield via ARMOR + oc_skill==ARM_SHIELD; wet towel = TOWEL+spe>0.
- */
-function hmon_hit_verb(obj) {
-    if (obj) {
-        const skill = game.objects?.[obj.otyp]?.oc_skill ?? -1;
-        if ((obj.oclass === ARMOR_CLASS && skill === ARM_SHIELD)
-            || obj.otyp === HEAVY_IRON_BALL) {
-            return 'bash';
-        }
-        if (skill === P_WHIP
-            || (obj.otyp === TOWEL && (obj.spe | 0) > 0)) {
-            return 'lash';
-        }
-    }
-    if (game.urole?.mnum === PM_BARBARIAN) return 'smite';
-    return 'hit';
 }
 
 // C ref: display.h _is_safemon — peaceful + canspotmon + !conf/hallu/stun
@@ -721,13 +709,24 @@ async function corpse_chance(mon, magr = null, was_swallowed = false) {
 // mon.c mondead lives in mhitm.js — imported above (D-2147; no second clone).
 
 /**
- * C ref: uhitm.c first_weapon_hit — livelog before kill so order is hit then kill.
- * Artifact / cursed-bknown / ONAME paths deferred (simpleonames only).
+ * C ref: uhitm.c first_weapon_hit `:1963–1989`.
+ * Livelog before the kill so the conduct line precedes "killed for the
+ * first time". Skip xname (that includes a player-supplied "named <foo>").
+ * cursed+bknown prefix; a fully identified artifact uses ONAME; otherwise
+ * simpleonames, and a discovered artifact appends " named <bare name>".
+ * Callers: hmon_hitmon_jousting (C `:1551`) and hmon_hitmon (C `:1844`).
  */
 function first_weapon_hit(weapon) {
     let buf = '';
+    /* include "cursed" if known but don't bother with blessed */
     if (weapon.cursed && weapon.bknown) buf += 'cursed ';
-    buf += objectNameStrs[weapon.otyp] || 'weapon';
+    if (obj_is_pname(weapon)) {
+        buf += ONAME(weapon); /* fully IDed artifact */
+    } else {
+        buf += simpleonames(weapon);
+        if (weapon.oartifact && weapon.dknown)
+            buf += ` named ${bare_artifactname(weapon)}`;
+    }
     livelog_printf(
         LL_CONDUCT,
         'hit with a wielded weapon (%s) for the first time',
@@ -1152,9 +1151,10 @@ async function hmon_hitmon_dmg_recalc(dmg, obj, thrown, twohits, use_weapon_skil
  * flag arms. ctx carries the hmd fields this helper owns (dmg,
  * use/train_weapon_skill, hittxt, doreturn, retval, dieroll, hand_to_hand,
  * thrown, jousting, ispoisoned).
- * Named omissions: silvermsg/silverobj + lightobj message flags (hmon has
- * no msg_lightobj plumbing; weapon silvermsg stays the pre-existing omit —
- * barehand rings print via hmon_hitmon_msg_silver).
+ * Named omissions: silvermsg/silverobj (weapon silver stays the
+ * pre-existing omit — barehand rings print via hmon_hitmon_msg_silver).
+ * lightobj is set here (C `:1038–1040`) and printed by
+ * hmon_hitmon_msg_lightobj.
  */
 async function hmon_hitmon_weapon_melee(mon, obj, ctx) {
     const u = game.u || {};
@@ -1234,6 +1234,10 @@ async function hmon_hitmon_weapon_melee(mon, obj, ctx) {
     } else if (obj.oartifact) {
         ctx.dmg = ctx.dmgBox.dmg | 0;
     }
+    /* C :1035–1036 silvermsg/silverobj stays named (no weapon plumbing). */
+    /* C :1038–1040 — lit light-hating artifact (Sunsword / worn gold DSM). */
+    if (artifact_light(obj) && obj.lamplit && mon_hates_light(mon))
+        ctx.lightobj = true;
     // C :1041–1047 — mounted lance. joust() burns rn2(5) (and maybe rnl).
     ctx.jousting = 0;
     ctx.ispoisoned = false;
@@ -1682,15 +1686,116 @@ async function hmon_hitmon_msg_silver(hmd, mon) {
 }
 
 /**
+ * C ref: uhitm.c hmon_hitmon_msg_lightobj `:1702–1730`.
+ * `obj` is unused (C UNUSED). Seen + saved name: "<name>'s radiance
+ * penetrates deep into <whom>!"; seen without a name: "The light sears
+ * <whom>!"; unseen: highc the pronoun then "<Whom> is seared!".
+ * Corporeal, non-amorphous targets append " flesh" via s_suffix.
+ * When lightobj is set, do_hit stored bare_artifactname (lit) rather
+ * than cxname. Caller: hmon_hitmon (C `:1880–1881`).
+ */
+async function hmon_hitmon_msg_lightobj(hmd, mon, obj) {
+    void obj;
+    let whom = mon_nam(mon);
+    const seen = canspotmon(mon);
+    const saved = hmd.saved_oname ? String(hmd.saved_oname) : '';
+    if (!seen)
+        whom = highc(whom) + whom.slice(1);
+    const mdat = hmd.mdat || mon.data;
+    if (!noncorporeal(mdat) && !amorphous(mdat))
+        whom = `${s_suffix(whom)} flesh`;
+    if (seen && saved) {
+        await pline(`${s_suffix(saved)} radiance penetrates deep into ${whom}!`);
+    } else if (seen) {
+        await pline(`The light sears ${whom}!`);
+    } else {
+        await pline(`${whom} is seared!`);
+    }
+}
+
+/**
  * C ref: uhitm.c hmon_hitmon — inner damage routine (D-0693/D-1232/D-1384).
  * Thrown cream pie / blinding venom misc_obj arm (D-0693); melee weapon path.
  * troll_baned around killed (D-1232): set TRUE only, always reset after.
  * shade_miss melee/applied D-1384 (`:1812–1822`); thrown/kicked are D-1383.
  * Poison, joust, barehand silver, and poiskilled are live (D-2839).
- * Pudding split is live. Stagger's canspotmon pline + mhurtle stay named.
- * Non-shade get_dmg_bonus min-1 and umconf hand-glow stay named.
+ * Pudding split is hmon_hitmon_splitmon. The hit line is
+ * hmon_hitmon_msg_hit. Stagger's canspotmon pline + mhurtle stay named.
+ * Non-shade get_dmg_bonus min-1 stays named. umconf hand-glow is
+ * nohandglow (uhitm.c:6315).
  * Called via the hmon wrapper below (C uhitm.c:819–836).
  */
+/**
+ * C ref: uhitm.c hmon_hitmon_splitmon `:1603–1634`.
+ * A black or brown pudding (`hmd.mdat`) that still has more than 1 HP,
+ * is not cancelled, and has not migrated (`hmd.offmap`) splits when the
+ * hero hits hand-to-hand with uwep or the twoweapon swap weapon, and
+ * that weapon's `hmd.material` is iron or metal and it is not ammo or
+ * a missile. `clone_mon(mon, 0, 0)`; when twoweapon and verbose, the
+ * divide line appends " with " plus `yname`. `hittxt` suppresses the
+ * ordinary hit line. `mintrap` uses `NO_TRAP_FLAGS` (dynamic trap.js
+ * import, same as the previous inline). Caller: hmon_hitmon (C `:1868`).
+ */
+async function hmon_hitmon_splitmon(hmd, mon, obj) {
+    const mndx = hmd.mdat?.mndx ?? hmd.mdat?.mnum;
+    if ((mndx === PM_BLACK_PUDDING || mndx === PM_BROWN_PUDDING)
+        && (mon.mhp | 0) > 1 && !mon.mcan && !hmd.offmap
+        && obj && (obj === game.u?.uwep
+            || (game.u?.twoweap && obj === game.u?.uswapwep))
+        && (((hmd.material | 0) === IRON) || ((hmd.material | 0) === METAL))
+        && !(is_ammo(obj) || is_missile(obj))
+        && hmd.hand_to_hand) {
+        const mclone = await clone_mon(mon, 0, 0);
+        if (mclone) {
+            let withwhat = '';
+            /* C `flags.verbose` (default TRUE; jsmain sets it). */
+            if (game.u?.twoweap && game.flags?.verbose !== false)
+                withwhat = ` with ${yname(obj)}`;
+            await pline(`${Monnam(mon)} divides as you hit it${withwhat}!`);
+            hmd.hittxt = true;
+            const { mintrap } = await import('./trap.js');
+            await mintrap(mclone, NO_TRAP_FLAGS);
+        }
+    }
+}
+
+/**
+ * C ref: uhitm.c hmon_hitmon_msg_hit `:1637–1660`.
+ * No line when `hittxt` is already set. No line when the target is
+ * already dead, unless this shot is thrown (kicked and applied count:
+ * `hmd.thrown` is the HMON_* value, and melee is 0) and `m_shot` is a
+ * volley of the same otyp (`n > 1` and `o == otyp`). Thrown calls
+ * `hit(mshot_xname(obj), mon, exclam(dmg))`. Otherwise `!verbose` is
+ * `You("hit it.")`; the verbose hand-to-hand line is bash (shield or
+ * heavy iron ball), lash (whip skill or wet towel), smite (barbarian),
+ * or hit, then `mon_nam` and `canseemon ? exclam(dmg) : "."`.
+ * Caller: hmon_hitmon (C `:1870`).
+ */
+async function hmon_hitmon_msg_hit(hmd, mon, obj) {
+    const ms = game.m_shot;
+    /* C `:1642–1645` — thrown implies obj (the comment in the C body). */
+    if (!hmd.hittxt
+        && (!hmd.destroyed
+            || (hmd.thrown && ms && (ms.n | 0) > 1
+                && (ms.o | 0) === (obj.otyp | 0)))) {
+        if (hmd.thrown) {
+            await hit(mshot_xname(obj), mon, exclam(hmd.dmg | 0));
+        } else if (game.flags?.verbose === false) {
+            await You('hit it.');
+        } else {
+            /* C `:1651–1657` ternary, right-associative. */
+            const verb = (obj && (is_shield(obj)
+                    || (obj.otyp | 0) === HEAVY_IRON_BALL)) ? 'bash'
+                : (obj && ((game.objects?.[obj.otyp]?.oc_skill | 0) === P_WHIP
+                    || is_wet_towel(obj))) ? 'lash'
+                    : Role_if(PM_BARBARIAN) ? 'smite'
+                        : 'hit';
+            const punct = canseemon(mon) ? exclam(hmd.dmg | 0) : '.';
+            await You('%s %s%s', verb, mon_nam(mon), punct);
+        }
+    }
+}
+
 async function hmon_hitmon(mon, obj, thrown, _dieroll) {
     // C hmon_hitmon_misc_obj CREAM_PIE / BLINDING_VENOM before weapon dmg
     if (obj && (obj.otyp === CREAM_PIE || obj.otyp === BLINDING_VENOM)) {
@@ -1751,8 +1856,12 @@ async function hmon_hitmon(mon, obj, thrown, _dieroll) {
     let poiskilled = false;
     let already_killed = false;
     let barehand_silver_rings = 0;
+    let lightobj = false;
     let offmap = false;
     let mdat = mon.data;
+    /* C hmon_hitmon :1780 — melee, or an applied polearm (implies uwep). */
+    const hand_to_hand = thrown === HMON_MELEE
+        || (thrown === HMON_APPLIED && is_pole(game.u?.uwep));
     if (!obj) {
         // C hmon_hitmon_do_hit :1392 → hmon_hitmon_barehands :838–882.
         const hmd = {
@@ -1831,8 +1940,7 @@ async function hmon_hitmon(mon, obj, thrown, _dieroll) {
                 retval: true,
                 dieroll: _dieroll | 0,
                 thrown,
-                hand_to_hand: (thrown === HMON_MELEE
-                    || (thrown === HMON_APPLIED && is_pole(game.u?.uwep))),
+                hand_to_hand,
             };
             await hmon_hitmon_weapon_melee(mon, obj, ctx);
             dmg = ctx.dmg | 0;
@@ -1841,6 +1949,7 @@ async function hmon_hitmon(mon, obj, thrown, _dieroll) {
             hittxt = ctx.hittxt;
             ispoisoned = !!ctx.ispoisoned;
             jousting = ctx.jousting | 0;
+            lightobj = !!ctx.lightobj;
             get_dmg_bonus = ctx.get_dmg_bonus; // C: melee keeps the :1778 TRUE
             // C hmon_hitmon :1797 — artifact doreturn (killed → FALSE,
             // dmg-zeroed → TRUE) skips recalc/pet/msg entirely.
@@ -1974,55 +2083,21 @@ async function hmon_hitmon(mon, obj, thrown, _dieroll) {
         }
     }
 
-    // C uhitm.c hmon_hitmon_splitmon :1603–1634 — an iron/metal
-    // hand-to-hand hit on a live (mhp>1) uncanceled pudding clones it
-    // (clone_mon + mintrap for the clone); the divide message sets
-    // hittxt so the ordinary hit message is skipped. mintrap via
-    // dynamic import (file convention: trap.js bound the same way).
-    if (((mon.data?.mndx | 0) === PM_BLACK_PUDDING
-        || (mon.data?.mndx | 0) === PM_BROWN_PUDDING)
-        && (mon.mhp | 0) > 1 && !mon.mcan && (mon.mx | 0) !== 0
-        && obj && (obj === game.u?.uwep
-            || (game.u?.twoweap && obj === game.u?.uswapwep))
-        && (((game.objects?.[obj.otyp]?.oc_material | 0) === IRON)
-            || ((game.objects?.[obj.otyp]?.oc_material | 0) === METAL))
-        && !is_ammo(obj) && !is_missile(obj)
-        && (thrown === HMON_MELEE
-            || (thrown === HMON_APPLIED && is_pole(game.u?.uwep)))) {
-        const mclone = await clone_mon(mon, 0, 0);
-        if (mclone) {
-            let withwhat = '';
-            if (game.u?.twoweap && game.flags?.verbose !== false)
-                withwhat = ` with ${yname(obj)}`;
-            await pline(`${Monnam(mon)} divides as you hit it${withwhat}!`);
-            hittxt = true;
-            const { mintrap } = await import('./trap.js');
-            await mintrap(mclone, NO_TRAP_FLAGS);
-        }
-    }
-
-    // C: hmon_hitmon_msg_hit — !hittxt && (!destroyed || thrown-multishot)
-    if (!hittxt && !destroyed) {
-        if (thrown === HMON_MELEE) {
-            if (game.flags?.verbose !== false) {
-                const punct = canseemon(mon) ? exclam(dmg) : '.';
-                await pline(`You ${hmon_hit_verb(obj)} ${mon_nam(mon)}${punct}`);
-            } else {
-                await pline('You hit it.');
-            }
-        } else if (thrown) {
-            // C uhitm.c:1646-1647: thrown/kicked/applied → hit(mshot_xname)
-            const missile = mshot_xname(obj);
-            const bx = game.bhitpos?.x ?? mon.mx;
-            const by = game.bhitpos?.y ?? mon.my;
-            const whom = ((cansee(bx, by) || canspotmon(mon))
-                && game.flags?.verbose !== false)
-                ? mon_nam(mon) : 'it';
-            await pline(
-                `${The(missile)} ${vtense(missile, 'hit')} ${whom}${exclam(dmg)}`,
-            );
-        }
-    }
+    // C `:1868` hmon_hitmon_splitmon, then `:1870` hmon_hitmon_msg_hit.
+    // material is hmon_hitmon's `:1774` snapshot (objects[otyp].oc_material).
+    const hitmon = {
+        hittxt,
+        destroyed,
+        thrown,
+        dmg,
+        mdat,
+        offmap,
+        material: obj ? (game.objects?.[obj.otyp]?.oc_material | 0) : 0,
+        hand_to_hand,
+    };
+    await hmon_hitmon_splitmon(hitmon, mon, obj);
+    hittxt = !!hitmon.hittxt;
+    await hmon_hitmon_msg_hit(hitmon, mon, obj);
 
     // C uhitm.c hmon_hitmon :1872–1875 — dryit (wet towel loses wetness)
     // after the hit message; dryit implies obj is still intact.
@@ -2040,6 +2115,16 @@ async function hmon_hitmon(mon, obj, thrown, _dieroll) {
         }, mon);
     }
 
+    // C :1880–1881 — lit artifact vs a light-hater. do_hit stores
+    // bare_artifactname when artifact_light && lamplit (the only case
+    // that sets lightobj).
+    if (lightobj && obj) {
+        await hmon_hitmon_msg_lightobj({
+            saved_oname: bare_artifactname(obj),
+            mdat,
+        }, mon, obj);
+    }
+
     // C :1897–1921 — poison messages after the hit line. poiskilled
     // xkills instead of killed; unpoison still prints after a kill.
     if (needpoismsg)
@@ -2048,12 +2133,25 @@ async function hmon_hitmon(mon, obj, thrown, _dieroll) {
         await pline_The('poison was deadly...');
         if (!already_killed) await xkilled(mon, XKILL_NOMSG);
         destroyed = true;
-    } else if (destroyed && !already_killed) {
-        // C :1906–1909 — TRUE only (not mhitm/hmonas ternary).
-        if (troll_baned(mon, obj))
-            game.mkcorpstat_norevive = true;
-        await killed(mon);
-        game.mkcorpstat_norevive = false;
+    } else if (destroyed) {
+        // C :1904–1910 — already_killed skips killed(); still not umconf.
+        if (!already_killed) {
+            // C :1906–1909 — TRUE only (not mhitm/hmonas ternary).
+            if (troll_baned(mon, obj))
+                game.mkcorpstat_norevive = true;
+            await killed(mon);
+            game.mkcorpstat_norevive = false;
+        }
+    } else if ((game.u?.umconf | 0) && hand_to_hand) {
+        /* C :1911–1917 — nohandglow, then confuse unless already
+           confused or the spellbook resist roll succeeds. */
+        await nohandglow(mon);
+        if (!mon.mconf && !(await resist(mon, SPBOOK_CLASS, 0, NOTELL))) {
+            mon.mconf = 1;
+            if (!mon.mstun && !helpless(mon) && canseemon(mon)) {
+                await pline(`${Monnam(mon)} appears confused.`);
+            }
+        }
     }
     if (unpoisonmsg && obj) {
         const saved = cxname(obj);
@@ -2090,6 +2188,30 @@ async function hmon(mon, obj, thrown, dieroll) {
     const result = await hmon_hitmon(mon, obj, thrown, dieroll);
     if (mon.ispriest && !rn2(2)) await ghod_hitsu(mon);
     return result;
+}
+
+/**
+ * C ref: uhitm.c nohandglow `:6315–6337` — static. Hands stop tingling
+ * or glowing red as confusion-monster charges wear down by one.
+ * altfeedback is Blind || Invisible (Invis && !See_invisible).
+ * NH_RED is decl.h c_color_names.c_red ("red"). A confused target
+ * returns before the message and the decrement.
+ */
+async function nohandglow(mon) {
+    const u = game.u || {};
+    if (!(u.umconf | 0) || mon?.mconf) return;
+    const hands = makeplural(body_part(HAND));
+    /* C :6322 — Invisible == Invis && !See_invisible. */
+    const altfeedback = Blind() || Invisible_you();
+    if ((u.umconf | 0) === 1) {
+        if (altfeedback) await Your('%s stop tingling.', hands);
+        else await Your('%s stop glowing %s.', hands, hcolor('red'));
+    } else if (altfeedback) {
+        await pline_The('tingling in your %s lessens.', hands);
+    } else {
+        await Your('%s no longer glow so brightly %s.', hands, hcolor('red'));
+    }
+    u.umconf = (u.umconf | 0) - 1;
 }
 
 export { hmon, hmon_hitmon, passive_obj };
@@ -2703,6 +2825,18 @@ async function damageum_adtyping(mattk, mdef, mhm) {
         await damageum_ad_curs(mdef, mhm);
     } else if (adtyp === AD_DCAY) {
         await damageum_ad_dcay(mdef, mhm);
+    } else if (adtyp === AD_DETH) {
+        /* C ref: uhitm.c mhitm_adtyping `:4824` → mhitm_ad_deth.
+           uhitm arm gotos the mhitm arm (no hero form has AD_DETH). */
+        await mhitm_ad_deth(game.youmonst, mattk, mdef, mhm);
+    } else if (adtyp === AD_DISE) {
+        /* C ref: uhitm.c mhitm_adtyping `:4822` → mhitm_ad_dise.
+           uhitm arm gotos the mhitm arm (fungus / ghoul / defended). */
+        await mhitm_ad_dise(game.youmonst, mattk, mdef, mhm);
+    } else if (adtyp === AD_PEST) {
+        /* C ref: uhitm.c mhitm_adtyping `:4825` → mhitm_ad_pest.
+           uhitm arm gotos the mhitm arm, which is AD_DISE damage. */
+        await mhitm_ad_pest(game.youmonst, mattk, mdef, mhm);
     } else if (adtyp === AD_SLIM) {
         await damageum_ad_slim(mdef, mhm);
     } else if (adtyp === AD_HEAL) {
@@ -2765,6 +2899,12 @@ async function damageum_adtyping(mattk, mdef, mhm) {
            ignite_items(minvent). Routed through the shared mhitm.js arm
            (elec precedent); mhitu arm is mhitm_ad_fire_u in mhitu.js. */
         await mhitm_ad_fire(game.youmonst, mattk, mdef, mhm);
+    } else if (adtyp === AD_STCK) {
+        /* C ref: uhitm.c mhitm_adtyping `:4813` → mhitm_ad_stck `:3313–3318`
+           uhitm (hero as attacker) arm: mgc-negate gate, then set_ustuck
+           when adjacent and the defender form does not already stick.
+           Barbed devil adds Your barbs line. Leftover d() stands. */
+        await mhitm_ad_stck(game.youmonst, mattk, mdef, mhm);
     }
 }
 

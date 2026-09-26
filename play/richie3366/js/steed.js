@@ -136,7 +136,8 @@ function accessible_cell(x, y) {
 /**
  * C ref: hack.c test_move(TEST_MOVE) — terrain/doorway subset for ride.
  * Includes diagonal-into/out-of intact doorway ban (testdiag).
- * NODIAG poly / boulder push / shop block_door deferred.
+ * NODIAG poly / boulder push / shop block_door and block_entry deferred
+ * (the live `test_move` caller is steed.js ride, not this subset).
  */
 export function doorless_door(x, y) {
     const loc = game.level?.at?.(x, y);
