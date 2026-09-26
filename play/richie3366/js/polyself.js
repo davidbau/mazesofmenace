@@ -18,13 +18,13 @@ import {
 import { Unaware, newuhs } from './eat.js';
 import { attacktype_fordmg, killed } from './uhitm.js';
 import {
-    AT_SPIT, AT_GAZE, AT_ENGL, AD_BLND, AD_DRST, AD_ACID,
-    AD_CONF, AD_FIRE, AD_ELEC, AD_COLD,
+    AT_SPIT, AT_GAZE, AT_EXPL, AT_ENGL, AD_BLND, AD_DRST, AD_ACID,
+    AD_CONF, AD_FIRE, AD_ELEC, AD_COLD, dmgtype_fromattack,
 } from './mhitm.js';
 import { mksobj, objects_at, maybe_adjust_light } from './mkobj.js';
 import { throwit } from './dothrow.js';
-import { ubuzz, ubreatheu, resists_fire, destroy_items } from './zap.js';
-import { were_summon, were_beastie, counter_were } from './were.js';
+import { ubuzz, ubreatheu, resists_fire, destroy_items, resists_drli } from './zap.js';
+import { were_summon, were_beastie, counter_were, Protection_from_shape_changers } from './were.js';
 import { unpunish } from './read.js';
 import { surface, split_mon } from './sit.js';
 import { sticks } from './engrave.js';
@@ -35,7 +35,7 @@ import {
 import { has_ceiling } from './dungeon.js';
 import { dryup } from './fountain.js';
 import { aggravate } from './wizard.js';
-import { wakeup, egg_type_from_parent, setmangry } from './mon.js';
+import { wakeup, egg_type_from_parent, setmangry, perceives, valid_vampshiftform } from './mon.js';
 import { Punished } from './pray.js';
 import { name_to_mon, name_to_monclass, set_mon_data } from './mondata.js';
 import {
@@ -118,6 +118,10 @@ import {
     has_head,
     is_flyer,
     is_floater,
+    passes_walls,
+    dmgtype,
+    M2_HUMAN,
+    M2_ELF,
     is_vampire,
     is_vampshifter,
     is_bat,
@@ -194,6 +198,23 @@ import {
     DRAIN_RES,
     INFRAVISION,
     REGENERATION,
+    ANTIMAGIC,
+    SICK_RES,
+    STUNNED,
+    HALLUC_RES,
+    SEE_INVIS,
+    TELEPAT,
+    INVIS,
+    LEVITATION,
+    SWIMMING,
+    PASSES_WALLS,
+    REFLECTING,
+    BLND_RES,
+    WARN_OF_MON,
+    FROMRACE,
+    AD_RBRE,
+    WC2_HILITE_STATUS,
+    WC2_FLUSH_STATUS,
     KILLED_BY_AN,
     BOLT_LIM,
     BZ_OFS_AD,
@@ -307,6 +328,16 @@ const PM_RAVEN = monsterNames.indexOf('PM_RAVEN');
 const PM_KI_RIN = monsterNames.indexOf('PM_KI_RIN');
 const PM_ROTHE = monsterNames.indexOf('PM_ROTHE');
 const PM_STALKER = monsterNames.indexOf('PM_STALKER');
+const PM_BABY_GRAY_DRAGON = monsterNames.indexOf('PM_BABY_GRAY_DRAGON');
+const PM_GHOUL = monsterNames.indexOf('PM_GHOUL');
+const PM_BLACK_LIGHT = monsterNames.indexOf('PM_BLACK_LIGHT');
+const PM_PURPLE_WORM = monsterNames.indexOf('PM_PURPLE_WORM');
+const PM_BABY_PURPLE_WORM = monsterNames.indexOf('PM_BABY_PURPLE_WORM');
+const PM_SHRIEKER = monsterNames.indexOf('PM_SHRIEKER');
+const PM_VAMPIRE = monsterNames.indexOf('PM_VAMPIRE');
+// C monattk.h — magic missile / hallucinate. Not re-exported from mhitm.js.
+const AD_MAGM = 1;
+const AD_HALU = 36;
 // C polyself.c:545–558 placeholder substitutes + :572–575 own-role cleric.
 const PM_GIANT = monsterNames.indexOf('PM_GIANT');
 const PM_HILL_ORC = monsterNames.indexOf('PM_HILL_ORC');
@@ -679,45 +710,113 @@ export function float_vs_flight() {
 }
 
 /**
- * C ref: mondata.c resists_drli for &gy.youmonst — undead/demon/were form,
- * human-form ulycn arm (mondata.c:206-207), Death, vampshifter. set_uasmon
- * zeroes uwep before calling, so the wielded-weapon path is suppressed;
- * the defended(mon, AD_DRLI) disjunct has no JS export (named omission).
+ * C ref: youprop.h HWarn_of_mon — toggle only the FROMRACE bit.
+ * polysense clears it, then sets it for the worm and vampire arms.
+ * @param {boolean} on
  */
-function resists_drli_you(mdat) {
-    const u = game.u || {};
-    if (!mdat) return false;
-    if (is_undead(mdat) || is_demon(mdat) || is_were(mdat)) return true;
-    if (ismnum((u.ulycn ?? NON_PM) | 0)) return true;
-    if ((u.umonnum | 0) === PM_DEATH) return true;
-    if (is_vampshifter(game.youmonst || {})) return true;
-    return false;
+function warn_of_mon_fromrace(on) {
+    const u = game.u || (game.u = {});
+    if (!u.uprops) u.uprops = {};
+    if (!u.uprops[WARN_OF_MON]) {
+        u.uprops[WARN_OF_MON] = { intrinsic: 0, extrinsic: 0, blocked: 0 };
+    }
+    if (on) {
+        u.uprops[WARN_OF_MON].intrinsic = (u.uprops[WARN_OF_MON].intrinsic | 0) | FROMRACE;
+        u.HWarn_of_mon = (u.HWarn_of_mon | 0) | FROMRACE;
+    } else {
+        u.uprops[WARN_OF_MON].intrinsic = (u.uprops[WARN_OF_MON].intrinsic | 0) & ~FROMRACE;
+        u.HWarn_of_mon = (u.HWarn_of_mon | 0) & ~FROMRACE;
+    }
 }
 
 /**
- * C ref: polyself.c set_uasmon — point youmonst.data at mons[umonnum]
- * via set_mon_data (prorates u.umovement when new form is slower).
- * Named omissions: defended(AD_DRLI) disjunct of resists_drli (no JS
- * defended export); ANTIMAGIC;
- * SICK_RES fungus/ghoul; STUNNED/HALLUC_RES/SEE_INVIS/TELEPAT/
- * INVIS/LEVITATION/SWIMMING/PASSES_WALLS/
- * REFLECTING/BLND_RES; vamp cham; polysense;
- * light-source bookkeeping.
+ * C ref: botl.h VIA_WINDOWPORT — wincap2 has hilite or flush status.
+ * Contest tty leaves wincap2 unset, so this is false.
+ */
+function via_windowport() {
+    const wp = game.windowprocs;
+    const wincap2 = (wp && typeof wp === 'object' && Object.hasOwn(wp, 'wincap2'))
+        ? (wp.wincap2 | 0)
+        : 0;
+    return (wincap2 & (WC2_HILITE_STATUS | WC2_FLUSH_STATUS)) !== 0;
+}
+
+/**
+ * C ref: mondata.h pm_invisible — stalker or black light.
+ * Macro, inlined (trap.js holds the only function-shaped copy).
+ * Index compare: mons() is not a stable &mons[PM] pointer.
+ * @param {object|null|undefined} ptr
+ */
+function pm_invisible_form(ptr) {
+    const n = ptr?.mndx | 0;
+    return n === PM_STALKER || n === PM_BLACK_LIGHT;
+}
+
+/**
+ * C ref: polyself.c polysense :2235–2261 — static, only caller set_uasmon.
+ * Clears species/polyd warn state, then purple worm → shrieker or
+ * vampire/vampire leader → human|elf. Does not touch warntype.obj.
+ */
+function polysense() {
+    const u = game.u || (game.u = {});
+    const ctx = game.context || (game.context = {});
+    if (!ctx.warntype) {
+        ctx.warntype = { obj: 0, polyd: 0, species: null, speciesidx: NON_PM };
+    }
+    const wt = ctx.warntype;
+    wt.speciesidx = NON_PM;
+    wt.species = null;
+    wt.polyd = 0;
+    warn_of_mon_fromrace(false);
+
+    const mnum = u.umonnum | 0;
+    let warnidx = NON_PM;
+    if (mnum === PM_PURPLE_WORM || mnum === PM_BABY_PURPLE_WORM) {
+        warnidx = PM_SHRIEKER;
+    } else if (mnum === PM_VAMPIRE || mnum === PM_VAMPIRE_LEADER) {
+        wt.polyd = (M2_HUMAN | M2_ELF) | 0;
+        warn_of_mon_fromrace(true);
+        return;
+    }
+    if (ismnum(warnidx)) {
+        wt.speciesidx = warnidx;
+        wt.species = mons(warnidx);
+        warn_of_mon_fromrace(true);
+    }
+}
+
+/**
+ * C ref: polyself.c set_uasmon :38–127 — point youmonst at mons[umonnum],
+ * set cham, then FROMFORM intrinsics in C order. set_mon_data prorates
+ * u.umovement when the new form is slower.
  */
 export function set_uasmon() {
     const u = game.u || (game.u = {});
     const mndx = u.umonnum | 0;
     const mdat = mons(mndx);
     if (!game.youmonst) game.youmonst = {};
-    // C: set_mon_data(&gy.youmonst, mdat) — umovement prorate on slowdown
-    set_mon_data(game.youmonst, mdat);
-    game.youmonst.mnum = mndx;
-    game.youmonst.m_id = 1;
-    // Protection_from_shape_changers / vampire cham deferred
-    if (game.youmonst.cham == null) game.youmonst.cham = NON_PM;
-    u.mcham = game.youmonst.cham;
+    const youmonst = game.youmonst;
+    // C :41 — sample cham before set_mon_data rewrites the form.
+    // Unset cham is BSS 0, not NON_PM.
+    const wasVampshifter = valid_vampshiftform((youmonst.cham ?? 0) | 0, mndx);
 
-    // C: resist_from_form(MRtyp) — mdat->mresists & MRtyp
+    // C :43–44
+    set_mon_data(youmonst, mdat);
+    youmonst.mnum = mndx;
+    youmonst.m_id = 1;
+
+    // C :46–52 — shape-changer protection, vampire cham, or clear.
+    // A vamp-shifted bat/fog/wolf keeps the previous cham.
+    if (Protection_from_shape_changers()) {
+        youmonst.cham = NON_PM;
+    } else if (is_vampire(youmonst.data)) {
+        youmonst.cham = youmonst.mnum | 0;
+    } else if (!wasVampshifter) {
+        youmonst.cham = NON_PM;
+    }
+    u.mcham = youmonst.cham; // C :53
+
+    // C :63 resist_from_form — mdat->mresists & MRtyp
     const mres = mdat?.mresists | 0;
     propset_fromform(FIRE_RES, 'HFire_resistance', !!(mres & MR_FIRE));
     propset_fromform(COLD_RES, 'HCold_resistance', !!(mres & MR_COLD));
@@ -727,33 +826,69 @@ export function set_uasmon() {
     propset_fromform(POISON_RES, 'HPoison_resistance', !!(mres & MR_POISON));
     propset_fromform(ACID_RES, 'HAcid_resistance', !!(mres & MR_ACID));
     propset_fromform(STONE_RES, 'HStone_resistance', !!(mres & MR_STONE));
-    // C: PROPSET(DRAIN_RES, resists_drli(&gy.youmonst)) with uwep suppressed
-    propset_fromform(DRAIN_RES, 'HDrain_resistance', resists_drli_you(mdat));
-    // C polyself.c set_uasmon — PROPSET(INFRAVISION, infravision(Upolyd ?
-    // mdat : &mons[gu.urace.mnum])): form grants while poly'd, else race.
-    // The enlightenment/from_what "from your creature form" suffix reads it.
+    // C :65–71 — resists_drli reads global uwep; suppress the wielded weapon.
+    {
+        const saveUwep = u.uwep;
+        u.uwep = null;
+        const drain = resists_drli(youmonst);
+        u.uwep = saveUwep;
+        propset_fromform(DRAIN_RES, 'HDrain_resistance', drain);
+    }
+    // C :74–76 — monster-specific half of resists_magm, not the hero-item half.
+    propset_fromform(ANTIMAGIC, 'HAntimagic',
+        dmgtype(mdat, AD_MAGM)
+        || mndx === PM_BABY_GRAY_DRAGON
+        || dmgtype(mdat, AD_RBRE));
+    // C :77
+    propset_fromform(SICK_RES, 'HSick_resistance',
+        mdat?.mlet === 'S_FUNGUS' || mndx === PM_GHOUL);
+    // C :79–83
+    propset_fromform(STUNNED, 'HStun',
+        mndx === PM_STALKER || is_bat(mdat));
+    propset_fromform(HALLUC_RES, 'HHalluc_resistance', dmgtype(mdat, AD_HALU));
+    propset_fromform(SEE_INVIS, 'HSee_invisible', perceives(mdat));
+    propset_fromform(TELEPAT, 'HTelepat', telepathic(mdat));
+    // C :84–85 — Infravision uses the race monster while not poly'd.
     propset_fromform(INFRAVISION, 'HInfravision',
         infravision(Upolyd(u) ? mdat : mons(game.urace?.mnum)));
-    // C polyself.c:94-95 — PROPSET(TELEPORT, can_teleport(mdat)) and
-    // PROPSET(TELEPORT_CONTROL, control_teleport(mdat)): a tengu form
-    // confers FROMFORM teleport, gating moveloop rn2(85) (allmain.c:308).
+    // C :86 — pm_invisible (stalker, black light)
+    propset_fromform(INVIS, 'HInvis', pm_invisible_form(mdat));
+    // C :87–88 — tengu FROMFORM teleport gates moveloop rn2(85)
     propset_fromform(TELEPORT, 'HTeleportation', can_teleport(mdat));
     propset_fromform(TELEPORT_CONTROL, 'HTeleport_control', control_teleport(mdat));
-
-    // C: PROPSET(FLYING, is_flyer(mdat) && !is_floater(mdat)) — D-0724
-    // floating eye is flyer+floater; suppress Flying under Levitation.
+    // C :89
+    propset_fromform(LEVITATION, 'HLevitation', is_floater(mdat));
+    // C :92 — floating eye is flyer and floater; suppress flight.
     propset_fromform(FLYING, 'HFlying', is_flyer(mdat) && !is_floater(mdat));
-    // C: PROPSET(BLINDED, !haseyes(mdat)) — eyeless forms (molds) Blind
-    // so Monnam → "It"; long "The cockatrice …" lines were forcing
-    // mid-turn --More-- that ate #version (D-0928 #1109).
-    propset_fromform(BLINDED, 'HBlinded', !haseyes(mdat));
-    // C polyself.c:105 — PROPSET(REGENERATION, regenerates(mdat)): an
-    // M1_REGEN form (troll, vampire, …) heals +1/turn via regen_hp; without
-    // the FROMFORM bit a poly'd hero never regenerates (D-2148).
+    // C :93
+    propset_fromform(SWIMMING, 'HSwimming', is_swimmer(mdat));
+    // C :96 — MAGICAL_BREATHING is not touched.
+    propset_fromform(PASSES_WALLS, 'HPasses_walls', passes_walls(mdat));
+    // C :97
     propset_fromform(REGENERATION, 'HRegeneration', regenerates(mdat));
+    // C :98
+    propset_fromform(REFLECTING, 'HReflecting', mndx === PM_SILVER_DRAGON);
+    // C :99 — eyeless forms (molds) are Blind so Monnam → "It"
+    propset_fromform(BLINDED, 'HBlinded', !haseyes(mdat));
+    // C :100–101
+    propset_fromform(BLND_RES, 'HBlnd_resist',
+        !!dmgtype_fromattack(mdat, AD_BLND, AT_EXPL)
+        || !!dmgtype_fromattack(mdat, AD_BLND, AT_GAZE));
 
-    // C: if (!program_state.restoring) float_vs_flight();
+    // C :110–111 — steed unknown during restore; BFlying already set.
     if (!game.program_state?.restoring) float_vs_flight();
+    // C :112
+    polysense();
+
+    // C :121–124 STATUS_HILITES is on (config.h:616). Contest tty
+    // wincap2 is 0, so VIA_WINDOWPORT() is false and status_initialize
+    // (botl.c:1682) is not called. Named until a windowport sets the bits.
+    if (via_windowport()) {
+        /* status_initialize(REASSESS_ONLY) — botl.c:1682, not ported */
+    }
+
+    // C :126
+    game.were_changes = 0;
 }
 
 function copyAttrBundle(src) {
@@ -2361,10 +2496,12 @@ function plur(n) {
  * C ref: insight.c youhiding :2022–2077 — describe the hero's hiding place.
  * Envelope: mimic shape detail (U_AP_TYPE) vs uundetected eel-in-pool /
  * hides_under pile / ceiling-clinger-or-flyer / pit-floor trapper /
- * surface; via_enlghtmt menu line vs topline message.
- * Named omission: the via_enlghtmt arm (insight.c:2074–2077 `you_are`) —
- * JS enlightenment (invent.js) never calls youhiding and the menu-line
- * channel has no polyself-side endpoint.
+ * surface; via_enlghtmt `you_are` menu line vs topline `You`.
+ * `you_are(buf, "")` is `enlght_line("You ", final ? "were " : "are ", buf, "")`
+ * (insight.c:107). The menu window is the caller's line list.
+ * @param {boolean} via_enlghtmt enlightenment line vs #monster topline
+ * @param {number} msgflag `final` for the menu tense, or already/now
+ * @returns {Promise<string|undefined>} the menu line when via_enlghtmt
  */
 export async function youhiding(via_enlghtmt, msgflag) {
     const u = game.u || {};
@@ -2402,9 +2539,13 @@ export async function youhiding(via_enlghtmt, msgflag) {
         }
     }
     /* else: shouldn't happen; falls through to generic "you are hiding" */
-    if (via_enlghtmt) return; /* named omission above */
+    if (via_enlghtmt) {
+        /* C insight.c:2074–2076 — you_are(buf, ""); final is msgflag. */
+        const tense = (msgflag | 0) ? 'were' : 'are';
+        return ` You ${tense} ${buf}.`;
+    }
     /* C: You("are %s %s.", msgflag ? "already" : "now", buf) */
-    await pline(`You are ${msgflag ? 'already' : 'now'} ${buf}.`);
+    await You('are %s %s.', msgflag ? 'already' : 'now', buf);
 }
 
 /**

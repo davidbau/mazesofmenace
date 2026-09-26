@@ -6,8 +6,8 @@
 // two guards, the object prompt, the charge, the direction prompt, the wand
 // that glows and fades when no direction is given, and the worn-out wand that
 // crumbles. One of its five effect arms still stops: backfire(). The fifth,
-// weffects(), runs, and takes an aimed ray wand as far as the fire damage
-// zhitu() does to the hero.
+// weffects(), dispatches immediate effects and aimed rays; the callback and
+// ray families record their own remaining source boundaries below.
 //
 // The shop usage fee stops the command earlier than any of them. check_unpaid()
 // runs between the object prompt and the charge, and js/shk.js raises
@@ -57,6 +57,7 @@ import {
     DISP_END,
     DISP_FLASH,
     DISP_TETHER,
+    FLASHED_LIGHT,
     ECMD_CANCEL,
     ECMD_OK,
     ECMD_TIME,
@@ -115,6 +116,8 @@ import {
     Is_rogue_level,
     Is_waterlevel,
     LAVAWALL,
+    M_AP_MONSTER,
+    M_AP_NOTHING,
     M_AP_OBJECT,
     M_AP_TYPE,
     M_SEEN_FIRE,
@@ -143,6 +146,7 @@ import {
     NO_MINVENT,
     NON_PM,
     NOTELL,
+    TELL,
     G_GENOD,
     has_mcorpsenm,
     REFLECTING,
@@ -174,6 +178,7 @@ import {
     DRAIN_RES,
     FAST,
     INVIS,
+    KICKED_WEAPON,
     THROWN_TETHERED_WEAPON,
     THROWN_WEAPON,
     ZAPPED_WAND,
@@ -223,6 +228,7 @@ import { dirtocoord, getdir, xytodir } from './cmd.js';
 import {
     bot,
     cmap_to_glyph,
+    flush_screen,
     glyph_is_invisible,
     glyph_is_monster,
     glyph_at,
@@ -278,7 +284,11 @@ import {
     delobj_core,
     mergedRuntime,
 } from './invent.js';
-import { get_obj_location } from './light.js';
+import {
+    get_obj_location,
+    show_transient_light,
+    transient_light_cleanup,
+} from './light.js';
 import { monhp_per_lvl, newmcorpsenm } from './makemon.js';
 import {
     makemon_revival,
@@ -357,6 +367,7 @@ import {
     G_UNIQ,
     NUMMONS,
     S_EEL,
+    S_MIMIC,
 } from './monsters.js';
 import { discover_object, observe_object } from './o_init.js';
 import { obj_resists } from './bury.js';
@@ -579,7 +590,7 @@ import {
 } from './shk.js';
 import { Shknam } from './shknam.js';
 import { canSpotMonster, messageAt } from './startup_a11y.js';
-import { S_digbeam } from './symbols.js';
+import { S_digbeam, S_flashbeam } from './symbols.js';
 import { closed_door, dissolve_bars, m_in_air, youHear } from './monmove.js';
 import { stairway_at } from './stairs.js';
 import { is_ice } from './terrain.js';
@@ -592,11 +603,11 @@ import {
     reset_utrap, set_utrap, t_at,
 } from './trap.js';
 import { dotrap, mintrap } from './trap_effects.js';
-import { shade_miss } from './uhitm.js';
+import { flash_hits_mon, shade_miss } from './uhitm.js';
 import { enexto, tele } from './teleport.js';
 import {
     block_point, cansee, canseemon, couldsee, does_block,
-    recalc_block_point, unblock_point,
+    recalc_block_point, unblock_point, vision_recalc,
 } from './vision.js';
 import {
     bimanual,
@@ -657,12 +668,36 @@ function heroIsDeaf(state) {
         || state.u?.uroleplay?.deaf);
 }
 
-// C ref: zap.c bhit_done() (4125-4138).  The flight cleanup is a discarded
-// light.c call; retain its source boundary for every thrown or tethered exit
-// without inventing a transient-light state change.
-function noteBhitTransientLightCleanup(weapon, tetheredWeapon) {
-    if (weapon === THROWN_WEAPON || tetheredWeapon)
-        note_unported('light.c transient_light_cleanup');
+function bhitTransientLightEnv(state, random, rawEnv = {}) {
+    const objectEnv = zapObjectEnv(state, random, rawEnv);
+    return {
+        visionRecalc: (control) => vision_recalc(control, {
+            state,
+            redraw: (x, y) => newsym(x, y, state),
+        }),
+        flushScreen: (mode) => flush_screen(mode),
+        canSeeMonster: (monster) => canseemon(monster, state),
+        canSpotMonster: (monster) => canSpotMonster(monster, state),
+        mapInvisible: (x, y) => map_invisible(x, y, state),
+        placeObject: (obj, x, y) => place_object(obj, x, y, objectEnv),
+        removeObject: (obj) => remove_object(obj, objectEnv),
+        delayOutput: () => nh_delay_output(state),
+        impossible: rawEnv.impossible,
+    };
+}
+
+// C ref: zap.c bhit_done() (4125-4138). The source defers light cleanup for
+// FLASHED_LIGHT so apply.c can process the returned monster first.
+async function bhitTransientLightCleanup(
+    weapon, tetheredWeapon, state, random, rawEnv,
+) {
+    if (weapon === THROWN_WEAPON || weapon === KICKED_WEAPON
+        || tetheredWeapon) {
+        await transient_light_cleanup(
+            state,
+            bhitTransientLightEnv(state, random, rawEnv),
+        );
+    }
 }
 
 // symbol_data.js derives these cmap positions from defsym.h; symbols.js
@@ -2817,9 +2852,10 @@ export async function stone_to_flesh_obj(obj, state = game,
     return result;
 }
 
-// C ref: zap.c bhito() (2118-2426), the WAN_POLYMORPH arm.  Other object
-// effects remain owned by their own zap.c spans and retain their established
-// fail-closed boundaries when reached by this callback.
+// C ref: zap.c bhito() (2118-2426), the polymorph and Stone to Flesh arms.
+// The striking/Force Bolt breakage result chain is still an explicit source
+// boundary; other unported effects fail closed here rather than entering the
+// polymorph arm.
 export async function bhito(obj, wand, state = game,
     random = { rn2, rnd }, rawEnv = {}) {
     if (obj === wand) return 0;
@@ -2830,9 +2866,9 @@ export async function bhito(obj, wand, state = game,
         // inventing user-visible output.
         obj.bypass = false;
     }
-    // bhitpile() adds this result to its hit count. Its only production
-    // caller here admits the implemented polymorph callback; unsupported
-    // immediate effects stop at weffects() before reaching this callback.
+    // bhitpile() adds this result to its hit count. Every immediate effect
+    // can reach this callback, so supported arms stay explicit and unported
+    // effects cannot fall through into polymorph.
     if (obj === state.uball || obj === state.u?.uball) return 0;
     if (obj === state.uchain || obj === state.u?.uchain) {
         if (wand.otyp === WAN_OPENING || wand.otyp === SPE_KNOCK) {
@@ -2841,6 +2877,16 @@ export async function bhito(obj, wand, state = game,
         }
         return 0;
     }
+    if (wand.otyp === WAN_STRIKING || wand.otyp === SPE_FORCE_BOLT)
+        throw new UnsupportedZapError(
+            'bhito() Force Bolt breakage return chain '
+            + '(hero_breaks/breaks, break_statue)',
+        );
+    if (wand.otyp !== WAN_POLYMORPH && wand.otyp !== SPE_POLYMORPH
+        && wand.otyp !== SPE_STONE_TO_FLESH)
+        throw new UnsupportedZapError(
+            `bhito() for immediate effect type ${wand.otyp}`,
+        );
     // zap.c permits Stone to Flesh to reach inventory objects as well as
     // floor objects; its return value is consumed by bhitpile(), so this
     // branch must precede the polymorph-only unpolyable guard.
@@ -2891,22 +2937,62 @@ export async function bhito(obj, wand, state = game,
     return 1;
 }
 
-// C ref: zap.c bhitm() (160-610).  The immediate polymorph callback uses the
+// C ref: zap.c bhitm() (160-610). The immediate polymorph callback uses the
 // same monster selector as mon.c and awaits its result because newcham may
-// prompt or run floor effects.  The other wand callbacks remain explicit
-// source boundaries until their own effect families land.
+// prompt or run floor effects. Force Bolt and striking have their own hit and
+// resistance path; remaining callback effects retain named refusals.
 export async function bhitm(monster, wand, state = game,
-    random = { rn2, rnd }, rawEnv = {}) {
-    // bhit() consumes the callback's return value while walking the ray. Its
-    // production caller admits only the implemented polymorph callback;
-    // unsupported immediate effects stop at weffects() first.
+    random = { d, rn2, rnd }, rawEnv = {}) {
+    // bhit() consumes the callback's return value while walking the ray.
     state.gn ??= {};
     const hit = state.gb?.bhitpos ?? { x: monster.mx, y: monster.my };
     state.gn.notonhead = monster.mx !== hit.x || monster.my !== hit.y;
     let learn_it = false;
+    let reveal_invis = false;
+    const otyp = wand.otyp;
+    const forceBolt = otyp === WAN_STRIKING || otyp === SPE_FORCE_BOLT;
+    const disguised_mimic = monster.data?.mlet === S_MIMIC
+        && M_AP_TYPE(monster) !== M_AP_NOTHING;
     // A long worm which this same zap just changed into must not be hit again
     // when its tail is traversed later in the ray.
-    if (monster.data === state.mons?.[PM_LONG_WORM]
+    if (otyp === WAN_LIGHT) {
+        if (await flash_hits_mon(monster, wand, state, random, rawEnv)) {
+            learn_it = true;
+            reveal_invis = true;
+        }
+    } else if (!forceBolt && otyp !== WAN_POLYMORPH
+        && otyp !== SPE_POLYMORPH) {
+        throw new UnsupportedZapError(
+            `bhitm() for immediate effect type ${otyp}`,
+        );
+    } else if (forceBolt) {
+        const zap_type_text = otyp === WAN_STRIKING ? 'wand' : 'spell';
+        reveal_invis = true;
+        learn_it = cansee(hit.x, hit.y, state);
+        if (resists_magm(monster, state)) {
+            if (disguised_mimic && M_AP_TYPE(monster) !== M_AP_MONSTER)
+                seemimic(monster, state);
+            await shieldeff_mon(monster, { state });
+            await ttyPline('Boing!', state, rawEnv);
+        } else if (state.u?.uswallow
+            || random.rnd(20) < 10 + find_mac(monster, state)) {
+            if (disguised_mimic) seemimic(monster, state);
+            let damage = random.d(2, 12);
+            if (state.urole?.mnum === PM_KNIGHT
+                && state.u?.uhave?.questart)
+                damage *= 2;
+            if (otyp === SPE_FORCE_BOLT)
+                damage = spell_damage_bonus(damage, state);
+            await hit(zap_type_text, monster, exclam(damage), state, rawEnv);
+            // zap.c discards resist()'s boolean result. The existing resist
+            // owner still refuses the unresolved death/killed() return path.
+            await resist(monster, wand.oclass, damage, TELL, state, random);
+        } else {
+            if (!disguised_mimic)
+                await miss(zap_type_text, monster, state, rawEnv);
+            learn_it = false;
+        }
+    } else if (monster.data === state.mons?.[PM_LONG_WORM]
         && has_mcorpsenm(monster)) {
         // C leaves the common wake/reveal/learn tail in place even for this
         // no-op guard; there is simply no effect to learn.
@@ -2980,6 +3066,10 @@ export async function bhitm(monster, wand, state = game,
         });
         await m_respond(monster, { ...rawEnv, state, random });
     }
+    if (reveal_invis && monster.mhp >= 1
+        && cansee(hit.x, hit.y, state)
+        && !canSpotMonster(monster, state))
+        map_invisible(hit.x, hit.y, state);
     if (learn_it) learnwand(wand, state);
     return 0;
 }
@@ -3097,14 +3187,16 @@ export async function bhit(
 
     const tetheredWeapon = weapon === THROWN_TETHERED_WEAPON && Boolean(obj);
     const zapped = weapon === ZAPPED_WAND;
+    const flashed = weapon === FLASHED_LIGHT;
+    const physical = weapon === THROWN_WEAPON || tetheredWeapon;
     // zap.c remembers whether this flight entered with an auto-returning
     // missile so a web or another early stop can cancel that return before
     // throwit() handles the landing tail.
     const wasReturning = state.iflags?.returning_missile === obj ? obj : null;
-    if (weapon !== THROWN_WEAPON && !tetheredWeapon && !zapped) {
+    if (!physical && !zapped && !flashed) {
         throw new UnsupportedBhitError(`call type ${weapon}`);
     }
-    if ((weapon === THROWN_WEAPON || tetheredWeapon) && (fhitm || fhito)) {
+    if (physical && (fhitm || fhito)) {
         // Only ZAPPED_WAND supplies either callback; C passes null for a
         // thrown weapon at dothrow.c:1665-1666.
         throw new UnsupportedBhitError('an object or monster callback');
@@ -3112,13 +3204,19 @@ export async function bhit(
     state.gb ??= {};
     state.gb.bhitpos = { x: state.u.ux, y: state.u.uy };
 
-    if (!zapped && obj && obj.otyp === ROCK) {
+    if (physical && obj && obj.otyp === ROCK) {
         ({ skipstart: skiprange_start, skipend: skiprange_end } =
             skiprange(range, random));
         allow_skip = random.rn2(3) === 0;
     }
 
-    if (tetheredWeapon) {
+    if (flashed) {
+        await tmp_at(
+            DISP_BEAM,
+            map_glyphinfo(cmap_to_glyph(S_flashbeam, state), state),
+            state,
+        );
+    } else if (tetheredWeapon) {
         // display.c owns this transient frame; throwit() closes it after bhit
         // returns because C leaves tethered flights open at their boundary.
         await tmp_at(DISP_TETHER, obj_to_glyph(obj, state), state);
@@ -3139,11 +3237,13 @@ export async function bhit(
             break;
         }
 
-        if (is_pick(obj, state) && inside_shop(x, y, state)) {
+        if (physical && is_pick(obj, state) && inside_shop(x, y, state)) {
             const caught = await shkcatch(obj, x, y, state, rawEnv);
             if (caught) {
                 await tmp_at(DISP_END, 0, state);
-                noteBhitTransientLightCleanup(weapon, tetheredWeapon);
+                await bhitTransientLightCleanup(
+                    weapon, tetheredWeapon, state, random, rawEnv,
+                );
                 return caught;
             }
         }
@@ -3151,13 +3251,20 @@ export async function bhit(
         let typ = state.level.at(x, y).typ;
 
         /* WATER aka "wall of water" stops items */
-        if (!zapped && (IS_WATERWALL(typ) || typ === LAVAWALL)) break;
+        if (physical && (IS_WATERWALL(typ) || typ === LAVAWALL)) break;
 
-        if (!zapped && obj.lamplit && !heroIsBlind(state))
-            // zap.c discards show_transient_light()'s void result. Keep the
-            // flight running when that display owner is still unported.
-            note_unported('display.c show_transient_light');
-        if (!zapped && typ === IRONBARS
+        if (physical && obj.lamplit && !heroIsBlind(state)) {
+            await show_transient_light(
+                obj, x, y, state,
+                bhitTransientLightEnv(state, random, rawEnv),
+            );
+        } else if (flashed && !heroIsBlind(state)) {
+            await show_transient_light(
+                null, x, y, state,
+                bhitTransientLightEnv(state, random, rawEnv),
+            );
+        }
+        if (physical && typ === IRONBARS
             && hits_bars(pobj, x - ddx, y - ddy, x, y,
                          point_blank ? 0 : !random.rn2(5) ? 1 : 0, 1,
                          state, random)) {
@@ -3174,7 +3281,7 @@ export async function bhit(
 
         let mtmp = m_at(x, y, state);
         const ttmp = t_at(x, y, state);
-        if (!zapped && !mtmp && ttmp && ttmp.ttyp === WEB
+        if (physical && !mtmp && ttmp && ttmp.ttyp === WEB
             && random.rn2(3) === 0) {
             if (cansee(x, y, state)) {
                 await ttyPline(
@@ -3193,7 +3300,7 @@ export async function bhit(
          *
          * skiprange_start is only set if this is a thrown rock
          */
-        if (!zapped && skiprange_start && range === skiprange_start && allow_skip) {
+        if (physical && skiprange_start && range === skiprange_start && allow_skip) {
             if (is_pool(x, y, state) && !mtmp) {
                 in_skip = true;
                 if (!heroIsBlind(state)) {
@@ -3241,16 +3348,16 @@ export async function bhit(
            them); exception: if the hero knows there is a monster there,
            they will be aiming at the monster */
         // zap.c:3983-3992, the guard that can clear mtmp and let the missile
-        // fly past a monster standing in its path. Its FLASHED_LIGHT disjunct
-        // belongs to a call type the head of this function refuses, so only
-        // the THROWN_WEAPON half is here.
+        // fly past a monster standing in its path. FLASHED_LIGHT skips every
+        // object-appearance mimic; that separate source disjunct follows the
+        // physical shade and object-mimic checks below.
         //
         // shade_miss() answers false for every defender that is not a shade.
         // C assigns mtmp = 0 when a shade cannot be hurt, letting the missile
         // continue; its false answer still costs a dmgval() roll for a shade
         // that the missile can hurt, which is why it is called rather than
         // skipped.
-        if (!zapped && mtmp) {
+        if (physical && mtmp) {
             const passedShade = await shade_miss(
                 state.youmonst, mtmp, obj, true, true, state,
             );
@@ -3262,12 +3369,25 @@ export async function bhit(
                 && !glyph_is_invisible(xyglyph))
                 mtmp = null;
         }
+        if (flashed && mtmp && M_AP_TYPE(mtmp) === M_AP_OBJECT)
+            mtmp = null;
 
         if (mtmp) {
             /* THROWN_WEAPON, KICKED_WEAPON */
             // zap.c:3994-3995 and 4021-4029. Tethered weapons retain their
             // tether animation until throwit() owns the final cleanup.
-            if (zapped) {
+            if (flashed) {
+                state.gn ??= {};
+                state.gn.notonhead = x !== mtmp.mx || y !== mtmp.my;
+                if (mtmp.minvis) {
+                    obj.ox = state.u.ux;
+                    obj.oy = state.u.uy;
+                    await flash_hits_mon(mtmp, obj, state, random, rawEnv);
+                } else {
+                    await tmp_at(DISP_END, 0, state);
+                    return mtmp;
+                }
+            } else if (zapped) {
                 if (fhitm && await fhitm(mtmp, obj, state, random, rawEnv))
                     return mtmp;
                 range -= 3;
@@ -3277,7 +3397,9 @@ export async function bhit(
                 if (!tetheredWeapon) await tmp_at(DISP_END, 0, state);
                 if (cansee(x, y, state) && !canSpotMonster(mtmp, state))
                     map_invisible(x, y, state);
-                noteBhitTransientLightCleanup(weapon, tetheredWeapon);
+                await bhitTransientLightCleanup(
+                    weapon, tetheredWeapon, state, random, rawEnv,
+                );
                 return mtmp;
             }
         }
@@ -3300,11 +3422,11 @@ export async function bhit(
             await tmp_at(x, y, state);
             await nh_delay_output(state);
         }
-        if (!zapped && IS_SINK(typ))
+        if (physical && IS_SINK(typ))
             break; /* physical objects fall onto sink */
 
         /* limit range of ball so hero won't make an invalid move */
-        if (!zapped && range > 0 && obj.otyp === HEAVY_IRON_BALL) {
+        if (physical && range > 0 && obj.otyp === HEAVY_IRON_BALL) {
             const boulder = sobj_at(BOULDER, x, y, state);
             if (boulder) {
                 if (cansee(x, y, state)) {
@@ -3345,7 +3467,9 @@ export async function bhit(
         || (wasReturning
             && wasReturning !== state.iflags?.returning_missile))
         await tmp_at(DISP_END, 0, state);
-    noteBhitTransientLightCleanup(weapon, tetheredWeapon);
+    await bhitTransientLightCleanup(
+        weapon, tetheredWeapon, state, random, rawEnv,
+    );
     //
     // The return value is the monster the missile hit. Reaching the tail means
     // the flight ended on terrain or on its own range instead, so it is null.
@@ -5146,12 +5270,15 @@ export async function zap_updown(obj, state = game,
 }
 
 // C ref: zap.c weffects() (3430-3476), "called for various wand and spell
-// effects - M. Stephenson". dozap()'s final else is its ported caller, so
-// `obj` is a wand the hero aimed or a wand with no direction at all.
+// effects - M. Stephenson". dozap() and spelleffects() are its production
+// callers. It dispatches steed, immediate, directionless, and ray effects;
+// individual callback families retain their own source boundaries.
 //
-// The ray arm at 3463-3465 and the secret-door-detection part of the NODIR arm
-// run. `disclose` turns a ray wand into "a wand of fire" after its effect has
-// been seen. zapnodir() owns the equivalent discovery tail for its wand.
+// The immediate arm at 3439-3451 calls bhitm/bhito through bhit for a
+// horizontal effect. The aimed-ray arm at 3463-3465 and the
+// secret-door-detection part of the NODIR arm also run. `disclose` turns a
+// ray wand into "a wand of fire" after its effect has been seen. zapnodir()
+// owns the equivalent discovery tail for its wand.
 //
 // hack.h:1477 BZ_OFS_WAN(otyp) is `abs(otyp - WAN_MAGIC_MISSILE) % 10` and
 // :1480 BZ_U_WAND(bztyp) is `0 + bztyp`, so the six ray wands become dobuzz()
@@ -5169,13 +5296,9 @@ export async function weffects(
         && state.u.dz > 0 && await zap_steed(obj, state, random)) {
         disclose = true;
     } else if (oc_dir === IMMEDIATE) {
-        // The immediate callback walk is source-complete for polymorph only.
-        // Keep the established weffects() boundary at the caller for all
-        // other object effects instead of fabricating a callback result.
-        if (otyp !== WAN_POLYMORPH && otyp !== SPE_POLYMORPH)
-            throw new UnsupportedZapError(
-                `bhit() for immediate object type ${otyp}`,
-            );
+        // zap.c:3439-3451 sends every immediate effect through the same
+        // callback walk. The callback owners decide which individual effects
+        // are available; the dispatch itself does not special-case them.
         zapsetup(state);
         if (state.u.uswallow) {
             await bhitm(state.u.ustuck, obj, state, random);

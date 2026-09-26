@@ -69,7 +69,10 @@ import { visible_region_at } from './region.js';
 import { engr_at, sticks } from './engrave.js';
 import { digests } from './mhitu.js';
 import { option_help_lines } from './options.js';
-import { dokeylist_lines, domenucontrols_lines, cmdbind_get, movecmd, MISC_KEYS, SPKEYS_DEFAULT } from './dokeylist.js';
+import {
+    dokeylist_lines, domenucontrols_lines, cmdbind_get, movecmd,
+    MISC_KEYS, SPKEYS_DEFAULT, cmd_from_func, cmdname_from_func, visctrl,
+} from './dokeylist.js';
 import { trapname, t_at, ice_descr } from './trap.js';
 import { trapped_chest_at, trapped_door_at } from './detect.js';
 import { costly_spot, doname_with_price } from './shk.js';
@@ -3187,6 +3190,66 @@ async function hmenu_doextlist() {
 }
 
 /**
+ * C `Sprintf(eos(outbuf), "%s%.31s", lead, cmdnm)`.
+ * Lead is `"#"` unless `cmdnm` already starts with `#`.
+ * @param {string} cmdnm
+ * @returns {string}
+ */
+function hash31(cmdnm) {
+    const name = String(cmdnm);
+    const lead = name.charCodeAt(0) !== 0x23 ? '#' : '';
+    const lim = name.length < 31 ? name.length : 31;
+    let body = '';
+    for (let i = 0; i < lim; i++) body += name[i];
+    return lead + body;
+}
+
+/**
+ * C ref: pager.c setopt_cmd `:2908–2957`.
+ * Key or extended name of the options command. Normally `'O'`, but
+ * `#optionsfull` (`doset`) is unbound, so the text is
+ * `'#optionsfull' or 'm O'` (`do_reqmenu` + `doset_simple`).
+ * `outbuf` is the returned string. `eos` / `Strcpy` / `Strcat` /
+ * `Sprintf` are concatenation (`hacklib.c:193` `eos`).
+ * @returns {string}
+ */
+export function setopt_cmd() {
+    let out = "'"; // C `Strcpy(outbuf, "'")`
+    /* #optionsfull — C `cmd_from_func(doset)`, ef_txt "optionsfull" */
+    let key = cmd_from_func('optionsfull');
+    if (key) {
+        out += visctrl(key);
+    } else {
+        let cmdnm = cmdname_from_func('optionsfull', true);
+        if (!cmdnm) cmdnm = 'optionsfull';
+        out += hash31(cmdnm);
+        out += "' or '";
+        /* m prefix plus #options — C `cmd_from_func(do_reqmenu)` */
+        key = cmd_from_func('reqmenu');
+        if (key) {
+            out += visctrl(key);
+        } else {
+            cmdnm = cmdname_from_func('reqmenu', true);
+            if (!cmdnm) cmdnm = 'reqmenu';
+            out += hash31(cmdnm);
+        }
+        /* C: space improves readability; the user does not type it */
+        out += ' ';
+        /* now #options, normally 'O' — C `cmd_from_func(doset_simple)` */
+        key = cmd_from_func('options');
+        if (key) {
+            out += visctrl(key);
+        } else {
+            cmdnm = cmdname_from_func('options', true);
+            if (!cmdnm) cmdnm = 'options';
+            out += hash31(cmdnm);
+        }
+    }
+    out += "'";
+    return out;
+}
+
+/**
  * C ref: pager.c dohelp — help menu.
  */
 export async function dohelp() {
@@ -3203,7 +3266,8 @@ export async function dohelp() {
             await show_text_pages(option_help_lines());
         } },
         { key: 'h', text: 'Longer explanation of game options.', fn: dispfile_optionfile },
-        { key: 'i', text: "Using the '#optionsfull' or 'm O' command to set options.", fn: dispfile_optmenu },
+        // C pager.c:2882 — "Using the %s command to set options.", setopt_cmd
+        { key: 'i', text: `Using the ${setopt_cmd()} command to set options.`, fn: dispfile_optmenu },
         // C ref: cmd.c dokeylist
         { key: 'j', text: 'Full list of keyboard commands.', fn: async () => {
             await show_text_pages(dokeylist_lines());

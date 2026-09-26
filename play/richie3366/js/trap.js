@@ -67,7 +67,7 @@ import {
     STONE_RES, FAILEDUNTRAP,
     NO_TRAP, TRAPNUM, WT_ELF,
     is_hole, is_pit, unhideable_trap, is_xport, In_quest, isok, ZAP_POS, IS_DOOR, IS_LAVA,
-    IS_ROOM, IS_WALL, IS_AIR, IS_FURNITURE, IS_FOUNTAIN, IS_SINK,
+    IS_ROOM, IS_WALL, IS_AIR, IS_WATERWALL, IS_FURNITURE, IS_FOUNTAIN, IS_SINK,
     STONE, SCORR, CORR, ROOM, DOOR, ICE, MAX_TYPE, SDOOR, STAIRS, LADDER, DRAWBRIDGE_UP,
     DRAWBRIDGE_DOWN, DB_UNDER, DB_ICE, DB_FLOOR,
     MELT_ICE_AWAY, ROT_ORGANIC,
@@ -118,7 +118,7 @@ import {
     in_rooms, set_uinwater, test_move,
 } from './hack.js';
 import { goodpos, mlevel_tele_trap, mtele_trap, tele_trap, level_tele_trap, domagicportal, rloco, random_teleport_level, teleds, safe_teleds, noteleport_level, dotele, unconscious } from './teleport.js';
-import { get_level, on_level, at_dgn_entrance } from './dungeon.js';
+import { get_level, on_level, at_dgn_entrance, update_lastseentyp } from './dungeon.js';
 import {
     objectNames, POTION_CLASS, SCROLL_CLASS, SPBOOK_CLASS, ARMOR_CLASS,
     WEAPON_CLASS, TOOL_CLASS, WAND_CLASS, is_blade,
@@ -2215,7 +2215,7 @@ async function trapeffect_pit(mtmp, trap, trflags) {
             if (game.u?.uball && !carried(game.u?.uball)) {
                 unplacebc();
                 await ballfall();
-                placebc();
+                await placebc();
             }
             if (!conj_pit) await selftouch('Falling, you');
             game.vision_full_recalc = 1;
@@ -2942,35 +2942,59 @@ export async function back_on_ground(rescued) {
 }
 
 /**
- * C ref: trap.c rescued_from_terrain — post-tele/lifesave terrain feedback.
- * Envelope: DROWNING pool/air; BURNING/DISSOLVED pool/lava; else
- * back_on_ground(TRUE). Named omissions: waterlevel air bubble;
- * IS_WATERWALL "midst"; update_lastseentyp / prev_decor.
+ * C ref: trap.c rescued_from_terrain `:5014–5055`.
+ * Life-save or prayer has just moved the hero (or failed to). The
+ * message names the landing terrain; "back on solid ground" is only
+ * the fallback. `last_msg` / `prev_decor` tell describe_decor the
+ * feedback already disclosed this spot.
  */
 export async function rescued_from_terrain(how) {
+    const find_yourself = 'find yourself';
     const u = game.u || {};
     const ux = u.ux | 0;
     const uy = u.uy | 0;
+    /* C: struct rm *lev = &levl[u.ux][u.uy]. A missing cell is typ 0
+       (C would dereference). */
+    const lev = game.level?.at(ux, uy);
+    const levtyp = lev ? (lev.typ | 0) : 0;
     let mesggiven = false;
-    if (how === DROWNING) {
+
+    switch (how) {
+    case DROWNING:
         if (is_pool(ux, uy)) {
-            await pline(`You find yourself on top of ${hliquid('water')}.`);
+            await You('%s %s of %s.', find_yourself,
+                (Is_waterlevel(u.uz) || IS_WATERWALL(levtyp))
+                    ? 'in the midst' : 'on top',
+                hliquid('water'));
+            mesggiven = true;
+        } else if (IS_AIR(levtyp)) {
+            await You('%s in %s.', find_yourself,
+                Is_waterlevel(u.uz) ? 'an air bubble' : 'mid air');
             mesggiven = true;
         }
-    } else if (how === BURNING || how === DISSOLVED) {
+        break;
+    case BURNING: /* moved onto lava without fire resistance */
+    case DISSOLVED: /* sunk into lava while fire resistant */
         if (is_pool(ux, uy)) {
-            await pline(
-                `You find yourself ${u.uinwater ? 'in' : 'on'} ${hliquid('water')}.`,
-            );
+            await You('%s %s %s.', find_yourself,
+                u.uinwater ? 'in' : 'on', hliquid('water'));
             mesggiven = true;
         } else if (is_lava(ux, uy)) {
-            await pline(
-                `You find yourself on top of ${hliquid('molten lava')}.`,
-            );
+            await You('%s on top of %s.', find_yourself, hliquid('molten lava'));
             mesggiven = true;
         }
+        break;
+    default:
+        break;
     }
-    if (!mesggiven) await back_on_ground(true);
+    if (!mesggiven)
+        await back_on_ground(true);
+
+    if (!game.iflags) game.iflags = {};
+    game.iflags.last_msg = PLNMSG_BACK_ON_GROUND; /* for describe_decor() */
+    /* feedback just disclosed this */
+    update_lastseentyp(ux, uy);
+    game.iflags.prev_decor = game.lastseentyp?.[ux]?.[uy] | 0;
 }
 
 /** C youprop.h Flying subset for float_up. */
@@ -6314,7 +6338,7 @@ export async function drown() {
         }
         if (u.uball) {
             unplacebc();
-            placebc();
+            await placebc();
         }
         vision_recalc(2); /* unsee old position */
         await set_uinwater(1); /* u.uinwater = 1 */

@@ -1747,9 +1747,8 @@ async function query_objlist_pickup(objList, extraAllow = null, opts = null) {
  * C ref: pickup.c check_autopickup_exceptions `:912–927` — first apelist
  * entry whose regex matches makesingular(doname(obj)) wins (its grab
  * overrides the pickup_types verdict); empty list ⇒ null.
- * JS apelist entries are `{ regex, grab }` with regex compiled for
- * options.js regex_match. No producer yet: AUTOPICKUP_EXCEPTION option
- * parsing (options.c) is the named omission, so this returns null.
+ * JS apelist entries are `{ regex, pattern, grab }` (newest first).
+ * Producers: add_autopickup_exception (doset and AUTOPICKUP_EXCEPTION).
  */
 export function check_autopickup_exceptions(obj) {
     const apelist = game.apelist ?? [];

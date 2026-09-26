@@ -90,7 +90,7 @@ import {
 } from './invent.js';
 import { burn_away_slime } from './timeout.js';
 import {
-    get_mattk, mhitm_knockback, mhitm_mgc_atk_negated, mhitm_ad_drst, mattackm, rustm,
+    get_mattk, mhitm_knockback, mhitm_mgc_atk_negated, mhitm_ad_drst, mhitm_ad_dren, mattackm, rustm,
     could_seduce, failed_grab, SYSOPT_SEDUCE, mon_poly, mondead, erode_armor,
     golemeffects_mm,
     AT_NONE, AT_CLAW, AT_KICK, AT_BITE, AT_STNG, AT_TUCH, AT_BUTT, AT_WEAP,
@@ -1647,7 +1647,7 @@ export async function unstuck(mtmp) {
         /* C mon.c:3451–3452 — gulpmu's unplacebc left the chain free.
            thitmonst's iron-ball return 1 assumes this placebc already ran. */
         if (Punished() && ((u.uchain?.where | 0) !== OBJ_FLOOR))
-            placebc();
+            await placebc();
         // C: gv.vision_full_recalc = 1; docrt();
         game.vision_full_recalc = 1;
         await docrt();
@@ -1887,7 +1887,7 @@ async function gulpmu(mtmp, mattk) {
             /* normally unstuck() would do this, but we're not
                fully swallowed yet so that won't work here */
             if (Punished())
-                placebc();
+                await placebc();
             set_ustuck(null);
             return ((mtmp.mhp | 0) < 1) ? M_ATTK_AGR_DIED : M_ATTK_MISS;
         }
@@ -2904,19 +2904,6 @@ async function mhitm_ad_acid_u(mtmp, mattk, mhm) {
     }
 }
 
-/**
- * C ref: uhitm.c mhitm_ad_dren `:2418–2442` — mhitu (monster→you) arm.
- * mhitm_mgc_atk_negated(FALSE) first (its draws burn even when negated,
- * like the sibling _u arms), then hitmsg; `!negated && !rn2(4)` →
- * drain_en(leftover damage, FALSE); damage always zero after.
- * The uhitm/mhitm xdrainenergym arms stay named.
- */
-async function mhitm_ad_dren_u(mtmp, mattk, mhm) {
-    const negated = await mhitm_mgc_atk_negated(mtmp, null, false);
-    await hitmsg(mtmp, mattk);
-    if (!negated && !rn2(4)) await drain_en(mhm.damage, false);
-    mhm.damage = 0;
-}
 
 /**
  * C ref: uhitm.c mhitm_ad_conf `:3690–3726` — mhitu (monster→you) arm.
@@ -3153,7 +3140,9 @@ async function mhitm_adtyping_u(mtmp, mattk, mhm) {
         await mhitm_ad_drli_u(mtmp, mattk, mhm);
         break;
     case AD_DREN:
-        await mhitm_ad_dren_u(mtmp, mattk, mhm);
+        /* C ref: uhitm.c mhitm_adtyping `:4808` → mhitm_ad_dren
+           mhitu arm (mdef is youmonst). null mdef is magic_negation_you. */
+        await mhitm_ad_dren(mtmp, mattk, game.youmonst, mhm);
         break;
     case AD_RUST:
         await mhitm_ad_rust_u(mtmp, mattk, mhm);

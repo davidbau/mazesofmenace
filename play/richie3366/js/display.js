@@ -1152,7 +1152,8 @@ export function set_sting_effects(fn) {
  * C ref: hack.h MATCH_WARN_OF_MON — Warn_of_mon and (warntype.obj|polyd)
  * & mflags2, or warntype.species == mon->data.
  * Producer of warntype.obj is artifact.c set_artifact_intrinsic SPFX_WARN
- * (D-1514). polyd/species from polyself still named.
+ * (D-1514). polyd/species are written by polyself.c polysense.
+ * mons() is a fresh object per call, so species identity is the index.
  */
 export function MATCH_WARN_OF_MON(mon) {
     if (!mon || !Warn_of_mon()) return false;
@@ -1161,7 +1162,8 @@ export function MATCH_WARN_OF_MON(mon) {
     const m2 = mon.data?.mflags2 | 0;
     if (((wt.obj | 0) & m2) !== 0) return true;
     if (((wt.polyd | 0) & m2) !== 0) return true;
-    if (wt.species && wt.species === (mon.data || null)) return true;
+    const sp = wt.species;
+    if (sp && mon.data && (sp.mndx | 0) === (mon.data.mndx | 0)) return true;
     return false;
 }
 

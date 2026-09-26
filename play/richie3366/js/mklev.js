@@ -63,6 +63,7 @@ import {
     Is_knox_level,
     Is_botlevel,
     Is_medusa_level,
+    Is_stronghold,
     Is_baal_level,
     RLOC_ERR,
     DUST, MARK as ENGRAVE_MARK, M_AP_OBJECT, M_AP_FURNITURE, M_AP_MONSTER, M_AP_NOTHING, ENGRAVE, ENGR_BLOOD,
@@ -116,7 +117,7 @@ import {
 import { mk_mplayer } from './mplayer.js';
 import { can_saddle, put_saddle_on_mon, remove_monster } from './steed.js';
 import { unplacebc_and_covet_placebc, lift_covet_and_placebc } from './ball.js';
-import { m_at, mnearto, mnexto, elemental_clog, seemimic, minliquid, dmonsfree, discard_minvent, mdrop_special_objs } from './mon.js';
+import { m_at, mnearto, mnexto, elemental_clog, seemimic, minliquid, dmonsfree, discard_minvent, mdrop_special_objs, m_into_limbo } from './mon.js';
 import { enexto, rloc, goodpos, migrate_to_level, single_level_branch, Inhell } from './teleport.js';
 import { clear_wormdata, flip_worm_segs_horizontal, flip_worm_segs_vertical, remove_worm } from './worm.js';
 import { obj_resists } from './dogmove.js';
@@ -567,6 +568,42 @@ function within_bounded_area(x, y, lx, ly, hx, hy) {
     return x >= lx && x <= hx && y >= ly && y <= hy;
 }
 
+/** A Promise from the tele arm of place_lregion. Booleans are not. */
+function isThenable(p) {
+    return !!(p && typeof p.then === 'function');
+}
+
+/**
+ * C place_lregion is void: rloc / m_into_limbo / u_on_newpos finish
+ * before the next statement. Stair, portal, and branch return a boolean
+ * and fn runs now. A tele Promise runs fn only after it settles.
+ * The returned Promise is adopted so a later tele pause still propagates.
+ */
+function afterPending(p, fn) {
+    if (isThenable(p)) return p.then(() => fn());
+    return fn();
+}
+
+/**
+ * Walk regions in order. onEach may return the tele Promise from
+ * place_lregion; later regions run after that Promise settles.
+ * Returns a Promise only when a tele arm paused the walk.
+ */
+function walkRegions(list, onEach) {
+    let i = 0;
+    function step() {
+        for (; i < list.length; i++) {
+            const p = onEach(list[i]);
+            if (isThenable(p)) {
+                i += 1;
+                return p.then(step);
+            }
+        }
+        return undefined;
+    }
+    return step();
+}
+
 // C ref: mkmaze.c bad_location
 function bad_location(x, y, nlx, nly, nhx, nhy) {
     const loc = game.level?.at(x, y);
@@ -593,15 +630,29 @@ function is_exclusion_zone(type, x, y) {
     return false;
 }
 
-// C ref: mkmaze.c put_lregion_here — place stair/branch/tele at (x,y)
+// C ref: mkmaze.c put_lregion_here — mkmaze.c:412–469.
+// Stair / portal / branch return a boolean in this turn. Tele returns a
+// Promise that resolves only after rloc(RLOC_NOMSG), m_into_limbo when
+// that fails, and u_on_newpos (mkmaze.c:444–455). Callers chain that
+// Promise (afterPending / walkRegions / await) so the next statement
+// does not run inside rloc_to_with_msg.
 function put_lregion_here(x, y, nlx, nly, nhx, nhy, rtype, oneshot, lev) {
     if (bad_location(x, y, nlx, nly, nhx, nhy)
         || is_exclusion_zone(rtype, x, y)) {
-        if (!oneshot) return false;
-        // C: deltrap undestroyable-safe then retry bad_location + exclusion
+        if (!oneshot) {
+            return false; /* caller should try again */
+        }
+        /* Must make do with the only location possible;
+           avoid failure due to a misplaced trap.
+           It might still fail if there's a dungeon feature here. */
         const t = t_at(x, y);
-        if (t) {
-            // Named omission: undestroyable_trap gate + mtrapped clear
+        if (t && !undestroyable_trap(t.ttyp)) {
+            const mtmp = m_at(x, y);
+            if (mtmp && mtmp.mtrapped)
+                mtmp.mtrapped = 0;
+            deltrap(t);
+            /* maketrap records level.traps (what t_at / deltrap use).
+               A parallel ftrap chain still exists for older readers. */
             let prev = null;
             for (let cur = game.ftrap; cur; prev = cur, cur = cur.ntrap) {
                 if (cur === t) {
@@ -619,33 +670,37 @@ function put_lregion_here(x, y, nlx, nly, nhx, nhy, rtype, oneshot, lev) {
     case LR_TELE:
     case LR_UPTELE:
     case LR_DOWNTELE: {
-        // C: monster here → oneshot rloc/limbo, else retry
+        /* "something" means the player in this case */
         const mtmp = m_at(x, y);
         if (mtmp) {
+            /* move the monster if no choice, or just try again */
             if (oneshot) {
-                if (!rloc(mtmp, 0)) {
-                    // m_into_limbo deferred
-                }
-            } else {
-                return false;
+                // C mkmaze.c:449–455 — rloc, then limbo, then u_on_newpos,
+                // all before put_lregion_here's caller continues.
+                return (async () => {
+                    if (!(await rloc(mtmp, RLOC_NOMSG)))
+                        await m_into_limbo(mtmp);
+                    await u_on_newpos(x, y);
+                    return true;
+                })();
             }
+            return false;
         }
-        // C mkmaze.c:455. Promise so u_on_rndspot can finish cliparound /
-        // map_location / earth_sense before switch_terrain. Non-tele
-        // arms stay synchronous (level loaders do not await).
+        // C mkmaze.c:455. The Promise settles when u_on_newpos returns.
         return u_on_newpos(x, y);
     }
-    case LR_PORTAL: {
-        // C ref: mkmaze.c mkportal — MAGIC_PORTAL + dst dnum/dlevel
-        const ttmp = maketrap(x, y, MAGIC_PORTAL);
-        if (ttmp && lev) {
-            ttmp.dst = { dnum: lev.dnum | 0, dlevel: lev.dlevel | 0 };
-        }
+    case LR_PORTAL:
+        /* C mkmaze.c:458 mkportal(x, y, lev->dnum, lev->dlevel). */
+        mkportal(
+            x, y,
+            lev ? (lev.dnum | 0) : 0,
+            lev ? (lev.dlevel | 0) : 0,
+        );
         break;
-    }
     case LR_DOWNSTAIR:
     case LR_UPSTAIR:
-        mkstairs(x, y, rtype === LR_UPSTAIR ? 1 : 0, null);
+        /* C (char) rtype: LR_DOWNSTAIR is 0, LR_UPSTAIR is 1. */
+        mkstairs(x, y, rtype, null, false);
         break;
     case LR_BRANCH:
         place_branch(is_branchlev(), x, y);
@@ -693,36 +748,68 @@ export async function u_on_rndspot(upflag) {
     await switch_terrain();
 }
 
+/**
+ * C ref: mkmaze.c place_lregion — mkmaze.c:356–410.
+ * Pick a cell in (lx,ly)–(hx,hy) outside the exclusion rectangle and
+ * place rtype. !lx is the whole map; a branch on a level that already
+ * has rooms goes through place_branch. 200 rn1 samples, then a
+ * row-major scan with oneshot TRUE. Stair, portal, and branch return
+ * true in this turn. Tele returns a Promise that settles only after
+ * rloc / m_into_limbo / u_on_newpos (mkmaze.c:444–455); every caller
+ * chains it. Total failure calls impossible and does not return that
+ * Promise (the message is not the placement result).
+ */
 export function place_lregion(lx, ly, hx, hy, nlx, nly, nhx, nhy, rtype, lev) {
-    if (!lx) {
-        // When rooms exist, let place_branch pick (avoid corridor branches)
+    if (!lx) { /* default to whole level */
+        /*
+         * if there are rooms and this a branch, let place_branch choose
+         * the branch location (to avoid putting branches in corridors).
+         */
         if (rtype === LR_BRANCH && (game.level?.nroom | 0)) {
             place_branch(is_branchlev(), 0, 0);
             return;
         }
-        lx = 1;
+        lx = 1; /* column 0 is not used */
         hx = COLNO - 1;
-        ly = 0;
+        ly = 0; /* 3.6.0 and earlier erroneously had 1 here */
         hy = ROWNO - 1;
     }
-    if (lx < 1) lx = 1;
-    if (hx > COLNO - 1) hx = COLNO - 1;
-    if (ly < 0) ly = 0;
-    if (hy > ROWNO - 1) hy = ROWNO - 1;
 
+    /* clamp the area to the map */
+    if (lx < 1)
+        lx = 1;
+    if (hx > COLNO - 1)
+        hx = COLNO - 1;
+    if (ly < 0)
+        ly = 0;
+    if (hy > ROWNO - 1)
+        hy = ROWNO - 1;
+
+    /* first a probabilistic approach */
     const oneshot = (lx === hx && ly === hy);
     for (let trycnt = 0; trycnt < 200; trycnt++) {
         const x = rn1((hx - lx) + 1, lx);
         const y = rn1((hy - ly) + 1, ly);
-        const placed = put_lregion_here(x, y, nlx, nly, nhx, nhy, rtype, oneshot, lev);
-        if (placed) return placed;
+        const placed = put_lregion_here(
+            x, y, nlx, nly, nhx, nhy, rtype, oneshot, lev,
+        );
+        // false → try again. true → placed. Promise → tele accepted;
+        // the caller waits before its next statement.
+        if (placed)
+            return placed;
     }
-    for (let x = lx; x <= hx; x++) {
+
+    /* then a deterministic one */
+    for (let x = lx; x <= hx; x++)
         for (let y = ly; y <= hy; y++) {
-            const placed = put_lregion_here(x, y, nlx, nly, nhx, nhy, rtype, true, lev);
-            if (placed) return placed;
+            const placed = put_lregion_here(
+                x, y, nlx, nly, nhx, nhy, rtype, true, lev,
+            );
+            if (placed)
+                return placed;
         }
-    }
+
+    impossible("Couldn't place lregion type %d!", rtype);
 }
 
 /** C ref: decl.c gb.bughack — preserve baalz insect legs during wallify. */
@@ -2100,7 +2187,11 @@ export async function lspo_finalize_level(fromDes = true) {
     if (fromDes && coder.solidify) solidify_map(); // C :6045-6046
     /* This must be done before premap_detect(),
      * otherwise branch stairs won't be premapped. */
-    fixup_special(); // C :6051
+    // C :6051. A tele Promise from place_lregion settles before premap.
+    {
+        const p = fixup_special();
+        if (isThenable(p)) await p;
+    }
     if (fromDes && coder.premapped) premap_detect(); // C :6053-6054
     level_finalize_topology(); // C :6056
     for (let i = 0; i < (game.level?.nroom | 0); i++) // C :6058-6060
@@ -2312,56 +2403,95 @@ export function stolen_booty() {
     game.ransacked = 0;
 }
 
-// C ref: mkmaze.c fixup_special — post-special-level branch/lregion placement
+/**
+ * C ref: mkmaze.c fixup_special `:570–704`.
+ * Water/air setup, then every lregion, then the branch fallback, then
+ * the medusa / quest / stronghold / baalz / orctown tail. gl.lregions
+ * stays live until the end (C frees it last). Stair, portal, and branch
+ * place_lregion results are booleans; a tele Promise still settles
+ * before the next region and before this tail (D-2836).
+ * Loaders that already walked and cleared lregions call this for the tail.
+ */
 function fixup_special() {
-    // C: leftover gl.lregions. Other load_* still consume inline after
-    // flip then call this (array empty). tut-1 leaves TELE for dest copy.
-    // Fallback still uses made_branch: inline BRANCH would double-place
-    // if this used C's added_branch-only gate.
+    const uz = game.u?.uz;
+    /* C `:579–584` — hero_memory = 0, then setup_waterlevel, before
+       place_lregion. setup_waterlevel assigns it again. */
+    if (Is_waterlevel(uz) || Is_airlevel(uz)) {
+        if (game.level) {
+            if (!game.level.flags) game.level.flags = {};
+            game.level.flags.hero_memory = 0;
+        }
+        setup_waterlevel();
+    }
+
     let added_branch = false;
     const lregions = game.lregions || [];
-    game.lregions = [];
-    for (const r of lregions) {
+
+    /* C place_it label `:606–611`. lev is only read for LR_PORTAL
+       (mkportal). Branch and stairs pass null: C's `lev` is uninitialized
+       on those arms and put_lregion_here does not read it. */
+    function place_it(r, lev) {
+        return place_lregion(
+            r.inarea.x1, r.inarea.y1, r.inarea.x2, r.inarea.y2,
+            r.delarea.x1, r.delarea.y1, r.delarea.x2, r.delarea.y2,
+            r.rtype, lev,
+        );
+    }
+
+    /* C `:640–641` — free(rname.str), rname.str = 0. */
+    function release_rname(r) {
+        if (!r || !r.rname) return;
+        if (typeof r.rname === 'object') {
+            if (r.rname.str) r.rname.str = 0;
+        } else {
+            r.rname = 0;
+        }
+    }
+
+    return afterPending(walkRegions(lregions, (r) => {
+        let pending;
         switch (r.rtype) {
-        case LR_BRANCH:
+        case LR_BRANCH: /* C `:592–594` added_branch = TRUE; goto place_it */
             added_branch = true;
-            // fall through
-        case LR_PORTAL:
-        case LR_UPSTAIR:
-        case LR_DOWNSTAIR: {
+            pending = place_it(r, null);
+            break;
+        case LR_PORTAL: { /* C `:596–604` chutes-and-ladders or find_level */
             let lev = null;
-            if (r.rtype === LR_PORTAL) {
-                const name = (r.rname && typeof r.rname === 'object')
-                    ? r.rname.str : r.rname;
-                if (name) {
-                    if (name[0] >= '0' && name[0] <= '9') {
+            const name = (r.rname && typeof r.rname === 'object')
+                ? r.rname.str : r.rname;
+            if (name) {
+                const ch = name[0];
+                if (ch >= '0' && ch <= '9') {
+                    /* lev = u.uz; lev.dlevel = atoi(rname) — do not
+                       mutate game.u.uz. */
+                    lev = {
+                        dnum: uz?.dnum | 0,
+                        dlevel: parseInt(name, 10) | 0,
+                    };
+                } else {
+                    const sp = find_level(name);
+                    /* C assigns sp->dlevel. A null find_level leaves lev
+                       null (C would dereference). */
+                    if (sp?.dlevel) {
                         lev = {
-                            dnum: game.u?.uz?.dnum | 0,
-                            dlevel: parseInt(name, 10) | 0,
+                            dnum: sp.dlevel.dnum | 0,
+                            dlevel: sp.dlevel.dlevel | 0,
                         };
-                    } else {
-                        const sp = find_level(name);
-                        if (sp?.dlevel) {
-                            lev = {
-                                dnum: sp.dlevel.dnum | 0,
-                                dlevel: sp.dlevel.dlevel | 0,
-                            };
-                        }
                     }
                 }
             }
-            place_lregion(
-                r.inarea.x1, r.inarea.y1, r.inarea.x2, r.inarea.y2,
-                r.delarea.x1, r.delarea.y1, r.delarea.x2, r.delarea.y2,
-                r.rtype, lev,
-            );
+            pending = place_it(r, lev);
             break;
         }
+        case LR_UPSTAIR:
+        case LR_DOWNSTAIR:
+            pending = place_it(r, null);
+            break;
         case LR_TELE:
         case LR_UPTELE:
         case LR_DOWNTELE: {
-            // C: copy dests only — place_lregion runs from goto_level
-            // u_on_rndspot, not here.
+            /* C `:613–636` — outlines for goto_level. place_lregion
+               runs from u_on_rndspot, not here. */
             const tele = {
                 lx: r.inarea.x1, ly: r.inarea.y1,
                 hx: r.inarea.x2, hy: r.inarea.y2,
@@ -2374,14 +2504,37 @@ function fixup_special() {
                 game.dndest = { ...tele };
             break;
         }
+        default:
+            break;
         }
-    }
-    if (!added_branch && !game.made_branch && is_branchlev()) {
-        place_lregion(0, 0, 0, 0, 0, 0, 0, 0, LR_BRANCH, null);
-    }
+        release_rname(r);
+        return pending;
+    }), () => {
+        /* C `:644–646`. made_branch is place_branch's own early-out
+           (mklev.c): a loader that already placed the branch must not
+           re-enter place_lregion, which burns 200 rn1 when nroom is 0
+           before that early-out. */
+        const p = (!added_branch && !game.made_branch && is_branchlev())
+            ? place_lregion(0, 0, 0, 0, 0, 0, 0, 0, LR_BRANCH, null)
+            : undefined;
+        return afterPending(p, () => {
+            fixup_special_tail(uz);
+            /* C `:701–703` free(gl.lregions); num_lregions = 0. */
+            game.lregions = [];
+            game.num_lregions = 0;
+        });
+    });
+}
 
-    // C ref: mkmaze.c fixup_special Is_medusa_level — statues in rooms[0]
-    if (Is_medusa_level(game.u?.uz)) {
+/**
+ * C ref: mkmaze.c fixup_special `:652–699` — one else-if chain.
+ * Medusa statues, cleric-quest graveyard, stronghold graveyard,
+ * baalz_fixup, orctown stolen_booty, then Mine Town has_town.
+ */
+function fixup_special_tail(uz) {
+    if (Is_medusa_level(uz)) {
+        /* C `:654` rooms[0], the first room defined on the level.
+           A missing slot skips the statues (C would dereference). */
         const croom = game.level?.rooms?.[0];
         if (croom) {
             for (let tryct = rnd(4); tryct; tryct--) {
@@ -2390,7 +2543,7 @@ function fixup_special() {
                 if (goodpos(x, y, null, 0)) {
                     let tryct2 = 0;
                     const otmp = mk_tt_object(STATUE, x, y);
-                    /* C mkmaze.c:661–667 — poly_when_stoned, then MR_STONE.
+                    /* C `:661–667` — poly_when_stoned, then MR_STONE.
                        set_corpsenm updates weight. */
                     while (++tryct2 < 100 && otmp
                         && (poly_when_stoned(mons(otmp.corpsenm), game.mvitals)
@@ -2402,38 +2555,47 @@ function fixup_special() {
             let otmp;
             if (rn2(2))
                 otmp = mk_tt_object(STATUE, somex(croom), somey(croom));
-            else
-                otmp = mkcorpstat(STATUE, null, null, somex(croom), somey(croom),
-                    CORPSTAT_NONE);
-            /* C mkmaze.c:677–684 — MR_STONE first, then poly_when_stoned. */
+            else /* Medusa statues don't contain books */
+                otmp = mkcorpstat(STATUE, null, null,
+                    somex(croom), somey(croom), CORPSTAT_NONE);
+            /* C `:677–684` — MR_STONE first, then poly_when_stoned. */
             if (otmp) {
-                let tryctStone = 0;
-                while (++tryctStone < 100
+                let tryct = 0;
+                while (++tryct < 100
                     && (pm_resistance(mons(otmp.corpsenm), MR_STONE)
                         || poly_when_stoned(mons(otmp.corpsenm), game.mvitals))) {
                     set_corpsenm(otmp, rndmonnum());
                 }
             }
         }
+    } else if ((game.urole?.mnum | 0) === monsterNames.indexOf('PM_CLERIC')
+        && In_quest(uz)) {
+        /* C `:686–688` Role_if(PM_CLERIC) && In_quest → graveyard. */
+        if (game.level) {
+            if (!game.level.flags) game.level.flags = {};
+            game.level.flags.graveyard = 1;
+        }
+    } else if (Is_stronghold(uz)) {
+        /* C `:689–690`. */
+        if (game.level) {
+            if (!game.level.flags) game.level.flags = {};
+            game.level.flags.graveyard = 1;
+        }
+    } else if (Is_baal_level(uz)) {
+        /* C `:691–693` on_level(&u.uz, &baalzebub_level). Is_baal_level
+           is that test and is false when baalzebub_level is unset. */
+        baalz_fixup();
+    } else if ((uz?.dnum | 0) === (game.mines_dnum | 0) && game.ransacked) {
+        /* C `:694–695` — gr.ransacked is game.ransacked. */
+        stolen_booty();
     }
 
-    // C ref: mkmaze.c fixup_special on_level(baalzebub_level) → baalz_fixup
-    if (Is_baal_level(game.u?.uz))
-        baalz_fixup();
-
-    // C mkmaze.c:694–695 — mines + ransacked → stolen_booty (orctown)
-    if ((game.u?.uz?.dnum | 0) === (game.mines_dnum | 0) && game.ransacked)
-        stolen_booty();
-
-    // C ref: mkmaze.c fixup_special — Is_special && sp->flags.town → has_town
-    {
-        const uz = game.u?.uz;
-        const sp = (game.sp_levchn || []).find(s0 =>
-            (s0.dlevel?.dnum | 0) === (uz?.dnum | 0)
-            && (s0.dlevel?.dlevel | 0) === (uz?.dlevel | 0));
-        if (sp && sp.flags?.town) {
+    /* C `:697–698` — (sp = Is_special(&u.uz)) && sp->flags.town. */
+    const sp = Is_special(uz);
+    if (sp && sp.flags && sp.flags.town) {
+        if (game.level) {
             if (!game.level.flags) game.level.flags = {};
-            game.level.flags.has_town = true;
+            game.level.flags.has_town = 1;
         }
     }
 }
@@ -2793,7 +2955,7 @@ async function makemaz(s) {
         g.in_mk_themerooms = false;
         // C :1188-1192 — if (load_special(protofile)): dmonsfree(); return
         if (await load_special_proto(protofile)) {
-            dmonsfree();
+            await dmonsfree();
             return; // no mazification right now
         }
         // C :1194 — impossible WITH the extension, then fall to mazify
@@ -2875,108 +3037,186 @@ async function load_special_proto_body(protofile) {
         return true;
     }
     if (protofile === 'tut-1') {
-        load_tut1();
-        return true;
+        {
+            const p = load_tut1();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'tut-2') {
-        load_tut2();
-        return true;
+        {
+            const p = load_tut2();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'bigrm-1') {
-        load_bigrm_1();
-        return true;
+        {
+            const p = load_bigrm_1();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'bigrm-2') {
-        load_bigrm_2();
-        return true;
+        {
+            const p = load_bigrm_2();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'bigrm-3') {
-        load_bigrm_3();
-        return true;
+        {
+            const p = load_bigrm_3();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'bigrm-4') {
-        load_bigrm_4();
-        return true;
+        {
+            const p = load_bigrm_4();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'bigrm-5') {
-        load_bigrm_5();
-        return true;
+        {
+            const p = load_bigrm_5();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'bigrm-6') {
-        load_bigrm_6();
-        return true;
+        {
+            const p = load_bigrm_6();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'bigrm-10') {
-        load_bigrm_10();
-        return true;
+        {
+            const p = load_bigrm_10();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'bigrm-11') {
-        load_bigrm_11();
-        return true;
+        {
+            const p = load_bigrm_11();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'medusa-1') {
-        load_medusa_1();
-        return true;
+        {
+            const p = load_medusa_1();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'medusa-2') {
-        load_medusa_2();
-        return true;
+        {
+            const p = load_medusa_2();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'medusa-3') {
-        load_medusa_3();
-        return true;
+        {
+            const p = load_medusa_3();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'medusa-4') {
-        load_medusa_4();
-        return true;
+        {
+            const p = load_medusa_4();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'bigrm-7') {
-        load_bigrm_7();
-        return true;
+        {
+            const p = load_bigrm_7();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'bigrm-8') {
-        load_bigrm_8();
-        return true;
+        {
+            const p = load_bigrm_8();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'bigrm-9') {
-        load_bigrm_9();
-        return true;
+        {
+            const p = load_bigrm_9();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'bigrm-12') {
-        load_bigrm_12();
-        return true;
+        {
+            const p = load_bigrm_12();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'bigrm-13') {
-        load_bigrm_13();
-        return true;
+        {
+            const p = load_bigrm_13();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'Bar-strt') {
-        load_bar_strt();
-        return true;
+        {
+            const p = load_bar_strt();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'Wiz-strt') {
-        load_wiz_strt();
-        return true;
+        {
+            const p = load_wiz_strt();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'Wiz-loca') {
-        load_wiz_loca();
-        return true;
+        {
+            const p = load_wiz_loca();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'Wiz-fila') {
-        load_wiz_fila();
-        return true;
+        {
+            const p = load_wiz_fila();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'Wiz-filb') {
-        load_wiz_filb();
-        return true;
+        {
+            const p = load_wiz_filb();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'Wiz-goal') {
-        load_wiz_goal();
-        return true;
+        {
+            const p = load_wiz_goal();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'Pri-strt') {
-        load_pri_strt();
-        return true;
+        {
+            const p = load_pri_strt();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'Pri-loca') {
         await load_pri_loca();
@@ -2987,24 +3227,39 @@ async function load_special_proto_body(protofile) {
         return true;
     }
     if (protofile === 'Pri-fila') {
-        load_pri_fila();
-        return true;
+        {
+            const p = load_pri_fila();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'Pri-filb') {
-        load_pri_filb();
-        return true;
+        {
+            const p = load_pri_filb();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'Arc-strt') {
-        load_arc_strt();
-        return true;
+        {
+            const p = load_arc_strt();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'Arc-loca') {
-        load_arc_loca();
-        return true;
+        {
+            const p = load_arc_loca();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'Bar-loca') {
-        load_bar_loca();
-        return true;
+        {
+            const p = load_bar_loca();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'Bar-fila') {
         await load_bar_fila();
@@ -3015,20 +3270,32 @@ async function load_special_proto_body(protofile) {
         return true;
     }
     if (protofile === 'Bar-goal') {
-        load_bar_goal();
-        return true;
+        {
+            const p = load_bar_goal();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'Arc-fila') {
-        load_arc_fila();
-        return true;
+        {
+            const p = load_arc_fila();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'Arc-filb') {
-        load_arc_filb();
-        return true;
+        {
+            const p = load_arc_filb();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'Arc-goal') {
-        load_arc_goal();
-        return true;
+        {
+            const p = load_arc_goal();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'Kni-strt') {
         await load_kni_strt();
@@ -3047,32 +3314,53 @@ async function load_special_proto_body(protofile) {
         return true;
     }
     if (protofile === 'Kni-goal') {
-        load_kni_goal();
-        return true;
+        {
+            const p = load_kni_goal();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'Rog-strt') {
-        load_rog_strt();
-        return true;
+        {
+            const p = load_rog_strt();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'Rog-loca') {
-        load_rog_loca();
-        return true;
+        {
+            const p = load_rog_loca();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'Rog-fila') {
-        load_rog_fila();
-        return true;
+        {
+            const p = load_rog_fila();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'Rog-filb') {
-        load_rog_filb();
-        return true;
+        {
+            const p = load_rog_filb();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'Rog-goal') {
-        load_rog_goal();
-        return true;
+        {
+            const p = load_rog_goal();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'Val-strt') {
-        load_val_strt();
-        return true;
+        {
+            const p = load_val_strt();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'Val-loca') {
         await load_val_loca();
@@ -3091,28 +3379,43 @@ async function load_special_proto_body(protofile) {
         return true;
     }
     if (protofile === 'Sam-strt') {
-        load_sam_strt();
-        return true;
+        {
+            const p = load_sam_strt();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'Sam-loca') {
-        load_sam_loca();
-        return true;
+        {
+            const p = load_sam_loca();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'Sam-fila') {
         await load_sam_fila();
         return true;
     }
     if (protofile === 'Sam-filb') {
-        load_sam_filb();
-        return true;
+        {
+            const p = load_sam_filb();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'Sam-goal') {
-        load_sam_goal();
-        return true;
+        {
+            const p = load_sam_goal();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'Hea-strt') {
-        load_hea_strt();
-        return true;
+        {
+            const p = load_hea_strt();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'Hea-loca') {
         await load_hea_loca();
@@ -3131,12 +3434,18 @@ async function load_special_proto_body(protofile) {
         return true;
     }
     if (protofile === 'Tou-strt') {
-        load_tou_strt();
-        return true;
+        {
+            const p = load_tou_strt();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'Tou-loca') {
-        load_tou_loca();
-        return true;
+        {
+            const p = load_tou_loca();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'Tou-fila') {
         await load_tou_fila();
@@ -3147,20 +3456,29 @@ async function load_special_proto_body(protofile) {
         return true;
     }
     if (protofile === 'Tou-goal') {
-        load_tou_goal();
-        return true;
+        {
+            const p = load_tou_goal();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'Ran-strt') {
         await load_ran_strt();
         return true;
     }
     if (protofile === 'Ran-loca') {
-        load_ran_loca();
-        return true;
+        {
+            const p = load_ran_loca();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'Ran-goal') {
-        load_ran_goal();
-        return true;
+        {
+            const p = load_ran_goal();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'Ran-fila') {
         await load_ran_fila();
@@ -3171,36 +3489,57 @@ async function load_special_proto_body(protofile) {
         return true;
     }
     if (protofile === 'Mon-strt') {
-        load_mon_strt();
-        return true;
+        {
+            const p = load_mon_strt();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'Mon-loca') {
-        load_mon_loca();
-        return true;
+        {
+            const p = load_mon_loca();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'Mon-goal') {
         await load_mon_goal();
         return true;
     }
     if (protofile === 'Mon-fila') {
-        load_mon_fila();
-        return true;
+        {
+            const p = load_mon_fila();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'Mon-filb') {
-        load_mon_filb();
-        return true;
+        {
+            const p = load_mon_filb();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'Cav-strt') {
-        load_cav_strt();
-        return true;
+        {
+            const p = load_cav_strt();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'Cav-loca') {
-        load_cav_loca();
-        return true;
+        {
+            const p = load_cav_loca();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'Cav-goal') {
-        load_cav_goal();
-        return true;
+        {
+            const p = load_cav_goal();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'Cav-fila') {
         await load_cav_fila();
@@ -3211,164 +3550,278 @@ async function load_special_proto_body(protofile) {
         return true;
     }
     if (protofile === 'knox') {
-        load_knox();
-        return true;
+        {
+            const p = load_knox();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'tower1') {
-        load_tower1();
-        return true;
+        {
+            const p = load_tower1();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'tower2') {
-        load_tower2();
-        return true;
+        {
+            const p = load_tower2();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'tower3') {
-        load_tower3();
-        return true;
+        {
+            const p = load_tower3();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'soko1-1') {
-        load_soko1_1();
-        return true;
+        {
+            const p = load_soko1_1();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'soko1-2') {
-        load_soko1_2();
-        return true;
+        {
+            const p = load_soko1_2();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'soko2-1') {
-        load_soko2_1();
-        return true;
+        {
+            const p = load_soko2_1();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'soko2-2') {
-        load_soko2_2();
-        return true;
+        {
+            const p = load_soko2_2();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'soko3-1') {
-        load_soko3_1();
-        return true;
+        {
+            const p = load_soko3_1();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'soko3-2') {
-        load_soko3_2();
-        return true;
+        {
+            const p = load_soko3_2();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'soko4-1') {
-        load_soko4_1();
-        return true;
+        {
+            const p = load_soko4_1();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'soko4-2') {
-        load_soko4_2();
-        return true;
+        {
+            const p = load_soko4_2();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'earth') {
-        load_earth();
-        return true;
+        {
+            const p = load_earth();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'fire') {
-        load_fire();
-        return true;
+        {
+            const p = load_fire();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'air') {
-        load_air();
-        return true;
+        {
+            const p = load_air();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'water') {
-        load_water();
-        return true;
+        {
+            const p = load_water();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'astral') {
-        load_astral();
-        return true;
+        {
+            const p = load_astral();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'minend-1') {
-        load_minend_1();
-        return true;
+        {
+            const p = load_minend_1();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'minend-2') {
-        load_minend_2();
-        return true;
+        {
+            const p = load_minend_2();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'minend-3') {
-        load_minend_3();
-        return true;
+        {
+            const p = load_minend_3();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'minetn-1') {
         await load_minetn_1();
         return true;
     }
     if (protofile === 'minetn-2') {
-        load_minetn_2();
-        return true;
+        {
+            const p = load_minetn_2();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'minetn-3') {
-        load_minetn_3();
-        return true;
+        {
+            const p = load_minetn_3();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'minetn-4') {
-        load_minetn_4();
-        return true;
+        {
+            const p = load_minetn_4();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'minetn-5') {
-        load_minetn_5();
-        return true;
+        {
+            const p = load_minetn_5();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'minetn-6') {
         await load_minetn_6();
         return true;
     }
     if (protofile === 'minetn-7') {
-        load_minetn_7();
-        return true;
+        {
+            const p = load_minetn_7();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'oracle') {
-        load_oracle();
-        return true;
+        {
+            const p = load_oracle();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'castle') {
-        load_castle();
-        return true;
+        {
+            const p = load_castle();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'valley') {
-        load_valley();
-        return true;
+        {
+            const p = load_valley();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'sanctum') {
-        load_sanctum();
-        return true;
+        {
+            const p = load_sanctum();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'asmodeus') {
-        load_asmodeus();
-        return true;
+        {
+            const p = load_asmodeus();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'juiblex') {
-        load_juiblex();
-        return true;
+        {
+            const p = load_juiblex();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'baalz') {
-        load_baalz();
-        return true;
+        {
+            const p = load_baalz();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'orcus') {
-        load_orcus();
-        return true;
+        {
+            const p = load_orcus();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'wizard1') {
-        load_wizard1();
-        return true;
+        {
+            const p = load_wizard1();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'wizard2') {
-        load_wizard2();
-        return true;
+        {
+            const p = load_wizard2();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'wizard3') {
-        load_wizard3();
-        return true;
+        {
+            const p = load_wizard3();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'fakewiz1') {
-        load_fakewiz1();
-        return true;
+        {
+            const p = load_fakewiz1();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'fakewiz2') {
-        load_fakewiz2();
-        return true;
+        {
+            const p = load_fakewiz2();
+            if (isThenable(p)) await p;
+            return true;
+        }
     }
     if (protofile === 'hellfill') {
         await load_hellfill();
@@ -3481,8 +3934,8 @@ function soko_load_epilogue(allowFlips = 3) {
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(allowFlips, false);
     solidify_map();
-    fixup_special();
-    premap_detect();
+    // premap sees branch stairs place_lregion just finished (C is sync).
+    return afterPending(fixup_special(), () => { premap_detect(); });
 }
 
 /**
@@ -3591,7 +4044,7 @@ function load_bigrm_2() {
     // C load_special: wallification when !corrmaze; fixup_special
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -3685,7 +4138,7 @@ function load_bigrm_3() {
     // C load_special: wallification when !corrmaze; noflip → skip flip
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -3774,7 +4227,7 @@ function load_bigrm_4() {
     // C load_special: wallification when !corrmaze; noflip → skip flip
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
-    fixup_special();
+    return fixup_special();
 }
 
 /** C ref: sp_lev.c sel_set_wall_property via lspo_non_diggable() no-arg. */
@@ -3858,7 +4311,7 @@ function load_bigrm_5() {
     // C load_special: wallification when !corrmaze; noflip → skip flip
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -3919,7 +4372,7 @@ function load_bigrm_6() {
     // C load_special: wallification when !corrmaze; noflip → skip flip
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -4000,7 +4453,7 @@ function load_bigrm_11() {
     // C load_special: wallification when !corrmaze; noflip → skip flip
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -4105,7 +4558,7 @@ function load_bigrm_1() {
     // C load_special: wallification when !corrmaze; noflip → skip flip
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -4190,7 +4643,7 @@ function load_bigrm_10() {
     // fixup_special places LR_UPSTAIR / copies LR_DOWNTELE
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -4286,7 +4739,7 @@ function load_bigrm_13() {
     // C load_special: wallification when !corrmaze; noflip → skip flip
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -4796,7 +5249,7 @@ function load_medusa_1() {
     {
         const lregions = g.lregions || [];
         g.lregions = [];
-        for (const r of lregions) {
+        const _pendingLregion = walkRegions(lregions, (r) => {
             if (r.rtype === LR_TELE || r.rtype === LR_UPTELE || r.rtype === LR_DOWNTELE) {
                 const tele = {
                     lx: r.inarea.x1, ly: r.inarea.y1,
@@ -4809,15 +5262,20 @@ function load_medusa_1() {
                 if (r.rtype === LR_TELE || r.rtype === LR_DOWNTELE)
                     g.dndest = { ...tele };
             } else if (r.rtype === LR_BRANCH) {
-                place_lregion(
+                return place_lregion(
                     r.inarea.x1, r.inarea.y1, r.inarea.x2, r.inarea.y2,
                     r.delarea.x1, r.delarea.y1, r.delarea.x2, r.delarea.y2,
                     LR_BRANCH, null,
                 );
             }
-        }
+        });
+        if (isThenable(_pendingLregion)) return _pendingLregion.then(() => load_medusa_1_after_lregions());
+        return load_medusa_1_after_lregions();
     }
-    fixup_special();
+
+    function load_medusa_1_after_lregions() {
+        return fixup_special();
+    }
 }
 
 /**
@@ -5056,7 +5514,7 @@ function load_medusa_3() {
     {
         const lregions = g.lregions || [];
         g.lregions = [];
-        for (const r of lregions) {
+        const _pendingLregion = walkRegions(lregions, (r) => {
             if (r.rtype === LR_TELE || r.rtype === LR_UPTELE || r.rtype === LR_DOWNTELE) {
                 const tele = {
                     lx: r.inarea.x1, ly: r.inarea.y1,
@@ -5069,15 +5527,20 @@ function load_medusa_3() {
                 if (r.rtype === LR_TELE || r.rtype === LR_DOWNTELE)
                     g.dndest = { ...tele };
             } else {
-                place_lregion(
+                return place_lregion(
                     r.inarea.x1, r.inarea.y1, r.inarea.x2, r.inarea.y2,
                     r.delarea.x1, r.delarea.y1, r.delarea.x2, r.delarea.y2,
                     r.rtype, null,
                 );
             }
-        }
+        });
+        if (isThenable(_pendingLregion)) return _pendingLregion.then(() => load_medusa_3_after_lregions());
+        return load_medusa_3_after_lregions();
     }
-    fixup_special();
+
+    function load_medusa_3_after_lregions() {
+        return fixup_special();
+    }
 }
 
 /**
@@ -5241,7 +5704,7 @@ function load_medusa_2() {
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -5400,7 +5863,7 @@ function load_medusa_4() {
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -5477,7 +5940,7 @@ function load_bigrm_7() {
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -5552,7 +6015,7 @@ function load_bigrm_8() {
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -5623,7 +6086,7 @@ function load_bigrm_9() {
     // C load_special: wallification when !corrmaze; noflip → skip flip
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -5723,7 +6186,7 @@ function load_bigrm_12() {
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(allowFlips, false);
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -5935,7 +6398,7 @@ function load_bar_strt() {
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -6158,17 +6621,22 @@ function load_wiz_strt() {
     {
         const lregions = g.lregions || [];
         g.lregions = [];
-        for (const r of lregions) {
+        const _pendingLregion = walkRegions(lregions, (r) => {
             if (r.rtype === LR_BRANCH) {
-                place_lregion(
+                return place_lregion(
                     r.inarea.x1, r.inarea.y1, r.inarea.x2, r.inarea.y2,
                     r.delarea.x1, r.delarea.y1, r.delarea.x2, r.delarea.y2,
                     LR_BRANCH, null,
                 );
             }
-        }
+        });
+        if (isThenable(_pendingLregion)) return _pendingLregion.then(() => load_wiz_strt_after_lregions());
+        return load_wiz_strt_after_lregions();
     }
-    fixup_special();
+
+    function load_wiz_strt_after_lregions() {
+        return fixup_special();
+    }
 }
 
 /**
@@ -6351,7 +6819,7 @@ function load_wiz_loca() {
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -6404,7 +6872,7 @@ function load_wiz_fila() {
     if (!g.level.flags?.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -6456,7 +6924,7 @@ function load_wiz_filb() {
     if (!g.level.flags?.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -6634,7 +7102,7 @@ function load_wiz_goal() {
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -6848,7 +7316,7 @@ function load_pri_strt() {
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -7046,7 +7514,7 @@ async function load_pri_loca() {
     // des.level_flags noflip — wallify then fixup (skip flip_level_rnd)
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -7156,7 +7624,7 @@ xxxxx...xxxxxx....xxxxxxxx
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -7366,7 +7834,7 @@ function load_arc_strt() {
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -7590,7 +8058,7 @@ function load_arc_loca() {
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -7749,7 +8217,7 @@ function load_arc_goal() {
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -7974,7 +8442,7 @@ async function load_kni_strt() {
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -8101,7 +8569,7 @@ xxxxxxxxx.......xxxxxx.....xxxxxxxxxxxxx
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -8141,7 +8609,7 @@ async function load_kni_fila() {
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     // des.level_flags("mazelevel", "noflip") — skip flip_level_rnd
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -8178,7 +8646,7 @@ async function load_kni_filb() {
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     // des.level_flags("mazelevel", "noflip") — skip flip_level_rnd
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -8308,7 +8776,7 @@ function load_kni_goal() {
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -8491,7 +8959,7 @@ function load_rog_strt() {
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -8568,7 +9036,7 @@ function load_rog_loca() {
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -8626,7 +9094,7 @@ function load_rog_fila() {
     if (!g.level.flags?.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -8684,7 +9152,7 @@ function load_rog_filb() {
     if (!g.level.flags?.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -8781,7 +9249,7 @@ function load_rog_goal() {
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -8925,7 +9393,7 @@ xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -9013,7 +9481,7 @@ xPPPPxx                         xxxxPPPP
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     // des.level_flags noflip — skip flip_level_rnd
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -9136,7 +9604,7 @@ xxxxxxxxx..................xxxxxxxx
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -9179,7 +9647,7 @@ async function load_val_fila() {
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     // des.level_flags noflip — skip flip_level_rnd
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -9223,7 +9691,7 @@ async function load_val_filb() {
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     // des.level_flags noflip — skip flip_level_rnd
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -9388,7 +9856,7 @@ function load_sam_strt() {
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -9533,7 +10001,7 @@ function load_sam_loca() {
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -9656,7 +10124,7 @@ ${' '.repeat(45)}
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -9699,7 +10167,7 @@ async function load_sam_fila() {
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     // des.level_flags("mazelevel", "noflip") — skip flip_level_rnd
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -9769,7 +10237,7 @@ function load_sam_filb() {
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -9923,7 +10391,7 @@ PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -10059,7 +10527,7 @@ PPPPPPPPPPP........PPPPPPPPPPPP
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -10153,7 +10621,7 @@ PPP..................................PPP.
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -10199,7 +10667,7 @@ async function load_hea_fila() {
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     // des.level_flags("mazelevel", "noflip") — skip flip_level_rnd
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -10245,7 +10713,7 @@ async function load_hea_filb() {
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     // des.level_flags("mazelevel", "noflip") — skip flip_level_rnd
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -10432,7 +10900,7 @@ function load_tou_strt() {
         delarea: { x1: -1, y1: -1, x2: -1, y2: -1 },
     });
     flip_level_rnd(3, false);
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -10642,7 +11110,7 @@ function load_tou_loca() {
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -10857,7 +11325,7 @@ function load_tou_goal() {
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -10900,7 +11368,7 @@ async function load_tou_fila() {
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     // des.level_flags("mazelevel", "noflip") — skip flip_level_rnd
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -10947,7 +11415,7 @@ async function load_tou_filb() {
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     // des.level_flags("mazelevel", "noflip") — skip flip_level_rnd
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -11117,7 +11585,7 @@ async function load_ran_strt() {
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -11221,7 +11689,7 @@ function load_ran_loca() {
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -11380,7 +11848,7 @@ function load_ran_goal() {
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -11424,7 +11892,7 @@ async function load_ran_fila() {
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     // des.level_flags("mazelevel", "noflip") — skip flip_level_rnd
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -11467,7 +11935,7 @@ async function load_ran_filb() {
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     // des.level_flags("mazelevel", "noflip") — skip flip_level_rnd
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -11701,7 +12169,7 @@ function load_mon_strt() {
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -11806,7 +12274,7 @@ function load_mon_loca() {
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -11920,7 +12388,7 @@ xxxxx...xxxxxx....xxxxxxxx
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -11978,7 +12446,7 @@ function load_mon_fila() {
     if (!g.level.flags?.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -12031,7 +12499,7 @@ function load_mon_filb() {
     if (!g.level.flags?.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -12251,7 +12719,7 @@ function load_cav_strt() {
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -12387,7 +12855,7 @@ function load_cav_loca() {
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -12483,7 +12951,7 @@ function load_cav_goal() {
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -12526,7 +12994,7 @@ async function load_cav_fila() {
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     // des.level_flags("mazelevel", "noflip") — skip flip_level_rnd
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -12569,7 +13037,7 @@ async function load_cav_filb() {
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     // des.level_flags("mazelevel", "noflip") — skip flip_level_rnd
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -12825,7 +13293,7 @@ function load_knox() {
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -12994,7 +13462,7 @@ function load_bar_loca() {
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -13123,7 +13591,7 @@ function load_bar_goal() {
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -13360,7 +13828,7 @@ function load_tower1() {
             loc.flags = (loc.flags | 0) | (W_NONDIGGABLE | W_NONPASSWALL);
         }
     }
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -13561,7 +14029,7 @@ function load_tower2() {
             loc.flags = (loc.flags | 0) | (W_NONDIGGABLE | W_NONPASSWALL);
         }
     }
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -13743,17 +14211,22 @@ function load_tower3() {
     {
         const lregions = g.lregions || [];
         g.lregions = [];
-        for (const r of lregions) {
+        const _pendingLregion = walkRegions(lregions, (r) => {
             if (r.rtype === LR_BRANCH) {
-                place_lregion(
+                return place_lregion(
                     r.inarea.x1, r.inarea.y1, r.inarea.x2, r.inarea.y2,
                     r.delarea.x1, r.delarea.y1, r.delarea.x2, r.delarea.y2,
                     LR_BRANCH, null,
                 );
             }
-        }
+        });
+        if (isThenable(_pendingLregion)) return _pendingLregion.then(() => load_tower3_after_lregions());
+        return load_tower3_after_lregions();
     }
-    fixup_special();
+
+    function load_tower3_after_lregions() {
+        return fixup_special();
+    }
 }
 
 /**
@@ -13926,7 +14399,7 @@ function load_soko1_1() {
 
     // C ref: sp_lev.c load_special — wallify, flip, solidify, fixup, premap
     // fill_special_room runs once later in makelevel (mklev.c:1416), not here.
-    soko_load_epilogue();
+    return soko_load_epilogue();
 }
 
 /**
@@ -14090,7 +14563,7 @@ function load_soko1_2() {
         }
     }
 
-    soko_load_epilogue();
+    return soko_load_epilogue();
 }
 
 /**
@@ -14190,7 +14663,7 @@ function load_soko3_1() {
     splev_create_object(WAND_CLASS);
 
     // C ref: sp_lev.c load_special — wallify, flip, solidify, fixup, premap
-    soko_load_epilogue();
+    return soko_load_epilogue();
 }
 
 /**
@@ -14292,7 +14765,7 @@ function load_soko3_2() {
     splev_create_object(WAND_CLASS);
 
     // C ref: sp_lev.c load_special — wallify, flip, solidify, fixup, premap
-    soko_load_epilogue();
+    return soko_load_epilogue();
 }
 
 /**
@@ -14406,18 +14879,24 @@ function load_soko4_1() {
     {
         const lregions = g.lregions || [];
         g.lregions = [];
-        for (const r of lregions) {
+        const _pendingLregion = walkRegions(lregions, (r) => {
             if (r.rtype === LR_BRANCH) {
-                place_lregion(
+                return place_lregion(
                     r.inarea.x1, r.inarea.y1, r.inarea.x2, r.inarea.y2,
                     r.delarea.x1, r.delarea.y1, r.delarea.x2, r.delarea.y2,
                     LR_BRANCH, null,
                 );
             }
-        }
+        });
+        if (isThenable(_pendingLregion)) return _pendingLregion.then(() => load_soko4_1_after_lregions());
+        return load_soko4_1_after_lregions();
     }
-    fixup_special();
-    premap_detect();
+
+    function load_soko4_1_after_lregions() {
+        return afterPending(fixup_special(), () => {
+            premap_detect();
+        });
+    }
 }
 
 /**
@@ -14528,18 +15007,24 @@ function load_soko4_2() {
     {
         const lregions = g.lregions || [];
         g.lregions = [];
-        for (const r of lregions) {
+        const _pendingLregion = walkRegions(lregions, (r) => {
             if (r.rtype === LR_BRANCH) {
-                place_lregion(
+                return place_lregion(
                     r.inarea.x1, r.inarea.y1, r.inarea.x2, r.inarea.y2,
                     r.delarea.x1, r.delarea.y1, r.delarea.x2, r.delarea.y2,
                     LR_BRANCH, null,
                 );
             }
-        }
+        });
+        if (isThenable(_pendingLregion)) return _pendingLregion.then(() => load_soko4_2_after_lregions());
+        return load_soko4_2_after_lregions();
     }
-    fixup_special();
-    premap_detect();
+
+    function load_soko4_2_after_lregions() {
+        return afterPending(fixup_special(), () => {
+            premap_detect();
+        });
+    }
 }
 
 /**
@@ -14716,7 +15201,7 @@ function load_earth() {
     {
         const lregions = g.lregions || [];
         g.lregions = [];
-        for (const r of lregions) {
+        const _pendingLregion = walkRegions(lregions, (r) => {
             if (r.rtype === LR_TELE || r.rtype === LR_UPTELE || r.rtype === LR_DOWNTELE) {
                 const tele = {
                     lx: r.inarea.x1, ly: r.inarea.y1,
@@ -14735,15 +15220,20 @@ function load_earth() {
                     if (sp?.dlevel)
                         lev = { dnum: sp.dlevel.dnum | 0, dlevel: sp.dlevel.dlevel | 0 };
                 }
-                place_lregion(
+                return place_lregion(
                     r.inarea.x1, r.inarea.y1, r.inarea.x2, r.inarea.y2,
                     r.delarea.x1, r.delarea.y1, r.delarea.x2, r.delarea.y2,
                     LR_PORTAL, lev,
                 );
             }
-        }
+        });
+        if (isThenable(_pendingLregion)) return _pendingLregion.then(() => load_earth_after_lregions());
+        return load_earth_after_lregions();
     }
-    fixup_special();
+
+    function load_earth_after_lregions() {
+        return fixup_special();
+    }
 }
 
 /**
@@ -14870,7 +15360,7 @@ L.....LLL......................LLLLL.........L.........LLLLLLLL..............LL
     {
         const lregions = g.lregions || [];
         g.lregions = [];
-        for (const r of lregions) {
+        const _pendingLregion = walkRegions(lregions, (r) => {
             if (r.rtype === LR_TELE || r.rtype === LR_UPTELE || r.rtype === LR_DOWNTELE) {
                 const tele = {
                     lx: r.inarea.x1, ly: r.inarea.y1,
@@ -14889,29 +15379,35 @@ L.....LLL......................LLLLL.........L.........LLLLLLLL..............LL
                     if (sp?.dlevel)
                         lev = { dnum: sp.dlevel.dnum | 0, dlevel: sp.dlevel.dlevel | 0 };
                 }
-                place_lregion(
+                return place_lregion(
                     r.inarea.x1, r.inarea.y1, r.inarea.x2, r.inarea.y2,
                     r.delarea.x1, r.delarea.y1, r.delarea.x2, r.delarea.y2,
                     LR_PORTAL, lev,
                 );
             }
-        }
+        });
+        if (isThenable(_pendingLregion)) return _pendingLregion.then(() => load_fire_after_lregions());
+        return load_fire_after_lregions();
     }
-    fixup_special();
-    // C lspo_map string form lit=FALSE → set_levltyp_lit clears solidfill
-    // BOOL_RANDOM lit on non-lava map cells (D-0569). Lava always lit.
-    {
-        const sp = g.SpLev_Map;
-        if (sp) {
-            for (const key of sp) {
-                const comma = key.indexOf(',');
-                const x = Number(key.slice(0, comma));
-                const y = Number(key.slice(comma + 1));
-                const loc = g.level.at(x, y);
-                if (!loc) continue;
-                loc.lit = IS_LAVA(loc.typ) ? true : false;
+
+    function load_fire_after_lregions() {
+        return afterPending(fixup_special(), () => {
+            // C lspo_map string form lit=FALSE → set_levltyp_lit clears solidfill
+            // BOOL_RANDOM lit on non-lava map cells (D-0569). Lava always lit.
+            {
+                const sp = g.SpLev_Map;
+                if (sp) {
+                    for (const key of sp) {
+                        const comma = key.indexOf(',');
+                        const x = Number(key.slice(0, comma));
+                        const y = Number(key.slice(comma + 1));
+                        const loc = g.level.at(x, y);
+                        if (!loc) continue;
+                        loc.lit = IS_LAVA(loc.typ) ? true : false;
+                    }
+                }
             }
-        }
+        });
     }
 }
 
@@ -15022,44 +15518,14 @@ AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
-    // C: fixup_special — setup_waterlevel before applying tele/portal lregions
-    setup_waterlevel();
-    {
-        const lregions = g.lregions || [];
-        g.lregions = [];
-        for (const r of lregions) {
-            if (r.rtype === LR_TELE || r.rtype === LR_UPTELE || r.rtype === LR_DOWNTELE) {
-                const tele = {
-                    lx: r.inarea.x1, ly: r.inarea.y1,
-                    hx: r.inarea.x2, hy: r.inarea.y2,
-                    nlx: r.delarea.x1, nly: r.delarea.y1,
-                    nhx: r.delarea.x2, nhy: r.delarea.y2,
-                };
-                if (r.rtype === LR_TELE || r.rtype === LR_UPTELE)
-                    g.updest = { ...tele };
-                if (r.rtype === LR_TELE || r.rtype === LR_DOWNTELE)
-                    g.dndest = { ...tele };
-            } else if (r.rtype === LR_PORTAL) {
-                let lev = null;
-                if (r.rname) {
-                    const sp = find_level(r.rname);
-                    if (sp?.dlevel)
-                        lev = { dnum: sp.dlevel.dnum | 0, dlevel: sp.dlevel.dlevel | 0 };
-                }
-                place_lregion(
-                    r.inarea.x1, r.inarea.y1, r.inarea.x2, r.inarea.y2,
-                    r.delarea.x1, r.delarea.y1, r.delarea.x2, r.delarea.y2,
-                    LR_PORTAL, lev,
-                );
-            }
-        }
-    }
-    fixup_special();
+    /* C load_special epilogue: fixup_special does setup_waterlevel
+       then the lregion walk (mkmaze.c:579–641). */
+    return fixup_special();
 }
 
 /**
  * C ref: dat/water.lua via load_special — Plane of Water (endgame 4 of 5).
- * Bubbles: mkmaze.c setup_waterlevel after flip, before lregions.
+ * Bubbles: fixup_special calls setup_waterlevel after flip, before lregions.
  * Named omissions: water obj/mon/trap cons pickup+deposit;
  * humidity-aware get_location; ensure_way_out / solidify; astral.
  */
@@ -15123,41 +15589,9 @@ function load_water() {
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
-    // C: fixup_special — setup_waterlevel before applying tele/portal lregions
-    setup_waterlevel();
-    {
-        const lregions = g.lregions || [];
-        g.lregions = [];
-        for (const r of lregions) {
-            if (r.rtype === LR_TELE || r.rtype === LR_UPTELE || r.rtype === LR_DOWNTELE) {
-                const tele = {
-                    lx: r.inarea.x1, ly: r.inarea.y1,
-                    hx: r.inarea.x2, hy: r.inarea.y2,
-                    nlx: r.delarea.x1, nly: r.delarea.y1,
-                    nhx: r.delarea.x2, nhy: r.delarea.y2,
-                };
-                if (r.rtype === LR_TELE || r.rtype === LR_UPTELE)
-                    g.updest = { ...tele };
-                if (r.rtype === LR_TELE || r.rtype === LR_DOWNTELE)
-                    g.dndest = { ...tele };
-            } else if (r.rtype === LR_PORTAL) {
-                let lev = null;
-                const name = (r.rname && typeof r.rname === 'object')
-                    ? r.rname.str : r.rname;
-                if (name) {
-                    const sp = find_level(name);
-                    if (sp?.dlevel)
-                        lev = { dnum: sp.dlevel.dnum | 0, dlevel: sp.dlevel.dlevel | 0 };
-                }
-                place_lregion(
-                    r.inarea.x1, r.inarea.y1, r.inarea.x2, r.inarea.y2,
-                    r.delarea.x1, r.delarea.y1, r.delarea.x2, r.delarea.y2,
-                    LR_PORTAL, lev,
-                );
-            }
-        }
-    }
-    fixup_special();
+    /* C load_special epilogue: fixup_special does setup_waterlevel
+       then the lregion walk (mkmaze.c:579–641). */
+    return fixup_special();
 }
 
 /**
@@ -15472,7 +15906,7 @@ function load_astral() {
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
     solidify_map();
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -15671,7 +16105,7 @@ function load_minend_1() {
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -15895,7 +16329,7 @@ function load_minend_2() {
     {
         const lregions = g.lregions || [];
         g.lregions = [];
-        for (const r of lregions) {
+        const _pendingLregion = walkRegions(lregions, (r) => {
             if (r.rtype === LR_TELE || r.rtype === LR_UPTELE || r.rtype === LR_DOWNTELE) {
                 const tele = {
                     lx: r.inarea.x1, ly: r.inarea.y1,
@@ -15908,15 +16342,20 @@ function load_minend_2() {
                 if (r.rtype === LR_TELE || r.rtype === LR_DOWNTELE)
                     g.dndest = { ...tele };
             } else {
-                place_lregion(
+                return place_lregion(
                     r.inarea.x1, r.inarea.y1, r.inarea.x2, r.inarea.y2,
                     r.delarea.x1, r.delarea.y1, r.delarea.x2, r.delarea.y2,
                     r.rtype, null,
                 );
             }
-        }
+        });
+        if (isThenable(_pendingLregion)) return _pendingLregion.then(() => load_minend_2_after_lregions());
+        return load_minend_2_after_lregions();
     }
-    fixup_special();
+
+    function load_minend_2_after_lregions() {
+        return fixup_special();
+    }
 }
 
 /**
@@ -16142,7 +16581,7 @@ function load_minend_3() {
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -16416,7 +16855,7 @@ async function load_minetn_1() {
     if (!g.level.flags?.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -16518,7 +16957,7 @@ function load_minetn_2() {
     if (!g.level.flags?.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -16650,7 +17089,7 @@ function load_minetn_3() {
     if (!g.level.flags?.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -16771,7 +17210,7 @@ function load_minetn_4() {
     if (!g.level.flags?.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -17010,7 +17449,7 @@ function load_minetn_5() {
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -17235,7 +17674,7 @@ xxxx-------xxxxxxxxxxxxxxx--------------
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -17413,7 +17852,7 @@ function load_minetn_7() {
     if (!g.level.flags?.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -17423,7 +17862,15 @@ function load_minetn_7() {
 function setup_waterlevel() {
     const g = game;
     const uz = g.u?.uz;
-    if (!Is_waterlevel(uz) && !Is_airlevel(uz)) return;
+    /* C mkmaze.c:1817–1819 panic() is NORETURN. No JS panic (Rule #2). */
+    if (!Is_waterlevel(uz) && !Is_airlevel(uz)) {
+        impossible(
+            "setup_waterlevel(): [%d:%d] neither 'Water' nor 'Air'",
+            uz?.dnum | 0,
+            uz?.dlevel | 0,
+        );
+        return;
+    }
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.hero_memory = false;
 
@@ -18099,7 +18546,7 @@ function load_soko2_1() {
     splev_create_object(WAND_CLASS);
 
     // C ref: sp_lev.c load_special — wallify, flip, solidify, fixup, premap
-    soko_load_epilogue();
+    return soko_load_epilogue();
 }
 
 /**
@@ -18205,7 +18652,7 @@ function load_soko2_2() {
     splev_create_object(WAND_CLASS);
 
     // C ref: sp_lev.c load_special — wallify, flip, solidify, fixup, premap
-    soko_load_epilogue();
+    return soko_load_epilogue();
 }
 
 /** C ref: sp_lev.c add_doors_to_room — scan bbox±1 for doors. */
@@ -19090,7 +19537,7 @@ function load_tut1() {
 
     // C load_special: noflip → skip flip; fixup_special copies TELE dests.
     // wallify / map_cleanup / count_level_features deferred (not this cluster).
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -19172,7 +19619,7 @@ function load_tut2() {
     }
 
     // C load_special: noflip → skip flip; fixup_special copies TELE dests.
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -22519,7 +22966,7 @@ function load_oracle() {
     if (!g.level.flags?.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     // noflip — skip flip_level_rnd
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -22842,7 +23289,7 @@ function load_castle() {
     {
         const lregions = g.lregions || [];
         g.lregions = [];
-        for (const r of lregions) {
+        const _pendingLregion = walkRegions(lregions, (r) => {
             if (r.rtype === LR_TELE || r.rtype === LR_UPTELE || r.rtype === LR_DOWNTELE) {
                 const tele = {
                     lx: r.inarea.x1, ly: r.inarea.y1,
@@ -22855,15 +23302,20 @@ function load_castle() {
                 if (r.rtype === LR_TELE || r.rtype === LR_DOWNTELE)
                     g.dndest = { ...tele };
             } else {
-                place_lregion(
+                return place_lregion(
                     r.inarea.x1, r.inarea.y1, r.inarea.x2, r.inarea.y2,
                     r.delarea.x1, r.delarea.y1, r.delarea.x2, r.delarea.y2,
                     r.rtype, null,
                 );
             }
-        }
+        });
+        if (isThenable(_pendingLregion)) return _pendingLregion.then(() => load_castle_after_lregions());
+        return load_castle_after_lregions();
     }
-    fixup_special();
+
+    function load_castle_after_lregions() {
+        return fixup_special();
+    }
 }
 
 /**
@@ -23127,7 +23579,7 @@ function load_valley() {
     {
         const lregions = g.lregions || [];
         g.lregions = [];
-        for (const r of lregions) {
+        const _pendingLregion = walkRegions(lregions, (r) => {
             if (r.rtype === LR_TELE || r.rtype === LR_UPTELE || r.rtype === LR_DOWNTELE) {
                 const tele = {
                     lx: r.inarea.x1, ly: r.inarea.y1,
@@ -23140,15 +23592,20 @@ function load_valley() {
                 if (r.rtype === LR_TELE || r.rtype === LR_DOWNTELE)
                     g.dndest = { ...tele };
             } else {
-                place_lregion(
+                return place_lregion(
                     r.inarea.x1, r.inarea.y1, r.inarea.x2, r.inarea.y2,
                     r.delarea.x1, r.delarea.y1, r.delarea.x2, r.delarea.y2,
                     r.rtype, null,
                 );
             }
-        }
+        });
+        if (isThenable(_pendingLregion)) return _pendingLregion.then(() => load_valley_after_lregions());
+        return load_valley_after_lregions();
     }
-    fixup_special();
+
+    function load_valley_after_lregions() {
+        return fixup_special();
+    }
 }
 
 /**
@@ -23492,7 +23949,7 @@ function load_asmodeus() {
     {
         const lregions = g.lregions || [];
         g.lregions = [];
-        for (const r of lregions) {
+        const _pendingLregion = walkRegions(lregions, (r) => {
             if (r.rtype === LR_TELE || r.rtype === LR_UPTELE || r.rtype === LR_DOWNTELE) {
                 const tele = {
                     lx: r.inarea.x1, ly: r.inarea.y1,
@@ -23505,15 +23962,20 @@ function load_asmodeus() {
                 if (r.rtype === LR_TELE || r.rtype === LR_DOWNTELE)
                     g.dndest = { ...tele };
             } else {
-                place_lregion(
+                return place_lregion(
                     r.inarea.x1, r.inarea.y1, r.inarea.x2, r.inarea.y2,
                     r.delarea.x1, r.delarea.y1, r.delarea.x2, r.delarea.y2,
                     r.rtype, null,
                 );
             }
-        }
+        });
+        if (isThenable(_pendingLregion)) return _pendingLregion.then(() => load_asmodeus_after_lregions());
+        return load_asmodeus_after_lregions();
     }
-    fixup_special();
+
+    function load_asmodeus_after_lregions() {
+        return fixup_special();
+    }
 }
 
 /**
@@ -23766,7 +24228,7 @@ xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
     {
         const lregions = g.lregions || [];
         g.lregions = [];
-        for (const r of lregions) {
+        const _pendingLregion = walkRegions(lregions, (r) => {
             if (r.rtype === LR_TELE || r.rtype === LR_UPTELE || r.rtype === LR_DOWNTELE) {
                 const tele = {
                     lx: r.inarea.x1, ly: r.inarea.y1,
@@ -23779,15 +24241,20 @@ xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
                 if (r.rtype === LR_TELE || r.rtype === LR_DOWNTELE)
                     g.dndest = { ...tele };
             } else {
-                place_lregion(
+                return place_lregion(
                     r.inarea.x1, r.inarea.y1, r.inarea.x2, r.inarea.y2,
                     r.delarea.x1, r.delarea.y1, r.delarea.x2, r.delarea.y2,
                     r.rtype, null,
                 );
             }
-        }
+        });
+        if (isThenable(_pendingLregion)) return _pendingLregion.then(() => load_juiblex_after_lregions());
+        return load_juiblex_after_lregions();
     }
-    fixup_special();
+
+    function load_juiblex_after_lregions() {
+        return fixup_special();
+    }
 }
 
 /**
@@ -23953,7 +24420,7 @@ function load_baalz() {
     {
         const lregions = g.lregions || [];
         g.lregions = [];
-        for (const r of lregions) {
+        const _pendingLregion = walkRegions(lregions, (r) => {
             if (r.rtype === LR_TELE || r.rtype === LR_UPTELE || r.rtype === LR_DOWNTELE) {
                 const tele = {
                     lx: r.inarea.x1, ly: r.inarea.y1,
@@ -23966,15 +24433,20 @@ function load_baalz() {
                 if (r.rtype === LR_TELE || r.rtype === LR_DOWNTELE)
                     g.dndest = { ...tele };
             } else {
-                place_lregion(
+                return place_lregion(
                     r.inarea.x1, r.inarea.y1, r.inarea.x2, r.inarea.y2,
                     r.delarea.x1, r.delarea.y1, r.delarea.x2, r.delarea.y2,
                     r.rtype, null,
                 );
             }
-        }
+        });
+        if (isThenable(_pendingLregion)) return _pendingLregion.then(() => load_baalz_after_lregions());
+        return load_baalz_after_lregions();
     }
-    fixup_special();
+
+    function load_baalz_after_lregions() {
+        return fixup_special();
+    }
 }
 
 /**
@@ -24234,7 +24706,7 @@ function load_orcus() {
     {
         const lregions = g.lregions || [];
         g.lregions = [];
-        for (const r of lregions) {
+        const _pendingLregion = walkRegions(lregions, (r) => {
             if (r.rtype === LR_TELE || r.rtype === LR_UPTELE || r.rtype === LR_DOWNTELE) {
                 const tele = {
                     lx: r.inarea.x1, ly: r.inarea.y1,
@@ -24247,15 +24719,20 @@ function load_orcus() {
                 if (r.rtype === LR_TELE || r.rtype === LR_DOWNTELE)
                     g.dndest = { ...tele };
             } else {
-                place_lregion(
+                return place_lregion(
                     r.inarea.x1, r.inarea.y1, r.inarea.x2, r.inarea.y2,
                     r.delarea.x1, r.delarea.y1, r.delarea.x2, r.delarea.y2,
                     r.rtype, null,
                 );
             }
-        }
+        });
+        if (isThenable(_pendingLregion)) return _pendingLregion.then(() => load_orcus_after_lregions());
+        return load_orcus_after_lregions();
     }
-    fixup_special();
+
+    function load_orcus_after_lregions() {
+        return fixup_special();
+    }
 }
 
 /**
@@ -24540,7 +25017,7 @@ function load_wizard1() {
     {
         const lregions = g.lregions || [];
         g.lregions = [];
-        for (const r of lregions) {
+        const _pendingLregion = walkRegions(lregions, (r) => {
             if (r.rtype === LR_TELE || r.rtype === LR_UPTELE || r.rtype === LR_DOWNTELE) {
                 const tele = {
                     lx: r.inarea.x1, ly: r.inarea.y1,
@@ -24553,15 +25030,20 @@ function load_wizard1() {
                 if (r.rtype === LR_TELE || r.rtype === LR_DOWNTELE)
                     g.dndest = { ...tele };
             } else {
-                place_lregion(
+                return place_lregion(
                     r.inarea.x1, r.inarea.y1, r.inarea.x2, r.inarea.y2,
                     r.delarea.x1, r.delarea.y1, r.delarea.x2, r.delarea.y2,
                     r.rtype, null,
                 );
             }
-        }
+        });
+        if (isThenable(_pendingLregion)) return _pendingLregion.then(() => load_wizard1_after_lregions());
+        return load_wizard1_after_lregions();
     }
-    fixup_special();
+
+    function load_wizard1_after_lregions() {
+        return fixup_special();
+    }
 }
 
 /**
@@ -24810,7 +25292,7 @@ function load_wizard2() {
     {
         const lregions = g.lregions || [];
         g.lregions = [];
-        for (const r of lregions) {
+        const _pendingLregion = walkRegions(lregions, (r) => {
             if (r.rtype === LR_TELE || r.rtype === LR_UPTELE || r.rtype === LR_DOWNTELE) {
                 const tele = {
                     lx: r.inarea.x1, ly: r.inarea.y1,
@@ -24823,15 +25305,20 @@ function load_wizard2() {
                 if (r.rtype === LR_TELE || r.rtype === LR_DOWNTELE)
                     g.dndest = { ...tele };
             } else {
-                place_lregion(
+                return place_lregion(
                     r.inarea.x1, r.inarea.y1, r.inarea.x2, r.inarea.y2,
                     r.delarea.x1, r.delarea.y1, r.delarea.x2, r.delarea.y2,
                     r.rtype, null,
                 );
             }
-        }
+        });
+        if (isThenable(_pendingLregion)) return _pendingLregion.then(() => load_wizard2_after_lregions());
+        return load_wizard2_after_lregions();
     }
-    fixup_special();
+
+    function load_wizard2_after_lregions() {
+        return fixup_special();
+    }
 }
 
 /**
@@ -25138,7 +25625,7 @@ function load_wizard3() {
     {
         const lregions = g.lregions || [];
         g.lregions = [];
-        for (const r of lregions) {
+        const _pendingLregion = walkRegions(lregions, (r) => {
             if (r.rtype === LR_TELE || r.rtype === LR_UPTELE || r.rtype === LR_DOWNTELE) {
                 const tele = {
                     lx: r.inarea.x1, ly: r.inarea.y1,
@@ -25157,21 +25644,26 @@ function load_wizard3() {
                     if (sp?.dlevel)
                         lev = { dnum: sp.dlevel.dnum | 0, dlevel: sp.dlevel.dlevel | 0 };
                 }
-                place_lregion(
+                return place_lregion(
                     r.inarea.x1, r.inarea.y1, r.inarea.x2, r.inarea.y2,
                     r.delarea.x1, r.delarea.y1, r.delarea.x2, r.delarea.y2,
                     LR_PORTAL, lev,
                 );
             } else {
-                place_lregion(
+                return place_lregion(
                     r.inarea.x1, r.inarea.y1, r.inarea.x2, r.inarea.y2,
                     r.delarea.x1, r.delarea.y1, r.delarea.x2, r.delarea.y2,
                     r.rtype, null,
                 );
             }
-        }
+        });
+        if (isThenable(_pendingLregion)) return _pendingLregion.then(() => load_wizard3_after_lregions());
+        return load_wizard3_after_lregions();
     }
-    fixup_special();
+
+    function load_wizard3_after_lregions() {
+        return fixup_special();
+    }
 }
 
 /**
@@ -25315,7 +25807,7 @@ function load_fakewiz_tower(isFake1) {
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -25607,7 +26099,7 @@ function load_sanctum() {
     {
         const lregions = g.lregions || [];
         g.lregions = [];
-        for (const r of lregions) {
+        const _pendingLregion = walkRegions(lregions, (r) => {
             if (r.rtype === LR_TELE || r.rtype === LR_UPTELE || r.rtype === LR_DOWNTELE) {
                 const tele = {
                     lx: r.inarea.x1, ly: r.inarea.y1,
@@ -25620,15 +26112,20 @@ function load_sanctum() {
                 if (r.rtype === LR_TELE || r.rtype === LR_DOWNTELE)
                     g.dndest = { ...tele };
             } else {
-                place_lregion(
+                return place_lregion(
                     r.inarea.x1, r.inarea.y1, r.inarea.x2, r.inarea.y2,
                     r.delarea.x1, r.delarea.y1, r.delarea.x2, r.delarea.y2,
                     r.rtype, null,
                 );
             }
-        }
+        });
+        if (isThenable(_pendingLregion)) return _pendingLregion.then(() => load_sanctum_after_lregions());
+        return load_sanctum_after_lregions();
     }
-    fixup_special();
+
+    function load_sanctum_after_lregions() {
+        return fixup_special();
+    }
 }
 
 /**
@@ -25658,7 +26155,7 @@ async function load_hellfill() {
     if (!g.level.flags?.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     // des.level_flags noflip — skip flip_level_rnd
-    fixup_special();
+    return fixup_special();
 }
 
 /** C ref: hellfill.lua populatemaze — stock objects/monsters/gold/traps. */
@@ -26005,7 +26502,7 @@ async function load_minefill() {
         wallification(1, 0, COLNO - 1, ROWNO - 1);
 
     // C ref: sp_lev.c load_special — fixup_special after wallify/noflip
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -26044,7 +26541,7 @@ async function load_bar_fila() {
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     // des.level_flags noflip — skip flip_level_rnd
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -26081,7 +26578,7 @@ async function load_bar_filb() {
 
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -26137,7 +26634,7 @@ function load_arc_fila() {
     if (!g.level.flags?.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -26189,7 +26686,7 @@ function load_arc_filb() {
     if (!g.level.flags?.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -26241,7 +26738,7 @@ function load_pri_fila() {
     if (!g.level.flags?.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
-    fixup_special();
+    return fixup_special();
 }
 
 /**
@@ -26294,7 +26791,7 @@ function load_pri_filb() {
     if (!g.level.flags?.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
-    fixup_special();
+    return fixup_special();
 }
 
 
@@ -31205,8 +31702,15 @@ function find_branch_room(mp) {
  * C ref: mkmaze.c mkportal — MAGIC_PORTAL trap with destination dungeon/level.
  */
 function mkportal(x, y, todnum, todlevel) {
+    /* a portal "trap" must be matched by a
+       portal in the destination dungeon/dlevel */
     const ttmp = maketrap(x, y, MAGIC_PORTAL);
-    if (!ttmp) return;
+    if (!ttmp) {
+        /* C mkmaze.c:1470–1472. place_branch is synchronous, so this
+           promise is not awaited there; the urgent pline still runs. */
+        impossible('portal on top of portal?');
+        return;
+    }
     ttmp.dst = { dnum: todnum | 0, dlevel: todlevel | 0 };
 }
 

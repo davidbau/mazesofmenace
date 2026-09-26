@@ -509,6 +509,26 @@ export const DISCO_ORDERS_DESCR = [
     'alphabetical across all classes',
 ];
 
+/**
+ * C o_init.c get_sortdisco `:1209–1220`. An unknown `flags.discosort`
+ * resets to `'o'` and the description index follows. `cnf` selects the
+ * one-character form. Writes the string back through the return value
+ * (C Sprintf/Strcpy into the caller buffer).
+ * @param {boolean} cnf
+ * @param {object} [flagsBag] defaults to game.flags
+ * @returns {string}
+ */
+export function get_sortdisco(cnf, flagsBag) {
+    const flags = flagsBag || game.flags || (game.flags = {});
+    let p = DISCO_ORDER_LET.indexOf(flags.discosort); // C `:1212` strchr
+    if (p < 0) { // C `:1214`
+        flags.discosort = 'o';
+        p = 0; // C `:1214` p = disco_order_let (starts at 'o')
+    }
+    if (cnf) return flags.discosort; // C `:1216–1217` "%c"
+    return DISCO_ORDERS_DESCR[p]; // C `:1219`
+}
+
 // C ref: o_init.c uniq_objs `:543–548` — invocation relics (+ Amulet).
 const AMULET_OF_YENDOR = objectNames.indexOf('AMULET_OF_YENDOR');
 export const UNIQ_OBJS = [

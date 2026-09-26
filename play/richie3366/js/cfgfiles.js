@@ -27,6 +27,7 @@ import {
     reset_duplicate_opt_detection,
     config_unmatched_ignored,
     add_menu_coloring,
+    add_autopickup_exception,
     msgtype_parse_add,
     parsesymbols,
     allopt_idx,
@@ -460,6 +461,12 @@ function cnf_line_catname(bufp) {
     return true;
 }
 
+/** C ref: cfgfiles.c cnf_line_AUTOPICKUP_EXCEPTION `:611–616`. */
+function cnf_line_AUTOPICKUP_EXCEPTION(bufp) {
+    add_autopickup_exception(bufp); // C `:614`
+    return true; // C `:615`
+}
+
 function cnf_line_MSGTYPE(bufp) {
     return !!msgtype_parse_add(bufp); // C `:634`
 }
@@ -605,7 +612,7 @@ function cnf_line_named_true(_bufp) {
  */
 const configLineStmt = [
     { name: 'OPTIONS', len: 4, syscnf: false, origbuf: true, fn: cnf_line_OPTIONS },
-    { name: 'AUTOPICKUP_EXCEPTION', len: 5, syscnf: false, origbuf: false, fn: cnf_line_named_true },
+    { name: 'AUTOPICKUP_EXCEPTION', len: 5, syscnf: false, origbuf: false, fn: cnf_line_AUTOPICKUP_EXCEPTION },
     { name: 'BINDINGS', len: 4, syscnf: false, origbuf: false, fn: cnf_line_named_true },
     { name: 'AUTOCOMPLETE', len: 5, syscnf: false, origbuf: false, fn: cnf_line_named_true },
     { name: 'MSGTYPE', len: 7, syscnf: false, origbuf: false, fn: cnf_line_MSGTYPE },

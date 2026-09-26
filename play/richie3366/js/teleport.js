@@ -1537,7 +1537,7 @@ export async function teleds(nux, nuy, teleds_flags) {
     }
     // C: placebc when chain was taken off map (OBJ_FREE)
     if (ball_active && u.uchain && (u.uchain.where | 0) === OBJ_FREE) {
-        placebc();
+        await placebc();
     }
     /* C: update_player_regions after placebc, before newsym.
      * Absolute REG_HERO_INSIDE from dest — not in_out_region

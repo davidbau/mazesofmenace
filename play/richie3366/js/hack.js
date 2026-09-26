@@ -163,9 +163,8 @@ function t_at_local(x, y) {
 
 /**
  * C ref: pline.c You_hear `:436–452` — (Deaf && !Unaware) gate, where C
- * Deaf is youprop.h:123–125 (HDeaf || EDeaf || uroleplay.deaf), not a
- * single sticky field (scen-wish-Priest-92035 step 179: HDeaf-only hero
- * must not hear the scare-monster laugh). Unaware
+ * Deaf is youprop.h:123–125 (HDeaf || EDeaf || uroleplay.deaf). Sticky
+ * u.Deaf is not that macro. Unaware
  * (youprop.h:399: multi < 0 && (unconscious() [trap.c:6776] ||
  * is_fainted() [eat.c:3347])) → "You dream that you hear ". The longer
  * dream prefix is what pushes a sleep-turn dosounds fountain past the
@@ -176,7 +175,7 @@ function t_at_local(x, y) {
 export async function You_hear(line) {
     const u = game.u || {};
     const unaware = (game.multi | 0) < 0 && (unconscious() || is_fainted());
-    const deaf = !!((u.HDeaf | 0) || (u.EDeaf | 0) || u.uroleplay?.deaf || u.Deaf);
+    const deaf = !!((u.HDeaf | 0) || (u.EDeaf | 0) || u.uroleplay?.deaf);
     if ((deaf && !unaware) || game.flags?.acoustics === false) return;
     if (unaware) await pline(`You dream that you hear ${line}`);
     else await pline(`You hear ${line}`);
@@ -1617,16 +1616,23 @@ export async function stop_occupation() {
 // src/hack.c:2995 runmode_delay_output()
 export async function runmode_delay_output() {
     // C: gate on (context.run || multi) && runmode != RUN_TPORT.
-    // game.flags.runmode is never populated by an option setter; the raw
-    // string ('run' default, js/options.js) is normalized here with C's
-    // prefix table (options.c optfn_runmode: op is a prefix of the name).
-    const raw = String(game.flags?.runmode ?? 'run').toLowerCase();
-    const runmode = !raw ? RUN_LEAP
-        : 'teleport'.startsWith(raw) ? RUN_TPORT
-        : 'run'.startsWith(raw) ? RUN_LEAP
-        : 'walk'.startsWith(raw) ? RUN_STEP
-        : 'crawl'.startsWith(raw) ? RUN_CRAWL
-        : RUN_LEAP;
+    // optfn_runmode stores the flag.h enum. A raw word still matches
+    // C's prefix table (str_start_is: op is a prefix of the mode name).
+    // Unset stays RUN_LEAP (initoptions `:7176`).
+    const stored = game.flags?.runmode;
+    let runmode;
+    if (stored === RUN_TPORT || stored === RUN_LEAP
+        || stored === RUN_STEP || stored === RUN_CRAWL) {
+        runmode = stored;
+    } else {
+        const raw = String(stored ?? 'run').toLowerCase();
+        runmode = !raw ? RUN_LEAP
+            : 'teleport'.startsWith(raw) ? RUN_TPORT
+            : 'run'.startsWith(raw) ? RUN_LEAP
+            : 'walk'.startsWith(raw) ? RUN_STEP
+            : 'crawl'.startsWith(raw) ? RUN_CRAWL
+            : RUN_LEAP;
+    }
     if (!(game.context?.run || (game.multi | 0)) || runmode === RUN_TPORT) return;
     // C: leap (RUN_LEAP) updates every 7th turn-counter step ("ought to be
     // to start of running" — port the turn-counter version verbatim);
@@ -2628,9 +2634,9 @@ export async function avoid_running_into_trap_or_liquid(x, y) {
 export async function move_out_of_bounds(x, y) {
     if (isok(x, y)) return false;
     if (game.context?.forcefight) {
+        // C hack.c:2590 — return the fight result (off-edge + F is TRUE).
         const { domove_fight_empty } = await import('./cmd.js');
-        await domove_fight_empty(x, y);
-        return true;
+        return await domove_fight_empty(x, y);
     }
     if (game.flags?.mention_walls) {
         const u = game.u || {};

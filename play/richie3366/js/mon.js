@@ -44,7 +44,7 @@ import {
     is_elf, is_dwarf, is_gnome, is_orc, is_undead, amphibious, can_teleport, MR_FIRE,
     mindless, G_UNIQ, is_watch,
     touch_petrifies, flesh_petrifies, slimeproof, resists_ston, poly_when_stoned, vegan,
-    montoostrong, monmax_difficulty,
+    montoostrong, monmax_difficulty, is_vampire,
 } from './monsters.js';
 import {
     little_to_big, big_to_little, big_little_match, hero_conflict,
@@ -63,7 +63,7 @@ import {
 import { PM_GRID_BUG, PM_TOURIST } from './generated/monsters_data.js';
 import { enexto, rloc_to, rloc, tele_restrict, noteleport_level, rloc_to_flag, migrate_to_level, rloco, control_mon_tele, goodpos, is_lminion, Inhell } from './teleport.js';
 import { may_dig, fill_pit } from './dig.js';
-import { newsym, pline, pline_mon, pline_The, verbalize, You_feel, sensemon, canseemon, canspotmon, impossible } from './display.js';
+import { newsym, pline, pline_mon, pline_The, verbalize, You_feel, sensemon, canseemon, canspotmon, impossible, describe_level } from './display.js';
 import { online2, level_difficulty } from './hacklib.js';
 import { worm_cross, level_mon_at, remove_worm, place_wsegs, count_wsegs } from './worm.js';
 import { On_W_tower_level, In_W_tower } from './dungeon.js';
@@ -132,6 +132,9 @@ const PM_WATER_ELEMENTAL = monsterNames.indexOf('PM_WATER_ELEMENTAL');
 const PM_HEZROU = monsterNames.indexOf('PM_HEZROU');
 const PM_VROCK = monsterNames.indexOf('PM_VROCK');
 const PM_STALKER = monsterNames.indexOf('PM_STALKER');
+const PM_VAMPIRE = monsterNames.indexOf('PM_VAMPIRE');
+const PM_VAMPIRE_BAT = monsterNames.indexOf('PM_VAMPIRE_BAT');
+const PM_WOLF = monsterNames.indexOf('PM_WOLF');
 const PM_RUST_MONSTER = monsterNames.indexOf('PM_RUST_MONSTER');
 const AMULET_OF_STRANGULATION = objectNames.indexOf('AMULET_OF_STRANGULATION');
 const RIN_SLOW_DIGESTION = objectNames.indexOf('RIN_SLOW_DIGESTION');
@@ -150,6 +153,25 @@ const GLOB_OF_GREEN_SLIME = objectNames.indexOf('GLOB_OF_GREEN_SLIME');
 const AMULET_OF_YENDOR = objectNames.indexOf('AMULET_OF_YENDOR');
 const SADDLE = objectNames.indexOf('SADDLE');
 const NC_SHOW_MSG = 1;
+
+/**
+ * C ref: mon.c valid_vampshiftform :5014–5023 — a vampire base may be
+ * a vampire bat, a fog cloud, or a wolf (wolf only when the base is
+ * not the plain vampire). Sole caller: polyself.c set_uasmon.
+ * @param {number} base
+ * @param {number} form
+ */
+export function valid_vampshiftform(base, form) {
+    const b = base | 0;
+    const f = form | 0;
+    if (b >= LOW_PM && is_vampire(mons(b))) {
+        if (f === PM_VAMPIRE_BAT || f === PM_FOG_CLOUD
+            || (f === PM_WOLF && b !== PM_VAMPIRE)) {
+            return true;
+        }
+    }
+    return false;
+}
 
 /** C ref: monmove.c closed_door — IS_DOOR && (CLOSED|LOCKED). */
 function closed_door(x, y) {
@@ -1909,9 +1931,9 @@ export async function mpickgold(mtmp) {
  * C ref: mon.c m_into_limbo `:3834–3840` — MON_LIMBO then migrate to current
  * ledger with MIGR_APPROX_XY. Callers: deal_with_overcrowding (same file),
  * do.c u_collide_m, teleport.c u_teleport_mon, vault.c clear_fcorr.
- * Sync sites stay deferred: mkmaze.c put_lregion_here (sync level-gen),
- * vault.c wallify/gd_mv_monaway (wallify stub), dog.c losedogs/mon_arrive
- * (failed_arrivals/relmon infra).
+ * put_lregion_here awaits this on the tele oneshot (D-2831).
+ * Sync sites still deferred: vault.c wallify/gd_mv_monaway (wallify stub),
+ * dog.c losedogs/mon_arrive (failed_arrivals/relmon infra).
  */
 export async function m_into_limbo(mtmp) {
     const target_lev = ledger_no(game.u?.uz);
@@ -3381,19 +3403,122 @@ async function movemon_singlemon(mtmp) {
 }
 
 /**
- * C ref: mon.c dmonsfree — remove DEADMONSTER from fmon after movemon.
- * Vault guards (isgd) at <0,0> are retained until corridor teardown.
+ * C ref: decl.c `cg.zeromonst` — zero-filled `struct monst` assigned by
+ * `dealloc_monst` (`*mon = cg.zeromonst`) so a stale holder does not
+ * keep the old identity. Pointer fields become null; `mtrack` coords
+ * stay an array of zeros (they are inline in the C struct).
  */
-export function dmonsfree() {
-    const list = game.fmon;
-    if (!list || !list.length) return;
-    let w = 0;
-    for (let r = 0; r < list.length; r++) {
-        const m = list[r];
-        if ((m.mhp | 0) <= 0 && !m.isgd) continue;
-        list[w++] = m;
+function applyZeromonst(mon) {
+    if (!mon) return;
+    for (const k of Object.keys(mon)) {
+        const v = mon[k];
+        if (typeof v === 'number') mon[k] = 0;
+        else if (typeof v === 'boolean') mon[k] = false;
+        else if (typeof v === 'string') mon[k] = '';
+        else if (Array.isArray(v)) {
+            for (let i = 0; i < v.length; i++) {
+                const el = v[i];
+                if (el && typeof el === 'object') {
+                    for (const ek of Object.keys(el)) {
+                        el[ek] = typeof el[ek] === 'number' ? 0 : null;
+                    }
+                } else if (typeof el === 'number') {
+                    v[i] = 0;
+                }
+            }
+        } else {
+            mon[k] = null;
+        }
     }
-    list.length = w;
+    mon.nmon = null;
+    mon.mextra = null;
+    mon.data = null;
+    mon.minvent = null;
+}
+
+/**
+ * C ref: mon.c dealloc_mextra `:2648–2673` — release every mextra bag
+ * then the bag itself. `mcorpsenm` is an inline int (NON_PM, no free).
+ * JS also clears the flat mirrors `newedog` / `MGIVENNAME` keep beside
+ * `mextra`, because those macros read `mextra->…` in C.
+ */
+export function dealloc_mextra(m) {
+    if (!m) return;
+    const x = m.mextra;
+    if (!x) return;
+    if (x.mgivenname) x.mgivenname = 0;
+    if (x.egd) x.egd = 0;
+    if (x.epri) x.epri = 0;
+    if (x.eshk) x.eshk = 0;
+    if (x.emin) x.emin = 0;
+    if (x.edog) x.edog = 0;
+    if (x.ebones) x.ebones = 0;
+    x.mcorpsenm = NON_PM;
+    m.mextra = null;
+    if (m.mgivenname) m.mgivenname = 0;
+    m.edog = null;
+    m.eshk = null;
+    m.epri = null;
+    m.egd = null;
+    m.emin = null;
+    m.ebones = null;
+}
+
+/**
+ * C ref: mon.c dealloc_monst `:2675–2691` — nmon must already be null
+ * (panic otherwise), then dealloc_mextra, then `*mon = cg.zeromonst`.
+ * `panic` is NORETURN; a throw is the JS stand-in (no paniclog file).
+ * Callers: dmonsfree, replmon, zap.c montraits, dog.c discard_migrations.
+ * Named: save.c savemonchn `release_data` (no JS heap walk).
+ */
+export function dealloc_monst(mon) {
+    if (!mon) return;
+    if (mon.nmon) {
+        const buf = describe_level(2);
+        throw new Error(`dealloc_monst with nmon on ${buf}`);
+    }
+    if (mon.mextra) dealloc_mextra(mon);
+    applyZeromonst(mon);
+}
+
+/**
+ * C ref: mon.c dmonsfree `:2487–2511` — unlink DEADMONSTER (`mhp < 1`,
+ * monst.h:214) from fmon except vault guards (`isgd`), dealloc each,
+ * then `count` must equal `iflags.purge_monsters` or `impossible`.
+ * Always clears `purge_monsters`, including when fmon is empty.
+ * fmon is a JS array (C walks `nmon`); unlinking is compact-in-place.
+ * `impossible` is async; the match arm does not await.
+ */
+export async function dmonsfree() {
+    const list = game.fmon;
+    let count = 0;
+    if (list && list.length) {
+        let w = 0;
+        for (let r = 0; r < list.length; r++) {
+            const freetmp = list[r];
+            // C: DEADMONSTER(freetmp) && !freetmp->isgd
+            if (freetmp && (freetmp.mhp | 0) < 1 && !freetmp.isgd) {
+                freetmp.nmon = null;
+                dealloc_monst(freetmp);
+                count++;
+            } else {
+                list[w++] = freetmp;
+            }
+        }
+        list.length = w;
+    }
+
+    const pending = game.iflags ? (game.iflags.purge_monsters | 0) : 0;
+    if (count !== pending) {
+        const buf = describe_level(2);
+        await impossible(
+            "dmonsfree: %d removed doesn't match %d pending on %s",
+            count,
+            pending,
+            buf,
+        );
+    }
+    if (game.iflags) game.iflags.purge_monsters = 0;
 }
 
 /**
@@ -3554,6 +3679,9 @@ export function replmon(mtmp, mtmp2) {
 
     mtmp.mx = 0;
     mtmp.my = 0;
+    // C mon.c:2554–2555 — relmon(..., NULL) orphans nmon, then dealloc.
+    mtmp.nmon = null;
+    dealloc_monst(mtmp);
 }
 
 /**
@@ -3580,19 +3708,85 @@ export async function restore_cham(mon) {
     }
 }
 
+/* C mon.c:4465–4466 — file statics. The comment says this buffer does not
+   need to live in instance_globals; decl.h still has an unused
+   `instance_globals_i.itermonarr` that these functions do not read. */
+let itermonarr = null;
+let itermonsiz = 0;
+
+/**
+ * C ref: mon.c alloc_itermonarr `:4471–4490`.
+ * `count` is C `unsigned`. JS has no `free`; dropping the array is the
+ * release. `alloc` of `itermonsiz` pointers is `new Array(itermonsiz)`.
+ */
+export function alloc_itermonarr(count) {
+    count = count >>> 0;
+    /* if count is 0 or bigger than itermonsiz or much smaller than
+       itermonsiz, release itermonarr (and reset itermonsiz to 0) */
+    if (!count || count > itermonsiz || count + 40 < itermonsiz) {
+        if (itermonarr)
+            itermonarr = null;
+        itermonsiz = 0;
+    }
+    /* when count is more than itermonsiz (including when that just
+       got reset to 0), allocate a new instance of itermonarr;
+       implies that count is greater than 0 */
+    if (count > itermonsiz) {
+        /* overallocate to reduce free/alloc-again thrashing when the
+           number of monsters varies from turn to turn */
+        itermonsiz = count + 20;
+        itermonarr = new Array(itermonsiz);
+    }
+}
+
+/**
+ * C ref: mon.c iter_mons_safe `:4500–4522`.
+ * fmon is the JS array (C walks `nmon`; see dmonsfree). A missing list
+ * is the null chain. `bfunc` is async because `movemon_singlemon` awaits.
+ * Game end: C `done` does not return (`:4494–4498`). JS sets
+ * `program_state.gameover` and the walk breaks before the next monster.
+ */
+export async function iter_mons_safe(bfunc) {
+    const list = game.fmon || [];
+    let mtmp;
+    let i;
+    let nmons;
+
+    /* C walks `mtmp = fmon; mtmp; mtmp = mtmp->nmon`. The JS chain is the
+       array itself, including dead and off-map monsters (dmonsfree). */
+    for (nmons = 0, i = 0; i < list.length; i++) {
+        mtmp = list[i];
+        nmons++;
+    }
+
+    /* make sure itermonarr[] is big enough to hold nmons entries */
+    alloc_itermonarr(nmons);
+
+    if (nmons) {
+        for (i = 0; i < nmons; i++) {
+            mtmp = list[i];
+            itermonarr[i] = mtmp;
+        }
+
+        for (i = 0; i < nmons; i++) {
+            mtmp = itermonarr[i];
+            /* C stops because done() does not return; JS observes gameover. */
+            if (game.program_state?.gameover)
+                break;
+            if (await bfunc(mtmp))
+                break;
+        }
+    }
+}
+
 // C ref: mon.c movemon()
 export async function movemon() {
     game._somebody_can_move = false;
     if (game.program_state?.gameover) return false;
-    const list = game.fmon || [];
-    // Snapshot — C iter_mons_safe; dochug may mutate list later
-    for (const mtmp of list.slice()) {
-        if (game.program_state?.gameover) break;
-        // C: movemon_singlemon true → break (utotype)
-        if (await movemon_singlemon(mtmp)) break;
-    }
-    // C: dmonsfree after last mon, before utotype deferred_goto
-    dmonsfree();
+    // C mon.c:1330 — iter_mons_safe(movemon_singlemon)
+    await iter_mons_safe(movemon_singlemon);
+    // C mon.c:1340 — dmonsfree after the last mon, before utotype.
+    await dmonsfree();
     // C: after last mon — if (u.utotype) deferred_goto(); somebody_can_move=FALSE
     // Lazy import avoids mon.js ↔ do.js cycle (do.js imports m_at/mnexto).
     // Named omissions: any_light_source vision_full_recalc; clear_bypasses;

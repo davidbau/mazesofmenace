@@ -26,13 +26,13 @@ import {
     objectNames,
     objectDescrs,
 } from './objects.js';
-import { init_attr, vary_init_attr, adjabil, A_STR, A_CON, newhp } from './attrib.js';
+import { init_attr, vary_init_attr, adjabil, adjattrib, A_STR, A_CON, newhp } from './attrib.js';
 import { newpw } from './exper.js';
 import { getnow } from './calendar.js';
 import {
     roles, races, aligns, findRole, findRace, findAlign,
 } from './roles.js';
-import { discover_object, Blind, makeknown, observe_object, update_inventory, invlet_constant } from './invent.js';
+import { discover_object, Blind, makeknown, observe_object, update_inventory, invlet_constant, inv_weight } from './invent.js';
 import { setworn } from './do_wear.js';
 import { setuwep, setuswapwep, setuqwep } from './wield.js';
 import { initialspell, init_spl_book, num_spells, SPELL_LEV_PW } from './spell.js';
@@ -77,6 +77,7 @@ import {
     NON_PM,
 } from './generated/monsters_data.js';
 import { mons } from './monsters.js';
+import { set_uasmon } from './polyself.js';
 import { skill_init, P_SKILL } from './weapon.js';
 import { set_artifact_intrinsic } from './artifact.js';
 import { record_achievement } from './insight.js';
@@ -1788,12 +1789,17 @@ async function u_init_race() {
     }
 }
 
-// C ref: u_init.c u_init_carry_attr_boost() — no RNG on increase path
-function u_init_carry_attr_boost() {
-    // Stub inv_weight: attrs often match without boost on early starters.
-    // When invent weight is ported, loop adjattrib(A_STR/A_CON) like C.
-    void A_STR;
-    void A_CON;
+/**
+ * C ref: u_init.c u_init_carry_attr_boost `:928–939`.
+ * While the pack is over capacity, raise STR, then CON. msgflg TRUE
+ * is silent. Stop when neither attribute moves.
+ */
+async function u_init_carry_attr_boost() {
+    while (inv_weight() > 0) {
+        if (await adjattrib(A_STR, 1, true)) continue;
+        if (await adjattrib(A_CON, 1, true)) continue;
+        break;
+    }
 }
 
 /** Role filecode for quest proto rename (role.c / dungeon.c fixup). */
@@ -1941,17 +1947,13 @@ export async function u_init_misc() {
     g.u.uz0 = { dnum: 0, dlevel: 0 };
     g.u.utolev = { dnum: 0, dlevel: 1 };
 
-    // C: u.umonnum = u.umonster = gu.urole.mnum; set_uasmon();
-    // Basic youmonst.data only — full FROMFORM prop set deferred (D-0409).
+    // C u_init.c:991–993 — umonnum, ulycn, then set_uasmon().
     const roleMnum = g.urole?.mnum;
     if (roleMnum != null) {
         g.u.umonnum = roleMnum;
         g.u.umonster = roleMnum;
-        if (g.u.ulycn == null) g.u.ulycn = NON_PM;
-        g.youmonst = g.youmonst || {};
-        g.youmonst.data = mons(roleMnum);
-        g.youmonst.mnum = roleMnum;
-        g.youmonst.m_id = 1;
+        g.u.ulycn = NON_PM;
+        set_uasmon();
     }
 
     // C: u.ulevel = 0; newhp()/newpw(); adjabil(0,1); u.ulevel = u.ulevelmax = 1;
@@ -2020,7 +2022,7 @@ export async function u_init_inventory_attrs() {
 
     init_attr(75);
     await vary_init_attr();
-    u_init_carry_attr_boost();
+    await u_init_carry_attr_boost();
 }
 
 // C ref: u_init.c pauper_reinit() — pauper conduct: wipe role skills, grant

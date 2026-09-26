@@ -1065,6 +1065,36 @@ export function randrace(rolenum) {
 }
 
 /**
+ * C ref: role.c randgend `:852–877` — count genders the role and race
+ * allow, rn2(n) when n > 0, walk to the winner. Fallback: any gender.
+ * An out-of-range role or race takes that fallback (C would dereference
+ * roles[]/races[]).
+ */
+export function randgend(rolenum, racenum) {
+    let n = 0;
+    const roleOk = rolenum >= 0 && rolenum < roles.length;
+    const raceOk = racenum >= 0 && racenum < races.length;
+    for (let i = 0; i < ROLE_GENDERS; i++)
+        if (roleOk && raceOk
+            && (roles[rolenum].allow & races[racenum].allow & genders[i].allow
+                & ROLE_GENDMASK))
+            n++;
+    // Pick a random gender
+    if (n) n = rn2(n);
+    for (let i = 0; i < ROLE_GENDERS; i++)
+        if (roleOk && raceOk
+            && (roles[rolenum].allow & races[racenum].allow & genders[i].allow
+                & ROLE_GENDMASK)) {
+            if (n)
+                n--;
+            else
+                return i;
+        }
+    // This role/race has no permitted genders?
+    return rn2(ROLE_GENDERS);
+}
+
+/**
  * C ref: role.c randalign `:915–940` — same envelope over ROLE_ALIGNS
  * with a plain rn2(n) pick. Fallback: any alignment.
  */

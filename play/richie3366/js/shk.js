@@ -1411,7 +1411,7 @@ async function litter_scatter(litter, x, y, shkp) {
         }
         const { unplacebc, placebc } = await import('./ball.js');
         unplacebc();
-        placebc();
+        await placebc();
     }
     let otmp;
     while ((otmp = objects_at(x, y))) {

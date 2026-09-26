@@ -174,6 +174,28 @@ export function strkitten(s, c) {
     return str + ch;
 }
 
+/**
+ * C ref: hacklib.c copynchars `:286–297`.
+ * At most `n` characters, stopping at NUL or newline. Unlike strncpy,
+ * the result is always terminated (the returned string). A null `src`
+ * yields "" (C would dereference).
+ * @param {string} src
+ * @param {number} n
+ * @returns {string}
+ */
+export function copynchars(src, n) {
+    const s = typeof src === 'string' ? src : '';
+    let left = n | 0;
+    let i = 0;
+    let out = '';
+    while (left > 0 && i < s.length && s.charCodeAt(i) !== 10) {
+        out += s[i];
+        i++;
+        left--;
+    }
+    return out;
+}
+
 /** C hacklib.c highc — ASCII a-z → A-Z. */
 export function highc(c) {
     if (c == null || c === '') return c;

@@ -94,7 +94,7 @@ import { livelog_printf } from './pline.js';
 import { com_pager, convert_line } from './questpgr.js';
 import { keepdogs, losedogs, mon_catchup_elapsed_time, update_mlstmv, discard_migrations } from './dog.js';
 import { save_track, rest_track } from './track.js';
-import { m_at, mnexto, m_into_limbo, hide_monst, hideunder, restore_cham, wake_nearto, dist2, kill_genocided_monsters, ceiling_hider } from './mon.js';
+import { m_at, mnexto, m_into_limbo, hide_monst, hideunder, restore_cham, wake_nearto, dist2, kill_genocided_monsters, ceiling_hider, dmonsfree } from './mon.js';
 import { enexto, rloc } from './teleport.js';
 import {
     monster_nearby, losehp, finish_maybe_wail, maybe_half_phys,
@@ -1625,8 +1625,12 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     // Named omit: else free_luathemes(tut_themes / most_themes).
 
     // C: savelev — in-memory stash + VISITED|LFILE_EXISTS + omoves timestamp
-    // C save.c:490–491 — dobjsfree before writing when objs_deleted.
-    if (save_mode & WRITING) dobjsfree();
+    // C save.c:480–491 — mode != FREEING: dmonsfree when purge_monsters,
+    // then dobjsfree. FREEING skips both (savelev skip into bones info).
+    if (save_mode & WRITING) {
+        if (game.iflags?.purge_monsters) await dmonsfree();
+        dobjsfree();
+    }
     // C: save_track before release/initrack (track.c) — per-level utrack.
     if (!game.level_info) game.level_info = [];
     const old_ledger = ledger_no(u.uz);
@@ -1960,7 +1964,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     // C: do.c goto_level — Punished placebc after hero arrival, before
     // losedogs (D-0915). Without this, uchain.where stays non-FREE and
     // placebc is a no-op → ball stranded → false drag_ball cause_delay.
-    if (u.uball || u.Punished) placebc();
+    if (u.uball || u.Punished) await placebc();
     // C do.c:1815 — obj_delivery(FALSE) after placebc, before losedogs.
     // XOR delivers MIGR_WITH_HERO (trap-door objs landing at the hero).
     await obj_delivery(false);

@@ -29,7 +29,8 @@ import {
 } from './const.js';
 import { ATR_INVERSE } from './terminal.js';
 import { make_blinded } from './do.js';
-import { m_at, rescham } from './mon.js';
+import { m_at, rescham, dmonsfree } from './mon.js';
+import { dobjsfree } from './mkobj.js';
 import { minimal_monnam } from './do_name.js';
 import { strsubst, depth } from './hacklib.js';
 import { getpos } from './getpos.js';
@@ -566,7 +567,7 @@ function zero_dest_area() {
  * safe_teleds, then losedogs / kill_genocided / u_collide_m / initrack /
  * Punished placebc / docrt / flush / splev / check_special_room(FALSE).
  * Named omissions: makemap_remove_mons / rm_mapseen / mine·soko prize;
- * maybe_reset_pick; digging memset; polearm.hitmon; dmonsfree/dobjsfree;
+ * maybe_reset_pick; digging memset; polearm.hitmon;
  * savelev freeing nhfile; INSURANCE save_currentstate;
  * sp_lev.c lspo_reset_level / lspo_finalize_level.
  */
@@ -594,6 +595,9 @@ export async function makemap_prepost(pre, wiztower) {
         u.uswldtim = 0;
         await set_uinwater(0);
         u.uundetected = 0;
+        // C cmd.c:1032–1033 — purge dead fmon members, then objs_deleted.
+        await dmonsfree();
+        dobjsfree();
         return;
     }
 
@@ -620,7 +624,7 @@ export async function makemap_prepost(pre, wiztower) {
     initrack();
     if (u.uball) {
         unplacebc();
-        placebc();
+        await placebc();
     }
     await docrt();
     await flush_screen(1);

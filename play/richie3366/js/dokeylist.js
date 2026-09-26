@@ -24,7 +24,9 @@ import {
     MENU_SELECT_PAGE, MENU_UNSELECT_PAGE, MENU_INVERT_PAGE,
     MENU_NEXT_PAGE, MENU_PREVIOUS_PAGE, MENU_FIRST_PAGE, MENU_LAST_PAGE,
     MENU_SEARCH, MENU_SHIFT_RIGHT, MENU_SHIFT_LEFT,
+    CMD_NOT_AVAILABLE,
 } from './const.js';
+import { copynchars } from './hacklib.js';
 import { game } from './gstate.js';
 import {
     default_menu_cmd_info, get_menu_cmd_key, wc2_supported,
@@ -347,29 +349,125 @@ export function movecmd(sym, mode) {
 }
 
 /**
- * C ref: cmd.c cmd_from_func — first printable bind for fn, else last
- * non-printable; skip space until last resort; skip digits and fight
- * '-' when !Cmd.num_pad. Matched here by extcmd name (tut-1 eckey),
- * not ef_funct pointer. Walks keys 0..255; list-order vs index-order
- * can differ when two non-printable keys share a command (overview).
+ * C `ef_funct` is 1:1 with `ef_txt` on extcmdlist. Binds store the row,
+ * so the JS argument is that txt (or the row). A function object has no
+ * pointer identity here.
+ * @param {string|{txt?: string}|null|undefined} fn
+ * @returns {string}
  */
-function cmd_from_func_ecname(ecname) {
+function efTxt(fn) {
+    if (typeof fn === 'string') return fn;
+    if (fn && typeof fn.txt === 'string') return fn.txt;
+    return '';
+}
+
+/**
+ * libc strncmp for the first `n` chars. A short string's NUL loses
+ * to a longer one before `n` (C `strncmp`).
+ * @param {string} a
+ * @param {string} b
+ * @param {number} n
+ * @returns {number}
+ */
+function strncmpN(a, b, n) {
+    const lim = n | 0;
+    for (let i = 0; i < lim; i++) {
+        const ca = i < a.length ? a.charCodeAt(i) : 0;
+        const cb = i < b.length ? b.charCodeAt(i) : 0;
+        if (ca !== cb) return ca < cb ? -1 : 1;
+        if (ca === 0) return 0;
+    }
+    return 0;
+}
+
+/**
+ * C ref: cmd.c cmd_from_func `:3035–3066`.
+ * First printable bind for `fn`, else the last non-printable. Space is
+ * skipped until the last-resort `cmdbind_get(' ')` check. Digits, and
+ * '-' when `fn` is `do_fight`, are skipped while `!Cmd.num_pad`.
+ * `do_fight` is the extcmd txt `"fight"`. The walk is key index 0..255
+ * (`cmdbinds_live`), not `gc.Cmd.cmdbinds` link order: two non-printable
+ * keys for one command (overview) can differ.
+ * @param {string|{txt?: string}|null|undefined} fn
+ * @returns {number} key 0..255, or 0 when unbound
+ */
+export function cmd_from_func(fn) {
+    const ecname = efTxt(fn);
     const binds = cmdbinds_live();
-    const numPad = !!(game.Cmd?.num_pad);
-    let ret = 0;
+    const numPad = !!(game.Cmd?.num_pad); // C `gc.Cmd.num_pad`
+    let ret = 0; // C `ret = '\0'`
     for (let i = 0; i < 256; i++) {
-        if (i === 32) continue;
+        if (i === 32) continue; // C `i == ' '`
         if (((i >= 48 && i <= 57) || (i === 45 && ecname === 'fight'))
             && !numPad) {
             continue;
         }
-        if (binds[i]?.txt === ecname) {
-            if (i >= 32 && i <= 126) return i;
+        if (binds[i]?.txt === ecname) { // C `bind->cmd->ef_funct == fn`
+            if (i >= 32 && i <= 126) return i; // C `' '` .. `'~'`
             ret = i;
         }
     }
-    if (binds[32]?.txt === ecname) return 32;
+    if (binds[32]?.txt === ecname) return 32; // C `cmdbind_get(' ')`
     return ret;
+}
+
+/** Same walk; callers that already pass an extcmd txt. */
+function cmd_from_func_ecname(ecname) {
+    return cmd_from_func(ecname);
+}
+
+/**
+ * C ref: cmd.c cmdname_from_func `:3105–3155`.
+ * `fullname` copies the whole `ef_txt`. Otherwise the shortest leading
+ * substring that no other available command shares. `outbuf` is the
+ * returned string (C writes the caller buffer and returns it). Not
+ * found returns null and would have cleared `outbuf[0]`.
+ * `wizard` is `flags.debug` (`flag.h:30`). `Strlen`'s huge-string panic
+ * is not needed for extcmd names.
+ * `debugpline2` (`lint.h` `ifdebug(pline)`) runs only on the short-name
+ * arm when `debugcore` (`files.c:3126`) is true. That function is not
+ * in JS; empty `sysopt.debugfiles` makes it a no-op, so this does not
+ * pline.
+ * @param {string|{txt?: string}|null|undefined} fn
+ * @param {boolean} fullname
+ * @returns {string|null}
+ */
+export function cmdname_from_func(fn, fullname) {
+    const want = efTxt(fn);
+    let cmdIdx = -1;
+    let res = null;
+    for (let i = 0; i < EXTCMDLIST.length; i++) { // C `extcmd->ef_txt`
+        const extcmd = EXTCMDLIST[i];
+        if (!extcmd.txt) break;
+        if (extcmd.txt === want) { // C `ef_funct == fn`
+            cmdIdx = i;
+            res = extcmd.txt;
+            break;
+        }
+    }
+    if (res == null) return null; // C `outbuf[0] = '\0'; return Null`
+    if (fullname) return res; // C `strcpy(outbuf, res)`
+
+    const wizard = !!(game.flags && game.flags.debug);
+    let matchIdx = 0;
+    let len = 0;
+    const maxlen = res.length; // C `Strlen(res)`
+    let extIdx = 0;
+    do {
+        if (++len >= maxlen) break;
+        for (extIdx = matchIdx; extIdx < EXTCMDLIST.length; extIdx++) {
+            const extcmd = EXTCMDLIST[extIdx];
+            if (!extcmd.txt) break;
+            if (extIdx === cmdIdx) continue;
+            if ((extcmd.flags & CMD_NOT_AVAILABLE) !== 0) continue;
+            if ((extcmd.flags & WIZMODECMD) !== 0 && !wizard) continue;
+            if (strncmpN(res, extcmd.txt, len) === 0) {
+                matchIdx = extIdx;
+                break;
+            }
+        }
+    } while (extIdx < EXTCMDLIST.length && EXTCMDLIST[extIdx].txt);
+    return copynchars(res, len);
 }
 
 /**

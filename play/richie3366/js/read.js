@@ -1979,7 +1979,7 @@ export async function punish(sobj) {
     else setworn(reuse_ball, W_BALL);
 
     if (!u.uswallow) {
-        placebc();
+        await placebc();
         // C read.c:3059 — already Blind: set up ball and chain variables
         if (Blind_read()) set_bc(1);
         newsym(u.ux | 0, u.uy | 0);

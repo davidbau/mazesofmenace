@@ -7,7 +7,7 @@ import { game } from './gstate.js';
 import { rn2 } from './rng.js';
 import { nhgetch } from './input.js';
 import { paint_corner_nhw_menu, dismiss_chargen_nhw_menu } from './invent.js';
-import { impossible } from './display.js';
+import { impossible, pline } from './display.js';
 import { an } from './objnam.js';
 import { s_suffix } from './do_name.js';
 import { strsubst, strstri } from './hacklib.js';
@@ -15,7 +15,8 @@ import {
     roles, races, aligns, genders,
     str2role, str2race, str2gend, str2align,
     validrole, role_gendercount, race_alignmentcount,
-    randrole_filtered,
+    randrole, randrole_filtered, randrace, randgend, randalign,
+    plnamesuffix,
 } from './roles.js';
 import { tty_askname } from './askname.js';
 import {
@@ -408,8 +409,44 @@ export function validalign(rolenum, racenum, alignnum) {
 }
 
 /**
+ * C `validrace` / `validgend` / `validalign` assume a valid role (and race).
+ * A negative index is not a valid combination — C would read off the table.
+ * genl_player_setup's `facet < 0 || !valid*` tests use these so a still-unset
+ * role does not throw before the pick arm runs.
+ */
+function validrace_checked(rolenum, racenum) {
+    if (rolenum < 0 || rolenum >= roles.length) return false;
+    return validrace(rolenum, racenum);
+}
+
+function validgend_checked(rolenum, racenum, gendnum) {
+    if (rolenum < 0 || rolenum >= roles.length) return false;
+    if (racenum < 0 || racenum >= races.length) return false;
+    return validgend(rolenum, racenum, gendnum);
+}
+
+function validalign_checked(rolenum, racenum, alignnum) {
+    if (rolenum < 0 || rolenum >= roles.length) return false;
+    if (racenum < 0 || racenum >= races.length) return false;
+    return validalign(rolenum, racenum, alignnum);
+}
+
+/** C randrace / randalign tails when the role or race index is not a table slot. */
+function randrace_checked(rolenum) {
+    if (rolenum >= 0 && rolenum < roles.length) return randrace(rolenum);
+    return rn2(races.length);
+}
+
+function randalign_checked(rolenum, racenum) {
+    if (rolenum >= 0 && rolenum < roles.length
+        && racenum >= 0 && racenum < races.length)
+        return randalign(rolenum, racenum);
+    return rn2(ROLE_ALIGNS);
+}
+
+/**
  * C ref: role.c setup_rolemenu `:2854–2902` — role-menu entry builder shared
- * by the filtering arm (pick_role_menu: skip `!role_ok`, `a_int` value) and
+ * by the filtering arm (genl role menu: skip `!role_ok`, `a_int` value) and
  * the reset arm (reset_role_filtering: keep every role, `a_string` value,
  * preselect `!role_ok`). Branch order, `lowc`/`highc` accelerators and the
  * female-name arms (`gend == 1` replace, `gend < 0` slash-append) are C's.
@@ -1183,310 +1220,43 @@ function maybe_skip_seps(rows, aspect) {
     return 0;
 }
 
-async function pick_role_menu() {
-    const flags = f();
-    // C ref: role.c plsel_startmenu — always opens a menu → rigid here
+/**
+ * C ref: role.c plsel_startmenu `:2805–2843` plus the genl_player_setup
+ * menu fill (setup_*menu, role_menu_extra, add_menu_str, end_menu,
+ * select_menu). Corner menus have no winid: lines are the add_menu_str /
+ * add_menu stand-in and menu_pick is select_menu's decoded PICK_ONE choice
+ * (preselected Random, escape/q → ROLE_NONE, space/return → the preselected
+ * value). rigid_role_checks runs first, as plsel_startmenu does. The header
+ * blank is omitted only when post-rigid maybe_skip_seps == 2. `preExcess`
+ * is the pre-rigid role-menu count C takes before plsel_startmenu; null
+ * always emits the separator blank (race, gender, alignment).
+ */
+async function chargen_aspect_menu(screenheight, aspect, title, entryFn, extras, preExcess) {
     rigid_role_checks();
-    const RACE = flags.initrace;
-    const GEND = flags.initgend;
-    const ALGN = flags.initalign;
-    const rows = game.nhDisplay?.rows || 24;
-    const excess = maybe_skip_seps(rows, RS_ROLE);
-    // C plsel_startmenu: omit blank after aspect header when excess == 2
+    const postExcess = maybe_skip_seps(screenheight, aspect);
     const body = [{ text: aspect_header(), attr: 0 }];
-    if (excess !== 2) body.push({ text: '', attr: 0 });
-    // C ref: role.c genl_player_setup — setup_rolemenu(win, TRUE, RACE, GEND,
-    // ALGN) populates the role choices (a_int values; C: choice-1 later).
+    if (postExcess !== 2) body.push({ text: '', attr: 0 });
     const choices = [];
-    for (const e of setup_rolemenu(true, RACE, GEND, ALGN)) {
+    for (const e of entryFn()) {
         body.push({ text: `${e.key} - ${e.text}`, attr: 0 });
-        choices.push({ key: e.key, value: e.value });
+        choices.push({ key: e.key, altkey: e.altkey || null, value: e.value });
     }
     for (const line of await menu_extra_lines(ROLE_RANDOM, true)) {
         body.push(line);
-        if (line.key) choices.push({ key: line.key, value: line.value, preselected: true });
+        if (line.key)
+            choices.push({ key: line.key, value: line.value, preselected: true });
     }
-    // C: if (excess < 1 || excess > 2) add_menu_str("") between Random and extras
-    if (excess < 1 || excess > 2)
+    // C role: separator only when excess < 1 || excess > 2. Other aspects
+    // always add_menu_str("").
+    if (preExcess == null || preExcess < 1 || preExcess > 2)
         body.push({ text: '', attr: 0 });
-    for (const which of [RS_RACE, RS_GENDER, RS_ALGNMNT, RS_filter, ROLE_NONE]) {
+    for (const which of extras) {
         for (const line of await menu_extra_lines(which)) {
             body.push(line);
             if (line.key) choices.push({ key: line.key, value: line.value });
         }
     }
-    const choice = await menu_pick('Pick a role or profession', body, choices);
-    if (choice === ROLE_NONE) return { quit: true };
-    if (choice === RS_menu_arg(RS_ALGNMNT)) {
-        flags.initalign = ROLE_NONE;
-        return { next: RS_ALGNMNT };
-    }
-    if (choice === RS_menu_arg(RS_GENDER)) {
-        flags.initgend = ROLE_NONE;
-        return { next: RS_GENDER };
-    }
-    if (choice === RS_menu_arg(RS_RACE)) {
-        flags.initrace = ROLE_NONE;
-        return { next: RS_RACE };
-    }
-    if (choice === RS_menu_arg(RS_filter)) {
-        // C: ROLE = NONE; reset_role_filtering(); nextpick = RS_ROLE
-        flags.initrole = ROLE_NONE;
-        await reset_role_filtering();
-        return { next: RS_ROLE };
-    }
-    let k;
-    if (choice === ROLE_RANDOM) {
-        k = pick_role(RACE, GEND, ALGN, PICK_RANDOM);
-        if (k < 0) k = rn2(roles.length);
-    } else {
-        k = choice - 1;
-    }
-    flags.initrole = k;
-    return { next: RS_RACE };
-}
-
-async function pick_race_menu() {
-    const flags = f();
-    // C: count ok_race first; n<=1 auto-assigns without plsel_startmenu /
-    // rigid_role_checks (no pick_* RNG). n>1 → plsel_startmenu → rigid.
-    const ROLE = flags.initrole;
-    let GEND = flags.initgend;
-    let ALGN = flags.initalign;
-    let n = 0;
-    let k = 0;
-    for (let i = 0; i < races.length; i++) {
-        if (ok_race(ROLE, i, GEND, ALGN)) {
-            n++;
-            k = i;
-        }
-    }
-    if (n === 0) {
-        for (let i = 0; i < races.length; i++) {
-            if (validrace(ROLE, i)) {
-                n++;
-                k = i;
-            }
-        }
-    }
-    if (n <= 1) {
-        flags.initrace = k;
-        return { next: RS_GENDER };
-    }
-    // C ref: role.c plsel_startmenu — rigid before building the menu
-    rigid_role_checks();
-    GEND = flags.initgend;
-    ALGN = flags.initalign;
-    const choices = [];
-    const body = [{ text: aspect_header(), attr: 0 }, { text: '', attr: 0 }];
-    // C ref: role.c genl_player_setup — setup_racemenu(win, TRUE, ROLE, GEND,
-    // ALGN) populates the race choices.
-    for (const e of setup_racemenu(true, ROLE, GEND, ALGN)) {
-        body.push({ text: `${e.key} - ${e.text}`, attr: 0 });
-        choices.push({
-            key: e.key,
-            altkey: e.altkey,
-            value: e.value,
-        });
-    }
-    for (const line of await menu_extra_lines(ROLE_RANDOM, true)) {
-        body.push(line);
-        if (line.key) choices.push({ key: line.key, value: line.value, preselected: true });
-    }
-    body.push({ text: '', attr: 0 });
-    for (const which of [RS_ROLE, RS_GENDER, RS_ALGNMNT, RS_filter, ROLE_NONE]) {
-        for (const line of await menu_extra_lines(which)) {
-            body.push(line);
-            if (line.key) choices.push({ key: line.key, value: line.value });
-        }
-    }
-    const choice = await menu_pick('Pick a race or species', body, choices);
-    if (choice === ROLE_NONE) return { quit: true };
-    if (choice === RS_menu_arg(RS_ALGNMNT)) {
-        flags.initalign = ROLE_NONE;
-        return { next: RS_ALGNMNT };
-    }
-    if (choice === RS_menu_arg(RS_GENDER)) {
-        flags.initgend = ROLE_NONE;
-        return { next: RS_GENDER };
-    }
-    if (choice === RS_menu_arg(RS_ROLE)) {
-        flags.initrole = ROLE_NONE;
-        return { next: RS_ROLE };
-    }
-    if (choice === RS_menu_arg(RS_filter)) {
-        flags.initrace = ROLE_NONE;
-        const filtered = await reset_role_filtering();
-        return { next: filtered ? RS_ROLE : RS_RACE };
-    }
-    if (choice === ROLE_RANDOM) {
-        k = pick_race(ROLE, GEND, ALGN, PICK_RANDOM);
-        if (k < 0) k = 0;
-    } else {
-        k = choice - 1;
-    }
-    flags.initrace = k;
-    return { next: RS_GENDER };
-}
-
-async function pick_gend_menu() {
-    const flags = f();
-    // C: n<=1 skips plsel_startmenu / rigid (D-0677)
-    const ROLE = flags.initrole;
-    const RACE = flags.initrace;
-    let ALGN = flags.initalign;
-    let n = 0;
-    let k = 0;
-    for (let i = 0; i < ROLE_GENDERS; i++) {
-        if (ok_gend(ROLE, RACE, i, ALGN)) {
-            n++;
-            k = i;
-        }
-    }
-    if (n === 0) {
-        for (let i = 0; i < ROLE_GENDERS; i++) {
-            if (validgend(ROLE, RACE, i)) {
-                n++;
-                k = i;
-            }
-        }
-    }
-    if (n <= 1) {
-        flags.initgend = k;
-        return { next: RS_ALGNMNT };
-    }
-    rigid_role_checks();
-    ALGN = flags.initalign;
-    const choices = [];
-    const body = [{ text: aspect_header(), attr: 0 }, { text: '', attr: 0 }];
-    // C ref: role.c genl_player_setup — setup_gendmenu(win, TRUE, ROLE, RACE,
-    // ALGN) populates the gender choices.
-    for (const e of setup_gendmenu(true, ROLE, RACE, ALGN)) {
-        body.push({ text: `${e.key} - ${e.text}`, attr: 0 });
-        choices.push({
-            key: e.key,
-            altkey: e.altkey,
-            value: e.value,
-        });
-    }
-    for (const line of await menu_extra_lines(ROLE_RANDOM, true)) {
-        body.push(line);
-        if (line.key) choices.push({ key: line.key, value: line.value, preselected: true });
-    }
-    body.push({ text: '', attr: 0 });
-    for (const which of [RS_ROLE, RS_RACE, RS_ALGNMNT, RS_filter, ROLE_NONE]) {
-        for (const line of await menu_extra_lines(which)) {
-            body.push(line);
-            if (line.key) choices.push({ key: line.key, value: line.value });
-        }
-    }
-    const choice = await menu_pick('Pick a gender or sex', body, choices);
-    if (choice === ROLE_NONE) return { quit: true };
-    if (choice === RS_menu_arg(RS_ALGNMNT)) {
-        flags.initalign = ROLE_NONE;
-        return { next: RS_ALGNMNT };
-    }
-    if (choice === RS_menu_arg(RS_RACE)) {
-        flags.initrace = ROLE_NONE;
-        return { next: RS_RACE };
-    }
-    if (choice === RS_menu_arg(RS_ROLE)) {
-        flags.initrole = ROLE_NONE;
-        return { next: RS_ROLE };
-    }
-    if (choice === RS_menu_arg(RS_filter)) {
-        flags.initgend = ROLE_NONE;
-        const filtered = await reset_role_filtering();
-        return { next: filtered ? RS_ROLE : RS_GENDER };
-    }
-    if (choice === ROLE_RANDOM) {
-        k = pick_gend(ROLE, RACE, ALGN, PICK_RANDOM);
-        if (k < 0) k = 0;
-    } else {
-        k = choice - 1;
-    }
-    flags.initgend = k;
-    return { next: RS_ALGNMNT };
-}
-
-async function pick_align_menu() {
-    const flags = f();
-    // C: n<=1 auto-assign without rigid — Valkyrie+dwarf lawful alone must
-    // not rn2(1) via pick_align PICK_RIGID (seed0014 / D-0677).
-    const ROLE = flags.initrole;
-    const RACE = flags.initrace;
-    const GEND = flags.initgend;
-    let n = 0;
-    let k = 0;
-    for (let i = 0; i < ROLE_ALIGNS; i++) {
-        if (ok_align(ROLE, RACE, GEND, i)) {
-            n++;
-            k = i;
-        }
-    }
-    if (n === 0) {
-        for (let i = 0; i < ROLE_ALIGNS; i++) {
-            if (validalign(ROLE, RACE, i)) {
-                n++;
-                k = i;
-            }
-        }
-    }
-    if (n <= 1) {
-        flags.initalign = k;
-        return { next: RS_ROLE };
-    }
-    rigid_role_checks();
-    const choices = [];
-    const body = [{ text: aspect_header(), attr: 0 }, { text: '', attr: 0 }];
-    // C ref: role.c genl_player_setup — setup_algnmenu(win, TRUE, ROLE, RACE,
-    // GEND) populates the alignment choices.
-    for (const e of setup_algnmenu(true, ROLE, RACE, GEND)) {
-        body.push({ text: `${e.key} - ${e.text}`, attr: 0 });
-        choices.push({
-            key: e.key,
-            altkey: e.altkey,
-            value: e.value,
-        });
-    }
-    for (const line of await menu_extra_lines(ROLE_RANDOM, true)) {
-        body.push(line);
-        if (line.key) choices.push({ key: line.key, value: line.value, preselected: true });
-    }
-    body.push({ text: '', attr: 0 });
-    for (const which of [RS_ROLE, RS_RACE, RS_GENDER, RS_filter, ROLE_NONE]) {
-        for (const line of await menu_extra_lines(which)) {
-            body.push(line);
-            if (line.key) choices.push({ key: line.key, value: line.value });
-        }
-    }
-    const choice = await menu_pick('Pick an alignment or creed', body, choices);
-    if (choice === ROLE_NONE) return { quit: true };
-    if (choice === RS_menu_arg(RS_GENDER)) {
-        flags.initgend = ROLE_NONE;
-        return { next: RS_GENDER };
-    }
-    if (choice === RS_menu_arg(RS_RACE)) {
-        flags.initrace = ROLE_NONE;
-        return { next: RS_RACE };
-    }
-    if (choice === RS_menu_arg(RS_ROLE)) {
-        flags.initrole = ROLE_NONE;
-        return { next: RS_ROLE };
-    }
-    if (choice === RS_menu_arg(RS_filter)) {
-        flags.initalign = ROLE_NONE;
-        const filtered = await reset_role_filtering();
-        return { next: filtered ? RS_ROLE : RS_ALGNMNT };
-    }
-    if (choice === ROLE_RANDOM) {
-        k = pick_align(ROLE, RACE, GEND, PICK_RANDOM);
-        if (k < 0) k = 1;
-    } else {
-        k = choice - 1;
-    }
-    flags.initalign = k;
-    return { next: RS_ROLE };
+    return menu_pick(title, body, choices);
 }
 
 /**
@@ -1515,61 +1285,36 @@ async function shall_i_pick_prompt(prompt) {
     }
 }
 
-async function confirm_selection() {
-    const flags = f();
-    const rename = !!(game.iflags?.renameallowed);
-    const title = `Is this ok? [yn${rename ? 'a' : ''}q]`;
-    const body = [
-        { text: aspect_header(), attr: 0 },
-        { text: '', attr: 0 },
-        { text: 'y * Yes; start game', attr: 0 },
-        { text: 'n - No; choose role again', attr: 0 },
-    ];
-    const choices = [
-        { key: 'y', value: 1, preselected: true },
-        { key: 'n', value: 2 },
-    ];
-    if (rename) {
-        body.push({ text: 'a - Not yet; choose another name', attr: 0 });
-        choices.push({ key: 'a', value: 3 });
-    }
-    body.push({ text: 'q - Quit', attr: 0 });
-    choices.push({ key: 'q', value: -1 });
-
-    for (;;) {
-        const entries = [
-            { text: title, attr: ATR_INVERSE },
-            { text: '', attr: 0 },
-            ...body,
-        ];
-        await paint_corner_nhw_menu(entries, '(end) ');
-        const key = await nhgetch();
-        game._menu_overlay = false;
-        const ch = String.fromCharCode(key).toLowerCase();
-        if (key === 27 || ch === 'q') return -1;
-        if (ch === ' ' || key === 13 || key === 10) return 1;
-        const hit = choices.find(c => c.key === ch);
-        if (hit) return hit.value;
-    }
-}
-
 /**
- * C ref: role.c genl_player_setup — interactive role/race/gender/align.
- * Branch envelope: already-specified skip; Shall I pick y/n/a/q; manual
- * menus; random facets; confirmation; rename; role filter UI.
+ * C ref: role.c genl_player_setup `:2206–2725` — every arm, in C order.
+ * tty caller passes screen rows (wintty.c tty_player_selection). Already
+ * specified facets skip the prompt and the pick blocks. `picksomething` is
+ * sampled once (a later "choose again" does not recompute it).
+ * shall_i_pick_prompt is the tty yn_function(prompt, NULL, '\0', FALSE)
+ * loop after trimspaces (topline stays NO_COLOR; D-0113).
  */
-export async function genl_player_setup() {
+export async function genl_player_setup(screenheight) {
     init_role_flags_from_rc();
     const flags = f();
+    const rows = (screenheight == null)
+        ? (game.nhDisplay?.rows || 24)
+        : screenheight;
     game.program_state = game.program_state || {};
     game.program_state.in_role_selection =
         (game.program_state.in_role_selection || 0) + 1;
 
-    let picksomething = (flags.initrole === ROLE_NONE
+    const setupDone = (result) => {
+        game.program_state.in_role_selection--;
+        return result;
+    };
+
+    // C: avoid "Is this ok?" when the player already specified all four.
+    const picksomething = (flags.initrole === ROLE_NONE
         || flags.initrace === ROLE_NONE
         || flags.initgend === ROLE_NONE
         || flags.initalign === ROLE_NONE);
 
+    // C: '-@' / flags.randomall — unspecified facets become ROLE_RANDOM.
     if (flags.randomall && picksomething) {
         if (flags.initrole === ROLE_NONE) flags.initrole = ROLE_RANDOM;
         if (flags.initrace === ROLE_NONE) flags.initrace = ROLE_RANDOM;
@@ -1577,168 +1322,405 @@ export async function genl_player_setup() {
         if (flags.initalign === ROLE_NONE) flags.initalign = ROLE_RANDOM;
     }
 
+    // C: role forces race (samurai) or gender (valkyrie) or alignment, &c.
     rigid_role_checks();
 
     let pick4u = 'n';
     if (flags.initrole === ROLE_NONE || flags.initrace === ROLE_NONE
         || flags.initgend === ROLE_NONE || flags.initalign === ROLE_NONE) {
-        // C ref: role.c genl_player_setup — build_plselection_prompt() with the
-        // current facets (all-NONE → "character's race, role, gender and
-        // alignment"; partial specs name only what is still unpicked).
+        // C build_plselection_prompt into pbuf, trimspaces, then the
+        // yn_function validation loop (y / n / a; q and ESC quit; space,
+        // return → y; @ and * → a).
         const prompt = build_plselection_prompt(
             flags.initrole, flags.initrace, flags.initgend, flags.initalign);
         pick4u = await shall_i_pick_prompt(prompt);
-        if (pick4u === 'q') {
-            game.program_state.in_role_selection--;
-            return false;
-        }
+        if (pick4u === 'q') return setupDone(false);
     }
 
-    // makepicks:
-    for (;;) {
+    // makepicks: case 'n' on the confirm menu restarts here.
+    let repick = true;
+    while (repick) {
+        repick = false;
         let nextpick = RS_ROLE;
         do {
             if (nextpick === RS_ROLE) {
                 nextpick = RS_RACE;
                 if (flags.initrole < 0) {
+                    let k;
                     if (pick4u === 'y' || pick4u === 'a'
                         || flags.initrole === ROLE_RANDOM) {
-                        let k = pick_role(flags.initrace, flags.initgend,
+                        k = pick_role(flags.initrace, flags.initgend,
                             flags.initalign, PICK_RANDOM);
-                        if (k < 0) k = rn2(roles.length);
-                        flags.initrole = k;
-                    } else {
-                        const res = await pick_role_menu();
-                        if (res.quit) {
-                            game.program_state.in_role_selection--;
-                            return false;
+                        if (k < 0) {
+                            await pline('Incompatible role!');
+                            k = randrole(false);
                         }
-                        if (res.next != null) nextpick = res.next;
+                    } else {
+                        // excess is counted before plsel_startmenu's rigid.
+                        const excess = maybe_skip_seps(rows, RS_ROLE);
+                        const choice = await chargen_aspect_menu(
+                            rows, RS_ROLE, 'Pick a role or profession',
+                            () => setup_rolemenu(true, flags.initrace,
+                                flags.initgend, flags.initalign),
+                            [RS_RACE, RS_GENDER, RS_ALGNMNT, RS_filter, ROLE_NONE],
+                            excess);
+                        if (choice === ROLE_NONE) {
+                            return setupDone(false);
+                        } else if (choice === RS_menu_arg(RS_ALGNMNT)) {
+                            flags.initalign = ROLE_NONE;
+                            k = ROLE_NONE;
+                            nextpick = RS_ALGNMNT;
+                        } else if (choice === RS_menu_arg(RS_GENDER)) {
+                            flags.initgend = ROLE_NONE;
+                            k = ROLE_NONE;
+                            nextpick = RS_GENDER;
+                        } else if (choice === RS_menu_arg(RS_RACE)) {
+                            flags.initrace = ROLE_NONE;
+                            k = ROLE_NONE;
+                            nextpick = RS_RACE;
+                        } else if (choice === RS_menu_arg(RS_filter)) {
+                            k = ROLE_NONE;
+                            flags.initrole = ROLE_NONE;
+                            await reset_role_filtering();
+                            nextpick = RS_ROLE;
+                        } else if (choice === ROLE_RANDOM) {
+                            k = pick_role(flags.initrace, flags.initgend,
+                                flags.initalign, PICK_RANDOM);
+                            if (k < 0) k = randrole(false);
+                        } else {
+                            k = choice - 1;
+                        }
                     }
+                    flags.initrole = k;
                 }
             }
 
             if (nextpick === RS_RACE) {
-                nextpick = flags.initrole < 0 ? RS_ROLE : RS_GENDER;
-                if (flags.initrace < 0 || (flags.initrole >= 0
-                    && !validrace(flags.initrole, flags.initrace))) {
+                nextpick = (flags.initrole < 0) ? RS_ROLE : RS_GENDER;
+                if (flags.initrace < 0
+                    || !validrace_checked(flags.initrole, flags.initrace)) {
+                    let k = 0;
                     if (pick4u === 'y' || pick4u === 'a'
                         || flags.initrace === ROLE_RANDOM) {
-                        let k = pick_race(flags.initrole, flags.initgend,
+                        k = pick_race(flags.initrole, flags.initgend,
                             flags.initalign, PICK_RANDOM);
-                        if (k < 0) k = 0;
-                        flags.initrace = k;
-                    } else {
-                        const res = await pick_race_menu();
-                        if (res.quit) {
-                            game.program_state.in_role_selection--;
-                            return false;
+                        if (k < 0) {
+                            await pline('Incompatible race!');
+                            k = randrace_checked(flags.initrole);
                         }
-                        if (res.next != null) nextpick = res.next;
+                    } else {
+                        let n = 0;
+                        k = 0;
+                        for (let i = 0; i < races.length; i++) {
+                            if (ok_race(flags.initrole, i, flags.initgend,
+                                flags.initalign)) {
+                                n++;
+                                k = i;
+                            }
+                        }
+                        if (n === 0) {
+                            for (let i = 0; i < races.length; i++) {
+                                if (validrace_checked(flags.initrole, i)) {
+                                    n++;
+                                    k = i;
+                                }
+                            }
+                        }
+                        if (n > 1) {
+                            const choice = await chargen_aspect_menu(
+                                rows, RS_RACE, 'Pick a race or species',
+                                () => setup_racemenu(true, flags.initrole,
+                                    flags.initgend, flags.initalign),
+                                [RS_ROLE, RS_GENDER, RS_ALGNMNT, RS_filter,
+                                    ROLE_NONE],
+                                null);
+                            if (choice === ROLE_NONE) {
+                                return setupDone(false);
+                            } else if (choice === RS_menu_arg(RS_ALGNMNT)) {
+                                flags.initalign = ROLE_NONE;
+                                k = ROLE_NONE;
+                                nextpick = RS_ALGNMNT;
+                            } else if (choice === RS_menu_arg(RS_GENDER)) {
+                                flags.initgend = ROLE_NONE;
+                                k = ROLE_NONE;
+                                nextpick = RS_GENDER;
+                            } else if (choice === RS_menu_arg(RS_ROLE)) {
+                                flags.initrole = ROLE_NONE;
+                                k = ROLE_NONE;
+                                nextpick = RS_ROLE;
+                            } else if (choice === RS_menu_arg(RS_filter)) {
+                                k = ROLE_NONE;
+                                flags.initrace = ROLE_NONE;
+                                if (await reset_role_filtering())
+                                    nextpick = RS_ROLE;
+                                else
+                                    nextpick = RS_RACE;
+                            } else if (choice === ROLE_RANDOM) {
+                                k = pick_race(flags.initrole, flags.initgend,
+                                    flags.initalign, PICK_RANDOM);
+                                if (k < 0) k = randrace_checked(flags.initrole);
+                            } else {
+                                k = choice - 1;
+                            }
+                        }
                     }
+                    flags.initrace = k;
                 }
             }
 
             if (nextpick === RS_GENDER) {
-                nextpick = flags.initrole < 0 ? RS_ROLE
-                    : flags.initrace < 0 ? RS_RACE : RS_ALGNMNT;
-                if (flags.initgend < 0 || (flags.initrole >= 0
-                    && flags.initrace >= 0
-                    && !validgend(flags.initrole, flags.initrace, flags.initgend))) {
+                nextpick = (flags.initrole < 0) ? RS_ROLE
+                    : (flags.initrace < 0) ? RS_RACE
+                        : RS_ALGNMNT;
+                if (flags.initgend < 0
+                    || !validgend_checked(flags.initrole, flags.initrace,
+                        flags.initgend)) {
+                    let k = 0;
                     if (pick4u === 'y' || pick4u === 'a'
                         || flags.initgend === ROLE_RANDOM) {
-                        let k = pick_gend(flags.initrole, flags.initrace,
+                        k = pick_gend(flags.initrole, flags.initrace,
                             flags.initalign, PICK_RANDOM);
-                        if (k < 0) k = 0;
-                        flags.initgend = k;
-                    } else {
-                        const res = await pick_gend_menu();
-                        if (res.quit) {
-                            game.program_state.in_role_selection--;
-                            return false;
+                        if (k < 0) {
+                            await pline('Incompatible gender!');
+                            k = randgend(flags.initrole, flags.initrace);
                         }
-                        if (res.next != null) nextpick = res.next;
+                    } else {
+                        let n = 0;
+                        k = 0;
+                        for (let i = 0; i < ROLE_GENDERS; i++) {
+                            if (ok_gend(flags.initrole, flags.initrace, i,
+                                flags.initalign)) {
+                                n++;
+                                k = i;
+                            }
+                        }
+                        if (n === 0) {
+                            for (let i = 0; i < ROLE_GENDERS; i++) {
+                                if (validgend_checked(flags.initrole,
+                                    flags.initrace, i)) {
+                                    n++;
+                                    k = i;
+                                }
+                            }
+                        }
+                        if (n > 1) {
+                            const choice = await chargen_aspect_menu(
+                                rows, RS_GENDER, 'Pick a gender or sex',
+                                () => setup_gendmenu(true, flags.initrole,
+                                    flags.initrace, flags.initalign),
+                                [RS_ROLE, RS_RACE, RS_ALGNMNT, RS_filter,
+                                    ROLE_NONE],
+                                null);
+                            if (choice === ROLE_NONE) {
+                                return setupDone(false);
+                            } else if (choice === RS_menu_arg(RS_ALGNMNT)) {
+                                flags.initalign = ROLE_NONE;
+                                k = ROLE_NONE;
+                                nextpick = RS_ALGNMNT;
+                            } else if (choice === RS_menu_arg(RS_RACE)) {
+                                flags.initrace = ROLE_NONE;
+                                k = ROLE_NONE;
+                                nextpick = RS_RACE;
+                            } else if (choice === RS_menu_arg(RS_ROLE)) {
+                                flags.initrole = ROLE_NONE;
+                                k = ROLE_NONE;
+                                nextpick = RS_ROLE;
+                            } else if (choice === RS_menu_arg(RS_filter)) {
+                                k = ROLE_NONE;
+                                flags.initgend = ROLE_NONE;
+                                if (await reset_role_filtering())
+                                    nextpick = RS_ROLE;
+                                else
+                                    nextpick = RS_GENDER;
+                            } else if (choice === ROLE_RANDOM) {
+                                k = pick_gend(flags.initrole, flags.initrace,
+                                    flags.initalign, PICK_RANDOM);
+                                if (k < 0)
+                                    k = randgend(flags.initrole, flags.initrace);
+                            } else {
+                                k = choice - 1;
+                            }
+                        }
                     }
+                    flags.initgend = k;
                 }
             }
 
             if (nextpick === RS_ALGNMNT) {
-                nextpick = flags.initrole < 0 ? RS_ROLE
-                    : flags.initrace < 0 ? RS_RACE : RS_GENDER;
-                if (flags.initalign < 0 || (flags.initrole >= 0
-                    && flags.initrace >= 0
-                    && !validalign(flags.initrole, flags.initrace, flags.initalign))) {
+                nextpick = (flags.initrole < 0) ? RS_ROLE
+                    : (flags.initrace < 0) ? RS_RACE
+                        : RS_GENDER;
+                if (flags.initalign < 0
+                    || !validalign_checked(flags.initrole, flags.initrace,
+                        flags.initalign)) {
+                    let k = 0;
                     if (pick4u === 'y' || pick4u === 'a'
                         || flags.initalign === ROLE_RANDOM) {
-                        let k = pick_align(flags.initrole, flags.initrace,
+                        k = pick_align(flags.initrole, flags.initrace,
                             flags.initgend, PICK_RANDOM);
-                        if (k < 0) k = 1;
-                        flags.initalign = k;
-                    } else {
-                        const res = await pick_align_menu();
-                        if (res.quit) {
-                            game.program_state.in_role_selection--;
-                            return false;
+                        if (k < 0) {
+                            await pline('Incompatible alignment!');
+                            k = randalign_checked(flags.initrole, flags.initrace);
                         }
-                        if (res.next != null) nextpick = res.next;
+                    } else {
+                        let n = 0;
+                        k = 0;
+                        for (let i = 0; i < ROLE_ALIGNS; i++) {
+                            if (ok_align(flags.initrole, flags.initrace,
+                                flags.initgend, i)) {
+                                n++;
+                                k = i;
+                            }
+                        }
+                        if (n === 0) {
+                            for (let i = 0; i < ROLE_ALIGNS; i++) {
+                                if (validalign_checked(flags.initrole,
+                                    flags.initrace, i)) {
+                                    n++;
+                                    k = i;
+                                }
+                            }
+                        }
+                        if (n > 1) {
+                            const choice = await chargen_aspect_menu(
+                                rows, RS_ALGNMNT, 'Pick an alignment or creed',
+                                () => setup_algnmenu(true, flags.initrole,
+                                    flags.initrace, flags.initgend),
+                                [RS_ROLE, RS_RACE, RS_GENDER, RS_filter,
+                                    ROLE_NONE],
+                                null);
+                            if (choice === ROLE_NONE) {
+                                return setupDone(false);
+                            } else if (choice === RS_menu_arg(RS_GENDER)) {
+                                flags.initgend = ROLE_NONE;
+                                k = ROLE_NONE;
+                                nextpick = RS_GENDER;
+                            } else if (choice === RS_menu_arg(RS_RACE)) {
+                                flags.initrace = ROLE_NONE;
+                                k = ROLE_NONE;
+                                nextpick = RS_RACE;
+                            } else if (choice === RS_menu_arg(RS_ROLE)) {
+                                flags.initrole = ROLE_NONE;
+                                k = ROLE_NONE;
+                                nextpick = RS_ROLE;
+                            } else if (choice === RS_menu_arg(RS_filter)) {
+                                k = ROLE_NONE;
+                                flags.initalign = ROLE_NONE;
+                                if (await reset_role_filtering())
+                                    nextpick = RS_ROLE;
+                                else
+                                    nextpick = RS_ALGNMNT;
+                            } else if (choice === ROLE_RANDOM) {
+                                k = pick_align(flags.initrole, flags.initrace,
+                                    flags.initgend, PICK_RANDOM);
+                                if (k < 0)
+                                    k = randalign_checked(flags.initrole,
+                                        flags.initrace);
+                            } else {
+                                k = choice - 1;
+                            }
+                        }
                     }
+                    flags.initalign = k;
                 }
             }
         } while (flags.initrole < 0 || flags.initrace < 0
             || flags.initgend < 0 || flags.initalign < 0);
 
-        const getconfirmation = picksomething && pick4u !== 'a'
+        // C: confirm unless every facet was already specified, or 'a',
+        // or flags.randomall.
+        let getconfirmation = picksomething && pick4u !== 'a'
             && !flags.randomall;
-        if (!getconfirmation) break;
-
-        const choice = await confirm_selection();
-        if (choice === -1) {
-            game.program_state.in_role_selection--;
-            return false;
+        while (getconfirmation) {
+            // C: plsel_startmenu(screenheight, RS_filter) then the [ynaq]
+            // rows. y is MENU_ITEMFLAGS_SELECTED. select_menu PICK_ONE:
+            // n>0 → selected[n-1], n==0 → 1 (the preselected Yes), else quit.
+            // RS_filter makes maybe_skip_seps return 0, so the header blank
+            // stays. rigid_role_checks is plsel_startmenu's first act.
+            rigid_role_checks();
+            const rename = !!(game.iflags?.renameallowed);
+            const title = `Is this ok? [yn${rename ? 'a' : ''}q]`;
+            const body = [
+                { text: aspect_header(), attr: 0 },
+                { text: '', attr: 0 },
+                { text: 'y * Yes; start game', attr: 0 },
+                { text: 'n - No; choose role again', attr: 0 },
+            ];
+            const choices = [
+                { key: 'y', value: 1, preselected: true },
+                { key: 'n', value: 2 },
+            ];
+            if (rename) {
+                body.push({ text: 'a - Not yet; choose another name', attr: 0 });
+                choices.push({ key: 'a', value: 3 });
+            }
+            body.push({ text: 'q - Quit', attr: 0 });
+            choices.push({ key: 'q', value: -1 });
+            let choice = -1;
+            for (;;) {
+                await paint_corner_nhw_menu([
+                    { text: title, attr: ATR_INVERSE },
+                    { text: '', attr: 0 },
+                    ...body,
+                ], '(end) ');
+                const key = await nhgetch();
+                game._menu_overlay = false;
+                const ch = String.fromCharCode(key).toLowerCase();
+                if (key === 27 || ch === 'q') { choice = -1; break; }
+                if (ch === ' ' || key === 13 || key === 10) { choice = 1; break; }
+                const hit = choices.find(c => c.key === ch);
+                if (hit) { choice = hit.value; break; }
+            }
+            switch (choice) {
+            default:
+                return setupDone(false);
+            case 3: {
+                // C: plnamesuffix may rewrite any facet; honor only the name.
+                const saveROLE = flags.initrole;
+                const saveRACE = flags.initrace;
+                const saveGEND = flags.initgend;
+                const saveALGN = flags.initalign;
+                game.iflags = game.iflags || {};
+                game.iflags.renameinprogress = true;
+                game.plname = '';
+                game._menu_overlay = false;
+                dismiss_chargen_nhw_menu();
+                await plnamesuffix();
+                flags.initrole = saveROLE;
+                flags.initrace = saveRACE;
+                flags.initgend = saveGEND;
+                flags.initalign = saveALGN;
+                break;
+            }
+            case 2:
+                pick4u = 'n';
+                flags.initrole = flags.initrace = flags.initgend =
+                    flags.initalign = ROLE_NONE;
+                repick = true;
+                getconfirmation = false;
+                break;
+            case 1:
+                getconfirmation = false;
+                break;
+            }
         }
-        if (choice === 1) break;
-        if (choice === 2) {
-            pick4u = 'n';
-            flags.initrole = flags.initrace = flags.initgend =
-                flags.initalign = ROLE_NONE;
-            continue; // makepicks
-        }
-        if (choice === 3) {
-            // C ref: role.c genl_player_setup case 3 — rename via askname;
-            // honor only the new name (restore role facets after plnamesuffix).
-            // C: destroy_nhwindow(confirm) → erase_menu_or_text corner
-            // docorner (not term_clear_screen); tty_askname blank+who at
-            // BASE cury left by docorner (D-0475).
-            const saveROLE = flags.initrole;
-            const saveRACE = flags.initrace;
-            const saveGEND = flags.initgend;
-            const saveALGN = flags.initalign;
-            game.iflags = game.iflags || {};
-            game.iflags.renameinprogress = true;
-            game.plname = '';
-            game._menu_overlay = false;
-            dismiss_chargen_nhw_menu();
-            await tty_askname();
-            flags.initrole = saveROLE;
-            flags.initrace = saveRACE;
-            flags.initgend = saveGEND;
-            flags.initalign = saveALGN;
-            game.iflags.renameinprogress = false;
-            continue; // getconfirmation still true
-        }
-        break;
     }
 
+    // C u_init.c:949 sets flags.female from initgend after selection.
+    // role_init reads flags.female before that u_init assignment, so the
+    // success path stores the boolean here (0/1 → false/true).
     flags.female = flags.initgend === 1;
-    game.program_state.in_role_selection--;
-    return true;
+    return setupDone(true);
 }
 
 /**
  * C ref: unixmain → player_selection() after plnamesuffix/askname.
  */
 export async function player_selection() {
-    const ok = await genl_player_setup();
+    // C wintty.c tty_player_selection → genl_player_setup(ttyDisplay->rows).
+    // role.c genl_player_selection passes 0; this JS caller is the tty one.
+    const rows = game.nhDisplay?.rows || 24;
+    const ok = await genl_player_setup(rows);
     if (!ok) {
         throw new Error('player_selection: quit');
     }

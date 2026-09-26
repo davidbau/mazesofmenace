@@ -7,7 +7,8 @@
 // remembered *cells* here, not int ids, because this port's map memory
 // stores rendered cells). Named omissions: maybe_unhide_at (sync
 // callers, same deferral as hack.c movobj);
-// flooreffects rust; bcrestriction / breadcrumbs; **ballfall D-1778**
+// unplacebc's restriction impossible; BREADCRUMBS Placebc/Lift_covet
+// (config.h leaves BREADCRUMBS undefined); **ballfall D-1778**
 // (C `:42–67`; `hard_helmet` is one export now, `js/do_wear.js`);
 // **drop_ball D-2329** (C `:881–961`; callers do.c:834 dropz +
 // dothrow.c:1840 throw land wired); litter hitfloor/shop/impact
@@ -17,6 +18,7 @@
 import { game } from './gstate.js';
 import { place_object, obj_extract_self, objects_at } from './mkobj.js';
 import { newsym, pline, You_feel, cls, map_object, impossible } from './display.js';
+import { flooreffects } from './do.js';
 import {
     OBJ_FREE, OBJ_FLOOR, OBJ_INVENT, BC_BALL, BC_CHAIN, IS_OBSTRUCTED, IS_DOOR,
     D_CLOSED, D_LOCKED, POOL, is_pit, is_hole, SLT_ENCUMBER,
@@ -373,28 +375,61 @@ function is_chain_rock(x, y) {
 }
 
 /**
- * C ref: ball.c placebc → placebc_core.
- * Places uball (if not carried) and uchain under the hero.
- * Named omissions: flooreffects rust; bcrestriction / breadcrumbs.
+ * C ref: ball.c placebc_core `:120–144`.
+ * Ball and chain are not on an object list. The chain may rust, then
+ * the ball when it is not carried (`where == OBJ_INVENT`). The chain
+ * is placed after the ball, so it sits on top (`BCPOS_CHAIN`); a carried
+ * ball leaves `BCPOS_DIFFER`. Both under-glyphs are the cell's current
+ * memory (this port stores remembered cells, not glyph ids — D-1769).
+ * `bcrestriction` clears on this path, which is why lift_covet reaches
+ * it directly instead of through `placebc`.
+ * `flooreffects` is awaited: it can `pline`. The return is ignored, as in C.
  */
-export function placebc() {
+async function placebc_core() {
     const u = game.u || {};
     const uball = u.uball;
     const uchain = u.uchain;
-    if (!uchain || !uball) return;
-    // C: if (uchain && uchain->where != OBJ_FREE) impossible; return
-    if (uchain.where != null && uchain.where !== OBJ_FREE) return;
+    if (!uchain || !uball) {
+        await impossible('Where are your ball and chain?');
+        return;
+    }
 
-    // flooreffects(uchain/uball) deferred (iron — no RNG on ordinary floors)
-    // C: carried(uball) → skip floor place; else place_object(uball)
-    if (carried(uball)) {
+    /* chain might rust — re-read u.ux/u.uy after each await, as C does */
+    await flooreffects(uchain, u.ux | 0, u.uy | 0, '');
+
+    if ((uball.where | 0) === OBJ_INVENT) { /* the ball is carried */
         u.bc_order = BCPOS_DIFFER;
     } else {
+        /* ball might rust -- already checked when carried */
+        await flooreffects(uball, u.ux | 0, u.uy | 0, '');
         place_object(uball, u.ux | 0, u.uy | 0);
         u.bc_order = BCPOS_CHAIN;
     }
+
     place_object(uchain, u.ux | 0, u.uy | 0);
-    newsym(u.ux | 0, u.uy | 0);
+
+    const gx = u.ux | 0;
+    const gy = u.uy | 0;
+    u.bglyph = levl_glyph_at(gx, gy); /* pick up glyph */
+    u.cglyph = levl_glyph_at(gx, gy);
+
+    newsym(gx, gy);
+    game.bcrestriction = 0;
+}
+
+/**
+ * C ref: ball.c placebc `:191–209` (BREADCRUMBS off; NH_DEVEL_STATUS is
+ * RELEASED, so the paniclog arm is compiled out).
+ * Places uball (if not carried) and uchain under the hero via placebc_core.
+ */
+export async function placebc() {
+    if (!check_restriction(0)) return;
+    const uchain = game.u?.uchain;
+    if (uchain && uchain.where != null && uchain.where !== OBJ_FREE) {
+        await impossible('bc already placed?');
+        return;
+    }
+    await placebc_core();
 }
 
 /**
@@ -480,11 +515,11 @@ export async function unplacebc_and_covet_placebc() {
 /**
  * C ref: ball.c lift_covet_and_placebc `:236–254` — pin-gated
  * placebc_core: put the attached ball&chain back after movebubbles()
- * drift (mkmaze.c:1682–1683). `placebc()` above is that core (its rust /
- * bglyph arms stay named there); the `bcrestriction = 0` tail runs here
- * in C order, after the place. Async: denied/placed arms impossible.
- * Named omissions: dev-build `paniclog` (Rule #2, no file log);
- * end.c:894 `lift_covet_and_placebc(override_restriction)` caller.
+ * drift (mkmaze.c:1682–1683). Calls `placebc_core` directly: `placebc`
+ * would refuse a live pin via `check_restriction(0)`. The
+ * `bcrestriction = 0` tail is inside the core. Async: the already-placed
+ * arm impossibles. Named omissions: release-build `paniclog` is compiled
+ * out (`NH_DEVEL_STATUS == NH_STATUS_RELEASED`).
  */
 export async function lift_covet_and_placebc(pin) {
     if (!check_restriction(pin | 0)) return;
@@ -494,8 +529,7 @@ export async function lift_covet_and_placebc(pin) {
         await impossible('bc already placed?');
         return;
     }
-    placebc();
-    game.bcrestriction = 0; /* C placebc_core `:143` tail */
+    await placebc_core();
 }
 
 /**

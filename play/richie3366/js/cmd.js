@@ -12,16 +12,20 @@ import {
     newsym, flush_screen, pline, You, pline_dir, pline_xy, pline_The, set_msg_xy,
     clear_nhwindow_message,
     mon_visible, sensemon, canspotmon, glyph_at, hero_glyph, glyph_is_invisible_id,
+    glyph_is_statue, glyph_is_monster, glyph_to_cmap, back_to_glyph,
+    GLYPH_UNEXPLORED,
     glyph_is_warning, unmap_object, map_object,
-    look_shown_at, glyph_to_obj_at, Norep, tty_doprev_message, putmsghistory,
+    look_shown_at, Norep, tty_doprev_message, putmsghistory,
     unmap_invisible, map_invisible, custompline,
+    Hallucination,
 } from './display.js';
 import { COLNO, ROWNO, STONE, DOOR, CORR, ROOM, IRONBARS, TREE, SDOOR, ICE,
          D_CLOSED, D_LOCKED, D_NODOOR, D_BROKEN, SCORR, LAVAWALL,
          DRAWBRIDGE_UP, ROOMOFFSET,
          IS_DOOR, IS_OBSTRUCTED, IS_FURNITURE, IS_STWALL, IS_WALL, IS_TREE,
          IS_FOUNTAIN, IS_SINK, IS_THRONE, IS_ALTAR, IS_ROOM, IS_WATERWALL, IS_AIR,
-         ACCESSIBLE, isok, Upolyd, Is_container, CLICK_1, CLICK_2,
+         AIR,
+         isok, Upolyd, Is_container, CLICK_1, CLICK_2,
          ECMD_OK, ECMD_TIME, ECMD_CANCEL, ECMD_FAIL, DOMOVE_RUSH, DOMOVE_WALK,
          CMDQ_EXTCMD, CMDQ_KEY, CMDQ_DIR, CMDQ_USER_INPUT, CQ_CANNED, CQ_REPEAT,
          IFBURIED, WIZMODECMD, NOFUZZERCMD, PREFIXCMD, MOVEMENTCMD,
@@ -35,7 +39,7 @@ import { COLNO, ROWNO, STONE, DOOR, CORR, ROOM, IRONBARS, TREE, SDOOR, ICE,
          PARANOID_TRAP, GP_ALLOW_U, NO_TRAP_FLAGS, FOOT, Something,
          LARGEST_INT, GC_NOFLAGS, GC_SAVEHIST, GC_CONDHIST, GC_ECHOFIRST,
          SUPPRESS_HISTORY,
-         In_sokoban,
+         In_sokoban, Is_waterlevel,
          TRAVP_TRAVEL, TRAVP_VALID,
          TEST_MOVE,
          } from './const.js';
@@ -72,8 +76,9 @@ import { dosave, dosave0 } from './save.js';
 import { doset_simple, dotogglepickup, toggle_bool_option, select_menu_pick_one, strbuf_append } from './options.js';
 import {
     do_attack, mon_at, is_safemon, explum, attacktype_fordmg,
-    stumble_onto_mimic,
+    defsym_explanation, stumble_onto_mimic,
 } from './uhitm.js';
+import { dig_typ, use_pick_axe2 } from './dig.js';
 import { rehumanize, body_part } from './polyself.js';
 import { Levitation, Flying } from './mhitu.js';
 import { doopen, doopen_indir, doclose } from './lock.js';
@@ -85,12 +90,12 @@ import { wiz_wish, wiz_genesis, wiz_level_tele, wiz_map } from './wizcmds.js';
 import { dotelecmd, goodpos } from './teleport.js';
 import { dowield, dowieldquiver, doswapweapon } from './wield.js';
 import { dowhatis, doquickwhatis, dohelp, dowhatdoes, doversion, show_text_pages } from './pager.js';
-import { visctrl, key2txt, cmdbind_get, cmd_from_dir } from './dokeylist.js';
+import { visctrl, key2txt, cmdbind_get, cmd_from_dir, cmd_from_func } from './dokeylist.js';
 import { config_error_add } from './botl.js';
-import { an, doname, makeplural } from './objnam.js';
-import { m_monnam, mon_nam, a_monnam, YMonnam, Hallucination, docallcmd } from './do_name.js';
+import { an, doname, makeplural, ansimpleoname, the } from './objnam.js';
+import { m_monnam, mon_nam, a_monnam, YMonnam, docallcmd } from './do_name.js';
 import { spoteffects, dopickup, doloot, dotip } from './pickup.js';
-import { objects_at } from './mkobj.js';
+import { objects_at, sobj_at } from './mkobj.js';
 import { stairway_at, On_stairs_up, On_stairs_dn, u_on_newpos, maybe_adjust_hero_bubble, selection_new, selection_getpoint, selection_setpoint } from './mklev.js';
 import { In_tutorial } from './dungeon.js';
 import { ATR_INVERSE } from './terminal.js';
@@ -116,7 +121,7 @@ import {
 import { acurr, exercise, A_DEX, Fumbling } from './attrib.js';
 import { drag_ball, move_bc } from './ball.js';
 import { in_out_region } from './region.js';
-import { m_postmove_effect, can_ooze } from './monmove.js';
+import { m_postmove_effect, can_ooze, accessible } from './monmove.js';
 import { exercise_steed, stucksteed, helpless_steed } from './steed.js';
 
 /** C cmd.c command_queue[CQ_*] — JS arrays on game. */
@@ -359,12 +364,12 @@ export async function do_fight() {
 
 /**
  * C ref: cmd.c do_reqmenu `:1574–1586` — 'm' PREFIXCMD.
- * cmd_from_func(do_reqmenu) named (m-prefix key is 'm').
+ * C `visctrl(cmd_from_func(do_reqmenu))` — ef_txt "reqmenu".
  * @returns {Promise<number>}
  */
 export async function do_reqmenu() {
     if (game.iflags?.menu_requested) {
-        await Norep(`Double ${visctrl('m')} prefix, canceled.`);
+        await Norep(`Double ${visctrl(cmd_from_func('reqmenu'))} prefix, canceled.`);
         game.iflags.menu_requested = false;
         return ECMD_CANCEL;
     }
@@ -483,7 +488,8 @@ function accept_menu_prefix_tab(efp) {
 /**
  * C ref: cmd.c doc_extcmd_flagstr `:523–557`.
  * efp null → footnote strings; else "" / "[m]" / "[A]" / "[mA]".
- * cmd_from_func(do_reqmenu) visctrl named (m-prefix key is 'm').
+ * The `[m]` tag stays literal (`cmd.c:530`). The quoted key is
+ * `visctrl(cmd_from_func(do_reqmenu))` (`:537`), ef_txt "reqmenu".
  * @param {{ flags?: number } | null} efp
  * @returns {{ footnote: string[] } | { flagstr: string }}
  */
@@ -492,7 +498,7 @@ function doc_extcmd_flagstr(efp) {
         return {
             footnote: [
                 '[A] Command autocompletes',
-                `[m] Command accepts '${visctrl('m')}' prefix`,
+                `[m] Command accepts '${visctrl(cmd_from_func('reqmenu'))}' prefix`,
             ],
         };
     }
@@ -2346,74 +2352,112 @@ async function mention_walls_obstructed(x, y) {
 }
 
 /**
- * C ref: hack.c domove_fight_empty — F into empty/solid, or remembered 'I'
- * with no monster and !nopick, wastes a turn.
- * Always unmap_object (not only for 'I') so stale object memory becomes
- * background — matching C before the thin-air / obstacle message.
- * Upolyd AT_EXPL: futilely/explode-at wording then wake_nearto, explum(null),
- * mh=-1, rehumanize (D-1265). Named omissions: boulder/statue dig with pick;
- * Underwater; Hallu monster-as-statue; ansimpleoname boulder wording.
+ * C ref: hack.c domove_fight_empty `:2229–2338`.
+ * Force-fight an empty or solid square, or a remembered invisible glyph
+ * with no monster and no m-prefix, spends the turn. Returns false when
+ * neither guard holds so domove keeps walking.
+ * An off-map target rewrites the local coordinates to (0,1) before the
+ * guard (not (0,0): m_at can find a vault guard there) and is worded as
+ * an unknown obstacle.
  */
 export async function domove_fight_empty(x, y) {
+    const unknownObstacle = 'an unknown obstacle';
     const offEdge = !isok(x, y);
-    const loc = (!offEdge && game.level?.at(x, y)) || null;
-    let boulder = null;
-    if (!offEdge && loc) {
-        // C hack.c:2258-2267: boulder = sobj_at(BOULDER, x, y); when the
-        // displayed glyph is a statue (glyph_is_statue(glyph_at(x, y))),
-        // boulder = sobj_at(STATUE, x, y) — full-pile scan, overwrite.
-        // glyph_to_obj_at is the gbuf equivalent (display.h:904).
-        for (let p = objects_at(x, y); p; p = p.nexthere) {
-            if ((p.otyp | 0) === BOULDER_OTYP) { boulder = p; break; }
-        }
-        if (glyph_to_obj_at(x, y) === STATUE_OTYP) {
-            boulder = null;
-            for (let p = objects_at(x, y); p; p = p.nexthere) {
-                if ((p.otyp | 0) === STATUE_OTYP) { boulder = p; break; }
+    // C: glyph_at only on the map; off-edge is GLYPH_UNEXPLORED.
+    let glyph = !offEdge ? glyph_at(x, y) : GLYPH_UNEXPLORED;
+
+    if (offEdge) {
+        x = 0;
+        y = 1;
+    }
+
+    /* specifying 'F' with no monster wastes a turn.
+       Remembered 'I' && !m_at && !nopick does too. forcefight
+       short-circuits so m_at is not called. */
+    if (game.context?.forcefight
+        || (glyph_is_invisible_id(glyph) && !m_at(x, y)
+            && !game.context?.nopick)) {
+        let boulder = null;
+        const u = game.u || {};
+        // C attacktype(data, AT_EXPL) ≡ attacktype_fordmg(..., AD_ANY).
+        const explo = !!(Upolyd(u)
+            && attacktype_fordmg(game.youmonst?.data, AT_EXPL, -1));
+        const loc = offEdge ? null : game.level?.at(x, y);
+        // off-edge short-circuits: do not call accessible on (0,1).
+        const solid = offEdge
+            || !accessible(x, y)
+            || IS_FURNITURE(loc?.typ);
+        let buf;
+
+        if (offEdge) {
+            /* treat as if solid rock, even on planes' levels */
+            buf = unknownObstacle;
+        } else {
+            if (!(u.uinwater | 0)) {
+                boulder = sobj_at(BOULDER_OTYP, x, y);
+                /* displayed statue, or a hallucinated monster glyph.
+                   youprop.h:120 — display.js, not the do_name sticky clone. */
+                if (glyph_is_statue(glyph)
+                    || (Hallucination() && glyph_is_monster(glyph))) {
+                    boulder = sobj_at(STATUE_OTYP, x, y);
+                }
+                /* F at boulder/statue/wall/door while wielding a digger */
+                if (game.context?.forcefight
+                    && u.uwep && dig_typ(u.uwep, x, y)
+                    && !glyph_is_invisible_id(glyph)
+                    && !glyph_is_monster(glyph)) {
+                    await use_pick_axe2(u.uwep);
+                    return true;
+                }
+            }
+
+            /* about to become known empty — remove 'I' if present */
+            unmap_object(x, y);
+            if (boulder) map_object(boulder, true);
+            newsym(x, y);
+            glyph = glyph_at(x, y); /* C nhUse: refreshed id is not read */
+
+            if (boulder) {
+                buf = ansimpleoname(boulder);
+            } else if ((u.uinwater | 0) && !is_pool(x, y)) {
+                /* underwater non-water: blank map, so no terrain name */
+                buf = (Is_waterlevel(u.uz) && (loc?.typ | 0) === AIR)
+                    ? 'an air bubble'
+                    : 'nothing';
+            } else if (solid) {
+                /* seen, wall, secret door, or secret corridor: real name.
+                   unseen other solids stay "an unknown obstacle". */
+                if (loc && (loc.seenv || IS_STWALL(loc.typ)
+                    || loc.typ === SDOOR || loc.typ === SCORR)) {
+                    glyph = back_to_glyph(x, y);
+                    buf = the(defsym_explanation(glyph_to_cmap(glyph)));
+                } else {
+                    buf = unknownObstacle;
+                }
+            } else {
+                buf = 'thin air';
             }
         }
-        // C: unmap_object then map_object(boulder,TRUE) then newsym
-        unmap_object(x, y);
-        if (boulder) map_object(boulder, true);
-        newsym(x, y);
-    }
-    const solid = offEdge
-        || !loc
-        || !ACCESSIBLE(loc.typ)
-        || IS_FURNITURE(loc.typ);
-    let target;
-    if (offEdge) {
-        target = 'an unknown obstacle';
-    } else if (boulder) {
-        // C ansimpleoname(boulder): "a boulder", or "a statue" (full naming deferred)
-        target = (boulder.otyp | 0) === STATUE_OTYP ? 'a statue' : 'a boulder';
-    } else if (solid) {
-        if (loc && (loc.seenv || IS_STWALL(loc.typ))) {
-            target = IS_STWALL(loc.typ) || loc.typ === STONE
-                ? 'the wall' : 'an unknown obstacle';
-        } else {
-            target = 'an unknown obstacle';
+
+        /* futile: */
+        const adverb = !(boulder || solid)
+            ? ''
+            : (!explo ? 'harmlessly ' : 'futilely ');
+        const verb = explo ? 'explode at' : 'attack';
+        await You(`${adverb}${verb} ${buf}.`);
+
+        nomul(0);
+        if (explo) {
+            const attk = attacktype_fordmg(game.youmonst?.data, AT_EXPL, -1);
+            /* no monster has been attacked so we have bypassed explum() */
+            await wake_nearto(u.ux | 0, u.uy | 0, 7 * 7);
+            if (attk) await explum(null, attk);
+            u.mh = -1; /* dead in the current form */
+            await rehumanize();
         }
-    } else {
-        target = 'thin air';
+        return true;
     }
-    const explo = Upolyd(game.u)
-        && !!attacktype_fordmg(game.youmonst?.data, AT_EXPL, -1);
-    /* C: !(boulder || solid) ? "" : !explo ? "harmlessly " : "futilely " */
-    const prefix = !(boulder || solid) ? '' : !explo ? 'harmlessly ' : 'futilely ';
-    const verb = explo ? 'explode at' : 'attack';
-    await pline(`You ${prefix}${verb} ${target}.`);
-    nomul(0);
-    if (explo) {
-        const attk = attacktype_fordmg(game.youmonst?.data, AT_EXPL, -1);
-        const u = game.u || {};
-        /* no monster has been attacked so we have bypassed explum() */
-        await wake_nearto(u.ux | 0, u.uy | 0, 7 * 7);
-        if (attk) await explum(null, attk);
-        u.mh = -1; /* dead in the current form */
-        await rehumanize();
-    }
-    return true;
+    return false;
 }
 
 /**
@@ -4415,7 +4459,7 @@ export async function domove_bump_mon(mtmp, glyph) {
     if (M_AP_TYPE(mtmp) && !prot && !sensemon(mtmp)) {
         await stumble_onto_mimic(mtmp);
     } else if (mtmp.mpeaceful && !Hallucination()) {
-        // C: m_monnam(): "dog" or "Fido", no "invisible dog" or "it"
+        // C youprop.h:120 Hallucination; m_monnam(): "dog" or "Fido"
         await pline(`Pardon me, ${m_monnam(mtmp)}.`);
     } else {
         await pline(`You move right into ${mon_nam(mtmp)}.`);
@@ -4582,29 +4626,6 @@ async function domove(dx, dy) {
         // Named omissions: displacer swap; mundetected Wait!;
         // full mon_visible Blind_telepat / Protection_from_shape amulet prop.
         mtmp = mon_at(newx, newy);
-        const destLoc = game.level?.at?.(newx, newy);
-        // C: forcefight with no mon, OR glyph_is_invisible(glyph_at) &&
-        // !m_at && !nopick → fight_empty (hack.c `:2242–2245`). Use
-        // gbuf (disp_glyph), not leftover remembered.invisible.
-        if ((forcefight && !mtmp)
-            || (glyph_is_invisible_id(destLoc?.disp_glyph)
-                && !mtmp && !game.context?.nopick)) {
-            // C hack.c:2804–2811 — ironbars then web then empty.
-            if (await domove_fight_ironbars(newx, newy)) {
-                if (game.context?.run) end_running(true);
-                game.context.move = 1;
-                return;
-            }
-            if (await domove_fight_web(newx, newy)) {
-                if (game.context?.run) end_running(true);
-                game.context.move = 1;
-                return;
-            }
-            await domove_fight_empty(newx, newy);
-            if (game.context?.run) end_running(true);
-            game.context.move = 1;
-            return;
-        }
         // C: don't attack if running and can see the non-safemon (pets ok).
         // forcefight never reaches this arm. Confdir into a visible hostile
         // must stop the run here — else JS burns a hit-roll rn2(20) while C
@@ -4652,9 +4673,19 @@ async function domove(dx, dy) {
         }
         // safemon displace: fall through; swap after test_move succeeds
         // (not when swallowed — engulfer is never safemon displace)
-    } else {
-        // C hack.c `:2813` — unmap_invisible after fight_empty, before
-        // u_rooted. Skipped when displaceu (safemon swap).
+    }
+    // C hack.c:2802–2813 — after attack, when !displaceu: bars, then web,
+    // then fight_empty. A TRUE return spends the move. unmap_invisible
+    // is the next statement only when all three return false.
+    // displaceu still runs the middle below (named middle-skip).
+    if (!displaceu) {
+        if (await domove_fight_ironbars(newx, newy)
+            || await domove_fight_web(newx, newy)
+            || await domove_fight_empty(newx, newy)) {
+            if (game.context?.run) end_running(true);
+            game.context.move = 1;
+            return;
+        }
         unmap_invisible(newx, newy);
     }
 

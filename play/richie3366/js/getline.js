@@ -21,7 +21,7 @@ import {
     tty_yn_note_msg_cursor, tty_yn_clean_up_tty,
     impossible, set_bot_disabled,
 } from './display.js';
-import { key2txt, visctrl } from './dokeylist.js';
+import { key2txt, visctrl, cmd_from_func } from './dokeylist.js';
 import { rn2 } from './rng.js';
 import {
     BUFSZ, COLNO, QBUFSZ, PARANOID_CONFIRM,
@@ -1328,7 +1328,7 @@ export async function doextcmd() {
         const { can_do_extcmd } = await import('./cmd.js');
         if (!(await can_do_extcmd(row))) return 0;
         if (game.iflags?.menu_requested && !accept_menu_prefix(row)) {
-            await pline(`'m' prefix has no effect for the ${ec.name} command.`);
+            await pline(`'${visctrl(cmd_from_func('reqmenu'))}' prefix has no effect for the ${ec.name} command.`);
             game.iflags.menu_requested = false;
         }
         /* C cmd.c:513 — tell rhack() what command is actually executing */

@@ -149,8 +149,8 @@ import { mswings_verb, Conflict, unstuck, set_ustuck, digests, hitmsg } from './
 import { mon_offmap, set_apparxy, mb_trapped, itsstuck } from './monmove.js';
 import { hurtle, mhurtle, will_hurtle } from './dothrow.js';
 import { make_stunned } from './potion.js';
-import { m_is_steadfast, can_blnd, steal_it } from './uhitm.js';
-import { mintrap, acid_damage, minstapetrify, mselftouch } from './trap.js';
+import { m_is_steadfast, can_blnd, steal_it, xdrainenergym } from './uhitm.js';
+import { mintrap, acid_damage, minstapetrify, mselftouch, drain_en } from './trap.js';
 import { breamm, spitmm, thrwmm } from './mthrowu.js';
 // C ref: mon.c mondead tail (D-row for data.md:358) — one block for the
 // death-tail family. ESM permits several import statements per module;
@@ -4207,6 +4207,38 @@ async function mhitm_ad_dcay(magr, mattk, mdef, mhm) {
 }
 
 /**
+ * C ref: uhitm.c mhitm_ad_dren `:2418–2442`.
+ * negated is hoisted (rn2(10) inside mhitm_mgc_atk_negated burns even
+ * when the 1/4 gate fails). Hero defender passes null so the gate uses
+ * magic_negation_you (C magic_negation(&gy.youmonst)). Every arm zeroes
+ * the leftover d(). uhitm and mhitm call xdrainenergym; mhitu calls
+ * hitmsg then drain_en.
+ */
+export async function mhitm_ad_dren(magr, mattk, mdef, mhm) {
+    const agrYou = is_youmonst(magr);
+    const defYou = is_youmonst(mdef);
+    const negated = await mhitm_mgc_atk_negated(
+        magr, defYou ? null : mdef, false);
+    if (agrYou) {
+        /* uhitm */
+        if (!negated && !rn2(4)) await xdrainenergym(mdef, true);
+        mhm.damage = 0;
+    } else if (defYou) {
+        /* mhitu */
+        await hitmsg(magr, mattk);
+        if (!negated && !rn2(4)) await drain_en(mhm.damage | 0, false);
+        mhm.damage = 0;
+    } else {
+        /* mhitm */
+        if (!negated && !rn2(4)) {
+            await xdrainenergym(mdef, !!(_mm_vis && canspotmon(mdef)
+                && (mattk?.aatyp | 0) !== AT_ENGL));
+        }
+        mhm.damage = 0;
+    }
+}
+
+/**
  * C ref: uhitm.c mhitm_ad_drli `:2489–2515` — mhitm arm (mon→mon), also
  * Death's touch via mhitm_ad_deth. Death always drains with the leftover
  * as the amount; else C short-circuit !rn2(3) && !(resists_drli ||
@@ -5129,6 +5161,19 @@ async function mdamagem(magr, mdef, mattk, mwep, dieroll) {
             }
             return (hitflags === M_ATTK_AGR_DIED) ? M_ATTK_AGR_DIED : M_ATTK_HIT;
         }
+    }
+
+    // C: mhitm_adtyping `:4808` → mhitm_ad_dren. Damage is always zeroed,
+    // so knockback still burns its rn2 and the HP tail does not run.
+    if ((mattk.adtyp | 0) === AD_DREN) {
+        const mhm = {
+            damage,
+            hitflags: M_ATTK_MISS,
+            done: false,
+        };
+        await mhitm_ad_dren(magr, mattk, mdef, mhm);
+        await mhitm_knockback(magr, mdef, mattk, mhm, !!mwep);
+        return mhm.hitflags;
     }
 
     // C: mhitm_adtyping → mhitm_ad_samu for AD_SAMU (uhitm.c:4570–4589

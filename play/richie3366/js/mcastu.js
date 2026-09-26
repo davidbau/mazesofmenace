@@ -11,6 +11,7 @@ import {
     MCF_INDIRECT, MCF_SIGHT, MCF_HOSTILE,
     HEAD, EYE, TIMEOUT, DIED, KILLED_BY, A_DEX,
     MM_ANGRY, MM_NOMSG, Upolyd, ismnum, DETECT_MONSTERS,
+    INVIS, DISPLACED, DEAF,
     M_SEEN_MAGR, M_SEEN_FIRE, M_SEEN_COLD, M_SEEN_ELEC, M_SEEN_REFL,
     M_AP_TYPE, M_AP_OBJECT, SEE_INVIS,
     BZ_VALID_ADTYP, BZ_OFS_AD, BZ_M_SPELL,
@@ -19,6 +20,7 @@ import { mon_adjust_speed } from './muse.js';
 import {
     pline, pline_mon, Norep, verbalize, canspotmon, canseemon, impossible,
     You_feel, shieldeff, map_invisible, tp_sensemon, set_msg_xy,
+    Hallucination as hero_Hallucination,
 } from './display.js';
 import {
     Monnam, mon_nam, bogusmon, pmname, type_is_pname, Mgender,
@@ -46,14 +48,15 @@ import { lined_up } from './mthrowu.js';
 import { burnarmor, ignite_items } from './trap.js';
 import { mkclass, makemon, set_malign } from './makemon.js';
 import { monster_census } from './minion.js';
-import { enexto } from './teleport.js';
+import { enexto, unconscious } from './teleport.js';
+import { is_fainted } from './eat.js';
 import { setuhpmax } from './exper.js';
 import { done, finish_losehp_done } from './end.js';
 import { burn_away_slime } from './timeout.js';
 // C ref: mhitu.c mdamageu — castmu FIRE/COLD/MAGM tail (imports.mjs: hoisted, cycle-safe).
 import { mdamageu } from './mhitu.js';
 import { Soundeffect } from './sndprocs.js';
-import { se_air_crackles, se_bolt_of_lightning } from './generated/seffects_data.js';
+import { se_air_crackles, se_bolt_of_lightning, se_someone_summoning } from './generated/seffects_data.js';
 
 /** C ref: mondata.h perceives — M1_SEE_INVIS. */
 function perceives(ptr) {
@@ -133,11 +136,12 @@ function See_invisible() {
     return !!((u.HSee_invisible | 0) || (u.ESee_invisible | 0) || u.See_invisible
         || (p?.intrinsic | 0) || (p?.extrinsic | 0));
 }
+/** C youprop.h:188–190 Detect_monsters — H || E. Sticky u.Detect_monsters is not the macro. */
 function Detect_monsters() {
     const u = game.u || {};
     const p = u.uprops?.[DETECT_MONSTERS];
     return !!((u.HDetect_monsters | 0) || (u.EDetect_monsters | 0)
-        || u.Detect_monsters || (p?.intrinsic | 0) || (p?.extrinsic | 0));
+        || (p?.intrinsic | 0) || (p?.extrinsic | 0));
 }
 function Deaf() {
     const u = game.u || {};
@@ -612,21 +616,90 @@ async function mcast_lightning(mtmp, dmg) {
     return dmg;
 }
 
-/** C ref: mcastu.c mcast_insects */
+/**
+ * C youprop.h:399 Unaware — multi < 0 && (unconscious() || is_fainted()).
+ * The file-level Unaware() is sticky u.Unaware and is not this macro.
+ * unconscious is teleport.c; is_fainted is eat.c.
+ */
+function insects_Unaware() {
+    return (game.multi | 0) < 0 && (unconscious() || is_fainted());
+}
+
+/**
+ * C youprop.h:123–125 Deaf — HDeaf || EDeaf || u.uroleplay.deaf.
+ * uprops[DEAF] is that H/E store. Sticky u.Deaf is not the macro
+ * (You_hear uses the same three terms).
+ */
+function insects_Deaf() {
+    const u = game.u || {};
+    const p = u.uprops?.[DEAF];
+    return !!((u.HDeaf | 0) || (u.EDeaf | 0)
+        || (p?.intrinsic | 0) || (p?.extrinsic | 0)
+        || u.uroleplay?.deaf);
+}
+
+/**
+ * C youprop.h:197 BInvis — uprops[INVIS].blocked.
+ * setworn's apply_w_blocks already sets that bit from w_blocks
+ * (mummy wrapping). A worn-wrapping read is not the macro.
+ */
+function insects_BInvis() {
+    const u = game.u || {};
+    const p = u.uprops?.[INVIS];
+    return !!((u.BInvis | 0) || (p?.blocked | 0));
+}
+/** C youprop.h:198 Invis — (HInvis || EInvis) && !BInvis. */
+function insects_Invis() {
+    const u = game.u || {};
+    const p = u.uprops?.[INVIS];
+    const H = (u.HInvis | 0) || (p?.intrinsic | 0);
+    const E = (u.EInvis | 0) || (p?.extrinsic | 0);
+    return (!!(H || E)) && !insects_BInvis();
+}
+
+/**
+ * C youprop.h:202–204 Displaced — HDisplaced || EDisplaced.
+ * uprops[DISPLACED] is that H/E store (confer_oc_oprop writes the
+ * cloak there). A worn-cloak read is not the macro. Sticky
+ * u.Displaced is not either.
+ */
+function insects_Displaced() {
+    const u = game.u || {};
+    const p = u.uprops?.[DISPLACED];
+    return !!((u.HDisplaced | 0) || (u.EDisplaced | 0)
+        || (p?.intrinsic | 0) || (p?.extrinsic | 0));
+}
+
+/**
+ * C ref: mcastu.c mcast_insects :645–726.
+ * Insects, or snakes when that class is gone. Seen caster uses
+ * pline_mon; an unseen caster uses You_hear / a deaf visual pline.
+ * Caller: mcast_spell MCAST_INSECTS (mcastu.c:872).
+ */
 async function mcast_insects(mtmp) {
+    /* :650–652 — the class letter is fixed by the first mkclass. */
     let pm = mkclass('S_ANT', 0);
+    let mtmp2 = null;
     const mlet = pm ? 'S_ANT' : 'S_SNAKE';
     let success = false;
+    let i;
+    let quan;
+    let whatbuf = '';
+    const u = game.u || {};
+
     const oldseen = monster_census(true);
-    let quan = ((mtmp.m_lev | 0) < 2) ? 1 : rnd(Math.trunc((mtmp.m_lev | 0) / 2));
-    if (quan < 3) quan = 3;
-    for (let i = 0; i <= quan; i++) {
+    quan = ((mtmp.m_lev | 0) < 2) ? 1 : rnd(Math.trunc((mtmp.m_lev | 0) / 2));
+    if (quan < 3)
+        quan = 3;
+    /* :662–674 — i <= quan (quan+1 tries). !enexto returns with no message. */
+    for (i = 0; i <= quan; i++) {
         const bypos = { x: 0, y: 0 };
-        if (!enexto(bypos, mtmp.mux | 0, mtmp.muy | 0, mtmp.data)) return;
+        if (!enexto(bypos, mtmp.mux | 0, mtmp.muy | 0, mtmp.data))
+            return;
         pm = mkclass(mlet, 0);
-        const mtmp2 = pm
-            ? makemon(pm, bypos.x, bypos.y, MM_ANGRY | MM_NOMSG)
-            : null;
+        mtmp2 = null;
+        if (pm)
+            mtmp2 = makemon(pm, bypos.x, bypos.y, MM_ANGRY | MM_NOMSG);
         if (mtmp2) {
             success = true;
             mtmp2.msleeping = mtmp2.mpeaceful = mtmp2.mtame = 0;
@@ -634,42 +707,53 @@ async function mcast_insects(mtmp) {
         }
     }
     const newseen = monster_census(true);
+
+    /* :677 — not canspotmon(), which includes warning. */
     const seecaster = canseemon(mtmp) || tp_sensemon(mtmp) || Detect_monsters();
     let what = (mlet === 'S_SNAKE') ? 'snakes' : 'insects';
-    if (Hallucination()) what = makeplural(bogusmon());
+    /* :680–681 — bogusmon writes a buffer; makeplural returns nextobuf(). */
+    if (hero_Hallucination())
+        what = makeplural(bogusmon(null));
 
+    let fmt = null;
     if (!seecaster) {
-        if (newseen <= oldseen || Unaware()) {
+        /* :684–704 — unseen caster. Unaware forces the short dream line. */
+        if (newseen <= oldseen || insects_Unaware()) {
             await You_hear(`someone summoning ${what}.`);
         } else {
+            /* :690–693 — what != whatbuf (nextobuf / literal vs stack),
+               then strcpy so makesingular cannot clobber the plural. */
+            whatbuf = what;
+            what = whatbuf;
             const arg = (newseen === oldseen + 1)
                 ? an(makesingular(what))
-                : what;
-            if (!Deaf()) {
-                await You_hear(`someone summoning something, and ${arg} ${vtense(arg, 'appear')}.`);
+                : whatbuf;
+            if (!insects_Deaf()) {
+                Soundeffect(se_someone_summoning, 100);
+                await You_hear(
+                    `someone summoning something, and ${arg} ${vtense(arg, 'appear')}.`,
+                );
             } else {
                 await pline(`${upstart(arg)} ${vtense(arg, 'appear')}.`);
             }
         }
-        return;
-    }
-    const u = game.u || {};
-    const Invis = !!(u.Invis || u.HInvis || u.EInvis);
-    const Displaced = !!(u.Displaced || u.HDisplaced || u.EDisplaced);
-    const who = Monnam(mtmp);
-    if (!success) {
-        await pline(`${who} casts at a clump of sticks, but nothing happens.`);
+    } else if (!success) {
+        fmt = '%s casts at a clump of sticks, but nothing happens.%s';
+        what = '';
     } else if (mlet === 'S_SNAKE') {
-        await pline(`${who} transforms a clump of sticks into ${what}!`);
-    } else if (Invis && !perceives(mtmp.data)
+        fmt = '%s transforms a clump of sticks into %s!';
+    } else if (insects_Invis() && !perceives(mtmp.data)
         && ((mtmp.mux | 0) !== (u.ux | 0) || (mtmp.muy | 0) !== (u.uy | 0))) {
-        await pline(`${who} summons ${what} around a spot near you!`);
-    } else if (Displaced
+        fmt = '%s summons %s around a spot near you!';
+    } else if (insects_Displaced()
         && ((mtmp.mux | 0) !== (u.ux | 0) || (mtmp.muy | 0) !== (u.uy | 0))) {
-        await pline(`${who} summons ${what} around your displaced image!`);
+        fmt = '%s summons %s around your displaced image!';
     } else {
-        await pline(`${who} summons ${what}!`);
+        fmt = '%s summons %s!';
     }
+    /* :722–724 — pline_mon, not pline (msg xy is the caster). */
+    if (fmt)
+        await pline_mon(mtmp, fmt, Monnam(mtmp), what);
 }
 
 /** C ref: mcastu.c mcast_paralyze */

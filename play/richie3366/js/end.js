@@ -1618,7 +1618,7 @@ async function savebones(how, when, corpse) {
         if (mon_offmap(mtmp)) continue;
         await remove_mon_from_bones(mtmp);
     }
-    dmonsfree();
+    await dmonsfree();
 
     // C savebones `:450–453` — negate all fids before drop_upon_death
     savebones_negate_fruit_ids();

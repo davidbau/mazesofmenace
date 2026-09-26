@@ -6,6 +6,7 @@
 import { game } from './gstate.js';
 import { rn2, rnd, rn1, d } from './rng.js';
 import { depth as depth_of_level, level_difficulty, upstart } from './hacklib.js';
+import { Is_special } from './dungeon.js';
 import { put_saddle_on_mon, can_saddle, place_monster, poly_steed } from './steed.js';
 import {
     m_dowear, which_armor, check_gear_next_turn, bypass_obj, mon_break_armor,
@@ -164,7 +165,7 @@ import {
 } from './objects.js';
 import { ART_EXCALIBUR, ART_DEMONBANE } from './generated/artifacts_data.js';
 import { cansee, does_block, block_point } from './vision.js';
-import { newsym, Norep, canseemon, sensemon, canspotmon, pline, You, pline_mon, impossible, coord_desc, swallowed } from './display.js';
+import { newsym, Norep, canseemon, sensemon, canspotmon, pline, You, pline_mon, impossible, coord_desc, swallowed, monsym } from './display.js';
 import { mhidden_description } from './pager.js';
 import { emits_light, new_light_source, del_light_source, obj_sheds_light, snuff_light_source } from './light.js';
 import { begin_burn } from './timeout.js';
@@ -462,16 +463,17 @@ function next_ident() {
     return res;
 }
 
-// C ref: makemon.c uncommon() — Inhell via dungeon hellish flag (not dnum).
+// C ref: makemon.c uncommon() :1592–1603 — static; only rndmonst_adj.
+// Inhell is dungeon.c In_hell (dungeons[dnum].flags.hellish), not dnum.
 function uncommon(mndx) {
     const ptr = mons(mndx);
-    if (!ptr) return true;
+    if (!ptr) return true; // C would dereference mons[mndx]
     if (ptr.geno & (G_NOGEN | G_UNIQ)) return true;
-    // mvitals G_GONE not tracked yet
-    // C: Inhell → reject maligntyp > A_NEUTRAL; else reject G_HELL
+    // C: svm.mvitals[mndx].mvflags & G_GONE (G_GENOD | G_EXTINCT)
+    if (((game.mvitals?.[mndx]?.mvflags ?? 0) & G_GONE) !== 0) return true;
     const inhell = !!(game.dungeons?.[game.u?.uz?.dnum | 0]?.flags?.hellish);
-    if (inhell) return ptr.maligntyp > 0; // A_NEUTRAL=0
-    return !!(ptr.geno & G_HELL);
+    if (inhell) return (ptr.maligntyp | 0) > 0; // A_NEUTRAL
+    return (ptr.geno & G_HELL) !== 0;
 }
 
 // C ref: makemon.c align_shift — special-level then dungeon align bias.
@@ -489,12 +491,11 @@ export function reset_align_shift_cache() {
 
 function align_shift(ptr) {
     const moves = game.moves | 0;
+    // C: if (oldmoves != svm.moves) { lev = Is_special(&u.uz); oldmoves = svm.moves; }
+    // The static cache is part of the C function: a level change that does
+    // not bump moves keeps the previous special (often null).
     if (_align_shift_oldmoves !== moves) {
-        const uz = game.u?.uz;
-        _align_shift_lev = (game.sp_levchn || []).find(s =>
-            s?.dlevel
-            && (s.dlevel.dnum | 0) === (uz?.dnum | 0)
-            && (s.dlevel.dlevel | 0) === (uz?.dlevel | 0)) || null;
+        _align_shift_lev = Is_special(game.u?.uz);
         _align_shift_oldmoves = moves;
     }
     const lev = _align_shift_lev;
@@ -505,16 +506,23 @@ function align_shift(ptr) {
         ? (lev.flags?.align | 0)
         : (game.dungeons?.[uz?.dnum | 0]?.flags?.align | 0);
     const mal = ptr?.maligntyp | 0;
+    let alshift;
     switch (align) {
+    default: // just in case
+    case AM_NONE:
+        alshift = 0;
+        break;
     case AM_LAWFUL:
-        return Math.trunc((mal + 20) / (2 * ALIGNWEIGHT));
+        alshift = Math.trunc((mal + 20) / (2 * ALIGNWEIGHT));
+        break;
     case AM_NEUTRAL:
-        return Math.trunc((20 - Math.abs(mal)) / ALIGNWEIGHT);
+        alshift = Math.trunc((20 - Math.abs(mal)) / ALIGNWEIGHT);
+        break;
     case AM_CHAOTIC:
-        return Math.trunc(-(mal - 20) / (2 * ALIGNWEIGHT));
-    default:
-        return 0;
+        alshift = Math.trunc(-(mal - 20) / (2 * ALIGNWEIGHT));
+        break;
     }
+    return alshift;
 }
 
 // C ref: makemon.c temperature_shift — +3 when ptr resists level hot/cold.
@@ -590,47 +598,60 @@ export function qt_montype() {
     return mkclass(urole.enemy2sym, 0);
 }
 
+// C ref: makemon.c rndmonst_adj() :1659–1732
 export function rndmonst_adj(minadj = 0, maxadj = 0) {
+    let ptr;
     // C: if (u.uz.dnum == quest_dnum && rn2(7) && (ptr = qt_montype()) != 0)
-    if (In_quest(game.u?.uz) && rn2(7)) {
-        const qptr = qt_montype();
-        if (qptr) return qptr;
-    }
+    if (In_quest(game.u?.uz) && rn2(7) && (ptr = qt_montype()) != null)
+        return ptr;
 
     const zlevel = level_difficulty();
-    const ulevel = game.u?.ulevel ?? 1;
+    // C: monmin_difficulty(levdif) = levdif / 6
+    //     monmax_difficulty(levdif) = (levdif + u.ulevel) / 2
     const minmlev = monmin_difficulty(zlevel) + minadj;
-    const maxmlev = monmax_difficulty(zlevel, ulevel) + maxadj;
-    // C: upper = Is_rogue_level; elemlevel = In_endgame && !Is_astralevel
-    const upper = Is_rogue_level(game.u?.uz);
+    const maxmlev = monmax_difficulty(zlevel, game.u?.ulevel ?? 1) + maxadj;
+    const upper = Is_rogue_level(game.u?.uz); // prefer uppercase only on rogue level
     const elemlevel = In_endgame(game.u?.uz) && !Is_astralevel(game.u?.uz);
-    // Inhell = dungeon hellish flag (D-0747)
-    const inhell = !!(game.dungeons?.[game.u?.uz?.dnum | 0]?.flags?.hellish);
 
     let totalweight = 0;
     let selected_mndx = NON_PM;
+    // C: Inhell — In_hell(&u.uz), dungeons[dnum].flags.hellish (D-0747)
+    const inhell = !!(game.dungeons?.[game.u?.uz?.dnum | 0]?.flags?.hellish);
 
-    for (let mndx = LOW_PM; mndx < SPECIAL_PM; mndx++) {
-        const ptr = mons(mndx);
-        if (montooweak(mndx, minmlev) || montoostrong(mndx, maxmlev)) continue;
+    for (let mndx = LOW_PM; mndx < SPECIAL_PM; ++mndx) {
+        ptr = mons(mndx);
+
+        if (montooweak(mndx, minmlev) || montoostrong(mndx, maxmlev))
+            continue;
         // C: if (upper && !isupper(monsym(ptr))) continue;
-        if (upper && !monsym_isupper(ptr)) continue;
-        // C: if (elemlevel && wrong_elem_type(ptr)) continue;
-        if (elemlevel && wrong_elem_type(ptr)) continue;
-        if (uncommon(mndx)) continue;
-        // C: if (Inhell && (ptr->geno & G_NOHELL)) continue;
-        if (inhell && (ptr.geno & G_NOHELL)) continue;
+        if (upper && !monsym_isupper(ptr))
+            continue;
+        if (elemlevel && wrong_elem_type(ptr))
+            continue;
+        if (uncommon(mndx))
+            continue;
+        if (inhell && (ptr.geno & G_NOHELL))
+            continue;
 
-        let weight_ = (ptr.geno & G_FREQ) + align_shift(ptr);
+        // Weighted reservoir: rn2(total so far) < this weight replaces the pick.
+        // Local name avoids the imported mkobj weight().
+        let weight_ = ((ptr.geno & G_FREQ) | 0) + align_shift(ptr);
         weight_ += temperature_shift(ptr);
-        if (weight_ < 0 || weight_ > 127) weight_ = 0;
+        if (weight_ < 0 || weight_ > 127) {
+            void impossible('bad weight in rndmonst for mndx %d', mndx);
+            weight_ = 0;
+        }
+        // weight 0 must not call rn2(0) while totalweight is still 0
         if (weight_ > 0) {
             totalweight += weight_;
-            if (rn2(totalweight) < weight_) selected_mndx = mndx;
+            if (rn2(totalweight) < weight_)
+                selected_mndx = mndx;
         }
     }
-
-    if (selected_mndx === NON_PM || uncommon(selected_mndx)) return null;
+    if (selected_mndx === NON_PM || uncommon(selected_mndx)) {
+        // C debugpline1 is the empty macro unless DEBUG (lint.h). No pline.
+        return null;
+    }
     return mons(selected_mndx);
 }
 
@@ -1223,23 +1244,13 @@ function validspecmon(mon, mndx) {
 }
 
 /**
- * C: isupper(monsym(ptr)) — def_monsyms A–Z for S_ANGEL..S_ZOMBIE
- * (display.js MLET_CH). Used by rndmonst_adj rogue upper filter
- * and select_newcham_form rogue retry gate.
+ * C: isupper(monsym(ptr)) — ctype A–Z on def_monsyms[].sym
+ * (display.js monsym / MLET_CH). rndmonst_adj rogue filter and the
+ * select_newcham_form rogue retry gate.
  */
 function monsym_isupper(mdat) {
-    switch (mdat?.mlet) {
-    case 'S_ANGEL': case 'S_BAT': case 'S_CENTAUR': case 'S_DRAGON':
-    case 'S_ELEMENTAL': case 'S_FUNGUS': case 'S_GNOME': case 'S_GIANT':
-    case 'S_invisible': case 'S_JABBERWOCK': case 'S_KOP': case 'S_LICH':
-    case 'S_MUMMY': case 'S_NAGA': case 'S_OGRE': case 'S_PUDDING':
-    case 'S_QUANTMECH': case 'S_RUSTMONST': case 'S_SNAKE': case 'S_TROLL':
-    case 'S_UMBER': case 'S_VAMPIRE': case 'S_WRAITH': case 'S_XORN':
-    case 'S_YETI': case 'S_ZOMBIE':
-        return true;
-    default:
-        return false;
-    }
+    const c = monsym(mdat).charCodeAt(0);
+    return c >= 65 && c <= 90;
 }
 
 /**

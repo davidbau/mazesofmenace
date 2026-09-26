@@ -40,7 +40,7 @@ import { christen_monst, Monnam, mon_pmname, s_suffix } from './do_name.js';
 import {
     monnear, m_at, see_monster_closeup, minliquid, restore_cham,
     wake_nearto, discard_minvent, mdrop_special_objs,
-    mon_leaving_level, m_into_limbo, healmon,
+    mon_leaving_level, m_into_limbo, healmon, dealloc_monst,
 } from './mon.js';
 import { mon_offmap } from './monmove.js';
 import {
@@ -1493,7 +1493,9 @@ export function discard_migrations() {
         }
         mtmp.nmon = null;
         discard_minvent(mtmp, false);
+        // C dog.c:956–959 — bypass mongone/m_detach/dmonsfree; free here.
         if (emits_light(mtmp.data)) del_light_source(LS_MONSTER, mtmp);
+        dealloc_monst(mtmp);
     }
     game.migrating_mons = keepMons;
 

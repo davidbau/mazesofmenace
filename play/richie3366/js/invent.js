@@ -282,6 +282,8 @@ import {
     NEW_MOON,
     FULL_MOON,
     Upolyd,
+    M_AP_TYPE,
+    M_AP_NOTHING,
     BASICENLIGHTENMENT,
     MAGICENLIGHTENMENT,
     ENL_GAMEINPROGRESS,
@@ -336,7 +338,7 @@ import { sticks } from './engrave.js';
 import { surface } from './sit.js';
 import { visible_region_at, reg_damg } from './region.js';
 import { PM_SAMURAI, PM_MONK, PM_CLERIC, PM_ARCHEOLOGIST, monsterNames } from './generated/monsters_data.js';
-import { humanoid, strongmonst, is_flyer, mons, touch_petrifies, poly_when_stoned, hides_under, haseyes, dmgtype, hates_silver, is_male, is_female, is_neuter, vampshifted, nonliving, weirdnonliving } from './monsters.js';
+import { humanoid, strongmonst, is_flyer, mons, touch_petrifies, poly_when_stoned, hides_under, throws_rocks, haseyes, dmgtype, hates_silver, is_male, is_female, is_neuter, vampshifted, nonliving, weirdnonliving } from './monsters.js';
 import { hideunder } from './mon.js';
 import { set_artifact_intrinsic, undiscovered_artifact, discover_artifact, confers_luck, disp_artifact_discoveries } from './artifact.js';
 import { is_quest_artifact } from './quest.js';
@@ -348,7 +350,7 @@ import {
 import { is_ammo, is_pole } from './wield.js';
 import { is_wet_towel, can_advance } from './weapon.js';
 import { shield_simple_name, Boots_on } from './do_wear.js';
-import { float_vs_flight } from './polyself.js';
+import { float_vs_flight, youhiding } from './polyself.js';
 import { learn_egg_type } from './timeout.js';
 
 // C monflag.h MZ_HUMAN ≡ MZ_MEDIUM
@@ -1113,18 +1115,31 @@ export function weight_cap() {
     return Math.max(carrcap, 1); /* C: (int) max(carrcap, 1L) */
 }
 
-// C ref: hack.c inv_weight() — negative ⇒ under capacity
+/**
+ * C ref: hack.c inv_weight `:4351–4365`.
+ * Walk gi.invent (JS array is that list). Coins weigh (quan+50)/100.
+ * Any other object adds owt unless it is a boulder and the hero
+ * throws rocks (`otyp != BOULDER || !throws_rocks(youmonst.data)`).
+ * Then gw.wc = weight_cap() (stored as game._weight_cap) and return
+ * wt - wc. Negative means under capacity.
+ * A null youmonst.data makes throws_rocks false, so a boulder is counted
+ * (C would dereference).
+ */
 export function inv_weight() {
     let wt = 0;
     for (const otmp of game.invent || []) {
         if (otmp.oclass === COIN_CLASS) {
-            wt += Math.trunc(((otmp.quan || 0) + 50) / 100);
-        } else {
-            wt += otmp.owt || 0;
+            /* C: (int) (((long) quan + 50L) / 100L) — trunc toward 0. */
+            wt += Math.trunc(((otmp.quan || 0) + 50) / 100) | 0;
+        } else if ((otmp.otyp | 0) !== OTYP_BOULDER
+            || !throws_rocks(game.youmonst?.data)) {
+            wt += otmp.owt | 0;
         }
+        wt = wt | 0;
     }
-    game._weight_cap = weight_cap();
-    return wt - game._weight_cap;
+    const wc = weight_cap();
+    game._weight_cap = wc;
+    return (wt - wc) | 0;
 }
 
 // C ref: hack.c calc_capacity() / near_capacity()
@@ -3106,6 +3121,7 @@ export async function select_menu_pick_none(entries) {
     // C ref: wintty.c tty_display_nhwindow(NHW_MENU) NEED_MORE flush
     // C windows.c select_menu `:1858–1863` gb.bot_disabled wrap.
     const _botPrev = set_bot_disabled(true);
+    let cancelled = false;
     try {
     await flush_topl_more();
     const rows = display()?.rows || 24;
@@ -3132,7 +3148,12 @@ export async function select_menu_pick_none(entries) {
         });
         await flush_screen(1);
         const key = await nhgetch();
-        if (key === 27 || key === 13 || key === 10) break;
+        // C tty_select_menu `:2796–2797` — ESC is pick_cnt -1; Enter/space is 0.
+        if (key === 27) {
+            cancelled = true;
+            break;
+        }
+        if (key === 13 || key === 10) break;
         if (key === 32) {
             if (curr_page < npages - 1) {
                 curr_page++;
@@ -3164,9 +3185,10 @@ export async function select_menu_pick_none(entries) {
         tty_nhbell();
         // other keys: re-prompt same page (C xwaitforspace)
     }
-    clear_overlay();
+        clear_overlay();
     await docrt();
     await flush_screen(1);
+    return cancelled ? -1 : 0;
     } finally {
         set_bot_disabled(_botPrev);
     }
@@ -5672,7 +5694,7 @@ export function trap_predicament(final, wizxtra) {
  * @param {number} final
  * @param {{ overlay?: boolean, magic?: boolean }} opts
  */
-function status_core_lines(final = 0, opts = {}) {
+async function status_core_lines(final = 0, opts = {}) {
     const overlay = !!opts.overlay;
     const magic = !!opts.magic;
     const u = game.u || {};
@@ -5709,6 +5731,15 @@ function status_core_lines(final = 0, opts = {}) {
             tbuf += ` and ${final ? 'felt' : 'feel'} ${inside} inside`;
         }
         out.push(wrap(tbuf));
+    }
+    // C insight.c:1002–1003 — poly'd and hiding. Riding / Levitation /
+    // Flying / Underwater / walking_on_water of status_enlightenment are
+    // still absent; this call sits immediately before Stoned, the next
+    // live arm. youhiding owns you_are; overlay adds the ^X space.
+    if (Upolyd(u) && (u.uundetected
+        || M_AP_TYPE(game.youmonst) !== M_AP_NOTHING)) {
+        const line = await youhiding(true, final);
+        out.push(overlay ? ` ${line}` : line);
     }
     // C insight.c:1006-1011 — Stoned before Slimed, prayer order.
     const stoned = enl_bits(STONED, 'Stoned');
@@ -6341,7 +6372,7 @@ export async function enlightenment(mode, final = 0) {
     lines.push('');
     lines.push(final ? 'Final Status:' : 'Status:');
     // C ref: insight.c status_enlightenment Deaf/Sleepy/hunger/encumbrance
-    lines.push(...status_core_lines(final, {
+    lines.push(...await status_core_lines(final, {
         overlay: false,
         magic: !!(mode & MAGICENLIGHTENMENT),
     }));
@@ -7164,7 +7195,7 @@ export async function doattributes(enl_mode = null) {
     lines.push(' Status:');
     // C ref: insight.c status_enlightenment — Deaf/Sleepy before hunger;
     // Sleepy needs magic || cause_known; wizard hunger/weight suffixes.
-    lines.push(...status_core_lines(0, { overlay: true, magic }));
+    lines.push(...await status_core_lines(0, { overlay: true, magic }));
     // C ref: insight.c weapon_insight `:1270–1465` via status_enlightenment
     // `:1249` — overlay (^X) is ENL_GAMEINPROGRESS, present tense.
     lines.push(...weapon_insight(0, { overlay: true }));

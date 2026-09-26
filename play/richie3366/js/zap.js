@@ -260,7 +260,7 @@ import {
     G_UNIQ, G_NOCORPSE, is_rider, is_swimmer, mindless, MZ_MEDIUM, is_whirly,
     hides_under, is_golem, is_mplayer, vegetarian, carnivorous, NUMMONS,
 } from './monsters.js';
-import { m_at, wakeup, seemimic, dead_species, normal_shape, replmon, find_mid, mongone, restore_cham, m_respond, hideunder, healmon, can_be_hatched, cant_drown, minliquid } from './mon.js';
+import { m_at, wakeup, seemimic, dead_species, normal_shape, replmon, find_mid, mongone, restore_cham, m_respond, hideunder, healmon, can_be_hatched, cant_drown, minliquid, dealloc_monst } from './mon.js';
 import { find_mac, monkilled, mlifesaver, shade_miss, resists_sleep_slee, resists_blnd_mm, erode_armor } from './mhitm.js';
 import { update_mapseen_for } from './dungeon.js';
 import {
@@ -2890,7 +2890,8 @@ export async function montraits(obj, cc, adjacentok) {
         mtmp = makemon(mtmp2.data, cc.x | 0, cc.y | 0, mmflags);
     }
     if (!mtmp) {
-        // mtmp2 was a copy — drop
+        // C zap.c:737–741 — traits copy is not on a monst list; free it.
+        dealloc_monst(mtmp2);
         return null;
     }
 
