@@ -8,7 +8,7 @@ import {
     NROFARTIFACTS,
     artilistRaw,
 } from './generated/artifacts_data.js';
-import { objectNames, NUM_OBJECTS, objectDescrs, objects, WEAPON_CLASS, RING_CLASS, WAND_CLASS } from './objects.js';
+import { objectNames, NUM_OBJECTS, objectDescrs, objects, WEAPON_CLASS, RING_CLASS, WAND_CLASS, TOOL_CLASS } from './objects.js';
 import { obj_shuffle_range } from './o_init.js';
 import { monsterNames, NON_PM, M2_UNDEAD, M2_WERE, is_demon, is_dprince, is_dlord, resists_ston, hates_silver, bigmonst, has_head, noncorporeal, amorphous, is_covetous, is_mplayer, nonliving, mons } from './monsters.js';
 import { Fire_resistance, Cold_resistance, Shock_resistance, Drain_resistance, resists_fire, resists_cold, resists_elec, resists_poison, resists_drli, cancel_monst, resist, probe_monster, destroy_items } from './zap.js';
@@ -92,6 +92,11 @@ import {
     IS_ALTAR,
     D_TRAPPED,
     Is_container,
+    Has_contents,
+    W_QUIVER,
+    W_BALL,
+    W_SADDLE,
+    DISMOUNT_THROWN,
     OBJ_FLOOR,
     OBJ_CONTAINED,
     OBJ_MINVENT,
@@ -114,7 +119,7 @@ import { burn_away_slime } from './timeout.js';
 import { compactify_invlets, update_inventory, getobj_take_count, getobj_apply_count, getobj_from_cmdq, getobj_display_pickinv, getobj, observe_object, freeinv } from './invent.js';
 import { xname, the, The, vtense, cxname, otense, set_undiscovered_artifact, set_find_artifact, simple_typename, Tobjnam, distant_name, yname, killer_xname } from './objnam.js';
 import { recalc_telepat_range } from './do_wear.js';
-import { t_at, ignite_items } from './trap.js';
+import { t_at, ignite_items, selftouch, float_up, float_down } from './trap.js';
 import { livelog_printf } from './pline.js';
 import { inside_shop, obfree } from './shk.js';
 import { losehp, maybe_half_phys, finish_maybe_wail, nomul, invocation_pos, On_stairs } from './hack.js';
@@ -129,7 +134,7 @@ import { exercise, A_WIS, A_CON } from './attrib.js';
 // C mk_artifact by_align — mksobj/obj_extract_self are hoisted fns, cycle-safe
 // (mkobj.js already imports artifact.js; runtime-only calls, no top-level
 // reads either way; `imports.mjs --can artifact.js mkobj.js mksobj`: SAFE).
-import { mksobj, obj_extract_self } from './mkobj.js';
+import { mksobj, obj_extract_self, uncurse } from './mkobj.js';
 // C mk_artifact skill_compatibility — P_MAX_SKILL is a hoisted fn, cycle-safe
 // (same 90-module SCC; runtime-only call).
 import { P_MAX_SKILL } from './weapon.js';
@@ -149,6 +154,8 @@ import { surface } from './sit.js';
 // --can artifact.js apply.js next_to_u` / `artifact.js options.js
 // select_menu_pick_one`: SAFE, same shape as the file's existing
 // do.js/hacklib.js/mondata.js cycle edges; runtime-only awaited calls).
+import { clear_bypasses, bypass_obj, nxt_unbypassed_obj, which_armor } from './worn.js';
+import { dismount_steed } from './steed.js';
 import { next_to_u } from './apply.js';
 import { select_menu_pick_one } from './options.js';
 
@@ -162,6 +169,7 @@ const SPE_CONE_OF_COLD = objectNames.indexOf('SPE_CONE_OF_COLD');
 const SCR_TAMING = objectNames.indexOf('SCR_TAMING');
 /** C artifact.c:2516 — Bell of Opening invocation-square pass-through. */
 const BELL_OF_OPENING = objectNames.indexOf('BELL_OF_OPENING');
+const LEASH = objectNames.indexOf('LEASH');
 /** C monflag.h MS_NEMESIS */
 const MS_NEMESIS = 37;
 /** C monsters.h PM_WATER_ELEMENTAL — mdef->data identity for the FIRE vaporize arm. */
@@ -617,6 +625,18 @@ export function arti_cost(otmp) {
     const art = artilist()[otmp.oartifact | 0];
     if (art?.cost) return art.cost | 0;
     return 100 * oc_cost;
+}
+
+/**
+ * C ref: artifact.c artifact_has_invprop `:2299–2305`.
+ * Non-artifact is artilist[ART_NONARTIFACT]; then inv_prop equality.
+ * Sole C caller is dodown's controlled-levitation age bump.
+ */
+export function artifact_has_invprop(otmp, inv_prop) {
+    const list = artilist();
+    const arti = get_artifact(otmp);
+    return arti !== list[ART_NONARTIFACT]
+        && (arti?.inv_prop | 0) === (inv_prop | 0);
 }
 
 /** C ref: artifact.c get_artifact */
@@ -1466,7 +1486,8 @@ export async function touch_artifact(obj, mon) {
  * staticfn unported, caller-to-be), dowear/do_wear.c:2355,
  * doeat/eat.c:2872, dowield/wield.c:191.
  * Named omissions: `*objp` nulling is reference-local (every live caller
- * returns on 0 without touching obj); untouchable/retouch_equipment.
+ * returns on 0 without touching obj). `untouchable` checks invent membership
+ * before reversing an invoke.
  * (C contract is NONNULLARG1; the null guard below keeps pre-port
  * behavior and never throws.)
  * @param {object} obj hero's object (C `*objp`)
@@ -1540,6 +1561,95 @@ export async function retouch_object(obj, loseit) {
         obj = null; /* C: *objp = 0 — no longer in inventory */
     }
     return 0;
+}
+
+/* C artifact.c retouch_equipment `:2643` — recursion control. */
+let retouch_equipment_nesting = 0;
+
+/**
+ * C ref: artifact.c untouchable `:2597–2636`.
+ * True when the hero can no longer touch `obj` and it was unworn or
+ * dropped. A still-carried invoked property is reversed with arti_invoke.
+ * C `*objp` nulling is invent membership here (retouch_object nulls only
+ * its parameter).
+ * @param {object|null} obj
+ * @param {boolean} dropUntouchable
+ * @returns {Promise<boolean>}
+ */
+async function untouchable(obj, dropUntouchable) {
+    const u = game.u || {};
+    const wearmask = (~(W_QUIVER | (u.twoweap ? 0 : W_SWAPWEP) | W_BALL)) | 0;
+    const beingworn = !!(obj && (
+        (((obj.owornmask | 0) & wearmask) !== 0)
+        || ((obj.oclass | 0) === TOOL_CLASS && (
+            obj.lamplit
+            || ((obj.otyp | 0) === LEASH && (obj.leashmon | 0))
+            || (Is_container(obj) && Has_contents(obj))
+        ))
+    ));
+    const list = artilist();
+    const art = get_artifact(obj);
+    let carryeffect = false;
+    let invoked = false;
+    if (art !== list[ART_NONARTIFACT]) {
+        carryeffect = !!((art?.cary?.adtyp | 0) || (art?.cspfx | 0));
+        const inv = art?.inv_prop | 0;
+        invoked = inv > 0 && inv <= LAST_PROP
+            && !!(((u.uprops?.[inv]?.extrinsic | 0) & W_ARTI));
+    }
+    if (beingworn || carryeffect || invoked) {
+        if (!(await retouch_object(obj, dropUntouchable))) {
+            /* Dropped objects leave invent (carry effect already off).
+               Still-carried invoked toggles are reversed here. */
+            if (invoked && obj && (game.invent || []).includes(obj)) {
+                await arti_invoke(obj);
+            }
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * C ref: artifact.c retouch_equipment `:2639–2705`.
+ * dropflag 0 keeps untouchable items, 1 drops all, 2 drops weapons.
+ * Callers: uchangealign(0), cpostfx/newman/polymon/rehumanize/were(2).
+ * @param {number} dropflag
+ */
+export async function retouch_equipment(dropflag) {
+    const u = game.u || {};
+    const hadGloves = !!u.uarmg;
+    const hadRings = (!!u.uleft) + (!!u.uright);
+    if (!retouch_equipment_nesting++) clear_bypasses();
+    let dropit = (dropflag | 0) > 0;
+    if (u.twoweap) {
+        /* C calls bypass_obj(uswapwep) unconditionally; a missing
+           secondary weapon has nothing to mark. */
+        if (u.uswapwep) bypass_obj(u.uswapwep);
+        await untouchable(u.uswapwep, dropit);
+    }
+    if (u.uwep) {
+        bypass_obj(u.uwep);
+        await untouchable(u.uwep, dropit);
+    }
+    if (u.usteed) {
+        const saddle = which_armor(u.usteed, W_SADDLE);
+        if (saddle && (await untouchable(saddle, false))) {
+            await dismount_steed(DISMOUNT_THROWN);
+        }
+    }
+    dropit = (dropflag | 0) === 1;
+    let obj;
+    while ((obj = nxt_unbypassed_obj(game.invent))) {
+        await untouchable(obj, dropit);
+    }
+    if (hadRings !== (!!u.uleft) + (!!u.uright) && u.uarmg && u.uarmg.cursed) {
+        await uncurse(u.uarmg);
+    }
+    if (hadGloves && !u.uarmg) {
+        await selftouch('After losing your gloves, you');
+    }
+    if (!--retouch_equipment_nesting) clear_bypasses();
 }
 
 /**
@@ -2090,10 +2200,71 @@ async function invoke_storm_spell(obj) {
 }
 
 /**
- * C ref: artifact.c arti_invoke else :2178–2229 — INVIS / LEVITATION / CONFLICT.
- * xor W_ARTI; tired only when turning on; cooldown rnz(100) when turning off.
+ * C ref: artifact.c arti_invoke `:2130–2232`.
+ * !obj → impossible + ECMD_OK. No inv_prop → crystal ball or pline1
+ * nothing_happens + ECMD_TIME. inv_prop > LAST_PROP → cost, then the
+ * special switch; unknown power is impossible and ECMD_OK (res stays
+ * the initializer). Otherwise xor W_ARTI and toggle CONFLICT /
+ * LEVITATION / INVIS.
+ * use_crystal_ball's `*optr = 0` is inside that callee; this function
+ * does not read obj again.
+ * @returns {number} ECMD_*
  */
-async function arti_invoke_property(obj, invProp) {
+export async function arti_invoke(obj) {
+    if (!obj) {
+        await impossible('arti_invoke without obj');
+        return ECMD_OK;
+    }
+    const list = artilist();
+    const oart = get_artifact(obj);
+    const invProp = oart?.inv_prop | 0;
+    if (oart === list[ART_NONARTIFACT] || !invProp) {
+        if ((obj.otyp | 0) === CRYSTAL_BALL) {
+            const { use_crystal_ball } = await import('./detect.js');
+            await use_crystal_ball(obj);
+        } else {
+            await pline(nothing_happens);
+        }
+        return ECMD_TIME;
+    }
+
+    if (invProp > LAST_PROP) {
+        if (!(await arti_invoke_cost(obj))) return ECMD_TIME;
+        let res = ECMD_OK;
+        switch (invProp) {
+        case TAMING: res = await invoke_taming(obj); break;
+        case HEALING: res = await invoke_healing(obj); break;
+        case ENERGY_BOOST: res = await invoke_energy_boost(obj); break;
+        case UNTRAP: res = await invoke_untrap(obj); break;
+        case CHARGE_OBJ: res = await invoke_charge_obj(obj); break;
+        case LEV_TELE: {
+            const { level_tele } = await import('./teleport.js');
+            await level_tele();
+            res = ECMD_TIME;
+            break;
+        }
+        case CREATE_PORTAL: res = await invoke_create_portal(obj); break;
+        case ENLIGHTENING: {
+            const { enlightenment } = await import('./invent.js');
+            await enlightenment(MAGICENLIGHTENMENT, ENL_GAMEINPROGRESS);
+            res = ECMD_TIME;
+            break;
+        }
+        case CREATE_AMMO: res = await invoke_create_ammo(obj); break;
+        case BANISH: res = await invoke_banish(obj); break;
+        case FLING_POISON: res = await invoke_fling_poison(obj); break;
+        case SNOWSTORM:
+            /* FALLTHRU */
+        case FIRESTORM: res = await invoke_storm_spell(obj); break;
+        case BLINDING_RAY: res = await invoke_blinding_ray(obj); break;
+        default:
+            await impossible('Unknown invoke power %d.', invProp);
+            break;
+        }
+        return res;
+    }
+
+    /* C `:2178–2229` — property toggle. eprop is the value after ^= W_ARTI. */
     const eprop = xor_w_arti(invProp);
     const iprop = prop_intrinsic(invProp);
     const on = (eprop & W_ARTI) !== 0;
@@ -2116,12 +2287,10 @@ async function arti_invoke_property(obj, invProp) {
         break;
     case LEVITATION:
         if (on) {
-            const { float_up } = await import('./trap.js');
             await float_up();
             const { spoteffects } = await import('./pickup.js');
             await spoteffects(false);
         } else {
-            const { float_down } = await import('./trap.js');
             await float_down(I_SPECIAL | TIMEOUT, W_ARTI);
         }
         break;
@@ -2143,78 +2312,6 @@ async function arti_invoke_property(obj, invProp) {
         break;
     }
     return ECMD_TIME;
-}
-
-/**
- * C ref: artifact.c arti_invoke — special powers / property toggle.
- * Envelope: !inv_prop → crystal ball or nothing_happens + ECMD_TIME.
- * inv_prop > LAST_PROP: arti_invoke_cost then switch (D-1377 BLINDING_RAY;
- * D-1488 HEALING/ENERGY/UNTRAP/LEV_TELE/ENLIGHTENING/CREATE_AMMO/FLING/
- * FIRESTORM/SNOWSTORM; D-1502 TAMING/CHARGE_OBJ/CREATE_PORTAL/BANISH).
- * Property toggle INVIS/LEVITATION/CONFLICT (D-1488).
- * @returns {number} ECMD_*
- */
-export async function arti_invoke(obj) {
-    if (!obj) {
-        // C: impossible("arti_invoke without obj")
-        return ECMD_OK;
-    }
-    const list = artilist();
-    const oart = get_artifact(obj);
-    const invProp = oart?.inv_prop | 0;
-    if (oart === list[ART_NONARTIFACT] || !invProp) {
-        if (obj.otyp === CRYSTAL_BALL) {
-            // C artifact.c arti_invoke → use_crystal_ball (D-1010)
-            const { use_crystal_ball } = await import('./detect.js');
-            await use_crystal_ball(obj);
-        } else {
-            await pline(nothing_happens);
-        }
-        return ECMD_TIME;
-    }
-    if (invProp > LAST_PROP) {
-        if (!(await arti_invoke_cost(obj))) return ECMD_TIME;
-        switch (invProp) {
-        case TAMING:
-            return invoke_taming(obj);
-        case HEALING:
-            return invoke_healing(obj);
-        case ENERGY_BOOST:
-            return invoke_energy_boost(obj);
-        case UNTRAP:
-            return invoke_untrap(obj);
-        case CHARGE_OBJ:
-            return invoke_charge_obj(obj);
-        case LEV_TELE: {
-            const { level_tele } = await import('./teleport.js');
-            await level_tele();
-            return ECMD_TIME;
-        }
-        case CREATE_PORTAL:
-            return invoke_create_portal(obj);
-        case ENLIGHTENING: {
-            const { enlightenment } = await import('./invent.js');
-            await enlightenment(MAGICENLIGHTENMENT, ENL_GAMEINPROGRESS);
-            return ECMD_TIME;
-        }
-        case CREATE_AMMO:
-            return invoke_create_ammo(obj);
-        case BANISH:
-            return invoke_banish(obj);
-        case FLING_POISON:
-            return invoke_fling_poison(obj);
-        case SNOWSTORM:
-            /* FALLTHRU */
-        case FIRESTORM:
-            return invoke_storm_spell(obj);
-        case BLINDING_RAY:
-            return invoke_blinding_ray(obj);
-        default:
-            await pline(nothing_happens);
-            return ECMD_TIME;
-        }
-    }
-    return arti_invoke_property(obj, invProp);
 }
 
 /**

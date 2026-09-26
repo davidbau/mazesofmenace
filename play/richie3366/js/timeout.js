@@ -2310,13 +2310,16 @@ const PROPERTYNAMES = [
 ];
 
 /**
- * C ref: timeout.c kind_name — TIMER_* label for #timeout print_queue.
- * TIMER_NONE C calls impossible(); JS returns "none" (queue never
- * stores TIMER_NONE — start_timer rejects kind <= TIMER_NONE).
+ * C ref: timeout.c kind_name `:1994–2011` — TIMER_* label.
+ * TIMER_NONE calls impossible("no timer type") then returns "none".
+ * start_timer rejects kind <= TIMER_NONE before a node is queued, so
+ * print_queue does not hit this arm on a live timer.
  */
-function kind_name(kind) {
+export function kind_name(kind) {
     switch (kind | 0) {
         case TIMER_NONE:
+            /* C impossible() is async in JS; this arm is the panic path. */
+            void impossible('no timer type');
             return 'none';
         case TIMER_LEVEL:
             return 'level';
@@ -2370,8 +2373,7 @@ function print_queue(lines, base) {
  * (COLD_RES+ banner once); uswldtim; uinvault; any_visible_region →
  * visible_region_summary; stasis_until. display_nhwindow is the
  * async caller. Named: VERBOSE_TIMER names; save/rest timer_id;
- * fmt_ptr heap vs o_id; TIMER_NONE impossible(); light.c
- * wiz_light_sources; timer_sanity_check.
+ * fmt_ptr heap vs o_id; light.c wiz_light_sources; timer_sanity_check.
  */
 export function wiz_timeout_queue_lines() {
     const lines = [];

@@ -588,8 +588,10 @@ export function room_cmap_explanation(x, y, loc) {
  * C ref: getpos.c auto_describe → do_screen_description firstmatch
  * (pager.c lookat overwrite + blocked-staircase rewrite in didlook).
  *
- * Named omissions: coord_desc suffix, doname_with_price /
- * doname_vague_quan, buried/embedded suffixes. Travel:
+ * Named omissions: doname_with_price /
+ * doname_vague_quan, buried/embedded suffixes. The `coord_desc` token
+ * is applied by the getpos autodescribe caller (getpos.c:651), not here
+ * — show_glyph and lookaround want firstmatch only. Travel:
  * " (no travel path)" via is_valid_travelpt when getloc_travelmode
  * (D-0809). getpos_getvalid "(invalid target)" live (D-0899); S_goodpos
  * hilite glyphs deferred.
@@ -1325,14 +1327,19 @@ export async function getpos(ccp, force, goal, describeAt) {
             need_full_flush = false;
         } else if (g.iflags?.autodescribe && !msg_given) {
             // C auto_describe — firstmatch via lookat / do_screen_description
-            // + travel/invalid suffixes; ends with curs + flush_screen(0).
+            // + coord_desc (getpos.c:651) + travel/invalid suffixes; ends
+            // with curs + flush_screen(0). GPCOORDS_NONE yields "".
             let brief = '';
             if (typeof describeAt === 'function' && !(g.iflags.terrainmode | 0)) {
                 // Ordinary whatis: keep caller brief_at when not terrain browse
                 brief = describeAt(cx, cy) || '';
             }
             if (!brief) brief = auto_describe_text(cx, cy);
-            if (brief) brief += auto_describe_suffix(cx, cy);
+            if (brief) {
+                const coords = coord_desc(cx, cy, g.iflags?.getpos_coords);
+                if (coords) brief += ` ${coords}`;
+                brief += auto_describe_suffix(cx, cy);
+            }
             g._pending_message = brief || '';
             // Full rebuild keeps map/topline in sync for walk frames; then
             // curs onto the target (gnew usually empty after prior flush).

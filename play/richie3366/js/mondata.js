@@ -23,8 +23,8 @@ import {
     M_SEEN_DISINT, M_SEEN_ELEC, M_SEEN_POISON, M_SEEN_ACID, M_SEEN_REFL,
     CONFLICT,
     ANTIMAGIC, FIRE_RES, COLD_RES, SLEEP_RES, DISINT_RES, POISON_RES,
-    SHOCK_RES, ACID_RES, REFLECTING,
-    W_ARM, W_ARMOR, W_ACCESSORY, W_WEP, W_SWAPWEP,
+    SHOCK_RES, ACID_RES, STONE_RES, DRAIN_RES, REFLECTING,
+    W_ARM, W_ARMC, W_ARMOR, W_ACCESSORY, W_WEP, W_SWAPWEP,
     BLND_RES,
     Upolyd, NATTK,
 } from './const.js';
@@ -45,8 +45,11 @@ import {
     AD_PHYS, AD_DRLI, AD_STON, AD_DRDX, AD_DRCO, AD_WERE,
 } from './mhitm.js';
 import { title_to_mon } from './botl.js';
+import { resists_drli } from './zap.js';
 
 const RIN_CONFLICT = objectNames.indexOf('RIN_CONFLICT');
+/** C objects.c ALCHEMY_SMOCK — worn cloak, poison and acid. */
+const ALCHEMY_SMOCK = objectNames.indexOf('ALCHEMY_SMOCK');
 /** C monflag.h MS_SILENT / MS_BUZZ. */
 const MS_SILENT = 0;
 const MS_BUZZ = 10;
@@ -173,6 +176,143 @@ export function defended(mon, adtyp) {
         o = isYou ? (u.uarm || null) : which_armor(mon, W_ARM);
     }
     if (o && Is_dragon_armor(o) && defends(adtyp, o)) return true;
+    return false;
+}
+
+/**
+ * C monst.h:270–271 mon_resistancebits — species | extrinsic | intrinsic.
+ * @param {object} mon
+ */
+function mon_resistancebits(mon) {
+    return (mon?.data?.mresists | 0)
+        | (mon?.mextrinsics | 0)
+        | (mon?.mintrinsics | 0);
+}
+
+/**
+ * Flat H/E names for the eight elemental properties. C stores them in
+ * `u.uprops[prop].intrinsic` / `.extrinsic` (`youprop.h`). JS also
+ * mirrors those bits on `u.H*` / `u.E*` / the unsuffixed flat.
+ */
+const HERO_RES_FLATS = {
+    [FIRE_RES]: ['Fire_resistance', 'HFire_resistance', 'EFire_resistance'],
+    [COLD_RES]: ['Cold_resistance', 'HCold_resistance', 'ECold_resistance'],
+    [SLEEP_RES]: ['Sleep_resistance', 'HSleep_resistance', 'ESleep_resistance'],
+    [DISINT_RES]: ['Disint_resistance', 'HDisint_resistance', 'EDisint_resistance'],
+    [SHOCK_RES]: ['Shock_resistance', 'HShock_resistance', 'EShock_resistance'],
+    [POISON_RES]: ['Poison_resistance', 'HPoison_resistance', 'EPoison_resistance'],
+    [ACID_RES]: ['Acid_resistance', 'HAcid_resistance', 'EAcid_resistance'],
+    [STONE_RES]: ['Stone_resistance', 'HStone_resistance', 'EStone_resistance'],
+};
+
+/**
+ * C mondata.c:154–155 — `u.uprops[propindx].intrinsic || .extrinsic`.
+ * @param {number} propindx
+ */
+function hero_uprop_resists(propindx) {
+    const u = game.u || {};
+    const p = u.uprops?.[propindx];
+    if ((p?.intrinsic | 0) || (p?.extrinsic | 0)) return true;
+    const flats = HERO_RES_FLATS[propindx];
+    if (!flats) return false;
+    for (let i = 0; i < flats.length; i++) {
+        if (u[flats[i]]) return true;
+    }
+    return false;
+}
+
+/**
+ * C ref: mondata.c Resists_Elem :129–197 — elemental resistance.
+ * Property 1..8: hero `u.uprops` (flat mirrors included), else
+ * `mon_resistancebits` & `1 << (prop-1)`. Then wielded artifact
+ * `defends(prop+1)`, then worn `oc_oprop`, worn alchemy smock
+ * (poison and acid), and carried `defends_when_carried`.
+ * `prop+1` is the damage type C passes (`:152`): poison is `AD_DRST`
+ * (7). Stone is `AD_SPC1` (9), not `AD_STON` (18).
+ * ANTIMAGIC / DRAIN_RES / BLND_RES return the direct routines.
+ * C is NONNULLARG1; a missing mon returns false.
+ * `impossible` on an unexpected property is the same floating call
+ * as `resists_blnd` (async pline, not awaited).
+ * @param {object} mon
+ * @param {number} propindx
+ */
+export function Resists_Elem(mon, propindx) {
+    if (!mon) return false;
+    const u = game.u || {};
+    const isYou = mon === game.youmonst || !!mon._youmonst;
+    const prop = propindx | 0;
+    let damgtype = 0;
+    let rsstmask = 0;
+
+    switch (prop) {
+    case FIRE_RES:   /* 1 */
+    case COLD_RES:   /* 2 */
+    case SLEEP_RES:  /* 3 */
+    case DISINT_RES: /* 4 */
+    case SHOCK_RES:  /* 5 */
+    case POISON_RES: /* 6 */
+    case ACID_RES:   /* 7 */
+    case STONE_RES:  /* 8 */
+        /* C :152–155 */
+        damgtype = prop + 1;
+        rsstmask = 1 << (prop - 1);
+        break;
+    case ANTIMAGIC:
+        return resists_magm(mon);
+    case DRAIN_RES:
+        return resists_drli(mon);
+    case BLND_RES:
+        return resists_blnd(mon);
+    default:
+        impossible('Resists_Elem(%d), unexpected property type', prop);
+        return false;
+    }
+
+    /* C :171 */
+    if (isYou
+        ? hero_uprop_resists(prop)
+        : ((mon_resistancebits(mon) & rsstmask) !== 0)) {
+        return true;
+    }
+    /* C :173–176 — wielded artifact */
+    let o = isYou ? (u.uwep || null) : MON_WEP(mon);
+    if (o && o.oartifact && defends(damgtype, o)) return true;
+    /* C :178–184 */
+    const uwep = u.uwep || null;
+    let slotmask = (W_ARMOR | W_ACCESSORY) | 0;
+    if (!isYou
+        || (uwep && (((uwep.oclass | 0) === WEAPON_CLASS) || is_weptool(uwep)))) {
+        slotmask |= W_WEP;
+    }
+    if (isYou && u.twoweap) slotmask |= W_SWAPWEP;
+    const grants = (it) => {
+        if (!it) return false;
+        /* C :186–187 worn oc_oprop */
+        if ((((it.owornmask | 0) & slotmask) !== 0)
+            && ((game.objects?.[it.otyp | 0]?.oc_oprop | 0) === prop)) {
+            return true;
+        }
+        /* C :188–193 worn alchemy smock: poison and acid */
+        if ((((it.owornmask | 0) & W_ARMC) === W_ARMC)
+            && ((it.otyp | 0) === ALCHEMY_SMOCK)
+            && (prop === POISON_RES || prop === ACID_RES)) {
+            return true;
+        }
+        /* C :194 carried artifact */
+        if (it.oartifact && defends_when_carried(damgtype, it)) return true;
+        return false;
+    };
+    /* C :178, :185 — hero invent array (gi.invent); monster minvent chain */
+    if (isYou) {
+        const invent = game.invent || [];
+        for (let i = 0; i < invent.length; i++) {
+            if (grants(invent[i])) return true;
+        }
+    } else {
+        for (let it = mon.minvent; it; it = it.nobj) {
+            if (grants(it)) return true;
+        }
+    }
     return false;
 }
 

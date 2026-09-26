@@ -25,7 +25,7 @@
 //        shopper_financial_report / shop_debt (D-1740).
 // Named omissions: allmain/bones fix_shop_damage callers;
 // holetime dig follow;
-// m_break_boulder; m_move_aggress; inhistemple callers; mapseen_temple;
+// m_move_aggress; inhistemple callers; mapseen_temple;
 // ACH_SHOP mapseen;
 // remaining SetVoice pick_pick / kops / pay-bill;
 // mongone full;
@@ -52,7 +52,7 @@ import { dist2, highc, online2, upstart, depth } from './hacklib.js';
 import { choose_stairs } from './wizard.js';
 import { in_rooms, stop_occupation, You_hear } from './hack.js';
 import {
-    ESHK, EPRI, BEFORE, NOW, IS_ROOM, IS_DOOR, IS_WALL, ZAP_POS, NOTONL, u_at, isok,
+    ESHK, EPRI, BEFORE, NOW, IS_ROOM, IS_DOOR, IS_WALL, ZAP_POS, NOTONL, ALLOW_ROCK, u_at, isok,
     ROOMOFFSET, SHOPBASE, ACH_SHOP, SVALL, ROWNO, COLNO,
     D_CLOSED, D_BROKEN, D_LOCKED, REPAIR_DELAY, BOLT_LIM,
     LANDMINE, BEAR_TRAP, HOLE, PIT, SPIKED_PIT,
@@ -4177,7 +4177,7 @@ function onlineu(xx, yy) {
 
 /**
  * C ref: priest.c move_special — shared shk/priest step picker.
- * Returns 1 moved, 0 didn't, -2 died. (m_move_aggress / boulder deferred.)
+ * Returns 1 moved, 0 didn't, -2 died. (m_move_aggress still named.)
  * Lazy-imports mon.js helpers to avoid mon→monmove→shk→mon cycle.
  */
 export async function move_special(mtmp, in_his_shop, appr, uondoor, avoid,
@@ -4244,12 +4244,18 @@ export async function move_special(mtmp, in_his_shop, appr, uondoor, avoid,
     }
 
     if (nix !== omx || niy !== omy) {
+        // C priest.c move_special `:105–107` — shared by pri_move and shk_move.
+        if (ninfo & ALLOW_ROCK) {
+            const { m_break_boulder } = await import('./monmove.js');
+            await m_break_boulder(mtmp, nix, niy);
+            return 1;
+        }
+        // C `:108–118` m_move_aggress still named.
         if (m_at(nix, niy) || u_at(nix, niy)) return 0;
         if (!isok(nix, niy)) return 0;
         mtmp.mx = nix;
         mtmp.my = niy;
         newsym(nix, niy);
-        void ninfo;
         return 1;
     }
     return 0;

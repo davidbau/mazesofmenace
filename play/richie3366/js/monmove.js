@@ -62,7 +62,7 @@ import {
 } from './do_name.js';
 import { doname, distant_name, ansimpleoname, vtense, an, xname, makeplural, yname } from './objnam.js';
 import { mpickobj, set_malign } from './makemon.js';
-import { may_dig, mdig_tunnel, bury_an_obj } from './dig.js';
+import { may_dig, mdig_tunnel, bury_an_obj, fracture_rock } from './dig.js';
 import { MON_WEP, mon_wield_item, select_rwep, autoreturn_weapon } from './weapon.js';
 import { lined_up, m_has_launcher_and_ammo } from './mthrowu.js';
 import { is_pole } from './wield.js';
@@ -77,17 +77,19 @@ import { check_gear_next_turn, extract_from_minvent } from './worn.js';
 import { picking_lock } from './lock.js';
 import { mbodypart } from './polyself.js';
 import {
-    newsym, pline, canseemon as display_canseemon, pline_mon, pline_xy,
+    newsym, pline, pline_The, canseemon as display_canseemon, pline_mon, pline_xy,
     canspotmon as display_canspotmon, sensemon, Norep, verbalize, set_msg_xy,
 } from './display.js';
 import { dog_move, finish_meating, cursed_object_at, dogfood } from './dogmove.js';
 import { worm_move, worm_nomove, see_wsegs, worm_known, wormhitu } from './worm.js';
-import { shk_move, gd_move, pri_move, costly_spot, inhishop } from './shk.js';
+import {
+    shk_move, gd_move, pri_move, costly_spot, inhishop, bill_dummy_object,
+} from './shk.js';
 import { cuss, tactics } from './wizard.js';
 import { Invis, artifact_light } from './timeout.js';
 import { Unaware } from './eat.js';
 import { SetVoice } from './sndprocs.js';
-import { rn2, rnd, d } from './rng.js';
+import { rn1, rn2, rnd, d } from './rng.js';
 import { game } from './gstate.js';
 import {
     dist2,
@@ -135,6 +137,8 @@ const PM_LIZARD = monsterNames.indexOf('PM_LIZARD');
 const LUMP_OF_ROYAL_JELLY = objectNames.indexOf('LUMP_OF_ROYAL_JELLY');
 /** C ref: monattk.h AD_DRIN — mind_blast monkilled how. */
 const AD_DRIN = 32;
+/** C ref: monflag.h MS_LEADER — quest leader msound. */
+const MS_LEADER = 36;
 /** C ref: monattk.h — postmov iron-bars eat (rust monster / gray ooze / pudding). */
 const AD_RUST = 24;
 const AD_CORR = 42;
@@ -1793,6 +1797,48 @@ async function m_move_aggress(mtmp, x, y) {
     return MMOVE_DONE;
 }
 
+/**
+ * C ref: monmove.c m_can_break_boulder `:132–139` — rider, or a
+ * shopkeeper / priest / quest leader whose spell timer is idle.
+ */
+export function m_can_break_boulder(mtmp) {
+    const ptr = mtmp?.data;
+    return !!(is_rider(ptr)
+        || (!(mtmp?.mspec_used | 0)
+            && (mtmp?.isshk || mtmp?.ispriest
+                || ((ptr?.msound | 0) === MS_LEADER))));
+}
+
+/**
+ * C ref: monmove.c m_break_boulder `:142–173` — one boulder at (x, y)
+ * becomes rocks. Non-riders mutter (when the hero can hear them nearby)
+ * and spend mspec_used. Unpaid boulders are billed before the fracture.
+ */
+export async function m_break_boulder(mtmp, x, y) {
+    let otmp;
+    if (m_can_break_boulder(mtmp) && (otmp = sobj_at(BOULDER, x, y))) {
+        if (!is_rider(mtmp.data)) {
+            // C `:149–156` — Deaf skips the mutter; rn1 still runs.
+            if (!hero_Deaf() && mdistu(mtmp) < 4 * 4) {
+                if (display_canspotmon(mtmp)) set_msg_xy(mtmp.mx | 0, mtmp.my | 0);
+                await pline(
+                    '%s mutters %s.',
+                    Monnam(mtmp),
+                    mtmp.ispriest ? 'a prayer' : 'an incantation',
+                );
+            }
+            mtmp.mspec_used = (mtmp.mspec_used | 0) + rn1(20, 10);
+        }
+        if (cansee(x, y)) {
+            set_msg_xy(x, y);
+            await pline_The('boulder falls apart.');
+        }
+        // C `:166–169` — don't charge a boulder that is not already billed.
+        if (otmp.unpaid) await bill_dummy_object(otmp);
+        await fracture_rock(otmp);
+    }
+}
+
 // C ref: monmove.c m_move() — pets → postmov(dog_move); else approach / track path
 export async function m_move(mtmp, after) {
     // ptr / can_* set after mintrap (C: mintrap can change mtmp->data;
@@ -2105,9 +2151,10 @@ export async function m_move(mtmp, after) {
         return MMOVE_DONE;
     }
 
-    // C: ALLOW_ROCK + m_can_break_boulder → break without place (deferred)
-    if ((chiInfo & ALLOW_ROCK) !== 0) {
-        // Named: m_can_break_boulder / m_break_boulder deferred
+    // C monmove.c `:2042–2044` — break the boulder and spend the turn.
+    if ((chiInfo & ALLOW_ROCK) !== 0 && m_can_break_boulder(mtmp)) {
+        await m_break_boulder(mtmp, nix, niy);
+        return MMOVE_DONE;
     }
 
     // C: m_postmove_effect before place (Hezrou/Steam at old mx/my)

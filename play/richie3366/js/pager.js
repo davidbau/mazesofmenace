@@ -23,7 +23,7 @@ import './date.js';
 import { rn2, rn2_on_display_rng } from './rng.js';
 import { nhgetch } from './input.js';
 import {
-    flush_screen, flush_topl_more, pline, impossible, docrt, more,
+    flush_screen, flush_topl_more, pline, impossible, docrt, more, coord_desc,
     mon_glyph, obj_glyph, look_shown_at, terrain_glyph, Hallucination,
     glyph_to_obj_at, glyph_at, glyph_is_trap, glyph_to_trap, trap_to_glyph,
     glyph_is_monster, glyph_is_object, glyph_is_statue, glyph_is_warning,
@@ -313,10 +313,6 @@ export async function show_text_pages(lines, { moreAtEnd = true } = {}) {
 }
 
 /**
- * C ref: getpos.c coord_desc GPCOORDS_MAP — "<x,y>"; y<10 gets trailing
- * space so %8s columns line up (pager.c look_all).
- */
-/**
  * C ref: pager.c trap_description `:164–181` — name the thing a trap
  * glyph stands for. Trap detection used to draw a bear trap over
  * trapped doors and trapped containers; those are semi-real traps now
@@ -338,20 +334,17 @@ export function trap_description(tnum, x, y) {
     return trapname(tnum, false);
 }
 
-function coord_desc(x, y, cmode = GPCOORDS_MAP) {
-    if (cmode === GPCOORDS_SCREEN) {
-        return `[${String(y + 2).padStart(2, '0')},${String(x).padStart(2, '0')}]`;
-    }
-    if (cmode === GPCOORDS_COMPASS || cmode === 'f') {
-        return '(here)'; // full compass deferred; look_all defaults to MAP
-    }
-    let s = `<${x},${y}>`;
-    if (cmode === GPCOORDS_MAP && y < 10) s += ' ';
-    return s;
-}
-
-function look_coord_prefix(x, y, cmode) {
-    const coordbuf = coord_desc(x, y, cmode);
+/**
+ * C ref: pager.c look_all `:2043–2058`, look_traps `:2122–2125`,
+ * look_engrs `:2211–2214` — SCREEN `"%s  "`, MAP `"%8s  "`, else `"%12s  "`.
+ * `mapKitten` is look_all only (`:2052–2053`): after `coord_desc`, a
+ * trailing space when MAP and `y < 10` so the commas line up. Traps and
+ * engravings do not kitten. `coord_desc` itself never adds that space
+ * (`getpos.c:612–615`).
+ */
+function look_coord_prefix(x, y, cmode, mapKitten) {
+    let coordbuf = coord_desc(x, y, cmode);
+    if (mapKitten && cmode === GPCOORDS_MAP && (y | 0) < 10) coordbuf += ' ';
     if (cmode === GPCOORDS_SCREEN) return `${coordbuf}  `;
     if (cmode === GPCOORDS_MAP) return `${coordbuf.padStart(8, ' ')}  `;
     return `${coordbuf.padStart(12, ' ')}  `;
@@ -2165,11 +2158,11 @@ function is_swallow_sym(c) {
  * glyph → look_at_object via glyph_to_obj (`:2016–2018`, C object_from_map's
  * glyphotyp). Header (`:2026–2042`) uses upstart + coord_desc(u) with the
  * compass canspotself "your position"/"you" split; per-line prefix
- * (`:2043–2063`) is the width-formatted coord (MAP y<10 kitten) + shown
- * char (C encglyph of the displayed glyph; JS gbuf is disp_ch, D-1767)
- * with the BUFSZ truncation guard. Window via show_text_pages (NHW_TEXT
- * idiom, like look_traps/look_engrs). Compass-full coord text stays
- * deferred (local coord_desc).
+ * (`:2043–2063`) is the width-formatted coord (MAP y<10 kitten, look_all
+ * only) + shown char (C encglyph of the displayed glyph; JS gbuf is
+ * disp_ch, D-1767) with the BUFSZ truncation guard. Window via
+ * show_text_pages (NHW_TEXT idiom, like look_traps/look_engrs).
+ * `coord_desc` is the `js/display.js` export (COMPASS and COMFULL live).
  */
 async function look_all(nearby, do_mons) {
     const { lo_x, lo_y, hi_x, hi_y } = look_region(nearby); // C :1989
@@ -2221,7 +2214,7 @@ async function look_all(nearby, do_mons) {
                     const which = do_mons ? 'monsters' : 'objects'; // C :2027
                     if (nearby) {
                         const where = cmode !== GPCOORDS_COMPASS // C :2031
-                            ? coord_desc(u.ux, u.uy, cmode).replace(/ $/, '')
+                            ? coord_desc(u.ux, u.uy, cmode)
                             : !canspotself() ? 'your position' : 'you'; // C :2033
                         lines.push( // C :2029-2030
                             `${upstart(which)} currently shown near ${where}:`,
@@ -2233,7 +2226,7 @@ async function look_all(nearby, do_mons) {
                     }
                     lines.push('    '); // C :2041 separator
                 }
-                const prefix = look_coord_prefix(x, y, cmode); // C :2043-2058
+                const prefix = look_coord_prefix(x, y, cmode, true); // C :2043-2058
                 const head = `${prefix}${glyphCh}  `; // C :2055-2059
                 // C :2061 guard against potential overflow
                 const maxLook = BUFSZ - 1 - head.length;
@@ -2318,7 +2311,7 @@ async function look_traps(nearby) {
                     lines.push(title.replace(/^./, c => c.toUpperCase()));
                     lines.push('    ');
                 }
-                const prefix = look_coord_prefix(x, y, cmode);
+                const prefix = look_coord_prefix(x, y, cmode, false); // C :2122-2125 no kitten
                 const head = `${prefix}${glyphCh}  `;
                 // C BUFSZ guard: outbuf already holds prefix + glyph
                 const maxLook = BUFSZ - 1 - head.length;
@@ -2414,18 +2407,9 @@ async function look_engrs(nearby) {
                     lines.push('    '); // C :2208 separator
                 }
                 /* C :2210-2215 — prefix: "coords  C  " + rendered glyph + ' '.
-                   C coord_desc MAP is bare `<x,y>` (getpos.c); the local
-                   coord_desc's y<10 kitten would break the `%8s` pad, so
-                   MAP formats raw here (SCREEN/COMPASS keep the helper). */
-                const coord = cmode === GPCOORDS_MAP
-                    ? `<${x},${y}>`
-                    : coord_desc(x, y, cmode);
-                const cprefix = cmode === GPCOORDS_SCREEN
-                    ? `${coord}  `
-                    : cmode === GPCOORDS_MAP
-                        ? `${coord.padStart(8, ' ')}  `
-                        : `${coord.padStart(12, ' ')}  `;
-                const head = `${cprefix}${glyphCh} `;
+                   No y<10 kitten (that is look_all only). */
+                const prefix = look_coord_prefix(x, y, cmode, false);
+                const head = `${prefix}${glyphCh} `;
                 // C :2216-2218 guard against potential overflow
                 const maxLook = BUFSZ - 1 - head.length;
                 if (lookbuf.length > maxLook) {

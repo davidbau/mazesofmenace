@@ -145,7 +145,7 @@ import {
     PM_KNIGHT, PM_WIZARD, PM_ELF, PM_VALKYRIE,
 } from './generated/monsters_data.js';
 import { str_start_is } from './hacklib.js';
-import { retouch_object, touch_artifact } from './artifact.js';
+import { retouch_object, touch_artifact, retouch_equipment } from './artifact.js';
 import { remove_worn_item } from './steal.js';
 
 /** C hack.h invlet_basic — a-zA-Z slots before invent-full dropy. */
@@ -1815,7 +1815,7 @@ function eatmdone() {
  * Branch envelope (D-0943/D-0944/D-0945): named specials + check_intrinsics
  * hallu/newt + corpse_intrinsic → givit / gainstr; were* set_ulycn;
  * mimic gold eatmdone/afternmv; disenchanter attrcurse.
- * Named omissions: retouch_equipment after set_ulycn; set_mimic_blocking;
+ * Named omissions: set_mimic_blocking;
  * curs_on_u; livelog first polyself conduct; eatmupdate hallu toggle.
  */
 async function cpostfx(pm) {
@@ -2016,7 +2016,9 @@ async function cpostfx(pm) {
 
     if (ismnum(catch_lycanthropy)) {
         set_ulycn(catch_lycanthropy);
-        // retouch_equipment(2) deferred
+        /* C eat.c:1325 — lycanthropy may make worn silver untouchable.
+           dropflag 2 drops weapons only. */
+        await retouch_equipment(2);
     }
 }
 

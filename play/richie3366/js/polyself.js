@@ -70,6 +70,7 @@ import { makeknown } from './invent.js';
 import { unmul, is_lava } from './hack.js';
 import { expels } from './mhitu.js';
 import { set_utrap, reset_utrap, selftouch } from './trap.js';
+import { retouch_equipment } from './artifact.js';
 import { can_ride, dismount_steed } from './steed.js';
 // dogaze/dospinweb/rehumanize arms (imports.mjs --can: both SAFE, hoisted fns).
 import { couldsee, set_mimic_blocking } from './vision.js';
@@ -954,9 +955,9 @@ async function polyman(fmt, arg) {
  * C ref: polyself.c newman `:338–466` — fail-to-poly / force-human: level±2,
  * sex rn2(10), rndexp, redist_attr, HP/EN rebuild, hunger rn1(500,500),
  * Sick/Stoned clear, Polymorph_control uhp arm, newuhs, polyman, livelog,
- * Slimed residual, botl/see/encumber tail, gloveless selftouch.
- * Named omissions: retouch_equipment(2) (`:464`, own coverage row —
- * rehumanize precedent); livelog_newform (`:307` non-static C fn, own row)
+ * Slimed residual, botl/see/encumber tail, retouch_equipment(2),
+ * gloveless selftouch.
+ * Named omissions: livelog_newform (`:307` non-static C fn, own row)
  * on the no-level-change arm (`:452–453`).
  */
 /**
@@ -1067,7 +1068,8 @@ async function newman() {
     flags.botl = true;
     see_monsters();
     await encumber_msg();
-    // C `:464` retouch_equipment(2) stays a named omission (own row).
+    /* C polyself.c:463 — new human form, drop weapons only. */
+    await retouch_equipment(2);
     // C `:465–466` — a gloveless new form touches itself.
     if (!u.uarmg) await selftouch(no_longer_petrify_resistant);
 }
@@ -1078,8 +1080,7 @@ async function newman() {
  * (mh<1 done(DIED) + early return, else amulet-of-unchanging
  * Your/observe/makeknown); emits_light del_light_source; polyman
  * return-to-race; uhp<1 done(DIED); nomul; botl/vision; encumber_msg;
- * update_inventory; flying-steed You; gloveless selftouch.
- * Named omissions: retouch_equipment(2) (`artifact.c:2639`, own coverage row).
+ * update_inventory; flying-steed You; retouch_equipment(2); gloveless selftouch.
  */
 export async function rehumanize() {
     const u = game.u || {};
@@ -1123,7 +1124,8 @@ export async function rehumanize() {
         // C polyself.c:1413 You("and %s return gently to the %s.",
         // mon_nam(u.usteed), surface(u.ux, u.uy)).
         await You('and %s return gently to the %s.', mon_nam(u.usteed), surface(u.ux, u.uy));
-    // retouch_equipment(2) named above
+    /* C polyself.c:1415 — human form again, drop weapons only. */
+    await retouch_equipment(2);
     if (!u.uarmg) await selftouch(no_longer_petrify_resistant);
 }
 
@@ -1411,9 +1413,8 @@ async function check_strangling(on) {
  * newsym; egg learn; swallow expel / ustuck release / uunstick; steed
  * petrify/dismount; find_ac#2; pool spoteffects; Passes_walls/lava/
  * amorphous/web arms; check_strangling(TRUE); botl; see_monsters;
- * encumber_msg; selftouch; verbose ability tips.
- * Named omissions: retouch_equipment(2) (artifact.c:2639, own row);
- * light-source bookkeeping (set_uasmon map note); break_armor horns /
+ * encumber_msg; retouch_equipment(2); selftouch; verbose ability tips.
+ * Named omissions: light-source bookkeeping (set_uasmon map note); break_armor horns /
  * flimsy-helm pierce / ublindf (break_armor map note).
  * @param {number} mntmp
  * @returns {Promise<number>} 1 on success, 0 on geno abort
@@ -1736,8 +1737,8 @@ export async function polymon(mntmp) {
     see_monsters();
     await encumber_msg();
 
-    /* retouch_equipment(2) stays a named omission (artifact.c:2639 — its own
-       coverage row, map-kept); the selftouch below it is live. */
+    /* C polyself.c:1021 — new form, drop weapons only. */
+    await retouch_equipment(2);
     // C :1019-1024 — bare-handed after the change: risk the touch. This may
     // recurse into polymon() (stone golem wielding cockatrice corpse hit by
     // stone-to-flesh); neither form uses #monster so no loop guard is added.

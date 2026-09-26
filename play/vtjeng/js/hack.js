@@ -204,7 +204,7 @@ import {
 } from './command_bindings.js';
 import { clear_kickedloc } from './dokick.js';
 import { drag_ball, move_bc } from './ball.js';
-import { dig_typ, watch_dig } from './dig.js';
+import { dig_typ, use_pick_axe2, watch_dig } from './dig.js';
 import {
     a_monnam,
     capitalizedAlwaysVisibleMonsterName,
@@ -262,6 +262,7 @@ import {
     breathless,
     ceiling_hider,
     is_swimmer,
+    likes_lava,
     metallivorous,
     monster_resists_element,
     dmgtype,
@@ -2445,7 +2446,9 @@ export async function test_move(
         } else if (state.flags?.autodig && !run
             && !state.context?.nopick && state.uwep
             && is_pick(state.uwep, state)) {
-            if (mode === DO_MOVE) note_unported('dig.c use_pick_axe2');
+            // C discards use_pick_axe2()'s result; the immediate direction
+            // handling runs here, with dig.c dig() retained as its callback gap.
+            if (mode === DO_MOVE) await use_pick_axe2(state.uwep, state, env);
             return false;
         } else {
             if (mode === DO_MOVE) {
@@ -2694,32 +2697,65 @@ export async function test_move(
     return true;
 }
 
-// C ref: hack.c crawl_destination() (4079-4099). Travel's adjacent fast path
-// uses the ordinary hero placement test, then applies the extra diagonal
-// restrictions that crawling out of water uses. The current travel boundary
-// reaches ordinary D:1 floors and stairs; the terrain and special-mobility
-// branches below are represented by the same local movement predicates so a
-// non-ordinary candidate is rejected rather than silently admitted.
-export function crawl_destination(x, y, state = game) {
-    if (!isok(x, y)) return false;
-    const destination = state.level?.at(x, y);
-    if (!destination || !accessible(x, y, state)
-        || m_at(x, y, state)
-        || sobj_at(BOULDER, x, y, state)) {
-        return false;
-    }
+// C ref: hack.c crawl_destination() (4079-4099). Keep teleport.c goodpos()
+// first, including its hero-specific water/lava tests, before applying the
+// source's orthogonal, grid-bug, wall-pass, shop-door, and tight-diagonal arms.
+export async function crawl_destination(x, y, state = game) {
+    const hero = state.youmonst;
+    const species = hero?.data;
+    const good = goodpos(x, y, hero, 0, {
+        state,
+        random: { rn2 },
+        heroCanOccupyPool: (candidateX, candidateY, env) => {
+            const candidateState = env.state;
+            const candidate = candidateState.level?.at(candidateX, candidateY);
+            const swimming = propertyPresent(candidateState, SWIMMING)
+                || Boolean(candidateState.u?.usteed
+                    && is_swimmer(candidateState.u.usteed.data));
+            const amphibiousHero = propertyPresent(
+                candidateState,
+                MAGICAL_BREATHING,
+            ) || amphibious(candidateState.youmonst?.data);
+            const waterWalking = propertyPresent(candidateState, WWALKING)
+                && !Is_waterlevel(candidateState.u?.uz);
+            const canRemainAboveWater = !Is_waterlevel(candidateState.u?.uz)
+                && !IS_WATERWALL(candidate?.typ)
+                && (propertyActiveUnblocked(candidateState, LEVITATION)
+                    || heroIsFlying(candidateState)
+                    || waterWalking);
+            return swimming || amphibiousHero || canRemainAboveWater;
+        },
+        heroCanOccupyLava: (_candidateX, _candidateY, env) => {
+            const candidateState = env.state;
+            const waterWalking = propertyPresent(candidateState, WWALKING)
+                && !Is_waterlevel(candidateState.u?.uz);
+            const waterWalkingBoots = candidateState.u?.uarmf;
+            return propertyActiveUnblocked(candidateState, LEVITATION)
+                || heroIsFlying(candidateState)
+                || (propertyPresent(candidateState, FIRE_RES)
+                    && waterWalking
+                    && waterWalkingBoots
+                    && waterWalkingBoots.oerodeproof)
+                || (Upolyd(candidateState.u)
+                    && likes_lava(candidateState.youmonst?.data));
+        },
+    });
+    if (!good) return false;
 
     /* orthogonal movement is unrestricted when destination is ok */
-    if (x === state.u.ux || y === state.u.uy) return true;
+    const { ux, uy } = state.u;
+    if (x === ux || y === uy) return true;
     if (NODIAG(state.u.umonnum)) return false;
     if (propertyPresent(state, PASSES_WALLS)) return true;
-    if (IS_DOOR(destination.typ)
-        && blocksDiagonalDoorwayEntry(state.u.ux, state.u.uy, x, y, state)) {
+    const destination = state.level?.at(x, y);
+    if (IS_DOOR(destination?.typ)
+        && (!doorless_door(destination, state)
+            || await block_door(x, y, state))) {
         return false;
     }
-    return !(bad_rock(state.youmonst?.data, state.u.ux, y, state)
-        && bad_rock(state.youmonst?.data, x, state.u.uy, state)
-        && cant_squeeze_thru(state.youmonst, state));
+    return !(bad_rock(species, ux, y, state)
+        && bad_rock(species, x, uy, state)
+        && cant_squeeze_thru(hero, state));
 }
 
 function travelMapIndex(x, y) {
@@ -3622,10 +3658,9 @@ async function domove_fight_empty(x, y, state) {
         boulder = sobj_at(STATUE, x, y, state);
     }
     // 2267-2276. A hero who force-fights while wielding a digging tool starts
-    // digging instead, through dig.c use_pick_axe2(), but only when dig_typ()
-    // answers something other than DIGTYP_UNDIGGABLE. use_pick_axe2() is not
-    // ported, so a digging answer stops the command; an undiggable one falls
-    // through to the message arms below, where C swings and spends the turn.
+    // digging instead through dig.c use_pick_axe2() when the source's full
+    // target and glyph tests pass. C discards its result; dig.c dig() remains
+    // an occupation callback gap after the immediate direction handling.
     // An axe reaches that fall-through at every wall, rock, pool and furniture
     // square, and a pick at ROOM, CORR and a tree.
     //
@@ -3636,16 +3671,13 @@ async function domove_fight_empty(x, y, state) {
     // context.forcefight clear, and that is a path on which C skips the dig
     // block outright and swings.
     //
-    // C's two remaining conjuncts, !glyph_is_invisible(glyph) and
-    // !glyph_is_monster(glyph), are the "should we dig?" half and both make C
-    // swing rather than dig. Neither is ported, so this refusal is wider than
-    // C on a force-fought square whose map memory holds an unseen-monster
-    // marker or a monster that has since left it. It is fail-closed.
+    // The glyph tests are kept in C order: a remembered invisible marker or a
+    // monster glyph is swung at instead of handed to the digging routine.
     if (state.context.forcefight && state.uwep
-        && dig_typ(state.uwep, x, y, state) !== DIGTYP_UNDIGGABLE) {
-        throw new UnsupportedHeroMoveBoundaryError(
-            'force-fight that digs instead of swinging',
-        );
+        && dig_typ(state.uwep, x, y, state) !== DIGTYP_UNDIGGABLE
+        && !glyph_is_invisible(glyph) && !glyph_is_monster(glyph)) {
+        await use_pick_axe2(state.uwep, state);
+        return true;
     }
 
     // 2246-2247. `solid` is misleadingly named, as C's own comment at 2316
@@ -4953,7 +4985,7 @@ export function terrain_changed_under_hero(state = game) {
 // pickup deferred: steed.c dismount_steed() sets it around its teleds() call
 // and then lets float_down() run pickup(1) exactly once.
 export async function spoteffects(pick, state = game, rawEnv = {}) {
-    const trap = t_at(state.u.ux, state.u.uy, state);
+    let trap = t_at(state.u.ux, state.u.uy, state);
     // C ref: hack.c:3322. untrap.c is not ported and nothing sets the flag, so
     // FAILEDUNTRAP never reaches dotrap() -- but the read belongs here, where
     // C makes it, rather than being written out as the constant 0.
@@ -4977,10 +5009,24 @@ export async function spoteffects(pick, state = game, rawEnv = {}) {
     if (!state.in_steed_dismounting) {
         // C ref: hack.c:3362-3372. A levitation about to time out at the end
         // of this turn would let the trap fire twice, so C spends an rn2(2) to
-        // move the timeout out of the way. No ported source grants timed
-        // levitation -- js/timeout.js refuses any property timeout it does not
-        // own -- so HLevitation's timeout field is never 1 and the draw is
-        // unreachable rather than skipped.
+        // move the timeout out of the way. float_down() handles the early
+        // landing; when it fires the trap and pickup itself, suppress this
+        // caller's second copy of those effects.
+        const levitation = state.u.uprops[LEVITATION];
+        if (trap && (levitation.intrinsic & TIMEOUT) === 1
+            && !levitation.extrinsic
+            && !(levitation.intrinsic & ~(I_SPECIAL | TIMEOUT))) {
+            if (rn2(2)) {
+                const { incr_itimeout } = await import('./potion.js');
+                incr_itimeout(levitation, 1);
+            } else {
+                const { float_down } = await import('./trap.js');
+                if (await float_down(I_SPECIAL | TIMEOUT, 0, state)) {
+                    trap = null;
+                    pick = false;
+                }
+            }
+        }
         //
         // C ref: hack.c:3379-3398. Which of pickup(1) and dotrap() goes first
         // is decided by is_pit() alone: the hero picks up what is lying on an

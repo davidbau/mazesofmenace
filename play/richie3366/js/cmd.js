@@ -280,7 +280,7 @@ function reset_cmd_vars(reset_cmdq) {
  * @param {number} dir DIR_*
  * @param {number} run 0 walk, else capital/ctrl run value
  */
-function set_move_cmd(dir, run) {
+export function set_move_cmd(dir, run) {
     const u = game.u || (game.u = {});
     if (!game.context) game.context = {};
     u.dz = zdir[dir] | 0;
@@ -4429,7 +4429,7 @@ export async function domove_bump_mon(mtmp, glyph) {
  * Spends the turn (leave context.move); does not step. Named omissions:
  * Is_airlevel / Is_waterlevel "in place" (Levitation alone covers flight).
  */
-async function u_rooted() {
+export async function u_rooted() {
     const data = game.youmonst?.data;
     if (!data || (data.mmove | 0)) return false;
     const u = game.u || {};

@@ -55,7 +55,7 @@ import { make_confused } from './potion.js';
 import { livelog_printf } from './pline.js';
 import { ysimple_name } from './objnam.js';
 import { carrying } from './hack.js';
-import { what_gives, bare_artifactname, confers_luck, u_wield_art, is_art } from './artifact.js';
+import { what_gives, bare_artifactname, confers_luck, u_wield_art, is_art, retouch_equipment } from './artifact.js';
 import {
     PM_ARCHEOLOGIST,
     PM_BARBARIAN,
@@ -822,7 +822,9 @@ export async function uchangealign(newalign, reason) {
     }
     if ((u.ualign.type | 0) !== oldalign) {
         u.ualign.record = 0; /* slate is wiped clean */
-        /* retouch_equipment named — C artifact.c:2639 */
+        /* C attrib.c:1360 — alignment change retests worn/carried artifacts.
+           dropflag 0 keeps them; only the touch test runs. */
+        await retouch_equipment(0);
     }
 }
 

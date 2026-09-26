@@ -48,6 +48,7 @@ import { strstri, dist2 } from './hacklib.js';
 import {
     monstseesu, monstunseesu, cvt_adtyp_to_mseenres, resists_magm,
 } from './mondata.js';
+import { resists_poison } from './zap.js';
 import { uhim, uhis } from './roles.js';
 import { sticks } from './engrave.js';
 import { Soundeffect, se_blast } from './sndprocs.js';
@@ -70,7 +71,7 @@ import {
     D_ISOPEN, D_NODOOR, D_BROKEN, STATUE_TRAP, SHOPBASE,
 } from './const.js';
 import {
-    pmnames, G_UNIQ, MR_FIRE, MR_COLD, MR_ELEC, MR_DISINT, MR_POISON,
+    pmnames, G_UNIQ, MR_FIRE, MR_COLD, MR_ELEC, MR_DISINT,
     MR_ACID, nonliving, is_demon, is_vampshifter, bigmonst, is_mplayer,
     hides_under,
 } from './monsters.js';
@@ -183,7 +184,8 @@ function Acid_resistance() {
     return !!(u.Acid_resistance || u.HAcid_resistance || u.EAcid_resistance);
 }
 
-/** C ref: monst.h resists_fire / cold / elec / disint / poison / acid */
+/** C ref: monst.h resists_fire / cold / elec / disint / acid.
+ * Poison is the zap.js export (Resists_Elem), not this bit helper. */
 function mon_resists_bit(mon, mrBit) {
     if (!mon) return false;
     const bits = (mon.data?.mresists | 0)
@@ -195,7 +197,6 @@ function resists_fire(mon) { return mon_resists_bit(mon, MR_FIRE); }
 function resists_cold(mon) { return mon_resists_bit(mon, MR_COLD); }
 function resists_elec(mon) { return mon_resists_bit(mon, MR_ELEC); }
 function resists_disint(mon) { return mon_resists_bit(mon, MR_DISINT); }
-function resists_poison(mon) { return mon_resists_bit(mon, MR_POISON); }
 function resists_acid(mon) { return mon_resists_bit(mon, MR_ACID); }
 
 /** C ref: mondata.c completelyburns — paper/straw golem. */
@@ -911,7 +912,7 @@ export async function scatter(sx, sy, blastforce, scflags, obj = null) {
                     Soundeffect(se_stone_breaking, 100);
                     await You_hear('stone breaking.');
                 }
-                fracture_rock(otmp);
+                await fracture_rock(otmp);
                 place_object(otmp, sx, sy);
                 // C explode.c:776-790 — another boulder here, restack it
                 // to the top (sobj_at finds the pre-existing boulder under

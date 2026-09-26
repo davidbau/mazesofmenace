@@ -49,7 +49,7 @@ import { vision_recalc, couldsee } from './vision.js';
 import {
     nomul, in_rooms, is_pool, is_lava, check_special_room, switch_terrain,
     invocation_message, notice_mon_off, notice_mon_on, notice_all_mons,
-    set_msg_xy,
+    set_msg_xy, Passes_walls_prop,
 } from './hack.js';
 import { remove_worm, place_worm_tail_randomly, level_mon_at } from './worm.js';
 import { makeknown, prinv, near_capacity, paint_corner_nhw_menu } from './invent.js';
@@ -72,7 +72,7 @@ import { uhis } from './roles.js';
 /* Canonical callees (hoisted, call-time use only — cycle-safe per imports.mjs):
  * seetrap + clamp_hole_destination (trap.js), mon_has_amulet (apply.js),
  * is_home_elemental (makemon.js). Local onscary stays (D-1110). */
-import { seetrap, clamp_hole_destination } from './trap.js';
+import { seetrap, clamp_hole_destination, t_at } from './trap.js';
 import { mon_has_amulet } from './apply.js';
 import { is_home_elemental } from './makemon.js';
 /* dog.js back-edge (same SCC; hoisted function, call-time use only). */
@@ -1392,7 +1392,8 @@ export async function teleok(x, y, trapok) {
     if (!trapok) {
         /* C: allow vibrating square (not a real trap); pits and holes
          * if levitating or flying. Local trapok is by-value. */
-        const trap = trap_at(x, y);
+        /* C teleport.c teleok `:425` — t_at, not a second trap walk. */
+        const trap = t_at(x, y);
         if (!trap) {
             trapok = true;
         } else if ((trap.ttyp | 0) === VIBRATING_SQUARE) {
@@ -1639,13 +1640,19 @@ function learnscroll(sobj) {
 }
 
 /**
- * C ref: teleport.c safe_teleds — random teleok spots then collect_coords.
- * Envelope: 40× rnd(COLNO-1)/rn2(ROWNO) + candy teleok(FALSE) with first
- * trap backup via teleok(TRUE).
+ * C ref: teleport.c safe_teleds `:717–770`.
+ * Forty `rnd(COLNO-1)` / `rn2(ROWNO)` tries, each `teleok(FALSE)` then
+ * `teleds`. Then a shuffled ring-pair list from the hero (`maxradius` 0
+ * = whole map). `Passes_walls` is youprop.h `(HPasses_walls ||
+ * EPasses_walls)` via `Passes_walls_prop` (flat or uprops). The first
+ * `t_at` spot that `teleok(TRUE)` accepts is the backup. `teleok` is
+ * only reached when `t_at` is non-null, matching the `&&` order.
  * @returns {Promise<boolean>}
  */
 export async function safe_teleds(teleds_flags) {
-    let nux; let nuy;
+    let nux;
+    let nuy;
+    /* C `:736–743` — traps rejected; success returns immediately. */
     for (let tcnt = 0; tcnt < 40; ++tcnt) {
         nux = rnd(COLNO - 1);
         nuy = rn2(ROWNO);
@@ -1655,15 +1662,16 @@ export async function safe_teleds(teleds_flags) {
         }
     }
 
+    /* C `:747–751` — near the hero first, then outward. */
     let cc_flags = CC_RING_PAIRS | CC_SKIP_MONS;
-    const Passes_walls = !!(game.u?.Passes_walls || game.u?.HPasses_walls
-        || game.u?.EPasses_walls);
-    if (!Passes_walls) cc_flags |= CC_SKIP_INACCS;
+    if (!Passes_walls_prop()) cc_flags |= CC_SKIP_INACCS;
     const candy = [];
+    const u = game.u || {};
     const candycount = collect_coords(
-        candy, game.u.ux | 0, game.u.uy | 0, 0, cc_flags, null,
+        candy, u.ux | 0, u.uy | 0, 0, cc_flags, null,
     );
     const backupspot = { x: 0, y: 0 };
+    /* C `:755–763` — non-trap wins; remember the first viable trap. */
     for (let tcnt = 0; tcnt < candycount; ++tcnt) {
         nux = candy[tcnt].x;
         nuy = candy[tcnt].y;
@@ -1671,11 +1679,12 @@ export async function safe_teleds(teleds_flags) {
             await teleds(nux, nuy, teleds_flags);
             return true;
         }
-        if (!backupspot.x && trap_at(nux, nuy) && await teleok(nux, nuy, true)) {
+        if (!backupspot.x && t_at(nux, nuy) && await teleok(nux, nuy, true)) {
             backupspot.x = nux;
             backupspot.y = nuy;
         }
     }
+    /* C `:765–768` — no open spot; land on the remembered trap. */
     if (backupspot.x) {
         await teleds(backupspot.x, backupspot.y, teleds_flags);
         return true;

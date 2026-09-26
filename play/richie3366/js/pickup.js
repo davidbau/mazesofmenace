@@ -58,6 +58,7 @@ import {
     W_ARMOR, W_ACCESSORY, W_WEAPONS,
     SORTLOOT_PACK, SORTLOOT_LOOT, SORTLOOT_INVLET, SORTLOOT_PETRIFY,
     ALL_TYPES_SELECTED, BUC_BLESSED, BUC_CURSED, BUC_UNCURSED, BUC_UNKNOWN,
+    BUCX_TYPES,
     UNPAID_TYPES, WORN_TYPES, ALL_TYPES, BILLED_TYPES, CHOOSE_ALL, JUSTPICKED,
     BY_NEXTHERE, USE_INVLET, INVORDER_SORT, SIGNAL_NOMENU, SIGNAL_ESCAPE,
     AUTOSELECT_SINGLE, FEEL_COCKATRICE, INCLUDE_VENOM,
@@ -104,7 +105,7 @@ import {
 } from './objects.js';
 import { ATR_INVERSE } from './terminal.js';
 import {
-    addtobill, costly_spot, check_unpaid_usage, is_unpaid, doname_with_price,
+    addtobill, costly_spot, check_unpaid_usage, doname_with_price,
     remote_burglary, shop_keeper, stolen_value, obfree, sellobj, sellobj_state,
     money_cnt, pick_pick,
 } from './shk.js';
@@ -390,19 +391,41 @@ export function menu_class_present(c) {
     return !!(c && (game.valid_menu_classes || []).includes(c));
 }
 
-/** C pickup.c allow_category. Priest bknown / ParanoidAutoAll named. */
+/**
+ * C pickup.c allow_category `:523–592`.
+ * No active filter rejects, unless ParanoidAutoAll (`:526–529`).
+ * Coins plus a class filter return before the priest bknown force
+ * (`:535–536`). Cleric `set_bknown` (`:538–539`) then class, unpaid
+ * (container contents count), BUC (`flags.goldX` on coins), and
+ * just-picked. A miss on any active filter rejects; otherwise accept.
+ * JS null guard: C is NONNULLARG1.
+ */
 export function allow_category(obj) {
     if (!obj) return false;
+    /* C `:526–529` — strchr filters are empty and paranoid_confirm:A is off. */
+    const paranoidAutoAll = ((game.flags?.paranoia_bits | 0) & PARANOID_AUTOALL) !== 0;
     if (!game.class_filter && !game.shop_filter && !game.bucx_filter
-        && !game.picked_filter) {
+        && !game.picked_filter && !paranoidAutoAll) {
         return false;
     }
     const vmc = game.valid_menu_classes || [];
+    /* C `:535–536` — explicit coin request, before priest bknown. */
     if (obj.oclass === COIN_CLASS && game.class_filter) {
         return vmc.includes(COIN_CLASS);
     }
+    /* C `:538–539` — Role_if(PM_CLERIC) && !bknown → set_bknown(obj, 1). */
+    const clericPm = monsterNames.indexOf('PM_CLERIC');
+    if (clericPm >= 0 && (game.urole?.mnum | 0) === clericPm && !obj.bknown) {
+        set_bknown(obj, 1);
+    }
+    /* C `:561–562` */
     if (game.class_filter && !vmc.includes(obj.oclass)) return false;
-    if (game.shop_filter && !is_unpaid(obj)) return false;
+    /* C `:565–567` — unpaid, or a container holding any unpaid object. */
+    if (game.shop_filter && !obj.unpaid
+        && !(Has_contents(obj) && count_unpaid(obj.cobj) > 0)) {
+        return false;
+    }
+    /* C `:569–587` */
     if (game.bucx_filter) {
         let bucx;
         if (obj.oclass === COIN_CLASS) {
@@ -415,7 +438,9 @@ export function allow_category(obj) {
         }
         if (!vmc.includes(bucx)) return false;
     }
+    /* C `:588–589` */
     if (game.picked_filter && !obj.pickup_prev) return false;
+    /* C `:591` */
     return true;
 }
 
@@ -476,8 +501,7 @@ function count_categories(olist, qflags) {
  * live. PICK_ONE (dotypeinv D-1687) uses select_menu_pick_one.
  * Menu arch: add_menu/add_menu_str ⇒ menu_pick line objects (D-2633);
  * alloc/free pick_list ⇒ GC (no live alloc export); debugpline0 is
- * compiled out. menu_loot's MENU_FULL call (`:3286`) routes through
- * the local query_loot_category clone (own omissions, below) instead.
+ * compiled out. menu_loot's MENU_FULL call (`:3286`) uses this function.
  *
  * @returns {Promise<{ a_int: number|string }[]>} empty if cancelled
  */
@@ -2706,260 +2730,163 @@ async function in_or_out_menu(
 }
 
 /**
- * C ref: pickup.c query_category for MENU_FULL menu_loot.
- * Shared put-in / take-out category filter. `@` = MENU_INVERT_ALL
- * (skipInvert rows untouched). Named omissions: unpaid/billed;
- * ParanoidAutoAll; WORN_TYPES; venom.
+ * Invent is already an array. A container's `cobj` is an nobj chain.
+ * JS `BUC_BLESSED` is 1, the same bit as `BY_NEXTHERE`, so a chain passed
+ * to query_category with `BUCX_TYPES` is walked by nexthere and only the
+ * head is visible. Snapshot nobj order into an array first.
+ * @param {boolean} put_in
+ * @returns {object[]}
  */
-async function query_loot_category(olist, prompt) {
-    const classes = [];
-    for (const oc of DEF_INV_ORDER) {
-        if (olist.some((o) => o.oclass === oc)) classes.push(oc);
+function loot_menu_olist(put_in) {
+    if (put_in) return game.invent || [];
+    const out = [];
+    for (let o = game._current_container?.cobj || null; o; o = o.nobj) {
+        out.push(o);
     }
-    const showAll = classes.length > 1;
-
-    const doBlessed = count_buc(olist, BUC_BLESSED) > 0;
-    const doCursed = count_buc(olist, BUC_CURSED) > 0;
-    const doUncursed = count_buc(olist, BUC_UNCURSED) > 0;
-    const doUnknown = count_buc(olist, BUC_UNKNOWN) > 0;
-
-    const rows = [];
-    rows.push({
-        sel: 'A', accel: null, value: 'A', skipInvert: true,
-        label: 'Auto-select every relevant item',
-    });
-    rows.push({ kind: 'hint', label: '    (ignored unless some other choices are also picked)' });
-    rows.push({ kind: 'blank' });
-    let invlet = 'a'.charCodeAt(0);
-    if (showAll) {
-        rows.push({
-            sel: String.fromCharCode(invlet++), accel: null,
-            value: ALL_TYPES_SELECTED, skipInvert: true,
-            label: 'All types',
-        });
-    }
-    for (const oc of classes) {
-        const sel = String.fromCharCode(invlet++);
-        rows.push({
-            sel, accel: oclass_to_sym(oc) || null, value: oc, skipInvert: false,
-            label: let_to_name(oc, false, false),
-        });
-    }
-    if (doBlessed || doCursed || doUncursed || doUnknown) {
-        rows.push({ kind: 'blank' });
-    }
-    if (doBlessed) {
-        rows.push({
-            sel: 'B', accel: null, value: 'B', skipInvert: true,
-            label: 'Items known to be Blessed',
-        });
-    }
-    if (doCursed) {
-        rows.push({
-            sel: 'C', accel: null, value: 'C', skipInvert: true,
-            label: 'Items known to be Cursed',
-        });
-    }
-    if (doUncursed) {
-        rows.push({
-            sel: 'U', accel: null, value: 'U', skipInvert: true,
-            label: 'Items known to be Uncursed',
-        });
-    }
-    if (doUnknown) {
-        rows.push({
-            sel: 'X', accel: null, value: 'X', skipInvert: true,
-            label: 'Items of unknown Bless/Curse status',
-        });
-    }
-
-    const selected = new Set();
-    for (;;) {
-        const entries = [
-            { text: prompt, attr: ATR_INVERSE },
-            { text: '', attr: 0 },
-        ];
-        for (const row of rows) {
-            if (row.kind === 'blank') {
-                entries.push({ text: '', attr: 0 });
-                continue;
-            }
-            if (row.kind === 'hint') {
-                entries.push({ text: row.label, attr: 0 });
-                continue;
-            }
-            const mark = selected.has(row.value) ? '+' : '-';
-            entries.push({ text: `${row.sel} ${mark} ${row.label}`, attr: 0 });
-        }
-        await paint_corner_nhw_menu(entries, '(end) ');
-        await flush_screen(1);
-        const key = await nhgetch();
-        game._menu_overlay = false;
-        await docrt();
-        await flush_screen(1);
-
-        if (key === 27) return null;
-        if (key === 13 || key === 10 || key === 32) {
-            return selected.size ? selected : null;
-        }
-        const ch = String.fromCharCode(key);
-        if (ch === MENU_INVERT_ALL) {
-            for (const row of rows) {
-                if (row.value == null || row.skipInvert) continue;
-                if (selected.has(row.value)) selected.delete(row.value);
-                else selected.add(row.value);
-            }
-            continue;
-        }
-        const hit = rows.find((r) => r.sel === ch
-            || (r.accel && r.accel === ch));
-        if (hit && hit.value != null) {
-            if (selected.has(hit.value)) selected.delete(hit.value);
-            else selected.add(hit.value);
-        }
-    }
+    return out;
 }
 
 /**
- * C ref: pickup.c menu_loot(0, FALSE) — take out via MENU_FULL category
- * then query_objlist(INVORDER_SORT, !USE_INVLET) PICK_ANY.
- * `@` invert-all; Return → out_container.
- * Named omissions: autopick 'A'; MENU_PARTIAL; menu_loot -2/-3;
- * menu_head_objsym; INCLUDE_VENOM; FEEL_COCKATRICE.
+ * C pickup.c menu_loot `:3264–3394`.
+ * Non-zero retry skips query_category (`:3279`; all_categories iff -2).
+ * MENU_FULL classifies 'A' (autopick), put-in 'P', ALL_TYPES, or
+ * add_valid_menu_class. autopick (`:3333–3340`) calls allow_category.
+ * One just-picked stack splits then in_container (`:3342–3351`).
+ * Else query_objlist (`:3360–3365`) with allow_all or allow_category.
+ * @param {number} retry
+ * @param {boolean} put_in
+ * @returns {Promise<number>}
  */
-async function menu_loot_takeout(container) {
-    // C: gp.pickup_encumbrance = 0 — limit out_container load verbosity
-    game.pickup_encumbrance = 0;
-    if (!container?.cobj) return ECMD_OK;
-
-    const olist = [];
-    for (let o = container.cobj; o; o = o.nobj) olist.push(o);
-
-    // C query_category: single category → skip menu, auto-pick that class
-    const classes = [];
-    for (const oc of DEF_INV_ORDER) {
-        if (olist.some((o) => o.oclass === oc)) classes.push(oc);
-    }
-    let cats;
-    if (classes.length === 1) {
-        cats = new Set([classes[0]]);
-    } else {
-        cats = await query_loot_category(olist, 'Take out what type of objects?');
-        if (!cats) return ECMD_OK;
-    }
-
-    const allTypes = cats.has(ALL_TYPES_SELECTED);
-    const allow = new Set(
-        olist.filter((o) => allTypes || cats.has(o.oclass)),
-    );
-    if (!allow.size) return ECMD_OK;
-
-    // C query_objlist: INVORDER_SORT | INCLUDE_VENOM; !USE_INVLET for take-out.
-    // sortflags: sortloot 'l'/'f' + !USE_INVLET → SORTLOOT_LOOT; sortpack → PACK.
-    const flags = game.flags || {};
-    const doSort = flags.sortpack !== false;
-    const sortlootOpt = flags.sortloot ?? 'l';
-    let sortflags = 0;
-    if (sortlootOpt === 'l' || sortlootOpt === 'f') sortflags |= SORTLOOT_LOOT;
-    if (doSort) sortflags |= SORTLOOT_PACK;
-
-    const ranked = sortloot(container.cobj, sortflags, false)
-        .filter((s) => allow.has(s.obj));
-
-    const items = [];
-    let nextLet = 'a'.charCodeAt(0);
-    let first = true;
-    for (const { obj } of ranked) {
-        let letch;
-        // C: !USE_INVLET → '$' only when the first menu item is a coin
-        if (first && obj.oclass === COIN_CLASS) {
-            letch = '$';
-        } else {
-            letch = String.fromCharCode(nextLet++);
-            if (nextLet > 'z'.charCodeAt(0)) nextLet = 'A'.charCodeAt(0);
-        }
-        first = false;
-        items.push({ obj, letch, selected: false, oclass: obj.oclass });
-    }
-    if (!items.length) return ECMD_OK;
-
-    container.cknown = 1;
+async function menu_loot(retry, put_in) {
     let n_looted = 0;
-    for (;;) {
-        const entries = [
-            { text: 'Take out what?', attr: ATR_INVERSE },
-            { text: '', attr: 0 },
-        ];
-        // C INVORDER_SORT: let_to_name heading once per class in pack order
-        if (doSort) {
-            let lastClass = null;
-            for (const it of items) {
-                if (it.obj.where === OBJ_INVENT) continue;
-                if (it.oclass !== lastClass) {
-                    entries.push({
-                        text: let_to_name(it.oclass, false, false),
-                        attr: ATR_INVERSE,
-                    });
-                    lastClass = it.oclass;
+    let all_categories = true;
+    let loot_everything = false;
+    let autopick = false;
+    let loot_justpicked = false;
+    const action = put_in ? 'Put in' : 'Take out';
+    let count = 0;
+
+    /* C `:3276` — out_container load verbosity; no harm before in_container. */
+    game.pickup_encumbrance = 0;
+
+    if (retry) {
+        all_categories = (retry === -2);
+    } else if ((game.flags?.menu_style ?? MENU_FULL) === MENU_FULL) {
+        all_categories = false;
+        const buf = `${action} what type of objects?`;
+        const mflags = (ALL_TYPES | UNPAID_TYPES | BUCX_TYPES | CHOOSE_ALL
+            | JUSTPICKED);
+        const olist = loot_menu_olist(put_in);
+        const pickList = await query_category(buf, olist, mflags, PICK_ANY);
+        /* C `:3293–3294` — no non-autopick category filters. */
+        if (!pickList.length) return ECMD_OK;
+        for (const pick of pickList) {
+            if (pick.a_int === 'A') {
+                loot_everything = true;
+                autopick = true;
+            } else if (put_in && pick.a_int === 'P') {
+                loot_justpicked = true;
+                count = Math.max(0, pick.count | 0);
+                add_valid_menu_class(pick.a_int);
+                loot_everything = false;
+            } else if (pick.a_int === ALL_TYPES_SELECTED) {
+                all_categories = true;
+            } else {
+                add_valid_menu_class(pick.a_int);
+                loot_everything = false;
+            }
+        }
+    }
+
+    if (autopick) {
+        const cont = game._current_container;
+        if (!put_in) {
+            if (cont) cont.cknown = 1;
+            let otmp = cont?.cobj || null;
+            while (otmp && game._current_container) {
+                const otmp2 = otmp.nobj;
+                /* C `:3335` */
+                if (loot_everything || all_categories || allow_category(otmp)) {
+                    const res = await out_container(otmp);
+                    if (res < 0) break;
+                    n_looted += res;
                 }
-                const mark = it.selected ? '+' : '-';
-                entries.push({
-                    text: `${it.letch} ${mark} ${doname(it.obj)}`,
-                    attr: 0,
-                });
+                otmp = otmp2;
             }
         } else {
-            for (const it of items) {
-                if (it.obj.where === OBJ_INVENT) continue;
-                const mark = it.selected ? '+' : '-';
-                entries.push({
-                    text: `${it.letch} ${mark} ${doname(it.obj)}`,
-                    attr: 0,
-                });
+            /* Pack order is the invent array (reorder does not rebuild nobj).
+               Snapshot so an extract still reaches later objects. */
+            const pending = (game.invent || []).slice();
+            for (const otmp of pending) {
+                if (!otmp || !game._current_container) break;
+                if (loot_everything || all_categories || allow_category(otmp)) {
+                    const res = await in_container(otmp);
+                    if (res < 0) break;
+                    n_looted += res;
+                }
             }
         }
-        await paint_corner_nhw_menu(entries, '(end) ');
-        await flush_screen(1);
-        const key = await nhgetch();
-        game._menu_overlay = false;
-        await docrt();
-        await flush_screen(1);
-
-        if (key === 27) break;
-        if (key === 13 || key === 10 || key === 32) {
-            const chosen = items.filter((it) => it.selected
-                && it.obj.where !== OBJ_INVENT);
-            for (const it of chosen) {
-                const res = await out_container(it.obj);
-                if (res < 0) break;
-                n_looted += res;
+    } else if (put_in && loot_justpicked
+        && count_justpicked(game.invent) === 1) {
+        let otmp = find_justpicked(game.invent);
+        if (otmp) {
+            n_looted = 1;
+            if (count > 0 && count < (otmp.quan || 1)) {
+                const piece = splitobj(otmp, count);
+                if (piece) otmp = piece;
             }
-            break;
+            await in_container(otmp);
         }
-        const ch = String.fromCharCode(key);
-        if (ch === MENU_INVERT_ALL) {
-            for (const it of items) {
-                if (it.obj.where === OBJ_INVENT) continue;
-                it.selected = !it.selected;
+    } else {
+        let mflags = INVORDER_SORT | INCLUDE_VENOM;
+        if (put_in && game.flags?.invlet_constant !== false) {
+            mflags |= USE_INVLET;
+        }
+        if (put_in && loot_justpicked) mflags |= JUSTPICKED;
+        if (!put_in && game._current_container) {
+            game._current_container.cknown = 1;
+        }
+        const buf = `${action} what?`;
+        const olist = loot_menu_olist(put_in);
+        /* C `:3365` — allow_all when every class was chosen. */
+        const allow = all_categories ? allow_all : allow_category;
+        const queried = await query_objlist(
+            buf, olist, mflags, PICK_ANY, allow,
+        );
+        const n = queried.n | 0;
+        const pick_list = queried.pick_list || [];
+        if (n > 0) {
+            n_looted = n;
+            const lim = Math.min(n, pick_list.length);
+            for (let i = 0; i < lim; i++) {
+                let otmp = pick_list[i].obj;
+                const orig = otmp;
+                count = pick_list[i].count | 0;
+                if (otmp && count > 0 && count < (otmp.quan || 1)) {
+                    const piece = splitobj(otmp, count);
+                    if (piece) otmp = piece;
+                }
+                const res = put_in
+                    ? await in_container(otmp)
+                    : await out_container(otmp);
+                if (res <= 0) {
+                    if (!game._current_container) {
+                        otmp = null;
+                    } else if (otmp && otmp !== orig) {
+                        unsplitobj(otmp);
+                    }
+                    if (res < 0) break;
+                }
             }
-            continue;
         }
-        if (ch === MENU_SELECT_ALL) {
-            for (const it of items) {
-                if (it.obj.where === OBJ_INVENT) continue;
-                it.selected = true;
-            }
-            continue;
-        }
-        if (ch === MENU_UNSELECT_ALL) {
-            for (const it of items) it.selected = false;
-            continue;
-        }
-        const hit = items.find((it) => it.letch === ch
-            && it.obj.where !== OBJ_INVENT);
-        if (hit) hit.selected = !hit.selected;
     }
     return n_looted ? ECMD_TIME : ECMD_OK;
+}
+
+/** C pickup.c menu_loot(0, FALSE) — take out. */
+async function menu_loot_takeout(container) {
+    if (container) game._current_container = container;
+    return menu_loot(0, false);
 }
 
 /**
@@ -3378,223 +3305,10 @@ function obj_here_bag(bag, x, y) {
     return false;
 }
 
-/**
- * C ref: pickup.c query_category for MENU_FULL put-in (menu_loot).
- * Branch envelope: CHOOSE_ALL 'A' + hint; ALL_TYPES 'a'; inv_order classes
- * with def_oc_syms group accel; BUCX B/U/X; JUSTPICKED 'P'; PICK_ANY
- * letter/`$` toggle; Return confirms. Named omissions: unpaid/billed;
- * ParanoidAutoAll confirm; WORN_TYPES; venom.
- * @returns {Set<number|string>|null} selected filters, or null if canceled
- */
-async function query_putin_category() {
-    const cont = game._current_container;
-    // C: walk full invent (includes current container) for categories
-    const invent = (game.invent || []).filter((o) => o);
-    if (!invent.length) return null;
-
-    // Present oclasses in inv_order (skip empty).
-    const classes = [];
-    for (const oc of DEF_INV_ORDER) {
-        if (invent.some((o) => o.oclass === oc)) classes.push(oc);
-    }
-    
-    const showAll = classes.length > 1;
-
-    const doBlessed = count_buc(invent, BUC_BLESSED) > 0;
-    const doCursed = count_buc(invent, BUC_CURSED) > 0;
-    const doUncursed = count_buc(invent, BUC_UNCURSED) > 0;
-    const doUnknown = count_buc(invent, BUC_UNKNOWN) > 0;
-    const nJust = count_justpicked(invent);
-    const justObj = nJust === 1 ? find_justpicked(invent) : null;
-
-    // Menu rows: { sel, accel, value, label, skipInvert }
-    const rows = [];
-    rows.push({
-        sel: 'A', accel: null, value: 'A', skipInvert: true,
-        label: 'Auto-select every relevant item',
-    });
-    rows.push({ kind: 'hint', label: '    (ignored unless some other choices are also picked)' });
-    rows.push({ kind: 'blank' });
-    let invlet = 'a'.charCodeAt(0);
-    if (showAll) {
-        rows.push({
-            sel: String.fromCharCode(invlet++), accel: null,
-            value: ALL_TYPES_SELECTED, skipInvert: true,
-            label: 'All types',
-        });
-    }
-    for (const oc of classes) {
-        const sel = String.fromCharCode(invlet++);
-        rows.push({
-            sel, accel: oclass_to_sym(oc) || null, value: oc, skipInvert: false,
-            label: let_to_name(oc, false, false),
-        });
-    }
-    if (doBlessed || doCursed || doUncursed || doUnknown || nJust) {
-        rows.push({ kind: 'blank' });
-    }
-    if (doBlessed) {
-        rows.push({
-            sel: 'B', accel: null, value: 'B', skipInvert: true,
-            label: 'Items known to be Blessed',
-        });
-    }
-    if (doCursed) {
-        rows.push({
-            sel: 'C', accel: null, value: 'C', skipInvert: true,
-            label: 'Items known to be Cursed',
-        });
-    }
-    if (doUncursed) {
-        rows.push({
-            sel: 'U', accel: null, value: 'U', skipInvert: true,
-            label: 'Items known to be Uncursed',
-        });
-    }
-    if (doUnknown) {
-        rows.push({
-            sel: 'X', accel: null, value: 'X', skipInvert: true,
-            label: 'Items of unknown Bless/Curse status',
-        });
-    }
-    if (nJust) {
-        const lab = nJust === 1 && justObj
-            ? `Just picked up: ${doname(justObj)}`
-            : 'Items you just picked up';
-        rows.push({
-            sel: 'P', accel: null, value: 'P', skipInvert: true,
-            label: lab,
-        });
-    }
-
-    const selected = new Set();
-    for (;;) {
-        const entries = [
-            { text: 'Put in what type of objects?', attr: ATR_INVERSE },
-            { text: '', attr: 0 },
-        ];
-        for (const row of rows) {
-            if (row.kind === 'blank') {
-                entries.push({ text: '', attr: 0 });
-                continue;
-            }
-            if (row.kind === 'hint') {
-                entries.push({ text: row.label, attr: 0 });
-                continue;
-            }
-            const mark = selected.has(row.value) ? '+' : '-';
-            entries.push({ text: `${row.sel} ${mark} ${row.label}`, attr: 0 });
-        }
-        await paint_corner_nhw_menu(entries, '(end) ');
-        await flush_screen(1);
-        const key = await nhgetch();
-        game._menu_overlay = false;
-        await docrt();
-        await flush_screen(1);
-
-        if (key === 27) return null;
-        if (key === 13 || key === 10 || key === 32) {
-            return selected.size ? selected : null;
-        }
-        const ch = String.fromCharCode(key);
-        if (ch === MENU_INVERT_ALL) {
-            for (const row of rows) {
-                if (row.value == null || row.skipInvert) continue;
-                if (selected.has(row.value)) selected.delete(row.value);
-                else selected.add(row.value);
-            }
-            continue;
-        }
-        const hit = rows.find((r) => r.sel === ch
-            || (r.accel && r.accel === ch));
-        if (hit && hit.value != null) {
-            if (selected.has(hit.value)) selected.delete(hit.value);
-            else selected.add(hit.value);
-        }
-    }
-}
-
-/**
- * C ref: pickup.c menu_loot(0, TRUE) — put in via category + PICK_ANY.
- * Branch envelope: MENU_FULL category filters; invent letter toggle; Return
- * → in_container. Named omissions: unpaid/billed; ParanoidAutoAll; autopick
- * 'A' mass put; justpicked shortcut; BUC filter apply; mbag explosion.
- */
+/** C pickup.c menu_loot(0, TRUE) — put in. */
 async function menu_loot_putin(container) {
-    if (!container) return ECMD_OK;
-    // C: gp.pickup_encumbrance = 0 (menu_loot; no harm before in_container)
-    game.pickup_encumbrance = 0;
-    const cats = await query_putin_category();
-    if (!cats) return ECMD_OK;
-
-    const allTypes = cats.has(ALL_TYPES_SELECTED);
-    const items = [];
-    for (const obj of game.invent || []) {
-        if (!obj || obj === container) continue;
-        if (!allTypes && !cats.has(obj.oclass)) continue;
-        let letch = obj.invlet;
-        if (obj.oclass === COIN_CLASS) letch = '$';
-        if (typeof letch !== 'string' || letch.length !== 1) {
-            letch = obj.oclass === COIN_CLASS ? '$' : '?';
-        }
-        items.push({ obj, letch, selected: false });
-    }
-    if (!items.length) return ECMD_OK;
-
-    let n_looted = 0;
-    for (;;) {
-        const entries = [
-            { text: 'Put in what?', attr: ATR_INVERSE },
-            { text: '', attr: 0 },
-        ];
-        let coinHdr = false;
-        for (const it of items) {
-            if (it.obj.oclass === COIN_CLASS && !coinHdr) {
-                entries.push({ text: 'Coins', attr: ATR_INVERSE });
-                coinHdr = true;
-            }
-            const mark = it.selected ? '+' : '-';
-            entries.push({
-                text: `${it.letch} ${mark} ${doname(it.obj)}`,
-                attr: 0,
-            });
-        }
-        await paint_corner_nhw_menu(entries, '(end) ');
-        await flush_screen(1);
-        const key = await nhgetch();
-        game._menu_overlay = false;
-        await docrt();
-        await flush_screen(1);
-
-        if (key === 27) break;
-        if (key === 13 || key === 10 || key === 32) {
-            const chosen = items.filter((it) => it.selected);
-            for (const it of chosen) {
-                // re-check still in invent (prior put may have merged)
-                if (!(game.invent || []).includes(it.obj)) continue;
-                const res = await in_container(it.obj);
-                if (res < 0) break;
-                n_looted += res;
-            }
-            break;
-        }
-        const ch = String.fromCharCode(key);
-        if (ch === MENU_INVERT_ALL) {
-            for (const it of items) it.selected = !it.selected;
-            continue;
-        }
-        if (ch === MENU_SELECT_ALL) {
-            for (const it of items) it.selected = true;
-            continue;
-        }
-        if (ch === MENU_UNSELECT_ALL) {
-            for (const it of items) it.selected = false;
-            continue;
-        }
-        const hit = items.find((it) => it.letch === ch);
-        if (hit) hit.selected = !hit.selected;
-    }
-    return n_looted ? ECMD_TIME : ECMD_OK;
+    if (container) game._current_container = container;
+    return menu_loot(0, true);
 }
 
 /**
@@ -4122,7 +3836,7 @@ export async function askchain(getHead, ininv, olets, allflag, fn, ckfn, mx, wor
     return cnt;
 }
 
-/** C pickup.c traditional_loot `:3229–3261`. menu 'm' → existing FULL menu_loot. */
+/** C pickup.c traditional_loot `:3229–3261`. menu 'm' → menu_loot(retry). */
 async function traditional_loot(put_in) {
     let used = ECMD_OK;
     const action = put_in ? 'put in' : 'take out';
@@ -4143,9 +3857,8 @@ async function traditional_loot(put_in) {
         );
         if (n) used = ECMD_TIME;
     } else if (menu_on_request.n < 0) {
-        const n = put_in
-            ? await menu_loot_putin(game._current_container)
-            : await menu_loot_takeout(game._current_container);
+        /* C `:3258` — 'm' passes the -2/-3 retry; do not re-prompt classes. */
+        const n = await menu_loot(menu_on_request.n, put_in);
         used = n > 0 ? ECMD_TIME : ECMD_OK;
     }
     return used;

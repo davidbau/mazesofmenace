@@ -11,7 +11,7 @@ import {
     newsym, see_monsters, urgent_pline, impossible, Hallucination, pline_The,
 } from './display.js';
 import { yn_function, paranoid_ynq } from './getline.js';
-import { an, doname, the, xname, xprname, vtense, makeplural, makesingular, otense, gloves_simple_name, obj_pmname_corpse, simpleonames, body_part_latebound, Tobjnam, Yname2, corpse_xname, killer_xname, arti_light_description, set_doffing_predicates } from './objnam.js';
+import { an, doname, the, xname, xprname, vtense, makeplural, makesingular, otense, gloves_simple_name, obj_pmname_corpse, simpleonames, body_part_latebound, Tobjnam, Yname2, corpse_xname, killer_xname, arti_light_description, set_doffing_predicates, safe_typename } from './objnam.js';
 import { find_ac } from './u_init.js';
 import {
     A_STR, A_INT, A_WIS, A_CON, A_CHA, A_DEX, acurr, extremeattr, change_luck, Fast, Very_fast,
@@ -78,11 +78,11 @@ import {
     is_flammable, is_rustprone, is_rottable, is_corrodeable, is_crackable,
     erosion_matters, is_damageable, is_metallic, curse, set_bknown,
 } from './mkobj.js';
-import { erode_obj, selftouch, instapetrify, drown, float_down } from './trap.js';
+import { erode_obj, selftouch, instapetrify, drown, float_down, float_up } from './trap.js';
 import { has_ceiling } from './dungeon.js';
 import { artifact_light, begin_burn, end_burn } from './timeout.js';
 import { strsubst } from './hacklib.js';
-import { make_hallucinated, make_slimed } from './potion.js';
+import { make_hallucinated, make_slimed, incr_itimeout } from './potion.js';
 import { rn2, rnd } from './rng.js';
 import { set_mimic_blocking } from './vision.js';
 import { restartcham, rescham, cant_drown } from './mon.js';
@@ -90,6 +90,7 @@ import { hero_Swimming, hero_Breathless } from './dbridge.js';
 import { gulp_blnd_check } from './mhitu.js';
 import { region_danger } from './region.js';
 import { can_be_strangled } from './uhitm.js';
+import { remove_worn_item } from './steal.js';
 
 const FEDORA = objectNames.indexOf('FEDORA');
 const HELMET = objectNames.indexOf('HELMET');
@@ -445,10 +446,8 @@ function set_extrinsic_bit(propIdx, flatField, mask, on) {
  * protection is lost (yellow-DSM doff, gloves doff, resist timeout).
  * C order: null/non-corpse/gloved early return; wielded-or-twoweap-alt
  * gate; touch_petrifies + !Stone_resistance You/instapetrify/remove_worn_item.
- * The final remove_worn_item uses the file-local weapon-thin helper (review
- * 47): obj here is always a wielded corpse (W_WEP), so the armor/amulet/ring
- * arms of the steal.js canonical export are unreachable; unchain_ball FALSE
- * is irrelevant for a weapon.
+ * The final remove_worn_item is do_wear.c:641 (unchain_ball FALSE): a
+ * wielded corpse takes the W_WEAPONS *gone arm.
  * @param {object|null} obj uwep/uswapwep candidate
  * @param {object|null} how gloves/dragon armor/Null
  * @param {boolean} voluntary taking protection off on purpose
@@ -477,7 +476,7 @@ export async function wielding_corpse(obj, how, voluntary) {
         const kbuf = `${hbuf} while wielding ${killer_xname(obj)}`;
         await instapetrify(kbuf);
         // life-saved or poly'd into stone golem; can't keep wielding unless resistant now
-        if (!stoneRes(game.u)) remove_worn_item(obj);
+        if (!stoneRes(game.u)) await remove_worn_item(obj, false);
     }
 }
 
@@ -673,28 +672,6 @@ export function setworn(obj, mask, opts = null) {
     recalc_telepat_range();
 }
 
-/**
- * C ref: worn.c remove_worn_item — clear weapon/quiver wear before accessory don.
- * Full prop/artifact/light paths deferred.
- */
-function remove_worn_item(obj) {
-    if (!obj) return;
-    const u = game.u || {};
-    const mask = obj.owornmask || 0;
-    if (mask & W_WEP) {
-        if (u.uwep === obj) u.uwep = null;
-        obj.owornmask &= ~W_WEP;
-    }
-    if (mask & W_SWAPWEP) {
-        if (u.uswapwep === obj) u.uswapwep = null;
-        obj.owornmask &= ~W_SWAPWEP;
-    }
-    if (mask & W_QUIVER) {
-        if (u.uquiver === obj) u.uquiver = null;
-        obj.owornmask &= ~W_QUIVER;
-    }
-}
-
 /** Clear a worn slot (C setworn(NULL, mask) subset). */
 function clear_worn(mask) {
     setworn(null, mask);
@@ -848,10 +825,37 @@ export async function Helmet_off() {
     return 0;
 }
 
+/** C youprop.h:198 Invis — (HInvis || EInvis) && !BInvis. */
+function cloak_Invis(u) {
+    const h = (u.HInvis | 0) || (u.uprops?.[INVIS]?.intrinsic | 0);
+    const e = (u.EInvis | 0) || (u.uprops?.[INVIS]?.extrinsic | 0);
+    const b = (u.BInvis | 0) || (u.uprops?.[INVIS]?.blocked | 0);
+    return !!((h || e) && !b);
+}
+
+/** C youprop.h:195 HInvis — uprops[INVIS].intrinsic. */
+function cloak_HInvis(u) {
+    return !!((u.HInvis | 0) || (u.uprops?.[INVIS]?.intrinsic | 0));
+}
+
+/** C youprop.h:152 See_invisible — HSee_invisible || ESee_invisible. */
+function cloak_See_invisible(u) {
+    return !!((u.HSee_invisible | 0) || (u.ESee_invisible | 0)
+        || (u.uprops?.[SEE_INVIS]?.intrinsic | 0)
+        || (u.uprops?.[SEE_INVIS]?.extrinsic | 0));
+}
+
 /**
- * C ref: do_wear.c Cloak_off — setworn then ELVEN toggle_stealth /
- * DISPLACEMENT toggle_displacement. Named omissions: mummy wrapping /
- * invisibility / alchemy-smock acid arms.
+ * C ref: do_wear.c Cloak_off `:383–431` — full otyp switch in C order.
+ * oldprop is captured before setworn. Plain cloaks break; ELVEN
+ * toggle_stealth; DISPLACEMENT toggle_displacement; MUMMY_WRAPPING
+ * newsym + You can see (Invis && !Blind, after the wrap's BInvis
+ * clears); CLOAK_OF_INVISIBILITY makeknown + newsym + Suddenly pline
+ * when no other extrinsic and no HInvis; ALCHEMY_SMOCK clears the
+ * WORN_CLOAK bit on EAcid_resistance (oc_oprop is poison, so setworn
+ * does not); default impossible. Null cloak keeps the graceful clear
+ * (C dereferences uarmc).
+ * @returns {Promise<number>} 0
  */
 export async function Cloak_off() {
     const u = game.u || {};
@@ -861,19 +865,70 @@ export async function Cloak_off() {
         return 0;
     }
     const otyp = otmp.otyp | 0;
+    /* C `:387` — oldprop = uprops[oc_oprop].extrinsic & ~WORN_CLOAK. */
     const oprop = game.objects?.[otyp]?.oc_oprop | 0;
     const oldprop = (u.uprops?.[oprop]?.extrinsic | 0) & ~WORN_CLOAK;
+    /* C `:389`. */
     if (game.context?.takeoff) {
         game.context.takeoff.mask =
             (game.context.takeoff.mask | 0) & ~W_ARMC;
     }
+    /* C `:391` setworn(NULL, W_ARMC) — before the switch, so mummy
+       wrapping's BInvis is already clear when Invis is tested. */
     clear_worn(W_ARMC);
-    if (otyp === ELVEN_CLOAK) {
+    switch (otyp) {
+    case ORCISH_CLOAK:
+    case DWARVISH_CLOAK:
+    case CLOAK_OF_PROTECTION:
+    case CLOAK_OF_MAGIC_RESISTANCE:
+    case OILSKIN_CLOAK:
+    case ROBE:
+    case LEATHER_CLOAK:
+        /* C `:393–400` — no property side effects. */
+        break;
+    case ELVEN_CLOAK:
+        /* C `:401–403`. */
         await toggle_stealth(otmp, oldprop, false);
-    } else if (otyp === CLOAK_OF_DISPLACEMENT) {
+        break;
+    case CLOAK_OF_DISPLACEMENT:
+        /* C `:404–406`. */
         await toggle_displacement(otmp, oldprop, false);
+        break;
+    case MUMMY_WRAPPING:
+        /* C `:407–414` — Invis = (HInvis || EInvis) && !BInvis. */
+        if (cloak_Invis(u) && !Blind()) {
+            newsym(u.ux | 0, u.uy | 0);
+            await You('can %s.',
+                cloak_See_invisible(u)
+                    ? 'see through yourself'
+                    : 'no longer see yourself');
+        }
+        break;
+    case CLOAK_OF_INVISIBILITY:
+        /* C `:415–424` — !oldprop && !HInvis && !Blind. */
+        if (!oldprop && !cloak_HInvis(u) && !Blind()) {
+            makeknown(CLOAK_OF_INVISIBILITY);
+            newsym(u.ux | 0, u.uy | 0);
+            await pline('Suddenly you can %s.',
+                cloak_See_invisible(u)
+                    ? 'no longer see through yourself'
+                    : 'see yourself');
+        }
+        break;
+    /* C `:425–427` — alchemy smock gives poison and acid resistance. */
+    case ALCHEMY_SMOCK: {
+        if (!u.uprops) u.uprops = {};
+        const prop = u.uprops[ACID_RES] || (u.uprops[ACID_RES] = {
+            intrinsic: 0, extrinsic: 0, blocked: 0,
+        });
+        prop.extrinsic = (prop.extrinsic | 0) & ~WORN_CLOAK;
+        break;
     }
-    // MUMMY_WRAPPING / CLOAK_OF_INVISIBILITY / ALCHEMY_SMOCK deferred
+    default:
+        /* C `:428` impossible(unknown_type, c_cloak, otyp). */
+        await impossible(`Unknown type of cloak (${otyp}).`);
+        break;
+    }
     return 0;
 }
 export function Shield_off() {
@@ -1338,10 +1393,12 @@ async function Gloves_on() {
         });
         const hCur = (u.HFumbling | 0) | (prop.intrinsic | 0);
         if (!oldprop && !(hCur & ~TIMEOUT)) {
-            const next = (hCur & TIMEOUT) + rnd(20);
-            const hNext = (hCur & ~TIMEOUT) | (next & TIMEOUT);
-            u.HFumbling = hNext;
-            prop.intrinsic = hNext;
+            /* C do_wear.c:584–586 — incr_itimeout(&HFumbling, rnd(20)).
+               potion.c:55–85 saturates at TIMEOUT. Seed the slot from the
+               merged flat (C has one long), then mirror HFumbling back. */
+            prop.intrinsic = hCur;
+            incr_itimeout(prop, rnd(20));
+            u.HFumbling = prop.intrinsic | 0;
         }
     } else if (o.otyp === GAUNTLETS_OF_POWER) {
         // C: makeknown(uarmg->otyp); botl = TRUE
@@ -1365,48 +1422,105 @@ async function Gloves_on() {
     return 0;
 }
 /**
- * C ref: do_wear.c Boots_on — FUMBLE_BOOTS incr_itimeout; SPEED_BOOTS
- * makeknown→exercise(A_WIS) + You_feel speed up (D-0744); ELVEN_BOOTS
- * toggle_stealth (D-0970). Named omissions: water-walking/levitation;
- * update_inventory; Boots_off SPEED slow-down.
+ * C ref: do_wear.c Boots_on `:186–259` — full otyp switch in C order.
+ * Plain boots break; WATER_WALKING spoteffects(TRUE) while still in
+ * water, then wasinwater (snapshotted in accessory_or_armor_on before
+ * setworn) makeknown; SPEED makeknown + You_feel; ELVEN toggle_stealth;
+ * FUMBLE incr_itimeout(&HFumbling, rnd(20)); LEVITATION known/botl/
+ * makeknown/float_up/spoteffects(FALSE) or float_vs_flight; default
+ * impossible. Tail re-reads uarmf: levitation over a sink can destroy
+ * the boots inside float_up. Null boots keep the graceful return
+ * (C dereferences uarmf).
+ * @returns {Promise<number>} 0
  */
-async function Boots_on() {
-    const o = game.u?.uarmf;
-    if (!o) return 0;
+export async function Boots_on() {
     const u = game.u || (game.u = {});
-    const oprop = game.objects?.[o.otyp]?.oc_oprop | 0;
-    const extr = u.uprops?.[oprop]?.extrinsic | 0;
-    // C: oldprop = uprops[oc_oprop].extrinsic & ~WORN_BOOTS
-    const oldprop = extr & ~WORN_BOOTS;
+    const o = u.uarmf;
+    if (!o) return 0;
+    const otyp = o.otyp | 0;
+    /* C `:188–189` — oldprop = uprops[oc_oprop].extrinsic & ~WORN_BOOTS. */
+    const oprop = game.objects?.[otyp]?.oc_oprop | 0;
+    const oldprop = (u.uprops?.[oprop]?.extrinsic | 0) & ~WORN_BOOTS;
 
-    if (o.otyp === FUMBLE_BOOTS) {
-        // C: if (!oldprop && !(HFumbling & ~TIMEOUT)) incr_itimeout(&HFumbling, rnd(20));
-        // HFumbling ≡ uprops[FUMBLING].intrinsic — keep flat + uprops in sync.
+    switch (otyp) {
+    case LOW_BOOTS:
+    case IRON_SHOES:
+    case HIGH_BOOTS:
+    case JUMPING_BOOTS:
+    case KICKING_BOOTS:
+        /* C `:192–197` — no property side effects. */
+        break;
+    case WATER_WALKING_BOOTS:
+        /* C `:198–220` — spoteffects is not called from setworn; uinwater
+           may already be clear, which is why wasinwater was snapshotted. */
+        if (u.uinwater) await spoteffects(true);
+        if (game.wasinwater) {
+            if (!u.uinwater) makeknown(WATER_WALKING_BOOTS);
+            game.wasinwater = 0;
+        }
+        break;
+    case SPEED_BOOTS: {
+        /* C `:221–229` — !(HFast & TIMEOUT); "a bit more" if any HFast. */
+        const hFast = (u.HFast | 0) | (u.uprops?.[FAST]?.intrinsic | 0);
+        if (!oldprop && !(hFast & TIMEOUT)) {
+            makeknown(otyp);
+            await You_feel('yourself speed up%s.',
+                (oldprop || hFast) ? ' a bit more' : '');
+        }
+        break;
+    }
+    case ELVEN_BOOTS:
+        /* C `:230–232`. */
+        await toggle_stealth(o, oldprop, true);
+        break;
+    case FUMBLE_BOOTS: {
+        /* C `:233–236` — incr_itimeout(&HFumbling, rnd(20)).
+           HFumbling ≡ uprops[FUMBLING].intrinsic; keep the flat in sync. */
         if (!u.uprops) u.uprops = {};
         const prop = u.uprops[oprop] || (u.uprops[oprop] = {
             intrinsic: 0, extrinsic: 0, blocked: 0,
         });
         const hCur = (u.HFumbling | 0) | (prop.intrinsic | 0);
         if (!oldprop && !(hCur & ~TIMEOUT)) {
-            const next = (hCur & TIMEOUT) + rnd(20);
-            const hNext = (hCur & ~TIMEOUT) | (next & TIMEOUT);
-            u.HFumbling = hNext;
-            prop.intrinsic = hNext;
+            /* C do_wear.c:231–234 — incr_itimeout(&HFumbling, rnd(20)).
+               potion.c:55–85 itimeout saturates at TIMEOUT (0x00FFFFFF).
+               `(sum & TIMEOUT)` wraps a sum past that. incr_itimeout
+               writes the slot only; mirror the flat from that slot. */
+            prop.intrinsic = hCur;
+            incr_itimeout(prop, rnd(20));
+            u.HFumbling = prop.intrinsic | 0;
         }
-    } else if (o.otyp === SPEED_BOOTS) {
-        // C: if (!oldprop && !(HFast & TIMEOUT)) makeknown + You_feel
-        const hFast = (u.HFast | 0) | (u.uprops?.[FAST]?.intrinsic | 0);
-        if (!oldprop && !(hFast & TIMEOUT)) {
-            makeknown(o.otyp);
-            const more = (oldprop || hFast) ? ' a bit more' : '';
-            await You_feel(`yourself speed up${more}.`);
-        }
-    } else if (o.otyp === ELVEN_BOOTS) {
-        await toggle_stealth(o, oldprop, true);
+        break;
     }
-    // WATER_WALKING / LEVITATION cases deferred
-    if (!o.known) o.known = 1;
-    find_ac();
+    case LEVITATION_BOOTS: {
+        /* C `:237–250` — !oldprop && !HLevitation && !(BLevitation & FROMOUTSIDE). */
+        const hLev = (u.HLevitation | 0) | (u.uprops?.[LEVITATION]?.intrinsic | 0);
+        const bLev = (u.BLevitation | 0) | (u.uprops?.[LEVITATION]?.blocked | 0);
+        if (!oldprop && !hLev && !(bLev & FROMOUTSIDE)) {
+            o.known = 1;
+            if (!game.flags) game.flags = {};
+            game.flags.botl = true;
+            if (game.disp) game.disp.botl = true;
+            makeknown(otyp);
+            await float_up();
+            /* C: for sink effect, if Levitation still holds. */
+            if (Levitation_dw()) await spoteffects(false);
+        } else {
+            float_vs_flight();
+        }
+        break;
+    }
+    default:
+        /* C `:251` impossible(unknown_type, c_boots, uarmf->otyp). */
+        await impossible(`Unknown type of boots (${otyp}).`);
+        break;
+    }
+    /* C `:253–257` — uarmf may be null after levitation over a sink. */
+    const boots = u.uarmf;
+    if (boots && !boots.known) {
+        boots.known = 1;
+        update_inventory();
+    }
     return 0;
 }
 async function Shirt_on() {
@@ -1646,7 +1760,7 @@ function Blind() {
  */
 export async function Blindf_on(otmp) {
     const already_blind = Blind();
-    remove_worn_item(otmp);
+    await remove_worn_item(otmp, false); /* C do_wear.c:1466 */
     setworn(otmp, W_TOOL);
     await on_msg(otmp);
 
@@ -1768,7 +1882,13 @@ async function armor_or_accessory_off(obj) {
         await Blindf_off(obj);
         return 1;
     }
-    return 0;
+    /* C do_wear.c:1823–1826 — not a ring, amulet, or eyewear. */
+    await impossible(
+        'removing strange accessory: %s',
+        await safe_typename(obj.otyp | 0),
+    );
+    if (obj.owornmask) await remove_worn_item(obj, false);
+    return 1;
 }
 
 /**
@@ -2642,7 +2762,7 @@ function takeoff_ok(obj) {
  */
 async function Amulet_on(amul) {
     // C `:968–969` — unwield/unquiver before wearing, then wear the amulet.
-    remove_worn_item(amul);
+    await remove_worn_item(amul, false);
     setworn(amul, W_AMUL);
     const u = game.u || (game.u = {});
     const otyp = (amul?.otyp | 0);
@@ -3068,9 +3188,12 @@ async function accessory_or_armor_on(obj) {
     if (armor) {
         // Release from weapon slots if needed
         if ((obj.owornmask || 0) & W_WEAPONS) {
-            remove_worn_item(obj);
+            await remove_worn_item(obj, false); /* C do_wear.c:2364 */
         }
 
+        /* C `:2375` — snapshot before setworn. Boots_on runs from afternmv
+           after this returns, and setworn may already have cleared uinwater. */
+        game.wasinwater = u.uinwater ? 1 : 0;
         setworn(obj, mask);
         if (obj === u.uarm) game.afternmv = Armor_on;
         else if (obj === u.uarmh) game.afternmv = Helmet_on;
@@ -3585,7 +3708,7 @@ export function cancel_doff(obj, slotmask) {
  * C ref: do_wear.c cancel_don — clear afternmv / multi / takeoff delay.
  * Applies to donning and doffing (C comment).
  */
-function cancel_don() {
+export function cancel_don() {
     const af = game.afternmv;
     if (!game.context) game.context = {};
     if (!game.context.takeoff) game.context.takeoff = {};
@@ -3633,7 +3756,7 @@ export function doffing(otmp) {
 /**
  * C ref: do_wear.c donning — put-on or take-off in progress for otmp.
  */
-function donning(otmp) {
+export function donning(otmp) {
     if (!otmp) return false;
     if (doffing(otmp)) return true;
     const u = game.u || {};
@@ -3654,9 +3777,8 @@ set_doffing_predicates(doffing, donning);
 
 /**
  * C ref: do_wear.c stop_donning — interrupt multi-turn armor don/doff.
- * Called from hack.c dosinkfall (and steal). Named omissions: full
- * remove_worn_item armor prop polish beyond setworn clear; accessory
- * takeoff.what-only arms; thesimpleoname vs doname wording.
+ * Called from hack.c dosinkfall (and steal). Putting-on interrupt calls
+ * steal.c remove_worn_item(FALSE). Named: thesimpleoname vs doname wording.
  * @param {object|null} stolenobj no mesg when already doffing this
  * @returns {Promise<number>} 0, or -multi when silently stopping doff
  */
@@ -3684,9 +3806,8 @@ export async function stop_donning(stolenobj) {
     }
     await unmul(buf);
     if (putting_on) {
-        // C: remove_worn_item(otmp, FALSE) — clear slot; setworn handles props
-        const mask = (otmp.owornmask | 0) & W_ARMOR;
-        if (mask) setworn(null, mask);
+        /* C do_wear.c:1724 — side effects never ran; unworn via *_off. */
+        await remove_worn_item(otmp, false);
     }
     return result;
 }

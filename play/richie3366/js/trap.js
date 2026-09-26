@@ -468,8 +468,8 @@ export async function animate_statue(statue, x, y, cause, fail_reason = null) {
     }
     m_dowear(mon, true);
     if (statue.owornmask) {
-        // remove_worn_item polish deferred — clear mask before delobj
-        statue.owornmask = 0;
+        /* C trap.c:888 — hero-worn statue (wielded figurine) before delobj. */
+        await remove_worn_item(statue, true);
     }
     delobj(statue);
 
@@ -2590,7 +2590,7 @@ export async function launch_obj(otyp, x1, y1, x2, y2, style) {
                             place_object(singleobj, x, y);
                             singleobj.otrapped = 0;
                             const { fracture_rock } = await import('./dig.js');
-                            fracture_rock(singleobj);
+                            await fracture_rock(singleobj);
                             await scatter(
                                 x, y, 4,
                                 MAY_DESTROY | MAY_HIT | MAY_FRACTURE

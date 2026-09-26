@@ -5,7 +5,10 @@
 
 import { game } from './gstate.js';
 import { rn2, rnd, d } from './rng.js';
-import { dochugw, m_everyturn_effect, monflee, can_hide_under_obj, can_fog, mon_offmap, accessible, Displaced } from './monmove.js';
+import {
+    dochugw, m_everyturn_effect, monflee, can_hide_under_obj, can_fog,
+    mon_offmap, accessible, Displaced, m_can_break_boulder,
+} from './monmove.js';
 import {
     COLNO, ROWNO, IS_OBSTRUCTED, IS_DOOR, IS_TREE, D_CLOSED, D_LOCKED, D_BROKEN,
     ALLOW_ROCK, ALLOW_DIG, Is_rogue_level, NOTONL, ALLOW_ALL, ALLOW_BARS,
@@ -39,7 +42,7 @@ import {
     is_vampshifter, is_male, is_female, is_neuter, likes_gems,
     is_rider, is_displacer, nonliving, breathless, is_giant, is_minion, is_human,
     is_elf, is_dwarf, is_gnome, is_orc, is_undead, amphibious, can_teleport, MR_FIRE,
-    MR_POISON, mindless, G_UNIQ, is_watch,
+    mindless, G_UNIQ, is_watch,
     touch_petrifies, flesh_petrifies, slimeproof, resists_ston, poly_when_stoned, vegan,
     montoostrong, monmax_difficulty,
 } from './monsters.js';
@@ -47,6 +50,7 @@ import {
     little_to_big, big_to_little, big_little_match, hero_conflict,
     resist_conflict, m_canseeu, on_fire, monsndx,
 } from './mondata.js';
+import { resists_poison } from './zap.js';
 import {
     objects_at, sobj_at, kill_egg, place_object, stackobj, delobj, is_metallic,
     is_rustprone, mksobj_at, is_organic, is_mines_prize, is_soko_prize,
@@ -302,18 +306,6 @@ function Breathless() {
     }
     const data = game.youmonst?.data;
     return data ? breathless(data) : false;
-}
-
-/**
- * C ref: monst.h resists_poison → Resists_Elem(POISON_RES) subset:
- * data.mresists | mextrinsics | mintrinsics. Artifact/worn grants named.
- */
-function resists_poison(mtmp) {
-    if (!mtmp || mtmp === game.youmonst) return Poison_resistance();
-    const bits = (mtmp.data?.mresists | 0)
-        | (mtmp.mextrinsics | 0)
-        | (mtmp.mintrinsics | 0);
-    return !!(bits & MR_POISON);
 }
 
 /**
@@ -2236,10 +2228,11 @@ export function mon_allowflags(mtmp) {
     }
     if (mtmp.isshk) allowflags |= ALLOW_SSM;
     if (mtmp.ispriest) allowflags |= ALLOW_SSM | ALLOW_SANCT;
-    // C: passes_walls → ALLOW_ROCK|ALLOW_WALL; throws_rocks / m_can_break_boulder → ALLOW_ROCK
-    // m_can_break_boulder (wielded dig tool) deferred — named in C-JS-MAP
+    // C mon.c `:2092–2095` — wall-walkers, rock-throwers, and boulder-breakers.
     if (passes_walls(mtmp.data)) allowflags |= ALLOW_ROCK | ALLOW_WALL;
-    if (throws_rocks(mtmp.data)) allowflags |= ALLOW_ROCK;
+    if (throws_rocks(mtmp.data) || m_can_break_boulder(mtmp)) {
+        allowflags |= ALLOW_ROCK;
+    }
     if (can_tunnel) allowflags |= ALLOW_DIG;
     if (doorbuster) allowflags |= BUSTDOOR;
     if (can_open) allowflags |= OPENDOOR;

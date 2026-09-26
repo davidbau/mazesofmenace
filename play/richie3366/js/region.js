@@ -44,13 +44,13 @@ import {
 import { block_point, unblock_point, does_block, cansee } from './vision.js';
 import {
     monsterNames, nonliving, breathless, haseyes, is_vampshifter,
-    MR_POISON,
 } from './monsters.js';
 import { objectNames } from './objects.js';
 import { makeplural } from './objnam.js';
 import { body_part } from './polyself.js';
 import { Monnam } from './do_name.js';
 import { monstseesu, monstunseesu } from './mondata.js';
+import { resists_poison } from './zap.js';
 import { dist2 } from './hacklib.js';
 import { level_mon_at } from './worm.js';
 import { lookup_bones_id } from './bones.js';
@@ -329,18 +329,6 @@ function attacktype_fordmg(ptr, atyp, dtyp) {
         }
     }
     return null;
-}
-
-/**
- * C ref: monst.h resists_poison → Resists_Elem(POISON_RES) subset:
- * data.mresists | mextrinsics | mintrinsics. Artifact/worn grants named.
- */
-function resists_poison(mtmp) {
-    if (!mtmp || mtmp === game.youmonst) return Poison_resistance();
-    const bits = (mtmp.data?.mresists | 0)
-        | (mtmp.mextrinsics | 0)
-        | (mtmp.mintrinsics | 0);
-    return !!(bits & MR_POISON);
 }
 
 function distu(x, y) {

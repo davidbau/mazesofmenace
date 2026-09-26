@@ -6,7 +6,7 @@
 
 import { game } from './gstate.js';
 import {
-    COLNO, ROWNO, DOOR, SDOOR, TREE, CLOUD, LAVAWALL,
+    COLNO, ROWNO, MAX_RADIUS, DOOR, SDOOR, TREE, CLOUD, LAVAWALL,
     D_CLOSED, D_LOCKED, D_TRAPPED, TT_PIT,
     SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7, SVALL,
     IS_WALL, IS_WATERWALL, IS_OBSTRUCTED, IS_DOOR,
@@ -673,55 +673,93 @@ function left_side(row, left_mark, right, limitsIdx) {
     }
 }
 
-// C ref: vision.c view_from() — optional func/arg for do_clear_area
-function view_from(srow, scol, cs_rows, cs_left, cs_right, range = 0,
+/**
+ * C ref: vision.c `view_from` `:2002–2091`.
+ * Arguments are (y, x). `range` 0 is unlimited. A nonzero range outside
+ * 1..MAX_RADIUS panics before any circle lookup. `func` null marks
+ * COULD_SEE and stores the start row's left/right directly (not set_min
+ * / set_max). Otherwise each cell is `func(x, y, arg)`. Quadrants then
+ * walk down, then up. `limitsIdx` is `circle_ptr(range) + 1`, or -1
+ * when C passes a null limit pointer. C leaves `vis_func` / `varg` set;
+ * the next `view_from` overwrites them.
+ *
+ * `is_clear` is `viz_clear_rows[row][col]` and `view_init` points each
+ * row at `viz_clear[row]`, so the JS reads `viz_clear` directly.
+ */
+function view_from(srow, scol, loc_cs_rows, left_most, right_most, range = 0,
     func = null, arg = null) {
+    let i;
+    let rowp;
+    let nrow;
+    let left;
+    let right;
+    let limitsIdx;
+
+    /* Globals for q?_path(), left_side(), and right_side(). */
     game.vis_start_col = scol;
     game.vis_start_row = srow;
-    game.cs_rows = cs_rows;
-    game.cs_left = cs_left;
-    game.cs_right = cs_right;
+    game.cs_rows = loc_cs_rows;
+    game.cs_left = left_most;
+    game.cs_right = right_most;
     game.vis_func = func;
     game.vis_arg = arg;
 
-    let left, right;
+    /* Extent of sight on the starting row. */
     if (viz_clear[srow][scol]) {
         left = left_ptrs[srow][scol];
         right = right_ptrs[srow][scol];
     } else {
-        left = !scol ? 0
-            : (viz_clear[srow][scol - 1] ? left_ptrs[srow][scol - 1] : scol - 1);
-        right = scol === COLNO - 1 ? COLNO - 1
-            : (viz_clear[srow][scol + 1] ? right_ptrs[srow][scol + 1] : scol + 1);
+        /*
+         * In stone, only the adjacent squares are visible, unless this
+         * cell is on an array boundary or a stone/clear boundary.
+         */
+        left = (!scol) ? 0
+            : (viz_clear[srow][scol - 1] ? left_ptrs[srow][scol - 1]
+                : scol - 1);
+        right = (scol === COLNO - 1) ? COLNO - 1
+            : (viz_clear[srow][scol + 1] ? right_ptrs[srow][scol + 1]
+                : scol + 1);
     }
 
-    let limitsIdx = -1;
     if (range) {
+        if (range > MAX_RADIUS || range < 1) {
+            /* C: panic("view_from called with range %d", range) — NORETURN. */
+            throw new Error(`view_from called with range ${range | 0}`);
+        }
+        limitsIdx = (circle_start[range] | 0) + 1;
         if (left < scol - range) left = scol - range;
         if (right > scol + range) right = scol + range;
-        limitsIdx = circle_start[range] + 1;
+    } else {
+        limitsIdx = -1;
     }
 
     if (func) {
-        for (let i = left; i <= right; i++) func(i, srow, arg);
+        for (i = left; i <= right; i++) func(i, srow, arg);
     } else {
-        mark_visible_range(srow, left, right);
+        /* Row-pointer optimization. The start row is visible. */
+        rowp = loc_cs_rows[srow];
+        for (i = left; i <= right; i++) rowp[i] = COULD_SEE;
+        left_most[srow] = left;
+        right_most[srow] = right;
     }
 
-    const nrow_down = srow + 1;
-    if (nrow_down < ROWNO) {
+    /*
+     * Quadrants. Valid rows are checked here; right_side / left_side
+     * do not (C's note: ugliness to remove extra routine calls).
+     */
+    nrow = srow + 1;
+    if (nrow < ROWNO) {
         game.vis_step = 1;
-        if (scol < COLNO - 1) right_side(nrow_down, scol, right, limitsIdx);
-        if (scol) left_side(nrow_down, left, scol, limitsIdx);
+        if (scol < COLNO - 1) right_side(nrow, scol, right, limitsIdx);
+        if (scol) left_side(nrow, left, scol, limitsIdx);
     }
-    const nrow_up = srow - 1;
-    if (nrow_up >= 0) {
+
+    nrow = srow - 1;
+    if (nrow >= 0) {
         game.vis_step = -1;
-        if (scol < COLNO - 1) right_side(nrow_up, scol, right, limitsIdx);
-        if (scol) left_side(nrow_up, left, scol, limitsIdx);
+        if (scol < COLNO - 1) right_side(nrow, scol, right, limitsIdx);
+        if (scol) left_side(nrow, left, scol, limitsIdx);
     }
-    game.vis_func = null;
-    game.vis_arg = null;
 }
 
 /**

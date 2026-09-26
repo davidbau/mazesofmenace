@@ -10,10 +10,12 @@
 //         corpse_xname adjective).
 
 import { game } from './gstate.js';
-import { rn2, rnd, rn1, d } from './rng.js';
+import { rn2, rnd, rn1, rnz, d } from './rng.js';
 import { depth, builds_up, level_difficulty } from './hacklib.js';
 import {
     STAIRS, LADDER, ECMD_OK, ECMD_TIME, ECMD_FAIL, ECMD_CANCEL,
+    DIR_DOWN, I_SPECIAL, W_ARTI, TOOKPLUNGE, VIBRATING_SQUARE,
+    S_dnstair, S_dnladder, LEVITATION, Can_fall_thru, Is_stronghold,
     W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU, W_ARMOR,
     W_WEP, W_SWAPWEP, W_QUIVER, W_RINGL, W_RINGR, W_AMUL, W_TOOL,
     W_ACCESSORY, W_SADDLE, W_BALL, W_CHAIN, INVIS, CLAIRVOYANT, LOST_DROPPED,
@@ -51,12 +53,15 @@ import {
 import {
     seetrap, t_at, delfloortrap, reset_utrap, water_damage, erode_obj,
     selftouch, uteetering_at_seen_pit, uescaped_shaft, maketrap, climb_pit,
+    dotrap, float_down, clamp_hole_destination,
 } from './trap.js';
 import {
     COIN_CLASS, SCROLL_CLASS, SPBOOK_CLASS, POTION_CLASS, RING_CLASS, objectNames,
+    is_pick,
 } from './objects.js';
 import {
-    pline, Norep, You, pline_The, You_see, docrt, flush_screen, flush_topl_more, newsym,
+    pline, Norep, You, Your, You_cant, pline_The, You_see, docrt,
+    flush_screen, flush_topl_more, newsym, glyph_to_cmap,
     assign_graphics, check_gold_symbol,
     You_feel, canseemon, canspotmon, impossible, describe_level,
     see_monsters,
@@ -82,14 +87,14 @@ import {
 import {
     In_tutorial, at_dgn_entrance, print_level_annotation,
     recalc_mapseen, recbranch_mapseen, remdun_mapseen,
-    maxledgerno, ledger_to_dnum,
+    maxledgerno, ledger_to_dnum, find_hell,
 } from './dungeon.js';
 import { record_achievement } from './insight.js';
 import { livelog_printf } from './pline.js';
 import { com_pager, convert_line } from './questpgr.js';
 import { keepdogs, losedogs, mon_catchup_elapsed_time, update_mlstmv, discard_migrations } from './dog.js';
 import { save_track, rest_track } from './track.js';
-import { m_at, mnexto, m_into_limbo, hide_monst, hideunder, restore_cham, wake_nearto, dist2, kill_genocided_monsters } from './mon.js';
+import { m_at, mnexto, m_into_limbo, hide_monst, hideunder, restore_cham, wake_nearto, dist2, kill_genocided_monsters, ceiling_hider } from './mon.js';
 import { enexto, rloc } from './teleport.js';
 import {
     monster_nearby, losehp, finish_maybe_wail, maybe_half_phys,
@@ -113,11 +118,11 @@ import { Monnam, Amonnam, Adjmonnam, mon_nam, hliquid, rndmonnam, trycall } from
 import { revive } from './zap.js';
 import {
     near_capacity, learn_unseen_invent, encumber_msg,
-    freeinv_core, getobj, ggetobj, useup,
+    freeinv_core, getobj, ggetobj, useup, useupall,
 } from './invent.js';
-import { can_reach_floor, set_occupation, engr_at } from './engrave.js';
+import { can_reach_floor, set_occupation, engr_at, sticks } from './engrave.js';
 import {
-    pickup, query_category, query_objlist, add_valid_menu_class,
+    pickup, pooleffects, query_category, query_objlist, add_valid_menu_class,
     allow_category, allow_all, count_justpicked, find_justpicked,
     u_safe_from_fatal_corpse, st_all,
 } from './pickup.js';
@@ -133,19 +138,20 @@ import {
 import { bypass_objlist, nxt_unbypassed_obj, w_blocks } from './worn.js';
 import { monstunseesu_prop } from './mondata.js';
 import { reset_pick } from './lock.js';
-import { Unaware } from './eat.js';
+import { Unaware, carried } from './eat.js';
 import { addinv_nomerge } from './u_init.js';
 import {
     set_artifact_intrinsic, revoke_invoked_property, Sting_effects,
+    artifact_has_invprop,
 } from './artifact.js';
 import { more_experienced, newexplevel } from './exper.js';
 import {
     PM_TOURIST, PM_ROGUE, monsterNames,
 } from './generated/monsters_data.js';
-import { dismount_steed, place_monster } from './steed.js';
+import { dismount_steed, place_monster, stucksteed } from './steed.js';
 import { place_wsegs } from './worm.js';
 import { set_residency, costly_alteration } from './shk.js';
-import { set_ustuck, gulp_blnd_check } from './mhitu.js';
+import { set_ustuck, gulp_blnd_check, digests, Flying } from './mhitu.js';
 import { onquest, ok_to_quest } from './quest.js';
 import { resurrect } from './wizard.js';
 import { create_mplayers } from './mplayer.js';
@@ -154,7 +160,7 @@ import { reset_hostility, forget_temple_entry } from './priest.js';
 import { bones_include_name } from './bones.js';
 import {
     olfaction, passes_walls, throws_rocks, is_flyer, is_floater,
-    amorphous, nolimbs, M1_SLITHY, MZ_SMALL, mons, is_rider, hides_under,
+    amorphous, nolimbs, M1_SLITHY, MZ_SMALL, MZ_HUGE, mons, is_rider, hides_under,
     haseyes, eyecount,
 } from './monsters.js';
 import {
@@ -162,10 +168,13 @@ import {
 } from './ball.js';
 import { obj_resists } from './dogmove.js';
 import { Soundeffect, se_scratching, se_alarm, se_drain_noises, se_ring_in_drain } from './sndprocs.js';
-import { polymorph_sink, dipsink_set_levltyp } from './fountain.js';
+import { polymorph_sink, dipsink_set_levltyp, floating_above } from './fountain.js';
 import { fruitname } from './potion.js';
 import { delete_levelfile, open_levelfile } from './files.js';
 import { strange_feeling } from './detect.js';
+import { surface } from './sit.js';
+import { use_pick_axe2 } from './dig.js';
+import { set_move_cmd, u_rooted } from './cmd.js';
 
 const PM_DEATH = monsterNames.indexOf('PM_DEATH');
 const PM_PESTILENCE = monsterNames.indexOf('PM_PESTILENCE');
@@ -436,13 +445,6 @@ function Levitation() {
     return !!(((u.HLevitation | 0) || (u.ELevitation | 0))
         && !(u.BLevitation | 0));
 }
-/** C ref: youprop.h Flying — (H||E) && !B; steed-flyer arm deferred. */
-function Flying() {
-    const u = game.u || {};
-    if (u.Flying) return true;
-    return !!(((u.HFlying | 0) || (u.EFlying | 0))
-        && !(u.BFlying | 0));
-}
 /** C youprop.h Deaf — H/E Deaf or roleplay deaf. */
 function Deaf() {
     const u = game.u || {};
@@ -543,7 +545,9 @@ async function You_hear(line) {
     await pline(`You hear ${line}`);
 }
 /**
- * C ref: hack.c u_locomotion — Lev/Fly verbs; poly locomotion() deferred.
+ * C ref: hack.c u_locomotion `:1817–1829` — Levitation, then youprop.h
+ * Flying (mhitu.js export: H/E or a flying steed, unless BFlying).
+ * Poly `locomotion(youmonst.data, def)` and the capitalize path stay named.
  * @param {string} defWord
  */
 function u_locomotion(defWord) {
@@ -647,7 +651,7 @@ export async function fire_damage(obj, force, x, y) {
 
 /**
  * C ref: trap.c lava_damage — soft materials burn up; hard → fire_damage.
- * Named omit: carried useupall / remove_worn_item.
+ * Carried arm (C `:4607–4609`, "shouldn't happen") unwears then useupall.
  * @returns {Promise<boolean>} true if object destroyed
  */
 async function lava_damage(obj, x, y) {
@@ -672,7 +676,14 @@ async function lava_damage(obj, x, y) {
                 await pline(`You see ${doname(obj)} hit lava and burn up!`);
             }
         }
-        delobj(obj);
+        /* C trap.c:4607–4611 — carried is not expected; still unwear. */
+        if (carried(obj)) {
+            const { remove_worn_item } = await import('./steal.js');
+            await remove_worn_item(obj, true);
+            useupall(obj);
+        } else {
+            delobj(obj);
+        }
         return true;
     }
     return fire_damage(obj, true, x, y);
@@ -1065,6 +1076,11 @@ function tutorial_enter_gamestate() {
         // otmp->owornmask = wornmask (restore flag, not currently worn)
         setnotworn(otmp);
         inv.shift();
+        // C freeinv sets where = OBJ_FREE before the object sits on
+        // gmst_invent. addinv_nomerge on the way out panics otherwise.
+        // freeinv_core / update_inventory stay the existing omit: setnotworn
+        // already cleared the worn slot, and the array was shifted by hand.
+        otmp.where = OBJ_FREE;
         otmp.owornmask = wornmask;
         stash.unshift(otmp); // C prepends gmst_invent
     }
@@ -2927,65 +2943,215 @@ export async function doddrop() {
 }
 
 /**
- * C ref: do.c dodown — '#' / '>' go down staircase (ordinary stairs path).
- *
- * Omits: levitation end, poly ceiling-hider, autodig, Gehennom gate yn,
- * hole/trapdoor plunge, stronghold hell, rooted/stuck/steed.
+ * C ref: do.c u_stuck_cannot_go `:1110–1127`.
+ * Held or swallowed: refuse. Sticky hero lets the grabber go.
+ * @param {string} updn
+ * @returns {Promise<boolean>} true when the move is consumed
+ */
+async function u_stuck_cannot_go(updn) {
+    const u = game.u;
+    if (!u?.ustuck) return false;
+    if (u.uswallow || !sticks(game.youmonst?.data)) {
+        const how = !u.uswallow ? 'being held'
+            : digests(u.ustuck?.data) ? 'swallowed'
+                : 'engulfed';
+        await You('are %s, and cannot go %s.', how, updn);
+        return true;
+    }
+    const mtmp = u.ustuck;
+    set_ustuck(null);
+    await You('release %s.', mon_nam(mtmp));
+    return false;
+}
+
+/**
+ * C ref: dungeon.c goto_hell `:1957–1963`. Sole C caller is dodown.
+ * @param {boolean} at_stairs
+ * @param {boolean} falling
+ */
+async function goto_hell(at_stairs, falling) {
+    const lev = { dnum: 0, dlevel: 1 };
+    find_hell(lev);
+    await goto_level(lev, at_stairs, falling, false);
+}
+
+/**
+ * C ref: do.c dodown `:1131–1294` — `#` / `>` go down.
+ * set_move_cmd, rooted, stuck steed, controlled levitation, ceiling
+ * hider, ustuck, hole/trapdoor, autodig, Valley gate, pet, huge
+ * squeeze, stronghold hell, then next_level / goto_level.
  */
 export async function dodown() {
     const u = game.u;
     if (!u) return ECMD_OK;
 
-    u.dz = 1;
-    u.dx = 0;
-    u.dy = 0;
+    // C hack.h DIR_DOWN is zdir slot 8 (dz +1). const.js DIR_DOWN matches.
+    set_move_cmd(DIR_DOWN, 0);
 
-    const stway = stairway_at(u.ux, u.uy);
+    if (await u_rooted()) return ECMD_TIME;
+
+    if (await stucksteed(true)) return ECMD_OK;
+
     let stairs_down = false;
     let ladder_down = false;
+    const stway = stairway_at(u.ux, u.uy);
     if (stway && !stway.up) {
         stairs_down = !stway.isladder;
         ladder_down = !stairs_down;
     }
 
-    // Also accept typ STAIRS/LADDER with down ladder flag when stairway
-    // node missing (partial generate_stairs).
-    if (!stairs_down && !ladder_down) {
-        const loc = game.level?.at(u.ux, u.uy);
-        if (loc && (loc.typ === STAIRS || loc.typ === LADDER)
-            && loc.ladder === 2) {
-            stairs_down = loc.typ === STAIRS;
-            ladder_down = loc.typ === LADDER;
-        }
-    }
+    const hlev = () => u.HLevitation | 0;
+    const elev = () => u.ELevitation | 0;
+    const blev = () => u.BLevitation | 0;
 
-    if (!stairs_down && !ladder_down) {
-        await pline("You can't go down here.");
+    // Levitation might be blocked, but '>' can still end controlled float.
+    if (hlev() || elev()) {
+        if ((hlev() & I_SPECIAL) !== 0 || (elev() & W_ARTI) !== 0) {
+            if ((elev() & W_ARTI) !== 0) {
+                for (const obj of (game.invent || [])) {
+                    if (obj?.oartifact
+                        && artifact_has_invprop(obj, LEVITATION)) {
+                        if ((obj.age | 0) < (game.moves | 0))
+                            obj.age = game.moves | 0;
+                        obj.age = (obj.age | 0) + rnz(100);
+                    }
+                }
+            }
+            if (await float_down(I_SPECIAL | TIMEOUT, W_ARTI)) {
+                return ECMD_TIME;
+            } else if (!hlev() && !elev()) {
+                await Your('latent levitation ceases.');
+                return ECMD_TIME;
+            }
+        }
+        if (blev()) {
+            // weren't actually floating after all — Blind stair hide skipped
+        } else if (Blind()) {
+            const glyphAt = game.level?.at(u.ux, u.uy)?.glyph | 0;
+            if (stairs_down)
+                stairs_down = glyph_to_cmap(glyphAt) === S_dnstair;
+            else if (ladder_down)
+                ladder_down = glyph_to_cmap(glyphAt) === S_dnladder;
+        }
+        if (Is_airlevel(u.uz)) {
+            await You('are floating in the %s.', surface(u.ux, u.uy));
+        } else if (Is_waterlevel(u.uz)) {
+            await You('are floating in %s.',
+                is_pool(u.ux, u.uy) ? 'the water' : 'a bubble of air');
+        } else {
+            await floating_above(
+                stairs_down ? 'stairs'
+                    : ladder_down ? 'ladder'
+                        : surface(u.ux, u.uy),
+            );
+        }
         return ECMD_OK;
     }
 
-    // C: next_to_u — leashed pet may hold hero back (D-1005)
-    {
-        const { next_to_u } = await import('./apply.js');
-        if (!(await next_to_u())) {
-            await pline('You are held back by your pet!');
+    // C you.h Upolyd — umonnum != umonster.
+    const Upolyd = (u.umonnum | 0) !== (u.umonster | 0);
+    if (Upolyd && ceiling_hider(mons(u.umonnum | 0)) && u.uundetected) {
+        u.uundetected = 0;
+        if (Flying()) {
+            await You('fly out of hiding.');
+        } else {
+            await You('drop to the %s.', surface(u.ux, u.uy));
+            // C is_pool_or_lava — is_pool || is_lava (dbridge.c).
+            if (is_pool(u.ux, u.uy) || is_lava(u.ux, u.uy)) {
+                await pooleffects(false);
+            } else {
+                await pickup(1);
+                const hidetrap = t_at(u.ux, u.uy);
+                if (hidetrap) await dotrap(hidetrap, TOOKPLUNGE);
+            }
+        }
+        return ECMD_TIME;
+    }
+
+    if (await u_stuck_cannot_go('down')) return ECMD_TIME;
+
+    let trap = null;
+    if (!stairs_down && !ladder_down) {
+        trap = t_at(u.ux, u.uy);
+        if (trap && (uteetering_at_seen_pit(trap) || uescaped_shaft(trap))) {
+            await dotrap(trap, TOOKPLUNGE);
+            return ECMD_TIME;
+        } else if (!trap || !is_hole(trap.ttyp)
+            || !Can_fall_thru(u.uz) || !trap.tseen) {
+            if (game.flags?.autodig && !game.context?.nopick
+                && u.uwep && is_pick(u.uwep)) {
+                return await use_pick_axe2(u.uwep);
+            }
+            const yet = (trap && (trap.ttyp | 0) === VIBRATING_SQUARE)
+                ? ' yet' : '';
+            await You_cant('go down here%s.', yet);
             return ECMD_OK;
         }
     }
 
-    game.at_ladder = !!(game.level?.at(u.ux, u.uy)?.typ === LADDER)
-        || !!(stway && stway.isladder);
+    if (on_level(game.valley_level, u.uz) && !u.uevent?.gehennom_entered) {
+        await You('are standing at the gate to Gehennom.');
+        await pline('Unspeakable cruelty and harm lurk down there.');
+        if ((await y_n('Are you sure you want to enter?')) !== 'y')
+            return ECMD_OK;
+        await pline('So be it.');
+        if (!u.uevent) u.uevent = {};
+        u.uevent.gehennom_entered = 1;
+    }
 
-    await next_level(true);
-    game.at_ladder = false;
+    {
+        const { next_to_u } = await import('./apply.js');
+        if (!(await next_to_u())) {
+            await You('are held back by your pet!');
+            return ECMD_OK;
+        }
+    }
+
+    if (trap) {
+        const down_or_thru = (trap.ttyp | 0) === HOLE ? 'down' : 'through';
+        let actn = u_locomotion('jump');
+        if ((game.youmonst?.data?.msize | 0) >= MZ_HUGE) {
+            await You("don't fit %s easily.", down_or_thru);
+            if ((await y_n(`Try to squeeze ${down_or_thru}?`)) === 'y') {
+                if (!rn2(3)) {
+                    actn = 'manage to squeeze';
+                    losehp(
+                        maybe_half_phys(rnd(4)),
+                        'contusion from a small passage',
+                        KILLED_BY,
+                    );
+                } else {
+                    await You('were unable to fit %s.', down_or_thru);
+                    return ECMD_OK;
+                }
+            } else {
+                return ECMD_OK;
+            }
+        }
+        await You('%s %s the %s.', actn, down_or_thru,
+            (trap.ttyp | 0) === HOLE ? 'hole' : 'trap door');
+    }
+
+    if (trap && Is_stronghold(u.uz)) {
+        await goto_hell(false, true);
+    } else if (trap && trap.dst && (trap.dst.dlevel | 0) !== -1) {
+        const tdst = { dnum: 0, dlevel: 0 };
+        assign_level(tdst, trap.dst);
+        clamp_hole_destination(tdst);
+        await goto_level(tdst, false, false, false);
+    } else {
+        game.at_ladder = (game.level?.at(u.ux, u.uy)?.typ | 0) === LADDER;
+        await next_level(!trap);
+        game.at_ladder = false;
+    }
     return ECMD_TIME;
 }
 
 /**
  * C ref: do.c doup — '<' go up staircase (ordinary stairs path).
  *
- * Omits: rooted, stucksteed, u_stuck_cannot_go, encumbrance
- * load gate (ledger 1 escape yn live).
+ * Omits: rooted, stucksteed, encumbrance load gate
+ * (ledger 1 escape yn live). u_stuck_cannot_go is wired (do.c:1321).
  */
 export async function doup() {
     const u = game.u;
@@ -3006,6 +3172,9 @@ export async function doup() {
         await pline("You can't go up here.");
         return ECMD_OK;
     }
+
+    // C do.c:1321 — after the missing-stair return (stucksteed still omitted).
+    if (await u_stuck_cannot_go('up')) return ECMD_TIME;
 
     // C do.c :1330–1335 — ledger 1: no return; 'y' climbs out (prev_level
     // escapes via goto_level ledger<=0 → done(ESCAPED)), else stay.

@@ -1225,29 +1225,45 @@ const msgwind = [
 ];
 
 /**
- * C options.c paranoia[] `:136–182` — paranoid_confirmation menu rows
- * (flagmask, argname, explain). The argMinLen/synonym/synMinLen columns
- * belong to the config-token parser in optfn_paranoid_confirmation
- * (`:2818–3042`, named map omission) and are not carried here. The
- * flagmask-0 "none" sentinel (`:180`) ends C's `:5966` loop; the "~0 all"
- * tail (`:181`) is unreachable past it and omitted.
+ * C options.c paranoia[] `:136–182` — flagmask, argname, argMinLen,
+ * synonym, synMinLen, explain. The flagmask-0 "none" row (`:180`) ends
+ * the menu and get_val loops; "~0 all" (`:181`) is only for do_set.
  */
 const paranoia = [
-    { flagmask: PARANOID_CONFIRM, argname: 'Confirm', explain: 'for "yes" confirmations, require "no" to reject' },
-    { flagmask: PARANOID_QUIT, argname: 'quit', explain: 'yes vs y to quit or to enter explore mode' },
-    { flagmask: PARANOID_DIE, argname: 'die', explain: 'yes vs y to die (explore mode or debug mode)' },
-    { flagmask: PARANOID_BONES, argname: 'bones', explain: 'yes vs y to save bones data when dying in debug mode' },
-    { flagmask: PARANOID_HIT, argname: 'attack', explain: 'yes vs y to attack a peaceful monster' },
-    { flagmask: PARANOID_BREAKWAND, argname: 'wand-break', explain: 'yes vs y to break a wand via (a)pply' },
-    { flagmask: PARANOID_EATING, argname: 'eat', explain: 'yes vs y to continue eating after first bite when satiated' },
-    { flagmask: PARANOID_WERECHANGE, argname: 'Were-change', explain: 'yes vs y to change form when lycanthropy is controllable' },
-    { flagmask: PARANOID_PRAY, argname: 'pray', explain: 'y required to pray (supersedes old "prayconfirm" option)' },
-    { flagmask: PARANOID_TRAP, argname: 'trap', explain: 'y required to enter known trap unless considered harmless' },
-    { flagmask: PARANOID_AUTOALL, argname: 'Autoall', explain: "y required to pick filter choice 'A' for menustyle:Full" },
-    { flagmask: PARANOID_SWIM, argname: 'swim', explain: "'m' prefix necessary to deliberately walk into lava or water" },
-    { flagmask: PARANOID_REMOVE, argname: 'Remove', explain: 'always pick from inventory for Remove and Takeoff' },
-    { flagmask: 0, argname: 'none', explain: null }, // C `:180` loop sentinel
+    { flagmask: PARANOID_CONFIRM, argname: 'Confirm', argMinLen: 1, synonym: 'Paranoia', synMinLen: 2, explain: 'for "yes" confirmations, require "no" to reject' },
+    { flagmask: PARANOID_QUIT, argname: 'quit', argMinLen: 1, synonym: 'explore', synMinLen: 2, explain: 'yes vs y to quit or to enter explore mode' },
+    { flagmask: PARANOID_DIE, argname: 'die', argMinLen: 1, synonym: 'death', synMinLen: 2, explain: 'yes vs y to die (explore mode or debug mode)' },
+    { flagmask: PARANOID_BONES, argname: 'bones', argMinLen: 1, synonym: null, synMinLen: 0, explain: 'yes vs y to save bones data when dying in debug mode' },
+    { flagmask: PARANOID_HIT, argname: 'attack', argMinLen: 1, synonym: 'hit', synMinLen: 1, explain: 'yes vs y to attack a peaceful monster' },
+    { flagmask: PARANOID_BREAKWAND, argname: 'wand-break', argMinLen: 2, synonym: 'break-wand', synMinLen: 2, explain: 'yes vs y to break a wand via (a)pply' },
+    { flagmask: PARANOID_EATING, argname: 'eat', argMinLen: 1, synonym: 'continue', synMinLen: 4, explain: 'yes vs y to continue eating after first bite when satiated' },
+    { flagmask: PARANOID_WERECHANGE, argname: 'Were-change', argMinLen: 2, synonym: null, synMinLen: 0, explain: 'yes vs y to change form when lycanthropy is controllable' },
+    { flagmask: PARANOID_PRAY, argname: 'pray', argMinLen: 1, synonym: null, synMinLen: 0, explain: 'y required to pray (supersedes old "prayconfirm" option)' },
+    { flagmask: PARANOID_TRAP, argname: 'trap', argMinLen: 1, synonym: 'move-trap', synMinLen: 1, explain: 'y required to enter known trap unless considered harmless' },
+    { flagmask: PARANOID_AUTOALL, argname: 'Autoall', argMinLen: 2, synonym: 'autoselect-all', synMinLen: 2, explain: "y required to pick filter choice 'A' for menustyle:Full" },
+    { flagmask: PARANOID_SWIM, argname: 'swim', argMinLen: 1, synonym: null, synMinLen: 0, explain: "'m' prefix necessary to deliberately walk into lava or water" },
+    { flagmask: PARANOID_REMOVE, argname: 'Remove', argMinLen: 1, synonym: 'Takeoff', synMinLen: 1, explain: 'always pick from inventory for Remove and Takeoff' },
+    { flagmask: 0, argname: 'none', argMinLen: 4, synonym: null, synMinLen: 0, explain: null }, // C `:180`
+    { flagmask: ~0, argname: 'all', argMinLen: 3, synonym: null, synMinLen: 0, explain: null }, // C `:181`
 ];
+
+/** C char index; past-the-end is the NUL C would read. */
+function optCh(s, i) {
+    return (typeof s === 'string' && i >= 0 && i < s.length) ? s[i] : '\0';
+}
+
+/**
+ * C `:2971–2972` — "nofoo" means "!foo", except "none" and a "no" that
+ * ends the token. The third `lowc()` wraps the boolean
+ * `op[2] != 'n' && lowc(op[2]) != '\0'`, not `lowc(op[2])`.
+ * `lowc(0)` is 0 and `lowc(1)` is 1, so that call is the boolean.
+ * `op[2]` is compared to `'n'` before `lowc`, so "NONE" is not "none".
+ */
+function paranoiaNofoo(op) {
+    const c2 = optCh(op, 2);
+    return lowc(optCh(op, 0)) === 'n' && lowc(optCh(op, 1)) === 'o'
+        && c2 !== 'n' && lowc(c2) !== '\0';
+}
 
 /**
  * C symbols.c known_handling[] `:376–384` — symset handling names indexed by
@@ -1573,29 +1589,151 @@ export async function handler_paranoid_confirmation() {
 }
 
 /**
- * C options.c optfn_paranoid_confirmation get_val / get_cnf_val arm
- * `:3021–3037` — space-separated argnames of the set paranoia_bits, or
- * "none". The do_set token parser (`:2837–3020`) is a named map omission
- * (allopt row keeps optfn null, so rc paranoid_confirmation stays
- * unparsed); do_handler (`:3039–3041`) is dispatched from doset.
- * @param {number} req REQ_GET_VAL / REQ_GET_CNF_VAL
- * @param {{buf:string}} opts get_val holder
+ * C initoptions_init `:7173` stores the default bits before rcfile().
+ * parseNethackrc builds the flags bag first, so a relative +/- value
+ * needs that default already present. In-game flags are already set.
  */
-function optfn_paranoid_confirmation_get_val(req, opts) {
-    if (!game.flags) game.flags = {};
-    const wizard = !!(game.flags.wizard || game.flags.debug); // C `wizard` (handler precedent)
-    let tmpbuf = ''; // C `:3024`
-    for (let i = 0; paranoia[i].flagmask !== 0; ++i) { // C `:3025`
-        if (((game.flags.paranoia_bits | 0) & paranoia[i].flagmask) !== 0 // C `:3026`
-            /* hide paranoid_confirm:bones during play except for wizard
-               mode; keep it for any mode if rewriting the config file */
-            && (paranoia[i].flagmask !== PARANOID_BONES // C `:3029–3030`
-                || wizard || req === REQ_GET_CNF_VAL))
-            tmpbuf += ` ${paranoia[i].argname}`; // C `:3031–3032` Snprintf(eos, " %s")
+function rcEnsureParanoiaDefault(flags) {
+    if (flags.paranoia_bits == null)
+        flags.paranoia_bits = PARANOID_PRAY | PARANOID_SWIM | PARANOID_TRAP;
+}
+
+/**
+ * C options.c optfn_paranoid_confirmation `:2818–3043` (staticfn;
+ * NHOPT_PARSE wires &optfn_paranoid_confirmation, optlist.h `:556`).
+ * do_handler (`:3039–3041`) returns handler_paranoid_confirmation() —
+ * async in JS, so doset calls it through doset_optfn_do_handler.
+ * COMPLAIN_ABOUT_PRAYCONFIRM is defined (`options.c:20`).
+ * @param {number} optidx
+ * @param {number} req REQ_DO_INIT / REQ_DO_SET / REQ_GET_VAL / REQ_GET_CNF_VAL
+ * @param {boolean} optNegated
+ * @param {string|{buf:string}} opts full option text, or the get_val holder
+ * @param {string} op value tail (EMPTY_OPTSTR when valueless)
+ * @param {object|null} [flagsBag] flags home (result.flags at rc; game.flags in game)
+ */
+export function optfn_paranoid_confirmation(optidx, req, optNegated, opts, op, flagsBag) {
+    const flags = flagsBag || game.flags || (game.flags = {});
+    if (req === REQ_DO_INIT) { // C `:2847`
+        return OPTN_OK; // C `:2848`
     }
-    /* note: always leaves enough room for caller to tack on '\n' */
-    set_optbuf(opts, tmpbuf ? tmpbuf.slice(1) : 'none'); // C `:3035–3036` (BUFSZ-1 cap unreachable: 11 short argnames)
-    return OPTN_OK; // C `:3037`
+    if (req === REQ_DO_SET) { // C `:2850`
+        const optname = allopt_name(optidx);
+        const optsStr = typeof opts === 'string' ? opts : '';
+        op = op == null ? '' : String(op);
+        /*
+         * "prayconfirm" used to be a separate boolean option,
+         * now it is a synonym for paranoid_confirm:+pray and
+         * "!prayconfirm" has become one for paranoid_confirm:-pray.
+         */
+        if (optStrncasecmp(optsStr, 'prayconfirm', 4) === 0) { // C `:2860` !strncmpi(opts, "prayconfirm", 4)
+            if (op) { // C `:2861` *op
+                config_error_add( // C `:2867–2869`
+                    "deprecated %sprayconfirm option takes no parameters (found '%s')",
+                    optNegated ? '!' : '', op);
+                return OPTN_SILENTERR; // C `:2870`
+            }
+            /* COMPLAIN_ABOUT_PRAYCONFIRM is on (`options.c:20`). */
+            config_error_add( // C `:2877–2880`
+                "%sprayconfirm option is deprecated; switching to %s:%cpray",
+                optNegated ? '!' : '', optname, optNegated ? '-' : '+');
+            /* convert prayconfirm to paranoid_confirm:+pray and
+               !prayconfirm to paranoid_confirm:-pray */
+            op = `${optNegated ? '-' : '+'}pray`; // C `:2886` Sprintf "%cpray"
+            /* possibly changing !prayconfirm to paranoid_confirm:-pray
+               which clears a paranoia bit but isn't a negated option */
+            optNegated = false; // C `:2890`
+        } else if (optNegated) { // C `:2895`
+            /* "!paranoid_confirm" w/o args is same as paranoid_confirm:none;
+               "!paranoid_confirm:anything" is disallowed */
+            if (!op) { // C `:2898` !*op
+                flags.paranoia_bits = 0; // C `:2899`
+                return OPTN_OK; // C `:2900`
+            }
+            config_error_add("!%s does not accept a value", optname); // C `:2902–2903`
+            return OPTN_SILENTERR; // C `:2904`
+        } else if (!op) { // C `:2906` !*op
+            /* "paranoid_confirm" without any arguments is disallowed */
+            config_error_add("%s requires a value; use 'none' to cancel all", optname); // C `:2908–2909`
+            return OPTN_SILENTERR; // C `:2910`
+        }
+
+        op = mungspaces(op); // C `:2944`
+        let plusOrMinus = false; // C `:2853`
+        if (optCh(op, 0) !== '+' && optCh(op, 0) !== '-') { // C `:2945`
+            /* new value; first clear all old bits */
+            flags.paranoia_bits = 0; // C `:2947`
+        } else {
+            /* augmenting existing value; keep old bits */
+            plusOrMinus = true; // C `:2950` only used for "+none" and "-none"
+            optNegated = optCh(op, 0) === '-'; // C `:2951`
+            op = op.slice(1); // C `:2952` *++op
+            if (optCh(op, 0) === ' ') // C `:2952` skip '+'/'-', maybe whitespace
+                op = op.slice(1);
+        }
+
+        for (;;) { // C `:2956`
+            let fldNegated = optCh(op, 0) === '!'; // C `:2957`
+            if (fldNegated) { // C `:2958`
+                op = op.slice(1); // C `:2965` *++op
+                if (optCh(op, 0) === ' ') // C `:2965` skip '!', maybe whitespace
+                    op = op.slice(1);
+            } else if (paranoiaNofoo(op)) { // C `:2971–2972`
+                fldNegated = true; // C `:2973`
+                op = op.slice(2); // C `:2974` skip "no"
+            }
+            let pp = op.indexOf(' '); // C `:2981` strchr
+            const token = pp >= 0 ? op.slice(0, pp) : op; // C `:2982–2983` *pp = '\0'
+            let i = 0;
+            for (; i < paranoia.length; ++i) { // C `:2987` SIZE(paranoia)
+                const row = paranoia[i];
+                if (match_optname(token, row.argname, row.argMinLen, false) // C `:2988–2989`
+                    || (row.synonym
+                        && match_optname(token, row.synonym, row.synMinLen, false))) { // C `:2990–2992`
+                    if (!row.flagmask) { // C `:2993` flagmask==0 is "none"
+                        if (!plusOrMinus)
+                            flags.paranoia_bits = 0; // C `:2997`
+                    } else if (optNegated || fldNegated) { // C `:2998`
+                        flags.paranoia_bits = (flags.paranoia_bits | 0) & ~row.flagmask; // C `:2999`
+                    } else {
+                        flags.paranoia_bits = (flags.paranoia_bits | 0) | row.flagmask; // C `:3001`
+                    }
+                    break; // C `:3003`
+                }
+            }
+            if (i === paranoia.length) { // C `:3006` i == SIZE(paranoia)
+                /* didn't match anything, so arg is bad;
+                   any flags already modified will stay modified */
+                config_error_add("Unknown %s parameter '%s'", optname, token); // C `:3009–3010`
+                return OPTN_SILENTERR; // C `:3011`
+            }
+            /* move on to next token */
+            if (pp >= 0)
+                op = op.slice(pp + 1); // C `:3015` op = pp + 1
+            else
+                break; // C `:3017`
+        }
+        return OPTN_OK; // C `:3019`
+    }
+    if (req === REQ_GET_VAL || req === REQ_GET_CNF_VAL) { // C `:3021`
+        const wizard = !!(game.flags?.wizard || game.flags?.debug); // C `wizard`
+        let tmpbuf = ''; // C `:3024`
+        for (let i = 0; paranoia[i].flagmask !== 0; ++i) { // C `:3025`
+            if (((flags.paranoia_bits | 0) & paranoia[i].flagmask) !== 0 // C `:3026`
+                /* hide paranoid_confirm:bones during play except for wizard
+                   mode; keep it for any mode if rewriting the config file */
+                && (paranoia[i].flagmask !== PARANOID_BONES // C `:3029–3030`
+                    || wizard || req === REQ_GET_CNF_VAL))
+                tmpbuf += ` ${paranoia[i].argname}`; // C `:3031–3032` Snprintf(eos, " %s")
+        }
+        /* note: always leaves enough room for caller to tack on '\n' */
+        let out = tmpbuf ? tmpbuf.slice(1) : 'none'; // C `:3036` strncat, skip the leading space
+        if (out.length > BUFSZ - 1) out = out.slice(0, BUFSZ - 1); // C `:3036` BUFSZ-1
+        set_optbuf(opts, out);
+        return OPTN_OK; // C `:3037`
+    }
+    /* do_handler `:3039–3041` is handler_paranoid_confirmation(), async-split
+       into doset_optfn_do_handler (optfn_msg_window precedent). */
+    return OPTN_OK; // C `:3042`
 }
 
 /**
@@ -2669,6 +2807,15 @@ export function parseNethackrc(rc) {
                         do_set, negated, val, null, result.iflags, true, null,
                     );
                 }
+                else if (key === 'paranoid_confirmation' || key === 'prayconfirm') {
+                    // C optfn_paranoid_confirmation do_set (opt_initial).
+                    // Alias prayconfirm is strncmpi(opts, "prayconfirm", 4).
+                    rcEnsureParanoiaDefault(result.flags);
+                    optfn_paranoid_confirmation(
+                        allopt_idx('paranoid_confirmation'), REQ_DO_SET, negated,
+                        stripped, val, result.flags,
+                    );
+                }
                 else if (stripped.startsWith('S_')
                     && parsesymbols(stripped, PRIMARYSET)) {
                     // C options.c `:663–667` !got_match S_ fallback (C strips
@@ -2806,6 +2953,16 @@ export function parseNethackrc(rc) {
                     optfn_perminv_mode(
                         do_set, negated, '', null, result.iflags, true, null,
                     );
+                }
+                else if (lname === 'paranoid_confirmation' || lname === 'prayconfirm') {
+                    // C optfn_paranoid_confirmation do_set, valueless (opt_initial).
+                    // "!paranoid_confirmation" clears; bare name is silenterr;
+                    // prayconfirm / !prayconfirm become +pray / -pray.
+                    rcEnsureParanoiaDefault(result.flags);
+                    optfn_paranoid_confirmation(
+                        allopt_idx('paranoid_confirmation'), REQ_DO_SET, negated,
+                        stripped, EMPTY_OPTSTR, result.flags,
+                    );
                 } else {
                     // C options.c `:663` S_ gate on unmatched valueless
                     // options: without ':'/'=' parsesymbols always returns
@@ -2813,9 +2970,17 @@ export function parseNethackrc(rc) {
                     // kept for C call order.
                     if (stripped.startsWith('S_')) parsesymbols(stripped, PRIMARYSET);
                     const eqIdx = stripped.indexOf('=');
+                    const eqHead = eqIdx >= 0
+                        ? stripped.slice(0, eqIdx).trim().toLowerCase() : '';
                     if (eqIdx >= 0
-                        && stripped.slice(0, eqIdx).trim().toLowerCase()
-                            === 'perminv_mode') {
+                        && (eqHead === 'paranoid_confirmation' || eqHead === 'prayconfirm')) {
+                        // C string_for_opt accepts '=' as well as ':'.
+                        rcEnsureParanoiaDefault(result.flags);
+                        optfn_paranoid_confirmation(
+                            allopt_idx('paranoid_confirmation'), REQ_DO_SET, negated,
+                            stripped, stripped.slice(eqIdx + 1), result.flags,
+                        );
+                    } else if (eqIdx >= 0 && eqHead === 'perminv_mode') {
                         optfn_perminv_mode(
                             do_set, negated,
                             stripped.slice(eqIdx + 1).trim(),
@@ -5649,7 +5814,7 @@ export async function doset() {
         { name: 'msg_window', get_val: () => doset_compopt_get_val(optfn_msg_window, 'msg_window'), handler: true },
         { name: 'number_pad', get_val: () => doset_compopt_get_val(optfn_number_pad, 'number_pad'), handler: true },
         { name: 'packorder', val: '$")[%?+!=/(*`0_' },
-        { name: 'paranoid_confirmation', get_val: () => { const h = { buf: '' }; optfn_paranoid_confirmation_get_val(REQ_GET_VAL, h); return h.buf; }, handler: true },
+        { name: 'paranoid_confirmation', get_val: () => doset_compopt_get_val(optfn_paranoid_confirmation, 'paranoid_confirmation'), handler: true },
         // C optlist.h NHOPTC perminv_mode set_in_game before petattr.
         // doset_skip_unsupported when !WC_PERM_INVENT (contest tty).
         { name: 'perminv_mode', get_val: optfn_perminv_mode_get_val_display, handler: true },
@@ -6128,7 +6293,7 @@ const allopt = [
     // optlist.h:541 NHOPTC(packorder)
     { name: 'packorder', opttyp: CompOpt, idx: 124, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: null },
     // optlist.h:556 NHOPTC(paranoid_confirmation)
-    { name: 'paranoid_confirmation', opttyp: CompOpt, idx: 125, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: null },
+    { name: 'paranoid_confirmation', opttyp: CompOpt, idx: 125, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: optfn_paranoid_confirmation },
     // optlist.h:559 NHOPTB(pauper)
     { name: 'pauper', opttyp: BoolOpt, idx: 126, setwhere: SET_IN_CONFIG, initval: false, addr: { obj: 'flags', key: 'pauper' }, optfn: null },
     // optlist.h:562 NHOPTB(perm_invent)

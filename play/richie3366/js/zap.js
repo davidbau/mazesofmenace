@@ -157,7 +157,8 @@
 // do_osshock shop bill; invent poly_obj worn remap is D-1510;
 // poly_obj Has_contents → shk.c delete_contents D-1770
 // (trap.js delete_contents_chest / mklev.js create_object_delete_contents named);
-// poly-arm boxlock reset_pick is D-1483; polypiles/livelog named;
+// poly-arm boxlock reset_pick is D-1483; bhito polypiles/livelog is D-2807;
+// debugpline pulsate stays named (no JS debugpline);
 // blank_novel / corpse revive→rot timer;
 // cant_finish_meal; animate_statue montraits wire; defended(); resists_magm
 // body; ignite_items body; burnarmor worn erode ported (D-0741);
@@ -223,7 +224,7 @@ import { rn1, rn2, rnd, d } from './rng.js';
 import { getlin, yn_function } from './getline.js';
 import { livelog_printf } from './pline.js';
 import {
-    flush_screen, flush_topl_more, pline, pline_dir, pline_mon, Norep, You, Your, You_feel, newsym,
+    flush_screen, flush_topl_more, pline, pline_dir, pline_mon, pline_The, Norep, You, Your, You_feel, newsym, newsym_force,
     tmp_at, zapdir_to_glyph, nh_delay_output, canseemon, canspotmon, shieldeff,
     obj_glyph, cmap_to_glyph, glyph_is_invisible, map_invisible, unmap_object,
     bot, set_msg_xy, impossible,
@@ -238,8 +239,11 @@ import {
 } from './invent.js';
 import { mstatusline, ustatusline } from './insight.js';
 import { setnotworn, boulder_hits_pool } from './do.js';
-import { doname, xname, yname, distant_name, vtense, The, the, an, An, aobjnam, killer_xname, ansimpleoname, makeplural } from './objnam.js';
+import { doname, xname, yname, distant_name, cxname_singular, vtense, The, the, an, An, aobjnam, killer_xname, ansimpleoname, makeplural } from './objnam.js';
 import { uhim, uhis } from './roles.js';
+import { upstart } from './hacklib.js';
+import { Soundeffect } from './sndprocs.js';
+import { se_crumbling_sound } from './generated/seffects_data.js';
 import { fix_wall_spines } from './mklev.js';
 import {
     A_WIS, A_STR, A_CON, A_DEX, A_INT, A_CHA, exercise, acurr, adjalign,
@@ -252,7 +256,7 @@ import {
 } from './hack.js';
 import {
     nonliving, is_demon, nohands, MR_FIRE, MR_COLD, MR_DISINT, MR_ELEC,
-    MR_POISON, MR_ACID, M1_SEE_INVIS, is_undead, is_were, is_vampshifter, monsterNames, mons,
+    MR_ACID, M1_SEE_INVIS, is_undead, is_were, is_vampshifter, monsterNames, mons,
     G_UNIQ, G_NOCORPSE, is_rider, is_swimmer, mindless, MZ_MEDIUM, is_whirly,
     hides_under, is_golem, is_mplayer, vegetarian, carnivorous, NUMMONS,
 } from './monsters.js';
@@ -271,7 +275,7 @@ import {
     killed, xkilled, flash_hits_mon, m_is_steadfast, that_is_a_mimic,
     disguised_as_mon, disguised_as_non_mon,
 } from './uhitm.js';
-import { mon_nam, Monnam, a_monnam, noit_Monnam, christen_monst, hliquid, Hallucination, rndmonnam, free_oname } from './do_name.js';
+import { mon_nam, Monnam, a_monnam, noit_Monnam, noname_monnam, type_is_pname, christen_monst, hliquid, Hallucination, rndmonnam, free_oname } from './do_name.js';
 import { rnd_hallublast } from './mthrowu.js';
 import { finish_losehp_done, done } from './end.js';
 import {
@@ -288,7 +292,7 @@ import { spoteffects } from './pickup.js';
 import { burn_away_slime, get_obj_location } from './timeout.js';
 import { show_transient_light, transient_light_cleanup } from './light.js';
 import { create_gas_cloud } from './region.js';
-import { recalc_block_point } from './vision.js';
+import { block_point, does_block, recalc_block_point, unblock_point } from './vision.js';
 import { picking_at, reset_pick, boxlock, boxlock_invent, doorlock, getdir } from './lock.js';
 import { monflee, sticks, maybe_unhide_at } from './monmove.js';
 import { digests, set_ustuck, unstuck, expels, ureflects, u_slow_down } from './mhitu.js';
@@ -312,6 +316,7 @@ import { setuwep, setuswapwep, setuqwep, set_twoweap } from './wield.js';
 import { remove_worn_item } from './steal.js';
 import {
     mkobj, mksobj, delobj, delobj_core, objects_at, sobj_at, replace_object, rnd_class, weight, splitobj, container_weight,
+    corpse_revive_type,
     oc_merge_of, uncurse, unbless, attach_egg_hatch_timeout, obj_extract_self,
     eaten_stat, start_timer, spot_stop_timers, spot_time_left, obj_stop_timers,
     obj_ice_effects, place_object, stackobj, mergable, merged, set_corpsenm, kill_egg,
@@ -347,12 +352,12 @@ import {
     TELEPAT, INTRINSIC, FAST, BOLT_LIM,
     LEFT_RING, RIGHT_RING,
     M_AP_TYPE, M_AP_NOTHING, M_AP_MONSTER, M_AP_OBJECT, M_AP_FURNITURE,
-    NON_PM, ismnum, G_GENOD,
+    NON_PM, ismnum, G_GENOD, ARTICLE_THE,
     MIM_REVEAL, MIM_OMIT_WAIT, ANIMATE_SPELL,
     def_warnsyms, S_flashbeam,
     W_RING, W_ARMG, W_ARMH, W_ARMOR, W_SADDLE, W_ART, W_ARTI,
     W_WEP, W_SWAPWEP, W_QUIVER, W_WEAPONS,
-    REFLECTING, ANTIMAGIC, SHOCK_RES, DRAIN_RES, TELEPORT_CONTROL, STUNNED, M_SEEN_MAGR, M_SEEN_REFL, LEVITATION, FLYING,
+    REFLECTING, ANTIMAGIC, SHOCK_RES, POISON_RES, DRAIN_RES, TELEPORT_CONTROL, STUNNED, M_SEEN_MAGR, M_SEEN_REFL, LEVITATION, FLYING,
     NO_MINVENT, MM_NOWAIT, MM_NOMSG, MM_NOCOUNTBIRTH, MM_MALE, MM_FEMALE,
     IS_POOL, CONTAINED_TOO, BURIED_TOO, ROOM, CORR, GRAVE,
     CORPSTAT_GENDER, CORPSTAT_MALE, CORPSTAT_FEMALE, MFAST,
@@ -370,7 +375,7 @@ import {
     has_mcorpsenm, ERODE_CORRODE,
     LL_WISH, LL_CONDUCT, LL_ARTIFACT, ONAME_WISH, ONAME_KNOW_ARTI,
 } from './const.js';
-import { monstseesu, monstunseesu, defended } from './mondata.js';
+import { monstseesu, monstunseesu, defended, Resists_Elem } from './mondata.js';
 
 const MZ_HUMAN = MZ_MEDIUM;
 const SPE_HEALING = objectNames.indexOf('SPE_HEALING');
@@ -387,6 +392,7 @@ const WAN_MAKE_INVISIBLE = objectNames.indexOf('WAN_MAKE_INVISIBLE');
 const WAN_SPEED_MONSTER = objectNames.indexOf('WAN_SPEED_MONSTER');
 const WAN_SLOW_MONSTER = objectNames.indexOf('WAN_SLOW_MONSTER');
 const SPE_SLOW_MONSTER = objectNames.indexOf('SPE_SLOW_MONSTER');
+const WAN_NOTHING = objectNames.indexOf('WAN_NOTHING');
 const MUMMY_WRAPPING = objectNames.indexOf('MUMMY_WRAPPING');
 const RIN_SHOCK_RESISTANCE = objectNames.indexOf('RIN_SHOCK_RESISTANCE');
 const WAN_WISHING = objectNames.indexOf('WAN_WISHING');
@@ -1438,8 +1444,9 @@ function sleep_monst_zap(mon, amt) {
 }
 
 /**
- * C ref: monst.h Resists_Elem / mon_resistancebits — data.mresists |
- * mextrinsics | mintrinsics. Named omission: artifact/worn grants.
+ * C ref: monst.h mon_resistancebits — data.mresists | mextrinsics |
+ * mintrinsics. Fire/cold/elec/acid/disint still use this bit test
+ * (artifact/worn grants named). Poison is Resists_Elem.
  */
 function mon_resists_bit(mon, mrBit) {
     if (!mon) return false;
@@ -1451,7 +1458,8 @@ function mon_resists_bit(mon, mrBit) {
 export function resists_fire(mon) { return mon_resists_bit(mon, MR_FIRE); }
 export function resists_cold(mon) { return mon_resists_bit(mon, MR_COLD); }
 export function resists_elec(mon) { return mon_resists_bit(mon, MR_ELEC); }
-export function resists_poison(mon) { return mon_resists_bit(mon, MR_POISON); }
+/** C monst.h:277 resists_poison → Resists_Elem(mon, POISON_RES). */
+export function resists_poison(mon) { return Resists_Elem(mon, POISON_RES); }
 function resists_acid(mon) { return mon_resists_bit(mon, MR_ACID); }
 function resists_disint(mon) { return mon_resists_bit(mon, MR_DISINT); }
 /** C: resists_magm — Antimagic-style; deferred → false (no shield RNG). */
@@ -1955,7 +1963,10 @@ export async function zhitm(mon, type, nd, ootmp) {
         if (!rn2(3)) tmp += await destroy_items(mon, AD_ELEC, orig_dmg);
         break;
     case ZT_POISON_GAS:
-        if (resists_poison(mon) /* || defended(mon, AD_DRST) */) {
+        // C zap.c:4367 also ORs defended(mon, AD_DRST). That call stays
+        // named: Resists_Elem covers wielded/worn/carried poison, not
+        // the adult-dragon suit arm inside defended().
+        if (resists_poison(mon)) {
             sho_shieldeff = true;
             break;
         }
@@ -5186,7 +5197,14 @@ export async function poly_obj(obj, id) {
     otmp.owt = weight(otmp);
 
     /* C :1900–1913 — done adjusting except possibly wearing. */
-    get_obj_location(obj, BURIED_TOO | CONTAINED_TOO);
+    // C zap.c `:1900` — ox, oy stay 0 when the object is not located.
+    let ox = 0;
+    let oy = 0;
+    const polyLoc = get_obj_location(obj, BURIED_TOO | CONTAINED_TOO);
+    if (polyLoc) {
+        ox = polyLoc.x | 0;
+        oy = polyLoc.y | 0;
+    }
     const old_wornmask = (obj.owornmask | 0) & ~(W_ART | W_ARTI);
 
     if (obj_location === OBJ_FLOOR || obj_location === OBJ_INVENT) {
@@ -5232,8 +5250,20 @@ export async function poly_obj(obj, id) {
                     otmp = wearmask_to_obj(new_wornmask);
                 }
             }
+        } else if ((obj_location | 0) === OBJ_FLOOR) {
+            // C zap.c `:1952–1962` — boulder leaving or entering the cell.
+            // A new boulder in liquid is fractured before the block test.
+            const lev = game.level?.at?.(ox, oy);
+            if ((obj.otyp | 0) === BOULDER && (otmp.otyp | 0) !== BOULDER) {
+                if (!does_block(ox, oy, lev)) unblock_point(ox, oy);
+            } else if ((obj.otyp | 0) !== BOULDER && (otmp.otyp | 0) === BOULDER) {
+                if (is_pool(ox, oy) || is_lava(ox, oy)) await fracture_rock(otmp);
+                if (does_block(ox, oy, game.level?.at?.(ox, oy))) {
+                    block_point(ox, oy);
+                }
+            }
         }
-        // boulder block_point / shop bill named
+        // C zap.c `:1965–1986` shop-anger bill still named.
     } else {
         // minvent/contained — extract+free old; leave otmp free
         delobj(obj);
@@ -5345,31 +5375,43 @@ export async function drain_item(obj, by_you) {
 }
 
 /**
- * C ref: zap.c bhito — floor object hit by wand.
- * Envelope: WAN_POLYMORPH; WAN_PROBING (D-1445; observe + container
- * peek / tin known / egg known; learn iff res); WAN_CANCELLATION;
- * WAN_STRIKING boulder/statue/hero_breaks|breaks; SPE_DRAIN_LIFE
- * drain_item (D-1453; void return so res stays 1); WAN_TELEPORTATION
- * rloco; WAN_UNDEAD_TURNING floor corpse/egg thin revive;
- * SPE_STONE_TO_FLESH stone_to_flesh_obj (D-1461; invent ok —
- * C `:2178–2179` floor-or-STONE); WAN_OPENING/SPE_KNOCK/
- * WAN_LOCKING/SPE_WIZARD_LOCK boxlock (D-1467; learn iff
- * Klunk/Klick); uchain WAN_OPENING/SPE_KNOCK unpunish
- * (D-1481; C `:2181–2188` before the otyp switch; uball
- * always res=0); poly-arm Is_box boxlock reset_pick
- * (D-1483; C `:2202–2204` after unpolyable, before shudder;
- * callee POLY returns false so res stays 1). Named:
- * polypiles/livelog; hideunder cover; muse.c mbhit fhito_loc /
- * destroy_drawbridge (doorlock is D-1484).
- * zap_updown SPE_STONE_TO_FLESH is D-1466.
- * @returns {Promise<number>} 1 if affected
+ * C ref: zap.c bhito `:2119–2424` — one object hit by a wand or spell.
+ * Self-hit returns 0. A bypassed object is skipped while
+ * `context.bypasses` is set; otherwise the bit is cleared.
+ * Not-floor and not stone-to-flesh calls `impossible` and continues.
+ * `uball` is never affected. `uchain` opens only for knock.
+ * Polypiles, cover/`hideunder`, boulder `Soundeffect`, hallucinated
+ * statue `rndmonnam`, `newsym_force`, teleport `maybe_unhide_at`,
+ * and the undead-turn corpse messages follow C. `res` stays 1 for
+ * make-invisible and for an unknown effect (`impossible`); slow,
+ * speed, nothing, and healing set `res` to 0.
+ * Named: `debugpline` pulsate (no JS `debugpline`); `muse.c` `mbhit`
+ * `fhito_loc` / `destroy_drawbridge` (doorlock is D-1484).
+ * `maybe_unhide_at` hero path stays named on that callee.
+ * @returns {Promise<number>} 1 if the object was affected
  */
 async function bhito(obj, otmp) {
-    if (!obj || !otmp || obj === otmp) return 0;
-    if (obj.bypass && game.context?.bypasses) return 0;
+    if (!obj || !otmp) return 0;
+    /* C zap.c:2130 — a wand effect hitting itself does nothing. */
+    if (obj === otmp) return 0;
 
-    let res = 1;
+    /* C zap.c:2133–2170 — skip while the turn's bypass set is live;
+     * otherwise clear a stray bit. debugpline1 "pulsate" is wizard-only
+     * and has no JS function. */
+    if (obj.bypass) {
+        if (game.context?.bypasses) return 0;
+        obj.bypass = 0;
+    }
+
+    let res = 1; /* affected object by default */
     let learn_it = false;
+
+    /* C zap.c:2178–2179 — floor, or stone-to-flesh which may hit invent.
+     * impossible does not return. */
+    if (!((obj.where | 0) === OBJ_FLOOR
+        || (otmp.otyp | 0) === SPE_STONE_TO_FLESH)) {
+        await impossible('bhito: obj is not floor or Stone To Flesh spell');
+    }
 
     /* C zap.c bhito :2181–2188 — uball never affected; uchain
      * + WAN_OPENING/SPE_KNOCK → learn_it + unpunish (res stays 1);
@@ -5390,16 +5432,34 @@ async function bhito(obj, otmp) {
             res = 0;
             break;
         }
+        /* C zap.c:2198–2200 — first polymorph of an object. */
+        {
+            const u = game.u || (game.u = {});
+            if (!u.uconduct) u.uconduct = {};
+            const prev = u.uconduct.polypiles | 0;
+            u.uconduct.polypiles = prev + 1;
+            if (!prev) {
+                livelog_printf(LL_CONDUCT, 'polymorphed %s first object', uhis());
+            }
+        }
         /* C zap.c bhito :2202–2204 — lock context is obsolete if
          * the zapped floor object is a box. boxlock POLY only
          * reset_pick when xlock.box == obj (D-1483). (void) so
-         * res stays 1. polypiles/livelog named. */
+         * res stays 1. */
         if (Is_box(obj)) {
             await boxlock(obj, otmp);
         }
         if (obj_shudders(obj)) {
+            /* C zap.c:2207–2216 — cover is the pile head under an
+             * undetected hider; hideunder runs after the shock. */
+            const ux = game.u?.ux | 0;
+            const uy = game.u?.uy | 0;
+            const cover = obj === objects_at(ux, uy)
+                && !!(game.u?.uundetected)
+                && hides_under(game.youmonst?.data);
             if (cansee(obj.ox, obj.oy)) learn_it = true;
             do_osshock(obj);
+            if (cover) hideunder(game.youmonst);
             break;
         }
         {
@@ -5462,16 +5522,22 @@ async function bhito(obj, otmp) {
     case SPE_FORCE_BOLT: {
         let maybelearnit = cansee(obj.ox | 0, obj.oy | 0) || !Deaf();
         if ((obj.otyp | 0) === BOULDER) {
+            /* C zap.c:2281 — Soundeffect is empty without SND_LIB. */
+            Soundeffect(se_crumbling_sound, 75);
             if (cansee(obj.ox | 0, obj.oy | 0)) {
-                await pline('The boulder falls apart.');
+                await pline_The('boulder falls apart.');
             } else {
                 await You_hear('a crumbling sound.');
             }
-            fracture_rock(obj);
+            await fracture_rock(obj);
         } else if ((obj.otyp | 0) === STATUE) {
             if (await break_statue(obj)) {
                 if (cansee(obj.ox | 0, obj.oy | 0)) {
-                    await pline('The statue shatters.');
+                    if (Hallucination()) {
+                        await pline_The(`${rndmonnam(null)} shatters.`);
+                    } else {
+                        await pline_The('statue shatters.');
+                    }
                 } else {
                     await You_hear('a crumbling sound.');
                 }
@@ -5479,35 +5545,79 @@ async function bhito(obj, otmp) {
         } else {
             const oox = obj.ox | 0;
             const ooy = obj.oy | 0;
+            /* C zap.c:2300–2307 — only one of breaks / hero_breaks.
+             * A break forces the glyph even when the pile top changed. */
             const broke = game.context?.mon_moving
                 ? await breaks(obj, oox, ooy)
                 : await hero_breaks(obj, oox, ooy, 0);
             if (!broke) maybelearnit = false;
-            else newsym(oox, ooy);
+            else newsym_force(oox, ooy);
             res = 0;
         }
         if (maybelearnit) learn_it = true;
         break;
     }
     case WAN_TELEPORTATION:
-    case SPE_TELEPORT_AWAY:
+    case SPE_TELEPORT_AWAY: {
+        /* C zap.c:2324–2327 — location before rloco moves the object. */
+        const ox = obj.ox | 0;
+        const oy = obj.oy | 0;
         await rloco(obj);
+        await maybe_unhide_at(ox, oy);
+        break;
+    }
+    case WAN_MAKE_INVISIBLE:
+        /* C zap.c:2330–2331 — no object effect; res stays 1. */
         break;
     case WAN_UNDEAD_TURNING:
     case SPE_TURN_UNDEAD:
         if ((obj.otyp | 0) === EGG) {
             revive_egg(obj);
-            res = 1;
         } else if ((obj.otyp | 0) === CORPSE) {
+            /* C zap.c:2336–2390 — name and place before revive uses
+             * the corpse. by_hero is TRUE even when a monster zaps.
+             * A non-corpse, non-egg leaves res at 1. */
+            const by_u = !game.context?.mon_moving;
+            const corpsenm = corpse_revive_type(obj);
+            let corpsname = cxname_singular(obj);
+            const loc = get_obj_location(obj, 0);
+            const ox = loc ? (loc.x | 0) : (obj.ox | 0);
+            const oy = loc ? (loc.y | 0) : (obj.oy | 0);
             const save_norevive = obj.norevive | 0;
             obj.norevive = 0;
-            const m = await revive(obj, !game.context?.mon_moving);
-            if (!m) {
+            const mtmp = await revive(obj, true);
+            if (!mtmp) {
                 obj.norevive = save_norevive ? 1 : 0;
                 res = 0;
+            } else {
+                const pm = mons(corpsenm);
+                if (cansee(ox, oy)) {
+                    if (canspotmon(mtmp)) {
+                        await pline(
+                            `${upstart(noname_monnam(mtmp, ARTICLE_THE))} is resurrected!`,
+                        );
+                        learn_it = by_u ? true : !!game._zap_oseen;
+                    } else if (!type_is_pname(pm)) {
+                        await pline(`${The(corpsname)} disappears.`);
+                    } else {
+                        await pline(`${corpsname} disappears.`);
+                    }
+                } else {
+                    if (Role_if(PM_HEALER) && !Deaf() && !nonliving(pm)) {
+                        if (!type_is_pname(pm)) corpsname = an(corpsname);
+                        if (!Hallucination()) {
+                            await You_hear(`${corpsname} reviving.`);
+                        } else {
+                            await You_hear('a defibrillator.');
+                        }
+                        learn_it = by_u ? true : !!game._zap_oseen;
+                    }
+                    if (canspotmon(mtmp)) {
+                        await pline(`${Monnam(mtmp)} appears.`);
+                    }
+                }
+                if (learn_it) exercise(A_WIS, true);
             }
-        } else {
-            res = 0;
         }
         break;
     case WAN_OPENING:
@@ -5525,12 +5635,22 @@ async function bhito(obj, otmp) {
         }
         if (res) learn_it = true;
         break;
+    case WAN_SLOW_MONSTER: /* no effect on objects */
+    case SPE_SLOW_MONSTER:
+    case WAN_SPEED_MONSTER:
+    case WAN_NOTHING:
+    case SPE_HEALING:
+    case SPE_EXTRA_HEALING:
+        /* C zap.c:2404–2410 */
+        res = 0;
+        break;
     case SPE_STONE_TO_FLESH:
         /* C zap.c bhito :2412–2414 — stone_to_flesh_obj; no learn_it. */
         res = await stone_to_flesh_obj(obj);
         break;
     default:
-        res = 0;
+        /* C zap.c:2416 — res stays 1. */
+        await impossible(`What an interesting effect (${otmp.otyp | 0})`);
         break;
     }
 

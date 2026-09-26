@@ -300,6 +300,9 @@ import {
     BOTH_SIDES,
     TELEPORT,
     TELEPORT_CONTROL,
+    LEVITATION,
+    FLYING,
+    WOUNDED_LEGS,
     POLYMORPH_CONTROL,
     REGENERATION,
     JUMPING,
@@ -333,7 +336,7 @@ import { sticks } from './engrave.js';
 import { surface } from './sit.js';
 import { visible_region_at, reg_damg } from './region.js';
 import { PM_SAMURAI, PM_MONK, PM_CLERIC, PM_ARCHEOLOGIST, monsterNames } from './generated/monsters_data.js';
-import { humanoid, strongmonst, mons, touch_petrifies, poly_when_stoned, hides_under, haseyes, dmgtype, hates_silver, is_male, is_female, is_neuter, vampshifted, nonliving, weirdnonliving } from './monsters.js';
+import { humanoid, strongmonst, is_flyer, mons, touch_petrifies, poly_when_stoned, hides_under, haseyes, dmgtype, hates_silver, is_male, is_female, is_neuter, vampshifted, nonliving, weirdnonliving } from './monsters.js';
 import { hideunder } from './mon.js';
 import { set_artifact_intrinsic, undiscovered_artifact, discover_artifact, confers_luck, disp_artifact_discoveries } from './artifact.js';
 import { is_quest_artifact } from './quest.js';
@@ -344,7 +347,8 @@ import {
 } from './pickup.js';
 import { is_ammo, is_pole } from './wield.js';
 import { is_wet_towel, can_advance } from './weapon.js';
-import { shield_simple_name } from './do_wear.js';
+import { shield_simple_name, Boots_on } from './do_wear.js';
+import { float_vs_flight } from './polyself.js';
 import { learn_egg_type } from './timeout.js';
 
 // C monflag.h MZ_HUMAN ≡ MZ_MEDIUM
@@ -1007,38 +1011,106 @@ export function perm_invent_toggled(negated) {
     in_perm_invent_toggled = false;
 }
 
-// C ref: hack.c weight_cap() — STR+CON base; Upolyd msize/cwt scale;
-// Air/Lev/steed → MAX; wounded-leg reduct when !Flying (non-MAX branch).
-// Named omissions: Boots_on Lev defer; strong steed MAX branch.
+/**
+ * C ref: hack.c weight_cap `:4295–4346`.
+ * Boots of levitation confer ELevitation at the start of Boots_on;
+ * that encumbrance benefit waits until the boots are fully worn.
+ * Trapped-in-floor sets BLevitation I_SPECIAL, which still carries
+ * as levitation. Levitation / Flying are youprop.h macros (flat long
+ * OR the uprops slot). Sticky u.Levitation is not a C field (D-1070).
+ * A missing youmonst.data while Upolyd skips the scale (C would
+ * dereference).
+ */
 export function weight_cap() {
-    let carrcap = WT_WEIGHTCAP_STRCON * (acurrstr() + acurr(A_CON))
-        + WT_WEIGHTCAP_SPARE;
-    const u = game.u || {};
-    // C: Upolyd → nymph MAX / !cwt msize scale / else cwt scale
-    if (Upolyd(u)) {
-        const ptr = game.youmonst?.data;
-        if (ptr?.mlet === 'S_NYMPH') {
-            carrcap = MAX_CARR_CAP;
-        } else if (!(ptr?.cwt | 0)) {
-            carrcap = Math.trunc((carrcap * (ptr?.msize | 0)) / MZ_HUMAN);
-        } else if (!strongmonst(ptr)
-            || ((ptr?.cwt | 0) > WT_HUMAN)) {
-            carrcap = Math.trunc((carrcap * (ptr?.cwt | 0)) / WT_HUMAN);
+    const u = game.u || (game.u = {});
+    const p0 = u.uprops?.[LEVITATION] || null;
+    const saveFlatE = u.ELevitation | 0;
+    const savePropE = p0?.extrinsic | 0;
+    const saveFlatB = u.BLevitation | 0;
+    const savePropB = p0?.blocked | 0;
+    // C ELevitation / BLevitation are one long each. This port may
+    // keep the same bits on the flat field and on uprops.
+    const saveE = saveFlatE | savePropE;
+    const saveB = saveFlatB | savePropB;
+
+    /* C `:4301–4306` — ga.afternmv == Boots_on && (ELevitation & W_ARMF). */
+    if (game.afternmv === Boots_on && (saveE & W_ARMF) !== 0) {
+        const stripped = saveE & ~W_ARMF;
+        u.ELevitation = stripped;
+        if (p0) p0.extrinsic = stripped;
+        float_vs_flight();
+    }
+    /* C `:4309` — BLevitation &= ~I_SPECIAL, after the boots float. */
+    {
+        const p = u.uprops?.[LEVITATION] || null;
+        const bNow = (u.BLevitation | 0) | (p?.blocked | 0);
+        const bCleared = bNow & ~I_SPECIAL;
+        if (bCleared !== bNow) {
+            u.BLevitation = bCleared;
+            if (p) p.blocked = bCleared;
         }
     }
-    // C: Levitation || Is_airlevel || (usteed && strongmonst) → MAX
-    // Named omission: strong steed MAX branch.
-    if (u.Levitation || Is_airlevel(u.uz)) {
+
+    let carrcap = (WT_WEIGHTCAP_STRCON * (acurrstr() + acurr(A_CON)))
+        + WT_WEIGHTCAP_SPARE;
+    /* C `:4314–4327` — Upolyd nymph / !cwt msize / cwt scale. */
+    if (Upolyd(u)) {
+        const ptr = game.youmonst?.data;
+        if (ptr) {
+            if (ptr.mlet === 'S_NYMPH') {
+                carrcap = MAX_CARR_CAP;
+            } else if (!(ptr.cwt | 0)) {
+                carrcap = Math.trunc((carrcap * (ptr.msize | 0)) / MZ_HUMAN);
+            } else if (!strongmonst(ptr)
+                || (strongmonst(ptr) && ((ptr.cwt | 0) > WT_HUMAN))) {
+                carrcap = Math.trunc((carrcap * (ptr.cwt | 0)) / WT_HUMAN);
+            }
+        }
+    }
+
+    const pLev = u.uprops?.[LEVITATION] || null;
+    const hLev = (u.HLevitation | 0) | (pLev?.intrinsic | 0);
+    const eLev = (u.ELevitation | 0) | (pLev?.extrinsic | 0);
+    const bLev = (u.BLevitation | 0) | (pLev?.blocked | 0);
+    // C youprop.h:240 — (HLevitation || ELevitation) && !BLevitation
+    const levitating = !!((hLev || eLev) && !bLev);
+    const pFly = u.uprops?.[FLYING] || null;
+    const hFly = (u.HFlying | 0) | (pFly?.intrinsic | 0);
+    const eFly = (u.EFlying | 0) | (pFly?.extrinsic | 0);
+    const bFly = (u.BFlying | 0) | (pFly?.blocked | 0);
+    const steedFly = !!(u.usteed && is_flyer(u.usteed.data));
+    // C youprop.h:253 — (HFlying || EFlying || flyer steed) && !BFlying
+    const flying = !!((hFly || eFly || steedFly) && !bFly);
+    const strongSteed = !!(u.usteed && strongmonst(u.usteed.data));
+
+    /* C `:4329–4340` — Levitation | air | strong steed → MAX, else cap
+       and wounded-leg reduct while not Flying. */
+    if (levitating || Is_airlevel(u.uz) || strongSteed) {
         carrcap = MAX_CARR_CAP;
     } else {
         if (carrcap > MAX_CARR_CAP) carrcap = MAX_CARR_CAP;
-        if (!u.Flying) {
-            const ew = u.EWounded_legs | 0;
+        if (!flying) {
+            const pW = u.uprops?.[WOUNDED_LEGS] || null;
+            const ew = (u.EWounded_legs | 0) | (pW?.extrinsic | 0);
             if (ew & LEFT_SIDE) carrcap -= WT_WOUNDEDLEG_REDUCT;
             if (ew & RIGHT_SIDE) carrcap -= WT_WOUNDEDLEG_REDUCT;
         }
     }
-    return Math.max(carrcap, 1);
+
+    /* C `:4342–4345` — put E/B back, then float_vs_flight if either moved. */
+    const pEnd = u.uprops?.[LEVITATION] || null;
+    const eEnd = (u.ELevitation | 0) | (pEnd?.extrinsic | 0);
+    const bEnd = (u.BLevitation | 0) | (pEnd?.blocked | 0);
+    if (eEnd !== saveE || bEnd !== saveB) {
+        u.ELevitation = saveFlatE;
+        u.BLevitation = saveFlatB;
+        if (pEnd) {
+            pEnd.extrinsic = savePropE;
+            pEnd.blocked = savePropB;
+        }
+        float_vs_flight();
+    }
+    return Math.max(carrcap, 1); /* C: (int) max(carrcap, 1L) */
 }
 
 // C ref: hack.c inv_weight() — negative ⇒ under capacity
@@ -8257,12 +8329,11 @@ function flags_pickup_burden_hold() {
  * above pickup_burden, except cursed LOADSTONE): drop_fmt then
  * can_reach_floor(TRUE)||uswallow → dropx; else freeinv +
  * hitfloor(FALSE) (D-1272).
- * Named omissions: fatal wished corpse; artifact fail dropy /
- * wasUpolyd / crysknife restore; perm_invent WIN_INVEN body.
+ * Named omissions: perm_invent WIN_INVEN body.
  * Pickup highdrop hitfloor is D-1273.
  */
 export async function hold_another_object(obj, drop_fmt, drop_arg, hold_msg) {
-    const { addinv } = await import('./u_init.js');
+    const { addinv_core0 } = await import('./u_init.js');
     const {
         place_object, obj_extract_self, splitobj,
     } = await import('./mkobj.js');
@@ -8315,6 +8386,10 @@ export async function hold_another_object(obj, drop_fmt, drop_arg, hold_msg) {
 
     if (obj.oartifact) {
         const u = game.u || {};
+        // C `:1220–1222` — sampled before touch_artifact may poly or erode.
+        const crysknife = (obj.otyp | 0) === objectNames.indexOf('CRYSKNIFE');
+        const oerode = obj.oerodeproof;
+        const wasUpolyd = Upolyd(u);
         place_object(obj, u.ux, u.uy);
         if (!(await touch_artifact(obj, youmonst))) {
             obj_extract_self(obj);
@@ -8323,14 +8398,34 @@ export async function hold_another_object(obj, drop_fmt, drop_arg, hold_msg) {
             // every chain, starving later floor scans such as dog_goal).
             await dropy(obj);
             return obj;
+        } else if (wasUpolyd && !Upolyd(game.u)) {
+            // C `:1231–1237` — form change drops the artifact.
+            await hold_drop_msg();
+            obj_extract_self(obj);
+            await dropy(obj);
+            return obj;
         }
         obj_extract_self(obj);
+        // C `:1240–1243` — touch may have reverted a crysknife.
+        if (crysknife) {
+            obj.otyp = objectNames.indexOf('CRYSKNIFE');
+            obj.oerodeproof = oerode;
+        }
     }
 
     if (Fumbling()) {
         obj.nomerge = 1;
-        obj = await addinv(obj);
+        // C `:1249` — no perm-invent update; drop_it removes it again.
+        obj = await addinv_core0(obj, null, false);
         return await drop_it(obj);
+    } else if ((obj.otyp | 0) === OTYP_CORPSE && obj.wishedfor) {
+        // C `:1251–1256` — wished fatal corpse is taken then immediately dropped.
+        const { u_safe_from_fatal_corpse, st_all } = await import('./pickup.js');
+        if (!u_safe_from_fatal_corpse(obj, st_all)) {
+            obj.wishedfor = 0;
+            obj = await addinv_core0(obj, null, false);
+            return await drop_it(obj);
+        }
     }
 
     const oquan = obj.quan || 1;
@@ -8338,7 +8433,8 @@ export async function hold_another_object(obj, drop_fmt, drop_arg, hold_msg) {
     const pickup_burden = flags_pickup_burden_hold();
     if (prev_encumbr < pickup_burden) prev_encumbr = pickup_burden;
 
-    obj = await addinv(obj);
+    // C `:1273` — FALSE: this function calls update_inventory on the stay path.
+    obj = await addinv_core0(obj, null, false);
     let n_nongold = 0;
     for (const otmp of game.invent || []) {
         if (otmp.oclass === COIN_CLASS) continue;

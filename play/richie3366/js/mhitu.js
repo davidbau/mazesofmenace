@@ -20,6 +20,7 @@ import {
     M_AP_NOTHING, M_AP_OBJECT, WORN_HELMET, TELEDS_ALLOW_DRAG, DISMOUNT_ENGULFED,
     something, Something, u_at, ERODE_RUST, ERODE_CORRODE,
     SICK_ALL, SICK_NONVOMITABLE, SICK_RES, AD_CURS, ERODE_ROT, SLIMED, TT_WEB, OBJ_FREE,
+    OBJ_FLOOR,
 } from './const.js';
 import { thrwmu, spitmu, breamu } from './mthrowu.js';
 import { find_offensive, use_offensive } from './muse.js';
@@ -39,7 +40,7 @@ import {
     noit_mon_nam, noit_Monnam, s_suffix, Ugender, m_monnam, Some_Monnam, Mgender,
 } from './do_name.js';
 import { MON_WEP, mon_wield_item, dmgval, hitval, drain_weapon_skill } from './weapon.js';
-import { arti_reflects, artifact_hit, permapoisoned, is_art, defends } from './artifact.js';
+import { arti_reflects, artifact_hit, permapoisoned, is_art, defends, retouch_equipment } from './artifact.js';
 import { is_pole, welded, is_weptool } from './wield.js';
 import { xname, doname, an, yname, the, simpleonames, safe_qbuf, mimic_obj_name, makeplural, Yobjnam2, vtense } from './objnam.js';
 import { objectNames, ARMOR_CLASS, COIN_CLASS, SILVER, WEAPON_CLASS } from './objects.js';
@@ -89,7 +90,7 @@ import {
 } from './invent.js';
 import { burn_away_slime } from './timeout.js';
 import {
-    get_mattk, mhitm_knockback, mhitm_mgc_atk_negated, mattackm, rustm,
+    get_mattk, mhitm_knockback, mhitm_mgc_atk_negated, mhitm_ad_drst, mattackm, rustm,
     could_seduce, failed_grab, SYSOPT_SEDUCE, mon_poly, mondead, erode_armor,
     golemeffects_mm,
     AT_NONE, AT_CLAW, AT_KICK, AT_BITE, AT_STNG, AT_TUCH, AT_BUTT, AT_WEAP,
@@ -1075,31 +1076,6 @@ function s_suffix_poison(s) {
 }
 
 /**
- * C ref: uhitm.c mhitm_ad_drst mhitu branch (AD_DRST/DRDX/DRCO).
- * Always rolls mhitm_mgc_atk_negated(FALSE) before hitmsg; poison via
- * poisoned() when !negated && !rn2(8).
- */
-async function mhitm_ad_drst_u(mtmp, mattk, mhm) {
-    const negated = await mhitm_mgc_atk_negated(mtmp, null, false);
-    let ptmp = A_STR;
-    switch (mattk.adtyp | 0) {
-    case AD_DRST: ptmp = A_STR; break;
-    case AD_DRDX: ptmp = A_DEX; break;
-    case AD_DRCO: ptmp = A_CON; break;
-    }
-    await hitmsg(mtmp, mattk);
-    if (!negated && !rn2(8)) {
-        // C: Sprintf(buf, "%s %s", s_suffix(Monnam(magr)), mpoisons_subj(...));
-        //    poisoned(buf, ptmp, pmname(pa, Mgender(magr)), 30, FALSE);
-        const reason = `${s_suffix_poison(Monnam(mtmp))} ${mpoisons_subj(mtmp, mattk)}`;
-        const g = mtmp?.female ? FEMALE : MALE;
-        const killer = pmname(mtmp?.data || mtmp?.mnum, g);
-        await poisoned(reason, ptmp, killer, 30, false);
-    }
-    void mhm;
-}
-
-/**
  * C ref: mondata.h dmgtype — any mattk slot matches adtyp.
  */
 function dmgtype(ptr, adtyp) {
@@ -1655,8 +1631,8 @@ export function set_ustuck(mtmp) {
 
 /**
  * C ref: mon.c unstuck — release grabber; set mspec_used rnd(2) for re-engulf.
- * Swallowed exit: vision_full_recalc + docrt (Hallu display RNG; D-0838).
- * Named omissions: Punished placebc.
+ * Swallowed exit: placebc when the chain is off the floor, then
+ * vision_full_recalc + docrt (Hallu display RNG; D-0838).
  */
 export async function unstuck(mtmp) {
     const u = game.u || {};
@@ -1668,6 +1644,10 @@ export async function unstuck(mtmp) {
         game.mswallower = null;
         u.ux = mtmp.mx;
         u.uy = mtmp.my;
+        /* C mon.c:3451–3452 — gulpmu's unplacebc left the chain free.
+           thitmonst's iron-ball return 1 assumes this placebc already ran. */
+        if (Punished() && ((u.uchain?.where | 0) !== OBJ_FLOOR))
+            placebc();
         // C: gv.vision_full_recalc = 1; docrt();
         game.vision_full_recalc = 1;
         await docrt();
@@ -2861,8 +2841,7 @@ async function mhitm_ad_slow_u(mtmp, mattk, mhm) {
  * && !defends(AD_WERE,uwep) && !mgc-negated(TRUE)` → feverish +
  * exercise(A_CON,FALSE) + set_ulycn(monsndx(pa)) (leftover d() kept —
  * the were arm never zeroes damage, like FAMN/SLOW).
- * Named omit: retouch_equipment(2) (same as eat.js cpostfx D-0945 —
- * untouchable/retouch_object/bypass chain, unported).
+ * After set_ulycn, retouch_equipment(2) retests weapons (C :4285).
  */
 async function mhitm_ad_were_u(mtmp, mattk, mhm) {
     void mhm; /* leftover d() stays */
@@ -2875,7 +2854,8 @@ async function mhitm_ad_were_u(mtmp, mattk, mhm) {
         await urgent_pline('You feel feverish.');
         exercise(A_CON, false);
         set_ulycn(mtmp?.data?.mndx ?? mtmp?.mnum);
-        /* retouch_equipment(2) deferred (eat.js cpostfx D-0945 same) */
+        /* C uhitm.c:4285 — new lycanthrope form, drop weapons only. */
+        await retouch_equipment(2);
     }
 }
 
@@ -3137,7 +3117,9 @@ async function mhitm_adtyping_u(mtmp, mattk, mhm) {
     case AD_DRST:
     case AD_DRDX:
     case AD_DRCO:
-        await mhitm_ad_drst_u(mtmp, mattk, mhm);
+        /* C ref: uhitm.c mhitm_adtyping `:4809–4811` → mhitm_ad_drst
+           mhitu arm (mdef is youmonst). */
+        await mhitm_ad_drst(mtmp, mattk, game.youmonst, mhm);
         break;
     case AD_SITM:
     case AD_SEDU:

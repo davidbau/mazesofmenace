@@ -20,7 +20,8 @@ import {
     BZ_OFS_AD, BZ_VALID_ADTYP, BZ_M_BREATH, M_SEEN_REFL,
     BRK_BY_HERO, BRK_MELEE, W_NONDIGGABLE, WT_IRON_BALL_INCR,
     P_BOW, P_CROSSBOW, P_DART, P_SHURIKEN, P_SPEAR, P_KNIFE,
-    Has_contents, KILLED_BY, TIMEOUT, STONED, EYE, FACE,
+    Has_contents, KILLED_BY, KILLED_BY_AN, TIMEOUT, STONED, EYE, FACE,
+    M_SEEN_ACID, ACID_RES,
 } from './const.js';
 import { cansee, couldsee, clear_path } from './vision.js';
 import { worm_known } from './worm.js';
@@ -34,15 +35,15 @@ import {
     should_mulch_missile, autoreturn_weapon,
 } from './weapon.js';
 import { find_mac, mondied, monkilled, shade_miss, AT_WEAP, AT_SPIT } from './mhitm.js';
-import { xkilled, can_blnd } from './uhitm.js';
+import { xkilled, can_blnd, Hate_silver } from './uhitm.js';
 import { mswings_verb } from './mhitu.js';
 import { ammo_and_launcher, is_launcher, is_pole, mwelded } from './wield.js';
-import { acurr, acurrstr, A_DEX, A_STR, exercise, poisoned } from './attrib.js';
+import { acurr, acurrstr, A_CON, A_DEX, A_STR, exercise, poisoned } from './attrib.js';
 import { calc_capacity, Blind } from './invent.js';
 import { losehp, nomul, maybe_half_phys, dissolve_bars, is_pool, is_lava, stop_occupation } from './hack.js';
 import { finish_losehp_done } from './end.js';
 import {
-    pline, pline_The, pline_mon, mon_visible, see_with_infrared, tmp_at, obj_glyph,
+    pline, pline_The, pline_mon, You, mon_visible, see_with_infrared, tmp_at, obj_glyph,
     nh_delay_output, newsym, canspotmon, impossible, set_msg_xy,
 } from './display.js';
 import { Monnam, mon_nam, s_suffix as s_suffix_ucatch, some_mon_nam, hliquid } from './do_name.js';
@@ -52,7 +53,7 @@ import {
     eyecount, resists_acid, resists_ston, mon_hates_silver,
     noncorporeal, amorphous, is_vampshifter, passes_walls, unsolid,
 } from './monsters.js';
-import { xname, singular, an, vtense, the, makeplural, mshot_xname, killer_xname, obj_is_pname, otense, simpleonames, distant_name } from './objnam.js';
+import { xname, singular, an, vtense, the, makeplural, mshot_xname, killer_xname, obj_is_pname, doname, otense, simpleonames, distant_name } from './objnam.js';
 import { stone_missile } from './dothrow.js';
 import { spec_abon } from './artifact.js';
 import { minstapetrify } from './trap.js';
@@ -74,6 +75,7 @@ import { make_blinded } from './do.js';
 import { dobuzz, resists_poison } from './zap.js';
 import {
     m_seenres, cvt_adtyp_to_mseenres, get_atkdam_type, mhim,
+    monstseesu, monstunseesu,
 } from './mondata.js';
 import { extract_from_minvent } from './worn.js';
 import { freehand } from './engrave.js';
@@ -566,56 +568,156 @@ export async function breamu(mtmp, mattk) {
 }
 
 /**
- * C ref: mthrowu.c thitu — hit/miss vs hero AC; onm via an(xname)/mshot.
- * C mthrowu.c:89-90: quan>1 → doname, else mshot_xname (objnam.c:1090-1102).
- * doname stays deferred (singular keeps the old quan>1 wording).
+ * C hacklib.c strncmpi for thitu's article test (`mthrowu.c:92–94`).
+ * Not a fourth file-level strncmpi clone: three literal prefixes only.
+ * A short string misses (C hits NUL against the next literal char).
+ */
+function thitu_ci_prefix(s, lit) {
+    const n = lit.length;
+    if (typeof s !== 'string' || s.length < n) return false;
+    for (let i = 0; i < n; i++) {
+        let a = s.charCodeAt(i);
+        let b = lit.charCodeAt(i);
+        if (a >= 65 && a <= 90) a |= 32;
+        if (b >= 65 && b <= 90) b |= 32;
+        if (a !== b) return false;
+    }
+    return true;
+}
+
+/**
+ * C youprop.h Blind ≡ (HBlinded || EBlinded) && !BBlinded, plus the
+ * sticky u.Blind / u.ublind mirrors missile code already reads.
+ */
+function thitu_blind() {
+    if (Blind()) return true;
+    const u = game.u || {};
+    return !!(u.Blind || u.ublind);
+}
+
+/** C youprop.h Acid_resistance — uprops[ACID_RES] plus the H/E flats. */
+function thitu_acid_resistance() {
+    const u = game.u || {};
+    const e = u.uprops?.[ACID_RES];
+    return !!((u.Acid_resistance || u.HAcid_resistance || u.EAcid_resistance)
+        || (e?.intrinsic | 0) || (e?.extrinsic | 0));
+}
+
+/** C mondata.h passes_rocks(ptr) — passes_walls && !unsolid. */
+function thitu_passes_rocks(ptr) {
+    return !!(passes_walls(ptr) && !unsolid(ptr));
+}
+
+/**
+ * C ref: mthrowu.c thitu `:75–155` — missile vs hero AC.
+ * `named` is the caller's original name pointer (non-null ≈ from above).
+ * quan>1 uses doname; otherwise mshot_xname. killer_xname + KILLED_BY
+ * when the caller passed null; an article prefix forces KILLED_BY.
+ * Miss: gm.mesg_given, Blind/!verbose, wide miss via upstart+vtense.
+ * Hit: acid resist, stone+passes_rocks, potion (clears *objp), else
+ * silver sear, acid burn, losehp(knm), exercise(A_STR).
+ * losehp → done() does not return; JS awaits finish_losehp_done.
+ * potionhit's hero arm is `mon == null` (not gy.youmonst).
  */
 export async function thitu(tlev, dam, objp, name) {
-    const obj = objp ? objp.obj : null;
+    let obj = objp ? objp.obj : null;
+    // C `:82` — snapshot before `if (!name)` overwrites the pointer.
+    const named = name != null;
     const u = game.u || {};
-    const Blind = !!(u.Blind || u.ublind);
     const verbose = game.flags?.verbose !== false;
-    let onmbuf;
-    if (!name) {
-        if (!obj) throw new Error('thitu: name & obj both null');
-        onmbuf = ((obj.quan | 0) > 1 ? singular(obj, xname) : mshot_xname(obj))
-            || 'missile';
-        name = onmbuf;
-    } else {
-        onmbuf = name;
-    }
-    // obj_is_pname → the(name) deferred; quan>1 keeps bare name
-    const onm = (obj && (obj.quan | 0) > 1) ? name : an(name);
+    let knm;
+    let kprefix = KILLED_BY_AN;
 
+    // C `:86–96`
+    if (!name) {
+        if (!obj) throw new Error('thitu: name & obj both null?');
+        name = ((obj.quan | 0) > 1) ? doname(obj) : mshot_xname(obj);
+        knm = killer_xname(obj);
+        kprefix = KILLED_BY;
+    } else {
+        knm = name;
+        if (thitu_ci_prefix(name, 'the ')
+            || thitu_ci_prefix(name, 'an ')
+            || thitu_ci_prefix(name, 'a ')) {
+            kprefix = KILLED_BY;
+        }
+    }
+
+    // C `:97–99` — pname, then a stack, else an().
+    let onm;
+    if (obj && obj_is_pname(obj)) onm = the(name);
+    else if (obj && (obj.quan | 0) > 1) onm = name;
+    else onm = an(name);
+
+    // C `:100`
+    const is_acid = !!(obj && (obj.otyp | 0) === ACID_VENOM);
+
+    // C `:102` — dieroll is the rnd(20) result, then compared.
     const uac = u.uac ?? 10;
     const dieroll = rnd(20);
-    if (uac + tlev <= dieroll) {
+    if (uac + (tlev | 0) <= dieroll) {
+        // C `:103` gm.mesg_given
         game._mesg_given = (game._mesg_given || 0) + 1;
-        // C: miss pline before return — await so --More-- keeps caller tmp_at
-        if (Blind || !verbose) {
+        // Await so --More-- keeps the caller's tmp_at flash.
+        if (thitu_blind() || !verbose) {
             await pline('It misses.');
-        } else if (uac + tlev <= dieroll - 2) {
+        } else if (uac + (tlev | 0) <= dieroll - 2) {
+            // C `:107–109` — upstart mutates a writable buffer; clang
+            // evaluates left to right, so vtense sees the capital.
             const subj = upstart(onm);
-            await pline(`${subj} ${vtense(onm, 'miss')} you.`);
+            await pline('%s %s you.', subj, vtense(subj, 'miss'));
         } else {
-            await pline(`You are almost hit by ${onm}.`);
+            await You('are almost hit by %s.', onm);
         }
         return 0;
     }
-    // C: You("are hit…") then losehp — await so --More-- on prior topline
-    // still shows m_throw tmp_at flash and pre-damage botl HP.
-    if (Blind || !verbose) {
-        await pline(`You are hit${exclam(dam)}`);
+
+    // C `:113–116`
+    if (thitu_blind() || !verbose) {
+        await You('are hit%s', exclam(dam));
     } else {
-        await pline(`You are hit by ${onm}${exclam(dam)}`);
+        await You('are hit by %s%s', onm, exclam(dam));
     }
-    // C: losehp → done(DIED) noreturn — skip exercise on fatal
-    losehp(dam, onm, /* KILLED_BY */ 1);
-    if (game.program_state?.gameover) {
-        await finish_losehp_done();
-        return 1;
+
+    // C `:118–120`
+    if (is_acid && thitu_acid_resistance()) {
+        await pline("It doesn't seem to hurt you.");
+        monstseesu(M_SEEN_ACID);
+    } else if (obj && stone_missile(obj)
+        && thitu_passes_rocks(game.youmonst?.data)) {
+        // C `:121–129` — `named` ≈ struck from above.
+        await pline('It %s you.',
+            named ? 'passes harmlessly through' : "doesn't harm");
+    } else if (obj && (obj.oclass | 0) === POTION_CLASS) {
+        // C `:130–134` — potionhit uses the potion up; clear *objp.
+        await potionhit(null, obj, POTHIT_OTHER_THROW);
+        obj = null;
+        if (objp) objp.obj = null;
+        // potionhit → losehp → done() does not return.
+        if (game.program_state?.gameover) {
+            await finish_losehp_done();
+            return 1;
+        }
+    } else {
+        // C `:135–140` — extra silver damage already applied by dmgval.
+        if (obj && (game.objects?.[obj.otyp | 0]?.oc_material | 0) === SILVER
+            && Hate_silver()) {
+            await pline_The('silver sears your flesh!');
+            exercise(A_CON, false);
+        }
+        // C `:141–144`
+        if (is_acid) {
+            await pline('It burns!');
+            monstunseesu(M_SEEN_ACID);
+        }
+        // C `:145–146` — done() does not return, so no A_STR exercise.
+        losehp(dam, knm, kprefix);
+        if (game.program_state?.gameover) {
+            await finish_losehp_done();
+            return 1;
+        }
+        exercise(A_STR, false);
     }
-    exercise(A_STR, false);
     return 1;
 }
 
@@ -1247,6 +1349,12 @@ export async function m_throw(mon, x, y, dx, dy, range, obj) {
                         return;
                     }
                 }
+                // C thitu `:133` — potionhit clears *objp. Identity when
+                // the missile is not a potion (m_throw breaks on potions
+                // before this switch).
+                singleobj = box.obj;
+                game._thrownobj = singleobj;
+                if (!singleobj) break;
                 // C :745-754 — poisoned missile
                 if (hitu && singleobj.opoisoned && is_poisonable(singleobj)) {
                     await poisoned(xname(singleobj), A_STR,

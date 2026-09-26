@@ -9,7 +9,7 @@
 //        wallify_vault (this iter; vault.c :646–731; cleanup-awaited).
 // Named omissions: wallify_vault xy_set_wall_state (mklev.js-local);
 // Croesus mon_wield;
-// fracture_rock boulder shatter; reset_faint; SetVoice (no-op stub);
+// SetVoice (no-op stub);
 // spot_stop_timers; xy_set_wall_state; mimic_obj_name; gd_move debugpline1;
 // clear_fcorr: Punished/uball (occupant yelp/rloc/m_into_limbo live);
 // defensive !isok/!crm early-0 in the gd_move dig loop (C in-bounds
@@ -20,7 +20,7 @@ import { rn2 } from './rng.js';
 import { makemon, set_malign, newegd } from './makemon.js';
 import { mon_track_clear } from './monmove.js';
 import {
-    pline, You, flush_topl_more, newsym, canspotmon, map_invisible, verbalize,
+    pline, You, You_see, flush_topl_more, newsym, canspotmon, map_invisible, verbalize,
     map_location, unset_seenv, mon_visible, impossible, pline_mon,
 } from './display.js';
 import { getlin } from './getline.js';
@@ -29,7 +29,7 @@ import {
 } from './do_name.js';
 import { adjalign } from './attrib.js';
 import { nomul, in_rooms, You_hear } from './hack.js';
-import { makeplural } from './objnam.js';
+import { an, makeplural, simpleonames } from './objnam.js';
 import {
     cansee, couldsee, recalc_block_point, block_point, unblock_point,
 } from './vision.js';
@@ -56,13 +56,14 @@ import { MON_WEP, mon_wield_item } from './weapon.js';
 import { m_at, m_carrying, mnexto, mpickgold, setmangry } from './mon.js';
 import { upstart, dist2 } from './hacklib.js';
 import { SetVoice } from './sndprocs.js';
-import { is_fainted } from './eat.js';
+import { is_fainted, reset_faint } from './eat.js';
 
 import { remove_monster, place_monster } from './steed.js';
 import { obfree } from './shk.js';
 import { monsterNames, mons, pmnames } from './monsters.js';
 import { m_canseeu, mhe } from './mondata.js';
 import { objectNames } from './generated/objects_data.js';
+import { fracture_rock } from './dig.js';
 
 const PM_GUARD = monsterNames.indexOf('PM_GUARD');
 const PM_CROESUS = monsterNames.indexOf('PM_CROESUS');
@@ -717,7 +718,22 @@ export async function invault() {
 
     u.uinvault = (u.uinvault | 0) + 1;
 
-    // boulder shatter / reset_faint deferred (no RNG when absent)
+    // C vault.c `:423–441` — wake a fainted hero, then shatter every
+    // boulder on the guard's square before the entrance message.
+    await reset_faint();
+    let boulder = sobj_at(BOULDER, guard.mx | 0, guard.my | 0);
+    if (boulder) {
+        const bname = simpleonames(boulder);
+        let bcnt = 0;
+        do {
+            bcnt += 1;
+            await fracture_rock(boulder);
+            boulder = sobj_at(BOULDER, guard.mx | 0, guard.my | 0);
+        } while (boulder);
+        const noun = (bcnt === 1) ? an(bname) : makeplural(bname);
+        if (!Blind()) await You_see('%s shatter.', noun);
+        else await You_hear(`${noun} shatter.`);
+    }
 
     const spotted = canspotmon(guard);
     if (spotted) {

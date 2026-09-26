@@ -19,15 +19,17 @@
 import { game } from './gstate.js';
 import { d, rn1, rn2, rnd, rnl } from './rng.js';
 import {
-    newsym, pline, You_feel, tmp_at, nh_delay_output, verbalize,
+    newsym, pline, You, You_feel, tmp_at, nh_delay_output, verbalize,
     feel_newsym, flush_screen, flush_topl_more,
 } from './display.js';
-import { cansee, recalc_block_point, vision_recalc } from './vision.js';
+import {
+    cansee, does_block, recalc_block_point, unblock_point, vision_recalc,
+} from './vision.js';
 import { cvt_sdoor_to_door } from './detect.js';
 import {
     mksobj_at, objects_at, sobj_at, obj_extract_self, delobj, place_object, weight,
     set_corpsenm, add_to_buried, stackobj, is_organic, start_timer, stop_timer,
-    obj_ice_effects,
+    obj_ice_effects, dealloc_oextra,
 } from './mkobj.js';
 import {
     in_rooms, in_town, stop_occupation, is_pool, is_lava, is_moat,
@@ -55,7 +57,7 @@ import {
     t_at, maketrap, seetrap, feeltrap, set_utrap, reset_utrap, deltrap,
     delfloortrap, trapname, mintrap, b_trapped, conjoined_pits,
     activate_statue_trap, ceiling, fire_damage_chain, water_damage_chain,
-    cnv_trap_obj,
+    cnv_trap_obj, sokoban_guilt,
 } from './trap.js';
 import { set_occupation, can_reach_floor, del_engr_at, u_wipe_engr } from './engrave.js';
 import { wield_tool, welded } from './wield.js';
@@ -79,6 +81,10 @@ import { getdir, dxdy_moveok } from './lock.js';
 // C ref: explode.c explode — dighole magical-trap explode arm
 // (hoisted fn, cycle-safe per imports.mjs).
 import { explode } from './explode.js';
+import { get_obj_location } from './timeout.js';
+import { billable, costly_spot } from './shk.js';
+import { shkname } from './shknam.js';
+import { breakobj } from './dothrow.js';
 // C ref: monmove.c mb_trapped `:54–74` — canonical trapped-door export
 // (KABOOM/hear, wake_nearto 49, mstun, rnd(15), mondied/lifesave,
 // mon_learns_traps TRAPPED_DOOR); hoisted fn, cycle-safe per imports.mjs.
@@ -115,7 +121,7 @@ import {
     TAINT_AGE, MM_NOMSG, IN_SIGHT, COULD_SEE, RLOC_NOMSG, STOMACH,
     xytodir, DIR_180, DIR_ERR, xdir, ydir, N_DIRS,
     ICE, DRAWBRIDGE_UP, DB_UNDER, DB_MOAT, DB_LAVA, DB_ICE,
-    ROT_ORGANIC, TIMER_OBJECT, Has_contents, OBJ_FREE,
+    ROT_ORGANIC, TIMER_OBJECT, Has_contents, OBJ_FREE, OBJ_FLOOR,
     CORPSTAT_HISTORIC, STATUE_TRAP,
 } from './const.js';
 
@@ -1829,26 +1835,63 @@ export async function digcheck_fail_message(digresult, madeby, x, y) {
 }
 
 /**
- * C ref: zap.c fracture_rock — boulder/statue → ROCK pile (shop bill thin).
+ * C ref: zap.c fracture_rock `:5536–5578` — boulder/statue becomes a
+ * pile of rocks. Shop message + breakobj run only when the hero caused
+ * it and the object is in a costly spot; breakobj charges and does not
+ * destroy a boulder or statue. Sokoban guilt is tested on the old otyp.
+ * Floor objects are pulled and replaced so the rocks sit on top of the
+ * pile; vision updates only when the cell no longer blocks.
+ * Async because You and breakobj can reach --More--.
  */
-export function fracture_rock(obj) {
+export async function fracture_rock(obj) {
     if (!obj) return;
-    const x = obj.ox | 0;
-    const y = obj.oy | 0;
-    // shop billable / sokoban_guilt deferred
+    // C `:5540` — hero action, not a monster's turn.
+    const byYou = !game.context?.mon_moving;
+
+    // C `:5542–5554` — explain the shop charge, then bill without
+    // destroying the fracturing boulder or statue.
+    if (byYou) {
+        const loc = get_obj_location(obj, 0);
+        if (loc && costly_spot(loc.x | 0, loc.y | 0)) {
+            const x = loc.x | 0;
+            const y = loc.y | 0;
+            const shkHolder = { shkp: null };
+            const rooms = in_rooms(x, y, SHOPBASE) || '';
+            const objroom = rooms ? rooms.charCodeAt(0) : 0;
+            if (billable(shkHolder, obj, objroom, false)) {
+                await You(
+                    'fracture %s %s.',
+                    s_suffix(shkname(shkHolder.shkp)),
+                    xname(obj),
+                );
+                await breakobj(obj, x, y, true, false);
+            }
+        }
+    }
+    // C `:5555–5556` — still a boulder; the otyp write is below.
+    if (byYou && (obj.otyp | 0) === BOULDER) sokoban_guilt();
+
+    // C `:5558–5564`.
     obj.otyp = ROCK;
     obj.oclass = GEM_CLASS;
     obj.quan = rn1(60, 7);
     obj.owt = weight(obj);
     obj.dknown = obj.bknown = obj.rknown = 0;
     obj.known = game.objects?.[obj.otyp]?.oc_uses_known ? 0 : 1;
-    if (obj.oextra) obj.oextra = null;
-    if (obj.where === 1 /* OBJ_FLOOR */ || (obj.ox != null && obj.oy != null)) {
+    dealloc_oextra(obj);
+
+    // C `:5566–5576` — only a floor object is restacked. ox/oy survive
+    // extract (C remove_object keeps them).
+    if ((obj.where | 0) === OBJ_FLOOR) {
         obj_extract_self(obj);
-        place_object(obj, x, y);
-        recalc_block_point(x, y);
-        vision_recalc(0);
-        if (cansee(x, y)) newsym(x, y);
+        place_object(obj, obj.ox | 0, obj.oy | 0);
+        const fx = obj.ox | 0;
+        const fy = obj.oy | 0;
+        if (!does_block(fx, fy, game.level?.at?.(fx, fy))) {
+            unblock_point(fx, fy);
+            vision_recalc(0);
+        }
+        if (cansee(fx, fy)) newsym(fx, fy);
     }
 }
 
@@ -1877,7 +1920,7 @@ export async function break_statue(obj) {
         adjalign(-1);
     }
     obj.spe = 0;
-    fracture_rock(obj);
+    await fracture_rock(obj);
     return true;
 }
 
@@ -2292,7 +2335,7 @@ async function dig() {
         } else if (digtyp === DIGTYP_BOULDER) {
             const obj = sobj_at(BOULDER, dpx, dpy);
             if (obj) {
-                fracture_rock(obj);
+                await fracture_rock(obj);
                 const bobj = sobj_at(BOULDER, dpx, dpy);
                 if (bobj) {
                     obj_extract_self(bobj);

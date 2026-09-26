@@ -8,10 +8,10 @@
 // **stealamulet** (D-1945): quest-artifact sweep else uhave amulet/bell/book/
 // menorah otyp sweep, outer-gear strip, shop subfrombill, mpickobj steal
 // pline, teleporter rloc(RLOC_MSG), encumber_msg.
-// **remove_worn_item** (D-1086): W_ARMOR → do_wear.c *_off; leftover
-// owornmask → setnotworn pointer-walk; W_BALL|W_CHAIN + unchain → unpunish;
-// W_WEAPONS → *gone. Named omit: donning/cancel_don; in_use; uskin
-// skinback; Amulet_off; Ring_gone / Blindf_off (still setworn).
+// **remove_worn_item** (D-2812): steal.c:213–290 in C order — donning/
+// cancel_don, in_use around the body, uskin impossible+skinback, *_off,
+// Amulet_off, Ring_gone, Blindf_off, *gone, unpunish, setnotworn.
+// debugpline1 is the non-DEBUG empty macro.
 // **stealarm + unstolenarm** (D-2271): multi-turn armor-steal completion
 // via afternmv (stealoid/stealmid, shop subfrombill, freeinv+mpickobj,
 // monflee+rloc) and dead-thief unstolenarm restore (thiefdead swap lives
@@ -35,7 +35,7 @@ import { game } from './gstate.js';
 import { rn2, rn1, rnd } from './rng.js';
 import {
     W_ARMOR, W_ACCESSORY, W_WEAPONS, W_ARMG,
-    W_AMUL, W_RING, W_TOOL, W_RINGL, W_RINGR, W_BALL, W_CHAIN,
+    W_AMUL, W_RING, W_TOOL, W_BALL, W_CHAIN,
     LEFT_RING, RIGHT_RING, LEFT_HANDED, TT_BURIEDBALL, ADORNED, LOST_STOLEN,
     LARGEST_INT, PLNMSG_MON_TAKES_OFF_ITEM, FAINTED, RLOC_MSG, FOOT,
 } from './const.js';
@@ -55,6 +55,7 @@ import {
     setworn, armor_simple_name, doffing, stop_donning,
     Armor_off, Cloak_off, Boots_off, Gloves_off,
     Helmet_off, Shield_off, Shirt_off, Amulet_off,
+    donning, cancel_don, Ring_gone, Blindf_off,
 } from './do_wear.js';
 import { uwepgone, uswapwepgone, uqwepgone, welded } from './wield.js';
 import { mpickobj } from './makemon.js';
@@ -66,7 +67,7 @@ import { Blind, encumber_msg, freeinv_core } from './invent.js';
 import { can_carry } from './monmove.js';
 import { hero_conflict } from './mondata.js';
 import { g_at, add_to_minv, obj_extract_self, splitobj } from './mkobj.js';
-import { mbodypart, body_part } from './polyself.js';
+import { mbodypart, body_part, skinback } from './polyself.js';
 import { monflee } from './monmove.js';
 import { Levitation, Flying } from './mhitu.js';
 
@@ -258,25 +259,31 @@ async function worn_item_removal(mon, obj) {
 }
 
 /**
- * C ref: steal.c remove_worn_item(obj, unchain_ball).
- * take_gold / cursed_book pass FALSE; worn_item_removal / steal armor
- * pass TRUE. W_ARMOR dispatches do_wear.c *_off (D-1086); leftover
- * bits use do.js setnotworn pointer-walk; W_BALL|W_CHAIN + unchain
- * calls read.c unpunish.
- * Named omit: donning/cancel_don; in_use; uskin skinback;
- * Ring_gone / Blindf_off still setworn.
+ * C ref: steal.c remove_worn_item `:213–290`.
+ * take_gold / cursed book / doputon pass FALSE; worn_item_removal,
+ * theft, and lava pass TRUE. in_use stays set across *_off so
+ * emergency_disrobe will not drop the item and lava_effects will not
+ * burn it (trap.c:6825). Restored to the previous value on the way out.
+ * debugpline1 on OBJ_DELETED is empty unless DEBUG (include/lint.h).
+ * @param {object} obj C NONNULLARG1
+ * @param {boolean} unchain_ball unpunish when the ball or chain is lost
  */
 export async function remove_worn_item(obj, unchain_ball) {
     if (!obj) return;
-    // C: if (donning(obj)) cancel_don(); named omit
+    /* C `:218` — cancel a multi-turn don/doff of this item first. */
+    if (donning(obj)) cancel_don();
     if (!obj.owornmask) return;
 
-    const u = game.u || {};
-    // C: oldinuse = obj->in_use; obj->in_use = 1; restore at end — named omit
+    /* C `:242–243` */
+    const oldinuse = obj.in_use | 0;
+    obj.in_use = 1;
 
+    const u = game.u || {};
     if (obj.owornmask & W_ARMOR) {
         if (obj === u.uskin) {
-            // C skinback(TRUE) — named omit (no skinback in JS)
+            /* C `:248–250` — skinback makes this object uarm. */
+            await impossible('Removing embedded scales?');
+            await skinback(true);
         }
         if (obj === u.uarm) await Armor_off();
         else if (obj === u.uarmc) await Cloak_off();
@@ -285,18 +292,14 @@ export async function remove_worn_item(obj, unchain_ball) {
         else if (obj === u.uarmh) await Helmet_off();
         else if (obj === u.uarms) Shield_off();
         else if (obj === u.uarmu) Shirt_off();
+        /* catchall — should never happen */
         else setworn(null, obj.owornmask & W_ARMOR);
     } else if (obj.owornmask & W_AMUL) {
-        // C steal.c:264–265 — Amulet_off() does its own off_msg.
         await Amulet_off();
     } else if (obj.owornmask & W_RING) {
-        // C Ring_gone(obj) — named omit this iter
-        if (obj === u.uleft) setworn(null, W_RINGL);
-        else if (obj === u.uright) setworn(null, W_RINGR);
-        else setworn(null, W_RING);
+        await Ring_gone(obj);
     } else if (obj.owornmask & W_TOOL) {
-        // C Blindf_off(obj) — named omit this iter
-        setworn(null, W_TOOL);
+        await Blindf_off(obj);
     } else if (obj.owornmask & W_WEAPONS) {
         if (obj === u.uwep) await uwepgone();
         if (obj === u.uswapwep) uswapwepgone();
@@ -309,9 +312,13 @@ export async function remove_worn_item(obj, unchain_ball) {
             unpunish();
         }
     } else if (obj.owornmask) {
+        /* catchall */
         const { setnotworn } = await import('./do.js');
         setnotworn(obj);
     }
+
+    /* C `:287–288` debugpline1 — non-DEBUG empty macro, no pline. */
+    obj.in_use = oldinuse;
 }
 
 /** C invent.c freeinv — splice from game.invent array. */

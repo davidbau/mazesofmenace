@@ -8,7 +8,7 @@
 
 import { game } from './gstate.js';
 import { rn2, rnd, rn1, rne } from './rng.js';
-import { mksobj, mkobj, dealloc_obj, weight, mergable, merged, carry_obj_effects, is_mines_prize, is_soko_prize } from './mkobj.js';
+import { mksobj, mkobj, dealloc_obj, weight, merged, carry_obj_effects, is_mines_prize, is_soko_prize } from './mkobj.js';
 import {
     WEAPON_CLASS,
     ARMOR_CLASS,
@@ -32,7 +32,7 @@ import { getnow } from './calendar.js';
 import {
     roles, races, aligns, findRole, findRace, findAlign,
 } from './roles.js';
-import { discover_object, Blind, makeknown, observe_object } from './invent.js';
+import { discover_object, Blind, makeknown, observe_object, update_inventory, invlet_constant } from './invent.js';
 import { setworn } from './do_wear.js';
 import { setuwep, setuswapwep, setuqwep } from './wield.js';
 import { initialspell, init_spl_book, num_spells, SPELL_LEV_PW } from './spell.js';
@@ -43,6 +43,10 @@ import {
     RIGHT_HANDED, LEFT_HANDED,
     A_NEUTRAL,
     LOST_THROWN,
+    LOST_NONE,
+    LOST_EXPLODING,
+    OBJ_FREE,
+    Has_contents,
     Is_container,
     FROMOUTSIDE,
     OBJ_INVENT,
@@ -78,6 +82,7 @@ import { set_artifact_intrinsic } from './artifact.js';
 import { record_achievement } from './insight.js';
 import { reset_justpicked } from './pickup.js';
 import { throwing_weapon } from './dothrow.js';
+import { picked_container } from './shk.js';
 import { ART_MJOLLNIR } from './generated/artifacts_data.js';
 import { is_quest_artifact, artitouch } from './quest.js';
 
@@ -1016,84 +1021,145 @@ export async function addinv_core1(obj) {
     }
 }
 
-// C ref: invent.c addinv() → merged() for stack absorb + compare-learn pline.
-// Thrown-autoquiver fill (addinv_core0, live below). Quiver-prefer merge
-// (D-2207; was named). absorbInto calls the full merged() port (age, oname,
-// lights, timers, worn fixup, globby all live). Named omissions:
-// addinv_before; worn combine-stack merge (mergable still rejects obj-worn —
-// D-2324 owns the gate); addinv_core2 luck.
-export async function addinv(obj) {
-    if (!game.invent) game.invent = [];
-    // C invent.c addinv_core0 — obj_was_thrown captured before merge
-    // (how_lost is LOST_THROWN on a picked-up thrown missile).
-    const objWasThrown = ((obj?.how_lost | 0) === LOST_THROWN);
-    // C invent.c addinv_core0 `:1077–1080` — first #loot addinv clears
-    // pickup_prev so the new take is the justpicked set
+/**
+ * C ref: invent.c addinv_core0 `:1056–1148`.
+ * where must be OBJ_FREE (unset counts as free). LOST_EXPLODING returns
+ * null. no_charge is cleared, then picked_container when the object has
+ * contents. how_lost is sampled for the thrown-quiver fill and then set
+ * to LOST_NONE before addinv_core1, so merged's compare-learn pline sees
+ * LOST_NONE. other_obj inserts only when some earlier slot's next is
+ * other_obj (the chain head has no predecessor, so it falls through).
+ * Quiver merge is tried before the rest of invent. A fresh object is
+ * linked at the head when fixinv is on or the pack is empty, and
+ * reorder_invent runs only for fixinv; otherwise it is appended.
+ * Thrown missiles fill an empty quiver only on this fresh-insert path.
+ * `added` sets pickup_prev, addinv_core2, carry_obj_effects, and
+ * update_inventory when asked.
+ * Async because addinv_core1 / addinv_core2 can reach nhgetch.
+ * JS pack is an array (nobj walk named in the map). _goldCount is the
+ * botl cache those writers already maintain; C has no such field.
+ * Named: addinv_core2 luck (set_moreluck); worn-obj merge gate (D-2324).
+ */
+export async function addinv_core0(obj, other_obj, update_perm_invent) {
+    const saved_otyp = obj.otyp | 0;
+    // C `:1063–1064` — panic if the object is still on a chain.
+    if ((obj.where | 0) !== OBJ_FREE) {
+        throw new Error('addinv: obj not free');
+    }
+    // C `:1065–1066`
+    if ((obj.how_lost | 0) === LOST_EXPLODING) return null;
+
+    // C `:1070–1074` — hero invent never keeps no_charge; nested goods too.
+    obj.no_charge = 0;
+    if (Has_contents(obj)) picked_container(obj);
+    const obj_was_thrown = (obj.how_lost | 0) === LOST_THROWN;
+    obj.how_lost = LOST_NONE;
+
+    // C `:1077–1080`
     if (game.loot_reset_justpicked) {
         game.loot_reset_justpicked = false;
         reset_justpicked(game.invent);
     }
-    // C invent.c addinv_core0 `:1082` — addinv_core1(obj) before merge/link
+
+    // C `:1082` — side effects of carrying, before merge or link.
     await addinv_core1(obj);
-    // C invent.c merged() absorb for invent stacks: age/quan/weight
-    // (+ coin bknown wipe) BEFORE known/bknown/rknown reconcile — gold
-    // bknown=0 must precede the bknown discovery check or COIN merges
-    // spuriously pline — then pickup_prev + compare-learn pline + the
-    // `added:` tail (addinv_core2/carry_obj_effects).
-    const absorbInto = async (otmp) => {
-        // C invent.c addinv_core0 `:1101–1115` — quiver-prefer then chain
-        // merge; merged() absorbs in C order (age, quan, weight, oname,
-        // extract, pickup_prev, lights, timers, ID reconcile + compare-learn
-        // pline, worn fixup, bypass, globby), then `goto added`.
-        const potmp = { obj: otmp };
-        merged(potmp, { obj });
-        otmp = potmp.obj;
-        // C: addinv_core0 added: → pickup_prev = 1
-        otmp.pickup_prev = 1;
-        if (otmp.oclass === COIN_CLASS || objectNames[otmp.otyp] === 'GOLD_PIECE') {
-            game._goldCount = (game._goldCount || 0) + (obj.quan || 0);
+
+    if (!game.invent) game.invent = [];
+    const inv = game.invent;
+    // Snapshot before merged/obfree. Botl `$:` reads this cache.
+    const incomingGold = ((obj.oclass | 0) === COIN_CLASS
+        || objectNames[obj.otyp] === 'GOLD_PIECE')
+        ? (obj.quan || 0) : 0;
+
+    async function added(result) {
+        // C `:1142–1147`
+        result.pickup_prev = 1;
+        if (incomingGold) {
+            game._goldCount = (game._goldCount || 0) + incomingGold;
         }
-        // C invent.c addinv_core0 — merge paths `goto added`, bypassing the
-        // `:1128–1140` thrown-autoquiver fill (fresh-insert only); no setuqwep here.
-        // C invent.c `added:` — addinv_core2(obj) then carry_obj_effects(obj)
-        await addinv_core2(otmp);
-        carry_obj_effects(otmp);
-        return otmp;
-    };
-    // C invent.c addinv_core0 `:1098–1106` — merge with quiver in preference
-    // to any other inventory slot (a quivered stack beats a wielded one
-    // when both are eligible); merged() re-checks mergable, as here.
+        await addinv_core2(result);
+        carry_obj_effects(result);
+        if (update_perm_invent) update_inventory();
+        return result;
+    }
+
+    // C `:1088–1096` — reinsert in front of other_obj for !fixinv throw-return.
+    // A head slot has no predecessor, so the search misses and we fall through.
+    if (other_obj) {
+        const j = inv.indexOf(other_obj);
+        if (j > 0) {
+            inv.splice(j, 0, obj);
+            obj.where = OBJ_INVENT;
+            return added(obj);
+        }
+    }
+
+    // C `:1101–1106` — quiver stack wins over a wielded stack.
     const uq = game.u?.uquiver;
-    if (uq && mergable(uq, obj)) return await absorbInto(uq);
-    for (const otmp of game.invent) {
-        if (!mergable(otmp, obj)) continue;
-        return await absorbInto(otmp);
+    if (uq) {
+        const potmp = { obj: uq };
+        const pobj = { obj };
+        if (merged(potmp, pobj)) {
+            if (game.u) game.u.uquiver = potmp.obj;
+            obj = potmp.obj;
+            if (!obj) {
+                throw new Error(`addinv: null obj after quiver merge otyp=${saved_otyp}`);
+            }
+            return added(obj);
+        }
     }
+
+    // C `:1108–1115` — merge along the pack; remember the tail for append.
+    let prev = null;
+    for (let i = 0; i < inv.length; i++) {
+        const otmp = inv[i];
+        const potmp = { obj: otmp };
+        const pobj = { obj };
+        if (merged(potmp, pobj)) {
+            if (potmp.obj !== otmp) inv[i] = potmp.obj;
+            obj = potmp.obj;
+            if (!obj) {
+                throw new Error(`addinv: null obj after merge otyp=${saved_otyp}`);
+            }
+            return added(obj);
+        }
+        prev = otmp;
+    }
+
+    // C `:1117–1126` — did not merge.
     assigninvlet(obj);
-    obj.where = OBJ_INVENT;
-    // C: addinv_core0 added: → pickup_prev = 1
-    obj.pickup_prev = 1;
-    if (obj.oclass === COIN_CLASS) {
-        game.invent.unshift(obj);
+    // JS pack is the array. C links nobj; reorder_invent here sorts the
+    // array and does not rebuild nobj (map: invent Array vs nobj).
+    if (invlet_constant() || !prev) {
+        inv.unshift(obj);
+        if (invlet_constant()) reorder_invent();
     } else {
-        game.invent.push(obj);
+        inv.push(obj);
     }
-    reorder_invent();
-    if (obj.oclass === COIN_CLASS || objectNames[obj.otyp] === 'GOLD_PIECE') {
-        game._goldCount = (game._goldCount || 0) + (obj.quan || 0);
-    }
-    // C invent.c addinv_core0 — fill empty quiver if obj was thrown
-    // (pickup_thrown on, no quiver, not Mjollnir/aklys, throwable).
-    if (objWasThrown && (game.flags?.pickup_thrown !== false)
-        && !game.u?.uquiver && ((obj.oartifact | 0) !== ART_MJOLLNIR)
-        && ((obj.otyp | 0) !== objectNames.indexOf('AKLYS'))
+    obj.where = OBJ_INVENT;
+
+    // C `:1128–1140` — fresh insert only (`goto added` skips this on merge).
+    if (obj_was_thrown && (game.flags?.pickup_thrown !== false)
+        && !game.u?.uquiver
+        && (obj.oartifact | 0) !== ART_MJOLLNIR
+        && (obj.otyp | 0) !== otypByName('AKLYS')
         && (throwing_weapon(obj) || is_ammo(obj))) {
         setuqwep(obj);
     }
-    // C invent.c `added:` — addinv_core2(obj) then carry_obj_effects(obj)
-    await addinv_core2(obj);
-    carry_obj_effects(obj);
-    return obj;
+    return added(obj);
+}
+
+/** C ref: invent.c addinv `:1151–1155` — default insert, perm invent on. */
+export async function addinv(obj) {
+    return addinv_core0(obj, null, true);
+}
+
+/**
+ * C ref: invent.c addinv_before `:1159–1165`.
+ * other_obj present skips merge by the core0 insert (implicit nomerge).
+ */
+export async function addinv_before(obj, other_obj) {
+    return addinv_core0(obj, other_obj, true);
 }
 
 /**

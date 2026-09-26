@@ -140,6 +140,7 @@ import {
     ERODE_CORRODE, EF_GREASE,
     OBJ_INVENT, ARTICLE_THE, SUPPRESS_IT, SUPPRESS_SADDLE, W_SADDLE,
     POLY_NOFLAGS, POLY_CONTROLLED, POLY_LOW_CTRL, UNCHANGING, ACID_RES,
+    POISON_RES,
     M_SEEN_SLEEP, FIXED_ABIL, ANTIMAGIC, SHOPBASE, STRAT_WAITFORU,
     M_AP_FURNITURE, M_AP_OBJECT, BURNING_OIL, LOST_EXPLODING, EXPL_FIERY,
     MAGICENLIGHTENMENT, ENL_GAMEINPROGRESS, COST_NUTRLZ,
@@ -152,13 +153,13 @@ import {
 import { hands_obj, P_SKILL } from './weapon.js';
 import { rn2, rnd, d, rn1, rnl } from './rng.js';
 import { losehp, nomul, maybe_half_phys, is_pool, waterbody_name, fall_asleep, in_rooms } from './hack.js';
-import { monstseesu, monstunseesu } from './mondata.js';
+import { monstseesu, monstunseesu, Resists_Elem } from './mondata.js';
 import { cansee } from './vision.js';
 import {
     mons, mon_hates_blessings, pmnames, is_swimmer, monsterNames,
     has_head, is_were, is_vampshifter, is_human, breathless, haseyes,
     eyecount,
-    dmgtype, MR_POISON, MR_ACID, MR_SLEEP,
+    dmgtype, MR_ACID, MR_SLEEP,
     is_floater, is_flyer, slithy, amorphous, nolimbs, MZ_SMALL,
 } from './monsters.js';
 import { rider_cant_reach } from './steed.js';
@@ -3674,8 +3675,9 @@ function resist_potion(mtmp) {
 }
 
 /**
- * C monst.h mon_resistancebits + Resists_Elem mresists/mextrinsics/
- * mintrinsics arm. Artifact/worn scan named (same as explode.js).
+ * C monst.h mon_resistancebits arm only. POT_SICKNESS uses
+ * Resists_Elem(POISON_RES). Sleep and acid callers of this helper
+ * still omit the artifact/worn scan.
  */
 function resists_elem_pot(mon, mask) {
     const bits = (mon?.data?.mresists | 0)
@@ -3952,7 +3954,7 @@ export async function potionhit(mon, obj, how) {
             }
             if (dmgtype(mon.data, AD_DISE)
                 || dmgtype(mon.data, AD_PEST)
-                || resists_elem_pot(mon, MR_POISON)) {
+                || Resists_Elem(mon, POISON_RES)) {
                 if (canseemon(mon)) {
                     await pline(`${Monnam(mon)} looks unharmed.`);
                 }

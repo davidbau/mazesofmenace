@@ -88,7 +88,8 @@ import {
     dirtocoord, engulfing_u,
 } from './const.js';
 import { MON_WEP, dmgval, hands_obj } from './weapon.js';
-import { welded, setuwep, setuswapwep, mwelded } from './wield.js';
+import { welded, mwelded } from './wield.js';
+import { remove_worn_item } from './steal.js';
 import { depth, strsubst, upstart } from './hacklib.js';
 import { get_level, dunlevs_in_dungeon, On_W_tower_level } from './dungeon.js';
 import { seetrap, t_at, trapname, mintrap, ceiling, wearing_iron_shoes, maketrap, Trap_Killed_Mon } from './trap.js';
@@ -274,14 +275,6 @@ function bimanual(obj) {
     return !!(ocl?.oc_bimanual || ocl?.oc_big);
 }
 
-/**
- * C ref: worn.c remove_worn_item — weapon slots before freeinv.
- */
-function remove_worn_weapon(obj) {
-    const u = game.u || {};
-    if (obj === u.uwep) setuwep(null);
-    else if (obj === u.uswapwep) setuswapwep(null);
-}
 
 /**
  * C ref: do.c canletgo with word="" — boolean gates only (no messages).
@@ -3189,7 +3182,7 @@ export async function use_misc(mtmp) {
             && (game.objects?.[obj.otyp]?.oc_material | 0) === SILVER) {
             where_to = 2;
         }
-        remove_worn_weapon(obj);
+        await remove_worn_item(obj, false); /* C muse.c:2596 */
         freeinv_hero(obj);
         switch (where_to) {
         case 1:

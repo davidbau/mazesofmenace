@@ -48,11 +48,13 @@ import {
     G_NOCORPSE, NON_PM as MON_NON_PM,
 } from './monsters.js';
 import { PM_CLERIC, PM_SAMURAI } from './generated/monsters_data.js';
+import { monsndx } from './mondata.js';
 import { update_inventory, Blind, near_capacity, encumber_msg, useupall } from './invent.js';
 import { distant_name, doname, cxname, The, vtense, corpse_xname, Yname2, otense, simpleonames, simple_typename } from './objnam.js';
 import {
     ROT_AGE, TAINT_AGE, TROLL_REVIVE_CHANCE,
     ROT_ORGANIC, ROT_CORPSE, REVIVE_MON, ZOMBIFY_MON,
+    TIMER_NONE, NUM_TIMER_KINDS, NUM_TIME_FUNCS,
     TIMER_OBJECT, TIMER_LEVEL, TIMER_GLOBAL, TIMER_MONSTER,
     RANGE_LEVEL,
     MELT_ICE_AWAY, HATCH_EGG, FIG_TRANSFORM, BURN_OBJECT, SHRINK_GLOB,
@@ -64,6 +66,7 @@ import {
     G_GONE,
     LOST_NONE, LOST_EXPLODING, LOST_THROWN, LOW_PM, ismnum,
     CORPSTAT_NEUTER, CORPSTAT_FEMALE, CORPSTAT_MALE,
+    CORPSTAT_INIT, CORPSTAT_SPE_VAL,
     CXN_NO_PFX,
     COLNO, ROWNO,
     Is_rogue_level, isok, ICE, DRAWBRIDGE_UP, DB_UNDER, DB_ICE,
@@ -80,7 +83,7 @@ import { set_tin_variety, eating_glob } from './eat.js';
 import { set_moreluck } from './attrib.js';
 import { recalc_block_point, cansee } from './vision.js';
 import { del_light_source, discard_flashes, obj_sheds_light, obj_adjust_light_radius } from './light.js';
-import { arti_light_radius, get_obj_location, obj_split_light_source, Is_candle, obj_merge_light_sources } from './timeout.js';
+import { arti_light_radius, get_obj_location, obj_split_light_source, Is_candle, obj_merge_light_sources, kind_name } from './timeout.js';
 import { obfree, splitbill, same_price, globby_bill_fixup, costly_spot, costly_adjacent, find_objowner, costly_alteration } from './shk.js';
 import { hands_obj, MON_WEP, setmnotwielded } from './weapon.js';
 /* C invent.c merged `:878–913` worn-slot fixup (imports.mjs --can SAFE,
@@ -1149,7 +1152,9 @@ export function stop_timer(action, obj) {
     let curr = g._timer_base;
     while (curr) {
         const next = curr.next;
-        if (curr.kind === TIMER_OBJECT && curr.action === action && curr.obj === obj) {
+        if (curr.kind === TIMER_OBJECT
+            && timeout_func_index(curr.action) === timeout_func_index(action)
+            && curr.obj === obj) {
             if (prev) prev.next = next;
             else g._timer_base = next;
             obj.timed = Math.max(0, (obj.timed | 0) - 1);
@@ -1177,7 +1182,8 @@ export function stop_timer(action, obj) {
 export function peek_timer(type, obj) {
     if (!obj) return 0;
     for (let curr = timer_base()._timer_base; curr; curr = curr.next) {
-        if (curr.action === type && curr.obj === obj) {
+        if (timeout_func_index(curr.action) === timeout_func_index(type)
+            && curr.obj === obj) {
             return curr.timeout | 0;
         }
     }
@@ -1193,40 +1199,112 @@ export function obj_has_timer(obj, action) {
 }
 
 /**
- * C ref: timeout.c start_timer — queue timer; timeout = moves+when.
- * TIMER_OBJECT: arg is obj (duplicate same obj+action aborted).
- * TIMER_LEVEL: arg is packed a_long (or `{ a_long }`); used for
- * MELT_ICE_AWAY spot timers (D-0965). tid = svt.timer_id++ (D-1527
- * #timeout print_queue). JSON save/rest timer_id is D-1698.
+ * C timeout.c timeout_funcs[].name (`:1978–1990`). VERBOSE_TIMER is
+ * defined (`:1963`), so a duplicate timer names the function, not
+ * "kind (index)". Order is enum timeout_types.
+ */
+const TIMEOUT_FUNC_NAMES = [
+    'rot_organic',
+    'rot_corpse',
+    'revive_mon',
+    'zombify_mon',
+    'burn_object',
+    'hatch_egg',
+    'fig_transform',
+    'shrink_glob',
+    'melt_ice_away',
+];
+
+/**
+ * C timeout.h `enum timeout_types` / `timeout.c` `timeout_funcs` index
+ * (`:1978–1990`). A numeric short passes through. The legacy string
+ * `MELT_ICE_AWAY` (and nhl `melt-ice`) is index 8. `string | 0` is 0,
+ * which is `ROT_ORGANIC`, so that coercion is not the index.
+ * An unknown string is -1 (start_timer panics; it must not match rot).
+ */
+function timeout_func_index(action) {
+    if (action === 'MELT_ICE_AWAY' || action === 'melt_ice_away' || action === 'melt-ice')
+        return MELT_ICE_AWAY;
+    if (typeof action === 'string') {
+        const i = TIMEOUT_FUNC_NAMES.indexOf(action);
+        return i >= 0 ? i : -1;
+    }
+    return action | 0;
+}
+
+/**
+ * C ref: timeout.c start_timer `:2247–2292`.
+ * Queue a timer_element. timeout = moves + when. tid = svt.timer_id++
+ * (decl.c init_svt.timer_id is 1UL; a fresh JS 0 is raised to 1 first).
+ * TIMER_OBJECT arg is the object (anything.a_obj) and bumps obj.timed.
+ * TIMER_LEVEL / TIMER_GLOBAL arg is a packed long or `{ a_long }`
+ * (MELT_ICE_AWAY, D-0965). TIMER_MONSTER arg is the monster.
+ * `action` is func_index. Stored as the timeout_funcs short, including
+ * MELT_ICE_AWAY at index 8 (not the string token).
+ * Duplicate (kind + func_index + a_void): impossible, return false.
+ * Invalid kind or func_index: panic (loud throw; no paniclog, Rule #2).
+ * Returns true (C TRUE), not the delay.
+ * @returns {boolean}
  */
 export function start_timer(when, kind, action, arg) {
-    const isObj = (kind | 0) === TIMER_OBJECT;
-    if (isObj && !arg) return 0;
+    /* C `:2254–2256` — kind and func_index must be in range. */
+    const kindN = kind | 0;
+    const funcN = timeout_func_index(action);
+    if (kindN <= TIMER_NONE || kindN >= NUM_TIMER_KINDS
+        || funcN < 0 || funcN >= NUM_TIME_FUNCS) {
+        /* panic() args: kind_name(kind) runs first (TIMER_NONE
+           impossible), then the throw stands in for panic NORETURN. */
+        const label = kind_name(kindN);
+        throw new Error(`start_timer (${label}: ${funcN})`);
+    }
+
+    /* C `:2259–2274` — same kind, func_index, and arg.a_void. */
+    const isObj = kindN === TIMER_OBJECT;
+    const isMon = kindN === TIMER_MONSTER;
+    /* C NONNULLARG4. A null object would fault on arg->a_void. */
+    if ((isObj || isMon) && !arg) return false;
     const obj = isObj ? arg : null;
-    const a_long = isObj
+    const mon = isMon ? arg : null;
+    const a_long = (isObj || isMon)
         ? 0
         : (typeof arg === 'number' ? (arg | 0) : (arg?.a_long | 0));
     const g = timer_base();
-    for (let dup = g._timer_base; dup; dup = dup.next) {
-        if ((dup.kind | 0) !== (kind | 0) || dup.action !== action) continue;
-        if (isObj && dup.obj === obj) return 0;
-        if (!isObj && (dup.a_long | 0) === a_long) return 0;
+    let dup = g._timer_base;
+    for (; dup; dup = dup.next) {
+        if ((dup.kind | 0) !== kindN || timeout_func_index(dup.action) !== funcN) continue;
+        /* a_void: object pointer, monster pointer, or packed long. */
+        if (isObj && dup.obj === obj) break;
+        if (isMon && dup.mon === mon) break;
+        if (!isObj && !isMon && (dup.a_long | 0) === a_long) break;
     }
+    if (dup) {
+        /* C `:2268–2273` VERBOSE_TIMER arm (the #else is not compiled). */
+        const idbuf = `${TIMEOUT_FUNC_NAMES[funcN] || 'unknown'} timer`;
+        void impossible('Attempted to start duplicate %s, aborted.', idbuf);
+        return false;
+    }
+
+    /* C `:2276–2285` alloc + memset 0 + field stores. */
     const moves = game.moves | 0;
-    /* C timeout.c start_timer: gnu->tid = svt.timer_id++; starts 1UL. */
     if ((game.timer_id | 0) < 1) game.timer_id = 1;
     const gnu = {
         next: null,
         timeout: moves + (when | 0),
         tid: game.timer_id++,
-        kind: kind | 0,
-        action: action | 0,
+        kind: kindN,
+        needs_fixup: 0,
+        action: funcN,
         obj,
+        mon,
         a_long,
     };
+    /* C `:2286` insert_timer — timeout.c:2466, same file, ordered insert. */
     insert_timer(gnu);
-    if (isObj) obj.timed = (obj.timed | 0) + 1;
-    return when;
+    /* C `:2288–2289` object timers count on the object. */
+    if (kindN === TIMER_OBJECT) obj.timed = (obj.timed | 0) + 1;
+    /* C `:2291` return TRUE. Callers that test the result (begin_burn)
+       must succeed even when when is 0. */
+    return true;
 }
 
 /**
@@ -1285,7 +1363,7 @@ export function spot_time_expires(x, y, action) {
     const where = (((x | 0) & 0xffff) << 16) | ((y | 0) & 0xffff);
     for (let curr = timer_base()._timer_base; curr; curr = curr.next) {
         if ((curr.kind | 0) === TIMER_LEVEL
-            && curr.action === action
+            && timeout_func_index(curr.action) === timeout_func_index(action)
             && (curr.a_long | 0) === where) {
             return curr.timeout | 0;
         }
@@ -1315,7 +1393,7 @@ export function spot_stop_timers(x, y, action) {
     while (curr) {
         const next = curr.next;
         if ((curr.kind | 0) === TIMER_LEVEL
-            && curr.action === action
+            && timeout_func_index(curr.action) === timeout_func_index(action)
             && (curr.a_long | 0) === where) {
             if (prev) prev.next = next;
             else g._timer_base = next;
@@ -1480,30 +1558,35 @@ export async function run_timers() {
         if (curr.kind === TIMER_OBJECT && curr.obj) {
             curr.obj.timed = Math.max(0, (curr.obj.timed | 0) - 1);
         }
-        if (curr.action === ROT_CORPSE) {
+        /* C `:2237` (*timeout_funcs[func_index].f)(&arg, timeout).
+           Index 8 is melt_ice_away on the packed long (a_long), not
+           rot_organic. A stored string token resolves to 8 here too,
+           so it cannot take the ROT_ORGANIC arm. */
+        const func = timeout_func_index(curr.action);
+        if (func === ROT_CORPSE) {
             await rot_corpse(curr.obj);
-        } else if (curr.action === ROT_ORGANIC) {
+        } else if (func === ROT_ORGANIC) {
             const { rot_organic } = await import('./dig.js');
             await rot_organic(curr.obj);
-        } else if (curr.action === MELT_ICE_AWAY
+        } else if (func === MELT_ICE_AWAY
             && (curr.kind | 0) === TIMER_LEVEL) {
             const { melt_ice_away } = await import('./zap.js');
             await melt_ice_away(curr.a_long | 0);
-        } else if (curr.action === BURN_OBJECT && curr.obj) {
+        } else if (func === BURN_OBJECT && curr.obj) {
             const { burn_object } = await import('./timeout.js');
             await burn_object(curr.obj, curr.timeout | 0);
-        } else if (curr.action === SHRINK_GLOB && curr.obj) {
+        } else if (func === SHRINK_GLOB && curr.obj) {
             await shrink_glob(curr.obj, curr.timeout | 0);
-        } else if (curr.action === FIG_TRANSFORM && curr.obj) {
+        } else if (func === FIG_TRANSFORM && curr.obj) {
             const { fig_transform } = await import('./apply.js');
             await fig_transform(curr.obj, curr.timeout | 0);
-        } else if (curr.action === HATCH_EGG && curr.obj) {
+        } else if (func === HATCH_EGG && curr.obj) {
             const { hatch_egg } = await import('./timeout.js');
             await hatch_egg(curr.obj, curr.timeout | 0);
-        } else if (curr.action === REVIVE_MON && curr.obj) {
+        } else if (func === REVIVE_MON && curr.obj) {
             const { revive_mon } = await import('./timeout.js');
             await revive_mon(curr.obj, curr.timeout | 0);
-        } else if (curr.action === ZOMBIFY_MON && curr.obj) {
+        } else if (func === ZOMBIFY_MON && curr.obj) {
             const { zombify_mon } = await import('./timeout.js');
             await zombify_mon(curr.obj, curr.timeout | 0);
         }
@@ -1904,39 +1987,70 @@ export async function shrink_glob(obj, expire_time = (game.moves | 0)) {
     }
 }
 
-// C ref: mkobj.c set_corpsenm — stop timers, set id, restart CORPSE/EGG timeouts
-export function set_corpsenm(obj, id) {
-    if (!obj) return;
-    let when = 0;
-    if (obj.timed) {
-        // C: EGG preserves remaining hatch via stop_timer(HATCH_EGG); else clear all
-        if (otypName(obj.otyp) === 'EGG') {
-            when = stop_timer(HATCH_EGG, obj);
-        } else {
-            obj_stop_timers(obj);
-        }
-    }
-    obj.corpsenm = id;
-    const name = otypName(obj.otyp);
-    if (name === 'CORPSE') {
-        start_corpse_timeout(obj);
-        obj.owt = weight(obj);
-    } else if (name === 'FIGURINE') {
-        // C mkobj.c set_corpsenm FIGURINE — attach when typed + carried
-        if (id !== NON_PM && !dead_species(id, true)
-            && figurine_is_carried(obj)) {
-            attach_fig_transform_timeout(obj);
-        }
-        obj.owt = weight(obj);
-    } else if (name === 'EGG') {
-        // C: attach_egg_hatch_timeout when typed + !dead_species; no owt here
-        if (id !== NON_PM && !dead_species(id, true)) {
-            attach_egg_hatch_timeout(obj, when);
-        }
-    } else if (name === 'STATUE' || name === 'TIN') {
-        obj.owt = weight(obj);
-    }
-}
+  /**
+   * C ref: mkobj.c set_corpsenm :1318–1367.
+   * Capture old corpsenm, stop timers (EGG keeps the hatch remainder;
+   * corpse/figurine clear every timer), rescale oeaten when a partly
+   * eaten corpse changes species and cnutrit differs, then set the id
+   * and restart the type's timer / weight.
+   * obj_to_any is the JS object: stop_timer keys object identity.
+   */
+  export function set_corpsenm(obj, id) {
+      // C is NONNULLARG1. A null object returns (C would dereference).
+      if (!obj) return;
+      const old_id = obj.corpsenm | 0;
+      let when = 0;
+      if (obj.timed) {
+          if ((obj.otyp | 0) === EGG) {
+              when = stop_timer(HATCH_EGG, obj);
+          } else {
+              when = 0;
+              obj_stop_timers(obj); /* corpse or figurine */
+          }
+      }
+      /* mkobj.c:1333–1345 — oeaten and cnutrit are unsigned; the product
+         is forced through long so a 16-bit unsigned cannot wrap. A zero
+         old cnutrit is the comment's excluded case (divisor can't be 0
+         when oeaten is set); skip rather than divide by zero. A corpsenm
+         outside the mons table is the same excluded NON_PM case. */
+      if ((obj.otyp | 0) === CORPSE && (obj.oeaten >>> 0) !== 0) {
+          const oldMons = mons(old_id);
+          const newMons = mons(id);
+          const oldNut = oldMons ? (oldMons.cnutrit | 0) : 0;
+          const newNut = newMons ? (newMons.cnutrit | 0) : 0;
+          if (oldMons && newMons && oldNut !== newNut && oldNut !== 0) {
+              obj.oeaten = (Math.trunc(
+                  ((obj.oeaten >>> 0) * newNut) / oldNut,
+              )) >>> 0;
+          }
+      }
+      obj.corpsenm = id;
+      switch (obj.otyp | 0) {
+      case CORPSE:
+          start_corpse_timeout(obj);
+          obj.owt = weight(obj);
+          break;
+      case FIGURINE:
+          /* carried() is where == OBJ_INVENT; mcarried() is OBJ_MINVENT. */
+          if ((obj.corpsenm | 0) !== NON_PM
+              && !dead_species(obj.corpsenm | 0, true)
+              && ((obj.where | 0) === OBJ_INVENT
+                  || (obj.where | 0) === OBJ_MINVENT)) {
+              attach_fig_transform_timeout(obj);
+          }
+          obj.owt = weight(obj);
+          break;
+      case EGG:
+          if ((obj.corpsenm | 0) !== NON_PM
+              && !dead_species(obj.corpsenm | 0, true)) {
+              attach_egg_hatch_timeout(obj, when);
+          }
+          break;
+      default: /* tin, statue, and any other corpsenm carrier */
+          obj.owt = weight(obj);
+          break;
+      }
+  }
 
 // C ref: mkobj.c rider_revival_time
 export function rider_revival_time(body, retry) {
@@ -3634,31 +3748,58 @@ export function mkgold(amount, x, y) {
     return gold;
 }
 
-// C ref: mkobj.c mkcorpstat()
+/**
+ * C ref: mkobj.c mkcorpstat `:2067–2118`.
+ * A corpse or statue. `ptr` overrides the random corpsenm `mksobj`
+ * picked; `mtmp`, when set, saves traits even if the type differs
+ * (vampire → human corpse). Gender and historic live in `spe`
+ * (`CORPSTAT_SPE_VAL`). `CORPSTAT_INIT` is only the `mksobj` init
+ * flag. C never returns null.
+ */
 export function mkcorpstat(objtype, mtmp, ptr, x, y, corpstatflags) {
-    const init = !!(corpstatflags & 8); // CORPSTAT_INIT
-    const otmp = (x || y) ? mksobj_at(objtype, x, y, init, false) : mksobj(objtype, init, false);
-    if (!otmp) return otmp;
-    otmp.spe = (corpstatflags & 0x07); // CORPSTAT_SPE_VAL
-    // C: otmp->norevive = gm.mkcorpstat_norevive
-    if (game.mkcorpstat_norevive) otmp.norevive = 1;
+    // C :2076 — 0x08, not the low gender bits. TRUE (1) does not init.
+    const init = (corpstatflags & CORPSTAT_INIT) !== 0;
 
-    // C: when mtmp non-null — save_mtraits + ptr default + cancelled norevive
-    if (mtmp) {
-        save_mtraits(otmp, mtmp);
-        if (ptr == null) ptr = mtmp.data;
-        if (mtmp.mcan && ptr && !is_rider(ptr)) otmp.norevive = 1;
+    // C :2078–2079 — impossible does not return; creation continues.
+    // Not awaited: this function stays sync (same shape as start_timer).
+    if (objtype !== CORPSE && objtype !== STATUE) {
+        void impossible('making corpstat type %d', objtype);
     }
 
-    if (ptr != null) {
-        // Override random corpsenm — ptr may be mndx number or mons struct
-        const mndx = typeof ptr === 'number' ? ptr : (ptr.mndx ?? NON_PM);
-        const old_corpsenm = otmp.corpsenm;
-        otmp.corpsenm = mndx;
+    let otmp;
+    // C :2080–2085. The header comment says "<0,0>" but the test is
+    // both coordinates equal to 0. A negative coordinate is placed.
+    if (x == 0 && y == 0) {
+        otmp = mksobj(objtype, init, false);
+        // C :2082 `(void) rloco(otmp)` — named omit (D-2463).
+        // `rloco` is async (`teleport.c:2102`). Awaiting it would make
+        // every caller a Promise, including sync `fixup_special`.
+    } else {
+        otmp = mksobj_at(objtype, x, y, init, false);
+    }
+
+    // C :2087 — mask 0x07. CORPSTAT_INIT must not remain in spe.
+    otmp.spe = corpstatflags & CORPSTAT_SPE_VAL;
+    // C :2088 — copy the global, including 0.
+    otmp.norevive = game.mkcorpstat_norevive ? 1 : 0;
+
+    // C :2092–2100 — traits, then ptr from the monster, then a
+    // cancelled non-rider corpse does not get a revive timer.
+    if (mtmp) {
+        save_mtraits(otmp, mtmp);
+        if (!ptr) ptr = mtmp.data;
+        if (mtmp.mcan && !is_rider(ptr)) otmp.norevive = 1;
+    }
+
+    // C :2104–2115 — override mksobj's random monster type.
+    if (ptr) {
+        const old_corpsenm = otmp.corpsenm | 0;
+        otmp.corpsenm = monsndx(ptr);
         otmp.owt = weight(otmp);
-        // C: restart timer when zombify or either type is special_corpse
-        if (otypName(otmp.otyp) === 'CORPSE'
-            && (game.zombify || special_corpse(old_corpsenm) || special_corpse(mndx))) {
+        if ((otmp.otyp | 0) === CORPSE
+            && (game.zombify
+                || special_corpse(old_corpsenm)
+                || special_corpse(otmp.corpsenm))) {
             obj_stop_timers(otmp);
             start_corpse_timeout(otmp);
         }

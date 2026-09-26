@@ -134,7 +134,7 @@ import {
     NO_COLOR, CLR_GRAY, CLR_BLACK, CLR_BROWN, CLR_WHITE, CLR_YELLOW,
     CLR_BLUE, CLR_BRIGHT_BLUE, CLR_RED, CLR_ORANGE, CLR_CYAN, CLR_GREEN,
     CLR_MAGENTA, CLR_BRIGHT_MAGENTA, CLR_BRIGHT_GREEN,
-    DEC_TO_UNICODE, ATR_INVERSE,
+    DEC_TO_UNICODE, ATR_INVERSE, ATR_BOLD, ATR_UNDERLINE,
 } from './terminal.js';
 import { update_lastseentyp, In_tutorial, cmap_to_type, ensure_lastseentyp, on_level } from './dungeon.js';
 import { stairway_at, known_branch_stairs } from './mklev.js';
@@ -290,15 +290,43 @@ function hilite_pet_opt() {
 }
 
 /**
- * C wintype.h ATR_INVERSE is 7; frozen terminal.js ATR_INVERSE is 1.
- * null and 0 stay terminal inverse (the pre-existing reader). Any other
- * stored value is passed through, so a 1 left by an older enable arm
- * is still inverse. 7 (optfn_petattr and the hilite_pet enable arm)
- * maps to terminal inverse.
+ * C ref: wintype.h `:128–134` enum, stored by options.c optfn_petattr
+ * `:3163` (`match_str2attr`). Paint is wintty.c tty_print_glyph
+ * `:3928` `term_start_attr(iflags.wc2_petattr)`, which calls
+ * termcap.c `s_atr2str` `:1339–1376` (`term_start_attr` `:1434`).
+ *
+ * Frozen terminal.js is a bitfield, not that enum. wintype ATR_BOLD
+ * is 1 and terminal ATR_INVERSE is 1, so a stored bold must not pass
+ * through. The ANSI default tty (`termcap.c:157–160`) sets `nh_HI`,
+ * `nh_US`, and `MR`. `ZH`, `MB`, `MD`, and `MH` stay null (`:46–47`).
+ * `s_atr2str` then emits underline for italic, bold for blink, and
+ * nothing for dim. Those strings are the terminal bits below.
+ *
+ * An unset field stands in for initoptions `:7264` (wintype ATR_INVERSE).
+ * A stored 0 is ATR_NONE: `term_start_attr` `:1433` skips attr 0.
  */
 function petattr_to_tty(a) {
-    if (a == null || a === 0 || (a | 0) === 7) return ATR_INVERSE;
-    return a | 0;
+    if (a == null) return ATR_INVERSE;
+    const n = a | 0;
+    // termcap.c s_atr2str :1340–1375. Capability tests are the ANSI
+    // default: ZH/MB/MD/MH null, nh_US/nh_HI/MR set.
+    switch (n) {
+    case 3: // wintype ATR_ITALIC — ZH null, fall through (:1343–1347)
+    case 5: // wintype ATR_BLINK
+    case 4: // wintype ATR_ULINE
+        // Blink: MB is null, so this arm does not return (:1349–1351).
+        // Italic and underline: nh_US is set (:1352–1356).
+        if (n !== 5) return ATR_UNDERLINE;
+        // FALLTHROUGH — blink only.
+    case 1: // wintype ATR_BOLD — MD null, nh_HI set (:1359–1364)
+        return ATR_BOLD;
+    case 7: // wintype ATR_INVERSE — MR set (:1366–1368)
+        return ATR_INVERSE;
+    case 2: // wintype ATR_DIM — MH null, no fallthrough (:1370–1374)
+        return 0;
+    default: // wintype ATR_NONE and any other value → nulstr
+        return 0;
+    }
 }
 
 function mon_map_attr(mtmp) {

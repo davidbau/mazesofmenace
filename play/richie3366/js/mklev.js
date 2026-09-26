@@ -130,7 +130,7 @@ import {
     is_flyer, is_floater, is_swimmer, amphibious,
     passes_walls, noncorporeal, likes_fire,
     mon_learns_traps,
-    resists_ston, poly_when_stoned,
+    resists_ston, poly_when_stoned, pm_resistance, MR_STONE,
     is_vampshifter, vampshifted,
 } from './monsters.js';
 import { name_to_monplus, name_to_mon, set_mon_data } from './mondata.js';
@@ -2390,10 +2390,13 @@ function fixup_special() {
                 if (goodpos(x, y, null, 0)) {
                     let tryct2 = 0;
                     const otmp = mk_tt_object(STATUE, x, y);
-                    // Named omission: poly_when_stoned / pm_resistance MR_STONE
-                    // retry loop (mresists not extracted) — keep first corpsenm.
-                    void tryct2;
-                    void otmp;
+                    /* C mkmaze.c:661–667 — poly_when_stoned, then MR_STONE.
+                       set_corpsenm updates weight. */
+                    while (++tryct2 < 100 && otmp
+                        && (poly_when_stoned(mons(otmp.corpsenm), game.mvitals)
+                            || pm_resistance(mons(otmp.corpsenm), MR_STONE))) {
+                        set_corpsenm(otmp, rndmonnum());
+                    }
                 }
             }
             let otmp;
@@ -2402,8 +2405,15 @@ function fixup_special() {
             else
                 otmp = mkcorpstat(STATUE, null, null, somex(croom), somey(croom),
                     CORPSTAT_NONE);
-            // Named omission: stone-resist corpsenm retry (same as above)
-            void otmp;
+            /* C mkmaze.c:677–684 — MR_STONE first, then poly_when_stoned. */
+            if (otmp) {
+                let tryctStone = 0;
+                while (++tryctStone < 100
+                    && (pm_resistance(mons(otmp.corpsenm), MR_STONE)
+                        || poly_when_stoned(mons(otmp.corpsenm), game.mvitals))) {
+                    set_corpsenm(otmp, rndmonnum());
+                }
+            }
         }
     }
 
@@ -19864,7 +19874,7 @@ async function mkinvpos(x, y, dist) {
     let otmp;
     while ((otmp = sobj_at(BOULDER, x, y)) != null) {
         if (make_rocks) {
-            fracture_rock(otmp);
+            await fracture_rock(otmp);
             make_rocks = false; /* don't bother with more rocks */
         } else {
             obj_extract_self(otmp);
@@ -31526,7 +31536,8 @@ function mktrap_victim(trap) {
     }
     if (victim_mnum === PM_HUMAN && rn2(25))
         victim_mnum = rn1(PM_WIZARD - PM_ARCHEOLOGIST, PM_ARCHEOLOGIST);
-    otmp = mkcorpstat(CORPSE, null, victim_mnum, x, y, 8);
+    // C mklev.c:1932 — `&mons[victim_mnum]`, CORPSTAT_INIT.
+    otmp = mkcorpstat(CORPSE, null, mons(victim_mnum), x, y, 8);
     if (otmp) otmp.age -= (TAINT_AGE + 1); // died too long ago to safely eat
 }
 
