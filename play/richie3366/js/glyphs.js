@@ -29,6 +29,7 @@ import {
     GLYPH_EXPLODE_MUDDY_OFF, GLYPH_EXPLODE_WET_OFF,
     GLYPH_EXPLODE_MAGICAL_OFF, GLYPH_EXPLODE_FIERY_OFF,
     GLYPH_EXPLODE_FROSTY_OFF, GLYPH_WARNING_OFF,
+    GLYPH_OBJ_OFF, GLYPH_OBJ_PILETOP_OFF,
     glyph_is_monster, glyph_is_normal_male_monster,
     glyph_is_normal_female_monster, glyph_is_ridden_male_monster,
     glyph_is_ridden_female_monster, glyph_is_detected_male_monster,
@@ -52,8 +53,11 @@ import {
 } from './const.js';
 import { monsterNames, mlets, NUMMONS } from './generated/monsters_data.js';
 import {
-    objectNames, objectNameStrs, objectDescrs,
+    objectNames, objectNameStrs, objectDescrs, NUM_OBJECTS,
 } from './generated/objects_data.js';
+import { dupstr } from './dungeon.js';
+import { game } from './gstate.js';
+import { NO_COLOR } from './terminal.js';
 import {
     LOADSYMS, SYM_MON, SYM_OC, SYM_PCHAR,
 } from './generated/glyphsyms_data.js';
@@ -792,12 +796,131 @@ function find_glyphid_in_cache_by_glyphnum(glyphnum) {
 }
 
 /**
+ * C display.c:1672 `glyph_map glyphmap[MAX_GLYPH]` — one explicit element
+ * (`sym.color = NO_COLOR`), then C zero-fills the rest. Created on the
+ * first shuffle; `reset_glyphmap` still does not fill `sym` / `tileidx`.
+ * @returns {object[]}
+ */
+function ensure_glyphmap() {
+    if (game.glyphmap && game.glyphmap.length === MAX_GLYPH) return game.glyphmap;
+    const gm = new Array(MAX_GLYPH);
+    for (let i = 0; i < MAX_GLYPH; i++) {
+        gm[i] = {
+            glyphflags: 0,
+            sym: { color: 0, symidx: 0 },
+            customcolor: 0,
+            color256idx: 0,
+            tileidx: 0,
+            u: null,
+        };
+    }
+    gm[0].sym.color = NO_COLOR;
+    game.glyphmap = gm;
+    return gm;
+}
+
+/**
+ * C glyphs.c maybe_shuffle_customizations `:580–587` (global). One caller,
+ * `moveloop_core` (`allmain.c:189–190`).
+ */
+export function maybe_shuffle_customizations() {
+    const iflags = game.iflags;
+    if (iflags && iflags.pending_customizations) {
+        shuffle_customizations();
+        iflags.pending_customizations = 0;
+    }
+}
+
+/**
+ * C glyphs.c shuffle_customizations `:644–732` (staticfn). The `#if 0`
+ * body at `:591–642` is not this build. `ENHANCED_SYMBOLS` is defined
+ * (`config.h:368`; `config1.h` undefines it only for MSDOS), so the
+ * unicode arms are compiled. Gem-description shuffle can repeat
+ * `oc_descr_idx`; a repeated index copies `customcolor` / `color256idx`
+ * by value and `alloc`s a distinct `unicode_representation` (`dupstr` of
+ * `utf8str`). `alloc` is an object literal; `free` drops the reference
+ * after clearing `utf8str` (JS strings are immutable, so `dupstr` is the
+ * dungeon.js export).
+ */
+function shuffle_customizations() {
+    /* C `:648` static const int offsets[2]. */
+    const offsets = [GLYPH_OBJ_OFF, GLYPH_OBJ_PILETOP_OFF];
+    const gm = ensure_glyphmap();
+    const objs = game.objects;
+
+    for (let j = 0; j < offsets.length; j++) {
+        const base = offsets[j];
+        const tmp_u = new Array(NUM_OBJECTS);
+        const tmp_customcolor = new Array(NUM_OBJECTS);
+        const tmp_color256idx = new Array(NUM_OBJECTS);
+        const duplicate = new Array(NUM_OBJECTS);
+        let i;
+
+        for (i = 0; i < NUM_OBJECTS; i++) {
+            duplicate[i] = -1;
+            tmp_u[i] = null;
+            tmp_customcolor[i] = 0;
+            tmp_color256idx[i] = 0;
+        }
+        for (i = 0; i < NUM_OBJECTS; i++) {
+            const idx = objs[i].oc_descr_idx | 0;
+
+            /*
+             * Shuffling gem appearances can cause the same oc_descr_idx to
+             * appear more than once. Detect this condition and ensure that
+             * each pointer points to a unique allocation.
+             */
+            if (duplicate[idx] >= 0) {
+                const other = tmp_u[duplicate[idx]];
+                const other_customcolor = tmp_customcolor[duplicate[idx]];
+                const other_color256idx = tmp_color256idx[duplicate[idx]];
+
+                tmp_customcolor[i] = other_customcolor >>> 0;
+                tmp_color256idx[i] = other_color256idx & 0xffff;
+                if (other) {
+                    /* C alloc(sizeof unicode_representation) + struct copy. */
+                    tmp_u[i] = {
+                        utf32ch: other.utf32ch >>> 0,
+                        utf8str: null,
+                    };
+                    if (other.utf8str != null) {
+                        tmp_u[i].utf8str = dupstr(other.utf8str);
+                    }
+                }
+            } else {
+                const src = gm[base + idx];
+                tmp_customcolor[i] = src.customcolor >>> 0;
+                tmp_color256idx[i] = src.color256idx & 0xffff;
+                tmp_u[i] = src.u;
+                if (src.u != null || (src.customcolor >>> 0) !== 0) {
+                    duplicate[idx] = i;
+                    src.u = null;
+                    src.customcolor = 0;
+                    src.color256idx = 0;
+                }
+            }
+        }
+        for (i = 0; i < NUM_OBJECTS; i++) {
+            /* Some glyphmaps may not have been transferred */
+            const dst = gm[base + i];
+            if (dst.u != null) {
+                dst.u.utf8str = null;
+                dst.u = null;
+            }
+            dst.u = tmp_u[i];
+            dst.customcolor = tmp_customcolor[i] >>> 0;
+            dst.color256idx = tmp_color256idx[i] & 0xffff;
+        }
+    }
+}
+
+/**
  * C glyphs.c wizcustom_glyphids `:807–821` (global; extern.h:1177) —
  * `#wizcustom` menu fill (sole C caller wiz_custom, wizcmds.c:1967,
  * unported): every cached glyph id goes through wizcustom_callback.
  * Named omission: wizcustom_callback (wizcmds.c:1987, own coverage row —
- * reads the deferred glyphmap[]/reset_glyphmap table); the guard, loop,
- * cache scan and id gate below are live, in C order.
+ * reads glyphmap[] `sym` / `tileidx`, which `reset_glyphmap` still does
+ * not fill); the guard, loop, cache scan and id gate below are live.
  */
 export function wizcustom_glyphids(win) {
     let id;

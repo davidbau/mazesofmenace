@@ -63,7 +63,7 @@ import {
     EYE, M_AP_NOTHING, M_AP_MONSTER, M_AP_TYPE, HAND, HEAD,
     COST_CONTENTS, COST_SINGLEOBJ, COST_UNBLSS, COST_UNCURS, TELEPAT,
     FIRE_RES, SLEEP_RES, COLD_RES, DISINT_RES, SHOCK_RES, POISON_RES,
-    ACID_RES, STONE_RES, TELEPORT, TELEPORT_CONTROL, ismnum,
+    ACID_RES, STONE_RES, TELEPORT, TELEPORT_CONTROL, ismnum, Upolyd,
     MENU_TRADITIONAL, MENU_FULL,
     W_SWAPWEP, W_QUIVER, TT_PIT, MIGR_APPROX_XY, MON_FLOOR,
     SELL_NORMAL, SELL_DELIBERATE, SELL_DONTSELL, CANDLESHOP,
@@ -90,7 +90,7 @@ import { cansee, recalc_block_point } from './vision.js';
 import { mbodypart } from './polyself.js';
 import { objectNames } from './generated/objects_data.js';
 import { mattacku } from './mhitu.js';
-import { PM_GRID_BUG, PM_TOURIST, PM_KNIGHT, PM_ROGUE } from './generated/monsters_data.js';
+import { PM_GRID_BUG, PM_TOURIST, PM_KNIGHT, PM_ROGUE, PM_ELF } from './generated/monsters_data.js';
 import { se_mutter_imprecations, se_mutter_incantation } from './generated/seffects_data.js';
 import { Hello } from './roles.js';
 import { shtypes, shkname, Shknam, saleable, is_izchak } from './shknam.js';
@@ -109,7 +109,7 @@ import {
     the, The, safe_qbuf,
 } from './objnam.js';
 import {
-    is_human, is_demon, is_watch, nolimbs, is_floater, is_flyer, amorphous,
+    is_human, is_vampire, is_elf, is_demon, is_watch, nolimbs, is_floater, is_flyer, amorphous,
     M1_SLITHY, passes_walls, mons, monsterNames, haseyes,
 } from './monsters.js';
 import { nhgetch } from './input.js';
@@ -4222,21 +4222,33 @@ async function bill_box_content(obj, ininv, dummy, shkp) {
 }
 
 /**
- * C ref: shk.c append_honorific — rn2(SIZE(honored)-1) + udemigod.
- * Vampire/elf race suffixes: human path via is_human; others → creature.
+ * C ref: shk.c:3602–3620 append_honorific.
+ * honored[rn2(SIZE-1) + u.uevent.udemigod], then vampire, else
+ * maybe_polyd(is_elf(youmonst.data), Race_if(PM_ELF)), else creature/lady/sir.
+ * Race_if and maybe_polyd are macros (you.h:297, youprop.h:22); inlined
+ * so this file does not add another Race_if clone.
  */
 function append_honorific(bufRef) {
+    /* (chooses among [0]..[3] normally; [1]..[4] after the
+       Wizard has been killed or invocation ritual performed) */
     const honored = [
         'good', 'honored', 'most gracious', 'esteemed',
         'most renowned and sacred',
     ];
-    const udemi = game.u?.uevent?.udemigod ? 1 : 0;
-    bufRef.s += honored[rn2(honored.length - 1) + udemi];
-    const ptr = game.youmonst?.data;
-    // is_vampire / maybe_polyd elf deferred
-    if (!is_human(ptr)) bufRef.s += ' creature';
-    else if (game.flags?.female) bufRef.s += ' lady';
-    else bufRef.s += ' sir';
+    /* SIZE(honored) - 1 == 4; udemigod is the 1-bit field, 0 or 1.
+     * C's uevent struct is always present. A missing JS object is
+     * that zero-initialized bit (a shop quote can run first). */
+    bufRef.s += honored[rn2(honored.length - 1) + (game.u.uevent?.udemigod ? 1 : 0)];
+    const ptr = game.youmonst.data;
+    const female = game.flags.female;
+    if (is_vampire(ptr)) {
+        bufRef.s += female ? ' dark lady' : ' dark lord';
+    } else if (Upolyd(game.u) ? is_elf(ptr) : ((game.urace.mnum | 0) === PM_ELF)) {
+        bufRef.s += female ? ' hiril' : ' hir';
+    } else {
+        bufRef.s += !is_human(ptr) ? ' creature'
+            : (female ? ' lady' : ' sir');
+    }
 }
 
 /**

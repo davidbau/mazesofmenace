@@ -58,7 +58,7 @@ import { mhis } from './fountain.js';
 import { could_seduce, SYSOPT_SEDUCE } from './mhitm.js';
 import { doseduce, Conflict } from './mhitu.js';
 import { which_armor } from './worn.js';
-import { cursed_check, helm_simple_name } from './do_wear.js';
+import { cursed, helm_simple_name } from './do_wear.js';
 import { accessible } from './monmove.js';
 import { Invis } from './timeout.js';
 import { SetVoice, voice_death, Soundeffect } from './sndprocs.js';
@@ -1965,12 +1965,9 @@ export async function tiphat() {
 
     // C `:1435`: res tracks whether the curse state was learned
     let res = uarmh.bknown ? 0 : 1;
-    // C `:1437–1438`: cursed() ≡ do_wear.js cursed_check (message stored in
-    // game._cursed_takeoff_msg, bknown set — do_takeoff precedent)
-    if (cursed_check(uarmh)) {
-        await pline(game._cursed_takeoff_msg || "You can't.  It is cursed.");
-        return res; // if learned of curse, use a move
-    }
+    // C `:1437–1438`: cursed() prints and set_bknown; a learned curse uses a move
+    if (await cursed(uarmh))
+        return res;
 
     // C `:1442–1445`: bail on ESC (iffy res: past the curse test now)
     if (!(await getdir('At whom? (in what direction)')))

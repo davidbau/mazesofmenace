@@ -48,7 +48,7 @@ import {
     fillholetyp, liquid_flow,
 } from './dig.js';
 import { obj_extract_self, delobj, sobj_at } from './mkobj.js';
-import { losehp, maybe_half_phys, in_rooms } from './hack.js';
+import { losehp, maybe_half_phys, in_rooms, You_hear } from './hack.js';
 import { xkilled } from './uhitm.js';
 import { makeknown, consume_obj_charge } from './invent.js';
 import { align_str, uhim } from './roles.js';
@@ -159,12 +159,6 @@ function incr_itimeout_HDeaf(incr) {
     const cur = u.HDeaf | 0;
     const next = ((cur & TIMEOUT) + (incr | 0)) & TIMEOUT;
     u.HDeaf = (cur & ~TIMEOUT) | next;
-}
-
-/** C ref: pline.c You_hear — acoustics/Deaf; Unaware/Underwater deferred. */
-async function You_hear(line) {
-    if (Deaf()) return;
-    await pline(`You hear ${line}`);
 }
 
 /** C ref: hacklib.c mungspaces — trim ends, compress internal spaces. */

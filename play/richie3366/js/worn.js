@@ -3,16 +3,16 @@
 //   m_dowear, m_dowear_type, update_mon_extrinsics, extra_pref,
 //   racial_exception; mon.c check_gear_next_turn.
 // Named omissions:
-//   dragon-scale altprop beyond alchemy smock;
-//   extract_from_minvent obj_no_longer_held (crysknife). Gold-DSM
-//   end_burn is live (D-2914).
+//   dragon-scale altprop beyond alchemy smock.
+// extract_from_minvent calls the D-2734 sync obj_no_longer_held core
+// (COST_DEGRD billing floats). Gold-DSM end_burn is live (D-2914).
 // D-0855: nambuf Monnam/mon_nam at m_dowear_type entry (Hallu display RNG).
 
 import { game } from './gstate.js';
 import {
     W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU, W_AMUL, W_WEP,
     W_RINGL, W_RINGR, W_SWAPWEP, W_QUIVER, W_TOOL, W_BALL, W_CHAIN, W_SADDLE,
-    I_SPECIAL, AC_MAX, OBJ_MINVENT, NEED_WEAPON, P_NONE, DISMOUNT_FELL,
+    I_SPECIAL, AC_MAX, OBJ_MINVENT, P_NONE, DISMOUNT_FELL,
     INVIS, FAST, ANTIMAGIC, REFLECTING, PROTECTION, CLAIRVOYANT, STEALTH,
     TELEPAT, LEVITATION, FLYING, WWALKING, DISPLACED, FUMBLING, JUMPING,
     FIRE_RES, COLD_RES, SLEEP_RES, DISINT_RES, SHOCK_RES, POISON_RES,
@@ -33,6 +33,7 @@ import {
 } from './objects.js';
 import {
     curse, obj_extract_self, oc_merge_of, place_object,
+    place_object_no_longer_held,
 } from './mkobj.js';
 import {
     canseemon, newsym, impossible, pline, pline_mon,
@@ -56,7 +57,7 @@ import {
     se_cracking_sound, se_ripping_sound, se_thud, se_clank,
 } from './generated/seffects_data.js';
 import { surface } from './sit.js';
-import { MON_WEP } from './weapon.js';
+import { MON_WEP, mwepgone } from './weapon.js';
 import { m_useup } from './mthrowu.js';
 import { cloak_simple_name } from './do_wear.js';
 import { can_saddle, can_ride, dismount_steed } from './steed.js';
@@ -647,33 +648,51 @@ export function bypass_obj(obj) {
 }
 
 /**
- * C ref: worn.c extract_from_minvent `:1376–1410` — unlink minvent obj;
- * worn extras when owornmask. Gold DSM is snuffed before owornmask
- * clears (artifact_light reads W_ARM). Named omit: where-mismatch
- * impossible; obj_no_longer_held (crysknife); setmnotwielded light
- * polish (mwepgone core inlined to avoid worn↔weapon).
- * possibly_unwield is weapon.c D-1744.
+ * C ref: worn.c extract_from_minvent `:1376–1417`.
+ * `where != OBJ_MINVENT` → impossible + return. The port's string tag
+ * `'MINVENT'` is the same object (obj_extract_self accepts it); it is
+ * not the mismatch arm. Gold DSM `end_burn` runs while `owornmask`
+ * still has `W_ARM` (`artifact_light` reads that bit). Then
+ * `obj_extract_self`, `owornmask = 0`, and when the mask was set:
+ * `!DEADMONSTER` (`mhp < 1`) and `do_extrinsics` →
+ * `update_mon_extrinsics(FALSE, silently)`, clear that bit of
+ * `misc_worn_check`, `check_gear_next_turn`. `obj_no_longer_held` is
+ * the exported D-2734 sync core (`place_object_no_longer_held`):
+ * container recursion, crysknife `rn2(10)`, `otyp = WORM_TOOTH`.
+ * `costly_alteration` is floated there (sync callers: `m_lose_armor`,
+ * `m_useup`, `discard_minvent`, `mon_break_armor`'s non-Promise
+ * contract). `W_WEP` → `mwepgone` (`setmnotwielded` + `NEED_WEAPON`).
+ * A light-pline or impossible promise is returned so async callers
+ * can await it; the common path returns undefined and stays sync.
+ * @returns {void|Promise<void>}
  */
 export function extract_from_minvent(mon, obj, do_extrinsics, silently) {
     if (!mon || !obj) return;
-    if (obj.where !== OBJ_MINVENT && obj.where !== 'MINVENT') return;
     const unwornmask = obj.owornmask | 0;
-    // C worn.c:1397–1400 — while owornmask still names the suit.
+    /* C `:1391–1394` */
+    if (obj.where !== OBJ_MINVENT && obj.where !== 'MINVENT') {
+        return impossible(
+            'extract_from_minvent called on object not in minvent',
+        );
+    }
+    /* C `:1397–1400` — while owornmask still names the suit. */
     if ((unwornmask & W_ARM) !== 0 && obj.lamplit && artifact_light(obj)) {
         end_burn(obj, false);
     }
-    obj_extract_self(obj);
-    obj.owornmask = 0;
-    if (unwornmask) {
-        if ((mon.mhp | 0) >= 1 && do_extrinsics) {
+    obj_extract_self(obj); /* C `:1402` */
+    obj.owornmask = 0; /* C `:1403` */
+    if (unwornmask) { /* C `:1404` */
+        /* C `:1405` DEADMONSTER(mon) → mhp < 1 */
+        if (!((mon.mhp | 0) < 1) && do_extrinsics) {
             update_mon_extrinsics(mon, obj, false, silently);
         }
         mon.misc_worn_check = (mon.misc_worn_check || 0) & ~unwornmask;
-        check_gear_next_turn(mon);
+        check_gear_next_turn(mon); /* C `:1411` */
     }
-    if (unwornmask & W_WEP) {
-        mon.mw = null;
-        mon.weapon_check = NEED_WEAPON;
+    /* C `:1413` obj_no_longer_held — sync core, COST_DEGRD floated. */
+    place_object_no_longer_held(obj);
+    if (unwornmask & W_WEP) { /* C `:1414–1416` */
+        return mwepgone(mon);
     }
 }
 

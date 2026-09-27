@@ -61,7 +61,7 @@ import { objectNames } from './generated/objects_data.js';
 import { monsterNames, PM_TOURIST, LOW_PM } from './generated/monsters_data.js';
 import { paybill, money2mon, obfree, doname_with_price } from './shk.js';
 import { hidden_gold, paygd } from './vault.js';
-import { clearlocks } from './files.js';
+import { clearlocks, debugcore } from './files.js';
 import { clearpriests } from './priest.js';
 import { shkname, shkname_is_pname } from './shknam.js';
 import {
@@ -982,6 +982,28 @@ async function show_death_rip_and_summary(how, umoney, endtime = 0) {
     lines.push('');
 
     await show_text_pages(lines, { moreAtEnd: true });
+}
+
+/**
+ * C ref: end.c nh_terminate `:1673–1703`.
+ * Unix `nethack_exit` is `exit` (extern.h:2387). Scored ESM cannot exit
+ * the process; `program_state.gameover` stops `moveloop` / `runSegment`.
+ * @param {number} status EXIT_SUCCESS (0) or EXIT_FAILURE
+ */
+export function nh_terminate(status) {
+    if (!game.program_state) game.program_state = {};
+    const ps = game.program_state;
+    ps.in_moveloop = 0; // C `:1676` — won't be returning to normal play
+    // C `:1678` l_nhcore_call(NHCORE_GAME_EXIT) — no Lua core in scored JS.
+    // MACOS9 getreturn (`:1679–1681`) is not this build.
+    if (!ps.panicking) {
+        // C `:1684–1687` — freedynamicdata (save-freeing, not ported),
+        // dlb_cleanup (data library file, Rule #2), l_nhcore_done (no Lua).
+    }
+    // VMS (`:1690–1700`) returns when already exiting. Not this build.
+    ps.exiting = 1; // C `:1701`
+    ps.exit_status = status | 0;
+    ps.gameover = true; // C `:1702` nethack_exit(status)
 }
 
 /**
@@ -1963,16 +1985,45 @@ export function find_delayed_killer(id) {
     return null;
 }
 
-/** C ref: end.c dealloc_killer — unlink one delayed killer node. */
+/**
+ * C lint.h `debugpline1` (`:61`) — DEBUG is on (`patchlevel.h:36`).
+ * `showdebug("end.c")` is `debugcore(file, TRUE)`. The false arm does
+ * not pline and does not touch `iflags.last_msg`. The true arm's
+ * `pline` is async, so this sync caller starts it and then restores
+ * `last_msg` the way C does after `pline` returns; the restore can
+ * land before that promise finishes.
+ * @param {number} id
+ */
+function debugpline1_end(id) {
+    if (!debugcore('end.c', true)) return; // lint.h:33
+    const iflags = game.iflags;
+    const save = iflags ? iflags.last_msg : 0; // lint.h:34
+    void pline('freed delayed killer #%d', id | 0); // end.c:1755
+    if (iflags) iflags.last_msg = save; // lint.h:36
+}
+
+/**
+ * C ref: end.c dealloc_killer `:1738–1757`.
+ * Unlink one delayed-killer node. A null pointer returns. A pointer
+ * that is not on `svk.killer`'s list is `impossible`. `free` drops the
+ * node (GC once nothing else holds it).
+ */
 export function dealloc_killer(kptr) {
-    if (!kptr || !game.killer) return;
-    let prev = game.killer;
-    for (let k = game.killer.next; k; k = k.next) {
-        if (k === kptr) {
-            prev.next = k.next || null;
-            return;
-        }
-        prev = k;
+    // C `:1740` prev = &svk.killer. A missing sentinel is an empty list.
+    if (kptr == null) return; // C `:1742–1743`
+    const head = game.killer;
+    let prev = head;
+    let k = head ? (head.next ?? null) : null; // C `:1744`
+    for (; k != null; k = k.next ?? null) {
+        if (k === kptr) break; // C `:1745–1746`
+        prev = k; // C `:1747`
+    }
+    if (k == null) { // C `:1750–1751`
+        void impossible('dealloc_killer (#%d) not on list', kptr.id | 0);
+    } else {
+        prev.next = k.next ?? null; // C `:1753`
+        // C `:1754` free(k) — unlinked node is garbage-collected.
+        debugpline1_end(kptr.id | 0); // C `:1755`
     }
 }
 

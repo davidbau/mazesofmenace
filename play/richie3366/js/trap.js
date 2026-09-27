@@ -118,7 +118,7 @@ import {
 import {
     is_pool, is_lava, waterbody_name, crawl_destination, SURFACE_AT,
     maybe_half_phys, nomul, unmul, losehp, finish_maybe_wail, stop_occupation,
-    in_rooms, set_uinwater, test_move, fall_asleep,
+    in_rooms, set_uinwater, test_move, fall_asleep, You_hear,
 } from './hack.js';
 import { goodpos, mlevel_tele_trap, mtele_trap, tele_trap, level_tele_trap, domagicportal, rloco, random_teleport_level, teleds, safe_teleds, noteleport_level, dotele, unconscious } from './teleport.js';
 import { get_level, on_level, at_dgn_entrance, update_lastseentyp } from './dungeon.js';
@@ -1155,16 +1155,6 @@ function trapnote(trap, noprefix) {
     return noprefix ? tn : an(tn);
 }
 
-// C ref: pline.c You_hear — acoustics/Deaf gate; Unaware/Underwater deferred
-async function You_hear(line) {
-    const u = game.u || {};
-    const Unaware = (u.multi | 0) < 0 && !!u.usleep;
-    if ((u.Deaf && !Unaware) || game.flags?.acoustics === false) return;
-    if (u.Underwater) await pline(`You barely hear ${line}`);
-    else if (Unaware) await pline(`You dream that you hear ${line}`);
-    else await pline(`You hear ${line}`);
-}
-
 // C ref: mon.c wake_nearto — clear sleep/wait within dist2; zombies deferred
 function wake_nearto(x, y, distance) {
     for (const mtmp of game.fmon || []) {
@@ -1309,20 +1299,101 @@ function clear_conjoined_pits(trap) {
     }
 }
 
-// C ref: trap.c deltrap — unlink from ftrap, then Sokoban finish.
-// Named: dealloc_trap (trap.c:6548) still has no JS body.
+/**
+ * C ref: trap.h:42 — `#define dealloc_trap(trap) free((genericptr_t)(trap))`.
+ * JS has no heap free. After the trap is off the chain, drop `ntrap` so a
+ * retained reference is not a live successor. Callers: `deltrap` only in
+ * gameplay; `savetrapchn` / `resttrapchn` (`save.c:937`, `restore.c:1164`)
+ * are the save-file frees and are not this function.
+ */
+function dealloc_trap(trap) {
+    if (trap) trap.ntrap = null;
+}
+
+/**
+ * C `gf.ftrap` walk: predecessor whose `ntrap` is `trap`, or the head.
+ * An array head is not a trap node (`bones` / `save` alias `level.traps`).
+ * @returns {{ head: object|null, found: boolean }}
+ */
+function unlink_trap_node(head, trap) {
+    if (!head || !trap || Array.isArray(head)) return { head, found: false };
+    if (head === trap) return { head: head.ntrap || null, found: true };
+    let ttmp = head;
+    for (; ttmp; ttmp = ttmp.ntrap) {
+        if (ttmp.ntrap === trap) break;
+    }
+    if (!ttmp) return { head, found: false };
+    ttmp.ntrap = trap.ntrap || null;
+    return { head, found: true };
+}
+
+/**
+ * C ref: trap.c deltrap `:6531–6549`.
+ * `clear_conjoined_pits`, then unlink. Head case advances `gf.ftrap`;
+ * otherwise the predecessor’s `ntrap` becomes `trap->ntrap`, or
+ * `panic("deltrap: no preceding trap!")`. Then Sokoban pit/hole finish,
+ * then `dealloc_trap`.
+ *
+ * JS keeps that chain two ways: `level.traps` in insertion order (what
+ * `maketrap` / `t_at` use; `ntrap` stays null) and `game.ftrap` when a
+ * real node chain exists. Both are the one C list.
+ */
 export function deltrap(trap) {
-    const traps = game.level?.traps;
-    if (!traps || !trap) return;
     clear_conjoined_pits(trap);
-    const i = traps.indexOf(trap);
-    if (i < 0) return;
-    traps.splice(i, 1);
-    // C trap.c:6546–6547 — after the trap is off gf.ftrap, before dealloc.
+
+    const traps = game.level && game.level.traps;
+    let found = false;
+
+    if (Array.isArray(traps)) {
+        if (traps.length && traps[0] === trap) {
+            traps.shift();
+            found = true;
+        } else {
+            let ttmp = null;
+            for (let i = 0; i < traps.length - 1; i++) {
+                if (traps[i + 1] === trap) {
+                    ttmp = traps[i];
+                    break;
+                }
+            }
+            if (ttmp) {
+                const i = traps.indexOf(trap);
+                traps.splice(i, 1);
+                if (ttmp.ntrap === trap) ttmp.ntrap = trap.ntrap || null;
+                found = true;
+            }
+        }
+    }
+
+    if (game.ftrap && game.ftrap !== traps) {
+        if (Array.isArray(game.ftrap)) {
+            const i = game.ftrap.indexOf(trap);
+            if (i >= 0) {
+                game.ftrap.splice(i, 1);
+                found = true;
+            }
+        } else {
+            const un = unlink_trap_node(game.ftrap, trap);
+            if (un.found) {
+                game.ftrap = un.head;
+                found = true;
+            }
+        }
+    }
+
+    if (!found) {
+        // C trap.c:6543 — panic is NORETURN. Throw matches insert_branch.
+        throw new Error('deltrap: no preceding trap!');
+    }
+
+    // C rm.h:538 `#define Sokoban svl.level.flags.sokoban_rules`, plus the
+    // aliases this file keeps in step with that bit.
     if (Sokoban_rules()
+        && trap
         && ((trap.ttyp | 0) === PIT || (trap.ttyp | 0) === HOLE)) {
         maybe_finish_sokoban();
     }
+    dealloc_trap(trap);
 }
 
 /**
@@ -2328,7 +2399,7 @@ async function trapeffect_dart_trap(mtmp, trap) {
     if (is_youmonst(mtmp)) {
         const u = game.u;
         if (trap.once && trap.tseen && !rn2(15)) {
-            await pline('You hear a soft click.');
+            await You_hear('a soft click.');
             deltrap(trap);
             newsym(u.ux, u.uy);
             return Trap_Is_Gone;
@@ -2396,7 +2467,7 @@ async function trapeffect_arrow_trap(mtmp, trap) {
     if (is_youmonst(mtmp)) {
         const u = game.u;
         if (trap.once && trap.tseen && !rn2(15)) {
-            await pline('You hear a loud click!');
+            await You_hear('a loud click!');
             deltrap(trap);
             newsym(u.ux, u.uy);
             return Trap_Is_Gone;
@@ -2525,6 +2596,7 @@ export async function launch_obj(otyp, x1, y1, x2, y2, style) {
     let singleobj;
     if ((otmp.quan | 0) === 1) {
         obj_extract_self(otmp);
+        await maybe_unhide_at(otmp.ox | 0, otmp.oy | 0); /* C `:3295` */
         singleobj = otmp;
         otmp = null;
     } else {
@@ -4412,7 +4484,8 @@ export async function erode_obj(otmp, ostr, type, ef_flags) {
                 await remove_worn_item(otmp, true);
             } else if ((otmp.where | 0) === OBJ_MINVENT) {
                 /* C: results in otmp->where==OBJ_FREE; delobj doesn't care */
-                extract_from_minvent(otmp.ocarry, otmp, true, false);
+                const ex = extract_from_minvent(otmp.ocarry, otmp, true, false);
+                if (ex && typeof ex.then === 'function') await ex;
             } else {
                 /* C: worn but not in hero invent or monster minvent? */
                 await impossible(`erode_obj(${type | 0}): destroying strangely worn item [${otmp.where | 0}, 0x${(otmp.owornmask >>> 0).toString(16).padStart(8, '0')}: ${simpleonames(otmp)}]`);
@@ -5619,7 +5692,8 @@ async function trapeffect_poly_trap(mtmp, trap, trflags) {
     if (wearing_iron_shoes(mtmp)) {
         /* remove and readd the shoes to forcibly unwear them */
         let shoes = which_armor(mtmp, W_ARMF);
-        extract_from_minvent(mtmp, shoes, true, true);
+        const shoeEx = extract_from_minvent(mtmp, shoes, true, true);
+        if (shoeEx && typeof shoeEx.then === 'function') await shoeEx;
         if (mpickobj(mtmp, shoes)) {
             await impossible('re-equipping iron shoes destroyed them?');
             return Trap_Effect_Finished;

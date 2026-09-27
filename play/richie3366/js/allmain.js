@@ -1095,7 +1095,7 @@ export async function moveloop_core() {
     // C allmain.c:181–184 — SAFERHANGUP (unixconf.h) done_hup →
     // end_of_input before get_nh_event / dobjsfree.
     if (g.program_state?.done_hup) {
-        end_of_input();
+        await end_of_input();
         return;
     }
 
@@ -1103,6 +1103,14 @@ export async function moveloop_core() {
     // do_positionbar() at :187 is inside #ifdef POSITIONBAR. That macro
     // is pcconf.h only, so the unix tty call is not compiled.
     if (POSITIONBAR) do_positionbar();
+    // C allmain.c:189–190 — after descriptions shuffle, move object-glyph
+    // custom colors onto the glyph that now shows that description.
+    // Dynamic import: a static glyphs.js edge is evaluated while display.js
+    // is still initializing (glyphs.js:72 reads S_sw_tl at load).
+    if (g.iflags?.pending_customizations) {
+        const { maybe_shuffle_customizations } = await import('./glyphs.js');
+        maybe_shuffle_customizations();
+    }
     // Then dobjsfree, bypasses, sanity_check, resume_wish in C order.
     dobjsfree();
     // C allmain.c:194–196 — bypass flags left by bypass_objlist /

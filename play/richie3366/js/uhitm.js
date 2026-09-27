@@ -110,7 +110,7 @@ import { cutworm } from './worm.js';
 import { m_unleash, objdescr_is } from './apply.js';
 import { mhe, mhis, defended, resists_blnd } from './mondata.js';
 import { Unaware } from './eat.js';
-import { hard_helmet } from './do_wear.js';
+import { helm_simple_name } from './do_wear.js';
 import { findgold, inv_cnt } from './steal.js';
 import { mselftouch, instapetrify, minstapetrify, t_at } from './trap.js';
 import { set_ustuck, ugolemeffects } from './mhitu.js';
@@ -1208,7 +1208,8 @@ async function hmon_hitmon_weapon_melee(mon, obj, ctx) {
             await pline(`${s_suffix(Monnam(mon))} weapon${(monwep.quan | 0) === 1 ? '' : 's'} ${otense(monwep, 'shatter')}${from_your_blow}`);
         }
         // C m_useupall: extract + free; JS has no manual free (GC).
-        extract_from_minvent(mon, monwep, true, false);
+        const ex = extract_from_minvent(mon, monwep, true, false);
+        if (ex && typeof ex.then === 'function') await ex;
         if (rn2(4)) {
             await monflee(mon, d(2, 3), true, true);
         }
@@ -2261,11 +2262,6 @@ function damageum_ad_phys(mdef, mattk, mhm) {
     }
 }
 
-/** C ref: objnam.c helm_simple_name `:5513–5528` — hat vs helm. */
-function helm_simple_name(helmet) {
-    return !hard_helmet(helmet) ? 'hat' : 'helm';
-}
-
 /**
  * C ref: objnam.c cloak_simple_name `:5492–5509`.
  * Used by m_slips_free when the grab target is undiscovered oilskin.
@@ -2640,7 +2636,8 @@ export async function steal_it(mdef, mattk) {
             find_artifact(otmp);
         }
         /* take the object away from the monster */
-        extract_from_minvent(mdef, otmp, true, false);
+        const ex = extract_from_minvent(mdef, otmp, true, false);
+        if (ex && typeof ex.then === 'function') await ex;
         /* special message for final item; no need to check owornmask because
          * ustealo is only set on objects with (owornmask & W_ARM) */
         if (otmp === ustealo) {

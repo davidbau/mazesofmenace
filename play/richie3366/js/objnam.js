@@ -2866,20 +2866,32 @@ export function actualoname(obj) {
 }
 
 /**
- * C ref: objnam.c ansimpleoname — an()/the() + simpleonames.
- * Unique named items → "the …"; quan==1 → an(); else bare plural.
- * Named: FAKE_AMULET→AMULET unique remap deferred (uses otyp as-is).
+ * C ref: objnam.c ansimpleoname `:2446–2470`.
+ * Fake Amulet is compared as the real unique item. A name that is that
+ * item's actual name gets `the()`; quan 1 gets `an()`; otherwise the
+ * plural from `simpleonames` is returned bare. `the`/`an` return a fresh
+ * string, so there is no second obuf to `Strcpy` back and `releaseobuf`.
+ * A null object is not a C argument (`NONNULLARG1`).
+ * @param {object} obj
+ * @returns {string}
  */
 export function ansimpleoname(obj) {
     if (!obj) return 'an object';
-    const name = simpleonames(obj);
-    const ocl = objects()?.[obj.otyp];
-    const actual = objectNameStrs[obj.otyp];
-    if (ocl?.oc_unique && actual && name === actual) {
-        return the(name);
+    const simpleoname = simpleonames(obj);
+    let otyp = obj.otyp | 0;
+    /* unique item, or a fake one imitating it, formatted with its actual name */
+    if (otyp === FAKE_AMULET_OF_YENDOR)
+        otyp = AMULET_OF_YENDOR;
+    const oc = objects()?.[otyp];
+    const actual = objectNameStrs[otyp];
+    if (oc?.oc_unique && actual && simpleoname === actual) {
+        /* the() allocates; JS returns that string (no second obuf) */
+        return the(simpleoname);
+    } else if ((obj.quan | 0) === 1) {
+        /* simpleonames is singular when quan is 1; an() adds the article */
+        return an(simpleoname);
     }
-    if ((obj.quan | 0) === 1) return an(name);
-    return name;
+    return simpleoname;
 }
 
 /**

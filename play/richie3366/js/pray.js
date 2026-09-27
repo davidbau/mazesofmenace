@@ -28,7 +28,7 @@
 // after pick is D-1667);
 // known_spell SPE_TURN_UNDEAD /
 // spelleffects fallback for non-Knight/Cleric; resist TELL pline polish;
-// other livelog paths; poly silent/headless can_chant; Fixed_abil/Dunce
+// other livelog paths; can_chant is mondata.c (D-2926); Fixed_abil/Dunce
 // adjattrib; Unaware You_feel dream prefix; music.c do_earthquake altar
 // desecrate_altar; SetVoice pitch; ureflects W_AMUL/W_ARM/dragon D-1353;
 // mcastu ureflects named; god_zaps_you shieldeff wired, SetVoice C-no-op;

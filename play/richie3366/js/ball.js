@@ -566,8 +566,8 @@ export async function lift_covet_and_placebc(pin) {
  * BCPOS_BALL/BCPOS_CHAIN arms `map_object` the other piece instead of
  * restoring terrain. Nothing is felt after a both-moved step.
  * Only `!before` does this work; the sighted path lifts on `before`
- * and re-places on `!before`.
- * Named omissions: `maybe_unhide_at` inside `movobj` (sync callers).
+ * and re-places on `!before`. Sighted `before` calls `maybe_unhide_at`
+ * after each `remove_object` (C `:529`, `:533`).
  */
 export function move_bc(before, control, ballx, bally, chainx, chainy) {
     const u = game.u || {};
@@ -648,10 +648,11 @@ export function move_bc(before, control, ballx, bally, chainx, chainy) {
     if (before) {
         if (!control) u.bc_order = bc_order();
         obj_extract_self(uchain);
-        // maybe_unhide_at deferred
+        maybe_unhide_at(uchain.ox | 0, uchain.oy | 0); /* C `:529` */
         newsym(uchain.ox | 0, uchain.oy | 0);
         if (!carried(uball)) {
             obj_extract_self(uball);
+            maybe_unhide_at(uball.ox | 0, uball.oy | 0); /* C `:533` */
             newsym(uball.ox | 0, uball.oy | 0);
         }
     } else {

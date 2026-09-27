@@ -4,10 +4,10 @@
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
-import { pline, You, You_cant, There, pline_The, newsym, feel_newsym, canseemon, clear_nhwindow_message, verbalize, feel_location, impossible, flush_screen, docrt_flags, docrtRefresh } from './display.js';
+import { pline, You, You_cant, There, pline_The, newsym, feel_newsym, canseemon, canspotmon, map_invisible, clear_nhwindow_message, verbalize, feel_location, impossible, flush_screen, docrt_flags, docrtRefresh } from './display.js';
 import { yn_function } from './getline.js';
 import { vision_recalc, recalc_block_point, cansee } from './vision.js';
-import { stop_occupation, in_rooms, closed_door, confdir, is_lava, is_pool } from './hack.js';
+import { stop_occupation, in_rooms, closed_door, confdir, is_lava, is_pool, You_hear } from './hack.js';
 import {
     COLNO, ROWNO, IS_DOOR, ECMD_OK, ECMD_TIME, OBJ_FLOOR, OBJ_FREE,
     DOOR, SDOOR, Is_rogue_level, SHOPBASE,
@@ -15,7 +15,7 @@ import {
     DRAWBRIDGE_UP, DRAWBRIDGE_DOWN,
     P_DAGGER, P_FLAIL, P_LANCE, P_PICK_AXE, P_SABER, P_NONE,
     AUTOUNLOCK_APPLY_KEY, AUTOUNLOCK_UNTRAP, STRAT_WAITMASK, TT_PIT, M_AP_TYPE,
-    M_AP_FURNITURE, M_AP_OBJECT, FINGER, S_hcdoor, S_vcdoor,
+    M_AP_FURNITURE, M_AP_OBJECT, Something, FINGER, S_hcdoor, S_vcdoor,
     CMDQ_DIR, CMDQ_KEY, CQ_CANNED, CQ_REPEAT,
     xytodir, getdirInp, u_at,
     CLICK_1, CLICK_2, N_DIRS, MV_WALK, xdir, ydir, zdir,
@@ -40,7 +40,7 @@ import { potionbreathe, bottlename } from './potion.js';
 import { obj_resists } from './dogmove.js';
 import { setuwep } from './wield.js';
 import { PM_ROGUE, PM_WIZARD, PM_GRID_BUG, monsterNames } from './generated/monsters_data.js';
-import { mon_nam, hliquid } from './do_name.js';
+import { mon_nam, hliquid, Some_Monnam, s_suffix } from './do_name.js';
 import { SetVoice } from './sndprocs.js';
 import { stumble_onto_mimic } from './uhitm.js';
 import { maybe_absorb_item } from './steal.js';
@@ -985,30 +985,40 @@ function dist2_lock(x0, y0, x1, y1) {
 }
 
 /**
- * C ref: pline.c You_hear — acoustics/Deaf; Unaware/Underwater deferred.
- */
-async function You_hear(line) {
-    if (Deaf() || game.flags?.acoustics === false) return;
-    await pline(`You hear ${line}`);
-}
-
-/**
- * C ref: lock.c obstructed — mon/obj blocks closing a door.
- * `quietly` (doorlock mysterywand) skips pline. Named omissions:
- * worm-tail phrasing; map_invisible; Something vs Some_Monnam.
+ * C ref: lock.c obstructed :925–953.
+ * A monster that is not a furniture mimic blocks the square. An object
+ * mimic jumps to the object message even when the square is empty.
+ * A long worm whose head is elsewhere, and that can be spotted, is
+ * named as "<Some_Monnam>'s tail". An unspottable monster is remembered
+ * with map_invisible. `quietly` (doorlock mysterywand) skips both plines.
  */
 async function obstructed(x, y, quietly) {
     const mtmp = m_at(x, y);
+    /* C goto objhere: object-mimic skips the monster pline. */
+    let objhere = false;
+
     if (mtmp && M_AP_TYPE(mtmp) !== M_AP_FURNITURE) {
         if (M_AP_TYPE(mtmp) === M_AP_OBJECT) {
-            if (!quietly) await pline("Something's in the way.");
+            objhere = true;
+        } else {
+            if (!quietly) {
+                /* Monnam, Someone, or Something. */
+                let Mn = Some_Monnam(mtmp);
+
+                if (((mtmp.mx | 0) !== (x | 0) || (mtmp.my | 0) !== (y | 0))
+                    && canspotmon(mtmp)) {
+                    /* s_suffix returns a new string; C strcat's " tail". */
+                    Mn = `${s_suffix(Mn)} tail`;
+                }
+                await pline(`${Mn} blocks the way!`);
+            }
+            if (!canspotmon(mtmp)) map_invisible(x, y);
             return true;
         }
-        if (!quietly) await pline('Something blocks the way!');
-        return true;
     }
-    if ((objects_at(x, y) || []).length > 0) {
-        if (!quietly) await pline("Something's in the way.");
+    /* C objhere, or OBJ_AT (level.objects[x][y] != NULL). */
+    if (objhere || (objects_at(x, y) || []).length > 0) {
+        if (!quietly) await pline(`${Something}'s in the way.`);
         return true;
     }
     return false;
@@ -1023,7 +1033,7 @@ async function obstructed_close(x, y) {
  * Envelope: nohands/pit gates, getdir (cmdassist; tail confdir inside it),
  * impaired-direction TIME, door mask arms, close roll.
  * Named omissions: portcullis/drawbridge; steed close path;
- * feel_newsym mapseen gating; Some_Monnam obstructed polish.
+ * feel_newsym mapseen gating.
  * @returns {Promise<boolean>} true when C would return ECMD_TIME
  */
 export async function doclose() {
@@ -1483,7 +1493,6 @@ export async function boxlock_invent(obj) {
  * doorlock is D-1484. Trapped-monster arm runs the canonical
  * `monmove.js` mb_trapped (wake_nearto, mondied/lifesave,
  * mon_learns_traps TRAPPED_DOOR). Named: Soundeffect.
- * obstructed Some_Monnam / worm-tail / map_invisible.
  */
 export async function doorlock(otmp, x, y) {
     const door = game.level?.at?.(x, y);

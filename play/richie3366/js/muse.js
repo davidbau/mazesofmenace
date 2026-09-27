@@ -2503,7 +2503,8 @@ export async function use_defensive(mtmp) {
             const split = splitobj(otmp, 1);
             if (split) otmp = split;
         }
-        extract_from_minvent(mtmp, otmp, false, false);
+        const ex = extract_from_minvent(mtmp, otmp, false, false);
+        if (ex && typeof ex.then === 'function') await ex;
         if (!game.iflags) game.iflags = {};
         game.iflags.last_msg = PLNMSG_enum;
         await mreadmsg(mtmp, otmp);

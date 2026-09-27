@@ -141,11 +141,11 @@ import { aggravate } from './wizard.js';
 import { make_confused, make_stunned, healup, make_slimed, peffects } from './potion.js';
 import { trycall, hcolor, hliquid, Hallucination, mon_nam, Monnam } from './do_name.js';
 import { an, makeplural, Tobjnam } from './objnam.js';
-import { is_whirly, is_animal, eyecount, mons, is_undead, is_vampshifter } from './monsters.js';
+import { is_whirly, is_animal, eyecount, mons, is_undead, is_vampshifter, has_head } from './monsters.js';
 import { nomul, losehp, maybe_half_phys, fall_asleep, You_hear, invocation_pos, On_stairs, stop_occupation } from './hack.js';
 import { uhim } from './roles.js';
 import { erode_obj } from './trap.js';
-import { set_occupation } from './engrave.js';
+import { set_occupation, freehand } from './engrave.js';
 import { objdescr_is, mkundead } from './apply.js';
 import { tamedog } from './dog.js';
 import { monflee } from './monmove.js';
@@ -191,6 +191,8 @@ import {
     NO_MINVENT,
     NO_KILLER_PREFIX,
     TIMEOUT,
+    STUNNED,
+    STRANGLED,
     ERODE_CORRODE,
     EF_GREASE,
     EF_VERBOSE,
@@ -1363,27 +1365,82 @@ function spellretention(idx) {
     return `${percent - accuracy + 1}%-${percent}%`;
 }
 
-/** C ref: invent.c freehand — either hand free. */
-function freehand() {
+/** C monflag.h ms_sounds — can_chant. */
+const MS_SILENT = 0;
+const MS_BUZZ = 10;
+const MS_BURBLE = 16;
+
+/**
+ * C youprop.h Stunned ≡ HStun (`u.uprops[STUNNED].intrinsic`).
+ * `make_stunned` writes `u.HStun` and mirrors `u.Stunned`; the timeout
+ * loop also decrements the uprops intrinsic.
+ */
+function hero_Stunned() {
     const u = game.u || {};
-    if (!u.uwep) return true;
-    const big = !!(game.objects?.[u.uwep.otyp]?.oc_big);
-    if (!big) return true;
-    return !u.uswapwep;
+    return !!((u.HStun | 0) || u.Stunned
+        || (u.uprops?.[STUNNED]?.intrinsic | 0));
 }
 
-/** C ref: mondata.c can_chant — hero subset (Strangled / silent / head). */
-export function can_chant() {
-    if (game.u?.Strangled) return false;
-    // Poly silent/headless deferred — starting human/priest always ok
+/** C youprop.h Strangled ≡ `u.uprops[STRANGLED].intrinsic`. */
+function hero_Strangled() {
+    const u = game.u || {};
+    return !!((u.Strangled | 0) || (u.uprops?.[STRANGLED]?.intrinsic | 0));
+}
+
+/**
+ * C ref: mondata.c can_chant `:579–587`.
+ * Strangled only when `mtmp` is the hero. Then silent, no head, buzz, burble.
+ * A missing `youmonst.data` is the deferred `set_uasmon` slot; the form is
+ * `u.umonnum` (role `mnum` before polymorph). Null data is not silent.
+ * @param {object} [mtmp] defaults to the hero (`&gy.youmonst`)
+ * @returns {boolean}
+ */
+export function can_chant(mtmp) {
+    const hero = mtmp == null || mtmp === game.youmonst || !!mtmp._youmonst;
+    let data = hero ? (game.youmonst?.data || null) : (mtmp?.data || null);
+    if (hero && !data) {
+        const mndx = game.u?.umonnum ?? game.urole?.mnum;
+        data = mons(mndx);
+    }
+    const silent = !!data && (data.msound | 0) === MS_SILENT;
+    const buzz = !!data && (data.msound | 0) === MS_BUZZ;
+    const burble = !!data && (data.msound | 0) === MS_BURBLE;
+    if ((hero && hero_Strangled())
+        || silent
+        || (data ? !has_head(data) : false)
+        || buzz
+        || burble)
+        return false;
     return true;
 }
 
-/** C ref: spell.c rejectcasting */
-function rejectcasting() {
-    if (game.u?.Stunned) return true;
-    if (!can_chant()) return true;
-    if (!freehand() && !(game.u?.uwep && game.u.uwep.otyp === QUARTERSTAFF)) {
+/**
+ * C ref: spell.c rejectcasting `:687–708`.
+ * Rejections before a spell is chosen. Messages are inside this function
+ * so `getspell` and `spelleffects_check` share one print.
+ * `freehand` is engrave.c `:472–477` (welded, then not bimanual or the
+ * shield is not cursed). The quarterstaff exception is tested only when
+ * `freehand` is false, matching C `&&` order (welded still sets `bknown`).
+ * The C comment declines `makeplural(body_part(ARM))`.
+ * @returns {Promise<boolean>}
+ */
+async function rejectcasting() {
+    // Rejections which take place before selecting a particular spell.
+    if (hero_Stunned()) {
+        await You('are too impaired to cast a spell.');
+        return true;
+    } else if (!can_chant(game.youmonst)) {
+        await You('are unable to chant the incantation.');
+        return true;
+    } else if (!freehand()
+        && !(game.u?.uwep && game.u.uwep.otyp === QUARTERSTAFF)) {
+        // !freehand() is a weapon and shield (or a two-handed weapon)
+        // welded to the hands, so "arms" does not need
+        // makeplural(body_part(ARM)).
+        //
+        // Lack of free arms for gesturing is still not an issue when a
+        // poly'd hero has no limbs (C comment, spell.c:697–703).
+        await Your('arms are not free to cast!');
         return true;
     }
     return false;
@@ -1791,18 +1848,8 @@ async function getspell() {
         await You("don't know any spells right now.");
         return null;
     }
-    // C `:726–727` — C prints inside rejectcasting; the JS clone is a sync
-    // predicate, so this site prints the same three messages in C order.
-    if (rejectcasting()) {
-        if (game.u?.Stunned) {
-            await You('are too impaired to cast a spell.');
-        } else if (!can_chant()) {
-            await You('are unable to chant the incantation.');
-        } else {
-            await Your('arms are not free to cast!');
-        }
-        return null;
-    }
+    // C `:726–727` — rejectcasting prints, then this returns no spell.
+    if (await rejectcasting()) return null;
 
     // C `:729–743` — cmdq replay (C copies the node, then frees it).
     const cq = cmdq_pop();
@@ -1905,7 +1952,9 @@ async function spelleffects_check(spell) {
     let energy = 0;
     let res = ECMD_OK;
 
-    if (spell === UNKNOWN_SPELL || rejectcasting()) {
+    // C `:1236` — UNKNOWN_SPELL skips rejectcasting (no second message
+    // when getspell already rejected). Otherwise the same three lines.
+    if (spell === UNKNOWN_SPELL || (await rejectcasting())) {
         return { abort: true, res: ECMD_OK, energy: 0 };
     }
 

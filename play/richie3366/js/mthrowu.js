@@ -40,7 +40,7 @@ import { mswings_verb } from './mhitu.js';
 import { ammo_and_launcher, is_launcher, is_pole, mwelded } from './wield.js';
 import { acurr, acurrstr, A_CON, A_DEX, A_STR, exercise, poisoned } from './attrib.js';
 import { calc_capacity, Blind } from './invent.js';
-import { losehp, nomul, maybe_half_phys, dissolve_bars, is_pool, is_lava, stop_occupation } from './hack.js';
+import { losehp, nomul, maybe_half_phys, dissolve_bars, is_pool, is_lava, stop_occupation, You_hear } from './hack.js';
 import { finish_losehp_done } from './end.js';
 import {
     pline, pline_The, pline_mon, You, mon_visible, see_with_infrared, tmp_at, obj_glyph,
@@ -194,15 +194,6 @@ function s_suffix(s) {
         return `${s}'`;
     }
     return `${s}'s`;
-}
-
-/**
- * C ref: pline.c You_hear — acoustics/Deaf gate; Unaware/Underwater deferred.
- */
-async function You_hear(line) {
-    const u = game.u || {};
-    if (u.Deaf || game.flags?.acoustics === false) return;
-    await pline(`You hear ${line}`);
 }
 
 /** C objnam.c Tobjnam — The(xname) + otense (return_from_mtoss plines). */

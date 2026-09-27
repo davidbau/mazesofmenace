@@ -36,7 +36,7 @@ import { PM_LONG_WORM_TAIL } from './generated/monsters_data.js';
 import { se_crushing_sound, se_splash, se_loud_splash, se_loud_crash, se_gears_turning_chains_rattling, se_chains_rattling_gears_turning, se_smashing_and_crushing } from './generated/seffects_data.js';
 import { Soundeffect } from './sndprocs.js';
 import { rn2, rnd } from './rng.js';
-import { is_pool, is_lava, revive_nasty } from './hack.js';
+import { is_pool, is_lava, revive_nasty, You_hear } from './hack.js';
 import { spoteffects } from './pickup.js';
 import { remove_monster, place_monster } from './steed.js';
 import { update_monster_region } from './region.js';
@@ -63,13 +63,6 @@ import {
 
 const BOULDER = objectNames.indexOf('BOULDER');
 const IRON_CHAIN = objectNames.indexOf('IRON_CHAIN');
-
-/** C ref: pline.c You_hear — acoustics/Deaf; Unaware/Underwater deferred. */
-async function You_hear(line) {
-    const u = game.u || {};
-    if (u.Deaf || game.flags?.acoustics === false) return;
-    await pline(`You hear ${line}`);
-}
 
 /**
  * C ref: pline.c You_see — "You see " prefix; Blind→sense / Unaware deferred.

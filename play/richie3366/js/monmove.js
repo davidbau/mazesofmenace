@@ -47,14 +47,14 @@ import {
     STAIRS, LADDER, IRONBARS, WEB, W_NONDIGGABLE, ARM, HEAD,
     M_ATTK_HIT, M_ATTK_DEF_DIED, M_ATTK_AGR_DIED,
     MON_FLOOR, NORMAL_SPEED, G_GENOD, RLOC_MSG, TRAPPED_DOOR,
-    EDOG, has_edog, ACCFOOD, MANFOOD,
+    EDOG, has_edog, ACCFOOD, MANFOOD, Is_container,
 } from './const.js';
 import { is_pool, is_lava, in_town, stop_occupation, noattacks, disturb_buried_zombies, losehp, finish_maybe_wail, dissolve_bars, SURFACE_AT, in_rooms } from './hack.js';
 import {
     CLOAK_OF_DISPLACEMENT, COIN_CLASS, WEAPON_CLASS, ARMOR_CLASS,
     GEM_CLASS, FOOD_CLASS, AMULET_CLASS, POTION_CLASS, SCROLL_CLASS,
     WAND_CLASS, RING_CLASS, SPBOOK_CLASS, ROCK_CLASS, BALL_CLASS,
-    objectNames, is_axe, SILVER,
+    VENOM_CLASS, objectNames, is_axe, SILVER,
 } from './objects.js';
 import {
     Monnam, y_monnam, Adjmonnam, mon_nam, Amonnam, Hallucination,
@@ -86,7 +86,9 @@ import {
     shk_move, gd_move, pri_move, costly_spot, inhishop, bill_dummy_object,
 } from './shk.js';
 import { cuss, tactics } from './wizard.js';
-import { Invis, artifact_light } from './timeout.js';
+import { Protection_from_shape_changers } from './were.js';
+import { Invis, artifact_light, Is_candle } from './timeout.js';
+import { is_cloak, is_gloves, is_shirt } from './do_wear.js';
 import { Unaware } from './eat.js';
 import { SetVoice } from './sndprocs.js';
 import { rn1, rn2, rnd, d } from './rng.js';
@@ -110,12 +112,37 @@ import {
     meatcorpse,
     m_respond,
     onscary,
+    hideunder as hideunderHero,
 } from './mon.js';
 
 const CREDIT_CARD = objectNames.indexOf('CREDIT_CARD');
 const SKELETON_KEY = objectNames.indexOf('SKELETON_KEY');
 const LOCK_PICK = objectNames.indexOf('LOCK_PICK');
 const GOLD_PIECE = objectNames.indexOf('GOLD_PIECE');
+/** C monmove.c stuff_prevents_passage — otyp ranges and single types. */
+const ARROW = objectNames.indexOf('ARROW');
+const BOOMERANG = objectNames.indexOf('BOOMERANG');
+const DAGGER = objectNames.indexOf('DAGGER');
+const CRYSKNIFE = objectNames.indexOf('CRYSKNIFE');
+const SLING = objectNames.indexOf('SLING');
+const FEDORA = objectNames.indexOf('FEDORA');
+const LEATHER_JACKET = objectNames.indexOf('LEATHER_JACKET');
+const FORTUNE_COOKIE = objectNames.indexOf('FORTUNE_COOKIE');
+const CANDY_BAR = objectNames.indexOf('CANDY_BAR');
+const PANCAKE = objectNames.indexOf('PANCAKE');
+const LEMBAS_WAFER = objectNames.indexOf('LEMBAS_WAFER');
+const SACK = objectNames.indexOf('SACK');
+const BAG_OF_HOLDING = objectNames.indexOf('BAG_OF_HOLDING');
+const BAG_OF_TRICKS = objectNames.indexOf('BAG_OF_TRICKS');
+const OILSKIN_SACK = objectNames.indexOf('OILSKIN_SACK');
+const LEASH = objectNames.indexOf('LEASH');
+const STETHOSCOPE = objectNames.indexOf('STETHOSCOPE');
+const BLINDFOLD = objectNames.indexOf('BLINDFOLD');
+const TOWEL = objectNames.indexOf('TOWEL');
+const TIN_WHISTLE = objectNames.indexOf('TIN_WHISTLE');
+const MAGIC_WHISTLE = objectNames.indexOf('MAGIC_WHISTLE');
+const MAGIC_MARKER = objectNames.indexOf('MAGIC_MARKER');
+const TIN_OPENER = objectNames.indexOf('TIN_OPENER');
 const STRANGE_OBJECT = objectNames.indexOf('STRANGE_OBJECT');
 const ROCK = objectNames.indexOf('ROCK');
 const BOULDER = objectNames.indexOf('BOULDER');
@@ -167,6 +194,42 @@ const MS_CUSS = 34;
 /** C ref: monst.h mon_offmap — mstate != MON_FLOOR */
 export function mon_offmap(mon) {
     return ((mon?.mstate | 0) !== MON_FLOOR);
+}
+
+/**
+ * C ref: mon.c get_iter_mons — mon.c:4542–4556.
+ * First fmon monster for which bfunc returns true. DEADMONSTER is
+ * mhp < 1 (monst.h:214). mon_offmap is mstate != MON_FLOOR.
+ * C saves nmon before the callback so unlinking the current monster
+ * does not skip its successor. JS fmon is an array; the next element
+ * is saved the same way. A null slot is not a C list node.
+ * Sync: bfunc must not return a Promise. The dig/dokick/fountain/sounds
+ * copies stay for callers whose callback prints.
+ * Lives here, next to mon_offmap, so teleport.js can import a hoisted
+ * function. mon.js runs set_find_mid while it is still initializing.
+ * @param {(mtmp: object) => boolean} bfunc
+ * @returns {object|null}
+ */
+export function get_iter_mons(bfunc) {
+    const fmon = game.fmon;
+    if (!fmon) return null;
+    let i = 0;
+    while (i < fmon.length) {
+        const mtmp = fmon[i];
+        const next = i + 1 < fmon.length ? fmon[i + 1] : null;
+        /* DEADMONSTER || mon_offmap → continue. Null is not a C node. */
+        if (mtmp && (mtmp.mhp | 0) >= 1 && !mon_offmap(mtmp) && bfunc(mtmp)) {
+            return mtmp;
+        }
+        if (next == null) return null;
+        let j = fmon.indexOf(next);
+        if (j < 0) return null;
+        /* Unlink of mtmp leaves next at i. An earlier copy of next, or
+         * the same object twice, must still step forward. */
+        if (j < i || (j === i && fmon[i] === mtmp)) j = i + 1;
+        i = j;
+    }
+    return null;
 }
 
 /** C ref: monst.h is_obj_mappear */
@@ -742,33 +805,79 @@ export function accessible(x, y) {
 }
 
 /**
- * C ref: monmove.c can_ooze — amorphous && !stuff_prevents_passage.
- * stuff_prevents_passage body deferred → treat as empty invent (ok).
+ * One object on the invent / minvent chain blocks oozing or fogging.
+ * C monmove.c stuff_prevents_passage `:2328–2350`, loop body.
+ * `typ == COIN_CLASS` is the class number (GENERIC_COIN), not GOLD_PIECE.
  */
-export function can_ooze(mtmp) {
-    return !!((mtmp?.data?.mflags1 ?? 0) & M1_AMORPHOUS);
-}
-
-/** C ref: youprop.h Protection_from_shape_changers */
-function Protection_from_shape_changers() {
-    const u = game.u || {};
-    return !!(u.HProtection_from_shape_changers
-        || u.EProtection_from_shape_changers
-        || u.Protection_from_shape_changers);
+function obj_blocks_passage(obj) {
+    const typ = obj.otyp | 0;
+    if (typ === COIN_CLASS && (obj.quan ?? 0) > 100)
+        return true;
+    if (obj.oclass !== GEM_CLASS && !(typ >= ARROW && typ <= BOOMERANG)
+        && !(typ >= DAGGER && typ <= CRYSKNIFE) && typ !== SLING
+        && !is_cloak(obj) && typ !== FEDORA && !is_gloves(obj)
+        && typ !== LEATHER_JACKET && typ !== CREDIT_CARD && !is_shirt(obj)
+        && !(typ === CORPSE && verysmall(mons(obj.corpsenm | 0)))
+        && typ !== FORTUNE_COOKIE && typ !== CANDY_BAR && typ !== PANCAKE
+        && typ !== LEMBAS_WAFER && typ !== LUMP_OF_ROYAL_JELLY
+        && obj.oclass !== AMULET_CLASS && obj.oclass !== RING_CLASS
+        && obj.oclass !== VENOM_CLASS && typ !== SACK
+        && typ !== BAG_OF_HOLDING && typ !== BAG_OF_TRICKS
+        && !Is_candle(obj) && typ !== OILSKIN_SACK && typ !== LEASH
+        && typ !== STETHOSCOPE && typ !== BLINDFOLD && typ !== TOWEL
+        && typ !== TIN_WHISTLE && typ !== MAGIC_WHISTLE
+        && typ !== MAGIC_MARKER && typ !== TIN_OPENER && typ !== SKELETON_KEY
+        && typ !== LOCK_PICK)
+        return true;
+    if (Is_container(obj) && obj.cobj)
+        return true;
+    return false;
 }
 
 /**
- * C ref: monmove.c can_fog — vampshifter may become fog under a door.
- * Named omission: stuff_prevents_passage invent scan (empty invent ⇒ ok,
- * same deferral as can_ooze).
+ * C ref: monmove.c stuff_prevents_passage `:2319–2353`.
+ * Hero inventory is gi.invent; every other monster uses minvent.
+ * JS hero invent is an array (D-1691); minvent stays an nobj chain.
  */
-export function can_fog(mtmp) {
-    const fogGone = !!((game.mvitals?.[PM_FOG_CLOUD]?.mvflags ?? 0) & G_GENOD);
-    if (fogGone || !is_vampshifter(mtmp) || Protection_from_shape_changers()) {
+function stuff_prevents_passage(mtmp) {
+    const chain = (mtmp === game.youmonst) ? game.invent : mtmp?.minvent;
+    if (Array.isArray(chain)) {
+        for (let i = 0; i < chain.length; i++) {
+            const obj = chain[i];
+            if (obj && obj_blocks_passage(obj)) return true;
+        }
         return false;
     }
-    // stuff_prevents_passage deferred — treat as no blocking invent
+    for (let obj = chain; obj; obj = obj.nobj) {
+        if (obj_blocks_passage(obj)) return true;
+    }
+    return false;
+}
+
+/**
+ * C ref: monmove.c can_ooze `:2355–2361`.
+ * Amorphous, and nothing carried blocks the squeeze.
+ */
+export function can_ooze(mtmp) {
+    if (!amorphous(mtmp?.data) || stuff_prevents_passage(mtmp))
+        return false;
     return true;
+}
+
+/**
+ * C ref: monmove.c can_fog `:2363–2371`.
+ * A vampshifter may become fog under a door when fog clouds are not
+ * genocided, shape-changers are not warded, and nothing carried blocks.
+ * The ward is youprop.h:355–360 (uprops intrinsic || extrinsic), the
+ * were.js export — not the H/E flats alone.
+ */
+export function can_fog(mtmp) {
+    if (!((game.mvitals?.[PM_FOG_CLOUD]?.mvflags ?? 0) & G_GENOD)
+        && is_vampshifter(mtmp)
+        && !Protection_from_shape_changers()
+        && !stuff_prevents_passage(mtmp))
+        return true;
+    return false;
 }
 
 /**
@@ -1339,21 +1448,42 @@ async function hideunder(mtmp) {
 }
 
 /**
- * C ref: mon.c maybe_unhide_at — reveal hider when floor obj gone / eel
- * left water. Callers: m_move after place (monmove.c:2060);
- * rloc_to_core after ustuck, before newsym (teleport.c:1700, D-1152).
- * Named omission: hero (youmonst / uundetected) path.
+ * C ref: mon.c maybe_unhide_at `:4698–4720` — reveal a hider at (x,y)
+ * when the floor object is gone, the hider is trapped, the object
+ * cannot conceal, or an eel has left the water.
+ * Monster arm uses mundetected/mtrapped. No monster and the hero is
+ * here: youmonst, u.uundetected, u.utrap (mon.js hideunder writes
+ * u.uundetected). Otherwise return. objects_at is level.objects[x][y].
+ * The local hideunder keeps the monster You_see; the hero uses the
+ * mon.js export (youmonst / Stone_resistance).
  */
 export async function maybe_unhide_at(x, y) {
-    const mtmp = m_at(x, y);
-    if (!mtmp) return;
-    if (!mtmp.mundetected) return;
-    const trapped = !!mtmp.mtrapped;
+    let mtmp = m_at(x, y);
+    let undetected = false;
+    let trapped = false;
+
+    if (mtmp) {
+        undetected = !!mtmp.mundetected;
+        trapped = !!mtmp.mtrapped;
+    } else if (u_at(x, y)) {
+        mtmp = game.youmonst;
+        if (!mtmp) return;
+        const u = game.u || {};
+        undetected = !!u.uundetected;
+        trapped = !!(u.utrap | 0);
+    } else {
+        return;
+    }
+
+    /* C: !OBJ_AT || trapped || !can_hide_under_obj(level.objects[x][y]),
+       short-circuit so a missing pile does not ask can_hide_under_obj. */
     const floorObj = objects_at(x, y);
-    if ((hides_under(mtmp.data)
-            && (!floorObj || trapped || !can_hide_under_obj(floorObj)))
-        || (mtmp.data?.mlet === 'S_EEL' && !is_pool(x, y))) {
-        await hideunder(mtmp);
+    if (undetected
+        && ((hides_under(mtmp.data)
+             && (!floorObj || trapped || !can_hide_under_obj(floorObj)))
+            || (mtmp.data?.mlet === 'S_EEL' && !is_pool(x, y)))) {
+        if (mtmp === game.youmonst) hideunderHero(mtmp);
+        else await hideunder(mtmp);
     }
 }
 
@@ -2267,7 +2397,8 @@ export async function gelcube_digests(mtmp) {
     if (!otmp) return -1;
 
     mtmp.meating = eaten_stat(mtmp.meating | 0, otmp);
-    extract_from_minvent(mtmp, otmp, true, true);
+    const ex = extract_from_minvent(mtmp, otmp, true, true);
+    if (ex && typeof ex.then === 'function') await ex;
     await m_consume_obj(mtmp, otmp);
     return 0;
 }
@@ -2389,7 +2520,8 @@ async function leppie_stash(mtmp) {
     if (!gold) return;
     // C mdrop_obj(mtmp, gold, FALSE): distant_name before extract
     distant_name(gold, doname);
-    extract_from_minvent(mtmp, gold, false, true);
+    const ex = extract_from_minvent(mtmp, gold, false, true);
+    if (ex && typeof ex.then === 'function') await ex;
     place_object(gold, mtmp.mx, mtmp.my);
     stackobj(gold);
     const floorGold = g_at(mtmp.mx, mtmp.my);

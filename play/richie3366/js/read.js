@@ -37,8 +37,7 @@
 // ggetobj; discover_artifact / learn_egg_type in fully_identify_obj;
 // SCR_DESTROY_ARMOR live (D-2640: confused erodeproof / cursed vibrate+stun /
 // blessed getobj choice / disintegrate_cursed_armor); Rogue unblock_point
-// vs vision_recalc on blessed SDOOR; can_chant poly silent/
-// headless/buzz/burble;
+// vs vision_recalc on blessed SDOOR; can_chant is mondata.c (D-2926);
 // SPE_REMOVE_CURSE seffects
 // arm (throne fake book D-1033; #cast still deferred);
 // Teleport_control getpos;
@@ -71,8 +70,7 @@
 // menu_identify traditional ggetobj; discover_artifact / learn_egg_type;
 // SCR_DESTROY_ARMOR live (D-2640: confused erodeproof / cursed vibrate+stun /
 // blessed getobj choice / disintegrate_cursed_armor); Rogue unblock_point
-// vs vision_recalc on blessed SDOOR; can_chant poly silent/
-// headless/buzz/burble;
+// vs vision_recalc on blessed SDOOR; can_chant is mondata.c (D-2926);
 // SPE_REMOVE_CURSE seffects
 // arm (throne fake book D-1033; #cast still deferred);
 // Teleport_control getpos;
@@ -100,7 +98,7 @@ import {
     ARMOR_CLASS, BALL_CLASS, CHAIN_CLASS, WAND_CLASS, RING_CLASS, TOOL_CLASS,
     NODIR, objectNames,
 } from './objects.js';
-import { weight, uncurse, curse, bless, blessorcurse, maybe_adjust_light, mkobj, mksobj, place_object, stackobj, delobj, oc_merge_of } from './mkobj.js';
+import { weight, uncurse, curse, bless, blessorcurse, maybe_adjust_light, mkobj, mksobj, place_object, stackobj, delobj, oc_merge_of, erosion_matters } from './mkobj.js';
 import { A_WIS, A_STR, A_CON, exercise, adjalign } from './attrib.js';
 import {
     makeknown, getobj, identify_pack, near_capacity, update_inventory,
@@ -1106,18 +1104,6 @@ async function seffect_taming(sobj) {
 }
 
 /**
- * C ref: objnam.c erosion_matters — weapon/armor/ball/chain; tools if weptool.
- * Local copy to avoid exporting from mkobj (weptool name list matches).
- */
-function erosion_matters_obj(otmp) {
-    if (!otmp) return false;
-    const c = otmp.oclass;
-    if (c === WEAPON_CLASS || c === ARMOR_CLASS) return true;
-    // BALL/CHAIN / weptool deferred for enchant-weapon confused proof path
-    return false;
-}
-
-/**
  * C ref: read.c seffect_enchant_weapon
  * Confused: erodeproof/unproof uwep (non-armor). Else chwepon(s) + cap_spe.
  * Deferred: twoweapon secondary choice; confused Yobjnam2/hcolor Blind polish;
@@ -1133,7 +1119,7 @@ async function seffect_enchant_weapon(sobj) {
     const Blind = !!(u.Blind || u.ublind);
 
     if (confused && uwep
-        && erosion_matters_obj(uwep) && uwep.oclass !== ARMOR_CLASS) {
+        && erosion_matters(uwep) && uwep.oclass !== ARMOR_CLASS) {
         const old_erodeproof = !!uwep.oerodeproof;
         const new_erodeproof = !scursed;
         uwep.oerodeproof = 0;

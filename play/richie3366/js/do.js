@@ -52,7 +52,7 @@ import {
     NO_NC_FLAGS, NC_SHOW_MSG,
 } from './const.js';
 import {
-    seetrap, t_at, delfloortrap, reset_utrap, water_damage, erode_obj,
+    seetrap, t_at, delfloortrap, deltrap, reset_utrap, water_damage, erode_obj,
     selftouch, uteetering_at_seen_pit, uescaped_shaft, maketrap, climb_pit,
     dotrap, float_down, clamp_hole_destination, minstapetrify,
 } from './trap.js';
@@ -101,7 +101,7 @@ import {
     monster_nearby, losehp, finish_maybe_wail, maybe_half_phys,
     check_special_room, is_pool, is_lava, waterbody_name,
     notice_mon_off, notice_mon_on, notice_all_mons,
-    impact_disturbs_zombies, set_uinwater,
+    impact_disturbs_zombies, set_uinwater, You_hear,
 } from './hack.js';
 import { show_getpos_tip } from './getpos.js';
 import { place_object, stackobj, weight, delobj, obj_extract_self,
@@ -547,10 +547,6 @@ function distu(x, y) {
 /** C mondata.h m_in_air subset — flyer/floater. */
 function m_in_air(mtmp) {
     return is_flyer(mtmp?.data) || is_floater(mtmp?.data);
-}
-async function You_hear(line) {
-    if (Deaf()) return;
-    await pline(`You hear ${line}`);
 }
 /**
  * C ref: hack.c u_locomotion `:1817–1829` — Levitation, then youprop.h
@@ -2047,10 +2043,8 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
             if (Is_valley(u.uz)) {
                 await pline('You arrive at the Valley of the Dead...');
                 await pline('The odor of burnt flesh and decay pervades the air.');
-                // C: Soundeffect then You_hear; Deaf/Underwater deferred
-                if (!(u.Deaf || u.HDeaf || u.EDeaf)) {
-                    await pline('You hear groans and moans everywhere.');
-                }
+                // C do.c:1868–1869 — Soundeffect then You_hear (its own gate).
+                await You_hear('groans and moans everywhere.');
             }
             // C: record_achievement(ACH_HELL) even for non-Valley entry
             record_achievement(ACH_HELL);
@@ -2249,7 +2243,7 @@ export function schedule_goto(tolev, utotype_flags, pre_msg, post_msg) {
 
 /**
  * C ref: do.c deferred_goto — pline pre_msg, goto_level, optional post_msg.
- * Portal-remove and full typmask arms beyond ATSTAIRS/FALLING/PORTAL deferred.
+ * UTOTYPE_RMPORTAL deletes the arrival-square trap (do.c:2088–2094).
  */
 export async function deferred_goto() {
     const u = game.u;
@@ -2270,7 +2264,14 @@ export async function deferred_goto() {
             !!(typmask & UTOTYPE_FALLING),
             !!(typmask & UTOTYPE_PORTAL),
         );
-        // UTOTYPE_RMPORTAL deltrap deferred
+        // C do.c:2088–2094 — portal ejection removes the trap on arrival.
+        if (typmask & UTOTYPE_RMPORTAL) {
+            const t = t_at(u.ux, u.uy);
+            if (t) {
+                deltrap(t);
+                newsym(u.ux, u.uy);
+            }
+        }
         // C: dfr_post_msg delivered inside goto_level (maybe_lvltport_feedback)
         // before onquest; only leftover non-materialize msgs land here.
         if (game.dfr_post_msg && !on_level(u.uz, oldlev)) {

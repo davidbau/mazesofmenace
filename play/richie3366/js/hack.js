@@ -40,7 +40,7 @@ import {
     DO_MOVE, TEST_MOVE, TEST_TRAV, TEST_TRAP, S_stone, ESHK,
 } from './const.js';
 import {
-    pline, You, There, Norep, newsym, canspotmon, canseemon, map_invisible, You_feel,
+    pline, vpline, You, There, Norep, newsym, canspotmon, canseemon, map_invisible, You_feel,
     set_msg_xy, feel_location, map_object, unmap_object, verbalize, curs_on_u,
     nh_delay_output, back_to_glyph, glyph_to_cmap, glyph_is_cmap, pline_dir,
     impossible,
@@ -98,7 +98,7 @@ import { is_db_wall } from './dbridge.js';
 import { doopen_indir } from './lock.js';
 import { use_pick_axe2, buried_ball, buried_ball_to_punishment, bury_objs, fill_pit } from './dig.js';
 import { is_ice, resists_cold, Cold_resistance } from './zap.js';
-import { can_ooze, curr_mon_load } from './monmove.js';
+import { can_ooze, curr_mon_load, maybe_unhide_at } from './monmove.js';
 import { abuse_dog } from './dog.js';
 import { livelog_printf } from './pline.js';
 import { experience, more_experienced, newexplevel } from './exper.js';
@@ -163,23 +163,31 @@ function t_at_local(x, y) {
 }
 
 /**
- * C ref: pline.c You_hear `:436–452` — (Deaf && !Unaware) gate, where C
- * Deaf is youprop.h:123–125 (HDeaf || EDeaf || uroleplay.deaf). Sticky
- * u.Deaf is not that macro. Unaware
- * (youprop.h:399: multi < 0 && (unconscious() [trap.c:6776] ||
- * is_fainted() [eat.c:3347])) → "You dream that you hear ". The longer
- * dream prefix is what pushes a sleep-turn dosounds fountain past the
- * CO-8 append gate, so C mores the pending line first instead of
- * appending (scen-wish-Rogue-92210 step 110: dobuzz sleep ray + fountain).
- * Underwater "barely hear" stays deferred (pre-existing map omit).
+ * C ref: pline.c You_hear `:436–452`.
+ * `(Deaf && !Unaware) || !flags.acoustics` returns (`:441`).
+ * Deaf is youprop.h:123–125 (`HDeaf || EDeaf || uroleplay.deaf`).
+ * Sticky `u.Deaf` is not that macro. Unaware is youprop.h:399
+ * (`multi < 0 && (unconscious() || is_fainted())`). Underwater is
+ * youprop.h:279 (`u.uinwater`). YouPrefix (`pline.c:359–360`) copies
+ * the prefix; strcat appends the format; vpline prints it (`:450`).
+ * You_buf growth (`:338–348`) is unneeded in JS. An unset
+ * `flags.acoustics` is the optlist On default, so only an explicit
+ * false matches `!flags.acoustics`.
  */
-export async function You_hear(line) {
-    const u = game.u || {};
-    const unaware = (game.multi | 0) < 0 && (unconscious() || is_fainted());
-    const deaf = !!((u.HDeaf | 0) || (u.EDeaf | 0) || u.uroleplay?.deaf);
-    if ((deaf && !unaware) || game.flags?.acoustics === false) return;
-    if (unaware) await pline(`You dream that you hear ${line}`);
-    else await pline(`You hear ${line}`);
+export async function You_hear(line, ...the_args) {
+    const u = game.u;
+    const Deaf = !!((u?.HDeaf | 0) || (u?.EDeaf | 0) || u?.uroleplay?.deaf);
+    const Unaware = (game.multi | 0) < 0 && (unconscious() || is_fainted());
+    if ((Deaf && !Unaware) || game.flags?.acoustics === false)
+        return;
+    let prefix;
+    if ((u?.uinwater | 0) !== 0)
+        prefix = 'You barely hear ';
+    else if (Unaware)
+        prefix = 'You dream that you hear ';
+    else
+        prefix = 'You hear '; /* Deaf-aware */
+    await vpline(`${prefix}${line}`, ...the_args);
 }
 
 /**
@@ -661,8 +669,10 @@ export async function cannot_push(otmp, sx, sy) {
 
 /**
  * C ref: hack.c movobj `:824–833` — extract floor obj and place at
- * (ox,oy). maybe_unhide_at deferred. Boulder → recalc_block_point both
- * cells. Exported for ball.c move_bc's Blind arms (C has one movobj).
+ * (ox,oy). maybe_unhide_at(obj->ox, obj->oy) after remove_object, before
+ * newsym. Boulder → recalc_block_point both cells (remove_object already
+ * does the old cell; this repeats it). Exported for ball.c move_bc's
+ * Blind arms (C has one movobj). Unhide mutates before its first await.
  */
 export function movobj(obj, ox, oy) {
     if (!obj) return;
@@ -670,6 +680,7 @@ export function movobj(obj, ox, oy) {
     const oy0 = obj.oy | 0;
     const wasBoulder = (obj.otyp | 0) === BOULDER;
     obj_extract_self(obj);
+    maybe_unhide_at(obj.ox | 0, obj.oy | 0); /* C `:829` */
     newsym(ox0, oy0);
     if (wasBoulder) recalc_block_point(ox0, oy0);
     place_object(obj, ox, oy);

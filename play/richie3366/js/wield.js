@@ -5,11 +5,11 @@
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import { flush_screen, flush_topl_more, pline, You, Your } from './display.js';
-import { xprname, xname, yname, yobjnam, aobjnam, makeplural, vtense, an, doname, The, body_part_latebound, simpleonames, is_plural, otense, Yname2, Yobjnam2 as objnam_Yobjnam2, arti_light_description, Tobjnam as objnam_Tobjnam } from './objnam.js';
+import { xprname, xname, yname, yobjnam, aobjnam, makeplural, vtense, an, doname, The, body_part_latebound, simpleonames, is_plural, otense, Yname2, Yobjnam2 as objnam_Yobjnam2, arti_light_description, Tobjnam as objnam_Tobjnam, corpse_xname, killer_xname } from './objnam.js';
 import { strstri } from './hacklib.js';
 import { yn_function } from './getline.js';
 import { hands_obj, is_wet_towel } from './weapon.js';
-import { humanoid, mons, nohands, verysmall } from './monsters.js';
+import { humanoid, mons, nohands, verysmall, touch_petrifies } from './monsters.js';
 import { AT_WEAP } from './mhitm.js';
 import { acurr, A_DEX, exercise } from './attrib.js';
 import { rn2, rnd } from './rng.js';
@@ -22,7 +22,7 @@ import {
     W_WEP, W_SWAPWEP, W_QUIVER, W_ARM, W_ARMOR, W_ACCESSORY, W_SADDLE,
     P_NONE, P_BOW, P_CROSSBOW, P_DART, P_BOOMERANG, P_POLEARMS, P_LANCE,
     ECMD_OK, ECMD_TIME, Upolyd, HAND, RIGHT_HANDED,
-    has_oname, ONAME, COST_DEGRD, COST_DECHNT,
+    has_oname, ONAME, COST_DEGRD, COST_DECHNT, CXN_PFX_THE, STONE_RES,
 } from './const.js';
 import { retouch_object, set_artifact_intrinsic, is_art, u_wield_art, restrict_name } from './artifact.js';
 import { setworn, reset_remarm } from './do_wear.js';
@@ -504,12 +504,46 @@ export async function doswapweapon() {
 }
 
 /**
+ * C ref: wield.c cant_wield_corpse `:138–153`.
+ * Gloves, a non-corpse, a corpse that does not petrify on touch, or
+ * Stone_resistance return false. Otherwise the bare-hand message and
+ * instapetrify, then true. `body_part(HAND)` is `body_part_latebound`
+ * (polyself.js imports wield.js).
+ * @param {object} obj
+ * @returns {Promise<boolean>}
+ */
+async function cant_wield_corpse(obj) {
+    // C :142–144 — uarmg || otyp != CORPSE || !touch_petrifies || Stone_resistance
+    const u = game.u || {};
+    const prop = u.uprops?.[STONE_RES];
+    // C youprop.h: HStone_resistance || EStone_resistance. The port also
+    // mirrors those bits on the flats and on uprops[STONE_RES].
+    const Stone_resistance = !!((u.HStone_resistance | 0) || (u.EStone_resistance | 0)
+        || u.Stone_resistance
+        || (prop?.intrinsic | 0) || (prop?.extrinsic | 0));
+    if (u.uarmg || (obj.otyp | 0) !== CORPSE
+        || !touch_petrifies(mons(obj.corpsenm | 0))
+        || Stone_resistance) {
+        return false;
+    }
+    // C :147–149 — You("wield %s in your bare %s.", CXN_PFX_THE, plural HAND)
+    await You('wield %s in your bare %s.',
+        corpse_xname(obj, null, CXN_PFX_THE),
+        makeplural(body_part_latebound(HAND)));
+    // C :150–151 — Sprintf killer reason, then instapetrify.
+    // trap.js already imports wield.js; a static edge here would evaluate
+    // trap's body before this module's consts (imports.mjs: same SCC).
+    const kbuf = `wielding ${killer_xname(obj)} bare-handed`;
+    const { instapetrify } = await import('./trap.js');
+    await instapetrify(kbuf);
+    return true;
+}
+
+/**
  * C ref: wield.c ready_weapon `:168–273` — full arm order: empty-hands,
- * corpse (named omit), bimanual+shield, retouch, will_weld pline vs
+ * corpse (`cant_wield_corpse`), bimanual+shield, retouch, will_weld pline vs
  * prinv (+AKLYS tether), setuwep, twoweap message, artifact light, shop.
- * Named omissions: `cant_wield_corpse` petrification death path
- * (touch_petrifies/Stone_resistance/instapetrify unported);
- * `arti_speak` rumor/verbalize (res already TIME, message-only here).
+ * Named omissions: `arti_speak` rumor/verbalize (res already TIME, message-only here).
  * @returns {number} 0 = ECMD_OK/ECMD_FAIL (no turn); 1 = ECMD_TIME
  */
 async function ready_weapon(wep) {
@@ -530,8 +564,12 @@ async function ready_weapon(wep) {
         return 0; // C: ECMD_OK
     }
 
-    // C :183 — wep->otyp == CORPSE && cant_wield_corpse(wep) → ECMD_TIME;
-    // named omit (see above).
+    // C :183–185 — corpse that petrifies bare-handed is not wielded; turn spent.
+    if ((wep.otyp | 0) === CORPSE && await cant_wield_corpse(wep)) {
+        // C :270–271 — life-save may have changed uwep; same botl tail as the wield arm.
+        if (had_wep !== !!game.u?.uwep && game.flags) game.flags.botl = true;
+        return 1; // C: ECMD_TIME
+    }
     if (u.uarms && bimanual(wep)) {
         // C :186–190 — ECMD_FAIL takes no turn → 0 in this 0/1 scheme
         const what = is_sword(wep) ? 'sword'
@@ -1165,9 +1203,9 @@ export async function drop_uswapwep() {
  * C ref: wield.c can_twoweapon — dual-wield eligibility + failure plines.
  * TWOWEAPOK/bimanual arms use live Yname2 (objnam.js) + is_plural (obj.h:421).
  * Named omissions: artifact-resist arm uses xname (live Yobjnam2 export
- * not wired; local clone at :1063 stays), CORPSE/cant_wield_corpse arm
- * absent (cant_wield_corpse not ported), body_part(HAND) is a 'hand'
+ * not wired; local clone stays), empty-hands body_part(HAND) is a 'hand'
  * literal; Glib prop may be incomplete until timeout wiring.
+ * `cant_wield_corpse` is the wield.c:794 arm.
  */
 export async function can_twoweapon() {
     const u = game.u || {};
@@ -1206,6 +1244,9 @@ export async function can_twoweapon() {
         await pline("You can't use two weapons while wearing a shield.");
     } else if (uswapwep.oartifact) {
         await pline(`${xname(uswapwep)} resists being held second to another weapon!`);
+    } else if ((uswapwep.otyp | 0) === CORPSE && await cant_wield_corpse(uswapwep)) {
+        // C :794–796 — !TWOWEAPOK normally prevents this. Life-save lands
+        // here; the function already instapetrified. Fall through to FALSE.
     } else if (u.Glib || uswapwep.cursed) {
         if (!u.Glib) uswapwep.bknown = 1;
         await drop_uswapwep();
@@ -1273,6 +1314,7 @@ async function strange_feeling(obj, txt) {
     }
 }
 
+const CORPSE = objectNames.indexOf('CORPSE');
 const BATTLE_AXE = objectNames.indexOf('BATTLE_AXE');
 const AKLYS = objectNames.indexOf('AKLYS');
 const WORM_TOOTH = objectNames.indexOf('WORM_TOOTH');

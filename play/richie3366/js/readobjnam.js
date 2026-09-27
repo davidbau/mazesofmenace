@@ -29,7 +29,12 @@ import {
     VENOM_CLASS,
     is_poisonable,
 } from './objects.js';
-import { mksobj, mkobj, weight, curse, oc_merge_of, spot_stop_timers, set_corpsenm, rnd_class } from './mkobj.js';
+import {
+    mksobj, mkobj, weight, curse, oc_merge_of, spot_stop_timers, set_corpsenm, rnd_class,
+    erosion_matters, is_flammable, is_rustprone, is_crackable,
+    is_corrodeable, is_rottable, is_damageable,
+} from './mkobj.js';
+import { deltrap, t_at } from './trap.js';
 import { artifact_name, nartifact_exist, permapoisoned } from './artifact.js';
 import { is_quest_artifact } from './quest.js';
 import { oname, lookup_novel } from './do_name.js';
@@ -226,22 +231,6 @@ function upstart(str) {
     const s = String(str || '');
     if (!s) return s;
     return s.charAt(0).toUpperCase() + s.slice(1);
-}
-
-function t_at_local(x, y) {
-    const traps = game.level?.traps;
-    if (!traps) return null;
-    for (const t of traps) {
-        if (t && (t.tx | 0) === (x | 0) && (t.ty | 0) === (y | 0)) return t;
-    }
-    return null;
-}
-
-function deltrap_local(trap) {
-    const traps = game.level?.traps;
-    if (!traps || !trap) return;
-    const i = traps.indexOf(trap);
-    if (i >= 0) traps.splice(i, 1);
 }
 
 function CAN_OVERWRITE_TERRAIN(ttyp) {
@@ -687,8 +676,8 @@ async function wizterrainwish(d) {
             || is_pool(x, y) || is_lava(x, y)) {
             lev.typ = ROOM;
             await pline('Room floor.');
-            const t = t_at_local(x, y);
-            if (t && (t.ttyp | 0) !== MAGIC_PORTAL) deltrap_local(t);
+            const t = t_at(x, y);
+            if (t && (t.ttyp | 0) !== MAGIC_PORTAL) deltrap(t);
             madeterrain = true;
         } else {
             await pline('Room|floor|ground not allowed here.');
@@ -1934,8 +1923,21 @@ function readobjnam_finish(d) {
         curse(d.otmp);
     }
 
-    d.otmp.oeroded = 0;
-    d.otmp.oeroded2 = 0;
+    /* C objnam.c readobjnam `:5270–5288` — wished erosion only when the
+       type can erode. A non-erosion object keeps whatever mksobj left. */
+    if (erosion_matters(d.otmp)) {
+        d.otmp.oeroded = d.otmp.oeroded2 = 0;
+        if (d.eroded && (is_flammable(d.otmp) || is_rustprone(d.otmp)
+                         || is_crackable(d.otmp)))
+            d.otmp.oeroded = d.eroded | 0;
+        if (d.eroded2 && (is_corrodeable(d.otmp) || is_rottable(d.otmp)))
+            d.otmp.oeroded2 = d.eroded2 | 0;
+        /* damageproof plus damaged is legal (confused destroy-armor) */
+        if (d.erodeproof
+            && (is_damageable(d.otmp)
+                || (d.otmp.otyp | 0) === objectNames.indexOf('CRYSKNIFE')))
+            d.otmp.oerodeproof = (Luck() >= 0 || wizardMode()) ? 1 : 0;
+    }
 
     // C ref: objnam.c readobjnam `:5342–5344` — set tin variety.
     // `rn2(4)` draws even in wizard mode (C `||` short-circuit kept).

@@ -82,7 +82,7 @@ import { hands_obj } from './weapon.js';
 import { PM_KNIGHT, monsterNames } from './generated/monsters_data.js';
 import { A_MAX, A_WIS, A_CON, A_DEX, adjattrib, exercise, acurr } from './attrib.js';
 import { morehungry, poison_strdmg, vomit, newuhs } from './eat.js';
-import { losehp, in_town } from './hack.js';
+import { losehp, in_town, You_hear } from './hack.js';
 import { distmin, level_difficulty } from './hacklib.js';
 import { monster_detect } from './detect.js';
 import { more_experienced, newexplevel } from './exper.js';
@@ -271,13 +271,6 @@ async function dofindgem() {
 /** C ref: fountain.c floating_above — dip/drink while levitating. */
 export async function floating_above(what) {
     await pline(`You are floating high above the ${what}.`);
-}
-
-/** C ref: pline.c You_hear — acoustics/Deaf; Unaware/Underwater deferred. */
-async function You_hear(line) {
-    const u = game.u || {};
-    if (u.Deaf || u.HDeaf) return;
-    await pline(`You hear ${line}`);
 }
 
 /** C ref: do_name.c a_monnam — ARTICLE_A (hallu deferred). */
@@ -1151,7 +1144,7 @@ export async function dipsink(obj) {
         if (!Blind()) {
             await pline('The drain seems less clogged.');
         } else if (!Deaf()) {
-            await pline('You hear a sucking sound.');
+            await You_hear('a sucking sound.');
         } else {
             await pline(nothing_seems_to_happen);
             try_call = false;

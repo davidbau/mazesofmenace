@@ -64,7 +64,8 @@ import { dist2, ing_suffix, strsubst, strstri, upstart, highc } from './hacklib.
 import { Popeye, morehungry, vomit, Unaware, eating_dangerous_corpse } from './eat.js';
 import { toggle_displacement } from './do_wear.js';
 import { phase_of_the_moon, friday_13th } from './calendar.js';
-import { zombie_form, NODIAG } from './mon.js';
+import { zombie_form, NODIAG, m_at } from './mon.js';
+import { maybe_unhide_at } from './monmove.js';
 import { cry_sound } from './sounds.js';
 import { Soundeffect } from './sndprocs.js';
 import { se_kaboom_boom_boom } from './generated/seffects_data.js';
@@ -1836,7 +1837,8 @@ export function obj_merge_light_sources(src, dest) {
 /**
  * C ref: timeout.c burn_object — BURN_OBJECT timer callback.
  * Envelope: fuel milestones + burn-out useup; away-timeout catch-up.
- * Named omit: maybe_unhide_at polish; update_inventory redraw.
+ * Away-timeout candle/oil and age-0 candle call maybe_unhide_at
+ * (C `:1416`, `:1652`). Named omit: update_inventory redraw.
  */
 export async function burn_object(obj, timeout) {
     if (!obj) return;
@@ -1853,8 +1855,13 @@ export async function burn_object(obj, timeout) {
                 obj.spe = 0;
                 obj.owt = weight(obj);
             } else if (Is_candle(obj) || (obj.otyp | 0) === POT_OIL) {
+                let burnMtmp = null;
+                if ((obj.where | 0) === OBJ_FLOOR)
+                    burnMtmp = m_at(obj.ox | 0, obj.oy | 0);
                 obj_extract_self(obj);
                 delobj(obj);
+                if (burnMtmp)
+                    await maybe_unhide_at(burnMtmp.mx | 0, burnMtmp.my | 0);
             }
         } else {
             obj.age = (obj.age | 0) - how_long;
@@ -2036,7 +2043,8 @@ export async function burn_object(obj, timeout) {
                 const onfloor = obj.where === OBJ_FLOOR;
                 if (obj.where === OBJ_MIGRATING) obj.owornmask = 0;
                 obj_extract_self(obj);
-                void onfloor;
+                if (onfloor && loc)
+                    await maybe_unhide_at(loc.x | 0, loc.y | 0);
                 delobj(obj);
                 obj = null;
             }

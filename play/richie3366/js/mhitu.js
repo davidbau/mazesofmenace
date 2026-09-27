@@ -25,7 +25,7 @@ import {
 import { thrwmu, spitmu, breamu } from './mthrowu.js';
 import { find_offensive, use_offensive } from './muse.js';
 import { destroy_items, resists_drli, Drain_resistance, drain_item } from './zap.js';
-import { nomul, stop_occupation, maybe_half_phys, is_pool, losehp, unmul, fall_asleep } from './hack.js';
+import { nomul, stop_occupation, maybe_half_phys, is_pool, losehp, unmul, fall_asleep, You_hear } from './hack.js';
 import { upstart } from './hacklib.js';
 import { rnd, d, rn2, rn1 } from './rng.js';
 import {
@@ -49,7 +49,7 @@ import { steal, stealamulet, stealgold, unresponsive, remove_worn_item } from '.
 import { cloneu, split_mon, attrcurse } from './sit.js';
 import {
     stop_donning, setworn, Ring_on, Ring_gone, suit_simple_name, hard_helmet,
-    some_armor,
+    some_armor, helm_simple_name,
 } from './do_wear.js';
 import { mpickobj } from './makemon.js';
 import { money2mon } from './shk.js';
@@ -1163,12 +1163,6 @@ function cloak_simple_name(cloak) {
 }
 
 /**
-/** C ref: objnam.c helm_simple_name `:5513–5528` — hat vs helm. */
-export function helm_simple_name(helmet) {
-    return !hard_helmet(helmet) ? 'hat' : 'helm';
-}
-
-/**
  * C ref: mhitu.c `:25` `#define ld()`.
  * Leap day: `yyyymmdd(0) - getyear()*10000 == 0xe5` (Feb 29 as mmdd 229).
  * Sole caller: doseduce leap-day succubus gloves verbalize.
@@ -2223,14 +2217,6 @@ async function mhitm_ad_ssex(mtmp, mattk, mhm) {
         return;
     }
     await mhitm_ad_sedu_u(mtmp, mattk, mhm);
-}
-
-/**
- * C ref: pline.c You_hear — acoustics/Deaf gate (local for mhitu).
- */
-async function You_hear(line) {
-    if (hero_Deaf() || game.flags?.acoustics === false) return;
-    await pline(`You hear ${line}`);
 }
 
 /**

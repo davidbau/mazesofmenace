@@ -10,8 +10,8 @@
 // checkfile. object_from_map + look_at_object (SLIME_MOLD spe =
 // current_fruit). getpos auto_describe / brief_at glyph_is_object
 // fakeobj (D-1547). mhidden_description (D-1554). howmonseen look
-// monbuf (D-1562). Full glyph encyclopedia, whatdoes keyhelp body, and
-// PORT_HELP deferred.
+// monbuf (D-1562). Full glyph encyclopedia and PORT_HELP deferred.
+// whatdoes_help pages KEYHELP (D-2929).
 
 import { game } from './gstate.js';
 import { getversionstring, do_runtime_info } from './version.js';
@@ -100,7 +100,7 @@ import {
     SYM_PET_OVERRIDE, SYM_HERO_OVERRIDE, WARNCOUNT,
     S_vodbridge, S_hcdbridge, MAXTCHARS, VIBRATING_SQUARE, def_warnsyms,
     POOL, MOAT, WATER, LAVAPOOL, LAVAWALL, ICE,
-    HELP, SHELP, HISTORY, LICENSE, OPTIONFILE, OPTMENUHELP, USAGEHELP, DEBUGHELP,
+    HELP, SHELP, KEYHELP, HISTORY, LICENSE, OPTIONFILE, OPTMENUHELP, USAGEHELP, DEBUGHELP,
     ECMD_OK, BUFSZ, QBUFSZ,
     OBJ_FREE, OBJ_FLOOR, OBJ_BURIED, M_AP_OBJECT, M_AP_FURNITURE, M_AP_MONSTER,
     M_AP_TYPMASK, M_AP_F_DKNOWN, M_AP_TYPE,
@@ -3045,24 +3045,41 @@ function key2extcmddesc(key) {
 }
 
 /**
- * C ref: pager.c whatdoes_help — page KEYHELP with leading WS stripped.
+ * C ref: pager.c whatdoes_help `:2421–2445`.
+ * `dlb_fopen` / `dlb_fgets` / `dlb_fclose` read embedded `DAT_TEXT[KEYHELP]`
+ * (Rule #2 — no filesystem). `fgets(buf, sizeof buf)` stores at most
+ * BUFSZ-1 bytes and keeps a newline that fits in that window. A chunk
+ * whose first byte is '#' is skipped. Leading ' ' and '\t' are stripped,
+ * then `putstr(NHW_TEXT, 0, p)` via `show_text_pages` so `compress_str`
+ * still sees the newline (runs of spaces collapse, the newline does not
+ * become a blank row). A missing file is `pline` plus
+ * `display_nhwindow(WIN_MESSAGE, TRUE)` (`flush_topl_more`).
+ * `create_nhwindow` / `display_nhwindow(tmpwin)` / `destroy_nhwindow`
+ * are that text page.
  */
 async function whatdoes_help() {
-    const raw = readDat('keyhelp');
-    if (!raw) {
-        await pline('Cannot open "keyhelp" data file!');
-        await more();
+    const raw = readDat(KEYHELP); // C dlb_fopen(KEYHELP, "r")
+    if (raw == null) {
+        await pline(`Cannot open "${KEYHELP}" data file!`);
+        await flush_topl_more(); // C display_nhwindow(WIN_MESSAGE, TRUE)
         return;
     }
     const lines = [];
-    for (const line of raw.replace(/\r\n/g, '\n').split('\n')) {
-        if (line.startsWith('#')) continue;
+    const maxn = BUFSZ - 1; // C fgets size is sizeof buf
+    let i = 0;
+    while (i < raw.length) {
+        const room = Math.min(raw.length, i + maxn);
+        let end = i;
+        while (end < room && raw[end] !== '\n') end++;
+        if (end < room && raw[end] === '\n') end++; // newline fits in the window
+        const buf = raw.slice(i, end);
+        i = end;
+        if (buf[0] === '#') continue; // C *buf == '#'
         let p = 0;
-        while (p < line.length && (line[p] === ' ' || line[p] === '\t')) p++;
-        lines.push(line.slice(p));
+        while (p < buf.length && (buf[p] === ' ' || buf[p] === '\t')) p++;
+        lines.push(buf.slice(p)); // C putstr(tmpwin, 0, p) — newline kept
     }
-    while (lines.length && lines[lines.length - 1] === '') lines.pop();
-    await show_text_pages(lines);
+    await show_text_pages(lines); // C display_nhwindow(tmpwin, TRUE); destroy
 }
 
 /**

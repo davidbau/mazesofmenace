@@ -128,7 +128,7 @@ import { makemon, set_malign } from './makemon.js';
 import { courtmon } from './mklev.js';
 import { fix_ghostly_obj } from './bones.js';
 import { more_experienced, newexplevel } from './exper.js';
-import { hard_helmet } from './do_wear.js';
+import { hard_helmet, helm_simple_name } from './do_wear.js';
 import { tiphat } from './sounds.js';
 import { SetVoice } from './sndprocs.js';
 import { mdamageu, digests } from './mhitu.js';
@@ -2315,8 +2315,7 @@ const icewarnings = [
  * Named: pooleffects leave-water / Wwalking / steed / ceiling_hider;
  * dotrap plunge/conj_pit/adj_pit (D-1188); digactualhole PIT/HOLE
  * D-1269; maketrap PIT/HOLE set_levltyp D-1280; iflags.failing_untrap
- * writer (trap.c move_into_trap); helm_simple_name clones in
- * dothrow/mhitu/trap/uhitm (inlined hard_helmet ? helm : hat here);
+ * writer (trap.c move_into_trap); piercer glance uses do_wear helm_simple_name;
  * ceiling in_rooms vault/temple/shop. set_uinwater is D-1267.
  */
 export async function spoteffects(pick) {
@@ -2417,9 +2416,9 @@ export async function spoteffects(pick) {
                 if (mtmp.mtame) {
                     /* jumps to greet you, not attack */
                 } else if (hard_helmet(u.uarmh)) {
-                    /* C helm_simple_name ≡ !hard_helmet ? "hat" : "helm" */
+                    /* C hack.c:3426 — helm_simple_name calls hard_helmet again. */
                     await pline(
-                        `Its blow glances off your ${hard_helmet(u.uarmh) ? 'helm' : 'hat'}.`,
+                        `Its blow glances off your ${helm_simple_name(u.uarmh)}.`,
                     );
                 } else if (((u.uac | 0) + 3) <= rnd(20)) {
                     await pline(`You are almost hit by ${x_monnam(mtmp, ARTICLE_A, 'falling', 0, true)}!`);
@@ -4296,7 +4295,8 @@ export async function loot_mon(mtmp, passed_info, prev_loot) {
                     );
                     return 1;
                 }
-                extract_from_minvent(mtmp, otmp, true, false);
+                const ex = extract_from_minvent(mtmp, otmp, true, false);
+                if (ex && typeof ex.then === 'function') await ex;
                 if (game.flags?.verbose !== false) {
                     await pline(
                         `You take ${thesimpleoname(otmp)} off of ${mon_nam(mtmp)}.`,

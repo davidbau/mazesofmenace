@@ -14,14 +14,14 @@
 
 import { game } from './gstate.js';
 import {
-    In_quest, MIN_QUEST_ALIGN, MIN_QUEST_LEVEL,
-    UTOTYPE_NONE, UTOTYPE_PORTAL, STRAT_WAITMASK,
+    In_quest, MIN_QUEST_ALIGN, MIN_QUEST_LEVEL, MAGIC_PORTAL,
+    UTOTYPE_NONE, UTOTYPE_PORTAL, UTOTYPE_RMPORTAL, STRAT_WAITMASK,
     OBJ_FLOOR, OBJ_MINVENT, OBJ_BURIED, DEAF, LL_ACHIEVE,
 } from './const.js';
 import { qt_pager, com_pager } from './questpgr.js';
 import { livelog_printf } from './pline.js';
 import { create_gas_cloud } from './region.js';
-import { pline, verbalize, canseemon } from './display.js';
+import { pline, verbalize, canseemon, impossible } from './display.js';
 import { Monnam, noit_mon_nam } from './do_name.js';
 import { SetVoice } from './sndprocs.js';
 import { angry_guards, monnear } from './mon.js';
@@ -29,6 +29,8 @@ import { rn2 } from './rng.js';
 import { monsterNames } from './monsters.js';
 import { yn_function } from './getline.js';
 import { nomul } from './hack.js';
+import { deltrap } from './trap.js';
+import { remdun_mapseen } from './dungeon.js';
 import { exercise, adjalign, A_WIS } from './attrib.js';
 import { fully_identify_obj, update_inventory, observe_object } from './invent.js';
 import { the, xname } from './objnam.js';
@@ -248,9 +250,9 @@ export function ok_to_quest() {
 }
 
 /**
- * C ref: quest.c expulsion — schedule_goto parent of Quest branch.
- * Named omissions: UTOTYPE_RMPORTAL seal path deltrap / remdun_mapseen;
- * livelog.
+ * C ref: quest.c expulsion `:185–216` — schedule_goto the parent of the
+ * Quest branch. `seal` ORs UTOTYPE_RMPORTAL, marks the quest dungeon
+ * notreachable, and deletes the near MAGIC_PORTAL.
  */
 async function expulsion(seal) {
     const u = game.u;
@@ -267,13 +269,40 @@ async function expulsion(seal) {
     const dest = ((br.end1.dnum | 0) === (u.uz?.dnum | 0))
         ? br.end2
         : br.end1;
-    const portal_flag = u.uevent?.qexpelled ? UTOTYPE_NONE : UTOTYPE_PORTAL;
-    // seal → RMPORTAL deferred (badalign uses seal=FALSE)
-    void seal;
+    let portal_flag = u.uevent?.qexpelled ? UTOTYPE_NONE : UTOTYPE_PORTAL;
+    if (seal) portal_flag |= UTOTYPE_RMPORTAL;
     nomul(0);
     // Lazy import — avoid quest.js ↔ do.js cycle (do.js imports onquest)
     const { schedule_goto } = await import('./do.js');
     schedule_goto(dest, portal_flag, null, null);
+    if (seal) {
+        const reexpelled = u.uevent?.qexpelled;
+        if (!u.uevent) u.uevent = {};
+        u.uevent.qexpelled = 1;
+        remdun_mapseen(qnum);
+        // C: for (t = ftrap; t; t = t->ntrap) if MAGIC_PORTAL break.
+        // JS ftrap is level.traps; game.ftrap is the node chain when set.
+        let t = null;
+        const traps = game.level?.traps;
+        if (Array.isArray(traps)) {
+            for (const tr of traps) {
+                if (tr && (tr.ttyp | 0) === MAGIC_PORTAL) {
+                    t = tr;
+                    break;
+                }
+            }
+        }
+        if (!t && game.ftrap && !Array.isArray(game.ftrap)) {
+            for (let tr = game.ftrap; tr; tr = tr.ntrap) {
+                if ((tr.ttyp | 0) === MAGIC_PORTAL) {
+                    t = tr;
+                    break;
+                }
+            }
+        }
+        if (t) deltrap(t);
+        else if (!reexpelled) await impossible('quest portal already gone?');
+    }
 }
 
 /** C ref: questpgr.c is_quest_artifact — oartifact == urole.questarti. */

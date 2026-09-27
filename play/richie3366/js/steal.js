@@ -76,7 +76,7 @@ import { Levitation, Flying } from './mhitu.js';
 import { obj_resists } from './dogmove.js';
 import { touch_artifact } from './artifact.js';
 import { cansee } from './vision.js';
-import { upstart } from './hacklib.js';
+import { upstart, copynchars, strsubst, strstri } from './hacklib.js';
 
 const GOLD_PIECE = objectNames.indexOf('GOLD_PIECE');
 const BOULDER = objectNames.indexOf('BOULDER');
@@ -235,33 +235,55 @@ function bimanual(obj) {
 }
 
 /**
- * C ref: steal.c worn_item_removal — pline + remove_worn_item(obj, TRUE).
- * Lev/Fly descent still from *_off bodies (named omit on those).
+ * C ref: steal.c worn_item_removal `:294–334`.
+ * doname, then a leading "the "/"an "/"a " (strncmp order; "an " before
+ * "a ") via copynchars + strsubst — uchain keeps "the ", every other
+ * object becomes "your " — then the worn and alternate-weapon suffixes,
+ * then strstri " (on " with strncmp "left "/"right " and strsubst of
+ * that "on" to "from". Verb from owornmask, pline, last_msg, then
+ * remove_worn_item(obj, TRUE) so Lev/Fly messages precede the theft.
  */
 async function worn_item_removal(mon, obj) {
-    if (!obj) return;
-    const verb = ((obj.owornmask || 0) & W_WEAPONS) !== 0 ? 'disarms'
-        : ((obj.owornmask || 0) & W_ACCESSORY) !== 0 ? 'removes'
-            : 'takes off';
+    /* C `:302` Strcpy(objbuf, doname(obj)). */
     let objbuf = doname(obj);
-    // strip a/an/the → your (uchain "the" arm deferred)
-    if (objbuf.startsWith('the ')) objbuf = `your ${objbuf.slice(4)}`;
-    else if (objbuf.startsWith('an ')) objbuf = `your ${objbuf.slice(3)}`;
-    else if (objbuf.startsWith('a ')) objbuf = `your ${objbuf.slice(2)}`;
-    objbuf = objbuf.replace(' (being worn)', '');
-    objbuf = objbuf.replace(' (alternate weapon; not wielded)', '');
-    // C: convert "ring (on left/right hand)" → "(from … hand)"
-    const onHand = objbuf.indexOf(' (on ');
-    if (onHand >= 0) {
-        const after = objbuf.slice(onHand + 5); // after " (on "
-        if (after.startsWith('left ') || after.startsWith('right ')) {
-            objbuf = `${objbuf.slice(0, onHand + 2)}from${objbuf.slice(onHand + 4)}`;
-        }
+    /* C `:304–307` — prefix length; "an " is tested before "a ". */
+    const strip_art = objbuf.startsWith('the ') ? 4
+        : objbuf.startsWith('an ') ? 3
+            : objbuf.startsWith('a ') ? 2
+                : 0;
+    if (strip_art) {
+        /* C `:309–313` article[20] = copynchars(objbuf, strip_art).
+           The attached chain formats as "an iron chain (attached to you)";
+           that article becomes "the ", not "your ". */
+        const article = copynchars(objbuf, strip_art);
+        objbuf = strsubst(objbuf, article,
+            (obj === game.u?.uchain) ? 'the ' : 'your ');
     }
+    /* C `:315–317` — not guarded against a user-supplied name. */
+    objbuf = strsubst(objbuf, ' (being worn)', '');
+    objbuf = strsubst(objbuf, ' (alternate weapon; not wielded)', '');
+    /* C `:318–321` p = strstri(objbuf, " (on "); strncmp(p+5, "left ", 5)
+       or strncmp(p+5, "right ", 6); strsubst(p+2, "on", "from").
+       strstri stops at NUL; the tail keeps the original case. */
+    const nul = objbuf.indexOf('\0');
+    const live = nul < 0 ? objbuf : objbuf.slice(0, nul);
+    const onTail = strstri(live, ' (on ');
+    if (onTail != null
+        && (onTail.slice(5, 10) === 'left '
+            || onTail.slice(5, 11) === 'right ')) {
+        const at = live.length - onTail.length;
+        objbuf = live.slice(0, at + 2) + strsubst(onTail.slice(2), 'on', 'from');
+    }
+    /* C `:326–328` — weapons "disarms", accessory "removes", else "takes off". */
+    const worn = obj.owornmask | 0;
+    const verb = (worn & W_WEAPONS) !== 0 ? 'disarms'
+        : (worn & W_ACCESSORY) !== 0 ? 'removes'
+            : 'takes off';
     await pline(`${Some_Monnam(mon)} ${verb} ${objbuf}.`);
-    // C: iflags.last_msg = PLNMSG_MON_TAKES_OFF_ITEM
+    /* C `:330` iflags.last_msg = PLNMSG_MON_TAKES_OFF_ITEM. */
     if (!game.iflags) game.iflags = {};
     game.iflags.last_msg = PLNMSG_MON_TAKES_OFF_ITEM;
+    /* C `:331–333` — descent from losing Lev|Fly happens inside remove_worn_item. */
     await remove_worn_item(obj, true);
 }
 
@@ -297,7 +319,7 @@ export async function remove_worn_item(obj, unchain_ball) {
         else if (obj === u.uarmf) await Boots_off();
         else if (obj === u.uarmg) await Gloves_off();
         else if (obj === u.uarmh) await Helmet_off();
-        else if (obj === u.uarms) Shield_off();
+        else if (obj === u.uarms) await Shield_off();
         else if (obj === u.uarmu) Shirt_off();
         /* catchall — should never happen */
         else setworn(null, obj.owornmask & W_ARMOR);
@@ -649,7 +671,7 @@ export async function steal(mtmp, objnambuf) {
     } else if ((otmp.owornmask | 0)) { /* weapon or ball&chain */
         let item = otmp;
         if (otmp === u.uball) /* non-Null uball implies non-Null uchain */
-            item = u.uchain || otmp; /* more accurate 'takes off' message */
+            item = u.uchain; /* yields a more accurate 'takes off' message */
         await worn_item_removal(mtmp, item);
         /* if we switched from uball to uchain for the preface message,
            then unpunish() took place and both those pointers are now Null,

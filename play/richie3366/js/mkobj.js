@@ -93,9 +93,9 @@ import { hands_obj, MON_WEP, setmnotwielded } from './weapon.js';
    hoisted cycle-safe, same 96-module SCC). */
 import { setnotworn } from './do.js';
 import { setworn, reset_remarm } from './do_wear.js';
-/* C wield.c bimanual / drop_uswapwep — hoisted, same SCC
-   (`imports.mjs --can mkobj.js wield.js` SAFE). */
-import { bimanual, drop_uswapwep } from './wield.js';
+/* C wield.c bimanual / drop_uswapwep; obj.h is_weptool (erosion_matters).
+   Hoisted, same SCC (`imports.mjs --can mkobj.js wield.js` ALREADY). */
+import { bimanual, drop_uswapwep, is_weptool } from './wield.js';
 /* C spell.c book_cursed — hoisted function, called only from curse
    (`imports.mjs --can mkobj.js spell.js` SAFE). */
 import { book_cursed } from './spell.js';
@@ -806,19 +806,30 @@ export function is_crackable(otmp) {
     return objs()[otmp.otyp]?.oc_material === GLASS
         && objs()[otmp.otyp]?.oc_class === ARMOR_CLASS;
 }
-// C ref: objnam.c erosion_matters(); tools only if is_weptool (oc_skill != P_NONE)
-function is_weptool(otmp) {
-    if (objs()[otmp.otyp]?.oc_class !== TOOL_CLASS) return false;
-    // oc_skill not in objects table yet — named weptools from objects.h
-    const n = otypName(otmp.otyp);
-    return n === 'PICK_AXE' || n === 'GRAPPLING_HOOK' || n === 'UNICORN_HORN'
-        || n === 'AKLYS' || n === 'BULLWHIP';
-}
-export function erosion_matters(otmp) {
-    const c = objs()[otmp.otyp]?.oc_class;
-    if (c === TOOL_CLASS) return is_weptool(otmp);
-    return c === WEAPON_CLASS || c === ARMOR_CLASS
-        || c === BALL_CLASS || c === CHAIN_CLASS;
+/**
+ * C ref: objnam.c erosion_matters `:1195–1215`.
+ * Switch is `obj->oclass`, not the type table. A tool matters only when
+ * `is_weptool` (`obj.h`: TOOL_CLASS and `oc_skill != P_NONE`). Weapon,
+ * armor, iron ball, and iron chain always matter. The poly comment in C
+ * belongs on `poly_obj`; this function does not special-case it.
+ * @param {object} obj
+ * @returns {boolean}
+ */
+export function erosion_matters(obj) {
+    switch (obj.oclass) {
+    case TOOL_CLASS:
+        /* rusty weptool polymorphed into a non-weptool: rust goes away
+           because is_weptool is false; a non-iron tool does the same */
+        return is_weptool(obj) ? true : false;
+    case WEAPON_CLASS:
+    case ARMOR_CLASS:
+    case BALL_CLASS:
+    case CHAIN_CLASS:
+        return true;
+    default:
+        break;
+    }
+    return false;
 }
 export function is_damageable(otmp) {
     return is_rustprone(otmp) || is_flammable(otmp) || is_rottable(otmp)
@@ -2630,7 +2641,7 @@ export function mkobj_at(oclass, x, y, artif) {
 // position, before the revert, floated (void — invent.js:652 precedent;
 // its sync prefix returns before the first await unless obj is unpaid
 // shop goods, shk.js:2288); then otyp=WORM_TOOTH + oerodeproof=0.
-function place_object_no_longer_held(obj) {
+export function place_object_no_longer_held(obj) {
     if (!obj) return; // C `:895–896`
     if (Has_contents(obj)) { // C `:897–902` — else-if ≡ sequential if after return
         for (let contents = obj.cobj; contents; contents = contents.nobj)
@@ -3752,7 +3763,7 @@ export function dobjsfree() {
  * C ref: invent.c delobj_core `:1436–1462`. force==TRUE skips
  * obj_resists (zap.c revive floor Rider corpses). Floor extract then
  * maybe_unhide_at + newsym, then obfree (contents too).
- * Named: maybe_unhide_at youmonst; trap.js delete_contents_chest /
+ * youmonst is inside maybe_unhide_at (D-2923). Named: trap.js delete_contents_chest /
  * mklev.js create_object_delete_contents.
  */
 export function delobj_core(obj, force) {

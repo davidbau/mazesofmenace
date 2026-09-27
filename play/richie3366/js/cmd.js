@@ -44,6 +44,7 @@ import { COLNO, ROWNO, STONE, DOOR, CORR, ROOM, IRONBARS, TREE, SDOOR, ICE,
          In_sokoban, Is_waterlevel,
          TRAVP_TRAVEL, TRAVP_VALID,
          TEST_MOVE,
+         WIN_ERR,
          } from './const.js';
 import { FOOD_CLASS, objectNames } from './objects.js';
 import { EXTCMDLIST, CMD_PARAM } from './generated/extcmdlist_data.js';
@@ -61,7 +62,7 @@ import { vision_recalc, couldsee, cansee } from './vision.js';
 import {
     ddoinv, dodiscovered, doattributes, dolook, doprgold, doprwep, doprarm,
     doprring, dopramulet, doprtool, doprinuse, doperminv, dotypeinv,
-    cmdq_add_key, Blind,
+    cmdq_add_key, Blind, free_pickinv_cache,
 } from './invent.js';
 import { dovspell, docast, num_spells } from './spell.js';
 import { doeat, sgn } from './eat.js';
@@ -75,6 +76,8 @@ import { dokick } from './dokick.js';
 import { dosit } from './sit.js';
 import { donull, dodown, doup, dodrop, doddrop, reset_occupations } from './do.js';
 import { dosave, dosave0 } from './save.js';
+import { clearlocks } from './files.js';
+import { nh_terminate } from './end.js';
 import { doset_simple, dotogglepickup, toggle_bool_option, select_menu_pick_one, strbuf_append } from './options.js';
 import {
     do_attack, mon_at, is_safemon, explum, attacktype_fordmg,
@@ -289,30 +292,77 @@ export function cmdq_clear(q = CQ_CANNED) {
 }
 
 /**
- * C ref: cmd.c end_of_input `:5182–5209` (HANGUPHANDLING).
- * unixconf.h defines SAFERHANGUP; NOSAVEONHANGUP is off, so hangup
- * still writes via dosave0 when something_worth_saving (tutorial
- * zeros that first). Named omit: sound_exit_nhsound, exit_nhwindows,
- * clearlocks (no filesystem locks — Contest Rule #2). nh_terminate
- * becomes program_state.gameover so moveloop stops.
+ * C ref: wintty.c tty_exit_nhwindows `:809–845`.
+ * `exit_nhwindows` is `(*windowprocs.win_exit_nhwindows)` (winprocs.h:117).
+ * The contest tty build leaves that hook unset, so this is the tty body.
+ * @param {string|null} str settty argument; end_of_input passes NULL
  */
-export function end_of_input() {
+function tty_exit_nhwindows(str) {
+    // C `:814` tty_suspend_nhwindows(str) → settty(str) and, when str is
+    // NULL, tty_raw_print(""). term_shutdown (`:843`) is termcap teardown.
+    // Those erase the tty. The scored grid is the capture already taken
+    // at nhgetch; this does not paint a second frame (D-1831).
+    void str;
+    free_pickinv_cache(); // C `:818`
+    // C `:819–830` — wins[i] = NULL for i != BASE_WINDOW, then
+    // WIN_MAP/MESSAGE/INVEN/STATUS = WIN_ERR. JS has no wins[] (the
+    // terminal grid is the window; ids are sentinels from
+    // init_sound_disp_gamewindows). FREE_ALL_MEMORY (config.h:632) also
+    // frees BASE_WINDOW and ttyDisplay; neither object exists here.
+    game.WIN_MAP = WIN_ERR;
+    game.WIN_MESSAGE = WIN_ERR;
+    game.WIN_INVEN = WIN_ERR;
+    game.WIN_STATUS = WIN_ERR;
+    if (!game.iflags) game.iflags = {};
+    game.iflags.window_inited = 0; // C `:844`
+}
+
+/**
+ * C ref: winprocs.h exit_nhwindows macro → win_exit_nhwindows.
+ * An installed hook is the window port (C does not also run the tty body).
+ * @param {string|null} str
+ */
+function exit_nhwindows(str) {
+    const hook = game.windowprocs?.win_exit_nhwindows;
+    if (typeof hook === 'function') {
+        hook(str);
+        return;
+    }
+    tty_exit_nhwindows(str);
+}
+
+/**
+ * C ref: cmd.c end_of_input `:5182–5209` (#ifdef HANGUPHANDLING, live via
+ * global.h:278). NOSAVEONHANGUP is not defined, so the INSURANCE
+ * preserve_locks arm (`:5186–5189`) and the something_worth_saving = 0
+ * arm (`:5190`) are not compiled. SAFERHANGUP (unixconf.h:301) compiles
+ * out `if (!program_state.done_hup++)` (`:5196–5198`).
+ * Async because dosave0 awaits done_object_cleanup; C returns only after
+ * that save. Callers await (hangup, rhack, moveloop_core).
+ */
+export async function end_of_input() {
     if (!game.program_state) game.program_state = {};
     const ps = game.program_state;
+    // C `:5193–5194` — tutorial games are not worth saving.
     if (In_tutorial(game.u?.uz)) {
         ps.something_worth_saving = 0;
     }
+    // C `:5199–5200` — SAFERHANGUP: dosave0 whenever still worth saving.
     if (ps.something_worth_saving) {
-        // C cmd.c end_of_input → dosave0 is sync; JS dosave0 awaits the
-        // async done_object_cleanup, so here it floats — end_of_input
-        // and its hangup callers (hangup, moveloop_core, rhack) have no
-        // await point. The in-process VFS write still lands on microtask
-        // flush before any later awaited work reads it back.
-        dosave0();
+        await dosave0();
     }
-    ps.in_moveloop = 0;
-    ps.exiting = 1;
-    ps.gameover = true;
+    // C `:5201–5202` — nosound_procs leaves this pointer NULL (sounds.c:1730).
+    const exitSound = game.soundprocs?.sound_exit_nhsound;
+    if (typeof exitSound === 'function') {
+        exitSound('end_of_input');
+    }
+    // C `:5203–5204`.
+    if (game.iflags?.window_inited) {
+        exit_nhwindows(null);
+    }
+    clearlocks(); // C `:5205` — files.c in-memory levelfile analogue
+    nh_terminate(0); // C `:5206` EXIT_SUCCESS (global.h:255)
+    // C `:5208` return — nh_terminate is noreturn on unix (exit).
 }
 
 /**
@@ -914,19 +964,20 @@ function readchar_queue_peek() {
  * NOSAVEONHANGUP off). C order: exiting → in_moveloop=0,
  * nhwindows_hangup, done_hup++, defer while in_moveloop with something
  * worth saving, else end_of_input. Named: nhwindows_hangup (windowport
- * teardown — same class as end_of_input's exit_nhwindows/clearlocks
- * omits). Caller: readchar_core EOF arm (`:5245`).
+ * signal hook — wintty.c, no JS signals). Caller: readchar_core EOF
+ * arm (`:5245`), which awaits this.
  * @param {number} [sig_unused] C signal-handler arg, unused
  */
-export function hangup(sig_unused = 0) {
+export async function hangup(sig_unused = 0) {
     if (!game.program_state) game.program_state = {};
     const ps = game.program_state;
     if (ps.exiting)
         ps.in_moveloop = 0;
+    void sig_unused;
     ps.done_hup = (ps.done_hup | 0) + 1;
     if (ps.in_moveloop && ps.something_worth_saving)
         return;
-    end_of_input();
+    await end_of_input();
 }
 
 /**
@@ -988,7 +1039,7 @@ export async function readchar_core(pos) {
         }
 
         if (sym === EOF) { /* C `:5243–5247` */
-            hangup(0);
+            await hangup(0);
             sym = ESC;
         } else if (sym === ESC /* C `:5248–5260` ALTMETA (unixconf.h:224) */
                    && game.iflags?.altmeta
@@ -4490,7 +4541,7 @@ export async function rhack(key) {
     for (;;) { // C got_prefix_input
     // C cmd.c:3638–3641 — SAFERHANGUP done_hup → end_of_input.
     if (game.program_state?.done_hup) {
-        end_of_input();
+        await end_of_input();
         return;
     }
     // C: cmdq_pop before parse — fireassist swap/retry lives here

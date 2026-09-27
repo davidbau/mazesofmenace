@@ -154,7 +154,7 @@ import {
 import {
     Norep, newsym, impossible, pline, You, flush_screen, nh_delay_output, monsym,
     describe_level, cliparound, map_location, see_nearby_objects, Hallucination,
-    glyph_is_cmap, back_to_glyph, terrain_glyph, remember_shown_glyph,
+    glyph_is_cmap, glyph_to_cmap, back_to_glyph, terrain_glyph, remember_shown_glyph,
 } from './display.js';
 import { buried_ball_to_punishment, fracture_rock } from './dig.js';
 import { obfree } from './shk.js';
@@ -179,6 +179,9 @@ import { makemap_prepost } from './wizcmds.js';
 // imports.mjs --can: Blind and earth_sense are hoisted — cycle-safe.
 import { Blind } from './invent.js';
 import { earth_sense } from './cmd.js';
+// imports.mjs --can mklev.js uhitm.js defsym_explanation: hoisted, cycle-safe.
+// C mkstairs impossible uses defsyms[glyph_to_cmap(glyph)].explanation.
+import { defsym_explanation } from './uhitm.js';
 
 const GOLD_PIECE = objectNames.indexOf('GOLD_PIECE');
 const ROCK = objectNames.indexOf('ROCK');
@@ -654,16 +657,6 @@ function put_lregion_here(x, y, nlx, nly, nhx, nhy, rtype, oneshot, lev) {
             if (mtmp && mtmp.mtrapped)
                 mtmp.mtrapped = 0;
             deltrap(t);
-            /* maketrap records level.traps (what t_at / deltrap use).
-               A parallel ftrap chain still exists for older readers. */
-            let prev = null;
-            for (let cur = game.ftrap; cur; prev = cur, cur = cur.ntrap) {
-                if (cur === t) {
-                    if (prev) prev.ntrap = cur.ntrap;
-                    else game.ftrap = cur.ntrap;
-                    break;
-                }
-            }
         }
         if (bad_location(x, y, nlx, nly, nhx, nhy)
             || is_exclusion_zone(rtype, x, y))
@@ -19949,9 +19942,7 @@ export function mkmap_flood_fill_rm(sx, sy, rmno, lit, anyroom, bounds) {
  * C ref: sp_lev.c map_cleanup (`:328–356`) — after lua/special content,
  * before wallification/flip: strip boulders, destroyable traps and
  * engravings from lava/pool cells, in C arm order.
- * Named omissions: the shared `deltrap` Sokoban PIT/HOLE
- * `maybe_finish_sokoban` sub-arm (trap.c; callee not live in js/ —
- * own row when the corpus reaches it).
+ * `deltrap` runs the Sokoban pit/hole finish (trap.c:6546).
  */
 function map_cleanup() {
     const g = game;
@@ -22506,9 +22497,7 @@ export function splev_create_altar(a, croom = null) {
  * SpLev_Map[x][y]=1, mkstairs(..., force=TRUE). Random: good_stair_loc then
  * mkstairs force=FALSE. Ladder skips mkstairs (no dungeon-end no-op).
  * Named omit: Lua argc table/string parse (loaders pass unpacked dir/coord);
- * splev_create_stair / splev_room_stair still hand-rolled (no SpLev_Map /
- * level.traps deltrap); other des.stair loaders still raw mkstairs without
- * force; deltrap conjoined pits / Sokoban.
+ * other des.stair loaders still raw mkstairs without force.
  */
 export function l_create_stairway(up, rx, ry, croom, using_ladder) {
     const random = rx === -1 && ry === -1;
@@ -22531,23 +22520,7 @@ export function l_create_stairway(up, rx, ry, croom, using_ladder) {
         }
     }
     const trap = t_at(x, y);
-    if (trap) {
-        // C deltrap unlinks gf.ftrap; JS maketrap also keeps level.traps
-        let prev = null;
-        for (let t = game.ftrap; t; t = t.ntrap) {
-            if (t === trap) {
-                if (prev) prev.ntrap = t.ntrap;
-                else game.ftrap = t.ntrap;
-                break;
-            }
-            prev = t;
-        }
-        const traps = game.level?.traps;
-        if (Array.isArray(traps)) {
-            const i = traps.indexOf(trap);
-            if (i >= 0) traps.splice(i, 1);
-        }
-    }
+    if (trap) deltrap(trap);
     if (!game.SpLev_Map) game.SpLev_Map = new Set();
     game.SpLev_Map.add(`${x},${y}`);
 
@@ -22571,17 +22544,8 @@ export function l_create_stairway(up, rx, ry, croom, using_ladder) {
 function splev_create_stair(up) {
     const pos = get_location_random(good_stair_loc);
     const trap = t_at(pos.x, pos.y);
-    if (trap) {
-        let prev = null;
-        for (let t = game.ftrap; t; t = t.ntrap) {
-            if (t === trap) {
-                if (prev) prev.ntrap = t.ntrap;
-                else game.ftrap = t.ntrap;
-                break;
-            }
-            prev = t;
-        }
-    }
+    // C l_create_stairway: deltrap(badtrap) before the stair.
+    if (trap) deltrap(trap);
     mkstairs(pos.x, pos.y, up ? 1 : 0, null);
 }
 
@@ -22761,17 +22725,8 @@ function splev_room_stair(croom, up) {
     const pos = get_location_coord_in_room(croom, DRY, good_stair_loc);
     if (pos.x < 0) return;
     const trap = t_at(pos.x, pos.y);
-    if (trap) {
-        let prev = null;
-        for (let t = game.ftrap; t; t = t.ntrap) {
-            if (t === trap) {
-                if (prev) prev.ntrap = t.ntrap;
-                else game.ftrap = t.ntrap;
-                break;
-            }
-            prev = t;
-        }
-    }
+    // C l_create_stairway: deltrap(badtrap) before the stair.
+    if (trap) deltrap(trap);
     mkstairs(pos.x, pos.y, up ? 1 : 0, croom);
 }
 
@@ -27039,6 +26994,68 @@ function load_pri_filb() {
 }
 
 
+/**
+ * C ref: mklev.c chk_okdoor `:1198–1219` — a door is not ok when the two
+ * cells it faces disagree about solid ground (`typ <= TREE` vs `typ > TREE`).
+ * A non-door is ok. `isok` is evaluated before the neighbor typ read.
+ * @param {number} x
+ * @param {number} y
+ * @returns {boolean}
+ */
+function chk_okdoor(x, y) {
+    const map = game.level;
+    const door = map?.at(x, y);
+    if (door && IS_DOOR(door.typ)) { // C :1200
+        if (door.horizontal) { // C :1201
+            if ((isok(x, y - 1) && map.at(x, y - 1).typ > TREE)
+                && (isok(x, y + 1) && map.at(x, y + 1).typ <= TREE))
+                return false; // C :1202–1204
+            if ((isok(x, y - 1) && map.at(x, y - 1).typ <= TREE)
+                && (isok(x, y + 1) && map.at(x, y + 1).typ > TREE))
+                return false; // C :1205–1207
+        } else { // C :1208
+            if ((isok(x - 1, y) && map.at(x - 1, y).typ > TREE)
+                && (isok(x + 1, y) && map.at(x + 1, y).typ <= TREE))
+                return false; // C :1209–1211
+            if ((isok(x - 1, y) && map.at(x - 1, y).typ <= TREE)
+                && (isok(x + 1, y) && map.at(x + 1, y).typ > TREE))
+                return false; // C :1212–1214
+        }
+        return true; // C :1216
+    }
+    return true; // C :1218
+}
+
+/**
+ * C ref: mklev.c mklev_sanity_check `:1222–1247`.
+ * Returns before any walk unless `iflags.sanity_check` or `debug_fuzzer`.
+ * `impossible` is not awaited (sync level-gen; those flags are off in play).
+ * `%d` stands in for C `%i` — this `impossible` substitutes `%d` and `%s`.
+ */
+function mklev_sanity_check() {
+    const g = game;
+    if (!(g.iflags?.sanity_check || g.iflags?.debug_fuzzer)) // C :1229
+        return;
+
+    for (let y = 0; y < ROWNO; y++) { // C :1232
+        for (let x = 1; x < COLNO; x++) { // C :1233
+            if (!chk_okdoor(x, y)) // C :1234
+                void impossible('levl[%d][%d] door not ok', x | 0, y | 0); // C :1235
+        }
+    }
+
+    let rmno = -1; // C :1227
+    const nroom = g.level?.nroom | 0;
+    for (let i = 0; i < nroom; i++) { // C :1239
+        if (!g.level.rooms[i]?.needjoining) // C :1240–1241
+            continue;
+        if (rmno === -1) // C :1242
+            rmno = g.smeq?.[i];
+        if (rmno !== -1 && g.smeq?.[i] !== rmno) // C :1244
+            void impossible('room %d not connected?', i | 0); // C :1245
+    }
+}
+
 // C ref: mklev.c makelevel()
 async function makelevel() {
     const g = game;
@@ -27138,6 +27155,10 @@ async function makelevel_ordinary() {
     if (!isRogue) {
         makecorridors();
         await make_niches();
+
+        // C mklev.c:1313 — after niches, before the vault. Rogue skipped
+        // this via goto skip0; that branch is the `if (!isRogue)` above.
+        mklev_sanity_check();
 
         // C ref: mklev.c do_vault() — secret treasure vault
         // Outer rnd_rect() is only a null-check; create_vault() calls rnd_rect
@@ -31804,31 +31825,52 @@ function generate_stairs_find_room() {
 }
 
 /**
- * C ref: mklev.c mkstairs — place ordinary up/down stairs within the branch.
- * Cannot place stairs off an end of the dungeon (up on dunlev 1, down on
- * botlevel); des.stair / minefill still call this and rely on the no-op.
- * Packed des.stair passes force=TRUE so the cell becomes ROOM before that
- * return (D-1061). Branch stairs go through place_branch → stairway_add.
+ * C ref: mklev.c mkstairs `:2159–2197`.
+ * `croom` is UNUSED in C. `dunlev` is `u.uz.dlevel`; the down end is
+ * `dunlev == dunlevs_in_dungeon`, which is `Is_botlevel`. Packed des.stair
+ * passes force so the cell becomes ROOM before the dungeon-end return
+ * (D-1061). `impossible` is not awaited (sync level-gen).
+ * `level.upstair` / `dnstair` stay: `stairway_add` does not write them,
+ * and dogmove, flip_level, and lev_json read the mirror.
+ * @param {number} x
+ * @param {number} y
+ * @param {number|boolean} up
+ * @param {object|null|undefined} croom
+ * @param {boolean} [force]
  */
 function mkstairs(x, y, up, croom, force = false) {
     const g = game;
-    if (!x || !isok(x, y)) return;
+    void croom; // C :2163 UNUSED
+    if (!x || !isok(x, y)) { // C :2168
+        void impossible('mkstairs:  bogus stair attempt at <%d,%d>', x | 0, y | 0);
+        return; // C :2170
+    }
     const loc = g.level.at(x, y);
-    // C: if (force) levl[x][y].typ = ROOM; then dungeon-end return
-    if (force && loc) loc.typ = ROOM;
-    // C: if (dunlev(&u.uz) == (up ? 1 : dunlevs_in_dungeon(&u.uz))) return;
-    const dlev = g.u?.uz?.dlevel ?? 1;
-    if (up ? dlev === 1 : Is_botlevel(g.u?.uz)) return;
+    if (force && loc) loc.typ = ROOM; // C :2172
+    const ltyp = loc ? (loc.typ | 0) : 0; // C :2173
+    if (ltyp !== ROOM && ltyp !== CORR && ltyp !== ICE) { // C :2174
+        const glyph = back_to_glyph(x, y); // C :2175
+        const sidx = glyph_to_cmap(glyph); // C :2176
+        void impossible(
+            'mkstairs:  placing stairs %s on %s at <%d,%d>',
+            up ? 'up' : 'down',
+            defsym_explanation(sidx),
+            x | 0,
+            y | 0,
+        ); // C :2178–2179 — does not return
+    }
 
-    const dest = {
+    // C :2188 — dunlev(&u.uz) == (up ? 1 : dunlevs_in_dungeon(&u.uz))
+    const dlev = g.u?.uz?.dlevel ?? 1;
+    if (up ? dlev === 1 : Is_botlevel(g.u?.uz)) return; // C :2189
+
+    const dest = { // C :2191–2192
         dnum: g.u?.uz?.dnum ?? 0,
         dlevel: dlev + (up ? -1 : 1),
     };
-    stairway_add(x, y, !!up, false, dest);
-    if (loc) {
-        loc.typ = STAIRS;
-        loc.ladder = up ? LA_UP : LA_DOWN;
-    }
+    stairway_add(x, y, up ? true : false, false, dest); // C :2193
+    set_levltyp(x, y, STAIRS); // C :2195
+    if (loc) loc.ladder = up ? LA_UP : LA_DOWN; // C :2196
     if (up) g.level.upstair = { x, y };
     else g.level.dnstair = { x, y };
 }
@@ -32417,15 +32459,33 @@ function mkfount(croom) {
     }
 }
 
+/**
+ * C ref: mklev.c mkaltar :2332–2350.
+ * Ordinary rooms only. set_levltyp(ALTAR) runs before the alignment draw;
+ * a refused cell returns and does not call rn2. C altarmask is rm.flags
+ * (rm.h:214), so the assignment replaces that word. JS stores the mask
+ * on altarmask (readers that do not fall back to flags) and on flags.
+ * icedpool is the same word in C; a somexyspace ICE cell must not keep it.
+ */
 function mkaltar(croom) {
-    if (!croom || croom.rtype !== OROOM) return;
-    const pos = { x: 0, y: 0 };
-    if (!find_okay_roompos(croom, pos)) return;
-    const loc = game.level?.at(pos.x, pos.y);
-    if (!loc) return;
-    loc.typ = ALTAR;
+    if (croom.rtype !== OROOM)
+        return;
+
+    const m = { x: 0, y: 0 };
+    if (!find_okay_roompos(croom, m))
+        return;
+
+    /* Put an altar at m.x, m.y */
+    if (!set_levltyp(m.x, m.y, ALTAR))
+        return;
+
+    /* -1 - A_CHAOTIC, 0 - A_NEUTRAL, 1 - A_LAWFUL */
     const al = rn2(A_LAWFUL + 2) - 1;
-    loc.flags = Align2amask(al);
+    const loc = game.level.at(m.x, m.y);
+    const amask = Align2amask(al);
+    loc.altarmask = amask;
+    loc.flags = amask;
+    loc.icedpool = 0;
 }
 
 // C ref: mklev.c mksink :2316-2329 — find_okay_roompos, set_levltyp(SINK),

@@ -252,7 +252,7 @@ import { findit, cvt_sdoor_to_door, show_map_spot } from './detect.js';
 import {
     fall_asleep, losehp, maybe_half_phys, nomul, is_pool,
     is_lava, is_moat, waterbody_name, in_rooms, dissolve_bars, stop_occupation,
-    SURFACE_AT,
+    SURFACE_AT, You_hear,
 } from './hack.js';
 import {
     nonliving, is_demon, nohands, MR_FIRE, MR_COLD, MR_DISINT, MR_ELEC,
@@ -806,12 +806,6 @@ function Deaf() {
     return !!((u.HDeaf | 0) || (u.EDeaf | 0) || u.uroleplay?.deaf || u.Deaf);
 }
 
-/** C ref: pline.c You_hear — acoustics/Deaf; Unaware/Underwater deferred. */
-async function You_hear(line) {
-    if (Deaf()) return;
-    await pline(`You hear ${line}`);
-}
-
 function closed_door(x, y) {
     const loc = game.level?.at?.(x, y);
     if (!loc || !IS_DOOR(loc.typ)) return false;
@@ -1349,7 +1343,7 @@ export async function zap_over_floor(x, y, type, shopdamage, ignoremon, explodin
             } else if (sense_txt) {
                 await pline(`You ${sense_txt}`);
             } else if (hear_txt) {
-                await You_hear(hear_txt);
+                await You_hear('%s', hear_txt); /* C You_hear1 */
             }
             if (picking_at(x, y)) {
                 await stop_occupation();
@@ -2209,7 +2203,8 @@ async function disintegrate_mon(mon, type, fltxt) {
     for (let otmp = mon?.minvent; otmp;) {
         const otmp2 = otmp.nobj;
         if (!oresists_disintegration(otmp, m_amulet)) {
-            extract_from_minvent(mon, otmp, true, true);
+            const ex = extract_from_minvent(mon, otmp, true, true);
+            if (ex && typeof ex.then === 'function') await ex;
             obfree(otmp, null);
         }
         otmp = otmp2;

@@ -36,7 +36,7 @@ import {
     MAGIC_PORTAL, A_NONE,
     EPRI, EMIN, DIR_LEFT, DIR_RIGHT, DIR_LEFT2, DIR_RIGHT2,
     xdir, ydir, xytodir,
-    DISMOUNT_THROWN, DISMOUNT_POLY, W_ARMS, COST_DEGRD,
+    DISMOUNT_THROWN, DISMOUNT_POLY, W_ARMS, COST_DEGRD, OBJ_FREE,
     S_sink, something,
     M_AP_FURNITURE, M_AP_OBJECT, M_AP_MONSTER, M_AP_TYPE,
     COST_CONTENTS,
@@ -53,7 +53,7 @@ import {
     flesh_petrifies, likes_fire, slimeproof, metallivorous, mon_hates_silver,
 } from './monsters.js';
 import { MON_WEP } from './weapon.js';
-import { which_armor } from './worn.js';
+import { which_armor, extract_from_minvent } from './worn.js';
 import { m_cansee, couldsee, cansee, do_clear_area } from './vision.js';
 import { Monnam, noit_Monnam, y_monnam, pmname, Mgender } from './do_name.js';
 import { gettrack } from './track.js';
@@ -906,9 +906,16 @@ async function mdrop_obj(mon, obj, verbosely) {
     const omx = mon.mx, omy = mon.my;
     // C: distant_name(obj, doname) before extract — near observe side-effects
     const obj_name = distant_name(obj, doname);
-    // C: extract_from_minvent(mon, obj, FALSE, TRUE) → core is obj_extract_self
-    obj_extract_self(obj);
-    if (obj.owornmask) obj.owornmask = 0;
+    // C steal.c:825 extract_from_minvent(mon, obj, FALSE, TRUE).
+    // Saddle/shop/flooreffects/post-place update_mon_extrinsics stay
+    // the subset omit of this clone. Untagged where falls back to
+    // obj_extract_self so place_object still sees a free object.
+    const ex = extract_from_minvent(mon, obj, false, true);
+    if (ex && typeof ex.then === 'function') await ex;
+    if (obj.where !== OBJ_FREE) {
+        obj_extract_self(obj);
+        if (obj.owornmask) obj.owornmask = 0;
+    }
     // C steal.c mdrop_obj: verbosely && cansee → pline_mon
     if (verbosely && cansee(omx, omy)) {
         await pline_mon(mon, `${Monnam(mon)} drops ${obj_name}.`);

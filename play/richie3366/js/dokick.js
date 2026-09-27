@@ -49,7 +49,7 @@ import { digests } from './mhitu.js';
 import { surface } from './sit.js';
 import {
     overexertion, losehp, maybe_half_phys, in_rooms, in_town, is_pool,
-    impact_disturbs_zombies,
+    impact_disturbs_zombies, You_hear,
 } from './hack.js';
 import {
     set_wounded_legs, legs_in_no_shape, b_trapped, t_at, water_damage,
@@ -754,7 +754,7 @@ async function kick_nondoor(x, y, avrg_attrib) {
         if (!((loc.looted | 0) & S_LPUDDING) && !rn2(3)
             && !((game.mvitals?.[PM_BLACK_PUDDING]?.mvflags ?? 0) & G_GONE)) {
             if (Blind()) {
-                if (!(u.Deaf || u.HDeaf)) await pline('You hear a gushing sound.');
+                if (!(u.Deaf || u.HDeaf)) await You_hear('a gushing sound.');
             } else {
                 await pline('A black ooze gushes up from the drain!');
             }
@@ -1864,16 +1864,6 @@ export function drop_to(cc, loc, x, y) {
     }
 }
 
-/** C ref: pline.c You_hear — acoustics/Deaf; Unaware/Underwater deferred. */
-async function You_hear(line) {
-    const u = game.u || {};
-    const Deaf = !!((u.HDeaf | 0) || (u.EDeaf | 0)
-        || u.uroleplay?.deaf || u.Deaf);
-    if (Deaf) return;
-    await pline(`You hear ${line}`);
-}
-
-
 /**
  * C ref: dokick.c otransit_msg — visible fall / impact message.
  * Named omit: Soundeffect.
@@ -2157,9 +2147,7 @@ export async function impact_drop(missile, x, y, dlev) {
                     await pline(`"${game.plname || ''}, you are a thief!"`);
                 }
             } else {
-                const Deaf = !!((u.HDeaf | 0) || (u.EDeaf | 0)
-                    || u.uroleplay?.deaf || u.Deaf);
-                if (!Deaf) await pline('You hear a scream, "Thief!"');
+                await You_hear('a scream, "Thief!"');
             }
             hot_pursuit(shkp);
             await angry_guards(false);

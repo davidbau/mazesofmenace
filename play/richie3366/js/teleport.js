@@ -39,7 +39,7 @@ import {
     amorphous, throws_rocks, is_flyer, is_floater, is_swimmer, likes_lava,
     amphibious, monsterNames, mons, passes_walls, is_dlord, is_dprince,
     is_rider, control_teleport, can_teleport, haseyes, G_UNIQ,
-    is_minion, is_vampshifter,
+    is_minion, is_vampshifter, is_covetous,
 } from './monsters.js';
 import {
     newsym, pline, pline_mon, You_feel, see_monsters, canseemon, canspotmon, sensemon,
@@ -77,6 +77,8 @@ import { mon_has_amulet } from './apply.js';
 import { is_home_elemental } from './makemon.js';
 /* dog.js back-edge (same SCC; hoisted function, call-time use only). */
 import { mon_leave } from './dog.js';
+/* monmove.js back-edge (same SCC; hoisted function, call-time use only). */
+import { get_iter_mons } from './monmove.js';
 const AMULET_OF_YENDOR = objectNames.indexOf('AMULET_OF_YENDOR');
 const WAN_TELEPORTATION = objectNames.indexOf('WAN_TELEPORTATION');
 const SPE_TELEPORT_AWAY = objectNames.indexOf('SPE_TELEPORT_AWAY');
@@ -826,39 +828,36 @@ export async function rloc_to(mtmp, x, y, rloc_opts = null) {
 }
 
 /**
- * C ref: teleport.c m_blocks_teleporting — demon lord/prince on level.
+ * C ref: teleport.c m_blocks_teleporting — teleport.c:20–26.
+ * True for a demon lord or prince. Callback for get_iter_mons.
  */
 function m_blocks_teleporting(mtmp) {
-    return !!(mtmp?.data && (is_dlord(mtmp.data) || is_dprince(mtmp.data)));
+    if (is_dlord(mtmp.data) || is_dprince(mtmp.data)) return true;
+    return false;
 }
 
 /**
- * C ref: mon.c get_iter_mons — first living on-map mon where bfunc is true.
- * Local copy to avoid sounds.js import cycle.
- */
-function get_iter_mons_tele(bfunc) {
-    for (const mtmp of game.fmon || []) {
-        if (!mtmp || mtmp.mx == null || mtmp.my == null) continue;
-        if ((mtmp.mhp | 0) < 1) continue;
-        if (bfunc(mtmp)) return mtmp;
-    }
-    return null;
-}
-
-/**
- * C ref: teleport.c noteleport_level — hell court + flags + stasis.
- * Covetous monsters bypass level.flags.noteleport (Vlad on tower1).
+ * C ref: teleport.c noteleport_level — teleport.c:30–47.
+ * Hell court, then level.flags.noteleport (covetous monsters bypass
+ * that flag), then wand-of-stasis. Inhell is dungeon.h's
+ * In_hell(&u.uz). A missing stasis_until or moves is the
+ * zero-initialized C long.
+ * @param {object} mon C struct monst * (NONNULLARG1)
+ * @returns {boolean}
  */
 export function noteleport_level(mon) {
-    // demon court in Gehennom prevent others from teleporting
-    if (Inhell() && mon?.data
-        && !(is_dlord(mon.data) || is_dprince(mon.data))) {
-        if (get_iter_mons_tele(m_blocks_teleporting)) return true;
+    /* demon court in Gehennom prevent others from teleporting */
+    if (Inhell() && !(is_dlord(mon.data) || is_dprince(mon.data))) {
+        if (get_iter_mons(m_blocks_teleporting)) return true;
     }
-    const M3_COVETOUS = 0x001f;
-    const covetous = !!((mon?.data?.mflags3 ?? 0) & M3_COVETOUS);
-    if (game.level?.flags?.noteleport && !covetous) return true;
-    if ((game.level?.flags?.stasis_until ?? -1) >= (game.moves ?? 0)) return true;
+
+    /* natural no-teleport level; covetous monsters can bypass these */
+    if (game.level?.flags?.noteleport && !is_covetous(mon.data)) return true;
+
+    /* wand of stasis prevents teleportation while the effect is active
+       (even for covetous monsters) */
+    if ((game.level?.flags?.stasis_until ?? 0) >= (game.moves ?? 0)) return true;
+
     return false;
 }
 
