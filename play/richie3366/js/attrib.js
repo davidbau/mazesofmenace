@@ -80,6 +80,7 @@ import {
 } from './generated/monsters_data.js';
 import { ART_OGRESMASHER, ART_EYES_OF_THE_OVERWORLD } from './generated/artifacts_data.js';
 import { adj_erinys } from './monsters.js';
+import { uasmon_maxStr } from './polyself.js';
 
 const PM_AMOROUS_DEMON = monsterNames.indexOf('PM_AMOROUS_DEMON');
 
@@ -217,6 +218,8 @@ export function exercise(i, inc_or_dec) {
 }
 
 function attrMax(i) {
+    // Race ceiling only. attrib.h ATTRMAX's Upolyd strength arm is applied
+    // in redist_attr and in exerchk; adjattrib still calls this helper.
     return game.urace?.attrmax?.[i] ?? 18;
 }
 function attrMin(i) {
@@ -603,23 +606,31 @@ export async function gainstr(otmp, incr, givemsg) {
 }
 
 /**
- * C ref: attrib.c redist_attr — newman / poly attr shake.
- * Skips INT/WIS; each other attr gets AMAX += rn2(5)-2 clamped to
- * race ATTRMAX/ATTRMIN, then ABASE scaled by new/old max.
- * encumber_msg is caller's job.
+ * C ref: attrib.c redist_attr `:740–760` — newman attribute shake.
+ * Skips INT and WIS ("Polymorphing doesn't change your mind").
+ * Each other attribute: AMAX += rn2(5)-2, clamp to ATTRMAX/ATTRMIN,
+ * then ABASE = ABASE * new AMAX / old AMAX (C integer division).
+ * ATTRMAX is attrib.h:43–44: polymorphed strength uses uasmon_maxStr().
+ * encumber_msg() is the caller's job (polyself.c:432).
  */
 export function redist_attr() {
+    // C attrib.c:740–760
+    const u = game.u;
     for (let i = 0; i < A_MAX; i++) {
         if (i === A_INT || i === A_WIS) continue;
         const tmp = amax(i) | 0;
-        let nm = tmp + (rn2(5) - 2);
-        if (nm > attrMax(i)) nm = attrMax(i);
-        if (nm < attrMin(i)) nm = attrMin(i);
-        setAmax(i, nm);
-        // C: ABASE(i) = ABASE(i) * AMAX(i) / tmp; trunc toward 0
-        let nb = tmp ? Math.trunc((abase(i) | 0) * nm / tmp) : abase(i) | 0;
-        if (nb < attrMin(i)) nb = attrMin(i);
-        setAbase(i, nb);
+        let mx = (tmp + (rn2(5) - 2)) | 0;
+        // attrib.h:43–44 ATTRMAX — strength while polymorphed is the form's max
+        const hi = (i === A_STR && Upolyd(u)) ? (uasmon_maxStr() | 0) : (attrMax(i) | 0);
+        const lo = attrMin(i) | 0;
+        if (mx > hi) mx = hi;
+        if (mx < lo) mx = lo;
+        setAmax(i, mx);
+        // ABASE(i) = ABASE(i) * AMAX(i) / tmp; toward 0. tmp is the old peak.
+        let nb = tmp ? Math.trunc(((abase(i) | 0) * mx) / tmp) : (abase(i) | 0);
+        // ABASE(i) > ATTRMAX(i) is impossible
+        if (nb < lo) nb = lo;
+        setAbase(i, nb | 0);
     }
 }
 
@@ -977,11 +988,15 @@ export async function adjabil(oldlevel, newlevel) {
             else u[prop] = prev | mask;
             // C: if (!(*(abil->ability) & INTRINSIC & ~mask)) You_feel(gainstr)
             if (!((u[prop] || 0) & INTRINSIC & ~mask) && entry.gainstr) {
-                await pline(`You feel ${entry.gainstr}!`);
+                await You_feel('%s!', entry.gainstr);
             }
         } else if (oldlevel >= entry.ulevel && newlevel < entry.ulevel) {
             u[prop] = prev & ~mask;
-            // losestr pline deferred
+            // C attrib.c:1056–1060 — losestr, else "less %s!"
+            if (!((u[prop] || 0) & INTRINSIC)) {
+                if (entry.losestr) await You_feel('%s!', entry.losestr);
+                else if (entry.gainstr) await You_feel('less %s!', entry.gainstr);
+            }
         }
         // postadjabil deferred
     }

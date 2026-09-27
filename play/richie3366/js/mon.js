@@ -4,6 +4,7 @@
 //         mon_allowflags (partial).
 
 import { game } from './gstate.js';
+import { quest_info } from './questpgr.js';
 import { rn2, rnd, d } from './rng.js';
 import {
     dochugw, m_everyturn_effect, monflee, can_hide_under_obj, can_fog,
@@ -1261,12 +1262,15 @@ export function restartcham() {
  * when the hero angers one. Watch Halt (is_watch / MS_ARREST) +
  * angry_guards; humanoid gasp/exclaim/flee/anger; same-mlet growl+flee.
  * Caller setmangry `:4317` when !mon_moving. mndx not mons() identity
- * for `mons[quest_info(MS_LEADER)]` / `mons[gu.urole.guardnum]`.
+ * for `mons[quest_info(MS_LEADER)]`. The guardian test stays
+ * `gu.urole.guardnum` (C does not call quest_info there).
  * Named: tame tameness reduce (qst_guardians_respond ported D-2494).
  */
+const MS_LEADER = 36; /* monflag.h */
+const MS_GUARDIAN = 38;
+
 async function peacefuls_respond(mtmp) {
     const mndx = mtmp.data?.mndx ?? mtmp.mnum ?? NON_PM;
-    const ldrnum = game.urole?.ldrnum | 0;
     const guardnum = game.urole?.guardnum | 0;
 
     for (const mon of game.fmon || []) {
@@ -1305,7 +1309,7 @@ async function peacefuls_respond(mtmp) {
                        quest leader will only get angry if hero attacks
                        own quest guardians */
                     if (mon.isshk || mon.ispriest
-                        || ((mon.data?.mndx | 0) === ldrnum
+                        || ((mon.data?.mndx | 0) === quest_info(MS_LEADER)
                             && (mtmp.data?.mndx ?? mtmp.mnum ?? NON_PM) !== guardnum)) {
                         if (exclaimed) {
                             await pline_mon(mon, `${buf} then shrugs.`);
@@ -1381,12 +1385,11 @@ function Hallucination() {
  * the quest leader angers the peaceful guardians. C order: fmon sweep
  * (DEADMONSTER skip; data match + mpeaceful → clear, canseemon → got_mad),
  * then the Hallucination-gated pline_The with makeplural past one.
- * `&mons[quest_info(MS_GUARDIAN)]` is the mndx-vs-guardnum compare
- * (peacefuls_respond `:1229` urole idiom, no read.js clone);
- * `pmnames[NEUTRAL]` per mon.js:461.
+ * `&mons[quest_info(MS_GUARDIAN)]` is the mndx compare against that
+ * return; `pmnames[NEUTRAL]` per mon.js:461.
  */
 async function qst_guardians_respond() {
-    const guardnum = game.urole?.guardnum | 0;
+    const guardnum = quest_info(MS_GUARDIAN);
     let got_mad = 0;
 
     /* guardians will sense this attack even if they can't see it */
@@ -1461,8 +1464,7 @@ export async function setmangry(mtmp, via_attack) {
     }
 
     /* attacking your own quest leader will anger his or her guardians */
-    if (game.urole != null
-        && (mtmp.data?.mndx ?? mtmp.mnum ?? NON_PM) === (game.urole.ldrnum | 0)) {
+    if ((mtmp.data?.mndx ?? mtmp.mnum ?? NON_PM) === quest_info(MS_LEADER)) {
         await qst_guardians_respond();
     }
 

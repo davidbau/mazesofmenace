@@ -10,6 +10,7 @@
 // D-1639.
 
 import { game } from './gstate.js';
+import { mungspaces } from './hacklib.js';
 import { nhgetch } from './input.js';
 import {
     flush_screen, flush_topl_more, pline, mark_topline_prompt, clear_win_stop,
@@ -1449,7 +1450,7 @@ export async function get_ext_cmd() {
         hooked_getlin_end();
         game._pending_message = '';
     }
-    const name = st.buf.trim().toLowerCase();
+    const name = mungspaces(st.buf).toLowerCase(); // C getline.c:314
     if (!name) return -1;
     /* C tty_get_ext_cmd: extcmds_match(buf, ECM_IGNOREAC|ECM_EXACTMATCH).
        INTERNALCMD (#altdip) is skipped — unknown even with a runner. */
@@ -1501,10 +1502,8 @@ export async function doextcmd() {
     return retval;
 }
 
-/** C ref: hacklib.c mungspaces — collapse runs of whitespace to one space. */
-export function mungspaces(s) {
-    return String(s ?? '').replace(/\s+/g, ' ').trim();
-}
+/** C hacklib.c mungspaces — body is `js/hacklib.js`; re-exported for callers. */
+export { mungspaces };
 
 /**
  * C ref: cmd.c paranoid_ynq — when be_paranoid, getlin must answer "yes"

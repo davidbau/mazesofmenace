@@ -122,7 +122,7 @@ import { In_tutorial } from './dungeon.js';
 import { ATR_INVERSE } from './terminal.js';
 import { dopay, block_entry, block_door } from './shk.js';
 import { dotalk } from './sounds.js';
-import { getpos, getpos_menu, gather_locs_interesting, auto_describe_text } from './getpos.js';
+import { getpos, getpos_menu, gather_locs_interesting, auto_describe_text, auto_describe } from './getpos.js';
 import {
     nomul, moverock, boulder_at, swim_move_danger, trapmove,
     impaired_movement, is_pool, is_lava, carrying_too_much,
@@ -2349,19 +2349,17 @@ function act_on_act_here(act) {
 }
 
 /**
- * C ref: cmd.c doclicklook `:5381–5392` (staticfn → module-local) — look at
- * gc.clicklook_cc. Named: auto_describe (getpos.c:640) is not yet ported —
- * lazy import from its 1:1 home, resolves when the callee lands.
+ * C ref: cmd.c doclicklook `:5380–5390` (staticfn → module-local) — look at
+ * gc.clicklook_cc. auto_describe is getpos.c:640 (js/getpos.js).
  * @returns {Promise<number>} ECMD_*
  */
 async function doclicklook() {
     const cc = game.gc?.clicklook_cc;
-    if (!cc || !isok(cc.x | 0, cc.y | 0)) return ECMD_OK; // `:5384–5385`
+    if (!cc || !isok(cc.x | 0, cc.y | 0)) return ECMD_OK; // `:5383–5384`
     if (!game.context) game.context = {};
-    game.context.move = 0; // `:5387` svc.context.move = FALSE
-    const { auto_describe } = await import('./getpos.js'); // `:5388`
-    await auto_describe(cc.x | 0, cc.y | 0);
-    return ECMD_OK; // `:5390`
+    game.context.move = 0; // `:5386` svc.context.move = FALSE
+    await auto_describe(cc.x | 0, cc.y | 0); // `:5387`
+    return ECMD_OK; // `:5389`
 }
 
 /**
@@ -4353,8 +4351,8 @@ export async function get_count(
                 backspaced = false;
             }
             // C cmd.c get_count: custompline(SUPPRESS_HISTORY, "%s", qbuf)
-            // then mark_synch — full vpline (update_topl + prevmsg) minus
-            // dumplog, so a later Norep compares against the echo.
+            // then mark_synch. wincap2 has WC2_SUPPRESS_HIST, so putmesg
+            // ORs ATR_NOHISTORY (show_topl). prevmsg is still the echo.
             await custompline(SUPPRESS_HISTORY, qbuf);
             await flush_screen(1);
             game.nhDisplay?.setCursor?.(qbuf.length, 0);

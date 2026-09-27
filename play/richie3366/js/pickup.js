@@ -208,16 +208,6 @@ function thesimpleoname(obj) {
 }
 
 /**
- * C ref: objnam.c yname + shk.c shk_your — carried → "your ", else "the ".
- * Named omissions: shk/mon ownership prefixes; artifact pname skip.
- */
-function yname(obj) {
-    const carried = obj?.where === OBJ_INVENT
-        || (game.invent || []).includes(obj);
-    return `${carried ? 'your' : 'the'} ${cxname(obj)}`;
-}
-
-/**
  * C ref: objnam.c ysimple_name — shk_your + minimal_xname.
  * Named omissions: full minimal_xname / shopkeeper ownership.
  */
@@ -259,11 +249,32 @@ function get_obj_location_quantum(obj) {
     return null;
 }
 
-/** C ref: pickup.c reset_justpicked — clear pickup_prev on invent chain. */
+/**
+ * C ref: pickup.c reset_justpicked `:616–632`.
+ * extern.h: gi.invent may be null; a null list clears nothing.
+ * The same-spot enhancement in the C comment is not implemented:
+ * C always clears. The hero pack is an array (nobj not rebuilt);
+ * a chain head still walks nobj.
+ */
 export function reset_justpicked(olist) {
-    const list = olist || game.invent || [];
-    for (const otmp of list) {
-        if (otmp) otmp.pickup_prev = 0;
+    /*
+     * C `:619–628` — possible enhancement, not this function: do not
+     * reset when the hero is still on the spot of the most recent
+     * pickup. That would be right for autopickup immediately followed
+     * by manual pickup, and probably for a newly arrived missile
+     * after some time. Other activity is murkier. Taking anything
+     * out of a container ought to count as having moved.
+     */
+    /* C `:631–632` — for (otmp = olist; otmp; otmp = otmp->nobj) */
+    if (Array.isArray(olist)) {
+        for (let i = 0; i < olist.length; i++) {
+            const otmp = olist[i];
+            if (otmp) otmp.pickup_prev = 0;
+        }
+        return;
+    }
+    for (let otmp = olist; otmp; otmp = otmp.nobj) {
+        otmp.pickup_prev = 0;
     }
 }
 
@@ -4594,8 +4605,8 @@ function check_capacity(str) {
 
 /**
  * C ref: pickup.c able_to_loot — tip/loot reachability gates.
- * Named omissions: usteed rider_cant_reach; Underwater tip carve-out;
- * hliquid wording.
+ * Named omissions: usteed rider_cant_reach; Underwater tip carve-out
+ * (`looting || !Underwater`). The pool/lava noun is hliquid.
  * @param {number} x
  * @param {number} y
  * @param {boolean} looting true=loot, false=tip
@@ -4610,7 +4621,7 @@ async function able_to_loot(x, y, looting) {
     if ((is_pool(x, y) && looting) || is_lava(x, y)) {
         await pline(
             `You cannot ${verb} things that are deep in the ${
-                is_lava(x, y) ? 'lava' : 'water'
+                hliquid(is_lava(x, y) ? 'lava' : 'water')
             }.`,
         );
         return false;

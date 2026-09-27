@@ -30,7 +30,7 @@ import {
     pmnames, MALE, FEMALE, NEUTRAL, NON_PM, NUMMONS, LOW_PM, NUM_MGENDERS,
 } from './monsters.js';
 import { BOGUSMON_BUF } from './generated/bogusmon_data.js';
-import { upstart, highc, ordin, strstri } from './hacklib.js';
+import { upstart, highc, ordin, strstri, mungspaces } from './hacklib.js';
 import { genders } from './roles.js';
 import {
     PM_SAMURAI, PM_CLERIC, PM_ARCHEOLOGIST, PM_LICHEN, PM_ACID_BLOB, PM_LONG_WORM_TAIL,
@@ -58,6 +58,7 @@ import {
     MAX_ERODE,
     GLIB,
     FM_FMON,
+    FIRE_RES,
 } from './const.js';
 import { currency } from './invent.js';
 
@@ -182,6 +183,7 @@ const MAT_IRON = 11;
 const MAT_COPPER = 13;
 const MAT_PLASTIC = 18;
 const MAT_GLASS = 19;
+const WAN_FIRE = objectNames.indexOf('WAN_FIRE');
 
 /** C ref: objclass.h is_rustprone — iron material. */
 function is_rustprone_obj(obj) {
@@ -208,12 +210,27 @@ function peek_burn_object(obj) {
     return 0;
 }
 
-/** C ref: mkobj.c is_flammable — local copy (objnam↔mkobj cycle). */
+/**
+ * C ref: mkobj.c is_flammable `:2270–2286` — same body as `js/mkobj.js`.
+ * A static import of that export TDZ'd `objnam.js` `_body_part` (polyself
+ * eval order). This copy is the `objnam.c` caller.
+ */
 function is_flammable_obj(obj) {
-    const n = objectNames[obj.otyp];
-    if (n === 'TALLOW_CANDLE' || n === 'WAX_CANDLE' || n === 'WAN_FIRE') return false;
-    const mat = game.objects?.[obj.otyp]?.oc_material ?? 0;
-    return (mat <= MAT_WOOD && mat !== MAT_LIQUID) || mat === MAT_PLASTIC;
+    const otyp = obj.otyp | 0;
+    const oc = game.objects?.[otyp];
+    const omat = oc?.oc_material | 0;
+
+    /* Candles can be burned, but they're not flammable in the sense that
+     * they can't get fire damage and it makes no sense for them to be
+     * fireproofed.
+     */
+    if (Is_candle_obj(obj))
+        return false;
+
+    if ((oc?.oc_oprop | 0) === FIRE_RES || otyp === WAN_FIRE)
+        return false;
+
+    return !!((omat <= MAT_WOOD && omat !== MAT_LIQUID) || omat === MAT_PLASTIC);
 }
 
 /** C ref: mkobj.c is_rottable — local copy. */
@@ -1189,13 +1206,6 @@ function get_obj_loc_for_distant(obj) {
 }
 
 /**
- * C ref: hacklib.c mungspaces — collapse runs of whitespace; drop trailing.
- */
-function mungspaces_objnam(s) {
-    return String(s ?? '').replace(/\s+/g, ' ').trim();
-}
-
-/**
  * Late-bound `do_name.js` `obj_pmname`. This file cannot import do_name.js:
  * do_name already imports `xname`, and a static back-edge TDZ-faults
  * `let _shk_owns_prefix` (D-2491). The body lives only in do_name.js.
@@ -1214,12 +1224,10 @@ export function obj_pmname_corpse(obj) {
  * C ref: objnam.c corpse_xname `:1824–1920` — corpse/glob name with
  * CXN_SINGULAR / NO_PFX / PFX_THE / ARTICLE / NOCORPSE (D-1234, D-1255).
  * Buffer arms by design: C nextobuf/PREFIX + eos/Sprintf + releaseobuf
- * are plain JS strings (D-2483 idiom). `s_suffix`/`type_is_pname`/
- * `mungspaces` use the file-local copies (`s_suffix_objnam`,
- * `type_is_pname_objnam`, `mungspaces_objnam` — bodies identical to the
- * live do_name.js/getline.js exports; local to avoid a do_name/getline
- * cycle: a static edge reorders cycle eval past shk.js:832 and TDZ-faults
- * `let _shk_owns_prefix` at cohort startup — reverted, this iteration).
+ * are plain JS strings (D-2483 idiom). `mungspaces` is the hacklib.js
+ * export. `s_suffix`/`type_is_pname` stay file-local (`s_suffix_objnam`,
+ * `type_is_pname_objnam`) to avoid a do_name cycle: a static edge reorders
+ * cycle eval past shk.js:832 and TDZ-faults `let _shk_owns_prefix`.
  */
 export function corpse_xname(obj, adjective, cxn_flags) {
     // C :1830–1841: omndx + CXN flag decode (comments verbatim in C).
@@ -1282,7 +1290,7 @@ export function corpse_xname(obj, adjective, cxn_flags) {
         // C :1879: "Medusa's cursed partly eaten corpse"
         nambuf += `${mnam} ${adjective}`;
         // C :1884: squeeze a trailing-space adjective
-        nambuf = mungspaces_objnam(nambuf);
+        nambuf = mungspaces(nambuf);
         // C :1887: doname() count in the adjective → no article;
         // C digit() is ASCII '0'–'9' (hacklib.c:62–65).
         const c0 = String(adjective).charCodeAt(0);
@@ -1290,7 +1298,7 @@ export function corpse_xname(obj, adjective, cxn_flags) {
     } else {
         // C :1881: "cursed partly eaten troll corpse"
         nambuf += `${adjective} ${mnam}`;
-        nambuf = mungspaces_objnam(nambuf);
+        nambuf = mungspaces(nambuf);
         const c0 = String(adjective).charCodeAt(0);
         if (c0 >= 48 && c0 <= 57) any_prefix = false;
     }
@@ -2761,14 +2769,28 @@ export function shk_your(obj) {
 }
 
 /**
- * C ref: objnam.c yname — cxname plus shk_your unless carried pname
- * artifact before ART_ORB_OF_DETECTION.
+ * C ref: objnam.c yname `:2359–2374` — "[your ]cxname", "Foobar's cxname",
+ * or "the cxname". Leave off "your" for a carried proper-name artifact
+ * whose id is below ART_ORB_OF_DETECTION; still prepend for anything else,
+ * including unique objects and "foo of bar" quest artifacts.
+ *
+ * C does `shk_your(nextobuf(), obj)` then `strncat` of cxname, capped at
+ * BUFSZ-1. There is no obuf ring (releaseobuf, this file): `shk_your`
+ * returns the prefix string, and the cap is the strncat bound. A prefix
+ * already at BUFSZ-1 leaves no room (`space_left <= 0` appends nothing);
+ * C's size_t conversion of a negative count is not reproduced.
  */
 export function yname(obj) {
-    const s = cxname(obj);
+    let s = cxname(obj);
+
+    /* leave off "your" for most of your artifacts, but prepend
+       "your" for unique objects and "foo of bar" quest artifacts */
     if (!carried_objnam(obj) || !obj_is_pname(obj)
         || (obj.oartifact | 0) >= ART_ORB_OF_DETECTION) {
-        return `${shk_your(obj)}${s}`;
+        const outbuf = shk_your(obj);
+        const space_left = (BUFSZ - 1) - outbuf.length;
+        const n = space_left > 0 ? space_left : 0;
+        s = outbuf + s.slice(0, n);
     }
     return s;
 }

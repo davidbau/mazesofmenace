@@ -55,7 +55,7 @@ import { maybe_unhide_at } from './monmove.js';
 import { hard_helmet } from './do_wear.js';
 import { welded, setuwep, setuswapwep, setuqwep } from './wield.js';
 import { exercise } from './attrib.js';
-import { xname, Yname2, body_part_latebound, safe_typename } from './objnam.js';
+import { xname, Yname2, yname, body_part_latebound, safe_typename } from './objnam.js';
 import { objectNames } from './generated/objects_data.js';
 
 /* C otyp ids (dig.js / dbridge.js idiom: indexOf on objectNames). */
@@ -173,7 +173,7 @@ async function litter() {
         if (otmp === uball) continue;
         if (rnd(capacity) > (otmp.owt | 0)) continue;
         if (!canletgo_silent(otmp)) continue;
-        const yn = xname(otmp);
+        const yn = yname(otmp);
         const plural = (otmp.quan | 0) !== 1;
         await pline(
             `You drop ${yn} and ${plural ? 'they' : 'it'} `

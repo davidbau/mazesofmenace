@@ -198,6 +198,7 @@ import { livelog_printf } from './pline.js';
 import { uhis } from './roles.js';
 import { hard_helmet } from './do_wear.js';
 import { strange_feeling } from './detect.js';
+import { In_W_tower } from './dungeon.js';
 
 const POT_OIL = objectNames.indexOf('POT_OIL');
 const OIL_LAMP = objectNames.indexOf('OIL_LAMP');
@@ -1749,27 +1750,6 @@ function Lassigned(z) {
 function Is_wiz1_level(lev) {
     const w = game.wiz1_level;
     return Lassigned(w) && on_level(lev, w);
-}
-
-/** C dungeon.c On_W_tower_level — wizard1/2/3 specials. */
-function On_W_tower_level(lev) {
-    for (const key of ['wiz1_level', 'wiz2_level', 'wiz3_level']) {
-        const w = game[key];
-        if (Lassigned(w) && on_level(lev, w)) return true;
-    }
-    return false;
-}
-
-/**
- * C dungeon.c In_W_tower — inside the Wizard's Tower rectangle (dndest).
- * Named omit: impossible() when nlx==0.
- */
-function In_W_tower(x, y, lev) {
-    if (!On_W_tower_level(lev)) return false;
-    const d = game.dndest;
-    if (!d || !(d.nlx | 0)) return false;
-    return (x | 0) >= (d.nlx | 0) && (x | 0) <= (d.nhx | 0)
-        && (y | 0) >= (d.nly | 0) && (y | 0) <= (d.nhy | 0);
 }
 
 /**

@@ -91,7 +91,7 @@ import {
     is_rider,
 } from './monsters.js';
 import { an, makeplural } from './objnam.js';
-import { upstart, ordin } from './hacklib.js';
+import { upstart, ordin, strncmpi } from './hacklib.js';
 import { align_str, rank_of, rank_to_xlev } from './roles.js';
 import { x_monnam, a_monnam } from './do_name.js';
 import { find_mac } from './mhitm.js';
@@ -800,9 +800,6 @@ function pmname_neutral(mndx) {
     return pmnames[mndx]?.[NEUTRAL] ?? 'monster';
 }
 
-function strncmpi(a, b, n) {
-    return a.slice(0, n).toLowerCase() === b.slice(0, n).toLowerCase();
-}
 
 function isDigit(ch) {
     return ch >= '0' && ch <= '9';
@@ -1166,11 +1163,10 @@ export async function list_vanquished(defquery, ask) {
                         buf = `${String(nkilled).padStart(3, ' ')} ${makeplural(name)}`; /* `%3d %s` */
                 }
                 /* number of leading spaces to match 3 digit prefix
-                   (`:2910–2913`; the strncmpi clone returns boolean-true on
-                   match, so `? 0 :` keeps C's `!strncmpi ? 0 :` sense) */
-                let pfx = strncmpi(buf, 'the ', 4) ? 0
-                    : strncmpi(buf, 'an ', 3) ? 1
-                        : strncmpi(buf, 'a ', 2) ? 2
+                   (`:2910–2913`; `!strncmpi` is 0 from hacklib strncmpi) */
+                let pfx = strncmpi(buf, 'the ', 4) === 0 ? 0
+                    : strncmpi(buf, 'an ', 3) === 0 ? 1
+                        : strncmpi(buf, 'a ', 2) === 0 ? 2
                             : !isDigit(buf[2] || '') ? 4 : 0;
                 if (class_header) /* `:2914–2915` */
                     ++pfx;

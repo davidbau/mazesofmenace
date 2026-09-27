@@ -9,13 +9,13 @@ import {
     flush_screen, pline, newsym, mark_topline_seen,
     canseemon, canspotmon, nh_delay_output, tmp_at, obj_glyph, verbalize,
     glyph_at, glyph_is_monster, glyph_is_invisible_id, map_invisible,
-    You, Your, impossible,
+    You, Your, You_feel, impossible,
 } from './display.js';
 import { cansee, vision_recalc } from './vision.js';
 import { rn2, rnd, rn1, d } from './rng.js';
 import {
     place_object, splitobj, stackobj, delobj, is_crackable, sobj_at,
-    weight, unsplitobj,
+    weight, unsplitobj, is_flammable,
 } from './mkobj.js';
 import {
     losehp, maybe_half_phys, nomul, impact_disturbs_zombies, finish_maybe_wail,
@@ -121,6 +121,8 @@ import {
     check_shop_obj, costly_spot, shop_keeper, stolen_value, inside_shop,
     make_angry_shk, obfree,
 } from './shk.js';
+// imports.mjs --can js/dothrow.js js/mthrowu.js miss: hoisted, cycle-safe.
+import { miss } from './mthrowu.js';
 
 const GLASS = 19;
 const POT_WATER = objectNames.indexOf('POT_WATER');
@@ -340,30 +342,25 @@ function befriend_with_obj(ptr, obj) {
 }
 
 /**
- * C ref: zap.c miss — "The <missile> misses <mon>."
- * Local copy for tmiss (mthrowu miss is not exported).
- */
-async function miss_missile(str, mtmp) {
-    const bx = game.bhitpos?.x ?? mtmp.mx;
-    const by = game.bhitpos?.y ?? mtmp.my;
-    const whom = ((cansee(bx, by) || canspotmon(mtmp))
-        && game.flags?.verbose !== false)
-        ? mon_nam(mtmp) : 'it';
-    await pline(`${The(str)} ${vtense(str, 'miss')} ${whom}.`);
-}
-
-/**
- * C ref: dothrow.c tmiss :1951-1969 — miss message + maybe_wakeup
- * `!rn2(3)` → wakeup; missile via mshot_xname (objnam.c:1090-1102).
+ * C ref: dothrow.c tmiss `:1951–1967`.
+ * Unseen or non-monster disguise: "The <missile> misses." via otense.
+ * Otherwise zap.c miss (The + vtense "miss" + mon_nam or "it").
+ * maybe_wakeup draws rn2(3) and wakes on 0.
+ * @param {object} obj
+ * @param {object} mon
+ * @param {boolean} maybe_wakeup
  */
 async function tmiss(obj, mon, maybe_wakeup) {
-    const missile = mshot_xname(obj); // C dothrow.c:1953
+    // C dothrow.c:1953
+    const missile = mshot_xname(obj);
+    // C :1959–1963 — disguise that is not M_AP_MONSTER, or !canseemon
     if (!canseemon(mon)
         || (M_AP_TYPE(mon) && M_AP_TYPE(mon) !== M_AP_MONSTER)) {
         await pline(`${The(missile)} ${otense(obj, 'miss')}.`);
     } else {
-        await miss_missile(missile, mon);
+        await miss(missile, mon); // zap.c:3571
     }
+    // C :1964–1965 — short-circuit: rn2 only when maybe_wakeup
     if (maybe_wakeup && !rn2(3)) await wakeup(mon, true);
 }
 
@@ -2548,7 +2545,7 @@ export async function throwit(obj, wep_mask = 0, twoweap = false, oldslot = null
         const { WT_SPLASH_THRESHOLD } = await import('./const.js');
         if (!Deaf() && !game.u?.Underwater
             && (is_pool(x, y)
-                || (is_lava(x, y) /* && !is_flammable deferred */))) {
+                || (is_lava(x, y) && !is_flammable(obj)))) {
             await pline(
                 (weight(obj) > WT_SPLASH_THRESHOLD) ? 'Splash!' : 'Plop!',
             );
@@ -2986,7 +2983,7 @@ function closed_door_hurtle(x, y) {
 export async function hurtle_step(rangeArg, x, y) {
     const u = game.u || {};
     if (!isok(x, y)) {
-        await pline('You feel the spirits holding you back.');
+        await You_feel('the spirits holding you back.');
         return false;
     } else if (!(await in_out_region(x, y))) {
         return false;
@@ -3097,7 +3094,7 @@ export async function hurtle_step(rangeArg, x, y) {
 export async function hurtle(dx, dy, range, verbose) {
     const u = game.u || {};
     if (u.Punished && u.uball && u.uball.where !== OBJ_INVENT) {
-        await pline('You feel a tug from the iron ball.');
+        await You_feel('a tug from the iron ball.');
         nomul(0);
         return;
     }

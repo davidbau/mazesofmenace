@@ -2305,10 +2305,12 @@ export async function crawl_destination(x, y) {
  *
  * Branch envelope this iteration: TT_BEARTRAP full (no steed); TT_WEB
  * decrement+msgs; TT_PIT adjacent-pit continue + climb_pit (trap.c);
- * TT_LAVA /
+ * TT_LAVA (hero and usteed edge lines call hliquid; verbose steed
+ * Norep still the hero sentence) /
  * TT_INFLOOR / TT_BURIEDBALL (radius-1 buried_ball free move via live
  * dig.js export + wriggle_free buried_ball_to_punishment, C `:1633–1647` /
- * `:1677–1678`); steed / Sting / surface() culprit text still deferred.
+ * `:1677–1678`); other steed Noreps / Sting / surface() culprit text
+ * still deferred.
  *
  * @param {number} x destination x
  * @param {number} y destination y
@@ -2321,6 +2323,11 @@ export async function trapmove(x, y, desttrap) {
 
     const verbose = game.flags?.verbose !== false;
     let anchored = false;
+    /* C hack.c:1556 — y_monnam before the switch. The only caller is
+       domove when u.utrap is set, so the !utrap sanity return above
+       does not skip this on the live path. Other utraptype messages
+       still print the hero sentence. */
+    const steedname = u.usteed ? y_monnam(u.usteed) : '';
 
     switch (u.utraptype | 0) {
     case TT_BEARTRAP: {
@@ -2366,7 +2373,16 @@ export async function trapmove(x, y, desttrap) {
             u.utrap = (u.utrap | 0) - 1;
             if (((u.utrap | 0) & 0xff) === 0) {
                 u.utrap = 0;
-                await pline('You pull yourself to the edge of the lava.');
+                /* C hack.c:1621–1626 */
+                if (u.usteed) {
+                    await pline(
+                        `You lead ${steedname} to the edge of the ${hliquid('lava')}.`,
+                    );
+                } else {
+                    await pline(
+                        `You pull yourself to the edge of the ${hliquid('lava')}.`,
+                    );
+                }
             }
         }
         u.umoved = true;

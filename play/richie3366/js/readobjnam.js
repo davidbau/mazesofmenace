@@ -6,7 +6,7 @@
 
 import { game } from './gstate.js';
 import { rn2, rnd } from './rng.js';
-import { str_start_is, strstri, strsubst } from './hacklib.js';
+import { str_start_is, strstri, strsubst, mungspaces, strncmpi } from './hacklib.js';
 import { ALT_SPELLINGS } from './generated/alt_spellings.js';
 import { LAST_REAL_GEM } from './generated/objects_data.js';
 import {
@@ -139,10 +139,6 @@ function Luck() {
     return (u.uluck | 0) + (u.moreluck | 0);
 }
 
-function mungspaces(s) {
-    return String(s || '').trim().replace(/\s+/g, ' ');
-}
-
 /**
  * C `readobjnam` takes `char *bp` and mutates that buffer.
  * `d.bp` is a cursor into it (`d->bp += n` does not erase the prefix).
@@ -181,18 +177,18 @@ function publishWishbuf(missOut, d, munged) {
     if (text != null) missOut.wishbuf = text;
 }
 
-/** C objnam.c BSTRCMPI(bp, eos(bp)-n, suff) — case-insensitive suffix. */
+/** C objnam.c BSTRCMPI / strcmpi on the suffix — true when it matches. */
 function bstrcmpi_end(bp, suff) {
     const s = String(bp || '');
     const t = String(suff);
     if (s.length < t.length) return false;
-    return s.slice(-t.length).toLowerCase() === t.toLowerCase();
+    return strncmpi(s.slice(s.length - t.length), t, t.length) === 0;
 }
 
+/** C strncmpi(bp, pref, strlen(pref)) == 0 — prefix, true on match. */
 function strncmpi_start(bp, pref) {
-    const s = String(bp || '');
     const t = String(pref);
-    return s.slice(0, t.length).toLowerCase() === t.toLowerCase();
+    return strncmpi(bp, t, t.length) === 0;
 }
 
 /**

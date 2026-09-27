@@ -28,7 +28,7 @@
 
 import { game } from './gstate.js';
 import { rn2, rn1, d, rnd } from './rng.js';
-import { pline, You_feel, show_glyph_cell, newsym } from './display.js';
+import { pline, You_feel, show_glyph_cell, newsym, impossible } from './display.js';
 import { CLR_GRAY, CLR_BRIGHT_GREEN } from './terminal.js';
 import {
     isok, ACCESSIBLE, COLNO, ROWNO, u_at, TIMEOUT, REG_HERO_INSIDE,
@@ -49,7 +49,7 @@ import {
 import { objectNames } from './objects.js';
 import { makeplural } from './objnam.js';
 import { body_part } from './polyself.js';
-import { Monnam } from './do_name.js';
+import { Monnam, m_monnam } from './do_name.js';
 import { monstseesu, monstunseesu } from './mondata.js';
 import { resists_poison } from './zap.js';
 import { dist2 } from './hacklib.js';
@@ -62,10 +62,12 @@ const MAX_CLOUD_SIZE = 150;
 const INSIDE_GAS_CLOUD = 1; // JS inside_f tag (C callbacks[] uses 0)
 const EXPIRE_GAS_CLOUD = 1; // C region.c callbacks[] index
 const NO_CALLBACK = -1; // C region.c
+const MONST_INC = 5; // C region.h:55 — grow monsters[] by this many slots
 const AT_BREA = 12; // C monattk.h
 const AD_DRST = 7;
 const AD_RBRE = 242;
 const MS_SILENT = 0;
+const PM_LONG_WORM = monsterNames.indexOf('PM_LONG_WORM');
 const PM_FOG_CLOUD = monsterNames.indexOf('PM_FOG_CLOUD');
 const PM_HEZROU = monsterNames.indexOf('PM_HEZROU');
 const PM_VROCK = monsterNames.indexOf('PM_VROCK');
@@ -410,24 +412,79 @@ function m_at_xy(x, y) {
     return null;
 }
 
-/** C ref: region.c add_mon_to_reg / mon_in_region / remove_mon_from_reg */
+/**
+ * C ref: region.c:209–218 mon_in_region — scan the live prefix only.
+ * `mons()` is a fresh object, so the long-worm test in add_mon_to_reg
+ * compares `data.mndx` (do_name.c idiom), not pointer identity.
+ */
 function mon_in_region(reg, mon) {
-    return (reg.monsters || []).includes(mon.m_id);
+    const n = reg.n_monst | 0;
+    const mids = reg.monsters;
+    const id = mon.m_id;
+    for (let i = 0; i < n; i++) {
+        if (mids[i] === id) return true;
+    }
+    return false;
 }
 
+/**
+ * C ref: region.c:161–186 add_mon_to_reg.
+ * A long worm is listed once however many of its segments the region
+ * contains (`:167–174`). Any other duplicate is impossible(), then return.
+ * When `max_monst <= n_monst`, grow by MONST_INC (`:175–183`): copy the
+ * old capacity, drop the old buffer (C alloc/free; JS GC), then
+ * `monsters[n_monst++] = m_id` (`:185`). Spare capacity stays in
+ * `max_monst`; the array length stays `n_monst` so a `.length` reader
+ * does not walk uninitialized slots.
+ * `impossible` is async; this stays sync because `m_in_out_region`'s
+ * boolean is tested immediately. `void impossible` matches other sync
+ * callers (the duplicate arm is the disorder path).
+ */
 function add_mon_to_reg(reg, mon) {
-    if (!mon || mon.m_id == null) return;
-    if (!reg.monsters) reg.monsters = [];
-    if (mon_in_region(reg, mon)) return;
-    reg.monsters.push(mon.m_id);
+    if (mon_in_region(reg, mon)) {
+        const mndx = (mon.data?.mndx ?? mon.mnum ?? -1) | 0;
+        if (mndx !== PM_LONG_WORM) {
+            void impossible(
+                `add_mon_to_reg: ${m_monnam(mon)} [#${mon.m_id >>> 0}] already in region.`,
+            );
+        }
+        return;
+    }
+    let max = reg.max_monst | 0;
+    const n = reg.n_monst | 0;
+    if (max <= n) {
+        const grown = [];
+        if (max > 0) {
+            const src = reg.monsters;
+            for (let i = 0; i < max; i++) grown[i] = src[i];
+        }
+        reg.monsters = grown;
+        max += MONST_INC;
+        reg.max_monst = max;
+    }
+    reg.monsters[n] = mon.m_id;
+    reg.n_monst = n + 1;
 }
 
+/**
+ * C ref: region.c:192–202 remove_mon_from_reg — swap with the last live
+ * id and decrement `n_monst`. Length is trimmed to that prefix so the
+ * vacated slot (C leaves it, then ignores it) is not a second copy.
+ */
 function remove_mon_from_reg(reg, mon) {
-    const list = reg.monsters || [];
-    const i = list.indexOf(mon.m_id);
-    if (i < 0) return;
-    list[i] = list[list.length - 1];
-    list.pop();
+    const list = reg.monsters;
+    const n0 = reg.n_monst | 0;
+    if (!list || n0 <= 0) return;
+    const id = mon.m_id;
+    for (let i = 0; i < n0; i++) {
+        if (list[i] === id) {
+            const n = n0 - 1;
+            reg.n_monst = n;
+            list[i] = list[n];
+            list.length = n;
+            return;
+        }
+    }
 }
 
 /**
@@ -1014,16 +1071,22 @@ export async function run_regions() {
             await inside_gas_cloud(reg, null);
             if (game.program_state?.gameover) return;
         }
-        const mids = reg.monsters || [];
-        for (let j = 0; j < mids.length; j++) {
-            const mtmp = find_mid(mids[j], FM_FMON); // C region.c:446
-            if (!mtmp || (mtmp.mhp | 0) <= 0
-                || await inside_gas_cloud(reg, mtmp)) {
-                mids[j] = mids[mids.length - 1];
-                mids.pop();
-                j--;
+        const mids = reg.monsters;
+        /* C region.c:444–455 — bound is n_monst, not the allocation. */
+        if (mids) {
+            for (let j = 0; j < (reg.n_monst | 0); j++) {
+                const mtmp = find_mid(mids[j], FM_FMON); // C region.c:446
+                if (!mtmp || (mtmp.mhp | 0) <= 0
+                    || await inside_gas_cloud(reg, mtmp)) {
+                    const k = (reg.n_monst | 0) - 1;
+                    reg.n_monst = k;
+                    mids[j] = mids[k];
+                    mids[k] = 0;
+                    mids.length = k;
+                    j--;
+                }
+                if (game.program_state?.gameover) return;
             }
-            if (game.program_state?.gameover) return;
         }
     }
 

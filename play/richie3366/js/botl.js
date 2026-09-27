@@ -10,15 +10,13 @@
 // has no JS registry yet, so per-field/RESET/FLUSH delivery is a named
 // omission (loud forwarder, never silent). The hilite-rule engine
 // (get_hilite botl.c:2364, live below; hilite_reset_needed botl.c:2257,
-// still named) feeds only status_update color + the hilite_rule cache, so
-// nothing observable is dropped while the dispatch stays unwired.
+// live below) feeds status_update color + the hilite_rule cache.
+// status_update itself stays a named omission (no windowport registry).
 //
-// Caller: C bot() (botl.c:253) calls evaluate_and_notify_windowport at
-// botl.c:1277 after filling gb.blstats. JS bot() (display.js:7148) renders
-// via the direct tty path (_commitStatusLines) and never fills blstats, so
-// the call is a NAMED OMISSION until a botl.c campaign ports the fill path.
-// Do not call these from JS bot() today: with empty buffers every field
-// compares equal and the windowport arms are unwired by design.
+// Caller: C bot() (botl.c:262) calls bot_via_windowport when
+// VIA_WINDOWPORT(). display.js bot() does that. Contest tty leaves
+// WC2_HILITE_STATUS and WC2_FLUSH_STATUS clear, so that arm does not run
+// and the tty path commits do_statusline1 / do_statusline2 instead.
 
 import { game } from './gstate.js';
 import {
@@ -611,14 +609,68 @@ export function exp_percent_changing() {
     return false; // C :2124
 }
 
-// Named omissions — live C under STATUS_HILITES / the windowport registry,
-// unwired in JS. Loud forwarders (never silent divergence); replace with the
-// real ports when their campaigns land.
+// C botl.c:675 Is_Temp_Hilite — file-local macro, #undef later in the file.
+function Is_Temp_Hilite(rule) {
+    return !!(rule && rule.behavior === BL_TH_UPDOWN);
+}
 
-// C botl.c:2257 hilite_reset_needed() — timeout expiry check for a field's
-// active highlight. Named omit: result only gates the reset arm below.
-function hilite_reset_needed(_prev, _moves) {
-    throw new Error('named omit: hilite_reset_needed (botl.c:2257) not yet ported');
+// C botl.c:2257–2274 hilite_reset_needed(). gm.multi non-zero (including a
+// negative occupation) skips the check. Only a temporary up/down rule
+// expires, and only once its stored time is in the past relative to
+// augmented_time.
+function hilite_reset_needed(bl_p, augmented_time) {
+    // C :2265
+    if (game.multi) return false;
+    // C :2268
+    if (!Is_Temp_Hilite(bl_p?.hilite_rule)) return false;
+    // C :2271 — long compare; 0 or not-yet-due stays put.
+    const t = bl_p.time ?? 0;
+    if (t === 0 || t >= augmented_time) return false;
+    return true; // C :2274
+}
+
+// C botl.c:2278–2316 status_eval_next_unhilite(). moveloop calls this once
+// per hero action when iflags.hilite_delta is set (STATUS_HILITES is on).
+// A missing blstats row is the BSS zero C has before init_blstats: no
+// chg, time 0, no rule. Setting disp.botl writes both JS stores.
+export function status_eval_next_unhilite() {
+    if (!game.gb) game.gb = {};
+    // C :2285 svm.moves. Long; do not truncate to 32 bits.
+    game.gb.bl_hilite_moves = game.moves ?? 0;
+    let next_unhilite = 0; // C :2289
+    const row0 = game.gb.blstats?.[0];
+    const row1 = game.gb.blstats?.[1];
+    for (let i = 0; i < MAXBLSTATS; ++i) { // C :2290
+        // C :2291 blstats[0][i]; time matches blstats[1][i].time
+        const curr = row0?.[i] ?? null;
+        const chg = !!curr?.chg;
+        if (chg) { // C :2293
+            const prev = row1?.[i] ?? null;
+            if (Is_Temp_Hilite(curr.hilite_rule)) { // C :2296
+                curr.time = game.gb.bl_hilite_moves + (game.iflags?.hilite_delta | 0);
+            } else {
+                curr.time = 0; // C :2299
+            }
+            if (prev) prev.time = curr.time; // C :2300
+            curr.chg = false; // C :2302
+            if (prev) prev.chg = false;
+            if (!game.flags) game.flags = {};
+            game.flags.botl = true; // C :2303
+            if (game.disp) game.disp.botl = true;
+        }
+        if (game.flags?.botl) continue; // C :2305 disp.botl (flags is the live store)
+        const this_unhilite = curr?.time ?? 0; // C :2308
+        if (this_unhilite > 0
+            && (next_unhilite === 0 || this_unhilite < next_unhilite)
+            && hilite_reset_needed(curr, this_unhilite + 1)) { // C :2309–2311
+            next_unhilite = this_unhilite; // C :2312
+            if (next_unhilite < game.gb.bl_hilite_moves) { // C :2313
+                if (!game.flags) game.flags = {};
+                game.flags.botl = true; // C :2314
+                if (game.disp) game.disp.botl = true;
+            }
+        }
+    }
 }
 
 // C botl.c:2333-2344 — noneoftheabove(): whether a title rule's textmatch
@@ -913,7 +965,7 @@ export function eval_notify_windowport_field(fld, valsetlist, idx) {
         chg = 0; // C :1593
         curr.time = prev.time = 0; // C :1594
     } else if (chg === 0 && curr.time) { // C :1595
-        reset = hilite_reset_needed(prev, 0); // C :1596 (gb.bl_hilite_moves; 0 until options port)
+        reset = hilite_reset_needed(prev, game.gb?.bl_hilite_moves ?? 0); // C :1578
         if (reset) curr.time = prev.time = 0; // C :1597-1598
     }
 

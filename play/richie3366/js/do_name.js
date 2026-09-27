@@ -31,6 +31,8 @@ import {
     flush_screen, flush_topl_more, docrt, canspotmon, pline,
     glyph_to_obj_at, glyph_is_swallow_at, see_with_infrared, sensemon,
     verbalize, impossible,
+    /* youprop.h:116–120. The same-file export is the sticky reader. */
+    Hallucination as youprop_Hallucination,
 } from './display.js';
 import {
     paint_corner_nhw_menu, discover_object,
@@ -41,7 +43,7 @@ import {
     ONAME_VIA_NAMING, ONAME_KNOW_ARTI, ONAME_SKIP_INVUPD,
     LL_CONDUCT, LL_ARTIFACT, W_WEP,
     MGIVENNAME, has_mgivenname,
-    W_SADDLE, engulfing_u, Upolyd, MD_PAD_BOGONS,
+    W_SADDLE, engulfing_u, Upolyd, MD_PAD_BOGONS, BOGUSMONFILE,
     ARTICLE_NONE, ARTICLE_THE, ARTICLE_A, ARTICLE_YOUR,
     SUPPRESS_IT, SUPPRESS_INVISIBLE, SUPPRESS_HALLUCINATION,
     SUPPRESS_SADDLE, SUPPRESS_MAPPEARANCE, SUPPRESS_NAME, EXACT_NAME,
@@ -81,10 +83,9 @@ import {
     objectNames, objectNameStrs, objectDescrs,
 } from './objects.js';
 import { get_rnd_text } from './rumors.js';
-import { BOGUSMON_BUF } from './generated/bogusmon_data.js';
 import { m_at } from './mon.js';
 import { cansee } from './vision.js';
-import { fuzzymatch, strstri, highc, lcase, distmin } from './hacklib.js';
+import { fuzzymatch, strstri, highc, lcase, distmin, mungspaces } from './hacklib.js';
 import { pronoun_gender, PRONOUN_HALLU } from './mondata.js';
 import { beautiful } from './apply.js';
 import { mhe, mhis } from './fountain.js';
@@ -200,7 +201,7 @@ async function name_from_player(prompt, defres) {
     void defres;
     const outbuf = await getlin(prompt);
     if (!outbuf || outbuf === '\x1b') return null;
-    let s = outbuf.trim().replace(/\s+/g, ' ');
+    let s = mungspaces(outbuf); // C `:124`
     if (s.length >= PL_PSIZ) s = s.slice(0, PL_PSIZ - 1);
     return s;
 }
@@ -256,7 +257,10 @@ async function do_oname(obj) {
     oname(obj, buf, ONAME_VIA_NAMING | ONAME_KNOW_ARTI);
 }
 
-/** C ref: youprop.h Hallucination — HHallucination && !Halluc_resistance. */
+/**
+ * Sticky `u.Hallucination`, then the H/E flats. Not `youprop.h:116–120`
+ * (that reader is `display.js` `Hallucination`). `hliquid` does not call this.
+ */
 export function Hallucination() {
     const u = game.u || {};
     if (u.Hallucination) return true;
@@ -274,7 +278,7 @@ export function Hallucination() {
  */
 export function bogusmon(codeOut = null) {
     if (codeOut) codeOut.c = '';
-    let mnam = get_rnd_text(BOGUSMON_BUF, rn2_on_display_rng, MD_PAD_BOGONS) || '';
+    let mnam = get_rnd_text(BOGUSMONFILE, rn2_on_display_rng, MD_PAD_BOGONS) || '';
     if (!mnam) mnam = 'bogon';
     else if (BOGON_CODES.includes(mnam[0])) {
         if (codeOut) codeOut.c = mnam[0];
@@ -372,19 +376,34 @@ const HLIQUIDS = [
 ];
 
 /**
- * C ref: do_name.c hliquid — Hallu → rn2_on_display_rng over hliquids[]
- * (+ liquidpref as last choice when non-empty). gameover skips Hallu arm.
+ * C ref: do_name.c:1491–1510 hliquid.
+ * Use liquidpref as-is when not hallucinating, unless it is null or empty.
+ * Hallucination is display.js (youprop.h:116–120): timeout
+ * `u.uprops[HALLUC].intrinsic && !Halluc_resistance`, not the sticky
+ * same-file reader. `program_state.gameover` skips that arm; an empty
+ * pref still rolls. A non-empty pref is one extra choice past
+ * SIZE(hliquids). IndexOk (hack.h:1498) rejects that index and returns
+ * liquidpref. `rn2_on_display_rng` is the display stream (rnd.c).
+ * @param {string|null|undefined} liquidpref
+ * @returns {string|null|undefined}
  */
 export function hliquid(liquidpref) {
-    const hallucinate = Hallucination() && !game.program_state?.gameover;
-    const pref = liquidpref == null ? '' : String(liquidpref);
-    if (hallucinate || !pref) {
+    const hallucinate = youprop_Hallucination() && !game.program_state?.gameover;
+
+    if (hallucinate || liquidpref == null || liquidpref === '') {
         let count = HLIQUIDS.length;
-        if (pref) count += 1;
+
+        /* non-hallucinatory default is one more choice (do_name.c:1501) */
+        if (liquidpref != null && liquidpref !== '') {
+            count += 1;
+        }
         const indx = rn2_on_display_rng(count);
-        if (indx >= 0 && indx < HLIQUIDS.length) return HLIQUIDS[indx];
+        /* IndexOk(indx, hliquids): idx >= 0 && idx < SIZE */
+        if (indx >= 0 && indx < HLIQUIDS.length) {
+            return HLIQUIDS[indx];
+        }
     }
-    return pref;
+    return liquidpref;
 }
 
 /** C ref: hacklib.c s_suffix — it→its, you→your, *s→*', else *'s. */
@@ -1483,17 +1502,31 @@ const ORC_SND = [
 ];
 
 /**
- * C ref: do_name.c rndorcname — rn1(2,3) syllables; v/snd flip;
- * rare '-' via !rn2(30). Callers always pass a buffer.
+ * C ref: do_name.c:1537–1554 rndorcname.
+ * `rn1(2,3)` and `rn2(2)` run before the null test. A null buffer
+ * returns null and skips the loop. ROLL_FROM (hack.h:1493) is
+ * `array[rn2(SIZE)]`. The hyphen roll is `i > 0 && !rn2(30)` so the
+ * first syllable does not draw `rn2(30)`.
+ * C writes through `eos`/`Sprintf` and returns `s`. JS returns that
+ * text. Callers that omit `s` (a provided C buffer) still get a name.
+ * @param {string|null|undefined} [s]
+ * @returns {string|null|undefined}
  */
-export function rndorcname() {
+export function rndorcname(s) {
     const iend = rn1(2, 3);
     let vstart = rn2(2);
-    let s = '';
-    for (let i = 0; i < iend; ++i) {
-        vstart = 1 - vstart;
-        const dash = (i > 0 && !rn2(30)) ? '-' : '';
-        s += dash + (vstart ? ORC_V[rn2(ORC_V.length)] : ORC_SND[rn2(ORC_SND.length)]);
+
+    if (s !== null) {
+        let out = '';
+        for (let i = 0; i < iend; ++i) {
+            vstart = 1 - vstart; /* 0 -> 1, 1 -> 0 */
+            const hyphen = (i > 0 && !rn2(30)) ? '-' : '';
+            const syl = vstart
+                ? ORC_V[rn2(ORC_V.length)]
+                : ORC_SND[rn2(ORC_SND.length)];
+            out += hyphen + syl;
+        }
+        return out;
     }
     return s;
 }
@@ -1782,13 +1815,14 @@ export async function docall(obj) {
     const ocl = game.objects?.[obj.otyp];
     if (!ocl) return;
     /* pointer to old name */
-    const buf = await name_from_player(qbuf, ocl.oc_uname);
+    let buf = await name_from_player(qbuf, ocl.oc_uname);
     if (buf == null) return;
 
     const hadName = !!ocl.oc_uname;
     ocl.oc_uname = null; /* clear oc_uname */
 
-    /* name_from_player already mungspaces; empty uncalls */
+    /* C `:666` strip again; empty uncalls */
+    buf = mungspaces(buf);
     if (!buf) {
         if (hadName) /* possibly remove from disco[]; old *uname_p is gone */
             undiscover_object(obj.otyp);

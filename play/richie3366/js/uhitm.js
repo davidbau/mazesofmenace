@@ -93,11 +93,11 @@ import { livelog_printf } from './pline.js';
 import { experience, more_experienced, newexplevel } from './exper.js';
 import { explode, mon_explodes, adtyp_to_expltype } from './explode.js';
 import { rehumanize, body_part, mbodypart, uunstick } from './polyself.js';
-import { mon_nam, l_monnam, Monnam, x_monnam, x_monnam_tame, Hallucination, type_is_pname, pmname, Mgender, a_monnam, safe_oname, s_suffix, hcolor } from './do_name.js';
+import { mon_nam, l_monnam, Monnam, x_monnam, x_monnam_tame, Hallucination, type_is_pname, pmname, Mgender, a_monnam, safe_oname, s_suffix, hcolor, hliquid } from './do_name.js';
 import { artifact_hit, youmonst, is_art, artifact_exists, shade_glare, find_artifact, u_wield_art, permapoisoned, bare_artifactname } from './artifact.js';
 // imports.mjs --can uhitm.js timeout.js artifact_light: SAFE (hoisted).
 import { artifact_light } from './timeout.js';
-import { xname, vtense, The, the, An, an, singular, makeplural, cxname, simpleonames, obj_is_pname, otense, mshot_xname, Yobjnam2, Yname2, doname, corpse_xname, ysimple_name } from './objnam.js';
+import { xname, vtense, The, the, An, an, singular, makeplural, cxname, simpleonames, obj_is_pname, otense, mshot_xname, Yobjnam2, Yname2, doname, corpse_xname, ysimple_name, yname } from './objnam.js';
 import { abuse_dog, tamedog } from './dog.js';
 import { makemon, makemon_appear_msg, newcham, adj_lev, clone_mon, mpickobj } from './makemon.js';
 import { ndemon } from './minion.js';
@@ -3170,7 +3170,7 @@ export async function passive(mon, weapon, mhitb, maliveb, aatyp, wep_was_destro
             if (game.u?.Blind || !game.flags?.verbose) {
                 await pline('You are splashed!');
             } else {
-                await pline(`You are splashed by ${mon_nam(mon)}'s acid!`);
+                await pline(`You are splashed by ${s_suffix(mon_nam(mon))} ${hliquid('acid')}!`);
             }
             if (!Acid_resistance) {
                 await mdamageu(mon, tmp);
@@ -3298,7 +3298,7 @@ export async function passive(mon, weapon, mhitb, maliveb, aatyp, wep_was_destro
         case AD_COLD:
             if (monnear(mon, u.ux, u.uy)) {
                 if (Cold_resistance) {
-                    await pline('You feel a mild chill.');
+                    await You_feel('a mild chill.');
                     // C uhitm.c:6072 — resist arm returns before mdamageu.
                     await ugolemeffects(AD_COLD, tmp);
                     break;
@@ -3324,7 +3324,7 @@ export async function passive(mon, weapon, mhitb, maliveb, aatyp, wep_was_destro
         case AD_FIRE:
             if (monnear(mon, u.ux, u.uy)) {
                 if (Fire_resistance) {
-                    await pline('You feel mildly warm.');
+                    await You_feel('mildly warm.');
                     // C uhitm.c:6095
                     await ugolemeffects(AD_FIRE, tmp);
                     break;
@@ -3336,7 +3336,7 @@ export async function passive(mon, weapon, mhitb, maliveb, aatyp, wep_was_destro
             break;
         case AD_ELEC:
             if (Shock_resistance) {
-                await pline('You feel a mild tingle.');
+                await You_feel('a mild tingle.');
                 // C uhitm.c:6108
                 await ugolemeffects(AD_ELEC, tmp);
                 break;
@@ -4718,12 +4718,6 @@ function Role_if(pm) {
 /** C ref: role.h Race_if — urace.mnum match. */
 function Race_if(pm) {
     return (game.urace?.mnum ?? -1) === pm;
-}
-
-/** C ref: objnam.c yname — invent → "your ", else "the ". */
-function yname(obj) {
-    const carried = (game.invent || []).includes(obj);
-    return `${carried ? 'your' : 'the'} ${cxname(obj)}`;
 }
 
 /**

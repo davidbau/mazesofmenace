@@ -17,17 +17,16 @@
 // explicit note_unported gaps. Other named arms,
 // plus the wand, spellbook, and coin shortcuts above the switch, still stop at
 // a refusal naming the C function they need.
-// use_stethoscope() covers
-// the no-hands, Deaf and free-hand guards, the free-action rule, self and
-// off-map probes, the adjacent monster arm, both secret-terrain arms, an empty
-// adjacent square, ordinary sighted and blind corpses and statues, and a
-// Healer's statue-trap report. Mounted, swallowed, vertical, and cursed uses
-// still stop.
+// use_stethoscope() covers the whole source function. Calls to the void
+// insight.c mstatusline() remain named gaps in mounted/swallowed arms, and the
+// upward engrave.c cant_reach_floor() call remains a named gap; the downward
+// reachability branch uses its already-ported helper.
 
 import {
     ACCESSIBLE,
     ARTICLE_A,
     A_CON,
+    A_CHA,
     A_DEX,
     A_STR,
     AIR,
@@ -45,6 +44,8 @@ import {
     ECMD_OK,
     ECMD_TIME,
     FLASHED_LIGHT,
+    FREE_ACTION,
+    FEMALE,
     FACE,
     FOOT,
     FUMBLING,
@@ -74,12 +75,15 @@ import {
     OBJ_INVENT,
     PRONOUN_NO_IT,
     REVIVE_MON,
+    RLOC_MSG,
     D_ISOPEN,
     DISP_BEAM,
     DISP_END,
     FLYING,
     HALF_PHDAM,
     INTRINSIC,
+    INVIS,
+    INVIS_BEAM,
     IS_DOOR,
     IS_FURNITURE,
     IS_OBSTRUCTED,
@@ -103,6 +107,10 @@ import {
     RIGHT_SIDE,
     SHOPBASE,
     SICK,
+    SEE_INVIS,
+    MONSEEN_INFRAVIS,
+    MONSEEN_NORMAL,
+    MONSEEN_SEEINVIS,
     TELEDS_NO_FLAGS,
     TELEDS_ALLOW_DRAG,
     TOOKPLUNGE,
@@ -114,6 +122,8 @@ import {
     TT_PIT,
     TT_WEB,
     UNENCUMBERED,
+    WEAK,
+    MAXULEV,
     WOUNDED_LEGS,
     VOMITING,
     NO_KILLER_PREFIX,
@@ -160,11 +170,14 @@ import {
     tmp_at,
     unmap_invisible,
 } from './display.js';
-import { Amonnam, Monnam, mon_nam, obj_pmname, pmname, x_monnam } from './do_name.js';
-import { can_reach_floor, freehand } from './engrave.js';
+import {
+    Amonnam, Monnam, hcolor, mon_nam, monverbself, obj_pmname,
+    pmname, x_monnam,
+} from './do_name.js';
+import { can_reach_floor, cant_reach_floor, freehand } from './engrave.js';
 import { game } from './gstate.js';
 import { check_capacity, losehp, near_capacity, nomul, overexertion } from './hack.js';
-import { dist2, highc, isqrt, s_suffix, strstri } from './hacklib.js';
+import { dist2, highc, isqrt, s_suffix, strstri, upstart } from './hacklib.js';
 import { mstatusline, ustatusline } from './insight.js';
 import {
     delobj,
@@ -192,7 +205,15 @@ import {
     humanoid,
     is_female,
     is_male,
+    is_demon,
+    is_unicorn,
+    is_vampire,
+    is_vampshifter,
+    perceives,
+    haseyes,
+    mhe,
     is_rider,
+    is_whirly,
     nohands,
     nolimbs,
     pronoun_gender,
@@ -205,9 +226,13 @@ import {
     big_to_little,
     poly_when_stoned,
 } from './mondata.js';
-import { accessible, closed_door, youHear } from './monmove.js';
+import {
+    accessible, closed_door, monflee, onscary, set_apparxy, youHear,
+} from './monmove.js';
 import { m_at } from './monst.js';
+import { paralyze_monst } from './mhitm.js';
 import { do_play_instrument } from './music.js';
+import { mon_reflects } from './muse.js';
 import { get_mtraits } from './corpstat.js';
 import { discover_object } from './o_init.js';
 import {
@@ -326,10 +351,12 @@ import {
     TIN,
 } from './objects.js';
 import {
-    AD_BLND, AT_ENGL, AT_WEAP, MZ_TINY, PM_ARCHEOLOGIST, PM_HEALER,
-    PM_HORSE, PM_STONE_GOLEM,
+    AD_BLND, AT_ENGL, AT_WEAP, MZ_TINY, PM_AMOROUS_DEMON,
+    PM_ARCHEOLOGIST, PM_FLOATING_EYE, PM_HEALER, PM_MEDUSA,
+    PM_HORSE, PM_STONE_GOLEM, PM_UMBER_HULK, S_GHOST, S_NYMPH,
+    S_VAMPIRE,
 } from './monsters.js';
-import { body_part, mbodypart, polymon } from './polyself.js';
+import { body_part, mbodypart, poly_gender, polymon } from './polyself.js';
 import { attacktype_fordmg } from './mondata.js';
 import {
     djinni_from_bottle,
@@ -351,7 +378,9 @@ import { dotrap, feeltrap } from './trap_effects.js';
 import { ttyPline } from './tty_message.js';
 import {
     cansee,
+    canseemon,
     couldsee,
+    howmonseen,
     recalc_block_point,
     unblock_point,
     vision_recalc,
@@ -375,7 +404,8 @@ import { wield_tool } from './wield.js';
 import { acurr } from './attrib.js';
 import { known_spell, spe_Fresh, spelleffects } from './spell.js';
 import { stucksteed, use_saddle } from './steed.js';
-import { enexto, teleds } from './teleport.js';
+import { enexto, rloc, tele_restrict, teleds } from './teleport.js';
+import { mpickobj } from './steal.js';
 import {
     _doWearInternals,
     Blindf_off,
@@ -1683,44 +1713,22 @@ export async function its_dead(rx, ry, state = game, response = null) {
     return false;
 }
 
-// Fail-closed commands are retryable. Inspect the earlier adjacent paths that
-// still refuse before apply.c:340 changes the listen sequence and observation
-// globals. The complete its_dead() family no longer needs preflight.
-function preflightAdjacentStethoscope(obj, state) {
-    const u = state.u;
-    // These source arms precede confdir() and the adjacent-square body. Their
-    // existing refusals therefore win over anything at the pointed square.
-    if (u.uswallow) return;
-    if (u.dz) return;
-    if (obj.cursed) return;
-    if (!u.dx && !u.dy) return;
-
-    const rx = u.ux + u.dx;
-    const ry = u.uy + u.dy;
-    if (!isok(rx, ry)) return;
-    if (m_at(rx, ry, state)) return;
-
-    const lev = state.level.at(rx, ry);
-    if (lev.typ === SDOOR || lev.typ === SCORR) return;
-}
-
 // C ref: apply.c use_stethoscope() (317-470), with C's own comment above it at
 // 313-316 explaining the free action: one use per turn costs nothing, so a
 // second use in the same move is what makes a cursed stethoscope's wasted
 // listen cost anything.
 //
-// Four arms between the direction prompt and confdir() stop rather than run.
-// The u.usteed and the two u.uswallow arms need mstatusline(); u.dz needs
-// cant_reach_floor() and the Soundeffect() interface; and the cursed arm draws
-// an rn2(2) whose "You hear your heart beat." nothing has checked. Refusing
-// the cursed arm on obj.cursed alone keeps that draw out of the random-number
-// stream for the uncursed tools the ported path uses.
-//
-// Below confdir() the adjacent-square arm (384-470) runs through the off-map
-// answer, monster branch, both secret-terrain arms, and the complete
-// dead-object family.
+// Mounted and swallowed branches skip the void insight.c mstatusline() calls
+// with named gaps. The upward engrave.c cant_reach_floor() call is likewise a
+// named gap; its downward call is implemented in js/engrave.js. Soundeffect()
+// expands to an empty macro in this tty build, while You_hear() remains
+// visible through youHear().
 async function use_stethoscope(obj, state = game) {
     const u = state.u;
+    // apply.c:324-325. The source initializer draws before every guard when a
+    // swallowed hero is inside a whirly engulfer.
+    const interference = Boolean(u.uswallow && is_whirly(u.ustuck.data)
+        && !rn2(state.urole?.mnum === PM_HEALER ? 10 : 3));
 
     if (nohands(state.youmonst.data)) {
         await ttyPline('You have no hands!', state); /* not `body_part(HAND)' */
@@ -1737,8 +1745,6 @@ async function use_stethoscope(obj, state = game) {
     }
     if (!await getdir(null, state))
         return ECMD_CANCEL;
-
-    preflightAdjacentStethoscope(obj, state);
 
     const res = (state.hero_seq === state.context.stethoscope_seq)
         ? ECMD_TIME : ECMD_OK;
@@ -1758,14 +1764,57 @@ async function use_stethoscope(obj, state = game) {
     state.gn ??= {};
     state.gn.notonhead = Boolean(u.uswallow);
 
-    if (u.usteed && u.dz > 0)
-        throw new UnsupportedApplyError('mstatusline() for a steed');
-    if (u.uswallow)
-        throw new UnsupportedApplyError('mstatusline() for an engulfer');
-    if (u.dz)
-        throw new UnsupportedApplyError('listening to the floor or ceiling');
-    if (obj.cursed)
-        throw new UnsupportedApplyError('a cursed stethoscope');
+    if (u.usteed && u.dz > 0) {
+        if (interference) {
+            await ttyPline(`${Monnam(u.ustuck, state)} interferes.`, state);
+            note_unported('insight.c mstatusline');
+        } else {
+            note_unported('insight.c mstatusline');
+        }
+        return res;
+    } else if (u.uswallow && (u.dx || u.dy || u.dz)) {
+        note_unported('insight.c mstatusline');
+        return res;
+    } else if (u.uswallow && interference) {
+        await ttyPline(`${Monnam(u.ustuck, state)} interferes.`, state);
+        note_unported('insight.c mstatusline');
+        return res;
+    } else if (u.dz) {
+        if (u.uinwater) {
+            const heard = youHear('faint splashing.', state);
+            if (heard) await ttyPline(heard, state);
+        } else if (u.dz < 0) {
+            note_unported('engrave.c cant_reach_floor');
+        } else if (!can_reach_floor(true, state)) {
+            await cant_reach_floor(
+                u.ux, u.uy, false, true, false, state, { pline: ttyPline },
+            );
+        } else {
+            const response = { value: res };
+            if (!await its_dead(u.ux, u.uy, state, response)) {
+                const level = state.stronghold_level;
+                const inStronghold = Boolean(level
+                    && u.uz.dnum === level.dnum
+                    && u.uz.dlevel === level.dlevel);
+                if (inStronghold) {
+                    const heard = youHear('the crackling of hellfire.', state);
+                    if (heard) await ttyPline(heard, state);
+                } else {
+                    await ttyPline(
+                        `${The(surface(u.ux, u.uy, state), state)} `
+                            + 'seems healthy enough.',
+                        state,
+                    );
+                }
+            }
+            return response.value;
+        }
+        return res;
+    } else if (obj.cursed && !rn2(2)) {
+        const heard = youHear('your heart beat.', state);
+        if (heard) await ttyPline(heard, state);
+        return res;
+    }
 
     confdir(false, state);
     if (!u.dx && !u.dy) {
@@ -2611,7 +2660,6 @@ const DOAPPLY_UNPORTED_NAMED_ARMS = new Set([
     MAGIC_WHISTLE,
     TIN_WHISTLE,
     EUCALYPTUS_LEAF,
-    MIRROR,
     BELL,
     BELL_OF_OPENING,
     CANDELABRUM_OF_INVOCATION,
@@ -2624,6 +2672,258 @@ const DOAPPLY_UNPORTED_NAMED_ARMS = new Set([
     LOADSTONE,
     TOUCHSTONE,
 ]);
+
+// C ref: apply.c beautiful() (1000-1017). Pure charisma/form-gender
+// description shared by the mirror and the name-command source owner.
+export function beautiful(state = game) {
+    const cha = acurr(state, A_CHA);
+    return cha >= 25 ? 'sublime'
+        : cha >= 19 ? 'splendorous'
+            : cha >= 16 ? (poly_gender(state) === FEMALE
+                ? 'beautiful' : 'handsome')
+                : cha >= 14 ? (poly_gender(state) === FEMALE
+                    ? 'winsome' : 'amiable')
+                    : cha >= 11 ? 'cute'
+                        : cha >= 9 ? 'plain'
+                            : cha >= 6 ? 'homely'
+                                : cha >= 4 ? 'ugly' : 'hideous';
+}
+
+// C ref: apply.c use_mirror() (1021-1190). bhit() supplies the first
+// visible or self-perceiving monster along an INVIS_BEAM, without a beam
+// glyph or animation. Its returned monster and gn.notonhead are both used
+// here, so the zap.c callee is wired at this exact source call.
+export async function use_mirror(obj, state = game, env = {}) {
+    const random = { d, rn2, rnd, ...(env.random ?? {}) };
+    if (!await getdir(null, state)) return ECMD_CANCEL;
+
+    const invisMirror = applyPropertyActive(INVIS, state);
+    const useeit = !heroIsBlind(state)
+        && (!invisMirror || applyPropertyActive(SEE_INVIS, state));
+    const visage = beautiful(state);
+    const mirror = simpleonames(obj, state);
+    if (obj.cursed && random.rn2(2) === 0) {
+        if (!heroIsBlind(state))
+            await ttyPline(`The ${mirror} fogs up and doesn't reflect!`, state);
+        else
+            await ttyPline(nothing_seems_to_happen, state);
+        return ECMD_TIME;
+    }
+
+    const u = state.u;
+    if (!u.dx && !u.dy && !u.dz) {
+        if (!useeit) {
+            await ttyPline(
+                `You can't see your ${visage} ${body_part(FACE, state.youmonst)}.`,
+                state,
+            );
+        } else if (u.umonnum === PM_FLOATING_EYE) {
+            if (applyPropertyActive(FREE_ACTION, state)) {
+                await ttyPline('You stiffen momentarily under your gaze.', state);
+            } else {
+                const hallucinating = applyIsHallucinating(state);
+                await ttyPline(hallucinating
+                    ? `Yow!  The ${mirror} stares back!`
+                    : "Yikes!  You've frozen yourself!", state);
+                if (!hallucinating || random.rn2(4) === 0) {
+                    nomul(-random.rnd(MAXULEV + 6 - u.ulevel), state);
+                    state.multi_reason = 'gazing into a mirror';
+                }
+                state.gn ??= {};
+                state.gn.nomovemsg = 0;
+            }
+        } else if (is_vampire(state.youmonst.data)
+            || is_vampshifter(state.youmonst)) {
+            await ttyPline("You don't have a reflection.", state);
+        } else if (u.umonnum === PM_UMBER_HULK) {
+            await ttyPline("Huh?  That doesn't look like you!", state);
+            await make_confused(
+                (state.u.uprops[CONFUSION]?.intrinsic ?? 0)
+                    + random.d(3, 4),
+                false,
+                state,
+            );
+        } else if (applyIsHallucinating(state)) {
+            await ttyPline(`You look ${hcolor(null, state)}.`, state);
+        } else if (state.u.uprops[SICK]?.intrinsic) {
+            await ttyPline('You look peaked.', state);
+        } else if (u.uhs >= WEAK) {
+            await ttyPline('You look undernourished.', state);
+        } else if (Upolyd(u)) {
+            await ttyPline(
+                `You look like ${an(pmname(
+                    state.mons[u.umonnum], poly_gender(state),
+                ))}.`,
+                state,
+            );
+        } else {
+            await ttyPline(`You look as ${visage} as ever.`, state);
+        }
+        return ECMD_TIME;
+    }
+    if (u.uswallow) {
+        if (useeit)
+            await ttyPline(
+                `You reflect ${s_suffix(mon_nam(u.ustuck, state))} `
+                    + `${mbodypart(u.ustuck, STOMACH)}.`,
+                state,
+            );
+        return ECMD_TIME;
+    }
+    if (u.uinwater) {
+        if (useeit)
+            await ttyPline(applyIsHallucinating(state)
+                ? 'You give the fish a chance to fix their makeup.'
+                : 'You reflect the murky water.', state);
+        return ECMD_TIME;
+    }
+    if (u.dz) {
+        if (useeit) {
+            const reflected = u.dz > 0
+                ? surface(u.ux, u.uy, state)
+                : ceiling(u.ux, u.uy, state);
+            await ttyPline(`You reflect the ${reflected}.`, state);
+        }
+        return ECMD_TIME;
+    }
+
+    const mtmp = await bhit(
+        u.dx, u.dy, COLNO, INVIS_BEAM, null, null, { obj },
+        state, random, env,
+    );
+    state.gn ??= {};
+    if (!mtmp || !haseyes(mtmp.data) || state.gn.notonhead)
+        return ECMD_TIME;
+
+    const vis = canseemon(mtmp, state);
+    const howSeen = vis ? howmonseen(mtmp, state) : 0;
+    const monable = !mtmp.mcan
+        && (!mtmp.minvis || perceives(mtmp.data));
+    const mlet = mtmp.data.mlet;
+    if (mtmp.msleeping) {
+        if (vis)
+            await ttyPline(
+                `${Monnam(mtmp, state)} is too tired to look at your ${mirror}.`,
+                state,
+            );
+    } else if (!mtmp.mcansee) {
+        if (vis)
+            await ttyPline(`${Monnam(mtmp, state)} can't see anything right now.`, state);
+    } else if (invisMirror && !perceives(mtmp.data)) {
+        if (vis)
+            await ttyPline(`${Monnam(mtmp, state)} fails to notice your ${mirror}.`, state);
+    } else if ((howSeen & (MONSEEN_NORMAL | MONSEEN_SEEINVIS
+        | MONSEEN_INFRAVIS)) === MONSEEN_INFRAVIS) {
+        if (vis)
+            await ttyPline(
+                `${monverbself(mtmp, Monnam(mtmp, state), 'are',
+                    'too far away to see', state)} in the dark.`,
+                state,
+            );
+    } else if (mlet === S_VAMPIRE || mlet === S_GHOST
+        || is_vampshifter(mtmp)) {
+        if (vis)
+            await ttyPline(`${Monnam(mtmp, state)} doesn't have a reflection.`, state);
+    } else if (monable && mtmp.data === state.mons[PM_MEDUSA]) {
+        if (await mon_reflects(
+            mtmp, 'The gaze is reflected away by %s %s!', state, env,
+        )) return ECMD_TIME;
+        if (vis)
+            await ttyPline(`${Monnam(mtmp, state)} is turned to stone!`, state);
+        state.gs ??= {};
+        state.gs.stoned = true;
+        // mon.c:killed() is void in C but its xkilled() source family still
+        // has unrelated early branch refusals. Preserve the source gap
+        // instead of claiming a stone-kill side effect that cannot complete.
+        note_unported('mon.c killed');
+    } else if (monable && mtmp.data === state.mons[PM_FLOATING_EYE]) {
+        let amount = random.d(
+            Math.trunc(mtmp.m_lev),
+            Math.trunc(mtmp.data.mattk[0].damd),
+        );
+        if (random.rn2(4) === 0) amount = 120;
+        if (vis)
+            await ttyPline(`${Monnam(mtmp, state)} is frozen by its reflection.`, state);
+        else {
+            const heard = youHear('something stop moving.', state);
+            if (heard) await ttyPline(heard, state);
+        }
+        paralyze_monst(mtmp, mtmp.mfrozen + amount);
+    } else if (monable && mtmp.data === state.mons[PM_UMBER_HULK]) {
+        if (vis)
+            await ttyPline(`${Monnam(mtmp, state)} confuses itself!`, state);
+        mtmp.mconf = 1;
+    } else if (monable && (mlet === S_NYMPH
+        || mtmp.data === state.mons[PM_AMOROUS_DEMON])) {
+        if (vis) {
+            await ttyPline(
+                `${monverbself(mtmp, Monnam(mtmp, state), 'admire', null, state)} `
+                    + `in your ${mirror}.`,
+                state,
+            );
+            await ttyPline(`${upstart(mhe(mtmp, { state }))} takes it!`, state);
+        } else {
+            await ttyPline(`It steals your ${mirror}!`, state);
+        }
+        await setnotworn(obj, { ...env, state });
+        freeinv(obj, { ...env, state });
+        mpickobj(mtmp, obj, { ...env, state });
+        await monflee(mtmp, 0, false, false, { ...env, state, random });
+        if (!await tele_restrict(mtmp, state, env)) {
+            await rloc(mtmp, RLOC_MSG, {
+                ...env,
+                state,
+                random,
+                newsym: (x, y) => newsym(x, y, state),
+                onscary: (x, y, mon) => onscary(x, y, mon, state),
+                setApparxy: set_apparxy,
+            });
+        }
+    } else if (!is_unicorn(mtmp.data) && !humanoid(mtmp.data)
+        && !is_demon(mtmp.data)
+        && (!mtmp.minvis || perceives(mtmp.data))
+        && random.rn2(5) !== 0) {
+        let doReact = true;
+        if (mtmp.mfrozen) {
+            if (vis)
+                await ttyPline(
+                    `You discern no obvious reaction from ${mon_nam(mtmp, state)}.`,
+                    state,
+                );
+            else
+                await ttyPline(
+                    'You feel a bit silly gesturing the mirror in that direction.',
+                    state,
+                );
+            doReact = false;
+        }
+        if (doReact) {
+            if (vis)
+                await ttyPline(`${Monnam(mtmp, state)} is frightened by its reflection.`, state);
+            await monflee(mtmp, random.d(2, 4), false, false, {
+                ...env,
+                state,
+                random,
+            });
+        }
+    } else if (!heroIsBlind(state)) {
+        if (mtmp.minvis && !applyPropertyActive(SEE_INVIS, state)) {
+            // The hero cannot distinguish this from no reaction.
+        } else if ((mtmp.minvis && !perceives(mtmp.data))
+            || !haseyes(mtmp.data) || state.gn.notonhead || !mtmp.mcansee) {
+            await ttyPline(
+                `${Monnam(mtmp, state)} doesn't seem to notice ${mhis(mtmp, { state })} reflection.`,
+                state,
+            );
+        } else {
+            await ttyPline(
+                `${Monnam(mtmp, state)} ignores ${mhis(mtmp, { state })} reflection.`,
+                state,
+            );
+        }
+    }
+    return ECMD_TIME;
+}
 
 export async function doapply(state = game, env = {}) {
     if (nohands(state.youmonst.data)) {
@@ -2686,6 +2986,8 @@ export async function doapply(state = game, env = {}) {
         return use_stethoscope(obj, state);
     case EXPENSIVE_CAMERA:
         return use_camera(obj, state, env);
+    case MIRROR:
+        return use_mirror(obj, state, env);
     case PICK_AXE:
     case DWARVISH_MATTOCK:
         return use_pick_axe(obj, state, env);

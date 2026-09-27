@@ -8,6 +8,7 @@
 // shieldeff (D-1087; sparkle opt_out default On; sit rndcurse caller).
 
 import { game } from './gstate.js';
+import { bot_via_windowport } from './botl.js';
 import { rank_of } from './roles.js';
 import { cansee, couldsee, vision_recalc, vision_off_newsym_gbuf } from './vision.js';
 import { objects_at, sobj_at } from './mkobj.js';
@@ -119,6 +120,12 @@ import {
     OVERRIDE_MSGTYPE,
     URGENT_MESSAGE,
     SUPPRESS_HISTORY,
+    ATR_URGENT,
+    ATR_NOHISTORY,
+    WC2_URGENT_MESG,
+    WC2_SUPPRESS_HIST,
+    WC2_HILITE_STATUS,
+    WC2_FLUSH_STATUS,
     PLNMSG_UNKNOWN,
     BUFSZ,
     gp,
@@ -134,7 +141,7 @@ import {
     NO_COLOR, CLR_GRAY, CLR_BLACK, CLR_BROWN, CLR_WHITE, CLR_YELLOW,
     CLR_BLUE, CLR_BRIGHT_BLUE, CLR_RED, CLR_ORANGE, CLR_CYAN, CLR_GREEN,
     CLR_MAGENTA, CLR_BRIGHT_MAGENTA, CLR_BRIGHT_GREEN,
-    DEC_TO_UNICODE, ATR_INVERSE, ATR_BOLD, ATR_UNDERLINE,
+    DEC_TO_UNICODE, ATR_NONE, ATR_INVERSE, ATR_BOLD, ATR_UNDERLINE,
 } from './terminal.js';
 import { update_lastseentyp, In_tutorial, cmap_to_type, ensure_lastseentyp, on_level } from './dungeon.js';
 import { stairway_at, known_branch_stairs } from './mklev.js';
@@ -150,6 +157,7 @@ import { SoundSpeak } from './sndprocs.js';
 import { msgtype_type } from './options.js';
 import { mapxy_valid } from './getpos.js';
 import { mungspaces } from './getline.js';
+import { Unaware } from './eat.js';
 
 const CORPSE_OTYP = objectNames.indexOf('CORPSE');
 const STATUE_OTYP = objectNames.indexOf('STATUE');
@@ -5336,7 +5344,10 @@ export function swallowed(first = 0) {
     const swallower = u.ustuck.mnum ?? u.ustuck.data?.mndx ?? 0;
 
     if (first) {
-        // C: cls(); bot(); — caller docrt already cls; bot deferred
+        // C display.c:1338–1339 cls(); bot(). docrt_flags already cls()'d
+        // on the uswallow arm. bot() has no await, so the status cache
+        // updates before this function returns.
+        void bot();
         for (let y = 0; y < ROWNO; y++) {
             for (let x = 1; x < COLNO; x++) {
                 const loc = game.level?.at(x, y);
@@ -5674,8 +5685,9 @@ export async function docrt_flags(refresh_flags) {
             // no vision_recalc/cls), then post_map.
             await redraw_map(0);
         } else if (game.u.uswallow) {
-            // C `:1726–1728` — swallowed(1) does cls()+bot() in C; JS
-            // swallowed skips both (cls here, bot via botlx at post_map).
+            // C `:1726–1728` — swallowed(1) does cls()+bot(). cls is here
+            // (swallowed's own cls is the same clear); bot() runs inside
+            // swallowed(first).
             await cls();
             swallowed(1);
         } else if ((game.u.uinwater | 0) && !Is_waterlevel(game.u.uz)) {
@@ -6079,11 +6091,6 @@ function _statusLine2() {
         s = mungspaces(s);
     }
     return s;
-}
-
-/** C ref: botl.c bot — no-op when u.uhp == -1 (dosave / exact overkill). */
-function _botSuppressed() {
-    return (game.u?.uhp | 0) === -1;
 }
 
 /**
@@ -7268,17 +7275,48 @@ export async function cls() {
 }
 
 // ── bot ──
-// C ref: botl.c bot — no-op body when u.uhp == -1; always clear botl flags
-// after the disabled check (disabled returns without clearing).
+// C ref: botl.c bot `:253–271`. bot_disabled returns before the paint and
+// before the flag clear. The paint requires u.uhp != -1, youmonst.data,
+// status_updates, and !suppress_map_output. VIA_WINDOWPORT takes
+// bot_via_windowport; the tty arm commits do_statusline1 and
+// do_statusline2 (_statusLine2). Flags clear on every return past the
+// disabled check, including a skipped paint.
 export async function bot() {
-    // C botl.c `:255–256` — gb.bot_disabled returns before uhp / putstr.
+    // C botl.c:255–256
     if (_bot_disabled) return;
-    _statusSuppressed = false;
-    if (!_botSuppressed()) _commitStatusLines();
+    const u = game.u;
+    // C iflags.status_updates defaults TRUE. Undefined (options not
+    // applied yet) stays enabled; explicit false or 0 skips the paint.
+    const statusUpdates = game.iflags?.status_updates;
+    // C :259–260
+    if ((u?.uhp ?? 0) !== -1
+        && game.youmonst?.data
+        && statusUpdates !== false && statusUpdates !== 0
+        && !suppress_map_output()) {
+        // C botl.h:213 VIA_WINDOWPORT()
+        const wincap2 = game.windowprocs?.wincap2 | 0;
+        if ((wincap2 & (WC2_HILITE_STATUS | WC2_FLUSH_STATUS)) !== 0) {
+            // C :262. bot_via_windowport panics when !gb.blinit.
+            bot_via_windowport();
+        } else {
+            // C :264–267 curs(WIN_STATUS, 1, 0); putstr(do_statusline1());
+            // curs(WIN_STATUS, 1, 1); putmixed(do_statusline2()).
+            // putstr returns unless the window is WIN_MESSAGE, so the
+            // status window is this cache. do_statusline2 is _statusLine2.
+            _statusSuppressed = false;
+            _commitStatusLines();
+        }
+    }
+    // C :270
     if (game.flags) {
         game.flags.botl = false;
         game.flags.botlx = false;
         game.flags.time_botl = false;
+    }
+    if (game.disp) {
+        game.disp.botl = false;
+        game.disp.botlx = false;
+        game.disp.time_botl = false;
     }
 }
 
@@ -7663,12 +7701,10 @@ function vpline_consume_msg_loc(msg) {
     return msg;
 }
 
-// C ref: pline.c You `:355–363` / Your `:365–373` / You_feel `:375–388` /
-// You_cant `:390–398` / pline_The `:400–408` / There `:410–418` —
-// YouMessage prefix on the FORMAT then vpline with the same args
-// (You_buf growth unneeded in JS). You_feel's Unaware dream arm and
-// You_hear/You_see (hack.js / below) keep their prop gates; the plain
-// prefixes here wire the C callers that have none.
+// C ref: pline.c You `:366–374` / Your `:376–385` / You_cant `:402–411` /
+// pline_The `:413–422` / There `:424–433` — YouMessage (`:362–363`)
+// prefixes the format, then vpline. You_buf (`:338–348`) is unneeded
+// in JS. You_feel (`:387–400`) and You_see are below; You_hear is hack.js.
 export async function You(fmt, ...args) {
     if (fmt == null || fmt === '') return;
     await vpline(`You ${fmt}`, ...args);
@@ -7689,10 +7725,18 @@ export async function There(fmt, ...args) {
     if (fmt == null || fmt === '') return;
     await vpline(`There ${fmt}`, ...args);
 }
-// C ref: pline.c You_feel — prefix "You feel " (Unaware dream path deferred)
-export async function You_feel(fmt, ...args) {
-    if (fmt == null || fmt === '') return;
-    await vpline(`You feel ${fmt}`, ...args);
+/**
+ * C ref: pline.c You_feel `:387–400`.
+ * Unaware (youprop.h:399; eat.js) selects the prefix. YouPrefix
+ * (`:359–360`) copies it; strcat appends `line`; vpline (`:398`)
+ * prints that format with the same args. You_buf growth is unneeded
+ * in JS. `imports.mjs --can display.js eat.js Unaware` — hoisted, SAFE.
+ */
+export async function You_feel(line, ...the_args) {
+    const prefix = Unaware()
+        ? 'You dream that you feel '
+        : 'You feel ';
+    await vpline(`${prefix}${line}`, ...the_args);
 }
 export async function You_see(fmt, ...args) {
     // Named: C Unaware «dream that you see» + Blind «sense» arms (D-2065
@@ -7790,9 +7834,10 @@ export async function Norep(fmt, ...args) {
 
 /**
  * C ref: pline.c custompline — vpline with caller flags.
- * SUPPRESS_HISTORY skips dumplogmsg only (C `:235–239`); putmesg,
- * update_topl and gp.prevmsg still run, so a later Norep compares
- * against this line.
+ * SUPPRESS_HISTORY skips dumplogmsg (C `:235–239`). putmesg still
+ * runs: ATR_NOHISTORY (and thus show_topl) when windowprocs.wincap2
+ * has WC2_SUPPRESS_HIST. gp.prevmsg is still the new line, so a later
+ * Norep compares against it.
  */
 export async function custompline(flags, fmt, ...args) {
     gp.pline_flags = flags | 0;
@@ -7875,8 +7920,9 @@ function vpline_truncate(line, ln) {
  * (pre-window/recursive terminal path — sets last_msg UNKNOWN and
  * returns after dumplog, no scored window surface); `alloc` (prefixed
  * accessiblemsg tmp — JS strings, GC); `maybe_play_sound` (USER_SOUNDS
- * compiled out of the contest C — D-1807); `putmesg` as a named export
- * (split: SoundSpeak + topl window in `pline_after_consume` below).
+ * compiled out of the contest C — D-1807). `putmesg` is the file-local
+ * below (C staticfn); its one caller is this function via
+ * `pline_after_consume`.
  */
 export async function vpline(fmt, ...args) {
     // C `:160–163` — always snapshot+reset a11y.msg_loc first (D-1207),
@@ -7974,54 +8020,25 @@ function vraw_printf(fmt, args) {
     if (!game.program_state?.beyond_savefile_load) _early_raw_messages++;
 }
 
-async function pline_after_consume(msg, alreadyDumplogged = false) {
+/**
+ * C ref: win/tty/topl.c update_topl `:251–302`.
+ * Message window when tty_putstr's ATR_NOHISTORY bit is off.
+ * `skip` is captured before more(); ESC during more() must not
+ * recompute it (D-0928 #1133). `notdied` starts 1 and is assigned
+ * only inside the append predicate. Named: NON_EMPTY && cury>0
+ * docorner arm (`:275–278`) — JS has no separate cury; wrap is `\n`.
+ * Returns a Promise only when `more()` waits for a key. A resolved
+ * async wrapper would yield before vpline's MSGTYP_STOP `--More--`
+ * and drop that prompt for fire-and-forget `pline` callers (D-2944).
+ * @param {string} bp
+ * @returns {Promise<void>|undefined}
+ */
+function update_topl(bp) {
     const CO = game?.nhDisplay?.cols || 80;
-    const line = String(msg);
-    // C pline.c vpline DUMPLOG_CORE `:233–239`: vpline() above already
-    // dumplogged before the in_pline/raw gate; direct callers pass false.
-    // yn ATR_NOHISTORY still named.
-    if (!alreadyDumplogged) dumplogmsg(line);
-    const { msgtyp, suppress } = vpline_msgtyp_gate(line);
-    if (suppress) return;
-    // C pline.c vpline `:270–276` — vision_recalc(0) with in_pline saved
-    // at 0 so a recursive pline during recalc takes the raw_print path
-    // (boulder extract / door / light set vision_full_recalc mid-turn).
-    if (game.vision_full_recalc) {
-        const _savedInPline = _vpline_in_pline;
-        _vpline_in_pline = 0;
-        try {
-            vision_recalc(0);
-        } finally {
-            _vpline_in_pline = _savedInPline;
-        }
-    }
-    // C `:277–278` — if (u.ux) flush_screen(NO_CURS_ON_U ? 0 : 1).
-    if (game.u?.ux) await flush_screen((gp.pline_flags & NO_CURS_ON_U) ? 0 : 1);
-    // C pline.c putmesg `:69–80` — debug_prevent_pline skips putstr (the
-    // rest — execplinehandler/prevmsg/more — still runs); URGENT/NOHISTORY
-    // attrs need wincap2 (tty) so only SoundSpeak paints here. Named: the
-    // putstr(WIN_MESSAGE) window call itself (topl block below is its JS
-    // paint); debug_prevent_pline is never set in scored runs.
-    const _prevented = !!game.iflags?.debug_prevent_pline;
-    if (!_prevented) SoundSpeak(line);
-    // C putmesg early-return above skips the message-window paint but not
-    // the trailer (execplinehandler / prevmsg / STOP more). Never set here.
-    if (_prevented) {
-        _prevmsg = line.slice(0, BUFSZ - 1);
-        await vpline_after_putmesg(line, msgtyp);
-        return;
-    }
-
-    // Capture skip before more(); C still paints the new line with the
-    // pre-more skip flag even if ESC sets WIN_STOP during more().
+    const line = String(bp);
     // C: skip = (WIN_STOP | WIN_NOSTOP) == WIN_STOP
-    // C update_topl: `notdied` starts TRUE; only assigned inside the
-    // short-circuiting append predicate. "You die" clears WIN_STOP iff
-    // that assignment ran (room check passed). Under WIN_STOP + no room,
-    // notdied stays 1 → WIN_STOP kept → yn skips more() (D-0928 #1133).
     let skip = _win_stop && !_win_nostop;
     let notdied = 1;
-
     const n0 = line.length;
     // C: (NEED_MORE || skip) && cury==0 && room && (notdied=strncmp)!=0
     if ((_toplin === TOPLINE_NEED_MORE || skip)
@@ -8029,19 +8046,27 @@ async function pline_after_consume(msg, alreadyDumplogged = false) {
         && ((notdied = line.startsWith('You die') ? 0 : 1) !== 0)) {
         _toplines = _toplines ? `${_toplines}  ${line}` : line;
         if (!skip) game._pending_message = _toplines;
-        // C `:282` strncpy(gp.prevmsg, line, BUFSZ) (new text, not topline).
-        _prevmsg = line.slice(0, BUFSZ - 1);
-        await vpline_after_putmesg(line, msgtyp);
         return;
     }
     if (!skip && _toplin === TOPLINE_NEED_MORE) {
         // C remembers after more(); JS more() clears _toplines so
         // flush the ring here (same net copy as C remember_topl).
         remember_topl();
-        await more();
+        return more().then(() => update_topl_rest(line, CO, skip, notdied));
     }
+    return update_topl_rest(line, CO, skip, notdied);
+}
 
-    // C ref: topl.c update_topl — replace spaces with `\n` while n0 >= CO
+/**
+ * Rest of update_topl after an optional leading more().
+ * @param {string} line
+ * @param {number} CO
+ * @param {boolean} skip
+ * @param {number} notdied
+ * @returns {Promise<void>|undefined}
+ */
+function update_topl_rest(line, CO, skip, notdied) {
+    // C: replace spaces with `\n` while n0 >= CO
     let formatted = line;
     {
         let wrapN0 = formatted.length;
@@ -8062,11 +8087,9 @@ async function pline_after_consume(msg, alreadyDumplogged = false) {
         }
     }
 
-    // C topl.c update_topl `:280` remember_topl before replacing gt.toplines
+    // C `:280` remember_topl before replacing gt.toplines
     remember_topl();
     _toplines = formatted;
-    // C vpline `:282` strncpy(gp.prevmsg, line, BUFSZ) after putmesg.
-    _prevmsg = line.slice(0, BUFSZ - 1);
     // C: if (!notdied) cw->flags &= ~WIN_STOP, skip = FALSE;
     if (!notdied) {
         _win_stop = false;
@@ -8075,17 +8098,191 @@ async function pline_after_consume(msg, alreadyDumplogged = false) {
     if (!skip) {
         game._pending_message = formatted;
         _toplin = TOPLINE_NEED_MORE;
-        // C ref: topl.c redotoplin — more() when message wrapped (cury > 0)
-        if (formatted.includes('\n')) {
-            await more();
+        // C redotoplin — more() when the message wrapped (cury > 0)
+        if (formatted.includes('\n')) return more();
+    }
+}
+
+/**
+ * C ref: win/tty/topl.c show_topl `:145–166`.
+ * ATR_NOHISTORY paint: display `str` without copying it into
+ * gt.toplines (remember_topl already cleared that). JS paints via
+ * `_pending_message`; `_toplines` stays the history source.
+ * Hard-wrap at CO-1 matches topl_putsym, not update_topl's word wrap.
+ * @param {string} str
+ */
+function show_topl(str) {
+    if (_win_stop && !_win_nostop) return;
+    _win_stop = false;
+    _win_nostop = false;
+    const cw = ensure_message_win();
+    if ((cw.cury | 0) !== 0 && _toplin === TOPLINE_NON_EMPTY) {
+        // tty_clear_nhwindow blanks the window; gt.toplines stays.
+        const saved = _toplines;
+        clear_nhwindow_message();
+        _toplines = saved;
+    }
+    const text = String(str ?? '');
+    const CO = game?.nhDisplay?.cols || 80;
+    let col = 0;
+    let row = 0;
+    for (let i = 0; i < text.length; i++) {
+        const ch = text[i];
+        if (ch === '\n') {
+            col = 0;
+            row++;
+        } else {
+            if (col === CO - 1) {
+                col = 0;
+                row++;
+            }
+            col++;
         }
     }
+    cw.curx = col;
+    cw.cury = row;
+    game._pending_message = text;
+    _toplin = TOPLINE_NEED_MORE;
+    if (_delay_flushing) _paintToplineOnly();
+    else _buildScreenOutput();
+    if (row && _toplin !== TOPLINE_SPECIAL_PROMPT) {
+        _toplin = TOPLINE_NON_EMPTY;
+    }
+}
+
+/**
+ * C ref: winprocs.h `putstr` → `(*windowprocs.win_putstr)` and
+ * wintty.c tty_putstr `:2225–2422`. putmesg calls only WIN_MESSAGE,
+ * so this is the NHW_MESSAGE arm (`:2260–2301`).
+ * Named: HUPSKIP; WIN_ERR/missing-window tty_raw_print; compress_str
+ * on non-message windows; end_glyphout; NHW_STATUS / NHW_MAP /
+ * NHW_BASE / NHW_MENU / NHW_TEXT arms.
+ * Returns a Promise only when the message window waits in more().
+ * @param {number} window
+ * @param {number} attr
+ * @param {string} str
+ * @returns {Promise<void>|undefined}
+ */
+function putstr(window, attr, str) {
+    const msgWin = game.WIN_MESSAGE;
+    if (msgWin != null && window !== msgWin) return;
+    const suppressHistory = (attr & ATR_NOHISTORY) !== 0;
+    const urgentMessage = (attr & ATR_URGENT) !== 0;
+    // C `:2277–2282` — urgent clears a prior ESC suppress, then
+    // WIN_NOSTOP so this line's own --More-- cannot re-arm WIN_STOP.
+    if (urgentMessage) {
+        if (_win_stop) {
+            _win_stop = false;
+            _toplines = '';
+            _toplin = TOPLINE_EMPTY;
+            game._pending_message = '';
+            const cw = _msg_cw;
+            if (cw) {
+                cw.curx = 0;
+                cw.cury = 0;
+            }
+        }
+        _win_nostop = true;
+    }
+    const done = () => {
+        // C wintty.c:2300 — WIN_NOSTOP is a one-shot. Clear it on every
+        // message-window return, including a call that did not set
+        // ATR_URGENT, so the vpline MSGTYP_STOP trailer does not see it.
+        _win_nostop = false;
+    };
+    let waited;
+    if (!suppressHistory) waited = update_topl(str);
+    else {
+        remember_topl();
+        show_topl(str);
+    }
+    if (waited) return waited.then(done);
+    done();
+}
+
+/**
+ * C wintty.c tty_procs.wincap2 `:119` — the two message bits.
+ * `:111–125` also sets hilite/flush/reset status, darkgray,
+ * statuslines, utf8, petattr, extracolors, and extrastatus. Those
+ * stay off so VIA_WINDOWPORT() stays false (status_initialize).
+ * @returns {number}
+ */
+export function install_tty_wincap2() {
+    if (!game.windowprocs || typeof game.windowprocs !== 'object') {
+        game.windowprocs = { name: 'tty' };
+    }
+    if (!Object.hasOwn(game.windowprocs, 'wincap2')) {
+        game.windowprocs.wincap2 = WC2_URGENT_MESG | WC2_SUPPRESS_HIST;
+    }
+    return game.windowprocs.wincap2 | 0;
+}
+
+/**
+ * C ref: pline.c putmesg `:65–80` (staticfn). One caller: vpline `:276`.
+ * tty_procs advertises WC2_URGENT_MESG | WC2_SUPPRESS_HIST
+ * (wintty.c `:119`), installed on `windowprocs.wincap2`. SoundSpeak
+ * is the !SND_LIB empty macro. Returns a Promise only when putstr
+ * waits in more(). SoundSpeak runs after that wait, still before
+ * vpline's trailer, matching C.
+ * @param {string} line
+ * @returns {Promise<void>|undefined}
+ */
+function putmesg(line) {
+    let attr = ATR_NONE;
+    if (game.iflags?.debug_prevent_pline) return;
+    const wincap2 = install_tty_wincap2();
+    if ((gp.pline_flags & URGENT_MESSAGE) !== 0
+        && (wincap2 & WC2_URGENT_MESG) !== 0) {
+        attr |= ATR_URGENT;
+    }
+    if ((gp.pline_flags & SUPPRESS_HISTORY) !== 0
+        && (wincap2 & WC2_SUPPRESS_HIST) !== 0) {
+        attr |= ATR_NOHISTORY;
+    }
+    const waited = putstr(game.WIN_MESSAGE, attr, line);
+    if (waited) return waited.then(() => { SoundSpeak(line); });
+    SoundSpeak(line);
+}
+
+async function pline_after_consume(msg, alreadyDumplogged = false) {
+    const line = String(msg);
+    // C pline.c vpline DUMPLOG_CORE `:233–239`: vpline() above already
+    // dumplogged before the in_pline/raw gate; direct callers pass false.
+    if (!alreadyDumplogged) dumplogmsg(line);
+    const { msgtyp, suppress } = vpline_msgtyp_gate(line);
+    if (suppress) return;
+    // C pline.c vpline `:270–276` — vision_recalc(0) with in_pline saved
+    // at 0 so a recursive pline during recalc takes the raw_print path
+    // (boulder extract / door / light set vision_full_recalc mid-turn).
+    if (game.vision_full_recalc) {
+        const _savedInPline = _vpline_in_pline;
+        _vpline_in_pline = 0;
+        try {
+            vision_recalc(0);
+        } finally {
+            _vpline_in_pline = _savedInPline;
+        }
+    }
+    // C `:277–278` — if (u.ux) flush_screen(NO_CURS_ON_U ? 0 : 1).
+    if (game.u?.ux) await flush_screen((gp.pline_flags & NO_CURS_ON_U) ? 0 : 1);
+    // C `:276` putmesg(line). debug_prevent_pline returns before
+    // putstr and SoundSpeak; the trailer below still runs. Await
+    // only a real more() — a resolved promise would yield before
+    // MSGTYP_STOP paints `--More--`.
+    const waited = putmesg(line);
+    if (waited) await waited;
+    // C `:280–284` — execplinehandler, last_msg, prevmsg, MSGTYP_STOP more.
+    // prevmsg is the new text, not the combined topline.
+    _prevmsg = line.slice(0, BUFSZ - 1);
     await vpline_after_putmesg(line, msgtyp);
 }
 
 /**
- * C ref: pline.c urgent_pline — URGENT_MESSAGE / WIN_NOSTOP so ESC'd
- * --More-- (WIN_STOP) cannot suppress this line; clears STOP first.
+ * C ref: pline.c urgent_pline — URGENT_MESSAGE so putmesg ORs
+ * ATR_URGENT. tty_putstr sets WIN_NOSTOP for this line's more() and
+ * clears it before return (`:2300`), so the MSGTYP_STOP trailer does
+ * not see the bit. The pre-clear of WIN_STOP matches that urgent arm
+ * when the stop bit is already set.
  */
 export async function urgent_pline(fmt, ...args) {
     if (fmt == null || fmt === '') return;

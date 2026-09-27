@@ -91,6 +91,7 @@
 // from angrygods.
 
 import { game } from './gstate.js';
+import { quest_info } from './questpgr.js';
 import { pline, You, Your, urgent_pline, newsym, You_feel, verbalize, canspotmon, tmp_at, cmap_to_glyph, map_invisible, shieldeff, monsym } from './display.js';
 import { xname, makeplural, an, vtense, otense, otyp_is_charged, Yname2, Yobjnam2, Tobjnam, doname, actualoname } from './objnam.js';
 import {
@@ -135,7 +136,7 @@ import { vision_recalc, do_clear_area, cansee } from './vision.js';
 import { valid_cloud_pos, create_gas_cloud } from './region.js';
 import { getpos, getpos_sethilite } from './getpos.js';
 import { bcsign, BY_COOKIE, outrumor } from './rumors.js';
-import { dist2 } from './hacklib.js';
+import { dist2, mungspaces } from './hacklib.js';
 import { You_hear, closed_door, maybe_half_phys } from './hack.js';
 import { Soundeffect } from './sndprocs.js';
 import { se_maniacal_laughter, se_sad_wailing } from './generated/seffects_data.js';
@@ -1390,10 +1391,10 @@ async function seffect_charging(sobj) {
         || !!game.objects?.[otyp]?.oc_name_known;
     if (confused) {
         if (scursed) {
-            await pline('You feel discharged.');
+            await You_feel('discharged.');
             u.uen = 0;
         } else {
-            await pline('You feel charged up!');
+            await You_feel('charged up!');
             u.uen = (u.uen | 0) + d(sblessed ? 6 : 4, 4);
             if ((u.uen | 0) > (u.uenmax | 0)) u.uenmax = u.uen;
             else u.uen = u.uenmax;
@@ -1446,7 +1447,7 @@ async function seffect_confuse_monster(sobj) {
     // C: gy.youmonst.data->mlet != S_HUMAN (JS mlet is 'S_HUMAN' string)
     const isHuman = !youmonst_data || youmonst_data.mlet === 'S_HUMAN';
     if (!isHuman || scursed) {
-        if (!(u.HConfusion | 0)) await pline('You feel confused.');
+        if (!(u.HConfusion | 0)) await You_feel('confused.');
         await make_confused((u.HConfusion | 0) + rnd(100), false);
     } else if (confused) {
         if (!sblessed) {
@@ -2353,16 +2354,6 @@ function Role_if(pm) {
     return (game.urole?.mnum | 0) === (pm | 0);
 }
 
-/** C ref: questpgr.c quest_info — urole ldr/nemi/guard/questarti. */
-function quest_info(typ) {
-    const urole = game.urole || {};
-    if (typ === 0) return urole.questarti | 0;
-    if (typ === MS_LEADER) return urole.ldrnum ?? NON_PM;
-    if (typ === MS_NEMESIS) return urole.neminum ?? NON_PM;
-    if (typ === MS_GUARDIAN) return urole.guardnum ?? NON_PM;
-    return 0;
-}
-
 function type_is_pname_ptr(ptr) {
     return !!((ptr?.mflags2 ?? 0) & M2_PNAME);
 }
@@ -2722,10 +2713,6 @@ export async function do_genocide(how) {
             await pline(nothing_happens);
         }
     }
-}
-
-function mungspaces(s) {
-    return String(s || '').trim().replace(/\s+/g, ' ');
 }
 
 /**

@@ -34,12 +34,12 @@ import {
     Is_stronghold, ACH_TUNE, isok,
 } from './const.js';
 import { A_WIS, A_DEX, acurr, exercise, Fumbling } from './attrib.js';
-import { cxname, an, xname, The, the, otense, thesimpleoname } from './objnam.js';
+import { cxname, an, xname, The, the, otense, thesimpleoname, yname } from './objnam.js';
 import {
     mindless, G_UNIQ, is_flyer, is_clinger, humanoid, is_hider, nolimbs,
     M1_SLITHY, is_mercenary, MR_SLEEP,
 } from './monsters.js';
-import { dist2 } from './hacklib.js';
+import { dist2, mungspaces } from './hacklib.js';
 import { Monnam, mon_nam, x_monnam } from './do_name.js';
 import { cansee, recalc_block_point, unblock_point } from './vision.js';
 import { m_at, wakeup, seemimic, onscary } from './mon.js';
@@ -147,23 +147,12 @@ function ceiling_hider(ptr) {
     return (is_clinger(ptr) && ptr.mlet !== 'S_MIMIC') || is_flyer(ptr);
 }
 
-/** C ref: objnam.c yname — invent → "your ", else "the ". */
-function yname(obj) {
-    const carried = (game.invent || []).includes(obj);
-    return `${carried ? 'your' : 'the'} ${cxname(obj)}`;
-}
-
 /** C potion.c incr_itimeout — TIMEOUT field only. */
 function incr_itimeout_HDeaf(incr) {
     const u = game.u || (game.u = {});
     const cur = u.HDeaf | 0;
     const next = ((cur & TIMEOUT) + (incr | 0)) & TIMEOUT;
     u.HDeaf = (cur & ~TIMEOUT) | next;
-}
-
-/** C ref: hacklib.c mungspaces — trim ends, compress internal spaces. */
-function mungspaces(s) {
-    return String(s || '').trim().replace(/\s+/g, ' ');
 }
 
 /** C ref: do_name.c Amonnam — highc(a_monnam). */
@@ -773,11 +762,11 @@ async function do_improvisation(instr) {
         break;
     case PLAY_STUNNED:
         if (!Deaf()) await pline('You radiate an obnoxious droning sound.');
-        else await pline('You feel a monotonous vibration.');
+        else await You_feel('a monotonous vibration.');
         break;
     case PLAY_CONFUSED:
         if (!Deaf()) await pline('You generate a raucous noise.');
-        else await pline('You feel a jarring vibration.');
+        else await You_feel('a jarring vibration.');
         break;
     case PLAY_HALLU:
         await pline('You disseminate a kaleidoscopic display of floating butterflies.');

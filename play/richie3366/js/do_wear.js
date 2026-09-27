@@ -129,6 +129,8 @@ const ORCISH_SHIELD = objectNames.indexOf('ORCISH_SHIELD');
 const DWARVISH_ROUNDSHIELD = objectNames.indexOf('DWARVISH_ROUNDSHIELD');
 const LARGE_SHIELD = objectNames.indexOf('LARGE_SHIELD');
 const SHIELD_OF_REFLECTION = objectNames.indexOf('SHIELD_OF_REFLECTION');
+const HAWAIIAN_SHIRT = objectNames.indexOf('HAWAIIAN_SHIRT');
+const T_SHIRT = objectNames.indexOf('T_SHIRT');
 const AKLYS = objectNames.indexOf('AKLYS');
 /** C hack.h c_sword — class name when is_sword. */
 const c_sword = 'sword';
@@ -1144,8 +1146,36 @@ export async function Boots_off() {
     }
     return 0;
 }
-export function Shirt_off() {
-    clear_worn(W_ARMU);
+/**
+ * C ref: do_wear.c Shirt_off `:778–794`.
+ * Clear the in-progress takeoff bit, name the two shirts (anything
+ * else is impossible), then setworn(NULL, W_ARMU). No shirt has a
+ * take-off side effect (the comment at `:782–783` is why the switch
+ * stays). A null uarmu returns 0 after the mask clear; C would
+ * dereference uarmu->otyp before setworn.
+ * @returns {Promise<number>} 0
+ */
+export async function Shirt_off() {
+    /* C `:780` — svc.context.takeoff.mask &= ~W_ARMU. The C field is
+       a struct member; skip when this port has no takeoff record. */
+    if (game.context?.takeoff) {
+        game.context.takeoff.mask =
+            (game.context.takeoff.mask | 0) & ~W_ARMU;
+    }
+    const uarmu = game.u?.uarmu;
+    if (!uarmu) return 0;
+    /* C `:784–790` — Hawaiian shirt and T-shirt break. Default is
+       impossible("Unknown type of %s (%d)", "shirt", otyp). */
+    switch (uarmu.otyp | 0) {
+    case HAWAIIAN_SHIRT:
+    case T_SHIRT:
+        break;
+    default:
+        await impossible('Unknown type of %s (%d)', 'shirt', uarmu.otyp | 0);
+        break;
+    }
+    /* C `:792` setworn((struct obj *) 0, W_ARMU). */
+    setworn(null, W_ARMU);
     return 0;
 }
 
@@ -1625,10 +1655,32 @@ export async function Boots_on() {
     }
     return 0;
 }
+/**
+ * C ref: do_wear.c Shirt_on `:759–775`.
+ * No shirt otyp has a put-on side effect (the comment at `:761–762`
+ * is why the switch stays). Hawaiian shirt and T-shirt break.
+ * Anything else is impossible("Unknown type of %s (%d)", "shirt", otyp).
+ * Then, if the shirt was not known, known=1 and update_inventory —
+ * the status line shows the +/-. No find_ac (D-0810 / D-0883: AC stays
+ * stale until allmain). A null uarmu returns 0; C would dereference.
+ */
 async function Shirt_on() {
-    const o = game.u?.uarmu;
-    if (o && !o.known) o.known = 1;
-    find_ac();
+    const uarmu = game.u?.uarmu;
+    if (!uarmu) return 0;
+    /* C `:763–769` — two shirts, then default impossible. */
+    switch (uarmu.otyp | 0) {
+    case HAWAIIAN_SHIRT:
+    case T_SHIRT:
+        break;
+    default:
+        await impossible('Unknown type of %s (%d)', 'shirt', uarmu.otyp | 0);
+        break;
+    }
+    /* C `:770–773`. */
+    if (!uarmu.known) {
+        uarmu.known = 1;
+        update_inventory();
+    }
     return 0;
 }
 
@@ -1838,7 +1890,7 @@ async function armoroff(otmp) {
     else if (otmp === u.uarms) await Shield_off();
     else if (otmp === u.uarmg) await Gloves_off();
     else if (otmp === u.uarmf) await Boots_off();
-    else if (otmp === u.uarmu) Shirt_off();
+    else if (otmp === u.uarmu) await Shirt_off();
     else {
         otmp.owornmask = (otmp.owornmask || 0) & ~W_ARMOR;
     }
@@ -2314,7 +2366,7 @@ async function do_takeoff() {
         if (!(await cursed(otmp))) await Shield_off();
     } else if (doff.what === WORN_SHIRT) {
         otmp = u.uarmu;
-        if (!(await cursed(otmp))) Shirt_off();
+        if (!(await cursed(otmp))) await Shirt_off();
     } else if (doff.what === WORN_AMUL) {
         otmp = u.uamul;
         if (!(await cursed(otmp))) await Amulet_off();
@@ -3972,7 +4024,7 @@ async function wornarm_destroyed(wornarm) {
     // cancel_don deferred
     if (wornarm === u.uarmc) await Cloak_off();
     else if (wornarm === u.uarm) await Armor_off();
-    else if (wornarm === u.uarmu) Shirt_off();
+    else if (wornarm === u.uarmu) await Shirt_off();
     else if (wornarm === u.uarmh) await Helmet_off();
     else if (wornarm === u.uarmg) await Gloves_off();
     else if (wornarm === u.uarmf) await Boots_off();

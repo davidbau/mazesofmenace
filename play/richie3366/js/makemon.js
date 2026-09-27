@@ -4,6 +4,7 @@
 //   (ordinary armed-mlet envelope).
 
 import { game } from './gstate.js';
+import { quest_info } from './questpgr.js';
 import { rn2, rnd, rn1, d } from './rng.js';
 import { depth as depth_of_level, level_difficulty, upstart } from './hacklib.js';
 import { Is_special } from './dungeon.js';
@@ -1171,24 +1172,43 @@ function tt_doppel(mon) {
     return ret;
 }
 
-/** Lazy animal_list for pick_animal — C mon.c mon_animal_list. */
-let animal_list = null;
-
-function ensure_animal_list() {
-    if (animal_list) return;
-    const tmp = [];
-    for (let i = LOW_PM; i < SPECIAL_PM; i++) {
-        if (is_animal(mons(i))) tmp.push(i);
+/**
+ * C ref: mon.c mon_animal_list `:4829–4852`.
+ * construct: `LOW_PM .. SPECIAL_PM-1` where `is_animal(&mons[i])`
+ * (`mondata.h:66`), then `alloc` + `memcpy` into `ga.animal_list` and
+ * store `ga.animal_list_count`. release: `free` the list and zero the
+ * count (`free_animals` in `freedynamicdata`). The `impossible` re-entry
+ * check and the `n == 0` `NON_PM` fallback are comments in C.
+ * `alloc` / `memcpy` / `free` are the JS array (GC).
+ * @param {boolean} construct
+ */
+export function mon_animal_list(construct) {
+    if (construct) {
+        const animal_temp = [];
+        let n = 0;
+        for (let i = LOW_PM; i < SPECIAL_PM; i++) {
+            if (is_animal(mons(i))) animal_temp[n++] = i;
+        }
+        game.animal_list = animal_temp;
+        game.animal_list_count = n;
+    } else { /* release */
+        if (game.animal_list) game.animal_list = null;
+        game.animal_list_count = 0;
     }
-    animal_list = tmp;
 }
 
 /**
- * C ref: mon.c pick_animal — animal_list[rn2(count)]; rogue retry deferred.
+ * C ref: mon.c pick_animal `:4854–4869`.
+ * Build the list on first use, then `animal_list[rn2(count)]`.
+ * Rogue level retries once when `monsym` is not uppercase.
  */
 function pick_animal() {
-    ensure_animal_list();
-    return animal_list[rn2(animal_list.length)] ?? NON_PM;
+    if (!game.animal_list) mon_animal_list(true);
+    let res = game.animal_list[rn2(game.animal_list_count)];
+    if (Is_rogue_level(game.u?.uz) && !monsym_isupper(mons(res))) {
+        res = game.animal_list[rn2(game.animal_list_count)];
+    }
+    return res;
 }
 
 /**
@@ -3303,11 +3323,9 @@ export function makemon(mdat, x, y, mmflags = 0) {
     if (mtmp.mextra?.epri) mtmp.mextra.epri.parentmid = mtmp.m_id;
     if (mtmp.mextra?.edog) mtmp.mextra.edog.parentmid = mtmp.m_id;
 
-    // C: ptr->msound == MS_LEADER && quest_info(MS_LEADER) == mndx
-    const ldr = game.urole?.ldrnum ?? NON_PM;
-    const nem = game.urole?.neminum ?? NON_PM;
-    if ((ptr.msound | 0) === MS_LEADER
-        && ldr !== NON_PM && ldr != null && (ptr.mndx | 0) === (ldr | 0)) {
+    // C makemon.c:1253 — mndx is monsndx(ptr); && skips quest_info otherwise.
+    const mndx = ptr.mndx | 0;
+    if ((ptr.msound | 0) === MS_LEADER && quest_info(MS_LEADER) === mndx) {
         if (!game.quest_status) game.quest_status = {};
         game.quest_status.leader_m_id = mtmp.m_id;
     }
@@ -3321,12 +3339,11 @@ export function makemon(mdat, x, y, mmflags = 0) {
         mtmp.female = 1;
     else if (is_male(ptr) || ((mmflags & MM_MALE) !== 0 && maleok))
         mtmp.female = 0;
-    // C: ptr->msound == MS_LEADER/NEMESIS && quest_info(...) == mndx
-    else if ((ptr.msound | 0) === MS_LEADER
-        && ldr !== NON_PM && ldr != null && (ptr.mndx | 0) === (ldr | 0))
+    // C makemon.c:1270–1272 — else-if, so nemesis does not call quest_info
+    // when the leader arm already matched.
+    else if ((ptr.msound | 0) === MS_LEADER && quest_info(MS_LEADER) === mndx)
         mtmp.female = game.quest_status?.ldrgend | 0;
-    else if ((ptr.msound | 0) === MS_NEMESIS
-        && nem !== NON_PM && nem != null && (ptr.mndx | 0) === (nem | 0))
+    else if ((ptr.msound | 0) === MS_NEMESIS && quest_info(MS_NEMESIS) === mndx)
         mtmp.female = game.quest_status?.nemgend | 0;
     else mtmp.female = femaleok ? rn2(2) : 0;
 

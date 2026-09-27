@@ -32,8 +32,11 @@ import { ATR_INVERSE } from './terminal.js';
 import { make_blinded } from './do.js';
 import { m_at, rescham, dmonsfree } from './mon.js';
 import { dobjsfree } from './mkobj.js';
+/* C lock.c maybe_reset_pick — hoisted fn, called only from
+   makemap_prepost (`imports.mjs --can wizcmds.js lock.js` SAFE). */
+import { maybe_reset_pick } from './lock.js';
 import { minimal_monnam } from './do_name.js';
-import { strsubst, depth } from './hacklib.js';
+import { strsubst, depth, mungspaces } from './hacklib.js';
 import { getpos } from './getpos.js';
 import { usmellmon, makemon, rndmonst } from './makemon.js';
 import { check_invent_gold } from './invent.js';
@@ -357,13 +360,12 @@ export async function wiz_intrinsic() {
  */
 export async function wiz_level_change() {
     const u = game.u || (game.u = {});
-    const buf = await getlin('To what experience level do you want to be set?');
-    // C: mungspaces then sscanf("%d%c"); ESC/empty → ret=0 → Never_mind.
-    const trimmed = (buf || '').trim();
+    const buf = mungspaces(await getlin('To what experience level do you want to be set?'));
+    // C `:454–458` mungspaces then sscanf("%d%c"); ESC/empty → ret=0 → Never_mind.
     let newlevel = 0;
     let ret = 0;
-    if (buf && buf !== '\x1b' && trimmed && /^-?\d+$/.test(trimmed)) {
-        newlevel = parseInt(trimmed, 10);
+    if (buf && buf !== '\x1b' && /^-?\d+$/.test(buf)) {
+        newlevel = parseInt(buf, 10);
         if (Number.isFinite(newlevel)) ret = 1;
     }
     if (ret !== 1) {
@@ -567,7 +569,7 @@ function zero_dest_area() {
  * safe_teleds, then losedogs / kill_genocided / u_collide_m / initrack /
  * Punished placebc / docrt / flush / splev / check_special_room(FALSE).
  * Named omissions: makemap_remove_mons / rm_mapseen / mine·soko prize;
- * maybe_reset_pick; digging memset; polearm.hitmon;
+ * digging memset; polearm.hitmon;
  * savelev freeing nhfile; INSURANCE save_currentstate;
  * sp_lev.c lspo_reset_level / lspo_finalize_level.
  */
@@ -582,6 +584,8 @@ export async function makemap_prepost(pre, wiztower) {
             await ballrelease(false);
             await unplacebc();
         }
+        /* C cmd.c:1014–1015 — reset lock picking unless the box is carried. */
+        maybe_reset_pick(null);
         if (!game.iflags) game.iflags = {};
         if (!game.iflags.travelcc) game.iflags.travelcc = { x: 0, y: 0 };
         game.iflags.travelcc.x = 0;

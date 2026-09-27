@@ -898,8 +898,8 @@ async function use_mirror(obj) {
             if (vis) {
                 await pline(`You discern no obvious reaction from ${mon_nam(mtmp)}.`);
             } else {
-                await pline(
-                    'You feel a bit silly gesturing the mirror in that direction.',
+                await You_feel(
+                    'a bit silly gesturing the mirror in that direction.',
                 );
             }
             do_react = false;

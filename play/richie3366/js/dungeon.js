@@ -151,7 +151,8 @@ import { is_drawbridge_wall } from './dbridge.js';
 import { db_under_typ } from './hack.js';
 import { shop_keeper, inhishop } from './shk.js';
 import { m_at } from './mon.js';
-import { canseemon } from './display.js';
+import { canseemon, impossible } from './display.js';
+import { within_bounded_area } from './rect.js';
 
 // C dungeon.c:747–752 flagstrs / flagstrs2i. Index is luaL_checkoption's.
 const DGN_FLAG_STRS = ['town', 'hellish', 'mazelike', 'roguelike', 'unconnected'];
@@ -1208,16 +1209,23 @@ export function On_W_tower_level(lev) {
 }
 
 /**
- * C ref: dungeon.c In_W_tower — inside the Wizard's Tower rectangle.
- * Both exclusion regions (updest/dndest) define the tower; C asserts they
- * match and tests svd.dndest. Named omit: impossible() when nlx==0.
+ * C ref: dungeon.c In_W_tower `:1923–1938`.
+ * On_W_tower_level first. A zero `svd.dndest.nlx` is program disorder:
+ * `impossible`, then false. Otherwise `dungeon.h:144` `within_bounded_area`
+ * on that arrival rectangle. The updest/dndest assert is a C comment.
+ * `impossible` is started and not awaited: this predicate stays synchronous
+ * so boolean callers do not yield on the happy path (same shape as
+ * `mkobj.js` `void impossible`).
  */
 export function In_W_tower(x, y, lev) {
     if (!On_W_tower_level(lev)) return false;
     const d = game.dndest;
-    if (!d || !(d.nlx | 0)) return false;
-    return (x | 0) >= (d.nlx | 0) && (x | 0) <= (d.nhx | 0)
-        && (y | 0) >= (d.nly | 0) && (y | 0) <= (d.nhy | 0);
+    if (!(d?.nlx | 0)) {
+        void impossible("No boundary for Wizard's Tower?");
+        return false;
+    }
+    return within_bounded_area(
+        x | 0, y | 0, d.nlx | 0, d.nly | 0, d.nhx | 0, d.nhy | 0);
 }
 
 /**
@@ -1238,21 +1246,42 @@ export function avoid_ceiling(lev) {
     return false;
 }
 
+/**
+ * C ref: dungeon.c dname_to_dnum `:283–295` (staticfn).
+ * `strcmp` on `svd.dungeons[i].dname`. `panic` is NORETURN; the C
+ * `return (xint16) 0` after it is not reached.
+ */
 function dname_to_dnum(s) {
-    for (let i = 0; i < game.n_dgns; i++) {
+    const n = game.n_dgns | 0;
+    for (let i = 0; i < n; i++) {
         if (game.dungeons[i].dname === s) return i;
     }
-    throw new Error(`Couldn't resolve dungeon number for name "${s}"`);
+    throw new Error(`Couldn't resolve dungeon number for name "${s}".`);
 }
 
 /**
- * C ref: dungeon.c dungeon_branch — branch whose end2 (child) is named dungeon.
- * Assumes end1 is always the parent.
+ * C ref: dungeon.c dungeon_branch `:1870–1886`.
+ * Assumes (C `:1861–1867`): not "Dungeons of Doom"; one branch to the
+ * dungeon; `end2` is the child. `svb.branches` is `game.branches` in
+ * link order — `insert_branch` leaves `.next` null and splices the
+ * array (D-2630), so the walk is the array, not `br->next`.
  */
 export function dungeon_branch(s) {
     const dnum = dname_to_dnum(s);
-    const br = (game.branches || []).find(b => (b.end2?.dnum | 0) === dnum);
-    if (!br) throw new Error(`dgn_entrance: can't find entrance to ${s}`);
+    let br = null;
+    const chain = game.branches;
+    const n = chain ? chain.length : 0;
+    for (let i = 0; i < n; i++) {
+        const cand = chain[i];
+        if ((cand.end2.dnum | 0) === (dnum | 0)) {
+            br = cand;
+            break;
+        }
+    }
+    if (!br) {
+        /* C panic() is NORETURN. throw ≡ C panic (insert_branch). */
+        throw new Error(`dgn_entrance: can't find entrance to ${s}`);
+    }
     return br;
 }
 

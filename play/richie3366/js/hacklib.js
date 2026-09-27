@@ -206,9 +206,25 @@ export function lowc(c) {
 }
 
 /**
+ * C ref: hacklib.c eos `:193–199` — walk to the terminating NUL and
+ * return that pointer. JS strings are immutable, so this returns the
+ * end index (where C's pointer would sit). An embedded NUL stops the
+ * walk; a string with no embedded NUL ends at `length`.
+ * @param {string} s
+ * @returns {number}
+ */
+export function eos(s) {
+    if (s == null) return 0;
+    const str = typeof s === 'string' ? s : String(s);
+    let i = 0;
+    while (i < str.length && str.charCodeAt(i) !== 0) i++;
+    return i;
+}
+
+/**
  * C hacklib.c strkitten `:275–283` — append one char at eos(s).
  * JS strings are immutable, so this returns the new string (eos is
- * `s.length`; the C `*p = '\\0'` is the string terminator).
+ * the end index; the C `*p = '\\0'` is the string terminator).
  * @param {string} s
  * @param {string|number} c
  */
@@ -374,6 +390,51 @@ export function fuzzymatch(s1, s2, ignore_chars = ' -_', caseblind = true) {
 }
 
 /**
+ * Signed `char` value of `lowc` (`hacklib.c:83–86`). Bytes 128–255 compare
+ * as negative, matching gcc's signed `char` on the contest build. `lowc`
+ * itself only folds ASCII A–Z.
+ * @param {number} code
+ * @returns {number}
+ */
+function lowc_signed(code) {
+    const ch = lowc(String.fromCharCode(code & 0xffff));
+    let c = ch.charCodeAt(0);
+    if (c >= 128 && c <= 255) c -= 256;
+    return c;
+}
+
+/**
+ * C ref: hacklib.c strncmpi `:717–734`.
+ * ASCII `lowc` compare of at most `n` characters. Returns 0 when the
+ * prefixes match, 1 when s1 > s2, -1 when s1 < s2. `n == -1` is the
+ * `strcmpi` macro (`global.h`: `strncmpi((a),(b),-1)`) and walks until
+ * NUL, because the counter never hits 0. `!*s2` returns `(*s1 != 0)`
+ * (0 or 1), not -1. An embedded NUL ends the C string. A null argument
+ * is `""` (C is NONNULL).
+ * @param {string | null | undefined} s1
+ * @param {string | null | undefined} s2
+ * @param {number} n
+ * @returns {number}
+ */
+export function strncmpi(s1, s2, n) {
+    const a = s1 == null ? '' : String(s1);
+    const b = s2 == null ? '' : String(s2);
+    let i = 0;
+    let left = n | 0; // C `int`
+    while (left--) { // C `:723`
+        const c2 = i < b.length ? b.charCodeAt(i) : 0;
+        const c1 = i < a.length ? a.charCodeAt(i) : 0;
+        if (!c2) return c1 !== 0 ? 1 : 0; // C `:724–725`
+        if (!c1) return -1; // C `:726–727`
+        const t1 = lowc_signed(c1); // C `:728` lowc(*s1++)
+        const t2 = lowc_signed(c2); // C `:729` lowc(*s2++)
+        i++;
+        if (t1 !== t2) return t1 > t2 ? 1 : -1; // C `:730–731`
+    }
+    return 0; // C `:733`
+}
+
+/**
  * C ref: hacklib.c strstri `:739–779`.
  * `!*sub` returns `str`. Otherwise signed-char nibble histograms
  * (`TABSIZ` 0x20; `char` counters wrap like gcc) reject an impossible
@@ -442,6 +503,34 @@ export function strsubst(bp, orig, replacement) {
     const i = s.indexOf(o);
     if (i < 0) return s;
     return s.slice(0, i) + String(replacement ?? '') + s.slice(i + o.length);
+}
+
+/**
+ * C ref: hacklib.c mungspaces `:142–160`.
+ * `was_space` starts TRUE, so a leading run of spaces and tabs is dropped.
+ * A tab is a space. Any other byte is kept, including CR. A newline stops
+ * the walk and the rest of the buffer is discarded. One trailing space is
+ * then removed. C writes `bp` in place and returns it. JS strings are
+ * immutable, so this returns the condensed string (callers assign it).
+ * An embedded NUL ends the C string. A null argument is `""` (C is NONNULL).
+ * @param {string | null | undefined} bp
+ * @returns {string}
+ */
+export function mungspaces(bp) {
+    const src = bp == null ? '' : String(bp);
+    let wasSpace = true; // C `:146`
+    let out = '';
+    for (let i = 0; i < src.length; i++) { // C `:148` until NUL
+        const code = src.charCodeAt(i);
+        if (code === 0) break;
+        if (code === 10) break; // C `:149–150` '\n' like end of string
+        let c = src[i];
+        if (code === 9) c = ' '; // C `:151–152` '\t'
+        if (c !== ' ' || !wasSpace) out += c; // C `:153–154`
+        wasSpace = (c === ' '); // C `:155`
+    }
+    if (wasSpace && out.length > 0) out = out.slice(0, -1); // C `:157–158`
+    return out;
 }
 
 /**
@@ -521,11 +610,12 @@ export function findword(list, word, wordlen, ignorecase) {
         while (s[p] === ' ') ++p;
         if (p >= s.length) break;
         const seg = s.slice(p, p + wordlen);
+        /* C `:614` ignorecase ? !strncmpi(p, word, wordlen) : !strncmp */
         const eq = ignorecase
-            ? seg.toLowerCase() === w.toLowerCase()
+            ? strncmpi(s.slice(p), String(word ?? ''), wordlen | 0) === 0
             : seg === w;
         const term = s[p + wordlen];
-        if (eq && (term === undefined || term === ' ')) {
+        if (eq && (term === undefined || term === ' ' || term === '\0')) {
             const end = s.indexOf(' ', p);
             return end < 0 ? s.slice(p) : s.slice(p, end);
         }

@@ -50,7 +50,7 @@ import {
     monsterNames,
 } from './generated/monsters_data.js';
 import { m_canseeu } from './mondata.js';
-import { an, An, the, simpleonames, xname, Yobjnam2, otense } from './objnam.js';
+import { an, An, the, simpleonames, xname, Yobjnam2, otense, yname } from './objnam.js';
 import { hliquid, Monnam, mon_nam, s_suffix } from './do_name.js';
 import { stairway_at, On_ladder } from './mklev.js';
 import {
@@ -2189,7 +2189,7 @@ async function dig() {
         switch (rn2(3)) {
         case 0:
             if (!welded(uwep)) {
-                await pline(`You fumble and drop ${yname_dig(uwep)}.`);
+                await pline(`You fumble and drop ${yname(uwep)}.`);
                 const { dropx } = await import('./do.js');
                 await dropx(uwep);
             } else {
@@ -2448,6 +2448,7 @@ async function dig() {
     return 1;
 }
 
+/** yobjnam stand-in. The dig.c yname sites call objnam.js yname. */
 function yname_dig(obj) {
     return obj ? `your ${xname(obj)}` : 'your weapon';
 }
@@ -2568,7 +2569,7 @@ export async function use_pick_axe2(obj) {
     } else if (!u.dx && !u.dy && !u.dz) {
         let dam = rnd(2) + dbon() + (obj.spe | 0);
         if (dam <= 0) dam = 1;
-        await pline(`You hit yourself with ${yname_dig(u.uwep)}.`);
+        await pline(`You hit yourself with ${yname(u.uwep)}.`);
         await losehp(maybe_half_phys(dam), 'own pick-axe', KILLED_BY);
         if (game.flags) game.flags.botl = true;
         return ECMD_TIME;

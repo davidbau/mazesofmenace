@@ -1251,11 +1251,8 @@ async function angrygods(resp_god) {
     switch (rn2(maxanger)) {
     case 0:
     case 1:
-        await pline(
-            `You feel that ${align_gname(game.urole, resp_god)} is ${
-                Hallucination() ? 'bummed' : 'displeased'
-            }.`,
-        );
+        await You_feel('that %s is %s.', align_gname(game.urole, resp_god),
+            Hallucination() ? 'bummed' : 'displeased');
         break;
     case 2:
     case 3: {

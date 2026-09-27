@@ -134,7 +134,7 @@ import { o_unleash } from './apply.js';
 import { setnotworn, dropy } from './do.js';
 import { findgold, inv_cnt } from './steal.js';
 import { merge_choice } from './files.js';
-import { reset_pick } from './lock.js';
+import { maybe_reset_pick } from './lock.js';
 import { set_voice } from './sounds.js';
 
 const PICK_AXE = objectNames.indexOf('PICK_AXE');
@@ -2263,7 +2263,7 @@ export async function shopdig(fall) {
     if (!shkp) return;
     if (!inhishop(shkp)) {
         if (Role_if(PM_KNIGHT)) {
-            await pline('You feel like a common thief.');
+            await You_feel('like a common thief.');
             const atyp = u.ualign?.type | 0;
             adjalign(-(atyp > 0 ? 1 : atyp < 0 ? -1 : 0));
         }
@@ -2300,7 +2300,7 @@ export async function shopdig(fall) {
             }
         }
         if (Role_if(PM_KNIGHT)) {
-            await pline('You feel like a common thief.');
+            await You_feel('like a common thief.');
             const atyp = u.ualign?.type | 0;
             adjalign(-(atyp > 0 ? 1 : atyp < 0 ? -1 : 0));
         }
@@ -4049,19 +4049,6 @@ function book_disappears(obj) {
     if (sp && obj === sp.book) {
         sp.book = null;
         sp.o_id = 0;
-    }
-}
-
-/**
- * C ref: lock.c maybe_reset_pick `:268–285` — clear xlock when this
- * container is gx.xlock.box, or when container is Null and the box is
- * not carried (level change). Callee reset_pick is live in lock.js.
- */
-function maybe_reset_pick(container) {
-    const box = game.xlock?.box || null;
-    if (container ? container === box
-        : (!box || !(game.invent || []).includes(box))) {
-        reset_pick();
     }
 }
 

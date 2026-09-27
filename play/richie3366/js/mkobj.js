@@ -77,10 +77,12 @@ import {
     OMAILCMD, has_omailcmd, ONAME_SKIP_INVUPD, MON_DETACH,
     IRONBARS, ROOM, IS_ALTAR, Is_airlevel, Is_waterlevel,
     MAX_OIL_IN_FLASK, nothing_happens, EPRI, PLNMSG_OBJ_GLOWS,
+    A_NONE, ONAME_NO_FLAGS,
     In_quest, SPINACH_TIN, RANDOM_TIN,
     BURIED_TOO,
     NOBJ_STATES, ARTICLE_A, EXACT_NAME,
     COST_DEGRD,
+    FIRE_RES,
 } from './const.js';
 import { set_tin_variety, eating_glob } from './eat.js';
 import { set_moreluck } from './attrib.js';
@@ -88,6 +90,9 @@ import { recalc_block_point, cansee } from './vision.js';
 import { del_light_source, discard_flashes, obj_sheds_light, obj_adjust_light_radius } from './light.js';
 import { arti_light_radius, get_obj_location, obj_split_light_source, Is_candle, obj_merge_light_sources, kind_name } from './timeout.js';
 import { obfree, splitbill, same_price, globby_bill_fixup, costly_spot, costly_adjacent, find_objowner, costly_alteration } from './shk.js';
+/* C lock.c maybe_reset_pick — hoisted fn, called only from
+   add_to_migration (`imports.mjs --can mkobj.js lock.js` SAFE). */
+import { maybe_reset_pick } from './lock.js';
 import { hands_obj, MON_WEP, setmnotwielded } from './weapon.js';
 /* C invent.c merged `:878–913` worn-slot fixup (imports.mjs --can SAFE,
    hoisted cycle-safe, same 96-module SCC). */
@@ -122,6 +127,7 @@ const LUMP_OF_ROYAL_JELLY = objectNames.indexOf('LUMP_OF_ROYAL_JELLY');
 const CANDELABRUM_OF_INVOCATION =
     objectNames.indexOf('CANDELABRUM_OF_INVOCATION');
 const TALLOW_CANDLE = objectNames.indexOf('TALLOW_CANDLE');
+const WAN_FIRE = objectNames.indexOf('WAN_FIRE');
 const BOULDER = objectNames.indexOf('BOULDER');
 const CRYSKNIFE = objectNames.indexOf('CRYSKNIFE');
 const WORM_TOOTH = objectNames.indexOf('WORM_TOOTH');
@@ -134,6 +140,7 @@ const FIGURINE = objectNames.indexOf('FIGURINE');
 const BOOMERANG = objectNames.indexOf('BOOMERANG');
 const CORPSE = objectNames.indexOf('CORPSE');
 const EGG = objectNames.indexOf('EGG');
+const SPE_NOVEL = objectNames.indexOf('SPE_NOVEL');
 const TIN = objectNames.indexOf('TIN');
 const GLOB_OF_GRAY_OOZE = objectNames.indexOf('GLOB_OF_GRAY_OOZE');
 const GLOB_OF_BROWN_PUDDING = objectNames.indexOf('GLOB_OF_BROWN_PUDDING');
@@ -782,14 +789,31 @@ const O = {
 export function is_rustprone(otmp) {
     return objs()[otmp.otyp]?.oc_material === IRON;
 }
-// C ref: mkobj.c is_flammable()
+/**
+ * C ref: mkobj.c is_flammable `:2270–2286`.
+ * Candles can be burned, but they are not flammable: they take no fire
+ * damage and are not fireproofed. A type whose `oc_oprop` is `FIRE_RES`,
+ * or a wand of fire, is not flammable. Otherwise the material is wood or
+ * softer, excluding liquid, or plastic.
+ * @param {object} otmp
+ * @returns {boolean}
+ */
 export function is_flammable(otmp) {
-    const n = otypName(otmp.otyp);
-    if (n === 'TALLOW_CANDLE' || n === 'WAX_CANDLE') return false;
-    // FIRE_RES / WAN_FIRE rare on mklev loot; skip full prop table for now
-    if (n === 'WAN_FIRE') return false;
-    const mat = objs()[otmp.otyp]?.oc_material;
-    return (mat <= WOOD && mat !== LIQUID) || mat === PLASTIC;
+    const otyp = otmp.otyp | 0;
+    const oc = objs()[otyp];
+    const omat = oc.oc_material | 0;
+
+    /* Candles can be burned, but they're not flammable in the sense that
+     * they can't get fire damage and it makes no sense for them to be
+     * fireproofed.
+     */
+    if (Is_candle(otmp))
+        return false;
+
+    if ((oc.oc_oprop | 0) === FIRE_RES || otyp === WAN_FIRE)
+        return false;
+
+    return !!((omat <= WOOD && omat !== LIQUID) || omat === PLASTIC);
 }
 // C ref: mkobj.c is_rottable()
 export function is_rottable(otmp) {
@@ -976,7 +1000,8 @@ function special_corpse(num) {
 /**
  * C ref: timeout.c timer queue (gt.timer_base) — object + level timers.
  * start_timer inserts by absolute timeout (moves+when); run_timers fires
- * when timeout <= moves. Envelope: ROT_CORPSE → rot_corpse floor extract
+ * when timeout <= moves. remove_timer unlinks one (func_index, a_void)
+ * node for stop_timer. Envelope: ROT_CORPSE → rot_corpse floor extract
  * + invent/minvent worn (D-1213); HATCH_EGG queued via
  * attach_egg_hatch_timeout (D-0533); hatch_egg
  * dispatched (D-1036/D-1037); TIMER_LEVEL MELT_ICE_AWAY → melt_ice_away
@@ -1180,35 +1205,79 @@ export function obj_stop_timers(obj) {
 }
 
 /**
- * C ref: timeout.c stop_timer — remove one (action,obj) timer; return
- * remaining turns (timeout − moves), or 0 if none. BURN_OBJECT runs
- * cleanup_burn (restore age, del LS_OBJECT, clear lamplit).
+ * a_void of a queued timer_element. C's anything union is one word:
+ * object pointer, monster pointer, or packed long. start_timer stores
+ * exactly one of those (the others stay null / 0).
+ */
+function timer_element_a_void(curr) {
+    if (curr.obj != null) return curr.obj;
+    if (curr.mon != null) return curr.mon;
+    return curr.a_long | 0;
+}
+
+/**
+ * a_void of the anything* stop_timer was given. Object and monster
+ * callers pass the pointer (obj_to_any / monst_to_any collapse to it).
+ * A level or global timer passes the packed long.
+ */
+function timer_arg_a_void(arg) {
+    if (typeof arg === 'number') return arg | 0;
+    return arg;
+}
+
+/**
+ * C ref: timeout.c remove_timer `:2483–2502`.
+ * Unlink the first element of `*base` whose func_index and arg.a_void
+ * match. `base` is `{ head }` so a head hit writes `*base` the way C
+ * does. func_index is tested first (`&&` does not read a_void on a
+ * miss). The node is not freed, zeroed, or cleaned up, and its `next`
+ * still names the old successor. Returns that node, or null.
+ * Sole C caller is stop_timer (`timeout.c:2305`), passing `&gt.timer_base`.
+ */
+function remove_timer(base, func_index, arg) {
+    let prev = null;
+    let curr = base.head;
+    const funcN = timeout_func_index(func_index);
+    for (; curr; prev = curr, curr = curr.next) {
+        if (timeout_func_index(curr.action) === funcN
+            && timer_element_a_void(curr) === timer_arg_a_void(arg)) {
+            break;
+        }
+    }
+    if (curr) {
+        if (prev) prev.next = curr.next;
+        else base.head = curr.next;
+    }
+    return curr;
+}
+
+/**
+ * C ref: timeout.c stop_timer `:2299–2318` — remove_timer, then the
+ * object timed count, cleanup, and remaining turns (timeout − moves),
+ * or 0 if none. BURN_OBJECT runs cleanup_burn (restore age, del
+ * LS_OBJECT, clear lamplit). memset/free of the node is GC.
  */
 export function stop_timer(action, obj) {
+    /* A null anything* faults in C once the list is walked. Callers
+       pass an object; a missing one has nothing to unlink. */
     if (!obj) return 0;
     const g = timer_base();
-    const moves = game.moves | 0;
-    let prev = null;
-    let curr = g._timer_base;
-    while (curr) {
-        const next = curr.next;
-        if (curr.kind === TIMER_OBJECT
-            && timeout_func_index(curr.action) === timeout_func_index(action)
-            && curr.obj === obj) {
-            if (prev) prev.next = next;
-            else g._timer_base = next;
+    const base = { head: g._timer_base };
+    const doomed = remove_timer(base, action, obj);
+    g._timer_base = base.head;
+    if (doomed) {
+        const moves = game.moves | 0;
+        const expire = doomed.timeout | 0;
+        if ((doomed.kind | 0) === TIMER_OBJECT) {
             obj.timed = Math.max(0, (obj.timed | 0) - 1);
-            const expire = curr.timeout | 0;
             // C: timeout_funcs[BURN_OBJECT].cleanup = cleanup_burn
             if (action === BURN_OBJECT && obj.lamplit) {
                 del_light_source(LS_OBJECT, obj);
                 obj.age = (obj.age | 0) + (expire - moves);
                 obj.lamplit = 0;
             }
-            return expire - moves;
         }
-        prev = curr;
-        curr = next;
+        return expire - moves;
     }
     return 0;
 }
@@ -2175,8 +2244,8 @@ function mksobj_init(otmp, artif) {
         if (is_poisonable(otmp) && !rn2(100)) otmp.opoisoned = 1;
         // C: artif && !rn2(20 + 10 * nartifact_exist())
         if (artif && !rn2(20 + (10 * nartifact_exist()))) {
-            // C: mk_artifact(otmp, A_NONE, 99, TRUE) — mutates / same ptr
-            mk_artifact(otmp);
+            // C mkobj.c:891–892 — mk_artifact may replace the object.
+            otmp = mk_artifact(otmp, A_NONE, 99, true);
         }
         break;
     case FOOD_CLASS: {
@@ -2364,7 +2433,8 @@ function mksobj_init(otmp, artif) {
         }
         // C: artif && !rn2(40 + 10 * nartifact_exist())
         if (artif && !rn2(40 + (10 * nartifact_exist()))) {
-            mk_artifact(otmp);
+            // C mkobj.c:1100–1101 — mk_artifact may replace the object.
+            otmp = mk_artifact(otmp, A_NONE, 99, true);
         }
         // C ref: mkobj.c ARMOR_CLASS — lacquered armor for samurai
         // (`moves <= 1 || In_quest`; D-0079 shipped moves, D-2265 the quest arm)
@@ -2428,6 +2498,8 @@ function mksobj_init(otmp, artif) {
     mkobj_erosions(otmp);
     // C mkobj.c mksobj_init `:1173–1174` — Grimtooth (etc.) always poisoned.
     if (permapoisoned(otmp)) otmp.opoisoned = 1;
+    // C takes struct obj ** and writes *obj back (weapon/armor artifact).
+    return otmp;
 }
 
 // C ref: do_name.c sir_Terry_novels[] — C-home of the table; lookup_novel
@@ -2489,69 +2561,103 @@ export function unknow_object(obj) {
     obj.known = objs()[obj.otyp]?.oc_uses_known ? 0 : 1;
 }
 
-// C ref: mkobj.c mksobj()
+/**
+ * C ref: mkobj.c mksobj `:1179–1259`.
+ * newobj + zeroobj, ident, unknow_object, then mksobj_init when init.
+ * The post-init switch runs even when init is false: corpse/statue/
+ * figurine gender falls through egg's set_corpsenm; oil fuel falls
+ * through the potion fromsink clear; novel christens via oname.
+ * obj.h overlays (next_boulder, fromsink, leashmon, novelidx) are the
+ * dedicated JS fields, same as init_dummyobj — corpsenm stays NON_PM
+ * so ismnum does not treat the flag as a species.
+ */
 export function mksobj(otyp, init, artif) {
     const objects = objs();
-    const otmp = {
-        otyp,
-        oclass: objects[otyp]?.oc_class ?? 0,
-        quan: 1,
-        // C mksobj `:1184–1185` — newobj + `*otmp = cg.zeroobj`: owt starts
-        // 0 so the end-of-mksobj `owt = weight()` finalizer computes the true
-        // weight (a nonzero placeholder would trip weight's `:1970`
-        // HEAVY_IRON_BALL owt kludge and self-perpetuate, e.g. owt 1 on a
-        // fresh ball instead of base 480 — found via a corpus REACH probe)
+    const let_ = objects[otyp]?.oc_class ?? 0;
+    // C `:1184–1185` newobj + `*otmp = cg.zeroobj`. owt starts 0 so the
+    // final weight() does not trip the HEAVY_IRON_BALL owt kludge.
+    let otmp = {
         owt: 0,
         cursed: false,
         blessed: false,
         olocked: false,
         spe: 0,
-        corpsenm: NON_PM,
-        age: Math.max(game.moves ?? 0, 1),
-        where: OBJ_FREE, // C newobj → OBJ_FREE until place/addinv
         ox: 0,
         oy: 0,
+        lua_ref_cnt: 0,
+        pickup_prev: 0,
     };
-    // C: o_id then unknow_object (dknown + known from oc_uses_known)
+    otmp.age = Math.max(game.moves ?? 0, 1);
     otmp.o_id = next_ident();
+    otmp.quan = 1;
+    otmp.oclass = let_;
+    otmp.otyp = otyp;
+    otmp.where = OBJ_FREE;
     unknow_object(otmp);
-    if (init) mksobj_init(otmp, artif);
+    otmp.corpsenm = NON_PM;
+    otmp.lua_ref_cnt = 0;
+    otmp.pickup_prev = 0;
 
-    // Post-init regardless: CORPSE/STATUE/FIGURINE gender + timer; EGG hatch
-    // C ref: mkobj.c mksobj after mksobj_init — FALLTHROUGH to set_corpsenm
-    const name = otypName(otyp);
-    if (name === 'CORPSE' || name === 'STATUE' || name === 'FIGURINE') {
-        if (name === 'CORPSE' && otmp.corpsenm < 0) {
+    if (init) {
+        // C passes &otmp; weapon/armor mk_artifact may replace it.
+        const made = mksobj_init(otmp, artif);
+        if (made) otmp = made;
+    }
+
+    // C `:1201–1202` — every potion except oil shares POT_WATER.
+    const sw = ((otmp.oclass | 0) === POTION_CLASS && (otmp.otyp | 0) !== POT_OIL)
+        ? POT_WATER
+        : (otmp.otyp | 0);
+    switch (sw) {
+    case CORPSE:
+        if ((otmp.corpsenm | 0) === NON_PM) {
             otmp.corpsenm = undead_to_corpse(rndmonnum());
             const mv = game.mvitals?.[otmp.corpsenm]?.mvflags ?? 0;
             if (mv & (G_NOCORPSE | G_GONE)) {
-                otmp.corpsenm = game.urole?.mnum ?? monsterNames.indexOf('PM_HUMAN');
+                otmp.corpsenm = game.urole ? (game.urole.mnum | 0) : NON_PM;
             }
-        } else if (otmp.corpsenm < 0) {
-            otmp.corpsenm = rndmonnum();
         }
-        // C: otmp->spe = neuter/female/male / rn2(2)?FEMALE:MALE;
-        // then set_corpsenm (timer). Gender must be on spe so mergable()
-        // keeps same-species opposite-sex corpses as separate stacks.
-        if ((otmp.corpsenm ?? NON_PM) !== NON_PM) {
+        // FALLTHROUGH
+    case STATUE:
+    case FIGURINE:
+        if ((otmp.corpsenm | 0) === NON_PM) otmp.corpsenm = rndmonnum();
+        if ((otmp.corpsenm | 0) !== NON_PM) {
             const ptr = mons(otmp.corpsenm);
+            // Gender lives on spe so mergable() keeps opposite sexes apart.
             otmp.spe = is_neuter(ptr) ? CORPSTAT_NEUTER
                 : is_female(ptr) ? CORPSTAT_FEMALE
                     : is_male(ptr) ? CORPSTAT_MALE
                         : (rn2(2) ? CORPSTAT_FEMALE : CORPSTAT_MALE);
         }
-        // C FALLTHROUGH → set_corpsenm (CORPSE starts rot timer)
+        // FALLTHROUGH
+    case EGG:
         set_corpsenm(otmp, otmp.corpsenm);
-    } else if (name === 'EGG') {
-        // C: case EGG: set_corpsenm → attach_egg_hatch_timeout for typed eggs
-        set_corpsenm(otmp, otmp.corpsenm);
-    } else if (name === 'SPE_NOVEL') {
-        // C ref: mkobj.c mksobj SPE_NOVEL — even when !init
+        break;
+    case BOULDER:
+        // C next_boulder = 0 (overlays corpsenm; NON_PM would be "next").
+        otmp.next_boulder = 0;
+        break;
+    case POT_OIL:
+        otmp.age = MAX_OIL_IN_FLASK;
+        // FALLTHROUGH
+    case POT_WATER:
+        otmp.fromsink = 0;
+        break;
+    case LEASH:
+        otmp.leashmon = 0;
+        break;
+    case SPE_NOVEL:
         otmp.novelidx = -1;
-        const title = noveltitle(otmp);
-        otmp.oname = title;
+        otmp = oname(otmp, noveltitle(otmp), ONAME_NO_FLAGS);
+        break;
+    default:
+        break;
     }
-    // C: otmp->owt = weight(otmp);
+
+    // C `:1251–1254` — original otyp, not a type init may have changed.
+    if (objects[otyp]?.oc_unique && !otmp.oartifact) {
+        otmp = mk_artifact(otmp, A_NONE, 99, false);
+    }
     otmp.owt = weight(otmp);
     return otmp;
 }
@@ -3345,8 +3451,7 @@ export function peek_at_iced_corpse_age(otmp) {
 
 /**
  * C ref: mkobj.c add_to_migration — OBJ_FREE → migrating_objs chain.
- * Named omit: maybe_reset_pick (lock context); unpaid panic (caller
- * should clear unpaid before migrate).
+ * Named omit: unpaid panic (caller should clear unpaid before migrate).
  */
 export function add_to_migration(obj) {
     if (!obj) return;
@@ -3354,7 +3459,8 @@ export function add_to_migration(obj) {
         obj.where = OBJ_FREE;
     }
     obj.no_charge = 0;
-    // maybe_reset_pick deferred
+    /* C mkobj.c:2709–2710 — lock context goes stale for this container. */
+    if (Is_container(obj)) maybe_reset_pick(obj);
     obj.where = OBJ_MIGRATING;
     obj.nobj = game.migrating_objs || null;
     const uz = game.u?.uz;

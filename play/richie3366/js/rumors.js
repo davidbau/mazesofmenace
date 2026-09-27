@@ -44,46 +44,108 @@ export function xcrypt(str) {
     return out;
 }
 
+/**
+ * C rumors.c unpadline `:67–80`. Trailing newline (if fgets left one),
+ * then the underscores makedefs pads with. Interior underscores stay.
+ */
 function unpadline(line) {
-    return line.replace(/_+$/, '');
+    let end = line.length;
+    if (end > 0 && line[end - 1] === '\n') end--;
+    while (end > 0 && line[end - 1] === '_') end--;
+    return line.slice(0, end);
+}
+
+/** C global.h BUFSZ — sizeof the line[] get_rnd_line fgets into. */
+const RND_LINE_BUFSZ = 256;
+
+/**
+ * C dlb_fgets into a BUFSZ buffer: at most bufsiz-1 bytes, stopping after
+ * a newline (the newline is kept). NULL when nothing is read (EOF).
+ * `end` is the exclusive end of the section (C endpos / EOF).
+ */
+function embed_fgets(file, pos, end, bufsiz) {
+    if (pos >= end) return { text: null, pos };
+    const limit = Math.min(end, pos + (bufsiz - 1));
+    let i = pos;
+    while (i < limit && file[i] !== '\n') i++;
+    if (i < limit && file[i] === '\n') i++;
+    if (i === pos) return { text: null, pos };
+    return { text: file.slice(pos, i), pos: i };
 }
 
 /**
- * C ref: rumors.c get_rnd_line for a single section buffer.
- * Landing mid-line: fgets rest-of-line; accept if strlen <= pad+1; then next line.
+ * C rumors.c get_rnd_line `:419–494`.
+ * `file` is the embed of the open dlb stream (D-0477). `endpos` 0 means
+ * EOF, as in get_rnd_text. The seek lands inside a line; fgets takes the
+ * rest; a padded file accepts that rest only when strlen <= padlength+1
+ * (newline counted, pad not). After the loop — including when all 10
+ * tries reject — the next fgets is the chosen line. ftell >= endpos, or a
+ * failed fgets, wraps to startpos. nhassert(filechunksize <= INT_MAX) is
+ * the comment in C; these embeds fit. xcrypt's BUFSZ stack buffer vs
+ * alloc is the same bytes (GC).
  */
-function get_rnd_line(buf, rng = rn2, padlength = MD_PAD_RUMORS) {
-    const filechunksize = buf.length;
+function get_rnd_line(file, rng = rn2, padlength = MD_PAD_RUMORS, startpos = 0, endpos = 0) {
+    // C :434 *buf = '\0' before the empty-section return.
+    if (!endpos) endpos = file.length;
+    const filechunksize = endpos - startpos;
     if (filechunksize < 1) return '';
 
-    let accepted = '';
+    let pos = startpos;
+    let buf = '';
     for (let trylimit = 10; trylimit > 0; --trylimit) {
-        const chunkoffset = rng(filechunksize);
-        // Rest of current line from mid-line landing (like fgets after fseek)
-        let i = chunkoffset;
-        while (i < buf.length && buf[i] !== '\n') i++;
-        const partialLen = i - chunkoffset + (i < buf.length ? 1 : 0); // include newline if present
-        if (!padlength || partialLen <= padlength + 1) {
-            // Accept — use next line
-            let start = i + 1;
-            if (start >= buf.length) start = 0;
-            let end = start;
-            while (end < buf.length && buf[end] !== '\n') end++;
-            accepted = buf.slice(start, end);
-            break;
-        }
+        // C :465 (*rng)((int) filechunksize), then fseek(startpos + offset).
+        const chunkoffset = rng(filechunksize | 0);
+        const got = embed_fgets(file, startpos + chunkoffset, endpos, RND_LINE_BUFSZ);
+        pos = got.pos;
+        buf = got.text == null ? '' : got.text;
+        // C :470 — padlength 0 accepts every landing.
+        if (!padlength || buf.length <= padlength + 1) break;
     }
-    if (!accepted) return '';
-    return unpadline(xcrypt(accepted));
+    // C :477 — || does not fgets when the position is already at endpos.
+    let next = null;
+    if (pos < endpos) next = embed_fgets(file, pos, endpos, RND_LINE_BUFSZ);
+    if (pos >= endpos || next == null || next.text == null) {
+        const wrapped = embed_fgets(file, startpos, endpos, RND_LINE_BUFSZ);
+        buf = wrapped.text == null ? '' : wrapped.text;
+    } else {
+        buf = next.text;
+    }
+    const nl = buf.indexOf('\n');
+    if (nl >= 0) buf = buf.slice(0, nl);
+    buf = xcrypt(buf);
+    if (padlength) buf = unpadline(buf);
+    return buf;
 }
 
 /**
- * C ref: rumors.c get_rnd_text — random line from a padded+xcrypt section buffer.
- * `buf` is the post-comment chunk (as stored by extract-rumors / extract-engrave).
+ * C rumors.c get_rnd_text `:499–526`.
+ * dlb_fopen / dlb_fgets / dlb_fseek / dlb_ftell / dlb_fclose are the
+ * Rule #2 embeds (ledger: by-design, no scored file). The extractor
+ * already consumed the leading "don't edit" comment, so starttxt is 0
+ * of that buffer and endpos 0 lets get_rnd_line read through EOF.
+ * The caller buffer is the return string (C Strcpy into buf).
  */
-export function get_rnd_text(buf, rng = rn2, padlength = MD_PAD_RUMORS) {
-    if (!buf) return '';
-    return get_rnd_line(buf, rng, padlength);
+function rnd_text_embed(fname) {
+    switch (fname) {
+    case ENGRAVEFILE: return ENGRAVE_BUF;
+    case EPITAPHFILE: return EPITAPH_BUF;
+    case BOGUSMONFILE: return BOGUSMON_BUF;
+    default: return null;
+    }
+}
+
+export function get_rnd_text(fname, rng = rn2, padlength = MD_PAD_RUMORS) {
+    // C :505 dlb_fopen(fname, "r"); :507 buf[0] = '\0' either way.
+    const fh = rnd_text_embed(fname);
+    if (fh != null) {
+        // C :512–515 skip the comment, then ftell → starttxt.
+        // C :519–520 get_rnd_line(..., starttxt, 0L, padlength).
+        const buf = get_rnd_line(fh, rng, padlength, 0, 0);
+        // C :521 dlb_fclose — no-op under the embed.
+        return buf;
+    }
+    couldnt_open_file(fname);
+    return '';
 }
 
 /**

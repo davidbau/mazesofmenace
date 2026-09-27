@@ -64,6 +64,9 @@ import { highc } from './hacklib.js';
 import { doloot, container_at } from './pickup.js';
 import { is_magic_key, touch_artifact } from './artifact.js';
 import { is_quest_artifact } from './quest.js';
+// C obj.h:332 carried(o) — where==OBJ_INVENT, plus invent[] membership.
+// Hoisted fn; `imports.mjs --can lock.js eat.js carried` SAFE.
+import { carried } from './eat.js';
 import { ART_ORB_OF_DETECTION } from './generated/artifacts_data.js';
 
 /** C ref: decl.c:96 quitchars — `getdir :4098` skips help when set. */
@@ -352,6 +355,32 @@ export function reset_pick() {
     xl.door_x = 0;
     xl.door_y = 0;
     xl.box = null;
+}
+
+/**
+ * C ref: lock.c maybe_reset_pick `:269–285` — passed from obfree().
+ * A specific container clears xlock only when it is gx.xlock.box.
+ * A null container clears xlock when that box is absent or not carried
+ * (level change: a floor box or a door is left behind; a carried box
+ * stays valid). No context yet makes the clear redundant.
+ */
+export function maybe_reset_pick(container) {
+    /*
+     * If a specific container, only clear context if it is for that
+     * particular container (which is being deleted). Other stuff on
+     * the current dungeon level remains valid.
+     * However if container is Null, clear context if not carrying
+     * gx.xlock.box (which might be Null if context is for a door).
+     * Used for changing levels, where a floor container or a door is
+     * being left behind and won't be valid on the new level but a
+     * carried container will still be. There might not be any context,
+     * in which case redundantly clearing it is harmless.
+     */
+    const box = game.xlock ? game.xlock.box : null;
+    if (container ? (container === box)
+        : (!box || !carried(box))) {
+        reset_pick();
+    }
 }
 
 /**

@@ -79,7 +79,7 @@ import {
     SLT_ENCUMBER, EXT_ENCUMBER, FROMFORM, W_ARTI, W_WEP, W_RINGL, W_RINGR,
     W_ARMOR, W_TOOL, W_AMUL, W_SADDLE, W_BALL, W_CHAIN, W_RING, NOSE,
     HUNGER, CONFLICT, REGENERATION, SLOW_DIGESTION, PROTECTION,
-    SATIATED, NOT_HUNGRY, HUNGRY, WEAK, FAINTING, FAINTED, STOMACH, SICK_VOMITABLE, SICK_ALL,
+    SATIATED, NOT_HUNGRY, HUNGRY, WEAK, FAINTING, FAINTED, STOMACH, LIGHT_HEADED, SICK_VOMITABLE, SICK_ALL,
     STONED, SICK, VOMITING,
     IS_ALTAR,
     TIMEOUT, NON_PM, LOW_PM, ROTTEN_TIN, HOMEMADE_TIN, SPINACH_TIN, HEALTHY_TIN,
@@ -2413,9 +2413,9 @@ async function rottenfood(obj) {
     if (!rn2(4)) {
         const u = game.u || {};
         if (u.Hallucination || u.HHallucination) {
-            await pline('You feel rather trippy.');
+            await You_feel('rather trippy.');
         } else {
-            await pline('You feel rather light headed.');
+            await You_feel('rather %s.', body_part(LIGHT_HEADED));
         }
         // C: make_confused(HConfusion + d(2, 4), FALSE)
         await make_confused((u.HConfusion | 0) + d(2, 4), false);
@@ -2521,7 +2521,7 @@ export async function eatcorpse(otmp) {
     } else if ((rotted > 5 || (rotted > 3 && rn2(5)))
         && !(game.u?.HSick_resistance || game.u?.ESick_resistance)) {
         tp++;
-        await pline(`You feel ${game.u?.Sick ? 'very ' : ''}sick.`);
+        await You_feel('%ssick.', game.u?.Sick ? 'very ' : '');
         // C eat.c:1942 losehp(rnd(8), !glob ? "cadaver" : "rotted glob",
         // KILLED_BY_AN) — canonical: Upolyd/mh, end_running, killer
         // attribution, death path (D-2402 was inline).

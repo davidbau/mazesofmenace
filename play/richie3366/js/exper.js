@@ -6,7 +6,7 @@
 import { game } from './gstate.js';
 import { rn1, rn2, rnd } from './rng.js';
 import { MAXULEV, NATTK, LARGEST_INT, Upolyd, LL_MINORAC, KILLED_BY, DIED, MAGICAL_BREATHING } from './const.js';
-import { pline } from './display.js';
+import { pline, You_feel } from './display.js';
 import { acurr, A_WIS, newhp, adjabil, minuhpmax } from './attrib.js';
 import { resists_drli } from './zap.js';
 import { monhp_per_lvl } from './makemon.js';
@@ -180,7 +180,7 @@ export function rndexp(gaining) {
  */
 export async function pluslvl(incr) {
     const u = game.u || (game.u = {});
-    if (!incr) await pline('You feel more experienced.');
+    if (!incr) await You_feel('more experienced.');
 
     // C `:317–323` — increase hit points (when polymorphed, do monster
     // form first in order to retain normal human/whatever increase for

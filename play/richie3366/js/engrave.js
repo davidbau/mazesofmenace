@@ -51,8 +51,6 @@ import { getobj, useup, hold_another_object, prinv, update_inventory, Blind } fr
 import { splitobj, obj_extract_self } from './mkobj.js';
 import { A_WIS, exercise } from './attrib.js';
 import { getrumor, get_rnd_text, xcrypt } from './rumors.js';
-import { ENGRAVE_BUF, MD_PAD_ENGRAVE } from './generated/engrave_data.js';
-import { EPITAPH_BUF, MD_PAD_EPITAPH } from './generated/epitaph_data.js';
 import { ART_FIRE_BRAND } from './generated/artifacts_data.js';
 import {
     WEAPON_CLASS, WAND_CLASS, GEM_CLASS, RING_CLASS, TOOL_CLASS,
@@ -63,6 +61,7 @@ import {
 } from './objects.js';
 import {
     DUST, ENGRAVE, BURN, MARK, ENGR_BLOOD, HEADSTONE, N_ENGRAVE, ICE,
+    ENGRAVEFILE, EPITAPHFILE, MD_PAD_RUMORS,
     ROOM, GRAVE, IS_GRAVE, MM_NOMSG, COLNO, ROWNO,
     ACCESSIBLE, IS_FOUNTAIN, IS_AIR, IS_POOL, IS_LAVA,
     Never_mind, Is_airlevel, Is_waterlevel, P_RIDING, P_BASIC,
@@ -88,6 +87,7 @@ import { is_art } from './artifact.js';
 import { welded, bimanual } from './wield.js';
 import { dry_a_towel, is_wet_towel, hands_obj } from './weapon.js';
 import { wand_explode } from './read.js';
+import { mungspaces } from './hacklib.js';
 
 const PM_GHOUL = monsterNames.indexOf('PM_GHOUL');
 
@@ -97,10 +97,6 @@ const ATHAME = objectNames.indexOf('ATHAME');
 
 /** C: decl.h Something */
 const Something = 'Something';
-
-function mungspaces(s) {
-    return String(s || '').trim().replace(/\s+/g, ' ');
-}
 
 /** C youprop.h Confusion ≡ HConfusion (sticky u.Confusion kept per repo convention). */
 function Confusion() {
@@ -219,7 +215,7 @@ const RUBOUTS = {
 export function random_engraving() {
     let pristine = '';
     if (!rn2(4) || !(pristine = getrumor(0, true)) || !pristine) {
-        pristine = get_rnd_text(ENGRAVE_BUF, rn2, MD_PAD_ENGRAVE) || '';
+        pristine = get_rnd_text(ENGRAVEFILE, rn2, MD_PAD_RUMORS) || '';
     }
     const text = wipeout_text(pristine, Math.trunc(pristine.length / 4), 0);
     return { text, pristine };
@@ -239,7 +235,7 @@ export function make_grave(x, y, str) {
     del_engr(engr_at(x, y));
     let text = str;
     if (!text) {
-        text = get_rnd_text(EPITAPH_BUF, rn2, MD_PAD_EPITAPH) || '';
+        text = get_rnd_text(EPITAPHFILE, rn2, MD_PAD_RUMORS) || '';
     }
     make_engr_at(x, y, text, null, 0, HEADSTONE);
 }

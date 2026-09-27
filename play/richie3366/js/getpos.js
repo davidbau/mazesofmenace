@@ -18,7 +18,8 @@
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import {
-    flush_screen, flush_screen_getpos_dirty, pline, You, coord_desc, docrt, docrt_flags, docrtRefresh,
+    flush_screen, flush_screen_getpos_dirty, pline, You, coord_desc, custompline,
+    docrt, docrt_flags, docrtRefresh,
     terrain_glyph,
     look_shown_at, newsym_force, glyph_is_invisible,
     glyph_at, glyph_is_cmap, glyph_to_cmap, back_to_glyph,
@@ -52,6 +53,7 @@ import {
     FOUNTAIN, SINK, THRONE, GRAVE, ALTAR, VIBRATING_SQUARE,
     ROGUESET, Is_rogue_level,
     HI_ZAP, TIP_GETPOS,
+    SUPPRESS_HISTORY, OVERRIDE_MSGTYPE, NO_CURS_ON_U,
 } from './const.js';
 import { paint_corner_nhw_menu } from './invent.js';
 import { t_at } from './trap.js';
@@ -585,20 +587,12 @@ export function room_cmap_explanation(x, y, loc) {
 }
 
 /**
- * C ref: getpos.c auto_describe → do_screen_description firstmatch
- * (pager.c lookat overwrite + blocked-staircase rewrite in didlook).
- *
- * Named omissions: doname_with_price /
- * doname_vague_quan, buried/embedded suffixes. The `coord_desc` token
- * is applied by the getpos autodescribe caller (getpos.c:651), not here
- * — show_glyph and lookaround want firstmatch only. Travel:
- * " (no travel path)" via is_valid_travelpt when getloc_travelmode
- * (D-0809). getpos_getvalid "(invalid target)" live (D-0899); S_goodpos
- * hilite glyphs deferred.
+ * Firstmatch only, for display.c show_glyph and cmd.c dolookaround.
+ * Those C sites call do_screen_description themselves; this helper is
+ * the looked=TRUE firstmatch they print. auto_describe (below) is the
+ * getpos.c function: it also prints coord_desc and the two suffixes.
  */
 export function auto_describe_text(cx, cy) {
-    // C getpos.c auto_describe `:643–665` → do_screen_description firstmatch
-    // (lookat overwrite + blocked-stair rewrite happen in its didlook arm).
     const outStr = { s: '' };
     const firstMatch = { v: '' };
     const found = do_screen_description(
@@ -609,20 +603,78 @@ export function auto_describe_text(cx, cy) {
 }
 
 /**
- * C ref: getpos.c auto_describe — firstmatch then optional suffixes:
- * " (invalid target)" if getpos_getvalid fails; " (no travel path)" if
- * getloc_travelmode && !is_valid_travelpt. getpos_getvalid deferred.
+ * C ref: winprocs.h `curs` → wintty.c tty_curs `:2058–2158` for WIN_MAP.
+ * Contest 80×24: offx 0, offy 1, clipping off. `curx = --x`, screen row
+ * is `y + offy`. Named: other window types, the clipping subtract, and
+ * cmov/nocmov (the Terminal cursor is absolute).
+ * @param {number} x map x
+ * @param {number} y map y
  */
-async function auto_describe_suffix(cx, cy) {
-    let s = '';
-    // C ref: getpos.c auto_describe — getpos_getvalid → " (invalid target)"
-    if (getpos_getvalid && !getpos_getvalid(cx, cy)) {
-        s += ' (invalid target)';
+function curs_win_map(x, y) {
+    const disp = game.nhDisplay;
+    if (disp?.setCursor) disp.setCursor((x | 0) - 1, (y | 0) + 1);
+}
+
+/**
+ * C ref: getpos.c auto_describe `:640–662`.
+ * do_screen_description(looked) fills firstmatch (initial "unknown").
+ * On a hit, coord_desc overwrites the description buffer, then
+ * custompline(SUPPRESS_HISTORY|OVERRIDE_MSGTYPE|NO_CURS_ON_U) prints
+ * firstmatch, a space only when the coord text is non-empty, the coord
+ * text, " (invalid target)" when autodescribe and getpos_getvalid
+ * rejects the cell, and " (no travel path)" when getloc_travelmode and
+ * the cell is not a travel point. Then curs(WIN_MAP) and flush_screen(0).
+ * A miss leaves the message and the cursor alone.
+ * Async: custompline, is_valid_travelpt, and flush_screen await
+ * (nhgetch reach). The travel test is not called unless travel mode
+ * is on (C `&&` short-circuit).
+ * JS flush_screen parks the cursor on the hero (_buildScreenOutput
+ * does not honor cursor_on_u == 0), so curs_win_map runs after that
+ * flush and leaves the cursor where C's flush_screen(0) leaves the
+ * tty_curs position.
+ * @param {number} cx
+ * @param {number} cy
+ */
+export async function auto_describe(cx, cy) {
+    // C `:643–647`
+    cx = cx | 0;
+    cy = cy | 0;
+    const sym = 0;
+    const outStr = { s: '' };
+    const firstMatch = { v: 'unknown' };
+    // C `:648–650` — looked TRUE; for_supplement is NULL.
+    if (!do_screen_description(
+        { x: cx, y: cy }, true, sym, outStr, firstMatch, null,
+    )) {
+        return;
     }
+    // C `:651` — coord_desc replaces tmpbuf; the long out_str is dropped.
+    const tmpbuf = coord_desc(cx, cy, game.iflags?.getpos_coords) || '';
+    // C `:654–656` — invalid suffix. Do not call getvalid unless both
+    // gates are set.
+    let invalid = '';
+    if (game.iflags?.autodescribe && getpos_getvalid
+        && !getpos_getvalid(cx, cy)) {
+        invalid = ' (invalid target)';
+    }
+    // C `:657–658` — travel suffix. Do not BFS unless travel mode is on.
+    let nopath = '';
     if (game.iflags?.getloc_travelmode && !await is_valid_travelpt(cx, cy)) {
-        s += ' (no travel path)';
+        nopath = ' (no travel path)';
     }
-    return s;
+    // C `:652–658` — five %s so a percent in the description is not a verb.
+    await custompline(
+        (SUPPRESS_HISTORY | OVERRIDE_MSGTYPE | NO_CURS_ON_U) | 0,
+        '%s%s%s%s%s',
+        firstMatch.v ?? '',
+        tmpbuf ? ' ' : '',
+        tmpbuf,
+        invalid,
+        nopath,
+    );
+    // C `:659–660` curs(WIN_MAP, cx, cy); flush_screen(0).
+    await flush_screen(0);
+    curs_win_map(cx, cy);
 }
 
 /**
@@ -1325,25 +1377,8 @@ export async function getpos(ccp, force, goal, describeAt) {
             flush_screen_getpos_dirty();
             need_full_flush = false;
         } else if (g.iflags?.autodescribe && !msg_given) {
-            // C auto_describe — firstmatch via lookat / do_screen_description
-            // + coord_desc (getpos.c:651) + travel/invalid suffixes; ends
-            // with curs + flush_screen(0). GPCOORDS_NONE yields "".
-            let brief = '';
-            if (typeof describeAt === 'function' && !(g.iflags.terrainmode | 0)) {
-                // Ordinary whatis: keep caller brief_at when not terrain browse
-                brief = describeAt(cx, cy) || '';
-            }
-            if (!brief) brief = auto_describe_text(cx, cy);
-            if (brief) {
-                const coords = coord_desc(cx, cy, g.iflags?.getpos_coords);
-                if (coords) brief += ` ${coords}`;
-                brief += await auto_describe_suffix(cx, cy);
-            }
-            g._pending_message = brief || '';
-            // Full rebuild keeps map/topline in sync for walk frames; then
-            // curs onto the target (gnew usually empty after prior flush).
-            await flush_screen(1);
-            if (disp?.setCursor) disp.setCursor(cx - 1, cy + 1);
+            // C getpos.c:865–866. describeAt is not this arm.
+            await auto_describe(cx, cy);
             need_full_flush = false;
         } else if (need_full_flush) {
             await flush_screen(1);

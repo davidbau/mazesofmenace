@@ -54,7 +54,7 @@ import {
 } from './const.js';
 import { MON_WEP, mon_wield_item } from './weapon.js';
 import { m_at, m_carrying, mnexto, mpickgold, setmangry } from './mon.js';
-import { upstart, dist2 } from './hacklib.js';
+import { upstart, dist2, mungspaces, strncmpi } from './hacklib.js';
 import { SetVoice } from './sndprocs.js';
 import { is_fainted, reset_faint } from './eat.js';
 
@@ -116,19 +116,6 @@ function Blind() {
 function Deaf() {
     const u = game.u || {};
     return !!((u.HDeaf | 0) || (u.EDeaf | 0) || u.uroleplay?.deaf || u.Deaf);
-}
-
-function mungspaces(s) {
-    return String(s || '').trim().replace(/\s+/g, ' ');
-}
-
-function strcmpi(a, b) {
-    return String(a || '').toLowerCase() === String(b || '').toLowerCase();
-}
-
-function strncmpi(a, b, n) {
-    return String(a || '').slice(0, n).toLowerCase()
-        === String(b || '').slice(0, n).toLowerCase();
 }
 
 function guard_pmname(guard) {
@@ -792,12 +779,12 @@ export async function invault() {
 
     const plname = game.plname || '';
     if ((u.ualign?.type | 0) === A_LAWFUL
-        && !strncmpi(buf, plname, plname.length)) {
+        && strncmpi(buf, plname, plname.length) !== 0) { // C `:509` != 0
         adjalign(-1);
     }
 
-    if (strcmpi(buf, 'Croesus') || strcmpi(buf, 'Kroisos')
-        || strcmpi(buf, 'Creosote')) { /* Discworld */
+    if (strncmpi(buf, 'Croesus', -1) === 0 || strncmpi(buf, 'Kroisos', -1) === 0
+        || strncmpi(buf, 'Creosote', -1) === 0) { /* Discworld; C `:513–514` !strcmpi */
         if (!((game.mvitals?.[PM_CROESUS]?.died | 0))) {
             // Croesus alive → leave (C waves-goodbye/sorry dialogue omitted)
             mongone_guard(guard);

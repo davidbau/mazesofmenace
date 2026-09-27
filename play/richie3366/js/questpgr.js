@@ -6,25 +6,55 @@ import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import {
     docrt, flush_screen, flush_topl_more, pline, putmsghistory,
-    status_line_2,
+    status_line_2, impossible,
 } from './display.js';
 import { NO_COLOR } from './terminal.js';
 import { align_gname, align_gtitle, align_str, rank_of, genders } from './roles.js';
-import { highc, strstri } from './hacklib.js';
+import { copynchars, eos, highc, strstri } from './hacklib.js';
 import { rn2 } from './rng.js';
 import { artiname } from './artifact.js';
 import {
-    A_NEUTRAL, A_LAWFUL, MIN_QUEST_LEVEL, BUFSZ,
+    A_NEUTRAL, A_LAWFUL, MIN_QUEST_LEVEL, BUFSZ, NHW_MENU, NHW_TEXT,
 } from './const.js';
 import {
     A_INT, A_WIS, A_DEX, A_CON, A_CHA, acurr, get_strength_str,
 } from './attrib.js';
 import { nhl_nhlib_align_shuffle } from './dungeon.js';
-import { show_text_pages } from './pager.js';
+import { show_nhw_menu_text, show_text_pages } from './pager.js';
 import { mons, M2_PNAME } from './monsters.js';
 import { NON_PM, pmnames } from './generated/monsters_data.js';
 import { QUEST_NEMESIS_SPEECH } from './generated/quest_nemesis_speech.js';
 import { an, An, the, makeplural, makesingular } from './objnam.js';
+
+/** C ref: monflag.h enum ms_sounds — quest_info switch cases. */
+const MS_LEADER = 36;
+const MS_NEMESIS = 37;
+const MS_GUARDIAN = 38;
+
+/**
+ * C ref: questpgr.c quest_info `:31–46`.
+ * 0 is `urole.questarti`. MS_LEADER / MS_NEMESIS / MS_GUARDIAN are the
+ * role's monster indices (all `short`). Any other typ is `impossible`,
+ * then 0. `impossible` is started and not awaited: the lookup stays
+ * synchronous so makemon, genocide, and setmangry do not yield on a
+ * known typ (same shape as `dungeon.js` `In_W_tower`).
+ */
+export function quest_info(typ) {
+    const urole = game.urole;
+    switch (typ | 0) {
+    case 0:
+        return urole?.questarti | 0;
+    case MS_LEADER:
+        return urole?.ldrnum | 0;
+    case MS_NEMESIS:
+        return urole?.neminum | 0;
+    case MS_GUARDIAN:
+        return urole?.guardnum | 0;
+    default:
+        void impossible('quest_info(%d)', typ | 0);
+    }
+    return 0;
+}
 
 /**
  * C ref: quest.lua common.legacy + convert_arg %d/%G/%r.
@@ -1014,14 +1044,34 @@ async function deliver_by_pline(raw) {
 }
 
 /**
- * C ref: questpgr.c deliver_by_window — copynchars/convert_line per line,
- * putstr + display. Live path is NHW_TEXT; NHW_MENU is com_pager_legacy.
+ * C ref: questpgr.c deliver_by_window `:438–456`.
+ * `eos` is the index of the terminating NUL. Each step `copynchars`s at
+ * most `BUFSZ-1` bytes and stops at a newline; the walk then advances
+ * `strlen(in_line)+1`, which consumes that newline or the extra byte C
+ * skips when a segment fills the buffer. `convert_line` is the putstr
+ * text. `create_nhwindow(how)` / `putstr` / `display_nhwindow(TRUE)` /
+ * `destroy_nhwindow` are the existing window stand-ins: `NHW_MENU` is
+ * `show_nhw_menu_text` (`process_text_window`), anything else the caller
+ * passes (`NHW_TEXT`) is `show_text_pages`. `display_nhwindow` flushes a
+ * pending message `--More--` before the paint.
+ * @param {string} msg
+ * @param {number} how `NHW_MENU` or `NHW_TEXT`
  */
-async function deliver_by_window(raw, _how) {
-    if (!raw) return;
+async function deliver_by_window(msg, how) {
+    const text = msg == null ? '' : String(msg);
+    const msgend = eos(text); // C `:442`
+    const lines = [];
+    let msgp = 0;
+    while (msgp < msgend) { // C `:444`
+        // C `:446` copynchars(in_line, msgp, sizeof in_line - 1)
+        const chunk = copynchars(text.slice(msgp, msgend), BUFSZ - 1);
+        msgp += chunk.length + 1; // C `:447` strlen(in_line) + 1
+        lines.push(convert_line(chunk)); // C `:449`
+    }
+    // C `:452–454` — blocking display, then destroy (dismiss is inside).
     await flush_topl_more();
-    const lines = String(raw).split('\n').map((line) => convert_line(line));
-    await show_text_pages(lines);
+    if (how === NHW_MENU) await show_nhw_menu_text(lines);
+    else await show_text_pages(lines);
 }
 
 /**
@@ -1035,8 +1085,8 @@ async function deliver_by_window(raw, _how) {
  * Named omissions: lua VM init/load/malformed-table impossible() text —
  * tables are embedded constants so load cannot fail, and a JS miss also
  * covers unported role bodies (map-named) where C shows text and never
- * calls impossible(), so misses stay silent-FALSE; NHW_MENU except legacy
- * (legacy/pauper_legacy own com_pager_legacy); TEST_PATTERN (lua self-test
+ * calls impossible(), so misses stay silent-FALSE; allmain legacy and
+ * pauper_legacy still use com_pager_legacy (not this window); TEST_PATTERN (lua self-test
  * only); other-role bodies except the five nemesis msgids (D-2853, all 13
  * filecodes); convert_arg catalogue is D-1649;
  * convert_line pronoun %Xh is D-1634. qt_pager common retry is D-1662.
@@ -1101,12 +1151,11 @@ async function com_pager_core(section, msgid, showerror, rawOut) {
         if (!synopsis) synopsis = synthesize_window_synopsis(text);
     }
 
-    // C :592-595 — 0/1 pline, else window (3 → NHW_MENU; named omit —
-    // deliver_by_window shows text pages, menu lives in com_pager_legacy).
+    // C :592-595 — 0/1 pline, else window (3 → NHW_MENU, else NHW_TEXT).
     if (output === 0 || output === 1) {
         await deliver_by_pline(text);
     } else {
-        await deliver_by_window(text, output);
+        await deliver_by_window(text, output === 3 ? NHW_MENU : NHW_TEXT);
     }
 
     // C :597-610 — synopsis via convert_line + putmsghistory(FALSE) for ^P

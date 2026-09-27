@@ -10,7 +10,7 @@
 // wording polish; new_book_description composition "into " prefix.
 
 import { game } from './gstate.js';
-import { strstri } from './hacklib.js';
+import { strstri, mungspaces, strncmpi } from './hacklib.js';
 import { nhgetch } from './input.js';
 import { flush_screen, flush_topl_more, pline } from './display.js';
 import {
@@ -74,19 +74,6 @@ function Blind() {
 
 function Role_if(pm) {
     return (game.urole?.mnum | 0) === pm;
-}
-
-function strcmpi(a, b) {
-    return String(a || '').toLowerCase() === String(b || '').toLowerCase();
-}
-
-function strncmpi(a, b, n) {
-    return String(a || '').slice(0, n).toLowerCase()
-        === String(b || '').slice(0, n).toLowerCase();
-}
-
-function mungspaces(s) {
-    return String(s || '').trim().replace(/\s+/g, ' ');
 }
 
 function obj_name(otyp) {
@@ -239,7 +226,7 @@ function new_book_description(booktype) {
     const compositions = ['parchment', 'vellum', 'cloth'];
     const descr = obj_descr(booktype) || 'plain';
     for (const c of compositions) {
-        if (strcmpi(descr, c)) return `into ${descr}`;
+        if (strncmpi(descr, c, -1) === 0) return `into ${descr}`;
     }
     return descr;
 }
@@ -294,9 +281,9 @@ export async function dowrite(pen) {
     if (namebuf === '\x1b' || !namebuf) return ECMD_TIME;
 
     let nm = namebuf;
-    if (strncmpi(nm, 'scroll ', 7)) nm = nm.slice(7);
-    else if (strncmpi(nm, 'spellbook ', 10)) nm = nm.slice(10);
-    if (strncmpi(nm, 'of ', 3)) nm = nm.slice(3);
+    if (strncmpi(nm, 'scroll ', 7) === 0) nm = nm.slice(7);
+    else if (strncmpi(nm, 'spellbook ', 10) === 0) nm = nm.slice(10);
+    if (strncmpi(nm, 'of ', 3) === 0) nm = nm.slice(3);
 
     // C write.c:139–142 — memcpy the match to " armor ", then mungspaces(bp+1).
     const bp = strstri(nm, ' armour');
@@ -318,7 +305,7 @@ export async function dowrite(pen) {
     found: {
         for (let j = first; j <= last; j++) {
             if (!obj_name(j)) continue;
-            if (strcmpi(obj_name(j), nm)) {
+            if (strncmpi(obj_name(j), nm, -1) === 0) {
                 const oc = game.objects?.[j];
                 if (oc?.oc_name_known || paper.oclass === SPBOOK_CLASS) {
                     i = j;
@@ -327,7 +314,7 @@ export async function dowrite(pen) {
                 real = deferred = j;
                 break;
             }
-            if (strcmpi(obj_descr(j), nm)) {
+            if (strncmpi(obj_descr(j), nm, -1) === 0) {
                 by_descr = true;
                 i = j;
                 break found;
@@ -335,7 +322,7 @@ export async function dowrite(pen) {
         }
         for (let j = first; j <= last; j++) {
             const oc = game.objects?.[j];
-            if (oc?.oc_uname && strcmpi(oc.oc_uname, nm)
+            if (oc?.oc_uname && strncmpi(oc.oc_uname, nm, -1) === 0
                 && !(real && oc.oc_name_known)
                 && !rn2(++deferralchance)) {
                 deferred = j;

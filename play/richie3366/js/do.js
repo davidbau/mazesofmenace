@@ -138,7 +138,7 @@ import {
 } from './do_wear.js';
 import { bypass_objlist, nxt_unbypassed_obj, w_blocks } from './worn.js';
 import { monstunseesu_prop } from './mondata.js';
-import { reset_pick } from './lock.js';
+import { reset_pick, maybe_reset_pick } from './lock.js';
 import { Unaware, carried, polyfood } from './eat.js';
 import { addinv_nomerge } from './u_init.js';
 import {
@@ -995,7 +995,7 @@ export async function boulder_hits_pool(otmp, rx, ry, pushing) {
             // next2u approx: Chebyshev ≤1 → dist2 ≤ 2
             const Fire_resistance = !!(u.Fire_resistance
                 || u.HFire_resistance || u.EFire_resistance);
-            await pline(`You are hit by molten lava${Fire_resistance ? '.' : '!'}`);
+            await pline(`You are hit by molten ${hliquid('lava')}${Fire_resistance ? '.' : '!'}`);
             let dmg = 0;
             const ndice = Fire_resistance ? 1 : 3;
             for (let i = 0; i < ndice; i++) dmg += 1 + rn2(6);
@@ -1562,7 +1562,9 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
 
     if (on_level(newlevel, u.uz)) return;
 
-    // C: maybe_reset_pick(NULL); reset_trapset() before leaving
+    // C do.c:1605 — maybe_reset_pick(NULL) before the departing level is
+    // saved and freed, so carried() still sees gx.xlock.box.
+    maybe_reset_pick(null);
     try {
         const { reset_trapset } = await import('./apply.js');
         reset_trapset();

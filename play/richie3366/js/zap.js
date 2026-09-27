@@ -239,9 +239,9 @@ import {
 } from './invent.js';
 import { mstatusline, ustatusline } from './insight.js';
 import { setnotworn, boulder_hits_pool } from './do.js';
-import { doname, xname, yname, distant_name, cxname_singular, vtense, The, the, an, An, aobjnam, killer_xname, ansimpleoname, makeplural } from './objnam.js';
+import { doname, xname, yname, Yname2, distant_name, cxname_singular, vtense, The, the, an, An, aobjnam, killer_xname, ansimpleoname, makeplural } from './objnam.js';
 import { uhim, uhis } from './roles.js';
-import { str_start_is, upstart } from './hacklib.js';
+import { str_start_is, upstart, mungspaces, strncmpi } from './hacklib.js';
 import { Soundeffect } from './sndprocs.js';
 import { se_crumbling_sound } from './generated/seffects_data.js';
 import { fix_wall_spines } from './mklev.js';
@@ -1673,10 +1673,8 @@ async function maybe_destroy_item(carrier, obj, dmgtyp) {
                 : ((cnt < quan) ? 'Some of '
                     : (quan === 2) ? 'Both of ' : 'All of ');
             const verb = DESTROY_STRINGS[dindx]?.[cnt > 1 ? 1 : 0] || 'destroyed';
-            // Yname2 ≈ "Your " + xname for 1-of-1 carried
-            const nam = (cnt === 1 && quan === 1 && u_carry)
-                ? `Your ${xname(obj)}`
-                : (u_carry ? `your ${xname(obj)}` : xname(obj));
+            // C zap.c:5909–5911 — Yname2 for one of one, else yname.
+            const nam = (cnt === 1 && quan === 1) ? Yname2(obj) : yname(obj);
             await pline(`${mult}${nam} ${verb}!`);
         }
 
@@ -7229,13 +7227,12 @@ export async function makewish() {
             prompt += " (enter 'help' for assistance)";
         }
         prompt += '?';
-        buf = await getlin(prompt);
-        if (!buf || buf === '\x1b') {
+        buf = mungspaces(await getlin(prompt)); // C `:6345`
+        if (buf === '\x1b') {
             buf = '';
             break;
         }
-        buf = String(buf).trim().replace(/\s+/g, ' ');
-        if (/^help$/i.test(buf)) {
+        if (strncmpi(buf, 'help', -1) === 0) { // C `:6348` !strcmpi
             // C zap.c:6348-6351 — 'help' shows the assistance window,
             // clears the line for EDIT_GETLIN, and retries the prompt.
             await wishcmdassist(MAXWISHTRY - tries);

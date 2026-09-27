@@ -8,7 +8,7 @@ import { dobjsfree, clear_splitobjs } from './mkobj.js';
 import { rhack, continue_run, run_active, continue_search, search_repeat_active, dolookaround, end_of_input, enter_explore_mode } from './cmd.js';
 import {
     docrt, cls, bot, timebot, curs_on_u, flush_screen, pline, Norep,
-    flush_topl_more, see_monsters, You,
+    flush_topl_more, see_monsters, You, install_tty_wincap2,
     see_objects, see_traps, swallowed, Hallucination, Warn_of_mon,
     clear_glyph_buffer, glyph_to_cmap,
 } from './display.js';
@@ -48,7 +48,7 @@ import { near_capacity, paint_corner_nhw_menu, encumber_msg, update_inventory, p
 import { sanity_check } from './wizcmds.js';
 import { com_pager_legacy } from './questpgr.js';
 import { snapshot_status_lines } from './display.js';
-import { status_initialize } from './botl.js';
+import { status_initialize, status_eval_next_unhilite } from './botl.js';
 import { Hello, align_str, role_init } from './roles.js';
 import { livelog_printf } from './pline.js';
 import { phase_of_the_moon, friday_13th, night, getnow, FULL_MOON, NEW_MOON } from './calendar.js';
@@ -201,9 +201,10 @@ export function init_sound_disp_gamewindows() {
     game.WIN_MESSAGE = 10;
     // C `:720–724` if (VIA_WINDOWPORT()) status_initialize(FALSE) else
     // WIN_STATUS = create_nhwindow(NHW_STATUS). tty_procs sets
-    // WC2_HILITE_STATUS|WC2_FLUSH_STATUS (wintty.c:116), so C tty takes
-    // status_initialize. The scored port leaves wincap2 unset, so this
-    // stays on the else arm until that capability is installed.
+    // WC2_HILITE_STATUS|WC2_FLUSH_STATUS (wintty.c:116) and the message
+    // bits WC2_URGENT_MESG|WC2_SUPPRESS_HIST (`:119`). Only the message
+    // bits are installed, so this stays on the else arm.
+    install_tty_wincap2();
     const wincap2 = game.windowprocs?.wincap2 | 0;
     const viaWindowport = (wincap2 & (WC2_HILITE_STATUS | WC2_FLUSH_STATUS)) !== 0;
     if (viaWindowport) {
@@ -1288,6 +1289,10 @@ export async function moveloop_core() {
         // nh_timeout(), so the player gets immediate feedback if their own
         // action encumbered them.
         await encumber_msg();
+
+        // C allmain.c:405–407 — STATUS_HILITES is on (config.h:616).
+        // hilite_delta 0 skips the walk. status_eval only sets botl.
+        if (game.iflags?.hilite_delta) status_eval_next_unhilite();
 
         // C: once-per-hero-took-time — seer_turn after umovement loop
         // (not inside once-per-turn EOT). Always rolls rn1 even without

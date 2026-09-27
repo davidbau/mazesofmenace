@@ -28052,12 +28052,8 @@ function fill_zoo(sroom) {
  */
 function mk_knox_portal(x, y) {
     const g = game;
-    let br;
-    try {
-        br = dungeon_branch('Fort Ludios');
-    } catch {
-        return; // C panics; soft-skip if data missing
-    }
+    /* C mklev.c:2630–2632: dungeon_branch panics (never returns) if null. */
+    const br = dungeon_branch('Fort Ludios');
     const knox = g.knox_level;
     // C: wizard ≡ flags.debug (flag.h)
     const wizard = !!(g.flags?.debug || g.flags?.wizard);
@@ -32448,15 +32444,32 @@ function mktrap(num, mktrapflags, croom, tm) {
     });
 }
 
+/**
+ * C ref: mklev.c mkfount :2285–2300.
+ * find_okay_roompos, then set_levltyp(FOUNTAIN) before rn2(7). A refused
+ * cell returns and does not draw, and does not increment nfountains.
+ * blessedftn is the horizontal bit (rm.h:404). Fountain reads use
+ * blessedftn, so both fields are written. set_levltyp's fountain/sink
+ * arm is still the incremental ±1 (full count_level_features rescan
+ * stays named on trap.js); this ++ is C's statement after that call.
+ */
 function mkfount(croom) {
-    const pos = { x: 0, y: 0 };
-    if (!find_okay_roompos(croom, pos)) return;
-    const loc = game.level?.at(pos.x, pos.y);
-    if (loc) {
-        loc.typ = FOUNTAIN;
-        if (!rn2(7)) loc.blessedftn = 1;
-        game.level.flags.nfountains++;
+    const m = { x: 0, y: 0 };
+
+    if (!find_okay_roompos(croom, m))
+        return;
+
+    /* Put a fountain at m.x, m.y */
+    if (!set_levltyp(m.x, m.y, FOUNTAIN))
+        return;
+    /* Is it a "blessed" fountain? (affects drinking from fountain) */
+    if (!rn2(7)) {
+        const loc = game.level.at(m.x, m.y);
+        loc.blessedftn = 1;
+        loc.horizontal = 1;
     }
+
+    game.level.flags.nfountains++;
 }
 
 /**

@@ -30,7 +30,7 @@ import { monsterNames } from './monsters.js';
 import { yn_function } from './getline.js';
 import { nomul } from './hack.js';
 import { deltrap } from './trap.js';
-import { remdun_mapseen } from './dungeon.js';
+import { remdun_mapseen, dungeon_branch } from './dungeon.js';
 import { exercise, adjalign, A_WIS } from './attrib.js';
 import { fully_identify_obj, update_inventory, observe_object } from './invent.js';
 import { the, xname } from './objnam.js';
@@ -250,23 +250,15 @@ export function ok_to_quest() {
 }
 
 /**
- * C ref: quest.c expulsion `:185–216` — schedule_goto the parent of the
- * Quest branch. `seal` ORs UTOTYPE_RMPORTAL, marks the quest dungeon
- * notreachable, and deletes the near MAGIC_PORTAL.
+ * C ref: quest.c expulsion `:185–216` — `dungeon_branch("The Quest")`,
+ * then schedule_goto the other end. `seal` ORs UTOTYPE_RMPORTAL, marks
+ * the quest dungeon notreachable, and deletes the near MAGIC_PORTAL.
  */
 async function expulsion(seal) {
     const u = game.u;
-    if (!u) return;
     const qnum = game.quest_dnum | 0;
-    let br = null;
-    for (const b of game.branches || []) {
-        if ((b.end1?.dnum | 0) === qnum || (b.end2?.dnum | 0) === qnum) {
-            br = b;
-            break;
-        }
-    }
-    if (!br) return;
-    const dest = ((br.end1.dnum | 0) === (u.uz?.dnum | 0))
+    const br = dungeon_branch('The Quest');
+    const dest = ((br.end1.dnum | 0) === (u.uz.dnum | 0))
         ? br.end2
         : br.end1;
     let portal_flag = u.uevent?.qexpelled ? UTOTYPE_NONE : UTOTYPE_PORTAL;

@@ -110,6 +110,8 @@ import {
     WC2_WINDOWBORDERS,
     WC2_PETATTR,
     WC2_GUICOLOR,
+    WC2_URGENT_MESG,
+    WC2_SUPPRESS_HIST,
     WC2_EXTRASTATUS,
     MSGTYP_NORMAL,
     MSGTYP_NOREP,
@@ -167,7 +169,7 @@ import { rnd } from './rng.js';
 import { str_end_is, str_start_is, highc, lowc, strstri, strsubst, strNsubst, strkitten } from './hacklib.js';
 import { name_to_mon } from './mondata.js';
 import { nhgetch } from './input.js';
-import { flush_screen, pline, docrt, check_gold_symbol, clear_committed_status, set_bot_disabled, tty_wait_synch, update_ov_primary_symset, update_ov_rogue_symset, impossible, SYM_OFF_X } from './display.js';
+import { flush_screen, pline, docrt, bot, check_gold_symbol, clear_committed_status, set_bot_disabled, tty_wait_synch, update_ov_primary_symset, update_ov_rogue_symset, impossible, SYM_OFF_X } from './display.js';
 import { paint_corner_nhw_menu, dismiss_nhw_menu, collect_menu_gacc, process_menu_search, toggle_menu_curr, menu_digit_is_gacc, reassign, update_inventory, invlet_constant, perm_invent_toggled, select_menu_pick_none } from './invent.js';
 import {
     ATR_INVERSE,
@@ -1029,7 +1031,8 @@ function wc_supported(optnam) {
 
 /**
  * C options.c wc2_options[] `:9823–9842` (name/bit pairs, C order).
- * The contest tty port advertises no wincap2 bits.
+ * tty message bits live on `windowprocs.wincap2` (wintty.c `:119`).
+ * This table has no name for those bits. Status hilite/flush stay off.
  */
 export const wc2_options = [
     { wc_name: 'armorstatus', wc_bit: WC2_EXTRASTATUS },
@@ -1052,18 +1055,22 @@ export const wc2_options = [
     { wc_name: 'wraptext', wc_bit: WC2_WRAPTEXT },
 ];
 
-/** C botl.h:213 VIA_WINDOWPORT(). Unset wincap2 → contest tty, false. */
+/** C botl.h:213 VIA_WINDOWPORT(). Message bits do not set this. */
 function via_windowport() {
     return (windowprocs_wincap2() & (WC2_HILITE_STATUS | WC2_FLUSH_STATUS)) !== 0;
 }
 
-/** C `windowprocs.wincap2`; unset bag → contest tty (no wincap2 bits). */
+/**
+ * C `windowprocs.wincap2`. A missing field is the tty message pair
+ * (wintty.c `:119`). Hilite/flush/reset and the rest of `:111–125`
+ * stay off.
+ */
 function windowprocs_wincap2() {
     const wp = game.windowprocs;
     if (wp && typeof wp === 'object' && Object.hasOwn(wp, 'wincap2')) {
         return wp.wincap2 | 0;
     }
-    return 0;
+    return WC2_URGENT_MESG | WC2_SUPPRESS_HIST;
 }
 
 /** C options.c wc2_supported `:9965–9976`. */
@@ -7417,6 +7424,11 @@ async function reset_needed_visuals() {
     if (needRedraw) {
         check_gold_symbol();
         await docrt();
+    }
+    // C options.c:9006–9008 — after docrt may have set disp.botlx.
+    if (game.flags?.botl || game.flags?.botlx
+        || game.disp?.botl || game.disp?.botlx) {
+        await bot();
     }
     go.opt_need_redraw = false;
     go.opt_need_glyph_reset = false;
