@@ -25,7 +25,7 @@
 //        shopper_financial_report / shop_debt (D-1740).
 // Named omissions: allmain/bones fix_shop_damage callers;
 // holetime dig follow;
-// m_move_aggress; inhistemple callers; mapseen_temple;
+// inhistemple callers; mapseen_temple;
 // ACH_SHOP mapseen;
 // remaining SetVoice pick_pick / kops / pay-bill;
 // mongone full;
@@ -52,7 +52,7 @@ import { dist2, highc, online2, upstart, depth } from './hacklib.js';
 import { choose_stairs } from './wizard.js';
 import { in_rooms, stop_occupation, You_hear } from './hack.js';
 import {
-    ESHK, EPRI, BEFORE, NOW, IS_ROOM, IS_DOOR, IS_WALL, ZAP_POS, NOTONL, ALLOW_ROCK, u_at, isok,
+    ESHK, has_eshk, has_mgivenname, MGIVENNAME, EPRI, BEFORE, NOW, IS_ROOM, IS_DOOR, IS_WALL, ZAP_POS, NOTONL, ALLOW_ROCK, u_at, isok,
     ROOMOFFSET, SHOPBASE, ACH_SHOP, SVALL, ROWNO, COLNO,
     D_CLOSED, D_BROKEN, D_LOCKED, REPAIR_DELAY, BOLT_LIM,
     LANDMINE, BEAR_TRAP, HOLE, PIT, SPIKED_PIT,
@@ -73,7 +73,7 @@ import {
     hero_conflict, resist_conflict, m_canseeu,
     noit_mhe, noit_mhim, noit_mhis,
 } from './mondata.js';
-import { mon_nam, x_monnam, y_monnam, Monnam } from './do_name.js';
+import { mon_nam, x_monnam, y_monnam, Monnam, a_monnam } from './do_name.js';
 import {
     COIN_CLASS, FOOD_CLASS, WAND_CLASS, POTION_CLASS, ARMOR_CLASS,
     WEAPON_CLASS, TOOL_CLASS, GEM_CLASS, SCROLL_CLASS, SPBOOK_CLASS,
@@ -82,7 +82,7 @@ import {
     POT_WATER, is_pick,
 } from './objects.js';
 import {
-    newsym, pline, Norep, verbalize, Your, You_feel, docrt, flush_screen,
+    newsym, pline, Norep, verbalize, Your, You, You_feel, docrt, flush_screen,
     canspotmon, canseemon, sensemon, impossible, bot,
     map_invisible, nh_delay_output,
 } from './display.js';
@@ -131,7 +131,9 @@ import { addinv } from './u_init.js';
 import { SchroedingersBox } from './pickup.js';
 import { arti_cost } from './artifact.js';
 import { o_unleash } from './apply.js';
-import { setnotworn } from './do.js';
+import { setnotworn, dropy } from './do.js';
+import { findgold, inv_cnt } from './steal.js';
+import { merge_choice } from './files.js';
 import { reset_pick } from './lock.js';
 import { set_voice } from './sounds.js';
 
@@ -253,16 +255,40 @@ function pacify_shk(shkp, clear_surcharge) {
 import { record_achievement } from './insight.js';
 
 /**
- * C ref: shk.c shop_keeper — rooms[rmno-ROOMOFFSET].resident with eshk.
- * Angry surcharge rile_shk deferred.
+ * C ref: shk.c shop_keeper `:1052–1080` — rooms[rmno-ROOMOFFSET].resident.
+ * `rmno` is a signed char (`*in_rooms` / `*u.ushops`). has_eshk: angry
+ * and not yet surcharged → rile_shk. Otherwise impossible() and NULL
+ * (career change vs resident that is not a shopkeeper).
+ * Sync: impossible() is fire-and-forget, as in unpaid_cost.
  */
 export function shop_keeper(rmno) {
-    const code = typeof rmno === 'string' ? rmno.charCodeAt(0) : (rmno | 0);
+    let code = typeof rmno === 'string'
+        ? (rmno.length ? rmno.charCodeAt(0) : 0)
+        : (rmno | 0);
+    if (code > 127) code -= 256;
     if (code < ROOMOFFSET) return null;
-    const shkp = game.level?.rooms?.[code - ROOMOFFSET]?.resident || null;
+    const room = game.level?.rooms?.[code - ROOMOFFSET];
+    const shkp = room?.resident || null;
     if (!shkp) return null;
-    if (!ESHK(shkp)) return null;
-    // ANGRY → rile_shk deferred
+    if (has_eshk(shkp)) {
+        if (ANGRY(shkp) && !ESHK(shkp).surcharge) rile_shk(shkp);
+    } else {
+        const who = shkp.isshk
+            ? 'shopkeeper career change'
+            : 'shop resident not shopkeeper';
+        const named = has_mgivenname(shkp)
+            ? (MGIVENNAME(shkp) || 'anonymous')
+            : 'anonymous';
+        impossible(
+            '%s? (rmno=%d, rtype=%d, mnum=%d, "%s")',
+            who,
+            code,
+            room?.rtype | 0,
+            shkp.mnum | 0,
+            named,
+        );
+        return null;
+    }
     return shkp;
 }
 
@@ -791,6 +817,49 @@ const HUNGRY = 2; // C you.h SATIATED=0 … HUNGRY=2
 /** C: IS_SHOP(x) — rooms[x].rtype >= SHOPBASE. */
 function IS_SHOP(roomIdx) {
     return ((game.level?.rooms?.[roomIdx]?.rtype | 0) >= SHOPBASE);
+}
+
+/**
+ * C ref: shk.c block_door `:5791–5821` — diagonal shop-exit.
+ * x,y is a door. IS_SHOP indexes rooms[roomno] with the raw *in_rooms
+ * char (no ROOMOFFSET subtract); shop_keeper then subtracts. pline may
+ * --More--, so this is async.
+ * Callers: hack.c test_move `:1141` (js/hack.js test_move, js/cmd.js
+ * travel_test_move), hack.c crawl_destination `:4095` (js/hack.js).
+ */
+export async function block_door(x, y) {
+    x |= 0;
+    y |= 0;
+    const roomStr = in_rooms(x, y, SHOPBASE);
+    let roomno = 0;
+    if (roomStr) {
+        roomno = roomStr.charCodeAt(0);
+        if (roomno > 127) roomno -= 256;
+    }
+    if (roomno < 0 || !IS_SHOP(roomno)) return false;
+    const door = game.level?.at(x, y);
+    if (!(door && IS_DOOR(door.typ | 0))) return false;
+    const ushops = game.u?.ushops || '';
+    let uroom = 0;
+    if (ushops.length) {
+        uroom = ushops.charCodeAt(0);
+        if (uroom > 127) uroom -= 256;
+    }
+    if (roomno !== uroom) return false;
+    const shkp = shop_keeper(roomno);
+    if (!shkp || !inhishop(shkp)) return false;
+    const eshk = ESHK(shkp);
+    if ((shkp.mx | 0) === (eshk?.shk?.x | 0)
+        && (shkp.my | 0) === (eshk?.shk?.y | 0)
+        && (eshk?.shd?.x | 0) === x
+        && (eshk?.shd?.y | 0) === y
+        && !helpless(shkp)
+        && ((eshk?.debit | 0) || (eshk?.billct | 0) || eshk?.robbed)) {
+        await pline(
+            `${Shknam(shkp)}${Invis() ? ' senses your motion and' : ''} blocks your way!`);
+        return true;
+    }
+    return false;
 }
 
 /**
@@ -2561,28 +2630,41 @@ function money_cnt_chain(head) {
     return sum;
 }
 
-/** C steal.c findgold on mon minvent chain. */
-function findgold_minvent(mon) {
-    const goldOtyp = objectNames.indexOf('GOLD_PIECE');
-    for (let o = mon?.minvent; o; o = o.nobj) {
-        if ((o.oclass | 0) === COIN_CLASS || (o.otyp | 0) === goldOtyp) return o;
-    }
-    return null;
-}
-
 /**
- * C ref: shk.c money2u — transfer gold from mon minvent to hero invent.
- * Named omit: invent-full dropy (gold always merges via addinv).
+ * C ref: shk.c money2u `:186–212` — gold from mon->minvent into invent.
+ * amount <= 0 or a short purse is impossible() and return. A split
+ * takes exactly `amount`. merge_choice(invent) failing while inv_cnt
+ * is at invlet_basic (hack.h: 52) drops the gold; otherwise addinv
+ * and disp.botl. Extracted gold is not OBJ_FLOOR, so merge_choice's
+ * shop_keeper arm does not run.
  */
 export async function money2u(mon, amount) {
-    const amt = amount | 0;
-    if (amt <= 0 || !mon) return;
-    let mongold = findgold_minvent(mon);
-    if (!mongold || (mongold.quan | 0) < amt) return;
-    if ((mongold.quan | 0) > amt) mongold = splitobj(mongold, amt);
+    const amt = Math.trunc(Number(amount) || 0);
+    if (amt <= 0) {
+        await impossible('%s payment in money2u!', amt ? 'negative' : 'zero');
+        return;
+    }
+    if (!mon) return;
+    let mongold = findgold(mon.minvent);
+    const quan = Math.trunc(Number(mongold?.quan) || 0);
+    if (!mongold || quan < amt) {
+        await impossible(
+            '%s paying without %s gold?',
+            a_monnam(mon),
+            mongold ? 'enough' : '',
+        );
+        return;
+    }
+    if (quan > amt) mongold = splitobj(mongold, amt);
     obj_extract_self(mongold);
-    await addinv(mongold);
-    if (game.flags) game.flags.botl = true;
+    // C hack.h invlet_basic = 52. inv_cnt(FALSE) skips COIN_CLASS.
+    if (!merge_choice(game.invent, mongold) && inv_cnt(false) >= 52) {
+        await You('have no room for the gold!');
+        await dropy(mongold);
+    } else {
+        await addinv(mongold);
+        if (game.flags) game.flags.botl = true;
+    }
 }
 
 /**
@@ -4307,7 +4389,7 @@ function onlineu(xx, yy) {
 
 /**
  * C ref: priest.c move_special — shared shk/priest step picker.
- * Returns 1 moved, 0 didn't, -2 died. (m_move_aggress still named.)
+ * Returns 1 moved, 0 didn't, -2 died.
  * Lazy-imports mon.js helpers to avoid mon→monmove→shk→mon cycle.
  */
 export async function move_special(mtmp, in_his_shop, appr, uondoor, avoid,
@@ -4379,8 +4461,17 @@ export async function move_special(mtmp, in_his_shop, appr, uondoor, avoid,
             const { m_break_boulder } = await import('./monmove.js');
             await m_break_boulder(mtmp, nix, niy);
             return 1;
+        } else if (ninfo & ALLOW_M) {
+            /* C priest.c:108–118 — m_move_aggress returns MMOVE_DIED (2)
+             * or MMOVE_DONE (3), which are not this function's 1/0/-2. */
+            const { m_move_aggress } = await import('./monmove.js');
+            switch (await m_move_aggress(mtmp, nix, niy)) {
+            case 2:
+                return -2; /* died making the attack */
+            case 3:
+                return 1; /* attacked and spent this move */
+            }
         }
-        // C `:108–118` m_move_aggress still named.
         if (m_at(nix, niy) || u_at(nix, niy)) return 0;
         if (!isok(nix, niy)) return 0;
         mtmp.mx = nix;

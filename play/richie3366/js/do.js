@@ -175,7 +175,8 @@ import { delete_levelfile, open_levelfile } from './files.js';
 import { strange_feeling } from './detect.js';
 import { surface } from './sit.js';
 import { use_pick_axe2 } from './dig.js';
-import { set_move_cmd, u_rooted } from './cmd.js';
+import { set_move_cmd, u_rooted, nhl_callback } from './cmd.js';
+import { cmd_from_func, visctrl } from './dokeylist.js';
 import { newcham, mpickobj } from './makemon.js';
 import { grow_up } from './mhitm.js';
 import { mcureblindness } from './muse.js';
@@ -1154,18 +1155,21 @@ export async function nhl_gamestate(reststate = false) {
 
 /**
  * C ref: dat/nhlib.lua tutorial_enter via nhcore.lua enter_tutorial.
- * Named omit: nh.callback("cmd_before", "tutorial_cmd_before") and
- * nh.callback("end_turn", "tutorial_turn") (Lua NHCB; no VM).
+ * Registers `tutorial_cmd_before` before `nh.gamestate` (`:200` then `:204`).
+ * Named omit: `nh.callback("end_turn", "tutorial_turn")` (`:201`).
  */
 async function tutorial_enter() {
+    await nhl_callback('cmd_before', 'tutorial_cmd_before', false);
     await nhl_gamestate(false);
 }
 
 /**
  * C ref: dat/nhlib.lua tutorial_leave via nhcore.lua leave_tutorial.
- * Named omit: nh.callback(..., true) rm of cmd_before / end_turn.
+ * Removes `tutorial_cmd_before` before `nh.gamestate(true)` (`:211` then `:215`).
+ * Named omit: `nh.callback("end_turn", "tutorial_turn", true)` (`:212`).
  */
 async function tutorial_leave() {
+    await nhl_callback('cmd_before', 'tutorial_cmd_before', true);
     await nhl_gamestate(true);
 }
 
@@ -1247,7 +1251,7 @@ function danger_uprops() {
 /**
  * C ref: do.c cmd_safety_prevention — block wait/search beside hostiles.
  * safe_wait default On; menu_requested (`m` prefix) and multi skip the gate.
- * Named omissions: visctrl/cmd_from_func beyond 'm'.
+ * The assist names `visctrl(cmd_from_func(do_reqmenu))` (`do.c:2333–2334`).
  *
  * @param {string} ucverb
  * @param {string} cmddesc
@@ -1270,12 +1274,13 @@ export async function cmd_safety_prevention(ucverb, cmddesc, act, flagKey) {
         const cmdassist = iflags.cmdassist !== undefined
             ? !!iflags.cmdassist
             : true;
+        const mprefix = visctrl(cmd_from_func('reqmenu')); // C `:2334` do_reqmenu
         if (cmdassist) {
-            assist = `  Use 'm' prefix to force ${cmddesc}.`;
+            assist = `  Use '${mprefix}' prefix to force ${cmddesc}.`;
         } else {
             const prev = game._safety_flags[flagKey] | 0;
             game._safety_flags[flagKey] = prev + 1;
-            if (!prev) assist = `  Use 'm' prefix to force ${cmddesc}.`;
+            if (!prev) assist = `  Use '${mprefix}' prefix to force ${cmddesc}.`;
         }
 
         if (monster_nearby()) {
@@ -1993,11 +1998,11 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     // peel invent/migrating here (D-1037).
     await run_timers();
 
-    // C: u_collide_m if still co-located — rn2(2)+enexto path
-    let mtmp = m_at(u.ux, u.uy);
-    if (mtmp && mtmp !== u.usteed) {
-        await u_collide_m(mtmp);
-    }
+    // C do.c:1825–1828 — any monster on the arrival square, including a
+    // steed that was left on the map. The steed / null / not-colocated
+    // cases are impossible() inside u_collide_m, not a caller skip.
+    const mtmp = m_at(u.ux, u.uy);
+    if (mtmp) await u_collide_m(mtmp);
 
     // C: do.c goto_level — movebubbles / fumaroles before vision_recalc
     // (allmain moveloop EOT twin D-1168).
@@ -2278,29 +2283,48 @@ export async function deferred_goto() {
 }
 
 /**
- * C ref: do.c u_collide_m — move hero or monster when sharing a spot.
- * Callers: goto_level; cmd.c makemap_prepost post (D-1288).
+ * C ref: do.c u_collide_m `:1412–1445` — hero and a monster share the
+ * arrival square. Move the hero to an adjacent enexto spot, or the
+ * monster via mnexto; if one remains, rloc it, else limbo.
+ * Callers: goto_level (`do.c:1828`); makemap_prepost (`cmd.c:1053`).
+ * `next2u` is `you.h:558` `distu <= 2` via this file's `distu`.
+ * `wizard` is `flag.h:30` `flags.debug`.
  */
 export async function u_collide_m(mtmp) {
     const u = game.u;
-    if (!mtmp || mtmp === u.usteed || m_at(u.ux, u.uy) !== mtmp) return;
-
     const cc = { x: 0, y: 0 };
-    if (!rn2(2) && enexto(cc, u.ux, u.uy, game.youmonst?.data || mtmp.data)
-        && Math.max(Math.abs(cc.x - u.ux), Math.abs(cc.y - u.uy)) <= 1) {
-        await u_on_newpos(cc.x, cc.y); // C do.c:1431
-    } else {
-        // C: mnexto(mtmp, RLOC_NOMSG) on level-entry collide
-        await mnexto(mtmp, RLOC_NOMSG);
+
+    // C do.c:1416–1421. Short-circuit: null, then steed, then not m_at.
+    if (!mtmp || mtmp === u.usteed || mtmp !== m_at(u.ux, u.uy)) {
+        const why = !mtmp
+            ? 'no monster'
+            : (mtmp === u.usteed)
+                ? 'steed is on map'
+                : 'monster not co-located';
+        await impossible('level arrival collision: %s?', why);
+        return;
     }
-    /* C do.c:1436–1445 — survivor on the hero square: wizard-only
-     * "(monster in hero's way)", then rloc, else limbo to return later. */
+
+    /* C do.c:1424–1433. rn2(2) short-circuits enexto and next2u.
+       youmonst.data only — not the co-located monster's data.
+       Prior to 3.3.0 the monster was always the one moved. */
+    if (!rn2(2)
+        && enexto(cc, u.ux, u.uy, game.youmonst?.data)
+        && distu(cc.x, cc.y) <= 2) {
+        await u_on_newpos(cc.x, cc.y); // C :1431; no message
+    } else {
+        await mnexto(mtmp, RLOC_NOMSG); // C :1433
+    }
+
+    /* C do.c:1435–1444. Re-read the hero square. A failed rloc does not
+       reassign mtmp (|| short-circuit); a success that still leaves a
+       monster limbos that monster, which may not be the one we moved. */
     mtmp = m_at(u.ux, u.uy);
     if (mtmp) {
-        if (game.flags?.debug || game.flags?.wizard || game.wizard) {
+        if (game.flags?.debug) {
             await pline("(monster in hero's way)");
         }
-        if (!(await rloc(mtmp, RLOC_NOMSG)) || m_at(u.ux, u.uy)) {
+        if (!(await rloc(mtmp, RLOC_NOMSG)) || (mtmp = m_at(u.ux, u.uy))) {
             await m_into_limbo(mtmp);
         }
     }

@@ -12,8 +12,8 @@
 // (C `:42–67`; `hard_helmet` is one export now, `js/do_wear.js`);
 // **drop_ball D-2329** (C `:881–961`; callers do.c:834 dropz +
 // dothrow.c:1840 throw land wired); litter hitfloor/shop/impact
-// (place at feet); Soundeffect in drag_down; jerked-back hmon/miss
-// body (rnd(20) still burned); unpunish.
+// (place at feet); Soundeffect in drag_down; unpunish.
+// Jerked-back `omon_adj` + `hmon`/`miss` is `ball.c:798–808`.
 
 import { game } from './gstate.js';
 import { place_object, obj_extract_self, objects_at } from './mkobj.js';
@@ -27,7 +27,7 @@ import {
     KILLED_BY_AN, LEG,
     TT_PIT, TT_WEB, TT_LAVA, TT_BEARTRAP, TT_INFLOOR, TT_BURIEDBALL,
     LEFT_SIDE, RIGHT_SIDE,
-    Is_waterlevel, HEAD,
+    Is_waterlevel, HEAD, HMON_DRAGGED,
 } from './const.js';
 import { dist2, distmin } from './hacklib.js';
 import {
@@ -47,7 +47,10 @@ import { hliquid } from './do_name.js';
 import { body_part } from './polyself.js';
 import { Soundeffect } from './sndprocs.js';
 import { se_destroy_web } from './generated/seffects_data.js';
-import { mon_at } from './uhitm.js';
+import { mon_at, hmon } from './uhitm.js';
+import { omon_adj } from './dothrow.js';
+import { miss } from './mthrowu.js';
+import { find_mac } from './worn.js';
 import { maybe_unhide_at } from './monmove.js';
 import { hard_helmet } from './do_wear.js';
 import { welded, setuwep, setuswapwep, setuqwep } from './wield.js';
@@ -874,8 +877,17 @@ export async function drag_ball(x, y, allow_drag = true) {
                 await pline('You are jerked back by the iron ball!');
                 const victim = mon_at(cox, coy);
                 if (victim) {
-                    // C: dieroll = rnd(20); hmon/miss body deferred — burn roll
-                    void rnd(20);
+                    // C ball.c:799–808 — rnd(20), then Luck + find_mac +
+                    // omon_adj (may rn2(10)), then hmon or miss.
+                    const dieroll = rnd(20) | 0;
+                    const luck = (u.uluck | 0) + (u.moreluck | 0);
+                    let tmp = (-2 + luck + (find_mac(victim) | 0)) | 0;
+                    tmp = (tmp + (omon_adj(victim, uball, true) | 0)) | 0;
+                    if (tmp >= dieroll) {
+                        await hmon(victim, uball, HMON_DRAGGED, dieroll);
+                    } else {
+                        await miss(xname(uball), victim);
+                    }
                 }
                 if (!mon_at(cox, coy)) {
                     u.ux = cox;

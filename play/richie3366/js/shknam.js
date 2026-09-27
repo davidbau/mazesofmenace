@@ -39,7 +39,7 @@ import {
 } from './monsters.js';
 import { make_engr_at } from './engrave.js';
 import { cvt_sdoor_to_door } from './detect.js';
-import { inside_shop } from './shk.js';
+import { inside_shop, shop_keeper } from './shk.js';
 import { in_rooms } from './hack.js';
 import { Is_special } from './dungeon.js';
 import { newsym, Hallucination } from './display.js';
@@ -813,7 +813,7 @@ export async function stock_room(shp_indx, sroom) {
         if (ol && uz
             && (uz.dnum | 0) === (ol.dnum | 0)
             && (uz.dlevel | 0) === (ol.dlevel | 0)) {
-            const mtmp = sroom.resident;
+            const mtmp = shop_keeper(rmno);
             if (mtmp) {
                 // mdrop_special_objs — always obj_resists(0,0) per invent
                 for (let obj = mtmp.minvent; obj; ) {

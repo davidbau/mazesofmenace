@@ -913,31 +913,62 @@ export function build_plselection_prompt(rolenum, racenum, gendnum, alignnum, bu
     return buf;
 }
 
-function role_display_name(roleIdx, gend) {
-    const r = roles[roleIdx];
-    if (!r) return '<role>';
-    if (gend === 1 && r.name.f) return r.name.f;
-    if (gend < 0 && r.name.f && r.name.f !== r.name.m)
-        return `${r.name.m}/${r.name.f}`;
-    return r.name.m;
-}
+/**
+ * C ref: role.c plsel_startmenu `:2806–2845`.
+ * Corner menus have no winid, so this returns the lines `add_menu_str`
+ * would put on the new NHW_MENU (`windows.c:1831–1838`: zero `anything`,
+ * no accelerator, `ATR_NONE`, `MENU_ITEMFLAGS_NONE`). `create_nhwindow`,
+ * the `WIN_ERR` panic, and `start_menu` are that window prologue.
+ * The rolename ternary is not the prolog slash form (`:1782–1789`).
+ */
+function plsel_startmenu(ttyrows, aspect) {
+    // C `:2814` — whatever was just chosen may force the other facets.
+    rigid_role_checks();
 
-function aspect_header() {
     const flags = f();
     const ROLE = flags.initrole;
     const RACE = flags.initrace;
     const GEND = flags.initgend;
     const ALGN = flags.initalign;
-    const rolename = ROLE < 0 ? '<role>' : role_display_name(ROLE, GEND);
-    if (!game.plname || ROLE < 0 || RACE < 0 || GEND < 0 || ALGN < 0) {
-        return [
-            rolename,
-            RACE < 0 ? '<race>' : races[RACE].noun,
-            GEND < 0 ? '<gender>' : genders[GEND].adj,
-            ALGN < 0 ? '<alignment>' : aligns[ALGN].adj,
-        ].join(' ');
+
+    // C `:2816–2818`. Female name only when GEND == 1 and name.f is set.
+    let rolename;
+    if (ROLE < 0) {
+        rolename = '<role>';
+    } else if (GEND === 1 && roles[ROLE].name.f) {
+        rolename = roles[ROLE].name.f;
+    } else {
+        rolename = roles[ROLE].name.m;
     }
-    return `${game.plname} the ${aligns[ALGN].adj} ${genders[GEND].adj} ${races[RACE].adj} ${rolename}`;
+
+    // C Sprintf `%.20s` — each field is at most 20 bytes.
+    const clip20 = (s) => String(s).slice(0, 20);
+    const plname = game.plname == null ? '' : String(game.plname);
+    // C `!svp.plname[0]`.
+    const nameEmpty = plname.length === 0 || plname.charCodeAt(0) === 0;
+
+    let qbuf;
+    if (nameEmpty || ROLE < 0 || RACE < 0 || GEND < 0 || ALGN < 0) {
+        // C `:2820–2826` "<role> <race.noun> <gender> <alignment>".
+        qbuf = [
+            clip20(rolename),
+            clip20(RACE < 0 ? '<race>' : races[RACE].noun),
+            clip20(GEND < 0 ? '<gender>' : genders[GEND].adj),
+            clip20(ALGN < 0 ? '<alignment>' : aligns[ALGN].adj),
+        ].join(' ');
+    } else {
+        // C `:2827–2834` "<name> the <alignment> <gender> <race.adj> <role>".
+        qbuf = `${clip20(plname)} the ${clip20(aligns[ALGN].adj)}`
+            + ` ${clip20(genders[GEND].adj)} ${clip20(races[RACE].adj)}`
+            + ` ${clip20(rolename)}`;
+    }
+
+    // C `:2841` add_menu_str(win, qbuf), then `:2842–2843` the blank
+    // unless maybe_skip_seps returns 2.
+    const win = [{ text: qbuf, attr: 0 }];
+    if (maybe_skip_seps(ttyrows, aspect) !== 2)
+        win.push({ text: '', attr: 0 });
+    return win;
 }
 
 /**
@@ -1221,21 +1252,17 @@ function maybe_skip_seps(rows, aspect) {
 }
 
 /**
- * C ref: role.c plsel_startmenu `:2805–2843` plus the genl_player_setup
- * menu fill (setup_*menu, role_menu_extra, add_menu_str, end_menu,
- * select_menu). Corner menus have no winid: lines are the add_menu_str /
- * add_menu stand-in and menu_pick is select_menu's decoded PICK_ONE choice
- * (preselected Random, escape/q → ROLE_NONE, space/return → the preselected
- * value). rigid_role_checks runs first, as plsel_startmenu does. The header
- * blank is omitted only when post-rigid maybe_skip_seps == 2. `preExcess`
- * is the pre-rigid role-menu count C takes before plsel_startmenu; null
- * always emits the separator blank (race, gender, alignment).
+ * C ref: role.c genl_player_setup menu fill after plsel_startmenu
+ * (setup_*menu, role_menu_extra, the caller's add_menu_str(""), end_menu,
+ * select_menu). `plsel_startmenu` supplies the header lines. menu_pick is
+ * select_menu's decoded PICK_ONE choice (preselected Random, escape/q →
+ * ROLE_NONE, space/return → the preselected value). `preExcess` is the
+ * pre-rigid role-menu count C takes before plsel_startmenu; null always
+ * emits the separator blank (race, gender, alignment).
  */
 async function chargen_aspect_menu(screenheight, aspect, title, entryFn, extras, preExcess) {
-    rigid_role_checks();
-    const postExcess = maybe_skip_seps(screenheight, aspect);
-    const body = [{ text: aspect_header(), attr: 0 }];
-    if (postExcess !== 2) body.push({ text: '', attr: 0 });
+    // C role.c:2310 / :2404 / :2492 / :2580 — win = plsel_startmenu(...).
+    const body = plsel_startmenu(screenheight, aspect);
     const choices = [];
     for (const e of entryFn()) {
         body.push({ text: `${e.key} - ${e.text}`, attr: 0 });
@@ -1632,20 +1659,16 @@ export async function genl_player_setup(screenheight) {
         let getconfirmation = picksomething && pick4u !== 'a'
             && !flags.randomall;
         while (getconfirmation) {
-            // C: plsel_startmenu(screenheight, RS_filter) then the [ynaq]
-            // rows. y is MENU_ITEMFLAGS_SELECTED. select_menu PICK_ONE:
-            // n>0 → selected[n-1], n==0 → 1 (the preselected Yes), else quit.
-            // RS_filter makes maybe_skip_seps return 0, so the header blank
-            // stays. rigid_role_checks is plsel_startmenu's first act.
-            rigid_role_checks();
+            // C role.c:2655 — plsel_startmenu(screenheight, RS_filter),
+            // then the [ynaq] rows. y is MENU_ITEMFLAGS_SELECTED.
+            // select_menu PICK_ONE: n>0 → selected[n-1], n==0 → 1
+            // (the preselected Yes), else quit. RS_filter makes
+            // maybe_skip_seps return 0, so the header blank stays.
             const rename = !!(game.iflags?.renameallowed);
             const title = `Is this ok? [yn${rename ? 'a' : ''}q]`;
-            const body = [
-                { text: aspect_header(), attr: 0 },
-                { text: '', attr: 0 },
-                { text: 'y * Yes; start game', attr: 0 },
-                { text: 'n - No; choose role again', attr: 0 },
-            ];
+            const body = plsel_startmenu(rows, RS_filter);
+            body.push({ text: 'y * Yes; start game', attr: 0 });
+            body.push({ text: 'n - No; choose role again', attr: 0 });
             const choices = [
                 { key: 'y', value: 1, preselected: true },
                 { key: 'n', value: 2 },

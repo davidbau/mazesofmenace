@@ -8,7 +8,7 @@
 // Level blob codec: js/lev_json.js (shared with bones.js).
 
 import { game } from './gstate.js';
-import { getnow } from './calendar.js';
+import { getnow, time_from_yyyymmddhhmmss, yyyymmddhhmmss } from './calendar.js';
 import { timet_delta } from './allmain.js';
 import { vfsReadFile, vfsWriteFile, vfsDeleteFile } from './storage.js';
 import { yn_function } from './getline.js';
@@ -575,10 +575,15 @@ export async function dosave0() {
         _goldCount: game._goldCount | 0,
         _lastinvnr: game._lastinvnr | 0,
         datetime_saved: game.datetime || null,
-        // C save.c savegamestate `:289–290` — realtime + start_timing.
+        // C save.c `:288` — Sfo_char(yyyymmddhhmmss(ubirthday), 14).
+        ubirthday: yyyymmddhhmmss(Math.trunc(Number(game.ubirthday) || 0)),
+        // C save.c savegamestate `:289–290` — realtime + the 14-char
+        // start_timing stamp. Restore parses the stamp, then replaces
+        // it with getnow() (restore.c:622–625).
         urealtime: {
             realtime: game.urealtime.realtime | 0,
             start_timing: savedStartTiming,
+            start_timing_stamp: yyyymmddhhmmss(Math.trunc(Number(savedStartTiming) || 0)),
         },
         uz: u.uz ? { ...u.uz } : { dnum: 0, dlevel: 1 },
         // C save.c save_msghistory `:1029–1056` after savenames;
@@ -813,6 +818,18 @@ export async function try_restore_save() {
     }
     if (!game.urealtime) {
         game.urealtime = { realtime: 0, start_timing: 0, finish_time: 0 };
+    }
+    // C restore.c `:615–617` — ubirthday from the 14-char stamp.
+    // Old saves without the key keep the pre-restore value.
+    if (typeof payload.ubirthday === 'string') {
+        game.ubirthday = time_from_yyyymmddhhmmss(payload.ubirthday);
+    }
+    // C restore.c `:619–625` — parse start_timing, then current time
+    // is what the next realtime update uses.
+    if (typeof payload.urealtime?.start_timing_stamp === 'string') {
+        game.urealtime.start_timing = time_from_yyyymmddhhmmss(
+            payload.urealtime.start_timing_stamp,
+        );
     }
     game.urealtime.start_timing = getnow();
     game.urole = payload.urole;

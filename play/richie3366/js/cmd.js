@@ -9,7 +9,7 @@ import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import { rn2, rn1, rnd } from './rng.js';
 import {
-    newsym, flush_screen, pline, You, pline_dir, pline_xy, pline_The, set_msg_xy,
+    newsym, flush_screen, pline, You, You_cant, impossible, pline_dir, pline_xy, pline_The, set_msg_xy,
     clear_nhwindow_message,
     mon_visible, sensemon, canspotmon, glyph_at, hero_glyph, glyph_is_invisible_id,
     glyph_is_statue, glyph_is_monster, glyph_to_cmap, back_to_glyph,
@@ -35,7 +35,9 @@ import { COLNO, ROWNO, STONE, DOOR, CORR, ROOM, IRONBARS, TREE, SDOOR, ICE,
          DIR_NW, DIR_NE, DIR_SE, DIR_SW,
          MV_WALK, MV_RUN, MV_RUSH, commandInp, otherInp, getposInp,
          GFILTER_VIEW, GLOC_INTERESTING,
-         M_AP_TYPE, M_AP_FURNITURE, M_AP_OBJECT, S_hcdoor, S_vcdoor, VIBRATING_SQUARE,
+         M_AP_TYPE, M_AP_FURNITURE, M_AP_OBJECT, S_hcdoor, S_vcdoor,
+         S_fountain, S_sink, VIBRATING_SQUARE,
+         u_at, ARTICLE_THE, SUPPRESS_SADDLE,
          PARANOID_TRAP, PARANOID_QUIT, GP_ALLOW_U, NO_TRAP_FLAGS, FOOT, Something,
          LARGEST_INT, GC_NOFLAGS, GC_SAVEHIST, GC_CONDHIST, GC_ECHOFIRST,
          SUPPRESS_HISTORY,
@@ -105,16 +107,17 @@ import {
     NHKF_GETPOS_INTERESTING_NEXT, NHKF_GETPOS_INTERESTING_PREV,
     NHKF_GETPOS_HELP, NHKF_GETPOS_LIMITVIEW, NHKF_GETPOS_MOVESKIP,
     NHKF_GETPOS_MENU,
+    NHCB_CMD_BEFORE, NUM_NHCB,
 } from './const.js';
 import { config_error_add } from './botl.js';
 import { an, doname, makeplural, ansimpleoname, the } from './objnam.js';
-import { m_monnam, mon_nam, a_monnam, YMonnam, docallcmd } from './do_name.js';
+import { m_monnam, mon_nam, a_monnam, YMonnam, docallcmd, x_monnam } from './do_name.js';
 import { spoteffects, dopickup, doloot, dotip } from './pickup.js';
 import { objects_at, sobj_at } from './mkobj.js';
 import { stairway_at, On_stairs_up, On_stairs_dn, u_on_newpos, maybe_adjust_hero_bubble, selection_new, selection_getpoint, selection_setpoint } from './mklev.js';
 import { In_tutorial } from './dungeon.js';
 import { ATR_INVERSE } from './terminal.js';
-import { dopay, block_entry } from './shk.js';
+import { dopay, block_entry, block_door } from './shk.js';
 import { dotalk } from './sounds.js';
 import { getpos, getpos_menu, gather_locs_interesting, auto_describe_text } from './getpos.js';
 import {
@@ -133,6 +136,7 @@ import {
     air_turbulence, slippery_ice_fumbling,
     test_move,
 } from './hack.js';
+import { t_at } from './trap.js';
 import { acurr, exercise, A_DEX, Fumbling } from './attrib.js';
 import { drag_ball, move_bc } from './ball.js';
 import { in_out_region } from './region.js';
@@ -543,28 +547,122 @@ export function ext_func_tab_from_txt(txt) {
     return null;
 }
 
+/** C cmd.c:157 `unavailcmd[]`. */
+const UNAVAILCMD = "Unavailable command '%s'.";
+
+/** C decl.c:8–13 `nhcb_name[]`, same order as `NHCB_*`. */
+const NHCB_NAME = ['cmd_before', 'level_enter', 'level_leave', 'end_turn'];
+
 /**
- * C ref: cmd.c can_do_extcmd `:462–488`. Lua NHCB_CMD_BEFORE named omit.
- * altdip is INTERNALCMD with no IFBURIED — buried hero is refused.
+ * C dat/nhlib.lua tutorial_cmd_before — `#save` is refused, everything
+ * else is allowed. No pline (the C comment that would print is disabled).
+ * @param {string} cmd
+ * @returns {boolean}
+ */
+export function tutorial_cmd_before(cmd) {
+    return cmd !== 'save';
+}
+
+/** JS stand-ins for the Lua globals `nh_callback_run` calls via `_G[k]`. */
+const NHCB_HANDLERS = {
+    tutorial_cmd_before,
+};
+
+function ensure_nhcb() {
+    if (!game.nhcb_counts || game.nhcb_counts.length !== NUM_NHCB) {
+        game.nhcb_counts = new Array(NUM_NHCB).fill(0);
+    }
+    if (!game.nh_lua_variables || typeof game.nh_lua_variables !== 'object') {
+        game.nh_lua_variables = {};
+    }
+    return game.nhcb_counts;
+}
+
+/**
+ * C ref: nhlua.c nhl_callback `:1663–1705` and dat/nhcore.lua
+ * `nh_callback_set` / `nh_callback_rm`. Named: `lua_getglobal` and
+ * `nhl_pcall_handle` (no Lua VM). The count and `_CB_<name>` table are
+ * the state those calls mutate. A negative count still calls `impossible`
+ * and stays negative, so a later `nhcb_counts[i]` test is still true.
+ * @param {string} cb
+ * @param {string} fn
+ * @param {boolean} [rm]
+ */
+export async function nhl_callback(cb, fn, rm = false) {
+    const counts = ensure_nhcb();
+    let i = 0;
+    for (; i < NUM_NHCB; i++) {
+        if (NHCB_NAME[i] === cb) break;
+    }
+    if (i >= NUM_NHCB) return; // C `:1689–1690`
+    if (rm) {
+        counts[i] = (counts[i] | 0) - 1; // C `:1693`
+        if (counts[i] < 0) await impossible('nh.callback counts are wrong'); // C `:1694–1695`
+    } else {
+        counts[i] = (counts[i] | 0) + 1; // C `:1697`
+    }
+    const key = `_CB_${cb}`;
+    const cur = game.nh_lua_variables[key];
+    if (!cur || typeof cur !== 'object') game.nh_lua_variables[key] = {};
+    if (rm) delete game.nh_lua_variables[key][fn]; // C nh_callback_rm `:35`
+    else game.nh_lua_variables[key][fn] = true; // C nh_callback_set `:24`
+}
+
+/**
+ * C ref: dat/nhcore.lua nh_callback_run `:39–54`. An empty table returns
+ * true. The first handler that returns false stops the walk. Named:
+ * Lua `pairs` order when more than one name is registered (JS keeps
+ * insertion order). Unknown globals are skipped — there is no `_G`.
+ * @param {string} cb
+ * @param {...*} args
+ * @returns {Promise<boolean>}
+ */
+export async function nh_callback_run(cb, ...args) {
+    ensure_nhcb();
+    const key = `_CB_${cb}`;
+    let table = game.nh_lua_variables[key];
+    if (!table || typeof table !== 'object') {
+        game.nh_lua_variables[key] = {}; // C `:45–46`
+        return true;
+    }
+    for (const name of Object.keys(table)) {
+        if (!table[name]) continue;
+        const handler = NHCB_HANDLERS[name];
+        if (!handler) continue;
+        if (!(await handler(...args))) return false; // C `:49–50`
+    }
+    return true; // C `:53`
+}
+
+/**
+ * C ref: cmd.c can_do_extcmd `:462–489`.
+ * A missing row is refused before the C body (C always has a struct).
+ * altdip is INTERNALCMD with no IFBURIED — a buried hero is refused.
+ * `wizard` is `flags.debug` (`flag.h:30`); `wizardOn` also honors the
+ * JS `flags.wizard` / `game.wizard` aliases this file already uses.
  * @param {typeof EXTCMDLIST[number] | null | undefined} extcmd
  * @returns {Promise<boolean>}
  */
 export async function can_do_extcmd(extcmd) {
     if (!extcmd) return false;
-    const ecflags = extcmd.flags | 0;
-    const wizard = !!(game.flags?.debug || game.flags?.wizard || game.wizard);
-    if (!wizard && (ecflags & WIZMODECMD)) {
-        await pline(`Unavailable command '${extcmd.txt}'.`);
+    const ecflags = extcmd.flags | 0; // C `:465`
+
+    // C `:467–476` — NHCB_CMD_BEFORE. False from Lua returns with no pline.
+    if (game.luacore && game.nhcb_counts && (game.nhcb_counts[NHCB_CMD_BEFORE] | 0)) {
+        const ok = await nh_callback_run(NHCB_NAME[NHCB_CMD_BEFORE], extcmd.txt);
+        if (!ok) return false;
+    }
+
+    if (!wizardOn() && (ecflags & WIZMODECMD)) { // C `:478–481`
+        await pline(UNAVAILCMD, extcmd.txt);
+        return false;
+    } else if (game.u?.uburied && !(ecflags & IFBURIED)) { // C `:481–483`
+        await You_cant('do that while you are buried!');
+        return false;
+    } else if (game.iflags?.debug_fuzzer && (ecflags & NOFUZZERCMD)) { // C `:484–485`
         return false;
     }
-    if (game.u?.uburied && !(ecflags & IFBURIED)) {
-        await pline("You can't do that while you are buried!");
-        return false;
-    }
-    if (game.iflags?.debug_fuzzer && (ecflags & NOFUZZERCMD)) {
-        return false;
-    }
-    return true;
+    return true; // C `:487`
 }
 
 /**
@@ -1264,6 +1362,42 @@ const NULL_BIND = Object.freeze({
     key: 0, txt: '', desc: '', flags: 0, _nullBind: true,
 });
 
+/**
+ * C `gc.Cmd.cmdbinds` is a singly linked list. `cmdbind_add` prepends a
+ * new key and leaves an existing node where it is (`cmd.c:2137–2153`).
+ * Index 0 is the head (newest). The array starts with `_layoutSlots`
+ * in `reset_commands`, so `commands_init` is the first writer.
+ * @param {number} k
+ */
+function cmdbind_order_prepend(k) {
+    if (!k || !game.Cmd?._layoutSlots) return;
+    if (!game.Cmd._cmdbindOrder) game.Cmd._cmdbindOrder = [];
+    const order = game.Cmd._cmdbindOrder;
+    if (order.indexOf(k) >= 0) return;
+    order.unshift(k);
+}
+
+/** C cmdbind_remove unlinks the node (`cmd.c:2164–2168`). */
+function cmdbind_order_unlink(k) {
+    const order = game.Cmd?._cmdbindOrder;
+    if (!order) return;
+    const i = order.indexOf(k);
+    if (i >= 0) order.splice(i, 1);
+}
+
+/**
+ * C cmdbind_swapkeys exchanges the key fields and leaves the nodes
+ * in place (`cmd.c:2200–2202`).
+ */
+function cmdbind_order_swap_keys(k1, k2) {
+    const order = game.Cmd?._cmdbindOrder;
+    if (!order || k1 === k2) return;
+    const i1 = order.indexOf(k1);
+    const i2 = order.indexOf(k2);
+    if (i1 >= 0) order[i1] = k2;
+    if (i2 >= 0) order[i2] = k1;
+}
+
 function cmdbind_add(key, extcmd, user) {
     const k = key & 0xff; // C uchar key
     if (!game.Cmd) game.Cmd = {};
@@ -1278,11 +1412,14 @@ function cmdbind_add(key, extcmd, user) {
         if (!extcmd) {
             slots[k] = NULL_BIND; // C `:2147–2152` node with cmd NULL
             bind_param_clear(k); // C `:2150` param NULL
+            cmdbind_order_prepend(k); // C `:2152–2153` new node at the head
             return;
         }
         /* binding exists, set it to this command */ // C `:2137–2144`
+        const isNew = !node; // C `:2146` else — no node yet, prepend
         bind_param_clear(k); // C `:2141–2143` free param on update
         slots[k] = extcmd;
+        if (isNew) cmdbind_order_prepend(k); // C `:2152–2153`
         const overlay = game.Cmd.binds;
         if (user) {
             if (!(overlay instanceof Map)) game.Cmd.binds = new Map();
@@ -1320,6 +1457,7 @@ function cmdbind_remove(key) {
     const k = key & 0xff; // C uchar key
     const slots = game.Cmd?._layoutSlots;
     if (slots) slots[k] = null; // C `:2164–2173` unlink
+    cmdbind_order_unlink(k); // C `:2165–2168` prev->next / head
     bind_param_clear(k); // C `:2169–2170` free param
     const overlay = game.Cmd?.binds;
     if (!(overlay instanceof Map)) return; // C: no list — nothing to unlink
@@ -1544,6 +1682,7 @@ function cmdbind_swapkeys(key1, key2) {
         if (has1) overlay.set(k2, v1);
         else overlay.delete(k2);
     }
+    cmdbind_order_swap_keys(k1, k2); // C `:2201–2202` key fields, nodes stay
 }
 
 /**
@@ -1686,7 +1825,11 @@ export function reset_commands(initial) {
         for (let i = 0; i < SPKEYS_BINDS.length; i++) { // C `:3365–3366`
             cmd.spkeys[SPKEYS_BINDS[i][0]] = SPKEYS_BINDS[i][1];
         }
-        if (!cmd._layoutSlots) cmd._layoutSlots = new Array(256).fill(null);
+        if (!cmd._layoutSlots) {
+            cmd._layoutSlots = new Array(256).fill(null);
+            // C gc.Cmd.cmdbinds starts NULL; commands_init prepends onto it.
+            cmd._cmdbindOrder = [];
+        }
         commands_init(); // C `:3367`
     } else {
         const back = dirBackup();
@@ -1990,9 +2133,13 @@ async function rhack_dispatch_bound(key, prefix_seen, was_m_prefix) {
 
     if (prefix_seen && !(tlist.flags & PREFIXCMD)
         && !(tlist.flags & (was_m_prefix ? CMD_M_PREFIX : CMD_gGF_PREFIX))) {
-        const which = prefix_seen.txt === 'reqmenu'
-            ? visctrl('m'.charCodeAt(0))
-            : (prefix_seen.txt || '?');
+        // C `:3696–3700` — visctrl(cmd_from_func); unbound reqmenu is the long name.
+        const pfxKey = cmd_from_func(prefix_seen.txt) & 0xff;
+        const which = pfxKey
+            ? visctrl(pfxKey)
+            : (prefix_seen.txt === 'reqmenu'
+                ? 'move-no-pickup or request-menu'
+                : (prefix_seen.txt || '?'));
         if (was_m_prefix) {
             await pline(
                 `The ${tlist.txt} command does not accept '${which}' prefix.`,
@@ -2521,81 +2668,105 @@ function act_on_act(act, dx, dy) {
 }
 
 /**
- * C ref: cmd.c there_cmd_menu_self — entries when targeting hero cell.
- * @returns {{act:number, text:string}[]}
+ * C ref: cmd.c mcmd_addmenu `:4420–4431`.
+ * `any = cg.zeroany; any.a_int = act;` then `add_menu` with a blank
+ * accelerator, `ATR_NONE`, `NO_COLOR`, and `MENU_ITEMFLAGS_NONE`.
+ * This path has no winid (D-2706): `win` is the item list
+ * `there_cmd_menu` later gives to `select_menu_pick_one`. The glyph,
+ * color, and attribute arguments are not read by that picker.
+ * @param {Array<{act:number, text:string}>} win
+ * @param {number} act MCMD_* 
+ * @param {string} txt
  */
-function there_cmd_menu_self_items(x, y) {
-    const items = [];
-    const u = game.u;
-    if (!u || (u.ux | 0) !== (x | 0) || (u.uy | 0) !== (y | 0)) return items;
+function mcmd_addmenu(win, act, txt) {
+    win.push({ act, text: txt });
+}
 
-    const loc = game.level?.at(x, y);
-    const typ = loc?.typ | 0;
+/**
+ * C ref: cmd.c there_cmd_menu_self `:4435–4520` (staticfn).
+ * Appends the hero-cell [t]herecmdmenu rows and returns how many (C `K`).
+ * The fourth argument `int *act` is UNUSED. `#if 0` at `:4477–4484`
+ * (Upolyd / MCMD_MONABILITY) is compiled out.
+ * `levl[x][y].typ` is `game.level.at`. `svl.level.objects[x][y]` is
+ * `objects_at` (pile head, `nexthere` chain). `gi.invent` (`decl.h:469`)
+ * is `game.invent`: an empty array is the NULL chain; a linked-list head
+ * stays truthy. `defsyms[].explanation` is `defsym_explanation`.
+ * `can_reach_floor(FALSE)` is called once per C guard, not cached.
+ * @param {Array<{act:number, text:string}>} win
+ * @param {number} x
+ * @param {number} y
+ * @returns {number}
+ */
+function there_cmd_menu_self(win, x, y) {
+    let K = 0;
+    const typ = game.level?.at(x, y)?.typ | 0; // `:4439`
+    const stway = stairway_at(x, y); // `:4440`
 
-    if ((IS_FOUNTAIN(typ) || IS_SINK(typ)) && can_reach_floor(false)) {
-        const feat = IS_FOUNTAIN(typ) ? 'fountain' : 'sink';
-        items.push({ act: MCMD_QUAFF, text: `Drink from the ${feat}` });
+    if (!u_at(x, y)) return K; // `:4443–4444`
+
+    if ((IS_FOUNTAIN(typ) || IS_SINK(typ)) && can_reach_floor(false)) { // `:4446`
+        const buf = `Drink from the ${defsym_explanation(
+            IS_FOUNTAIN(typ) ? S_fountain : S_sink,
+        )}`; // `:4447–4448`
+        mcmd_addmenu(win, MCMD_QUAFF, buf), ++K; // `:4449`
     }
-    if (IS_FOUNTAIN(typ) && can_reach_floor(false)) {
-        items.push({ act: MCMD_DIP, text: 'Dip something into the fountain' });
+    if (IS_FOUNTAIN(typ) && can_reach_floor(false)) // `:4451`
+        mcmd_addmenu(win, MCMD_DIP, 'Dip something into the fountain'), ++K;
+    if (IS_THRONE(typ)) // `:4453`
+        mcmd_addmenu(win, MCMD_SIT, 'Sit on the throne'), ++K;
+    if (IS_ALTAR(typ)) // `:4455`
+        mcmd_addmenu(win, MCMD_OFFER, 'Sacrifice something on the altar'), ++K;
+
+    if (stway && stway.up) { // `:4458`
+        const buf = `Go up the ${stway.isladder ? 'ladder' : 'stairs'}`;
+        mcmd_addmenu(win, MCMD_UP, buf), ++K; // `:4461`
     }
-    if (IS_THRONE(typ)) {
-        items.push({ act: MCMD_SIT, text: 'Sit on the throne' });
+    if (stway && !stway.up) { // `:4463`
+        const buf = `Go down the ${stway.isladder ? 'ladder' : 'stairs'}`;
+        mcmd_addmenu(win, MCMD_DOWN, buf), ++K; // `:4466`
     }
-    if (IS_ALTAR(typ)) {
-        items.push({ act: MCMD_OFFER, text: 'Sacrifice something on the altar' });
+    if (game.u.usteed) { // `:4468`
+        const buf = `Dismount ${x_monnam(
+            game.u.usteed, ARTICLE_THE, null, SUPPRESS_SADDLE, false,
+        )}`; // `:4469–4471`
+        mcmd_addmenu(win, MCMD_DISMOUNT, buf), ++K; // `:4472`
     }
 
-    const stway = stairway_at(x, y);
-    if (stway?.up) {
-        items.push({
-            act: MCMD_UP,
-            text: `Go up the ${stway.isladder ? 'ladder' : 'stairs'}`,
-        });
-    }
-    if (stway && !stway.up) {
-        items.push({
-            act: MCMD_DOWN,
-            text: `Go down the ${stway.isladder ? 'ladder' : 'stairs'}`,
-        });
-    }
-    // C: u.usteed dismount — named omission: x_monnam SUPPRESS_SADDLE polish
-    if (u.usteed) {
-        items.push({ act: MCMD_DISMOUNT, text: 'Dismount your steed' });
-    }
+    /* `#if 0` Upolyd / MCMD_MONABILITY `:4475–4481` — compiled out. */
 
-    const otmp = objects_at(x, y);
+    const otmp = objects_at(x, y); // `:4483–4484` OBJ_AT → level.objects[x][y]
     if (otmp) {
-        items.push({
-            act: MCMD_PICKUP,
-            text: `Pick up ${otmp.nexthere ? 'items' : doname(otmp)}`,
-        });
-        if (Is_container(otmp)) {
-            items.push({ act: MCMD_LOOT, text: `Loot ${doname(otmp)}` });
-            items.push({ act: MCMD_TIP, text: `Tip ${doname(otmp)}` });
+        const buf = `Pick up ${otmp.nexthere ? 'items' : doname(otmp)}`;
+        mcmd_addmenu(win, MCMD_PICKUP, buf), ++K; // `:4487`
+
+        if (Is_container(otmp)) { // `:4489`
+            mcmd_addmenu(win, MCMD_LOOT, `Loot ${doname(otmp)}`), ++K; // `:4491`
+            mcmd_addmenu(win, MCMD_TIP, `Tip ${doname(otmp)}`), ++K; // `:4494`
         }
-        if ((otmp.oclass | 0) === FOOD_CLASS) {
-            items.push({ act: MCMD_EAT, text: `Eat ${doname(otmp)}` });
+        if ((otmp.oclass | 0) === FOOD_CLASS) { // `:4496`
+            mcmd_addmenu(win, MCMD_EAT, `Eat ${doname(otmp)}`), ++K; // `:4498`
         }
     }
 
-    if (game.invent) {
-        items.push({ act: MCMD_INVENTORY, text: 'Inventory' });
-        items.push({ act: MCMD_DROP, text: 'Drop items' });
+    /* `:4503` gi.invent — empty JS array is the NULL chain. */
+    const inv = game.invent;
+    if (Array.isArray(inv) ? inv.some(Boolean) : !!inv) {
+        mcmd_addmenu(win, MCMD_INVENTORY, 'Inventory'), ++K; // `:4504`
+        mcmd_addmenu(win, MCMD_DROP, 'Drop items'), ++K; // `:4505`
     }
-    items.push({ act: MCMD_REST, text: 'Rest one turn' });
-    items.push({ act: MCMD_SEARCH, text: 'Search around you' });
-    items.push({ act: MCMD_LOOK_HERE, text: 'Look at what is here' });
+    mcmd_addmenu(win, MCMD_REST, 'Rest one turn'), ++K; // `:4507`
+    mcmd_addmenu(win, MCMD_SEARCH, 'Search around you'), ++K; // `:4508`
+    mcmd_addmenu(win, MCMD_LOOK_HERE, 'Look at what is here'), ++K; // `:4509`
 
-    if (num_spells() > 0) {
-        items.push({ act: MCMD_CAST_SPELL, text: 'Cast a spell' });
-    }
+    if (num_spells() > 0) // `:4511`
+        mcmd_addmenu(win, MCMD_CAST_SPELL, 'Cast a spell'), ++K;
 
-    const ttmp = travel_t_at(x, y);
-    if (ttmp && ttmp.tseen && (ttmp.ttyp | 0) !== VIBRATING_SQUARE) {
-        items.push({ act: MCMD_UNTRAP_HERE, text: 'Attempt to disarm trap' });
+    const ttmp = t_at(x, y); // `:4514`
+    if (ttmp && ttmp.tseen) {
+        if ((ttmp.ttyp | 0) !== VIBRATING_SQUARE) // `:4515`
+            mcmd_addmenu(win, MCMD_UNTRAP_HERE, 'Attempt to disarm trap'), ++K;
     }
-    return items;
+    return K; // `:4519`
 }
 
 /**
@@ -2624,22 +2795,27 @@ export function there_cmd_menu_common(x, y, mod) {
 }
 
 /**
- * C ref: cmd.c there_cmd_menu — NHW_MENU "What do you want to do?"
- * Ported: u_at self path + common. Named omissions: next2u / far /
- * K==0 travel/move fallback; K==1 auto-act without menu.
+ * C ref: cmd.c there_cmd_menu `:4841–4896` — NHW_MENU "What do you want to do?"
+ * Self rows are `there_cmd_menu_self` (`:4857`). Named omissions of this
+ * function: `there_cmd_menu_next2u` / `there_cmd_menu_far`, the `K==0`
+ * travel/move fallback, and the `K==1` `act_on_act` fast path. Self picks
+ * still go through `act_on_act_here` (D-2620).
  * @returns {Promise<string>} '\0' after act / ESC cancel (C ch)
  */
 async function there_cmd_menu(x, y, mod) {
-    let items = [];
-    const u = game.u;
-    const atSelf = u && (u.ux | 0) === (x | 0) && (u.uy | 0) === (y | 0);
-    if (atSelf) {
-        items = items.concat(there_cmd_menu_self_items(x, y));
+    const items = [];
+    let K = 0;
+    if (u_at(x, y)) { // `:4856–4857`
+        K += there_cmd_menu_self(items, x, y);
     }
-    // next2u / far deferred
-    items = items.concat(there_cmd_menu_common(x, y, mod));
+    // `:4858–4861` next2u / far — builders not ported
+    const common = there_cmd_menu_common(x, y, mod); // `:4862`
+    if (common.length) {
+        items.push(...common);
+        K += common.length;
+    }
 
-    if (!items.length) return '\0';
+    if (!K) return '\0'; // C `:4864` — travel/move fallback named on this function
 
     const raw = [
         { text: 'What do you want to do?', attr: ATR_INVERSE, selectable: false },
@@ -2830,11 +3006,11 @@ async function travel_test_move(ux, uy, dx, dy) {
             if (passWalls || can_ooze(ym)) { /* pass */ } else if ((game.u?.uinwater | 0)) {
                 return false;
             } else if (ydat && tunnels(ydat) && !needspick(ydat)) { /* pass */ } else if ((dx | 0) && (dy | 0)
-                && (!doorless_door(x, y) || block_door(x, y))) {
+                && (!doorless_door(x, y) || await block_door(x, y))) {
                 return false;
             }
         } else if ((dx | 0) && (dy | 0) && !passWalls
-            && (!doorless_door(x, y) || block_door(x, y))) {
+            && (!doorless_door(x, y) || await block_door(x, y))) {
             return false;
         }
     }
@@ -2874,12 +3050,6 @@ function doorless_door(x, y) {
     if (!loc || !IS_DOOR(loc.typ)) return false;
     // Rogue-level override deferred (all rogue doors treated as present)
     return !((loc.doormask || 0) & ~(D_NODOOR | D_BROKEN));
-}
-
-// C ref: shk.c block_door — shopkeeper blocks diagonal shop exit.
-// Stub false until shop ushops / ESHK wired for this path.
-function block_door(_x, _y) {
-    return false;
 }
 
 /**
@@ -5346,7 +5516,7 @@ async function domove(dx, dy) {
     if (u.dx && u.dy) {
         const dest = game.level?.at(newx, newy);
         if (dest && IS_DOOR(dest.typ)
-            && (!doorless_door(newx, newy) || block_door(newx, newy))) {
+            && (!doorless_door(newx, newy) || await block_door(newx, newy))) {
             // C test_move testdiag: Underwater || flags.mention_walls
             if ((u.uinwater | 0) || game.flags?.mention_walls) {
                 await pline("You can't move diagonally into an intact doorway.");

@@ -13,7 +13,7 @@ import {
     D_CLOSED, D_LOCKED, IRONBARS, IS_SINK,
     NEED_WEAPON, NEED_RANGED_WEAPON, SLT_ENCUMBER, Is_rogue_level, W_WEP,
     POTHIT_MONST_THROW, POTHIT_OTHER_THROW, LAVAWALL, IS_WATERWALL, Upolyd, M_AP_TYPE,
-    M_AP_NOTHING, M_AP_MONSTER, u_at, P_NONE,
+    M_AP_NOTHING, M_AP_MONSTER, u_at,
     DISP_FLASH, DISP_END, DISP_TETHER, BACKTRACK, XKILL_NOMSG,
     ARM, FOOT, HAND, AKLYS_LIM, WT_SPLASH_THRESHOLD,
     M_ATTK_MISS, M_ATTK_HIT, EDOG,
@@ -31,7 +31,7 @@ import {
 } from './mkobj.js';
 import { observe_object, makeknown, hold_another_object } from './invent.js';
 import {
-    MON_WEP, select_rwep, mon_wield_item, monmulti, dmgval, hitval,
+    MON_WEP, select_rwep, mon_wield_item, monmulti, dmgval,
     should_mulch_missile, autoreturn_weapon,
 } from './weapon.js';
 import { find_mac, mondied, monkilled, shade_miss, AT_WEAP, AT_SPIT } from './mhitm.js';
@@ -48,13 +48,13 @@ import {
 } from './display.js';
 import { Monnam, mon_nam, s_suffix as s_suffix_ucatch, some_mon_nam, hliquid } from './do_name.js';
 import {
-    nohands, mons, pmnames, throws_rocks, MZ_MEDIUM, MZ_TINY, nonliving,
+    nohands, mons, pmnames, throws_rocks, MZ_TINY, nonliving,
     is_unicorn, touch_petrifies, bigmonst, is_elf, poly_when_stoned,
     eyecount, resists_acid, resists_ston, mon_hates_silver,
     noncorporeal, amorphous, is_vampshifter, passes_walls, unsolid,
 } from './monsters.js';
 import { xname, singular, an, vtense, the, makeplural, mshot_xname, killer_xname, obj_is_pname, doname, otense, simpleonames, distant_name } from './objnam.js';
-import { stone_missile } from './dothrow.js';
+import { stone_missile, omon_adj } from './dothrow.js';
 import { spec_abon } from './artifact.js';
 import { minstapetrify } from './trap.js';
 import { munstone } from './muse.js';
@@ -806,37 +806,6 @@ async function drop_throw(obj, ohit, x, y) {
     return broken;
 }
 
-/** C ref: obj.h is_weptool */
-function is_weptool(otmp) {
-    return otmp?.oclass === TOOL_CLASS
-        && ((game.objects?.[otmp.otyp]?.oc_skill | 0) !== P_NONE);
-}
-
-/**
- * C ref: dothrow.c omon_adj — size/sleep/immobile/otyp to-hit adjust.
- * Named omissions: mon_notices rn2(10) unfreeze when immobilized.
- */
-function omon_adj(mon, obj, mon_notices) {
-    let tmp = 0;
-    tmp += ((mon.data?.msize ?? MZ_MEDIUM) - MZ_MEDIUM);
-    if (mon.msleeping) tmp += 2;
-    if (!mon.mcanmove || !(mon.data?.mmove)) {
-        tmp += 4;
-        // C: mon_notices && mmove && !rn2(10) → unfreeze; deferred
-        void mon_notices;
-    }
-    const n = objectNames[obj.otyp];
-    if (obj.otyp === HEAVY_IRON_BALL) {
-        if (obj !== game.u?.uball) tmp += 2;
-    } else if (n === 'BOULDER' || obj.otyp === BOULDER) {
-        tmp += 6;
-    } else if (obj.oclass === WEAPON_CLASS || is_weptool(obj)
-        || obj.oclass === GEM_CLASS) {
-        tmp += hitval(obj, mon);
-    }
-    return tmp;
-}
-
 function The(str) {
     const t = the(str);
     return t ? t.charAt(0).toUpperCase() + t.slice(1) : t;
@@ -880,7 +849,7 @@ export async function hit(str, mtmp, force) {
  * munstone/muse.js + minstapetrify, kill → xkilled/mondied, can_blnd
  * venom/pie, setmangry, drop_throw + range==-1 boulder re-extract
  * continue D-0700). `#if 0` orc/elf +1 `:376–378` is compiled out in C.
- * Named omissions: mon_notices unfreeze in omon_adj (same-file local).
+ * `omon_adj` is the dothrow.c export (`mon_notices` is FALSE here).
  * Caller m_throw shade_miss is D-1382. do.c:210 deliberately inlines its
  * own dmgval path (drop_throw→flooreffects) and never calls ohitmon.
  * Rolling boulder (range==-1): after drop_throw, re-extract and return

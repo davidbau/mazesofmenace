@@ -42,6 +42,7 @@ import {
     ART_EYE_OF_THE_AETHIOPICA,
 } from './generated/artifacts_data.js';
 import { game } from './gstate.js';
+import { impossible } from './display.js';
 import {
     A_NONE, A_CHAOTIC, A_NEUTRAL, A_LAWFUL, A_INT, A_WIS,
     MH_HUMAN, MH_ELF, MH_DWARF, MH_GNOME, MH_ORC,
@@ -834,16 +835,42 @@ export function align_str(a) {
     return 'neutral';
 }
 
-// C ref: pray.c align_gname — pantheon by alignment; strip leading '_'
-export function align_gname(urole, a) {
-    const r = urole || {};
+/**
+ * C ref: pray.c align_gname `:2530–2555`.
+ * Moloch is the file-scope string at pray.c:58. C reads `gu.urole.lgod`,
+ * `ngod`, and `cgod`; callers pass that role as `urole` (`game.urole`).
+ * Unknown alignment calls `impossible` and returns "someone". A leading
+ * '_' marks a goddess and is not part of the spoken name.
+ * @param {object} urole
+ * @param {number} alignment
+ * @returns {string}
+ */
+export function align_gname(urole, alignment) {
+    const role = urole || {};
     let gnam;
-    if (a === A_NONE) gnam = 'Moloch';
-    else if (a === A_LAWFUL) gnam = r.lgod || 'Blind Io';
-    else if (a === A_CHAOTIC) gnam = r.cgod || 'Offler';
-    else if (a === A_NEUTRAL) gnam = r.ngod || '_The Lady';
-    else gnam = 'someone';
-    if (gnam.charAt(0) === '_') gnam = gnam.slice(1);
+    switch (alignment) {
+    case A_NONE:
+        gnam = 'Moloch';
+        break;
+    case A_LAWFUL:
+        gnam = role.lgod;
+        break;
+    case A_NEUTRAL:
+        gnam = role.ngod;
+        break;
+    case A_CHAOTIC:
+        gnam = role.cgod;
+        break;
+    default:
+        // async; fire-and-forget so this stays sync (pray.c:2548).
+        void impossible('unknown alignment.');
+        gnam = 'someone';
+        break;
+    }
+    // C `:2552–2553` — if (*gnam == '_') ++gnam;
+    if (typeof gnam === 'string' && gnam.charAt(0) === '_') {
+        gnam = gnam.slice(1);
+    }
     return gnam;
 }
 

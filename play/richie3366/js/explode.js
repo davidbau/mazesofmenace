@@ -27,7 +27,8 @@
 // You_hear("a blast.") / generic "explosion" / Boom!;
 // engulfing_u → engulfer_explosion_msg; seemimic before caught-in.
 // Named omissions: You_hear Underwater/Unaware prefixes (no live
-// Unaware export); ugolemeffects/golemeffects (no JS port);
+// Unaware export); golemeffects (monster, explode.c:525) stays
+// unported; hero ugolemeffects is wired at the uhurt site;
 // Upolyd rehumanize fatal path; wake_nearto beyond msleeping;
 // Role_switch damu only for known role pm;
 // explode_show_visible already owns explosion_to_glyph;
@@ -52,7 +53,7 @@ import { resists_poison } from './zap.js';
 import { uhim, uhis } from './roles.js';
 import { sticks } from './engrave.js';
 import { Soundeffect, se_blast } from './sndprocs.js';
-import { digests } from './mhitu.js';
+import { digests, ugolemeffects } from './mhitu.js';
 import {
     maybe_half_phys, nomul, stop_occupation, You_hear, in_rooms,
 } from './hack.js';
@@ -712,7 +713,8 @@ export async function explode(x, y, typeIn, dam, olet, expltype) {
             await ignite_items(game.invent);
         }
         await destroy_items(you, adtyp, dam);
-        // ugolemeffects deferred
+        // C explode.c:619 — heal from damu before the grab doubles it.
+        await ugolemeffects(adtyp, damu);
 
         const u = game.u;
         if (uhurt === 2 && u) {

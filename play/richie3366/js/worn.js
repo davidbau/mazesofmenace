@@ -4,7 +4,8 @@
 //   racial_exception; mon.c check_gear_next_turn.
 // Named omissions:
 //   dragon-scale altprop beyond alchemy smock;
-//   extract_from_minvent artifact_light/obj_no_longer_held.
+//   extract_from_minvent obj_no_longer_held (crysknife). Gold-DSM
+//   end_burn is live (D-2914).
 // D-0855: nambuf Monnam/mon_nam at m_dowear_type entry (Hallu display RNG).
 
 import { game } from './gstate.js';
@@ -646,15 +647,21 @@ export function bypass_obj(obj) {
 }
 
 /**
- * C ref: worn.c extract_from_minvent — unlink minvent obj; worn extras
- * when owornmask. Named omit: artifact_light end_burn; obj_no_longer_held
- * (crysknife); setmnotwielded light polish (mwepgone core inlined to
- * avoid worn↔weapon). possibly_unwield is weapon.c D-1744.
+ * C ref: worn.c extract_from_minvent `:1376–1410` — unlink minvent obj;
+ * worn extras when owornmask. Gold DSM is snuffed before owornmask
+ * clears (artifact_light reads W_ARM). Named omit: where-mismatch
+ * impossible; obj_no_longer_held (crysknife); setmnotwielded light
+ * polish (mwepgone core inlined to avoid worn↔weapon).
+ * possibly_unwield is weapon.c D-1744.
  */
 export function extract_from_minvent(mon, obj, do_extrinsics, silently) {
     if (!mon || !obj) return;
     if (obj.where !== OBJ_MINVENT && obj.where !== 'MINVENT') return;
     const unwornmask = obj.owornmask | 0;
+    // C worn.c:1397–1400 — while owornmask still names the suit.
+    if ((unwornmask & W_ARM) !== 0 && obj.lamplit && artifact_light(obj)) {
+        end_burn(obj, false);
+    }
     obj_extract_self(obj);
     obj.owornmask = 0;
     if (unwornmask) {

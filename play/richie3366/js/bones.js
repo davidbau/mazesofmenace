@@ -10,14 +10,14 @@ import { peace_minded, set_malign, propagate } from './makemon.js';
 import {
     OBJ_FLOOR, OBJ_CONTAINED, SHOPBASE, ROOMOFFSET, ONAME_BONES,
     DEFUNCT_MONSTER, NON_PM, TRICKED, LOST_NONE, has_oname, has_omonst,
-    has_mgivenname, ismnum,
+    has_mgivenname, ismnum, RIGHT_HANDED,
 } from './const.js';
 import { FOOD_CLASS } from './objects.js';
 import { save_track, rest_track } from './track.js';
 import { yn_function } from './getline.js';
-import { pline, paint_gbuf_level_to_terminal } from './display.js';
+import { pline, You, paint_gbuf_level_to_terminal } from './display.js';
 import { vision_off_newsym_gbuf } from './vision.js';
-import { fruit_from_indx, fruit_from_name } from './objnam.js';
+import { fruit_from_indx, fruit_from_name, the, xname } from './objnam.js';
 import { rn2, rnd } from './rng.js';
 import { objectNames } from './generated/objects_data.js';
 import { update_mlstmv } from './dog.js';
@@ -53,6 +53,11 @@ const BELL_OF_OPENING = objectNames.indexOf('BELL_OF_OPENING');
 const BELL = objectNames.indexOf('BELL');
 const SPE_BOOK_OF_THE_DEAD = objectNames.indexOf('SPE_BOOK_OF_THE_DEAD');
 const SPE_BLANK_PAPER = objectNames.indexOf('SPE_BLANK_PAPER');
+const BOW = objectNames.indexOf('BOW');
+const ELVEN_BOW = objectNames.indexOf('ELVEN_BOW');
+const ORCISH_BOW = objectNames.indexOf('ORCISH_BOW');
+const YUMI = objectNames.indexOf('YUMI');
+const BOOMERANG = objectNames.indexOf('BOOMERANG');
 const PM_DOPPELGANGER = monsterNames.indexOf('PM_DOPPELGANGER');
 /** C ref: global.h PL_FSIZ — fruit name buffer (copynchars n = PL_FSIZ-1). */
 const PL_FSIZ = 32;
@@ -81,20 +86,85 @@ export function savebones_negate_fruit_ids() {
 }
 
 /**
- * C ref: bones.c sanitize_name — non-printable → '.'; 8-bit strip deferred
- * (tty eight_bit_input always on for this port). C edits the buffer in
- * place; JS strings are immutable, so callers store the result.
+ * C ref: bones.c sanitize_name `:198–220`. Walk stops at NUL. Low 7 bits
+ * that are controls or DEL become '.'. A character whose value differs
+ * from those 7 bits (the 8th bit, or any higher JS code unit) is replaced
+ * with '_' only when WINDOWPORT(tty) && !iflags.wc_eight_bit_input; the
+ * scored port is tty, so the window test is true. Otherwise that character
+ * stays. C edits the buffer in place; JS strings are immutable, so callers
+ * store the result.
  * @param {string} namebuf
  * @returns {string}
  */
 export function sanitize_name(namebuf) {
+    const s = namebuf == null ? '' : String(namebuf);
+    // C `:201–202` WINDOWPORT(tty) && !iflags.wc_eight_bit_input.
+    // windowport_tty() in options.js is unconditionally true here.
+    const strip_8th_bit = !game.iflags?.wc_eight_bit_input;
     let out = '';
-    for (let i = 0; i < namebuf.length; i++) {
-        const c = namebuf.charCodeAt(i) & 0x7f;
-        if (c < 0x20 || c === 0x7f) out += '.';
-        else out += String.fromCharCode(c);
+    for (let i = 0; i < s.length; i++) {
+        const raw = s.charCodeAt(i);
+        if (raw === 0) break; // C `while (*namebuf)`
+        const c = raw & 0o177; // C `*namebuf & 0177`
+        if (c < 0x20 || c === 0x7f) { // C `c < ' ' || c == '\177'`
+            out += '.';
+        } else if (c !== raw) {
+            // C leaves the byte when the player asked for 8-bit input.
+            if (strip_8th_bit) out += '_';
+            else out += s.charAt(i);
+        } else {
+            out += s.charAt(i);
+        }
+        // C `++namebuf` — the next code unit.
     }
     return out;
+}
+
+/**
+ * C ref: bones.c set_ghostly_objlist `:783–790` (static). Mark each object
+ * on the nobj chain; contents (cobj) are not walked. JS inventory is the
+ * parallel array (mkobj.js), so an array marks each element and stops.
+ * @param {object|object[]|null|undefined} objchain
+ */
+export function set_ghostly_objlist(objchain) {
+    if (Array.isArray(objchain)) {
+        for (const obj of objchain) {
+            if (obj) obj.ghostly = 1;
+        }
+        return;
+    }
+    while (objchain) {
+        objchain.ghostly = 1;
+        objchain = objchain.nobj;
+    }
+}
+
+/**
+ * C ref: bones.c fix_ghostly_obj `:796–815`. A bones-marked object just
+ * picked up. Asymmetrical weapons get a handedness message. ghostly is
+ * cleared on every path that entered with the flag set. You() is async
+ * (pline → --More--).
+ * @param {object} obj
+ */
+export async function fix_ghostly_obj(obj) {
+    if (!obj.ghostly) return;
+    switch (obj.otyp | 0) {
+    case BOW:
+    case ELVEN_BOW:
+    case ORCISH_BOW:
+    case YUMI:
+    case BOOMERANG:
+        // C `:807–809` You(...) — the(xname(obj)) then URIGHTY.
+        await You(
+            'make adjustments to %s to suit your %s hand.',
+            the(xname(obj)),
+            ((game.u?.uhandedness | 0) === RIGHT_HANDED) ? 'right' : 'left',
+        );
+        break;
+    default:
+        break;
+    }
+    obj.ghostly = 0;
 }
 
 /**
@@ -421,18 +491,15 @@ export function bones_include_name(name) {
  * `===` (D-1520). User doset path stays in options.js (bones → options
  * → invent → mklev cycle). Walker is live objnam fruit_from_name(FALSE).
  * Does not candify, makesingular, or write current_fruit / pl_fruit.
- * 8-bit sanitize strip named (tty eight_bit_input on).
+ * copynchars then sanitize_name (C `:8259–8260`).
  * @param {string} str  old fruit fname
  * @returns {number} fid in the current game's ffruit chain
  */
 function fruitadd_bones(str) {
-    let altname = '';
     const raw = String(str || '');
+    // C copynchars(altname, str, PL_FSIZ - 1) then sanitize_name(altname).
     const n = raw.length > PL_FSIZ - 1 ? raw.slice(0, PL_FSIZ - 1) : raw;
-    for (let i = 0; i < n.length; i++) {
-        const c = n.charCodeAt(i) & 0x7f;
-        altname += (c < 0x20 || c === 0x7f) ? '.' : String.fromCharCode(c);
-    }
+    const altname = sanitize_name(n);
     if (!game.flags) game.flags = {};
     game.flags.made_fruit = true;
     const look = altname || str;

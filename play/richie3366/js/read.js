@@ -1243,8 +1243,8 @@ async function disintegrate_cursed_armor() {
  */
 // C staticfn, exported for the test pin (cf. D-2412 num_extinct/num_gone).
 export async function seffect_destroy_armor(sobj) {
-    // C `:1328` — some_armor(&gy.youmonst); JS some_armor is hero-only
-    let otmp = some_armor(null);
+    // C `:1328` — some_armor(&gy.youmonst)
+    let otmp = some_armor(game.youmonst);
     const scursed = !!sobj.cursed;
     // C `:1331` — Confusion ≡ HConfusion (youprop.h, D-1048); OR the
     // JS-side do_mapping screw flag like the sibling seffects

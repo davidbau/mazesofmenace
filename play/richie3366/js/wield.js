@@ -4,8 +4,8 @@
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
-import { flush_screen, flush_topl_more, pline, You } from './display.js';
-import { xprname, xname, yname, aobjnam, makeplural, vtense, an, doname, The, body_part_latebound, simpleonames, is_plural, otense, Yname2, arti_light_description, Tobjnam as objnam_Tobjnam } from './objnam.js';
+import { flush_screen, flush_topl_more, pline, You, Your } from './display.js';
+import { xprname, xname, yname, yobjnam, aobjnam, makeplural, vtense, an, doname, The, body_part_latebound, simpleonames, is_plural, otense, Yname2, Yobjnam2 as objnam_Yobjnam2, arti_light_description, Tobjnam as objnam_Tobjnam } from './objnam.js';
 import { strstri } from './hacklib.js';
 import { yn_function } from './getline.js';
 import { hands_obj, is_wet_towel } from './weapon.js';
@@ -1135,23 +1135,28 @@ export function set_twoweap(on_off) {
 }
 
 /**
- * C ref: wield.c drop_uswapwep — Glib/cursed secondary while dual-wielding.
- * Yobjnam2/otense polish deferred; dropx via dynamic import (do↔wield).
- * Also called from uhitm.c hmonas passivedone when poly multi-AT_WEAP
- * simulates twoweap with a cursed uswapwep (D-1266).
+ * C ref: wield.c drop_uswapwep `:809–831`.
+ * Glib slip, cursed attempt, or cursed-while-twoweap. `dropx` stays a
+ * dynamic import (do.js already imports wield.js). Callers: can_twoweapon,
+ * mkobj.c curse, uhitm.c hmonas passivedone (D-1266).
  */
 export async function drop_uswapwep() {
-    const u = game.u;
-    const obj = u?.uswapwep;
-    if (!obj) return;
-    const left_hand = 'left hand';
+    // C `:812` uswapwep. The three callers have already established it.
+    const obj = game.u.uswapwep;
+    // C `:814–818` — one-handed secondary, so the left hand; not makeplural.
+    const left_hand = `left ${body_part_latebound(HAND)}`;
     if (!obj.cursed) {
-        await pline(`${xname(obj)} slips from your ${left_hand}!`);
-    } else if (!u.twoweap) {
-        await pline(`${xname(obj)} evades your grasp and drops from your ${left_hand}!`);
+        // C `:819–821` — attempting to two-weapon while Glib.
+        await pline('%s from your %s!', objnam_Yobjnam2(obj, 'slip'), left_hand);
+    } else if (!game.u.twoweap) {
+        // C `:822–825` — attempting to two-weapon when uswapwep is cursed.
+        await pline('%s your grasp and %s from your %s!',
+            objnam_Yobjnam2(obj, 'evade'), otense(obj, 'drop'), left_hand);
     } else {
-        await pline(`Your ${left_hand} spasms and drops ${xname(obj)}!`);
+        // C `:826–829` — already two-weaponing; uswapwep has become cursed.
+        await Your('%s spasms and drops %s!', left_hand, yobjnam(obj, null));
     }
+    // C `:830`
     const { dropx } = await import('./do.js');
     await dropx(obj);
 }

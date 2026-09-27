@@ -59,6 +59,7 @@ import {
     GETOBJ_SUGGEST,
     HALLUC,
     HALLUC_RES,
+    HOMEMADE_TIN,
     HAND,
     KILLED_BY,
     has_mcorpsenm,
@@ -137,7 +138,7 @@ import {
     set_occupation,
     y_n,
 } from './cmd.js';
-import { cvt_sdoor_to_door } from './detect.js';
+import { cvt_sdoor_to_door, use_crystal_ball } from './detect.js';
 import { ceiling, surface } from './dungeon.js';
 import { see_monster_closeup } from './dog.js';
 import {
@@ -178,6 +179,7 @@ import {
     update_inventory,
     useupall,
     useup,
+    useupf,
     hold_another_object,
     stackobj,
 } from './invent.js';
@@ -190,6 +192,7 @@ import {
     humanoid,
     is_female,
     is_male,
+    is_rider,
     nohands,
     nolimbs,
     pronoun_gender,
@@ -226,6 +229,8 @@ import {
     sobj_at,
     carried,
     splitobj,
+    mksobj,
+    remove_object,
     weight,
 } from './obj.js';
 import {
@@ -246,8 +251,9 @@ import {
     xnameFresh,
 } from './objnam.js';
 import {
-    ARMOR_CLASS,
     BANANA,
+    BELL,
+    BELL_OF_OPENING,
     BLINDFOLD,
     BRASS_LANTERN,
     BULLWHIP,
@@ -259,6 +265,7 @@ import {
     EUCALYPTUS_LEAF,
     FOOD_CLASS,
     GEM_CLASS,
+    GRAPPLING_HOOK,
     HORN_OF_PLENTY,
     BUGLE,
     DRUM_OF_EARTHQUAKE,
@@ -302,12 +309,21 @@ import {
     PICK_AXE,
     CAN_OF_GREASE,
     CANDELABRUM_OF_INVOCATION,
+    FIGURINE,
+    FLINT,
+    LUCKSTONE,
+    LOADSTONE,
+    MAGIC_WHISTLE,
+    MIRROR,
+    TIN_OPENER,
+    TIN_WHISTLE,
     TALLOW_CANDLE,
     UNICORN_HORN,
     WAX_CANDLE,
     LAND_MINE,
     BEARTRAP,
     SADDLE,
+    TIN,
 } from './objects.js';
 import {
     AD_BLND, AT_ENGL, AT_WEAP, MZ_TINY, PM_ARCHEOLOGIST, PM_HEALER,
@@ -326,7 +342,7 @@ import {
 import { canSpotMonster, heroIsBlind, sensesMonster } from './startup_a11y.js';
 import { P_SKILL } from './startup_skills.js';
 import { CMAP_EXPLANATIONS } from './symbol_data.js';
-import { obj_has_timer } from './timeout.js';
+import { obj_has_timer, obj_stop_timers } from './timeout.js';
 import {
     activate_statue_trap, deltrap, is_lava, is_pool, is_pool_or_lava,
     Levitation, maketrap, reset_utrap, t_at, trapname,
@@ -342,7 +358,7 @@ import {
 } from './vision.js';
 import { bimanual, is_pole, setnotworn } from './worn.js';
 import { dowrite } from './write.js';
-import { pickup_object, use_container } from './pickup.js';
+import { encumber_msg, pickup_object, use_container } from './pickup.js';
 import { use_pick_axe } from './dig.js';
 import { genders } from './roles.js';
 import { d, rn1, rn2, rnd, rne, rnl, rnz } from './rng.js';
@@ -360,9 +376,19 @@ import { acurr } from './attrib.js';
 import { known_spell, spe_Fresh, spelleffects } from './spell.js';
 import { stucksteed, use_saddle } from './steed.js';
 import { enexto, teleds } from './teleport.js';
-import { fingers_or_gloves, inaccessible_equipment } from './do_wear.js';
-import { dropx, legs_in_no_shape, set_wounded_legs } from './do.js';
-import { morehungry } from './eat.js';
+import {
+    _doWearInternals,
+    Blindf_off,
+    fingers_or_gloves,
+    inaccessible_equipment,
+} from './do_wear.js';
+import {
+    dropx,
+    legs_in_no_shape,
+    revive_corpse,
+    set_wounded_legs,
+} from './do.js';
+import { floorfood, morehungry, set_tin_variety } from './eat.js';
 import { digests, hurtle_jump, thitmonst, walk_path } from './dothrow.js';
 import { makeplural } from './fruit.js';
 import { getpos } from './getpos.js';
@@ -982,6 +1008,129 @@ export async function use_camera(object, state = game, env = {}) {
 export function tinnable(corpse, state = game) {
     if (corpse?.oeaten) return false;
     return Boolean(state.mons?.[corpse?.corpsenm]?.cnutrit);
+}
+
+// C ref: apply.c use_tinning_kit() (2177-2258). apply.c:doapply() ignores
+// this helper's return and retains its initial ECMD_TIME result. The ordinary
+// floor/inventory tin path is ported here. Rider revival always delegates to
+// do.c:revive_corpse() and lets its current non-floor refusal propagate until
+// that consumed Boolean path is ported.
+async function use_tinning_kit(obj, state = game, env = {}) {
+    const message = env.message ?? ttyPline;
+    if (obj.spe <= 0) {
+        await message('You seem to be out of tins.', state);
+        return;
+    }
+
+    const corpse = await floorfood('tin', 2, state);
+    if (!corpse) return;
+    if (corpse.oeaten) {
+        await message('You cannot tin something which is partly eaten.', state);
+        return;
+    }
+
+    const species = state.mons?.[corpse.corpsenm];
+    if (!species)
+        throw new RangeError(`tinning kit: invalid corpse species ${corpse.corpsenm}`);
+
+    if (touch_petrifies(species) && !Stone_resistance(state) && !state.uarmg) {
+        const corpseName = an(cxname(corpse, state), state);
+        if (poly_when_stoned(state.youmonst.data)) {
+            await message(
+                `You tin ${corpseName} without wearing gloves.`,
+                state,
+            );
+        } else {
+            await message(
+                `Tinning ${corpseName} without wearing gloves is a fatal mistake...`,
+                state,
+            );
+        }
+        // apply.c discards instapetrify()'s result. Preserve the call-site gap
+        // without inventing its delayed-death or life-saving state changes.
+        note_unported('polyself.c instapetrify');
+    }
+
+    if (is_rider(species)) {
+        if (await revive_corpse(corpse, state)) {
+            await verbalize(
+                'Yes...  But War does not preserve its enemies...',
+                state,
+                { message },
+            );
+        } else {
+            await message('The corpse evades your grasp.', state);
+        }
+        return;
+    }
+    if (species.cnutrit === 0) {
+        await message("That's too insubstantial to tin.", state);
+        return;
+    }
+
+    consume_obj_charge(obj, true, { ...env, state });
+    const can = mksobj(TIN, false, false, { ...env, state });
+    if (!can) {
+        note_unported('pline.c impossible');
+        return;
+    }
+
+    can.corpsenm = corpse.corpsenm;
+    can.cursed = obj.cursed;
+    can.blessed = obj.blessed;
+    can.owt = weight(can, { ...env, state });
+    can.known = true;
+    set_tin_variety(can, HOMEMADE_TIN, { ...env, state });
+    const lifecycleEnv = {
+        ...env,
+        state,
+        hooks: {
+            ...env.hooks,
+            extractExternalObject:
+                env.hooks?.extractExternalObject ?? remove_object,
+            stopObjectTimers: env.hooks?.stopObjectTimers
+                ?? ((target, hookEnv) => obj_stop_timers(
+                    target,
+                    hookEnv.state ?? state,
+                    hookEnv,
+                )),
+            encumberMessage: env.hooks?.encumberMessage ?? encumber_msg,
+        },
+    };
+
+    if (carried(corpse)) {
+        if (corpse.unpaid) {
+            const room = in_rooms(state.u.ux, state.u.uy, SHOPBASE, state)[0]
+                ?? 0;
+            const shopkeeper = shop_keeper(room, state);
+            set_voice(shopkeeper, 0, 80, 0, state);
+            await verbalize('You tin it, you bought it!', state, { message });
+        }
+        useup(corpse, lifecycleEnv);
+    } else {
+        if (costly_spot(corpse.ox, corpse.oy, state) && !corpse.no_charge) {
+            const room = in_rooms(
+                corpse.ox,
+                corpse.oy,
+                SHOPBASE,
+                state,
+            )[0] ?? 0;
+            const shopkeeper = shop_keeper(room, state);
+            set_voice(shopkeeper, 0, 80, 0, state);
+            await verbalize('You tin it, you bought it!', state, { message });
+        }
+        await useupf(corpse, 1, lifecycleEnv);
+    }
+
+    await hold_another_object(
+        can,
+        'You make, but cannot pick up, %s.',
+        donameFresh(can, state),
+        null,
+        {
+            ...lifecycleEnv,
+        },
+    );
 }
 
 // C ref: youprop.h:120 Hallucination, which is the intrinsic timeout alone
@@ -2452,6 +2601,30 @@ async function use_unicorn_horn(obj, state = game, env = {}) {
 // top of retouch_object() answers 1 as well, so it changes nothing either.
 // Porting the artifact arm needs touch_artifact()'s blast, bane_applies(),
 // losehp() and remove_worn_item().
+// apply.c:doapply() switch cases whose handlers are not ported in this
+// JavaScript slice. Keep them out of the generic default, which C reaches
+// only after every named case has failed to match.
+const DOAPPLY_UNPORTED_NAMED_ARMS = new Set([
+    LUMP_OF_ROYAL_JELLY,
+    GRAPPLING_HOOK,
+    LEASH,
+    MAGIC_WHISTLE,
+    TIN_WHISTLE,
+    EUCALYPTUS_LEAF,
+    MIRROR,
+    BELL,
+    BELL_OF_OPENING,
+    CANDELABRUM_OF_INVOCATION,
+    POT_OIL,
+    TOWEL,
+    TIN_OPENER,
+    FIGURINE,
+    FLINT,
+    LUCKSTONE,
+    LOADSTONE,
+    TOUCHSTONE,
+]);
+
 export async function doapply(state = game, env = {}) {
     if (nohands(state.youmonst.data)) {
         await ttyPline(
@@ -2482,9 +2655,9 @@ export async function doapply(state = game, env = {}) {
     case LENSES:
         if (obj === state.ublindf) {
             if (!obj.cursed)
-                note_unported('do_wear.c Blindf_off');
+                await Blindf_off(obj, state);
         } else if (!state.ublindf) {
-            note_unported('do_wear.c Blindf_on');
+            await _doWearInternals.Blindf_on(obj, state);
         } else {
             const already = state.ublindf.otyp === TOWEL
                 ? 'covered by a towel'
@@ -2495,11 +2668,11 @@ export async function doapply(state = game, env = {}) {
         return ECMD_TIME;
     case CRYSTAL_BALL:
         // apply.c discards use_crystal_ball()'s result.
-        note_unported('detect.c use_crystal_ball');
+        await use_crystal_ball({ obj }, state);
         return ECMD_TIME;
     case TINNING_KIT:
         // apply.c discards use_tinning_kit()'s result.
-        note_unported('apply.c use_tinning_kit');
+        await use_tinning_kit(obj, state, env);
         return ECMD_TIME;
     case CREAM_PIE:
         return use_cream_pie(obj, state, env);
@@ -2590,30 +2763,18 @@ export async function doapply(state = game, env = {}) {
         // BANANA also falls through here when not hallucinating. Those food
         // objects cannot be poles, picks, or axes because the source macros
         // admit only WEAPON_CLASS and TOOL_CLASS.
-        // C names LUMP_OF_ROYAL_JELLY before its default, but that helper is
-        // still unported. CREAM_PIE also has an earlier named arm, which the
-        // switch above handles. Other FOOD_CLASS items, including CARROT,
-        // use the generic result.
-        if (obj.oclass === FOOD_CLASS && obj.otyp !== LUMP_OF_ROYAL_JELLY) {
-            await ttyPline("Sorry, I don't know how to use that.", state);
-            return ECMD_FAIL;
-        }
-        // The same already-ported default result applies to ordinary armor.
-        if (obj.oclass === ARMOR_CLASS) {
-            await ttyPline("Sorry, I don't know how to use that.", state);
-            return ECMD_FAIL;
-        }
+        // The set above preserves each unported named switch arm rather than
+        // mistaking it for a generic refusal.
+        if (DOAPPLY_UNPORTED_NAMED_ARMS.has(obj.otyp))
+            throw new UnsupportedApplyError(
+                `doapply()'s arm for object type ${obj.otyp}`,
+            );
         if (is_pole(obj, state))
             return use_pole(obj, false, state);
         if (is_pick(obj, state) || is_axe(obj, state))
             return use_pick_axe(obj, state, env);
-        // Every named arm this port has not implemented, plus the default's
-        // other unported arms, stays fail-closed.
-        // The refusal names the object type so a session says which path it
-        // wanted without accidentally executing a partial implementation.
-        throw new UnsupportedApplyError(
-            `doapply()'s arm for object type ${obj.otyp}`,
-        );
+        await ttyPline("Sorry, I don't know how to use that.", state);
+        return ECMD_FAIL;
     }
     // C's tail, `if (obj && obj->oartifact) res |= arti_speak(obj)`, has no
     // reachable input: the retouch_object() stop above refuses every artifact

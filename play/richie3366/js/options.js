@@ -157,6 +157,7 @@ import {
     GPCOORDS_SCREEN,
     VANQ_MLVL_MNDX,
     WINTYPELEN,
+    PL_PSIZ,
 } from './const.js';
 import { set_vanq_order, vanqorders } from './insight.js';
 import { game } from './gstate.js';
@@ -5298,6 +5299,52 @@ function nmcpy(src, maxlen) {
 }
 
 /**
+ * C options.c petname_optfn `:848–874` — shared body of optfn_catname
+ * (`:1249`), optfn_dogname (`:1563`), and optfn_horsename (`:1897`).
+ * do_init is empty. do_set rejects a valueless option that is not
+ * negated, treats negation / "none" / "(none)" as an empty name, then
+ * nmcpy(PL_PSIZ) and sanitize_name. get_val of an empty name is
+ * "(none)"; get_cnf_val is "none". An optidx other than the three
+ * writes C's discarded failsafe and does not touch game.*.
+ * optidx values are allopt[].idx (optlist.h), not the array slot.
+ */
+function petname_optfn(optidx, req, negated, opts, op) {
+    const key = optidx === 29 ? 'catname' // C opt_catname
+        : optidx === 46 ? 'dogname' // C opt_dogname
+            : optidx === 77 ? 'horsename' // C opt_horsename
+                : null;
+    if (req === REQ_DO_INIT) {
+        // C `:859` empty statement
+    } else if (req === REQ_DO_SET) { // C `:861`
+        if (op === EMPTY_OPTSTR && !negated) return OPTN_ERR; // C `:862–863`
+        if (negated || op === 'none' || op === '(none)') // C `:864` none[] is "(none)"
+            op = EMPTY_OPTSTR;
+        const cleaned = sanitize_name(nmcpy(op, PL_PSIZ)); // C `:866–867`
+        if (key) game[key] = cleaned;
+    } else if (req === REQ_GET_VAL || req === REQ_GET_CNF_VAL) { // C `:868`
+        const cur = key ? String(game[key] || '') : '';
+        set_optbuf(opts, cur ? cur
+            : (req === REQ_GET_CNF_VAL ? 'none' : '(none)')); // C `:870–871`
+    }
+    return OPTN_OK; // C `:873`
+}
+
+/** C options.c optfn_catname `:1249–1255`. */
+function optfn_catname(optidx, req, negated, opts, op) {
+    return petname_optfn(optidx, req, negated, opts, op);
+}
+
+/** C options.c optfn_dogname `:1563–1569`. */
+function optfn_dogname(optidx, req, negated, opts, op) {
+    return petname_optfn(optidx, req, negated, opts, op);
+}
+
+/** C options.c optfn_horsename `:1897–1903`. */
+function optfn_horsename(optidx, req, negated, opts, op) {
+    return petname_optfn(optidx, req, negated, opts, op);
+}
+
+/**
  * C options.c optfn_fruit `:1706–1774` (staticfn; NHOPTC wires
  * `&optfn_fruit` into the fruit allopt row, optlist.h `:339`).
  * do_init is optn_ok. do_set copies into `pl_fruit` (mungspaces,
@@ -7799,7 +7846,7 @@ const allopt = [
     // optlist.h:217 NHOPTC(boulder)
     { name: 'boulder', opttyp: CompOpt, idx: 28, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: optfn_boulder },
     // optlist.h:221 NHOPTC(catname)
-    { name: 'catname', opttyp: CompOpt, idx: 29, setwhere: SET_GAMEVIEW, initval: false, addr: null, optfn: null },
+    { name: 'catname', opttyp: CompOpt, idx: 29, setwhere: SET_GAMEVIEW, initval: false, addr: null, optfn: optfn_catname },
     // optlist.h:225 NHOPTB(checkpoint)
     { name: 'checkpoint', opttyp: BoolOpt, idx: 30, setwhere: SET_IN_GAME, initval: true, addr: { obj: 'flags', key: 'checkpoint' }, optfn: null },
     // optlist.h:233 NHOPTB(cmdassist)
@@ -7833,7 +7880,7 @@ const allopt = [
     // optlist.h:284 NHOPTC(disclose)
     { name: 'disclose', opttyp: CompOpt, idx: 45, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: optfn_disclose },
     // optlist.h:288 NHOPTC(dogname)
-    { name: 'dogname', opttyp: CompOpt, idx: 46, setwhere: SET_GAMEVIEW, initval: false, addr: null, optfn: null },
+    { name: 'dogname', opttyp: CompOpt, idx: 46, setwhere: SET_GAMEVIEW, initval: false, addr: null, optfn: optfn_dogname },
     // optlist.h:291 NHOPTB(dropped_nopick)
     { name: 'dropped_nopick', opttyp: BoolOpt, idx: 47, setwhere: SET_IN_GAME, initval: true, addr: { obj: 'flags', key: 'nopick_dropped' }, optfn: null },
     // optlist.h:294 NHOPTC(dungeon)
@@ -7895,7 +7942,7 @@ const allopt = [
     // optlist.h:379 NHOPTB(hitpointbar)
     { name: 'hitpointbar', opttyp: BoolOpt, idx: 76, setwhere: SET_IN_GAME, initval: false, addr: { obj: 'iflags', key: 'wc2_hitpointbar' } /* C: &iflags.wc2_hitpointbar; botl.js reads this */, optfn: null },
     // optlist.h:382 NHOPTC(horsename)
-    { name: 'horsename', opttyp: CompOpt, idx: 77, setwhere: SET_GAMEVIEW, initval: false, addr: null, optfn: null },
+    { name: 'horsename', opttyp: CompOpt, idx: 77, setwhere: SET_GAMEVIEW, initval: false, addr: null, optfn: optfn_horsename },
     // optlist.h:386 NHOPTC(IBMgraphics)
     { name: 'IBMgraphics', opttyp: CompOpt, idx: 78, setwhere: SET_IN_CONFIG, initval: false, addr: null, optfn: null },
     // optlist.h:390 NHOPTB(idlecheckpoint)

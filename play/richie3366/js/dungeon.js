@@ -149,6 +149,7 @@ import { align_gname } from './roles.js';
 import { altarmask_at } from './pray.js';
 import { is_drawbridge_wall } from './dbridge.js';
 import { db_under_typ } from './hack.js';
+import { shop_keeper, inhishop } from './shk.js';
 import { m_at } from './mon.js';
 import { canseemon } from './display.js';
 
@@ -259,7 +260,7 @@ function strcmp(a, b) {
  * @param {string} s
  * @returns {string}
  */
-function dupstr(s) {
+export function dupstr(s) {
     const i = String(s).indexOf('\0');
     return i >= 0 ? String(s).slice(0, i) : String(s);
 }
@@ -2352,17 +2353,9 @@ export function recalc_mapseen() {
         mptr.msrooms[ridx].seen = 1;
         const rt = rooms[ridx]?.rtype | 0;
         if (rt >= SHOPBASE) {
-            // ≡ shop_keeper + inhishop without importing shk (DAG)
-            const shkp = rooms[ridx]?.resident || null;
-            const eshk = shkp?.mextra?.eshk || null;
-            let untended = 1;
-            if (shkp && eshk && shkp.mx != null) {
-                const loc = game.level?.at?.(shkp.mx, shkp.my);
-                if (loc && ((loc.roomno | 0) === (eshk.shoproom | 0))) {
-                    untended = 0;
-                }
-            }
-            mptr.msrooms[ridx].untended = untended;
+            // C dungeon.c:3140–3141 — shop_keeper(uroom) || !inhishop
+            const shkp = shop_keeper(urooms.charCodeAt(i));
+            mptr.msrooms[ridx].untended = (!shkp || !inhishop(shkp)) ? 1 : 0;
         } else if (rt === TEMPLE) {
             // findpriest/inhistemple detail deferred — resident priest ⇒ tended
             const priest = rooms[ridx]?.resident || null;

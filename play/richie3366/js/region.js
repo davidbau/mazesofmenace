@@ -37,6 +37,7 @@ import {
     M_SEEN_POISON, M_POISONGAS_OK, M_POISONGAS_MINOR, M_POISONGAS_BAD,
     Is_waterlevel,
     MON_OFFMAP,
+    FM_FMON,
 } from './const.js';
 import {
     is_pool, is_lava, losehp, maybe_half_phys, finish_maybe_wail,
@@ -55,6 +56,7 @@ import { dist2 } from './hacklib.js';
 import { level_mon_at } from './worm.js';
 import { lookup_bones_id } from './bones.js';
 import { selection_recalc_bounds } from './mklev.js';
+import { find_mid } from './mon.js';
 
 const MAX_CLOUD_SIZE = 150;
 const INSIDE_GAS_CLOUD = 1; // JS inside_f tag (C callbacks[] uses 0)
@@ -404,13 +406,6 @@ function m_at_xy(x, y) {
         if ((m.mhp | 0) <= 0) continue;
         if ((m.mstate | 0) & MON_OFFMAP) continue;
         if (m.mx === x && m.my === y) return m;
-    }
-    return null;
-}
-
-function find_mid(mid) {
-    for (const m of game.fmon || []) {
-        if (m.m_id === mid) return m;
     }
     return null;
 }
@@ -1021,7 +1016,7 @@ export async function run_regions() {
         }
         const mids = reg.monsters || [];
         for (let j = 0; j < mids.length; j++) {
-            const mtmp = find_mid(mids[j]);
+            const mtmp = find_mid(mids[j], FM_FMON); // C region.c:446
             if (!mtmp || (mtmp.mhp | 0) <= 0
                 || await inside_gas_cloud(reg, mtmp)) {
                 mids[j] = mids[mids.length - 1];

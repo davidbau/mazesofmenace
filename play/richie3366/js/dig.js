@@ -27,8 +27,8 @@ import {
 } from './vision.js';
 import { cvt_sdoor_to_door } from './detect.js';
 import {
-    mksobj_at, objects_at, sobj_at, obj_extract_self, delobj, place_object, weight,
-    set_corpsenm, add_to_buried, stackobj, is_organic, start_timer, stop_timer,
+    mksobj_at, mk_tt_object, objects_at, sobj_at, obj_extract_self, delobj, place_object, weight,
+    add_to_buried, stackobj, is_organic, start_timer, stop_timer,
     obj_ice_effects, dealloc_oextra,
 } from './mkobj.js';
 import {
@@ -46,7 +46,7 @@ import {
     is_whirly, G_UNIQ,
 } from './monsters.js';
 import {
-    PM_DWARF, PM_ELF, PM_RANGER, PM_ARCHEOLOGIST, PM_SAMURAI, PM_WIZARD,
+    PM_DWARF, PM_ELF, PM_RANGER, PM_ARCHEOLOGIST, PM_SAMURAI,
     monsterNames,
 } from './generated/monsters_data.js';
 import { m_canseeu } from './mondata.js';
@@ -1547,19 +1547,6 @@ function sgn(n) {
     return n > 0 ? 1 : n < 0 ? -1 : 0;
 }
 
-/**
- * C ref: mkobj.c mk_tt_object — CORPSE/STATUE with role pm (topten deferred).
- * Used by dig_up_grave; empty RECORD path burns rnd(10) then rn1 role.
- */
-function mk_tt_object(objtype, x, y) {
-    const initialize_it = objtype !== STATUE;
-    const otmp = mksobj_at(objtype, x, y, initialize_it, false);
-    if (!otmp) return null;
-    rnd(10); // C get_rnd_toptenentry after successful open
-    set_corpsenm(otmp, rn1(PM_WIZARD - PM_ARCHEOLOGIST + 1, PM_ARCHEOLOGIST));
-    return otmp;
-}
-
 function Flying() {
     const u = game.u || {};
     if (u.Flying) return true;
@@ -2577,7 +2564,7 @@ export async function use_pick_axe2(obj) {
         if (u.ustuck) await do_attack(u.ustuck);
     } else if (u.dz < 0) {
         if (Levitation()) await pline("You don't have enough leverage.");
-        else await pline("You can't reach the ceiling.");
+        else await pline(`You can't reach the ${ceiling(u.ux | 0, u.uy | 0)}.`);
     } else if (!u.dx && !u.dy && !u.dz) {
         let dam = rnd(2) + dbon() + (obj.spe | 0);
         if (dam <= 0) dam = 1;

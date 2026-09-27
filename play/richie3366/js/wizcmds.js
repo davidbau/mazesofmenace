@@ -2,6 +2,7 @@
 // C ref: wizcmds.c
 
 import { game } from './gstate.js';
+import { cmd_from_func } from './dokeylist.js';
 import { pline, You, docrt, impossible, flush_topl_more, Warn_of_mon, glyph_at, glyph_is_monster, glyph_is_invisible_id, map_invisible, unmap_invisible } from './display.js';
 import { getlin, yn_function } from './getline.js';
 import { pluslvl, losexp } from './exper.js';
@@ -543,9 +544,8 @@ export async function wiz_identify() {
         return ECMD_OK;
     }
     if (!game.iflags) game.iflags = {};
-    // C: cmd_from_func(wiz_identify) → C('I'); NUL remapping → C('I')
-    const CTRL_I = 9;
-    game.iflags.override_ID = CTRL_I;
+    // C wizcmds.c:53–60 — cmd_from_func, else C('I') when the key is NUL.
+    game.iflags.override_ID = (cmd_from_func('wizidentify') & 0xff) || (0x1f & 73);
     const { display_inventory } = await import('./invent.js');
     await display_inventory();
     game.iflags.override_ID = 0;
@@ -708,7 +708,7 @@ async function you_sanity_check() {
  * ("invent") then `bc_sanity_check` (`ball.c:1034–1102`, `:1476` —
  * after light_sources, before trap). Caller allmain.c moveloop_core
  * when iflags.sanity_check || debug_fuzzer (opt_in Off).
- * Named omit: obj/timer/mon/light/trap/engraving/levl sanity;
+ * Named omit: obj/timer/mon/trap/engraving/levl sanity;
  * check_wornmask_slots; dobjsfree / clear_bypasses / resume_wish.
  */
 export async function sanity_check() {
@@ -721,8 +721,10 @@ export async function sanity_check() {
     game.program_state.in_sanity_check =
         (game.program_state.in_sanity_check | 0) + 1;
     await you_sanity_check();
-    // C `:1472–1479` siblings obj/timer/mon/light stay named omits;
+    // C `:1475` light_sources_sanity_check. obj/timer/mon stay named;
     // bc_sanity_check is live (ball.js); trap/engraving/levl stay named.
+    const { light_sources_sanity_check } = await import('./light.js');
+    light_sources_sanity_check();
     const { bc_sanity_check } = await import('./ball.js');
     await bc_sanity_check();
     game.program_state.in_sanity_check =

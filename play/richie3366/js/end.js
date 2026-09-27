@@ -47,11 +47,13 @@ import { can_carry, mon_offmap } from './monmove.js';
 import { enexto, rloc_to, single_level_branch } from './teleport.js';
 import { oname, christen_monst, free_oname, mon_nam, Monnam, m_monnam, pmname, Ugender, Mgender, type_is_pname } from './do_name.js';
 import { mkcorpstat, curse, place_object, stackobj, mksobj, add_to_minv, add_to_container, weight } from './mkobj.js';
+import { artifact_light, end_burn } from './timeout.js';
+import { obj_is_burning } from './light.js';
 import { make_grave, sticks } from './engrave.js';
 import { makemon, adj_lev, mongets } from './makemon.js';
 import {
     write_bonesfile, bones_file_exists, delete_bonesfile,
-    goodfruit, savebones_negate_fruit_ids,
+    goodfruit, savebones_negate_fruit_ids, set_ghostly_objlist,
 } from './bones.js';
 import { genders, aligns } from './roles.js';
 import { topten, nh_terminate_capture, raw_print_blanks } from './topten.js';
@@ -1484,7 +1486,8 @@ function give_u_to_m_resistances(mtmp) {
  * cont / nearby-gate placement; cont owt refresh.
  * C bones.c:279–280 `if (!mtmp || is_undead(mtmp->data))`
  * obj_no_longer_held(otmp) is live via the do.js export (D-2060 residual
- * retired here); lamp artifact_light/end_burn arm stays named.
+ * retired here). Lit lamps and artifact lights are snuffed before
+ * owornmask clears (artifact_light reads W_ARM).
  */
 async function drop_upon_death(mtmp, cont, x, y) {
     const u = game.u || {};
@@ -1493,12 +1496,18 @@ async function drop_upon_death(mtmp, cont, x, y) {
     const { obj_no_longer_held } = await import('./do.js');
     while (game.invent.length) {
         const otmp = game.invent.shift();
-        otmp.owornmask = 0;
         otmp.where = OBJ_FREE;
         otmp.nobj = null;
 
         // C bones.c:279–280 — slime keeps gear held; other arises do not
         if (!mtmp || is_undead(mtmp.data)) await obj_no_longer_held(otmp);
+
+        // C `:283–285` — smother a burning light inside a statue, or an
+        // artifact light, while owornmask is still set.
+        if ((cont || artifact_light(otmp)) && obj_is_burning(otmp)) {
+            end_burn(otmp, true);
+        }
+        otmp.owornmask = 0;
 
         // C `:287–288` after owornmask=0, before rn2(5) curse
         if ((otmp.otyp | 0) === SLIME_MOLD) goodfruit(otmp.spe);
@@ -1581,7 +1590,8 @@ async function remove_mon_from_bones(mtmp) {
  * (this file); the statue arm is D-2060.
  * Named omissions: file compress; unleash_all/unpunish/dismount;
  * forget_engravings;
- * set_ghostly_objlist / resetobjs known-strip; map memory clear
+ * resetobjs(FALSE) known-strip on minvent/fobj/buriedobjlist (the save
+ * arm is live in bones.js; savebones does not call it); map memory clear
  * (ux/uy zero); ebones; obj_attach_mid;
  * binary savelev (overview lists who/how, not when[]).
  */
@@ -1622,6 +1632,8 @@ async function savebones(how, when, corpse) {
 
     // C savebones `:450–453` — negate all fids before drop_upon_death
     savebones_negate_fruit_ids();
+    // C bones.c:455 — mark carried objects before they leave invent.
+    set_ghostly_objlist(game.invent);
 
     const arise = u.ugrave_arise;
     if (ismnum(arise)) {
@@ -1639,7 +1651,7 @@ async function savebones(how, when, corpse) {
             return;
         }
         give_u_to_m_resistances(mtmp);
-        mtmp = christen_monst(mtmp, game.plname || 'Player');
+        mtmp = christen_monst(mtmp, game.plname || '');
         newsym(u.ux | 0, u.uy | 0);
         await drop_upon_death(mtmp, null, u.ux | 0, u.uy | 0);
         /* 'mtmp' now has hero's inventory; if 'mtmp' is a mummy, give it
@@ -1672,13 +1684,21 @@ async function savebones(how, when, corpse) {
         let mtmp = makemon(mons(PM_GHOST), u.ux | 0, u.uy | 0, MM_NONAME);
         game.in_mklev = prev;
         if (!mtmp) return;
-        mtmp = christen_monst(mtmp, game.plname || 'ghost');
+        mtmp = christen_monst(mtmp, game.plname || '');
         mtmp.m_lev = (u.ulevel | 0) || 1;
         mtmp.mhp = mtmp.mhpmax = u.uhpmax | 0;
         mtmp.female = game.flags?.female ? 1 : 0;
         mtmp.msleeping = 1;
         void corpse;
     }
+
+    // C bones.c:541–558 — ghostly bit on monster inventories, the floor,
+    // and buried objects. resetobjs(FALSE) on those chains stays named.
+    for (const mtmp of game.fmon || []) {
+        if (mtmp) set_ghostly_objlist(mtmp.minvent);
+    }
+    set_ghostly_objlist(game.fobj);
+    set_ghostly_objlist(game.level?.buriedobjlist);
 
     // C: bones.c savebones — attach cemetery before create_bonesfile
     // who = plname-ROL-RAC-GEN-ALI (playmode:debug → plname "wizard")

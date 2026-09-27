@@ -435,13 +435,38 @@ function strncmpN(a, b, n) {
 }
 
 /**
+ * Newest-first key list. `game.Cmd._cmdbindOrder` is `gc.Cmd.cmdbinds`
+ * (index 0 = head). BIND= rows that never went through `cmdbind_add`
+ * are still prepended: Map insertion order, last key newest, matching
+ * `cmdbind_add`'s prepend. No list yet → null, and the caller scans
+ * 0..255 (the table before `reset_commands`).
+ * @returns {number[]|null}
+ */
+function cmdbind_walk_keys() {
+    const order = game.Cmd?._cmdbindOrder;
+    const overlay = game.Cmd?.binds;
+    const known = new Set(Array.isArray(order) ? order : []);
+    const extra = [];
+    if (overlay instanceof Map) {
+        for (const [rawKey, name] of overlay) {
+            const k = Number(rawKey) & 0xff;
+            if (!k || !name || known.has(k)) continue;
+            extra.push(k);
+        }
+    }
+    extra.reverse(); // last BIND= is the head
+    if (Array.isArray(order) && order.length) return extra.concat(order);
+    if (extra.length) return extra;
+    return null;
+}
+
+/**
  * C ref: cmd.c cmd_from_func `:3035–3066`.
- * First printable bind for `fn`, else the last non-printable. Space is
- * skipped until the last-resort `cmdbind_get(' ')` check. Digits, and
- * '-' when `fn` is `do_fight`, are skipped while `!Cmd.num_pad`.
- * `do_fight` is the extcmd txt `"fight"`. The walk is key index 0..255
- * (`cmdbinds_live`), not `gc.Cmd.cmdbinds` link order: two non-printable
- * keys for one command (overview) can differ.
+ * Walk `gc.Cmd.cmdbinds` from the head. Skip space until the last-resort
+ * `cmdbind_get(' ')` check. Skip digits, and '-' when `fn` is `do_fight`,
+ * while `!Cmd.num_pad`. A printable match returns immediately. A
+ * non-printable match is kept, so the oldest one wins. `do_fight` is
+ * the extcmd txt `"fight"`.
  * @param {string|{txt?: string}|null|undefined} fn
  * @returns {number} key 0..255, or 0 when unbound
  */
@@ -450,7 +475,10 @@ export function cmd_from_func(fn) {
     const binds = cmdbinds_live();
     const numPad = !!(game.Cmd?.num_pad); // C `gc.Cmd.num_pad`
     let ret = 0; // C `ret = '\0'`
-    for (let i = 0; i < 256; i++) {
+    const order = cmdbind_walk_keys();
+    const n = order ? order.length : 256;
+    for (let n_i = 0; n_i < n; n_i++) {
+        const i = order ? (order[n_i] & 0xff) : n_i; // C `bind = bind->next`
         if (i === 32) continue; // C `i == ' '`
         if (((i >= 48 && i <= 57) || (i === 45 && ecname === 'fight'))
             && !numPad) {

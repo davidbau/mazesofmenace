@@ -284,7 +284,7 @@ import {
     NO_TRAP_FLAGS, ignite_items, openholdingtrap, closeholdingtrap,
     openfallingtrap, self_invis_message, trapname, animate_statue,
     activate_statue_trap,
-    acid_damage,
+    acid_damage, ceiling,
 } from './trap.js';
 import { potionbreathe, make_stunned, speed_up } from './potion.js';
 import { carried, fix_petrification, cant_finish_meal } from './eat.js';
@@ -295,7 +295,7 @@ import { create_gas_cloud } from './region.js';
 import { block_point, does_block, recalc_block_point, unblock_point } from './vision.js';
 import { picking_at, reset_pick, boxlock, boxlock_invent, doorlock, getdir } from './lock.js';
 import { monflee, sticks, maybe_unhide_at } from './monmove.js';
-import { digests, set_ustuck, unstuck, expels, ureflects, u_slow_down } from './mhitu.js';
+import { digests, set_ustuck, unstuck, expels, ureflects, u_slow_down, ugolemeffects } from './mhitu.js';
 import { newcham, makemon, create_critters, monhp_per_lvl, neweshk, add_to_minv, set_mimic_sym, newmcorpsenm } from './makemon.js';
 import { tele, u_teleport_mon, rloco, enexto } from './teleport.js';
 import { find_ac, addinv_core1, addinv_core2 } from './u_init.js';
@@ -374,6 +374,7 @@ import {
     GETOBJ_EXCLUDE, GETOBJ_SUGGEST, GETOBJ_NOFLAGS,
     has_mcorpsenm, ERODE_CORRODE,
     LL_WISH, LL_CONDUCT, LL_ARTIFACT, ONAME_WISH, ONAME_KNOW_ARTI,
+    FM_FMON,
 } from './const.js';
 import { monstseesu, monstunseesu, defended, Resists_Elem } from './mondata.js';
 
@@ -2005,7 +2006,8 @@ export async function zhitm(mon, type, nd, ootmp) {
  * ugrave_arise = NON_PM, monstunseesu(M_SEEN_MAGR), done(DIED)
  * (C zap.c:4502–4509).
  * Named omissions: shieldeff (FIRE/COLD resist arms), monstseesu/
- * monstunseesu (FIRE/COLD arms), ugolemeffects; MM-Antimagic shieldeff +
+ * monstunseesu (FIRE/COLD arms). ugolemeffects is live on the resist
+ * arms (FIRE/COLD/LIGHTNING). MM-Antimagic shieldeff +
  * monstseesu and MM-hit monstunseesu live (C zap.c:4410–4419).
  * ZT_DEATH disintegration-breath arm (C zap.c:4465–4490); poison;
  * killer buzzer verb polish.
@@ -2036,7 +2038,8 @@ async function zhitu(type, nd, fltxt, sx, sy) {
         orig_dam = d(nd, 6);
         if (Fire_resistance()) {
             await pline("You don't feel hot!");
-            // ugolemeffects deferred
+            // C zap.c:4427 — after the resist message, before burn_away_slime.
+            await ugolemeffects(AD_FIRE, orig_dam);
         } else {
             dam = orig_dam;
         }
@@ -2056,6 +2059,8 @@ async function zhitu(type, nd, fltxt, sx, sy) {
         orig_dam = d(nd, 6);
         if (Cold_resistance()) {
             await pline("You don't feel cold.");
+            // C zap.c:4446
+            await ugolemeffects(AD_COLD, orig_dam);
         } else {
             dam = orig_dam;
         }
@@ -2103,6 +2108,8 @@ async function zhitu(type, nd, fltxt, sx, sy) {
         orig_dam = d(nd, 6);
         if (Shock_resistance()) {
             await pline("You aren't affected.");
+            // C zap.c:4516
+            await ugolemeffects(AD_ELEC, orig_dam);
         } else {
             dam = orig_dam;
             exercise(A_CON, false);
@@ -2559,21 +2566,29 @@ export function zappable(wand) {
 }
 
 /**
- * C ref: zap.c learnwand — discover type when effect observed + dknown.
- * makeknown → discover_object(..., credit_hero=TRUE) → exercise(A_WIS).
+ * C ref: zap.c learnwand `:123–151`.
+ * Spellbooks are the fake object used while casting; skip them so a
+ * cast does not rediscover a forgotten book. A type already discovered
+ * is observed even while Blind (skips a redundant makeknown). Otherwise
+ * observe only when the hero can see the item, then makeknown when it
+ * is dknown. update_inventory runs for every non-spellbook.
+ * NONNULLARG1; worn.c tests obj != 0 before the call.
  */
 export function learnwand(obj) {
-    if (!obj || obj.oclass === SPBOOK_CLASS) return;
-    const oc = game.objects?.[obj.otyp];
-    if (!oc) return;
-    if (oc.oc_name_known) {
-        // observe_object — dknown even if Blind when already known
-        obj.dknown = true;
-    } else {
-        if (!game.u?.Blind) obj.dknown = true;
-        if (obj.dknown) makeknown(obj.otyp);
+    if (!obj) return;
+    if (obj.oclass !== SPBOOK_CLASS) {
+        /* objects[] is always populated for a real otyp; a missing slot
+           is not name-known (C would index the table). */
+        if (game.objects[obj.otyp]?.oc_name_known) {
+            observe_object(obj);
+        } else {
+            if (!Blind())
+                observe_object(obj);
+            if (obj.dknown)
+                makeknown(obj.otyp);
+        }
+        update_inventory();
     }
-    // update_inventory deferred
 }
 
 /**
@@ -2587,29 +2602,6 @@ function s_suffix_zap(s) {
         return `${s}'`;
     }
     return `${s}'s`;
-}
-
-/**
- * C dungeon.c ceiling :1714–1747 — vault/temple/shop in_rooms then
- * water/air/fire/quest/Underwater/room. Caller: zap_updown WAN_PROBING up.
- */
-function ceiling_updown(x, y) {
-    const loc = game.level?.at?.(x, y);
-    const typ = loc?.typ ?? 0;
-    const uz = game.u?.uz;
-    if (in_rooms(x, y, VAULT)) return "vault's ceiling";
-    if (in_rooms(x, y, TEMPLE)) return "temple's ceiling";
-    if (in_rooms(x, y, SHOPBASE)) return "shop's ceiling";
-    if (Is_waterlevel(uz)) return 'water above';
-    if (IS_AIR(typ)) return 'sky';
-    if (Is_firelevel(uz)) return 'flames above';
-    if (In_quest(uz)) return 'expanse above';
-    if (game.u?.Underwater) return "water's surface";
-    if ((IS_ROOM(typ) && !Is_earthlevel(uz))
-        || IS_WALL(typ) || IS_DOOR(typ) || typ === SDOOR) {
-        return 'ceiling';
-    }
-    return 'rock cavern';
 }
 
 /**
@@ -3236,7 +3228,7 @@ export async function revive(corpse, by_hero) {
     // C: recorporealization of an active ghost via OMID
     if (has_omid(used)) {
         const mid = OMID(used);
-        const ghost = find_mid(mid, 0);
+        const ghost = find_mid(mid, FM_FMON); // C zap.c:1071
         if (ghost && (ghost.data?.mndx | 0) === PM_GHOST) {
             if (canseemon(ghost)) {
                 await pline(
@@ -4643,8 +4635,10 @@ export async function zapyourself(obj, ordinary) {
         learn_it = true;
         const orig_dmg = d(12, 6);
         if (Fire_resistance()) {
-            // shieldeff / monstseesu / ugolemeffects deferred
+            // shieldeff / monstseesu still deferred (C zap.c:2757–2759).
             await You_feel('rather warm.');
+            // C zap.c:2760
+            await ugolemeffects(AD_FIRE, orig_dmg);
         } else {
             await pline("You've set yourself afire!");
             damage = orig_dmg;
@@ -4663,6 +4657,8 @@ export async function zapyourself(obj, ordinary) {
         const orig_dmg = d(12, 6);
         if (Cold_resistance()) {
             await You_feel('a little chill.');
+            // C zap.c:2781
+            await ugolemeffects(AD_COLD, orig_dmg);
         } else {
             await pline('You imitate a popsicle!');
             damage = orig_dmg;
@@ -4683,8 +4679,10 @@ export async function zapyourself(obj, ordinary) {
             exercise(A_CON, false);
             // monstunseesu deferred
         } else {
-            // shieldeff / monstseesu / ugolemeffects deferred
+            // shieldeff / monstseesu still deferred (C zap.c:2739–2741).
             await You('zap yourself, but seem unharmed.');
+            // C zap.c:2742
+            await ugolemeffects(AD_ELEC, orig_dmg);
         }
         await destroy_items(
             game.youmonst || { _youmonst: true },
@@ -6532,7 +6530,7 @@ async function zap_updown(obj) {
         let ptmp = 0;
         if (dz < 0) {
             // C zap.c:3241 You("probe towards the %s.", ceiling(x, y)).
-            await You('probe towards the %s.', ceiling_updown(x, y));
+            await You('probe towards the %s.', ceiling(x, y));
         } else {
             const rememberedltyp = update_mapseen_for(x, y);
             ptmp += await bhitpile(obj, bhito, x, y, dz);
@@ -6614,7 +6612,7 @@ async function zap_updown(obj) {
             && !Is_qstart_updown(game.u?.uz)) {
             /* C :3310–3320 — disclose stays false. */
             await pline(
-                `A rock is dislodged from the ${ceiling_updown(x, y)} and falls on your ${body_part(HEAD)}.`,
+                `A rock is dislodged from the ${ceiling(x, y)} and falls on your ${body_part(HEAD)}.`,
             );
             const dmg = rnd(hard_helmet(game.u?.uarmh) ? 2 : 6);
             losehp(maybe_half_phys(dmg), 'falling rock', KILLED_BY_AN);

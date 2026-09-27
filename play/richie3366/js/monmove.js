@@ -1777,21 +1777,48 @@ export async function itsstuck(mtmp) {
 }
 
 /**
- * C ref: monmove.c m_move_aggress — mon-vs-mon at (x,y); empty mux image → DONE.
- * Named omissions: bhitpos/notonhead polish.
+ * C ref: monmove.c m_move_aggress `:2088–2117`.
+ * Mon-vs-mon at (x, y). No monster there leaves mstatus at M_ATTK_MISS
+ * and returns MMOVE_DONE (the displaced-image square). gb.bhitpos and
+ * gn.notonhead are set before each mattackm: the struck square may be a
+ * long-worm tail. DEADMONSTER is mhp < 1 (monst.h:214). A hit that did
+ * not kill the defender may spend movement and strike back; that
+ * defender's death returns MMOVE_DIED.
  */
-async function m_move_aggress(mtmp, x, y) {
-    let mstatus = 0; // M_ATTK_MISS
+export async function m_move_aggress(mtmp, x, y) {
+    let mstatus = 0; /* M_ATTK_MISS */
     const mtmp2 = m_at(x, y);
     if (mtmp2) {
+        /* C `:2094` gb.bhitpos.x = x, gb.bhitpos.y = y */
+        if (!game.bhitpos) game.bhitpos = { x: 0, y: 0 };
+        game.bhitpos.x = x | 0;
+        game.bhitpos.y = y | 0;
+        /* C `:2095` gn.notonhead = (x != mtmp2->mx || y != mtmp2->my) */
+        game.notonhead = ((x | 0) !== (mtmp2.mx | 0)
+            || (y | 0) !== (mtmp2.my | 0));
         mstatus = await mattackm(mtmp, mtmp2);
     }
-    if ((mstatus & M_ATTK_AGR_DIED) || (mtmp.mhp | 0) < 1) return MMOVE_DIED;
+
+    /* C `:2099` aggressor died */
+    if ((mstatus & M_ATTK_AGR_DIED) || ((mtmp.mhp | 0) < 1)) {
+        return MMOVE_DIED;
+    }
+
+    /* C `:2102–2113` defender strikes back when still alive and fast enough.
+     * `>` evaluates movement, then rn2(NORMAL_SPEED) (clang left-to-right). */
     if ((mstatus & (M_ATTK_HIT | M_ATTK_DEF_DIED)) === M_ATTK_HIT
-        && rn2(4) && mtmp2 && (mtmp2.movement | 0) > rn2(NORMAL_SPEED)) {
-        if ((mtmp2.movement | 0) > NORMAL_SPEED) mtmp2.movement -= NORMAL_SPEED;
-        else mtmp2.movement = 0;
-        mstatus = await mattackm(mtmp2, mtmp);
+        && rn2(4) && (mtmp2.movement | 0) > rn2(NORMAL_SPEED)) {
+        if ((mtmp2.movement | 0) > NORMAL_SPEED) {
+            mtmp2.movement = (mtmp2.movement | 0) - NORMAL_SPEED;
+        } else {
+            mtmp2.movement = 0;
+        }
+        /* C `:2108–2109` counterattack is on the mover's own square, head. */
+        game.bhitpos.x = mtmp.mx | 0;
+        game.bhitpos.y = mtmp.my | 0;
+        game.notonhead = false;
+        mstatus = await mattackm(mtmp2, mtmp); /* return attack */
+        /* defender here is the original moving aggressor */
         if (mstatus & M_ATTK_DEF_DIED) return MMOVE_DIED;
     }
     return MMOVE_DONE;

@@ -7,7 +7,7 @@
 import { game } from './gstate.js';
 import { rn2, rnd, d, rn1, rnl } from './rng.js';
 import {
-    IS_OBSTRUCTED, IS_TREE, IS_DOOR, IRONBARS, D_CLOSED, D_LOCKED,
+    IS_OBSTRUCTED,
     HMON_MELEE, HMON_THROWN, HMON_KICKED, HMON_APPLIED, STRAT_WAITMASK,
     STRAT_WAITFORU, AD_SPEL,
     XKILL_GIVEMSG, XKILL_NOMSG, XKILL_NOCORPSE, XKILL_NOCONDUCT,
@@ -24,7 +24,7 @@ import {
     HAND, LEG, A_LAWFUL, Is_airlevel, Is_waterlevel, PARANOID_HIT, LOW_PM,
     W_ARM, W_ARMC, W_ARMH, W_ARMU, W_ARMG, W_RINGL, W_RINGR, W_ARMF, W_AMUL, W_WEP,
     MON_EXPLODE, NO_MM_FLAGS, NO_TRAP_FLAGS, DISP_ALWAYS, DISP_END, STOMACH, DIED, NO_KILLER_PREFIX, ERODE_CORRODE, ERODE_BURN, EF_GREASE, EF_NONE, STONING,
-    KILLED_BY_AN, PASSES_WALLS, SLOW_DIGESTION, MALE, FEMALE, MMOVE_DIED, CXN_ARTICLE,
+    KILLED_BY_AN, SLOW_DIGESTION, MALE, FEMALE, MMOVE_DIED, CXN_ARTICLE,
     ERODE_ROT, NO_NC_FLAGS, AD_CURS, EDOG, is_pit, FACE, NEUTRAL, CXN_PFX_THE,
     EXPL_FIERY, ismnum, EXT_ENCUMBER, NOTELL,
     isok, xytodir, xdir, ydir,
@@ -55,14 +55,15 @@ import { near_capacity, useup, useupall, hold_another_object, Blind, observe_obj
 import { PM_BARBARIAN, PM_MONK, PM_KNIGHT, PM_SAMURAI, PM_ARCHEOLOGIST, PM_WIZARD, PM_HUMAN, PM_HEALER, PM_ROGUE, PM_ELF } from './generated/monsters_data.js';
 import {
     find_mac, get_mattk, make_corpse, monstone, mhitm_knockback, monkilled, mondead,
-    troll_baned, mhitm_ad_poly, mhitm_ad_slee, mhitm_ad_heal, mhitm_ad_blnd, mhitm_ad_ston, mhitm_ad_elec, mhitm_ad_sedu, mhitm_ad_tlpt, mhitm_ad_rust, mhitm_ad_fire, mhitm_ad_dren, could_seduce, failed_grab, shade_miss,
+    troll_baned, mhitm_ad_poly, mhitm_ad_slee, mhitm_ad_heal, mhitm_ad_blnd, mhitm_ad_ston, mhitm_ad_elec, mhitm_ad_sedu, mhitm_ad_tlpt, mhitm_ad_rust, mhitm_ad_fire, mhitm_ad_dren, mhitm_ad_conf, could_seduce, failed_grab, shade_miss,
     shade_aware, paralyze_monst,
-    mhitm_mgc_atk_negated, mhitm_ad_drst, mhitm_ad_deth, mhitm_ad_dise, mhitm_ad_pest, mhitm_ad_stck, erode_armor, golemeffects_mm,
+    mhitm_mgc_atk_negated, mhitm_ad_drst, mhitm_ad_deth, mhitm_ad_dise, mhitm_ad_pest, mhitm_ad_stck, erode_armor, engulf_target, golemeffects_mm,
     attk_protection,
     AT_NONE, AT_WEAP, AT_KICK, AT_CLAW, AT_SPIT, AT_HUGS,
     AT_TUCH, AT_BITE, AT_BUTT, AT_STNG, AT_MAGC, AT_TENT,
     AT_EXPL, AT_ENGL, AT_BREA, AT_GAZE, AD_PHYS, AD_POLY, AD_DRIN, AD_SLEE,
     AD_DRST, AD_DRDX, AD_DRCO, AD_SAMU, AD_DRLI, AD_SITM, AD_SEDU, AD_SSEX,
+    AD_CONF,
 } from './mhitm.js';
 import { resists_drli, resists_cold, resists_poison, destroy_items, resist } from './zap.js';
 import {
@@ -112,7 +113,7 @@ import { Unaware } from './eat.js';
 import { hard_helmet } from './do_wear.js';
 import { findgold, inv_cnt } from './steal.js';
 import { mselftouch, instapetrify, minstapetrify, t_at } from './trap.js';
-import { set_ustuck } from './mhitu.js';
+import { set_ustuck, ugolemeffects } from './mhitu.js';
 import { Protection_from_shape_changers } from './were.js';
 import { merge_choice_invent } from './pickup.js';
 import { addinv } from './u_init.js';
@@ -2906,6 +2907,12 @@ async function damageum_adtyping(mattk, mdef, mhm) {
            when adjacent and the defender form does not already stick.
            Barbed devil adds Your barbs line. Leftover d() stands. */
         await mhitm_ad_stck(game.youmonst, mattk, mdef, mhm);
+    } else if (adtyp === AD_CONF) {
+        /* C ref: uhitm.c mhitm_adtyping `:4820` → mhitm_ad_conf `:3696–3702`
+           uhitm (hero as attacker) arm: !mconf → canseemon "%s looks
+           confused." and mconf=1. Leftover d() stays. mhitu arm is
+           mhitm_ad_conf_u. */
+        await mhitm_ad_conf(game.youmonst, mattk, mdef, mhm);
     }
 }
 
@@ -3098,8 +3105,10 @@ async function passive_obj(mon, obj, mattk) {
  * C ref: uhitm.c passive — defender AT_NONE after hero melee.
  * Finds first AT_NONE (incl. NO_ATTK fillers), rolls damage dice, applies
  * even-if-dead effects, then live gate `malive && !mcan && rn2(3)`.
- * Named omissions: full AD_PLYS gaze/cube / ugolemeffects /
- * erode_armor; dokick callers. D-2770: AD_STON touch-petrify live
+ * Named omissions: full AD_PLYS gaze/cube shieldeff/monstseesu,
+ * erode_armor; dokick callers. ugolemeffects is live on the
+ * COLD/FIRE/ELEC resist arms (uhitm.c:6072/:6095/:6108).
+ * D-2770: AD_STON touch-petrify live
  * (attk_protection + Stone_resistance / poly_when_stoned→polymon gates +
  * done_in_by STONING, uhitm.c:5930–5956).
  * D-1095: AD_COLD healmon + split_mon (potion.c via sit.js).
@@ -3293,6 +3302,8 @@ export async function passive(mon, weapon, mhitb, maliveb, aatyp, wep_was_destro
             if (monnear(mon, u.ux, u.uy)) {
                 if (Cold_resistance) {
                     await pline('You feel a mild chill.');
+                    // C uhitm.c:6072 — resist arm returns before mdamageu.
+                    await ugolemeffects(AD_COLD, tmp);
                     break;
                 }
                 await pline('You are suddenly very cold!');
@@ -3317,6 +3328,8 @@ export async function passive(mon, weapon, mhitb, maliveb, aatyp, wep_was_destro
             if (monnear(mon, u.ux, u.uy)) {
                 if (Fire_resistance) {
                     await pline('You feel mildly warm.');
+                    // C uhitm.c:6095
+                    await ugolemeffects(AD_FIRE, tmp);
                     break;
                 }
                 await pline('You are suddenly very hot!');
@@ -3327,6 +3340,8 @@ export async function passive(mon, weapon, mhitb, maliveb, aatyp, wep_was_destro
         case AD_ELEC:
             if (Shock_resistance) {
                 await pline('You feel a mild tingle.');
+                // C uhitm.c:6108
+                await ugolemeffects(AD_ELEC, tmp);
                 break;
             }
             await pline('You are jolted with electricity!');
@@ -3742,30 +3757,6 @@ export async function xdrainenergym(mon, givemsg) {
         if (givemsg) await pline_mon(mon, `${Monnam(mon)} seems lethargic.`);
     }
 }
-/** C mhitm.c engulf_target — youmonst magr (uatk / !udef). */
-function engulf_blocked_you(x, y, whirlyPtr) {
-    const lev = game.level?.at?.(x, y);
-    if (!lev) return true;
-    const typ = lev.typ | 0;
-    const door = !!(IS_DOOR(typ) && ((lev.doormask || 0) & (D_CLOSED | D_LOCKED)));
-    return !!(IS_OBSTRUCTED(typ) || door || IS_TREE(typ)
-        || (typ === IRONBARS && !is_whirly(whirlyPtr)));
-}
-function engulf_target_you(mdef) {
-    const magr = game.youmonst;
-    const u = game.u || {};
-    if (!magr?.data || !mdef?.data) return false;
-    if ((mdef.data.msize | 0) >= MZ_HUGE
-        || ((magr.data.msize | 0) < (mdef.data.msize | 0)
-            && !is_whirly(magr.data))) return false;
-    if (mdef.mtrapped || magr.mtrapped) return false;
-    if (!passes_walls(mdef.data)
-        && engulf_blocked_you(mdef.mx | 0, mdef.my | 0, magr.data)) return false;
-    if (!he_prop('Passes_walls', 'HPasses_walls', 'EPasses_walls', PASSES_WALLS)
-        && engulf_blocked_you(u.ux | 0, u.uy | 0, mdef.data)) return false;
-    return true;
-}
-
 /** C uhitm.c start_engulf :4931 / end_engulf :4949. */
 async function start_engulf(mdef) {
     const u = game.u || {};
@@ -3806,7 +3797,7 @@ export async function gulpum(mdef, mattk) {
     const expel_verb = u_digest ? 'regurgitate' : u_enfold ? 'release' : 'expel';
     const engl_verb = u_digest ? 'swallow' : u_enfold ? 'enclose' : 'engulf';
 
-    if (!engulf_target_you(mdef)) return M_ATTK_MISS;
+    if (!engulf_target(game.youmonst, mdef)) return M_ATTK_MISS;
 
     if (!(u_digest && (u.uhunger | 0) >= 1500) && !u.uswallow) {
         if (!flaming(ym.data)) {
@@ -3837,7 +3828,7 @@ export async function gulpum(mdef, mattk) {
             && (!he_prop('Slow_digestion', 'HSlow_digestion', 'ESlow_digestion', SLOW_DIGESTION)
                 || fatal_gulp)) {
             const { eating_conducts } = await import('./eat.js');
-            eating_conducts(pd);
+            await eating_conducts(pd);
         }
 
         if (fatal_gulp && !is_rider(pd)) {

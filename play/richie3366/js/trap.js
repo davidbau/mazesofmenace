@@ -6331,7 +6331,7 @@ async function emergency_disrobe(lostsome) {
  * is_u is mtmp === youmonst (C `&gy.youmonst`); worm.c keeps a mon-only
  * clone (cycle).
  */
-export function rnd_nextto_goodpos(pos, mtmp) {
+export async function rnd_nextto_goodpos(pos, mtmp) {
     const dirs = [];
     for (let i = 0; i < N_DIRS; i++) dirs.push(i);
     for (let i = N_DIRS; i > 0; --i) {
@@ -6344,7 +6344,7 @@ export function rnd_nextto_goodpos(pos, mtmp) {
     for (let i = 0; i < N_DIRS; i++) {
         const nx = (pos.x | 0) + xdir[dirs[i]];
         const ny = (pos.y | 0) + ydir[dirs[i]];
-        const ok = isU ? crawl_destination(nx, ny) : goodpos(nx, ny, mtmp, 0);
+        const ok = isU ? await crawl_destination(nx, ny) : goodpos(nx, ny, mtmp, 0);
         if (ok) {
             pos.x = nx;
             pos.y = ny;
@@ -6493,7 +6493,7 @@ export async function drown() {
     const pos = { x: u.ux, y: u.uy };
     /* have to be able to move in order to crawl */
     if ((game.multi | 0) >= 0 && (game.youmonst?.data?.mmove | 0)
-        && rnd_nextto_goodpos(pos, game.youmonst)) {
+        && await rnd_nextto_goodpos(pos, game.youmonst)) {
         const lostRef = { lost: false };
         /* time to do some strip-tease... */
         const succ = Is_waterlevel(u.uz) ? true : await emergency_disrobe(lostRef);

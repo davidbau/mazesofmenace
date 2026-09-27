@@ -70,7 +70,7 @@ import {
     ECMD_TIME, WAND_BACKFIRE_CHANCE, FINGERTIP, HAND, DRAWBRIDGE_DOWN,
 } from './const.js';
 import { nomul } from './hack.js';
-import { t_at, uteetering_at_seen_pit, uescaped_shaft } from './trap.js';
+import { t_at, uteetering_at_seen_pit, uescaped_shaft, ceiling } from './trap.js';
 import { goodpos } from './teleport.js';
 import { makemon } from './makemon.js';
 import { monsterNames } from './generated/monsters_data.js';
@@ -417,11 +417,11 @@ export function can_reach_floor(check_pit) {
 }
 
 /**
- * C engrave.c cant_reach_floor `:217–228`. ceiling()/full surface named.
+ * C engrave.c cant_reach_floor `:217–228`. ceiling() is dungeon.c via trap.js.
  */
 export async function cant_reach_floor(x, y, up, check_pit, wand_engraving) {
     const where = up
-        ? 'ceiling'
+        ? ceiling(x, y)
         : (check_pit && can_reach_floor(false))
             ? 'bottom of the pit'
             : surface(x, y);

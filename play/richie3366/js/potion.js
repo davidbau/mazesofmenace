@@ -94,6 +94,7 @@ import {
     flush_screen, flush_topl_more, pline, You, You_feel, verbalize, canspotmon,
     canseemon, see_monsters, see_objects, see_traps, swallowed,
     unmap_object, glyph_is_invisible, newsym,
+    Hallucination as hero_Hallucination,
     map_invisible, impossible,
 } from './display.js';
 import {
@@ -181,7 +182,7 @@ import {
 import { objdescr_is } from './apply.js';
 import { explode_oil } from './explode.js';
 import { remove_worn_item } from './steal.js';
-import { newuhs, fix_petrification, Unaware } from './eat.js';
+import { newuhs, fix_petrification, Unaware, eatmupdate } from './eat.js';
 import { heal_legs, water_damage, float_up, self_invis_message, ceiling, Fire_resistance } from './trap.js';
 import { aggravate } from './wizard.js';
 import {
@@ -1080,11 +1081,10 @@ function hallucResisted(u) {
  * suppress; mask arm (HHallucination gate, EHalluc_resistance |= / &=~
  * + uprops extrinsic mirror, Hallucination re-mirror); else arm
  * (changed gated on EXTRINSIC resistance only, set_itimeout TIMEOUT bits,
- * clear-without-toggle talk); changed arm (eatmupdate gate,
+ * clear-without-toggle talk); changed arm (eatmupdate when !Hallucination,
  * uswallow/swallowed else see_* before the pline, update_inventory,
  * disp.botl, talk pline).
- * Named omissions: eatmupdate (eat.c:180–213, no JS export — gate live,
- * call deferred; map turns.md); artifact.c:794 SPFX_HALRES confer/remove
+ * Named omissions: artifact.c:794 SPFX_HALRES confer/remove
  * keeps its sync set_spfx_extrinsic inline (set_artifact_intrinsic is sync;
  * display-refresh delta named in map).
  */
@@ -1142,8 +1142,8 @@ export async function make_hallucinated(xtime, talk, mask = 0) {
     }
 
     if (changed) {
-        // C :416-418 mimicking-orange message — eatmupdate deferred (map)
-        if (!u.Hallucination) { /* eatmupdate (eat.c:180-213): named omission */ }
+        /* C potion.c:416–418 — orange mimic's end message when hallu ends. */
+        if (!hero_Hallucination()) eatmupdate();
         if (u.uswallow) {
             swallowed(0); // C :421 redraw swallow display
         } else {

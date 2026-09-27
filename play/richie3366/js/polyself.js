@@ -49,7 +49,7 @@ import {
 } from './do_wear.js';
 import { dropx, canletgo, make_blinded } from './do.js';
 import { uswapwepgone, uwepgone, could_twoweap, untwoweapon } from './wield.js';
-import { races } from './roles.js';
+import { races, genders, rank_of } from './roles.js';
 import { encumber_msg, useup, weapon_descr, update_inventory, observe_object, Blind } from './invent.js';
 import { end_burn, learn_egg_type, artifact_light, arti_light_radius, Invis } from './timeout.js';
 import { racial_exception, has_horns, num_horns, WrappingAllowed, is_flimsy } from './worn.js';
@@ -955,6 +955,39 @@ export function change_sex() {
 }
 
 /**
+ * C ref: polyself.c livelog_newform `:307–333`.
+ * Logs a sex change only while not polymorphed. The comment's
+ * "other logging instead of newman()" is a TODO in C, not a call.
+ * Callers: polyself.c:452 newman (viapoly) and do_wear.c:1029
+ * Amulet of change (not viapoly).
+ */
+export function livelog_newform(viapoly, oldgend, newgend) {
+    const u = game.u || (game.u = {});
+    /* C :316 — a polymorphed hero does not log the base-sex change. */
+    if (!Upolyd(u)) {
+        if ((newgend | 0) !== (oldgend | 0)) {
+            const name = game.urole?.name || {};
+            /* C :318–321 — nonzero gender (including neuter 2) uses name.f. */
+            const oldrole = (oldgend && name.f) ? name.f : name.m;
+            const newrole = (newgend && name.f) ? name.f : name.m;
+            /* Role_switch is urole.mnum (you.h:248). */
+            const roleSwitch = game.urole?.mnum | 0;
+            const lev = u.ulevel | 0;
+            const oldrank = rank_of(lev, roleSwitch, oldgend);
+            const newrank = rank_of(lev, roleSwitch, newgend);
+            /* C :322 Sprintf "%.10s %.30s" of genders[flags.female].adj. */
+            const gadj = genders[game.flags?.female ? 1 : 0].adj;
+            const buf = `${String(gadj).slice(0, 10)} ${String(newrank).slice(0, 30)}`;
+            const which = (newrole !== oldrole) ? newrole
+                : ((newrank !== oldrank) ? newrank : buf);
+            livelog_printf(LL_MINORAC, '%s into %s',
+                viapoly ? 'polymorphed' : 'transformed',
+                an(which));
+        }
+    }
+}
+
+/**
  * C ref: polyself.c uunstick :1941–1951 — release u.ustuck then pline.
  * set_ustuck runs before pline() per C (D-2131; was a uhitm.js local clone).
  */
@@ -1093,8 +1126,7 @@ async function polyman(fmt, arg) {
  * Sick/Stoned clear, Polymorph_control uhp arm, newuhs, polyman, livelog,
  * Slimed residual, botl/see/encumber tail, retouch_equipment(2),
  * gloveless selftouch.
- * Named omissions: livelog_newform (`:307` non-static C fn, own row)
- * on the no-level-change arm (`:452–453`).
+ * `livelog_newform` (`:307`) runs on the no-level-change arm (`:452`).
  */
 /**
  * C ref: polyself.c newman `:423–432` dead arm (single definition shared
@@ -1128,8 +1160,7 @@ async function newman() {
     if ((u.ulevelmax | 0) < newlvl) u.ulevelmax = newlvl;
     u.ulevel = newlvl;
 
-    // C `:360` — gender before a possible change_sex (feeds the
-    // livelog_newform arm, itself a named omission above).
+    // C `:360` — gender before a possible change_sex (feeds livelog_newform).
     const oldgend = poly_gender();
     if (game.sex_change_ok && !rn2(10)) change_sex();
 
@@ -1187,13 +1218,13 @@ async function newman() {
             : (race.noun || race.adj || 'human');
     await polyman('You feel like a new %s!', newform);
 
-    // C `:445` — gender after the change (feeds livelog_newform).
+    // C `:445` — gender after the change.
     const newgend = poly_gender();
-    // C `:449–451` — log a level change; the no-change arm calls
-    // livelog_newform, a named omission above (oldgend/newgend feed it).
-    void oldgend; void newgend;
+    // C `:448–452` — level change logs here; otherwise livelog_newform.
     if (newlvl !== oldlvl) {
         livelog_printf(LL_MINORAC, 'became experience level %d as a new %s', newlvl, newform);
+    } else {
+        livelog_newform(true, oldgend, newgend);
     }
     // C `:455–458` — slime survives the transformation.
     if ((u.Slimed | 0)) {

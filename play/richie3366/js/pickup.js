@@ -106,7 +106,7 @@ import {
 import { ATR_INVERSE } from './terminal.js';
 import {
     addtobill, costly_spot, check_unpaid_usage, doname_with_price,
-    remote_burglary, shop_keeper, stolen_value, obfree, sellobj, sellobj_state,
+    remote_burglary, shop_keeper, subfrombill, stolen_value, obfree, sellobj, sellobj_state,
     money_cnt, pick_pick,
 } from './shk.js';
 import {
@@ -126,6 +126,7 @@ import { inv_cnt, remove_worn_item } from './steal.js';
 import { trycall, Monnam, christen_monst, oname, rndmonnam, Amonnam, a_monnam, x_monnam, mon_nam, s_suffix, hliquid } from './do_name.js';
 import { makemon, set_malign } from './makemon.js';
 import { courtmon } from './mklev.js';
+import { fix_ghostly_obj } from './bones.js';
 import { more_experienced, newexplevel } from './exper.js';
 import { hard_helmet } from './do_wear.js';
 import { tiphat } from './sounds.js';
@@ -1513,8 +1514,7 @@ async function lift_object(obj, container, cntRef, telekinesis) {
  * C ref: pickup.c pickup_object — lift one floor/minvent object into invent.
  * Branch envelope: observe_object; telekinesis through corpse/scare/
  * lift_object (D-1050); gold disp.botl; splitobj; pick_obj + prinv.
- * Named omissions: LOADSTONE no-split already honored; ghostly
- * fix_ghostly_obj; LOADSTONE/giant-boulder weight override (live in
+ * Named omissions: LOADSTONE/giant-boulder weight override (live in
  * lift_object); carry_count + delta_cwt whole body live (D-2617);
  * Death/Pestilence revive suffixes.
  */
@@ -1582,6 +1582,8 @@ export async function pickup_object(obj, count, telekinesis) {
     obj = await pick_obj(obj);
     if (game.u?.uwep && game.u.uwep === obj) game.mrg_to_wielded = true;
     await pickup_prinv(obj, count, 'lifting');
+    // C pickup.c:1884–1885 — only when the bones bit is set.
+    if (obj.ghostly) await fix_ghostly_obj(obj);
     game.mrg_to_wielded = false;
     return 1;
 }
@@ -4740,7 +4742,7 @@ const TIPCHECK_EMPTY = 4;
  * timeout.js edge. bagotricks stays a dynamic apply.js import (static edge
  * would join the apply cycle). The quantum-cat message inlines Shk_Your's
  * carried rule (no second Shk_Your function).
- * Named omit: subfrombill after floor shop bag/horn (`:4029-4030`).
+ * Floor shop bag/horn: subfrombill(shop_keeper(*in_rooms(ox,oy,SHOPBASE))).
  * @param {object} box container the player wants to tip
  * @param {object|null} targetbox destination (horn of plenty)
  * @param {boolean} allowempty TIPCHECK_OK instead of TIPCHECK_EMPTY when empty
@@ -4795,11 +4797,15 @@ async function tipcontainer_checks(box, targetbox, allowempty) {
             && (res = await tipcontainer_checks(targetbox, null, true)) !== TIPCHECK_OK) {
             return res;
         }
-        // C `:4005-4006` — a held box moves with the hero; floor is redundant.
+        // C `:3999` ox,oy start at the hero; get_obj_location overwrites.
+        let ox = game.u?.ux | 0;
+        let oy = game.u?.uy | 0;
         const bloc = get_obj_location_quantum(box);
         if (bloc) {
-            box.ox = bloc.x | 0;
-            box.oy = bloc.y | 0;
+            ox = bloc.x | 0;
+            oy = bloc.y | 0;
+            box.ox = ox;
+            box.oy = oy;
         }
         if (maybeshopgoods && !box.no_charge) {
             await addtobill(box, false, false, true);
@@ -4824,6 +4830,13 @@ async function tipcontainer_checks(box, targetbox, allowempty) {
             await check_unpaid_usage(box, true);
             box.spe = 0; // empty
             box.cknown = 1;
+        }
+        // C `:4029–4031` — take the bag/horn back off the shop bill
+        if (maybeshopgoods && !box.no_charge) {
+            subfrombill(
+                box,
+                shop_keeper((in_rooms(ox, oy, SHOPBASE) || '').charCodeAt(0) || 0),
+            );
         }
         return TIPCHECK_CANNOT; // C: actually means 'already done'
     }

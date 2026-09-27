@@ -187,7 +187,9 @@ import { update_inventory, Blind, count_unpaid } from './invent.js';
 import { subfrombill, find_objowner } from './shk.js';
 import { set_apparxy, monflee, can_hide_under_obj, dochugw } from './monmove.js';
 import { cursed_object_at } from './dogmove.js';
-import { roles } from './roles.js';
+/* C topten.c classmon / get_rnd_toptenentry — hoisted, called only from
+   tt_doppel. Same SCC; no top-level read. */
+import { classmon, get_rnd_toptenentry } from './topten.js';
 
 /** C ref: shknam.c neweshk — allocate eshk for MM_ESHK makemon. */
 export function neweshk(mtmp) {
@@ -1152,36 +1154,9 @@ export function pick_nasty(difcap) {
 }
 
 /**
- * C ref: topten.c get_rnd_toptenentry — no RECORD VFS; consume rnd(10) then
- * null (empty-scorefile footprint after successful open).
- */
-function get_rnd_toptenentry() {
-    rnd(10); // sysopt.tt_oname_maxrank default
-    return null;
-}
-
-/**
- * C ref: topten.c classmon `:1355–1375` — role filecode (ROLESZ 3-byte
- * sensitive compare) → roles mnum (else PM_HUMAN); legacy "E" → Ranger;
- * unknown → impossible + Human mummy.
- */
-function classmon(plrole) {
-    const code = String(plrole ?? '');
-    for (let i = 0; i < roles.length; i++) {
-        if (code.slice(0, 3) === String(roles[i].filecode ?? '').slice(0, 3)) {
-            return roles[i].mnum !== NON_PM ? roles[i].mnum : pm('HUMAN');
-        }
-    }
-    if (code === 'E') return pm('RANGER');
-    impossible(`What weird role is this? (${code})`);
-    return pm('HUMAN_MUMMY');
-}
-
-/**
  * C ref: topten.c tt_doppel `:1444–1464` — role form from topten or rn1
- * Archeologist..Wizard. RECORD arms live (plgend female, classmon role,
- * canseemon-gated christen); get_rnd_toptenentry stays null — no RECORD
- * VFS under Rule #2 (rnd(10) footprint only).
+ * Archeologist..Wizard. `get_rnd_toptenentry` and `classmon` are the
+ * topten.js exports. An empty record is null after `rnd`, then `rn1`.
  */
 function tt_doppel(mon) {
     const tt = rn2(13) ? get_rnd_toptenentry() : null;

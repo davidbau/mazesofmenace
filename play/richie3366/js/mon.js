@@ -29,6 +29,7 @@ import {
     Has_contents, RLOC_MSG, RLOC_NOMSG, XKILL_NOMSG,
     NO_MM_FLAGS, NO_NC_FLAGS, EXPL_FIERY, NATTK, PROT_FROM_SHAPE_CHANGERS, NO_WEAPON_WANTED, engulfing_u,
     W_SADDLE, OBJ_MINVENT,
+    FM_FMON, FM_MIGRATE, FM_MYDOGS, FM_YOU,
 } from './const.js';
 import { t_at, m_harmless_trap, water_damage_chain, fire_damage_chain, fixed_tele_trap } from './trap.js';
 import {
@@ -86,7 +87,7 @@ import { maybe_m_dowear_special, extract_from_minvent, update_mon_extrinsics, mo
 import { adjalign } from './attrib.js';
 import { SetVoice } from './sndprocs.js';
 import { maybe_gasp, growl } from './sounds.js';
-import { vtense, doname, distant_name, makeplural, xname, The } from './objnam.js';
+import { vtense, doname, distant_name, makeplural, xname, The, set_find_mid } from './objnam.js';
 import { obj_resists, cursed_object_at, finish_meating, quickmimic } from './dogmove.js';
 import { touch_artifact } from './artifact.js';
 import { experience, more_experienced, newexplevel } from './exper.js';
@@ -3574,17 +3575,41 @@ export function copy_mextra(mtmp2, mtmp1) {
 }
 
 /**
- * C ref: mon.c find_mid — locate monst by m_id on fmon (FM_FMON).
- * Named omit: FM_MIGRATE / FM_MYDOGS / FM_EVERYWHERE.
+ * C ref: light.c find_mid `:375–395`.
+ * `FM_YOU` and nid 1 returns `youmonst` before any chain.
+ * `FM_FMON` skips `DEADMONSTER` (`mhp < 1`). `FM_MIGRATE` and
+ * `FM_MYDOGS` do not. JS lists are the nmon chains as arrays.
  */
-export function find_mid(mid, _fm = 0) {
-    const want = mid | 0;
-    if (!want) return null;
-    for (const m of game.fmon || []) {
-        if ((m.m_id | 0) === want) return m;
+export function find_mid(nid, fmflags = 0) {
+    const id = nid >>> 0;
+    const fm = fmflags | 0;
+    // C :381–382 — hero id is 1, not youmonst.m_id.
+    if ((fm & FM_YOU) && id === 1)
+        return game.youmonst ?? null;
+    // C :383–386.
+    if (fm & FM_FMON) {
+        for (const mtmp of game.fmon || []) {
+            if (!mtmp || (mtmp.mhp | 0) < 1) continue;
+            if ((mtmp.m_id >>> 0) === id) return mtmp;
+        }
     }
-    return null;
+    // C :387–390.
+    if (fm & FM_MIGRATE) {
+        for (const mtmp of game.migrating_mons || []) {
+            if (!mtmp) continue;
+            if ((mtmp.m_id >>> 0) === id) return mtmp;
+        }
+    }
+    // C :391–394.
+    if (fm & FM_MYDOGS) {
+        for (const mtmp of game.mydogs || []) {
+            if (!mtmp) continue;
+            if ((mtmp.m_id >>> 0) === id) return mtmp;
+        }
+    }
+    return null; // C :395.
 }
+set_find_mid(find_mid);
 
 /**
  * C ref: mkobj.c discard_minvent — remaining invent leaves the game.

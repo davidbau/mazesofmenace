@@ -30,8 +30,8 @@ import {
     COLNO, ROWNO, IS_SOFT, LOST_THROWN, ZAP_POS, IS_DOOR, D_CLOSED, D_LOCKED,
     D_ISOPEN, IS_OBSTRUCTED, IS_TREE, KILLED_BY, KILLED_BY_AN, OBJ_INVENT, OBJ_FREE,
     TT_WEB, TT_LAVA, TT_INFLOOR, TT_BURIEDBALL,
-    IS_ALTAR, IS_FOUNTAIN, IS_ROOM, IS_AIR, IS_WALL, ICE, PIT, SPIKED_PIT, HOLE,
-    TRAPDOOR, SDOOR, Is_earthlevel, In_endgame,
+    IS_ALTAR, IS_FOUNTAIN, ICE, PIT, SPIKED_PIT, HOLE,
+    TRAPDOOR, Is_earthlevel, In_endgame,
     P_NONE, P_SPEAR, P_SLING, P_DAGGER, P_SHURIKEN, P_DART, P_CROSSBOW, P_KNIFE,
     P_BOW, P_BOOMERANG, P_SHORT_SWORD, P_SABER, P_AXE,
     P_SKILLED, P_EXPERT, P_BASIC, P_UNSKILLED,
@@ -102,7 +102,7 @@ import { body_part, polymon } from './polyself.js';
 import { goodpos, rloc_to, tele_restrict, rloc } from './teleport.js';
 import {
     mintrap, t_at, Trap_Killed_Mon, Trap_Caught_Mon, Trap_Moved_Mon,
-    minstapetrify, instapetrify, erode_obj,
+    minstapetrify, instapetrify, erode_obj, ceiling,
 } from './trap.js';
 import { in_out_region, m_in_out_region } from './region.js';
 // imports.mjs --can: steed/monmove/dbridge hoisted-function SAFE.
@@ -415,10 +415,12 @@ export function throwing_weapon(obj) {
 }
 
 /**
- * C ref: dothrow.c omon_adj — size/sleep/immobile/otyp to-hit; mon_notices
- * `!rn2(10)` unfreeze when mmove (thitmonst passes TRUE).
+ * C ref: dothrow.c omon_adj `:1913–1947` — size, sleep, immobile
+ * (`mcanmove` / `mmove`), then otyp. `mon_notices && mmove && !rn2(10)`
+ * clears freeze. Callers: thitmonst (`dothrow.c:2074`, TRUE), ohitmon
+ * (`mthrowu.c:340`, FALSE), drag_ball jerk (`ball.c:803`, TRUE).
  */
-function omon_adj(mon, obj, mon_notices) {
+export function omon_adj(mon, obj, mon_notices) {
     let tmp = 0;
     tmp += ((mon.data?.msize ?? MZ_MEDIUM) - MZ_MEDIUM);
     if (mon.msleeping) tmp += 2;
@@ -889,8 +891,7 @@ function s_suffix_throw_gold(s) {
  * pline_The entrails when digests(ustuck->data). After swallow: dz /
  * bhit THROWN_WEAPON / ghitm (D-1751 hidden_gold(TRUE) kick site) /
  * ship_object / flooreffects / sellobj. Named omit: unsplitobj (D-0720);
- * quivered gold via throwit; dungeon.c ceiling vault/temple/shop/
- * water/fire/quest/Underwater labels; full surface().
+ * quivered gold via throwit; full surface().
  */
 export async function throw_gold(obj) {
     const u = game.u || {};
@@ -918,12 +919,12 @@ export async function throw_gold(obj) {
     game._bhitpos = bhitpos;
 
     if (u.dz) {
-        // C :2682–2693 — ceiling bounce; dungeon.c ceiling details named
+        // C dothrow.c:2682–2693 — ceiling() from dungeon.c.
         if ((u.dz | 0) < 0 && !Is_airlevel(u.uz)
             && !(u.Underwater || u.uinwater)
             && !Is_waterlevel(u.uz)) {
             await pline(
-                `The gold hits the ceiling, then falls back on top of your ${
+                `The gold hits the ${ceiling(u.ux | 0, u.uy | 0)}, then falls back on top of your ${
                     body_part(HEAD)
                 }.`,
             );
@@ -1221,19 +1222,6 @@ function Doname2(obj) {
 function has_ceiling(lev) {
     if (In_endgame(lev) && !Is_earthlevel(lev)) return false;
     return true;
-}
-
-/**
- * C dungeon.c ceiling — room/air labels for toss_up plines.
- * Named omit: vault/temple/shop in_rooms; water/fire/quest/Underwater.
- */
-function ceiling_at(x, y) {
-    const typ = game.level?.at?.(x, y)?.typ ?? 0;
-    if (IS_AIR(typ)) return 'sky';
-    if (IS_ROOM(typ) || IS_WALL(typ) || IS_DOOR(typ) || typ === SDOOR) {
-        return 'ceiling';
-    }
-    return 'rock cavern';
 }
 
 /** C youprop.h BlindedTimeout — HBlinded & TIMEOUT. */
@@ -1625,7 +1613,6 @@ export async function hitfloor(obj, verbosely) {
  * Ceiling-return for AutoReturn is throwit (D-1282), not toss_up.
  * Named omit: crackable breakobj
  * erode (existing); potionhit youmonst-pointer (JS null=you);
- * ceiling vault/temple/shop/water/fire/quest/Underwater labels;
  * helm "hat" polish; Eyes vision_clears.
  */
 export async function toss_up(obj, hitsroof) {
@@ -1643,7 +1630,7 @@ export async function toss_up(obj, hitsroof) {
         action = 'flies up into';
     } else if (hitsroof) {
         if (breaktest(obj)) {
-            await pline(`${Doname2(obj)} hits the ${ceiling_at(ux, uy)}.`);
+            await pline(`${Doname2(obj)} hits the ${ceiling(ux, uy)}.`);
             await breakmsg(obj, !Blind());
             if (!(await breakobj(obj, ux, uy, true, true))) {
                 await hitfloor(obj, false);
@@ -1657,7 +1644,7 @@ export async function toss_up(obj, hitsroof) {
         action = 'almost hits';
     }
     await pline(
-        `${Doname2(obj)} ${action} the ${ceiling_at(ux, uy)}, then falls back on top of your ${body_part(HEAD)}.`,
+        `${Doname2(obj)} ${action} the ${ceiling(ux, uy)}, then falls back on top of your ${body_part(HEAD)}.`,
     );
 
     if ((obj.oclass | 0) === POTION_CLASS) {
@@ -2404,7 +2391,7 @@ export async function throwit(obj, wep_mask = 0, twoweap = false, oldslot = null
             && game.iflags.returning_missile
             && !impaired) {
             await pline(
-                `${Tobjnam(obj, 'hit')} the ${ceiling_at(u.ux | 0, u.uy | 0)} and returns to your hand!`,
+                `${Tobjnam(obj, 'hit')} the ${ceiling(u.ux | 0, u.uy | 0)} and returns to your hand!`,
             );
             await return_throw_to_inv(obj, wep_mask, twoweap, oldslot);
         } else if ((u.dz | 0) < 0) {

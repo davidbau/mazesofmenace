@@ -47,7 +47,10 @@ import {
     mons, is_male, is_female, is_neuter, is_human, verysmall, PM_LICHEN, monsterNames,
     G_NOCORPSE, NON_PM as MON_NON_PM,
 } from './monsters.js';
-import { PM_CLERIC, PM_SAMURAI } from './generated/monsters_data.js';
+import { PM_CLERIC, PM_SAMURAI, PM_ARCHEOLOGIST, PM_WIZARD } from './generated/monsters_data.js';
+/* C mkobj.c mk_tt_object → topten.c tt_oname. Hoisted function, called
+   only from mk_tt_object. Same SCC; no top-level read. */
+import { tt_oname } from './topten.js';
 import { monsndx } from './mondata.js';
 import { update_inventory, Blind, near_capacity, encumber_msg, useupall } from './invent.js';
 import { distant_name, doname, cxname, The, vtense, corpse_xname, Yname2, otense, simpleonames, simple_typename } from './objnam.js';
@@ -2545,6 +2548,23 @@ export function mksobj(otyp, init, artif) {
 export function mksobj_at(otyp, x, y, init, artif) {
     const otmp = mksobj(otyp, init, artif);
     if (otmp) place_object(otmp, x, y);
+    return otmp;
+}
+
+/**
+ * C ref: mkobj.c mk_tt_object `:2227–2248`.
+ * A statue is not initialized, so it contains no books. `tt_oname` null
+ * (empty record) forces a player monster: `rn1` from Archeologist through
+ * Wizard, then `set_corpsenm` (weight and corpse timer). C never returns
+ * null. The `tt_oname` return is only the null test; this returns `otmp`.
+ */
+export function mk_tt_object(objtype, x, y) {
+    const initialize_it = objtype !== STATUE;
+    const otmp = mksobj_at(objtype, x, y, initialize_it, false);
+    if (!tt_oname(otmp)) {
+        const pm = rn1(PM_WIZARD - PM_ARCHEOLOGIST + 1, PM_ARCHEOLOGIST);
+        set_corpsenm(otmp, pm);
+    }
     return otmp;
 }
 

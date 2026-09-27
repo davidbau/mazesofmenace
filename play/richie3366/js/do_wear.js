@@ -9,6 +9,7 @@ import { game } from './gstate.js';
 import {
     flush_topl_more, pline, You, Your, You_feel, mark_topline_prompt,
     newsym, see_monsters, urgent_pline, impossible, Hallucination, pline_The,
+    hero_Invisible, hero_Blind_telepat, hero_Unblind_telepat, Detect_monsters,
 } from './display.js';
 import { yn_function, paranoid_ynq } from './getline.js';
 import { an, doname, the, xname, xprname, vtense, makeplural, makesingular, otense, gloves_simple_name, simpleonames, body_part_latebound, Tobjnam, Yname2, corpse_xname, killer_xname, arti_light_description, set_doffing_predicates, safe_typename } from './objnam.js';
@@ -29,7 +30,7 @@ import {
     makeknown, observe_object, ggetobj, is_worn, silly_thing, update_inventory,
     weapon_descr, getobj, useup,
 } from './invent.js';
-import { w_blocks, cantweararm, racial_exception, WrappingAllowed, is_flimsy, has_horns, num_horns } from './worn.js';
+import { w_blocks, cantweararm, racial_exception, WrappingAllowed, is_flimsy, has_horns, num_horns, which_armor } from './worn.js';
 import { monstunseesu_prop } from './mondata.js';
 import {
     add_valid_menu_class, menu_class_present, query_category, query_objlist,
@@ -68,7 +69,7 @@ import {
 } from './const.js';
 import { x_monnam, trycall, hcolor, hliquid, obj_pmname } from './do_name.js';
 import { PM_CLERIC } from './generated/monsters_data.js';
-import { change_sex, poly_gender, Unchanging, float_vs_flight, body_part } from './polyself.js';
+import { change_sex, poly_gender, Unchanging, float_vs_flight, body_part, livelog_newform } from './polyself.js';
 import {
     ARMOR_CLASS, RING_CLASS, AMULET_CLASS, WEAPON_CLASS, TOOL_CLASS,
     objectNames, objectNameStrs, objectDescrs, is_sword,
@@ -1262,38 +1263,46 @@ export async function toggle_stealth(obj, oldprop, on) {
 }
 
 /**
- * C ref: do_wear.c toggle_displacement — discover + You_feel when state
- * changes and hero can see/sense self. Timed-displacement (obj null) and
- * Blind_telepat-only sensing deferred when not needed for extrinsic cloak.
+ * C ref: do_wear.c:148–178 toggle_displacement.
+ * Skip while initially donning (`on`) or while a takeoff was cancelled.
+ * Then, only when no other extrinsic remains (`oldprop`, worn mask already
+ * stripped by the caller), no timed intrinsic, and the property is not
+ * blocked: discover `obj` and `You_feel` if the hero can see self, or can
+ * sense self (unblind telepathy, blind telepathy while blind, or monster
+ * detection). `obj` is null for the corpse timeout (eat.c / timeout.c).
+ * No RNG.
+ * @param {object|null} obj
+ * @param {number} oldprop
+ * @param {boolean} on
  */
-/** C ref: do_wear.c toggle_displacement — cloak / corpse Displaced msg. */
 export async function toggle_displacement(obj, oldprop, on) {
-    if (on ? game._initial_don : game.context?.takeoff?.cancelled_don) return;
+    /* C do_wear.c:154–156. gi.initial_don is game._initial_don (set_wear). */
+    if (on ? game._initial_don : game.context?.takeoff?.cancelled_don) {
+        return;
+    }
     const u = game.u || {};
     const prop = u.uprops?.[DISPLACED];
+    /* C :158–160. HDisplaced is uprops[DISPLACED].intrinsic (youprop.h:202).
+       The corpse timer also lives on the flat until nh_timeout mirrors it. */
     const intrinsic = (prop?.intrinsic | 0) || (u.HDisplaced | 0);
     const blocked = prop?.blocked | 0;
-    const can_notice = (!Blind() && !u.uswallow && !hero_Invisible())
-        || !!(u.ETelepat || u.Unblind_telepat
-            || u.Detect_monsters || (u.HDetect_monsters | 0)
-            || (u.EDetect_monsters | 0));
-    if (!oldprop && !intrinsic && !blocked && can_notice) {
+    /* C :161–174. Blind / Invisible / Unblind_telepat / Blind_telepat /
+       Detect_monsters are the youprop.h macros (display.js). Blind is
+       evaluated again inside (Blind_telepat && Blind), as the macro is. */
+    if (!oldprop
+        && !intrinsic
+        && !blocked
+        && ((!Blind() && !u.uswallow && !hero_Invisible())
+            || (hero_Unblind_telepat()
+                || (hero_Blind_telepat() && Blind())
+                || Detect_monsters()))) {
+        /* C :172–173. */
         if (obj) makeknown(obj.otyp);
+        /* C :175–176. %s is "" or " no longer". */
         await You_feel(
             `that monsters${on ? '' : ' no longer'} have difficulty pinpointing your location.`,
         );
     }
-}
-
-/** C youprop.h Invisible — Invis && !See_invisible. */
-function hero_Invisible() {
-    const u = game.u || {};
-    const invis = !!(u.Invis
-        || (((u.HInvis | 0) || (u.EInvis | 0) || (u.uprops?.[INVIS]?.extrinsic | 0)
-            || (u.uprops?.[INVIS]?.intrinsic | 0)) && !(u.BInvis | 0)));
-    const seeInv = !!(u.See_invisible
-        || (u.HSee_invisible | 0) || (u.ESee_invisible | 0));
-    return invis && !seeInv;
 }
 
 /**
@@ -1535,7 +1544,7 @@ async function Shirt_on() {
  * Called from moveloop_preamble (!resuming) after ini_inv slots are set;
  * also poly_obj path when a worn item transforms (obj != null).
  * Named omissions: initial_don skips stealth/displacement msgs;
- * Amulet_on whole-body (D-2505; livelog_newform log-only). Punished set_bc is D-1769.
+ * Amulet_on whole-body (D-2505). Punished set_bc is D-1769.
  * @param {object|null} [obj=null] Null → all worn slots; else that object only.
  */
 export async function set_wear(obj = null) {
@@ -2761,7 +2770,8 @@ function takeoff_ok(obj) {
  * constrict; RESTFUL_SLEEP HSleepy nap; FLYING takeoff (float_vs_flight,
  * extrinsic masked out for the already-flying test); GUARDING makeknown +
  * find_ac; YENDOR no-op; trailing on_msg unless already done.
- * Named: `livelog_newform` (log-only, no live helper).
+ * CHANGE calls `livelog_newform(false, orig_sex, new_sex)` before the
+ * amulet disintegrates (`do_wear.c:1029`).
  */
 async function Amulet_on(amul) {
     // C `:968–969` — unwield/unquiver before wearing, then wear the amulet.
@@ -2826,7 +2836,8 @@ async function Amulet_on(amul) {
             /* C: checking dknown is redundant — amulets always have it set. */
             call_it = (amul.dknown | 0) !== 0;
         }
-        // C livelog_newform(FALSE, orig, new) — log-only, named omit.
+        // C `:1029` — log a non-poly sex change, then the amulet is gone.
+        livelog_newform(false, orig_sex, new_sex);
         await pline_The('amulet disintegrates!');
         if (call_it) await trycall(amul);
         useup(amul);
@@ -3283,20 +3294,31 @@ export async function doputon() {
 }
 
 /**
- * C ref: do_wear.c some_armor — pick a worn armor piece (cloak/suit/shirt
- * preferred; helm/gloves/boots/shield may steal via rn2(4)).
- * Hero-only envelope (which_armor monster path deferred).
+ * C ref: do_wear.c some_armor `:2629–2653`.
+ * Cloak, then suit, then shirt. Helm, gloves, boots, and shield
+ * replace that piece when nothing is worn yet, or on `!rn2(4)`.
+ * `&gy.youmonst` reads the hero slots; any other victim is
+ * `which_armor` (minvent `owornmask`).
  */
-export function some_armor(_victim) {
+export function some_armor(victim) {
+    // C `:2634` — victim == &gy.youmonst. `_youmonst` is the stand-in
+    // `which_armor` already treats as the hero (worn.c `:1008`).
+    const hero = victim === game.youmonst || !!(victim && victim._youmonst);
     const u = game.u || {};
-    let otmph = u.uarmc || u.uarm || u.uarmu || null;
-    let otmp = u.uarmh;
+    let otmph = hero ? (u.uarmc || null) : which_armor(victim, W_ARMC);
+    if (!otmph) {
+        otmph = hero ? (u.uarm || null) : which_armor(victim, W_ARM);
+    }
+    if (!otmph) {
+        otmph = hero ? (u.uarmu || null) : which_armor(victim, W_ARMU);
+    }
+    let otmp = hero ? (u.uarmh || null) : which_armor(victim, W_ARMH);
     if (otmp && (!otmph || !rn2(4))) otmph = otmp;
-    otmp = u.uarmg;
+    otmp = hero ? (u.uarmg || null) : which_armor(victim, W_ARMG);
     if (otmp && (!otmph || !rn2(4))) otmph = otmp;
-    otmp = u.uarmf;
+    otmp = hero ? (u.uarmf || null) : which_armor(victim, W_ARMF);
     if (otmp && (!otmph || !rn2(4))) otmph = otmp;
-    otmp = u.uarms;
+    otmp = hero ? (u.uarms || null) : which_armor(victim, W_ARMS);
     if (otmp && (!otmph || !rn2(4))) otmph = otmp;
     return otmph;
 }
@@ -3879,7 +3901,7 @@ async function wornarm_destroyed(wornarm) {
 /**
  * C ref: do_wear.c disintegrate_arm — destroy one worn armor piece
  * (god_zaps_you / dragon breath / destroy-armor scroll).
- * Named omissions: end_burn lamplit DSM; cancel_don;
+ * Named omissions: cancel_don;
  * cloak/suit name polish beyond armor_doff_simple_name.
  * @param {object|null} atmp specific piece or null for any
  * @returns {Promise<number>} 1 if destroyed, else 0
@@ -3899,7 +3921,9 @@ export async function disintegrate_arm(atmp) {
     } else if (!resistedc.v
         && (otmp = maybe_destroy_armor(u.uarm, atmp, resistedsuit))) {
         const suit = armor_doff_simple_name(otmp);
-        // end_burn deferred
+        // C do_wear.c:3224–3225 — snuff before the dust message so
+        // Armor_gone does not report "stop shining" after destruction.
+        if (otmp.lamplit) end_burn(otmp, false);
         await urgent_pline(
             `Your ${suit} ${vtense(suit, 'turn')} to dust and `
             + `${vtense(suit, 'fall')} to the ground!`,

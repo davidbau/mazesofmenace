@@ -88,6 +88,7 @@ import { fuzzymatch, strstri, highc, lcase, distmin } from './hacklib.js';
 import { pronoun_gender, PRONOUN_HALLU } from './mondata.js';
 import { beautiful } from './apply.js';
 import { mhe, mhis } from './fountain.js';
+import { new_mgivenname } from './restore.js';
 
 const PM_GHOST = monsterNames.indexOf('PM_GHOST');
 const PM_WIZARD_OF_YENDOR = monsterNames.indexOf('PM_WIZARD_OF_YENDOR');
@@ -417,16 +418,32 @@ export function free_mgivenname(mon) {
 }
 
 /**
- * C ref: do_name.c christen_monst — assign MGIVENNAME (pet / #name).
+ * C ref: do_name.c christen_monst `:133–152`.
+ * lth is strlen+1 (the NUL). Above PL_PSIZ, strncpy into a PL_PSIZ
+ * buffer and terminate at [PL_PSIZ-1]. new_mgivenname drops any old
+ * name, then Strcpy. A leashed monster refreshes the perm inventory
+ * window (the leash line shows the pet's name).
+ * Null mtmp returns; C NONNULLARG1 would fault.
  */
 export function christen_monst(mtmp, name) {
     if (!mtmp) return mtmp;
-    let n = name || '';
-    if (n.length >= PL_PSIZ) n = n.slice(0, PL_PSIZ - 1);
-    if (!mtmp.mextra) mtmp.mextra = {};
-    if (n) mtmp.mextra.mgivenname = n;
-    else delete mtmp.mextra.mgivenname;
-    // C: leash → update_inventory deferred
+
+    // C `:139` — dogname, catname, and object names share this limit.
+    let src = (typeof name === 'string') ? name : '';
+    const nul = src.indexOf('\0');
+    if (nul >= 0) src = src.slice(0, nul);
+    let lth = src.length ? (src.length + 1) : 0;
+    // C `:140–144`
+    if (lth > PL_PSIZ) {
+        lth = PL_PSIZ;
+        src = src.slice(0, PL_PSIZ - 1);
+    }
+    // C `:145` — removes the old name if one is present.
+    new_mgivenname(mtmp, lth);
+    // C `:146–147`
+    if (lth) mtmp.mextra.mgivenname = src;
+    // C `:149–150`
+    if (mtmp.mleashed) update_inventory();
     return mtmp;
 }
 

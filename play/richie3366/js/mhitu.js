@@ -90,8 +90,8 @@ import {
 } from './invent.js';
 import { burn_away_slime } from './timeout.js';
 import {
-    get_mattk, mhitm_knockback, mhitm_mgc_atk_negated, mhitm_ad_drst, mhitm_ad_dren, mhitm_ad_deth, mhitm_ad_dise, mhitm_ad_pest, mhitm_ad_stck, mattackm, rustm,
-    could_seduce, failed_grab, SYSOPT_SEDUCE, mon_poly, mondead, erode_armor,
+    get_mattk, mhitm_knockback, mhitm_mgc_atk_negated, mhitm_ad_drst, mhitm_ad_dren, mhitm_ad_deth, mhitm_ad_dise, mhitm_ad_pest, mhitm_ad_stck, mhitm_ad_conf, mattackm, rustm,
+    could_seduce, failed_grab, engulf_target, SYSOPT_SEDUCE, mon_poly, mondead, erode_armor,
     golemeffects_mm,
     AT_NONE, AT_CLAW, AT_KICK, AT_BITE, AT_STNG, AT_TUCH, AT_BUTT, AT_WEAP,
     AT_ENGL, AT_GAZE, AT_SPIT, AT_BREA, AT_EXPL, AT_BOOM, AT_TENT, AT_MAGC,
@@ -676,22 +676,34 @@ function resists_blnd_you() {
 }
 
 /**
- * C ref: polyself.c ugolemeffects :2160–2187 — flesh golem elec /
- * iron golem fire heal when not_affected.
+ * C ref: polyself.c ugolemeffects :2160–2188.
+ * Only a flesh golem (electricity) or an iron golem (fire) heals.
+ * C skips slow/haste: the hero has no monster-specific velocity to restore.
+ * disp.botl is both stores; bot() reads flags.botl (botl.js:590).
  */
-async function ugolemeffects(damtype, dam) {
-    const u = game.u || {};
+export async function ugolemeffects(damtype, dam) {
+    const u = game.u;
+    if (!u) return;
     const umon = u.umonnum | 0;
+    /* C polyself.c:2169 */
     if (umon !== PM_FLESH_GOLEM && umon !== PM_IRON_GOLEM) return;
     let heal = 0;
-    if ((damtype | 0) === AD_ELEC && umon === PM_FLESH_GOLEM) {
-        heal = Math.trunc(((dam | 0) + 5) / 6);
-    } else if ((damtype | 0) === AD_FIRE && umon === PM_IRON_GOLEM) {
-        heal = dam | 0;
+    switch (damtype | 0) {
+    case AD_ELEC: /* C :2173–2175 — approx 1 per die */
+        if (umon === PM_FLESH_GOLEM)
+            heal = Math.trunc(((dam | 0) + 5) / 6);
+        break;
+    case AD_FIRE: /* C :2176–2178 */
+        if (umon === PM_IRON_GOLEM)
+            heal = dam | 0;
+        break;
+    default:
+        break;
     }
-    if (heal && (u.mh | 0) < (u.mhmax | 0)) {
+    /* C :2180–2187 — heal, clamp mh to mhmax, botl, pline, exercise STR. */
+    if (heal && ((u.mh | 0) < (u.mhmax | 0))) {
         u.mh = (u.mh | 0) + heal;
-        if (u.mh > u.mhmax) u.mh = u.mhmax;
+        if (u.mh > (u.mhmax | 0)) u.mh = u.mhmax | 0;
         if (game.disp) game.disp.botl = true;
         if (game.flags) game.flags.botl = true;
         await pline('Strangely, you feel better than before.');
@@ -1117,22 +1129,6 @@ function flaming(ptr) {
     const n = ptr.mndx ?? -1;
     return n === PM_FIRE_VORTEX || n === PM_FLAMING_SPHERE
         || n === PM_FIRE_ELEMENTAL || n === PM_SALAMANDER;
-}
-
-/**
- * C ref: mhitm.c engulf_target — size + whirly + trap gates (hero as mdef).
- * Named omissions: rock/door/tree/ironbars Passes_walls placement checks.
- */
-function engulf_target(magr, mdefIsHero) {
-    const u = game.u || {};
-    const magrDat = magr?.data;
-    const mdefDat = mdefIsHero ? (game.youmonst?.data) : null;
-    const mdefSize = mdefDat?.msize | 0;
-    if (mdefSize >= MZ_HUGE) return false;
-    if ((magrDat?.msize | 0) < mdefSize && !is_whirly(magrDat)) return false;
-    if (magr?.mtrapped) return false;
-    if (mdefIsHero && (u.utrap | 0)) return false;
-    return true;
 }
 
 /**
@@ -1835,7 +1831,7 @@ async function gulpmu(mtmp, mattk) {
     if (!(u.uswallow | 0)) { /* swallows you */
         const omx = mtmp.mx | 0, omy = mtmp.my | 0;
 
-        if (!engulf_target(mtmp, true)) return M_ATTK_MISS;
+        if (!engulf_target(mtmp, game.youmonst)) return M_ATTK_MISS;
         if (t && is_pit(t.ttyp) && sobj_at(BOULDER, u.ux | 0, u.uy | 0))
             return M_ATTK_MISS;
         if (await failed_grab(mtmp, game.youmonst, mattk)) return M_ATTK_MISS;
@@ -2856,23 +2852,11 @@ async function mhitm_ad_acid_u(mtmp, mattk, mhm) {
 
 
 /**
- * C ref: uhitm.c mhitm_ad_conf `:3690–3726` — mhitu (monster→you) arm.
- * hitmsg always; `!mcan && !rn2(4) && !mspec_used` → mspec_used +=
- * leftover damage + rn2(6), Confusion (youprop.h:84 ≡ HConfusion)
- * picks the pline, make_confused(HConfusion + leftover, FALSE);
- * damage always zero after. The uhitm/mhitm arms stay named.
+ * C ref: uhitm.c mhitm_adtyping `:4820` → mhitm_ad_conf mhitu arm
+ * (`:3703–3712`). The body lives in `mhitm_ad_conf` (mdef = youmonst).
  */
 async function mhitm_ad_conf_u(mtmp, mattk, mhm) {
-    await hitmsg(mtmp, mattk);
-    if (!(mtmp.mcan | 0) && !rn2(4) && !(mtmp.mspec_used | 0)) {
-        const dmg = mhm.damage | 0;
-        mtmp.mspec_used = (mtmp.mspec_used | 0) + (dmg + rn2(6));
-        const u = game.u || {};
-        if ((u.HConfusion | 0)) await pline('You are getting even more confused.');
-        else await pline('You are getting confused.');
-        await make_confused((u.HConfusion | 0) + dmg, false);
-    }
-    mhm.damage = 0;
+    await mhitm_ad_conf(mtmp, mattk, game.youmonst, mhm);
 }
 
 /**

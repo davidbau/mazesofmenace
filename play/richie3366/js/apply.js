@@ -43,6 +43,7 @@ import {
     EXACT_NAME, DISP_BEAM, DISP_END, HI_ZAP,
     MONSEEN_NORMAL, MONSEEN_SEEINVIS, MONSEEN_INFRAVIS,
     GETOBJ_PROMPT, GETOBJ_NOFLAGS, GETOBJ_EXCLUDE as GETOBJ_EXCLUDE_C,
+    FM_FMON,
 } from './const.js';
 import { pick_lock, getdir } from './lock.js';
 import { ustatusline, mstatusline } from './insight.js';
@@ -106,14 +107,14 @@ import {
 } from './uhitm.js';
 import { digests, set_ustuck, Flying } from './mhitu.js';
 import { growl, yelp, whimper, mon_msound } from './sounds.js';
-import { Soundeffect } from './sndprocs.js';
+import { Soundeffect, SetVoice } from './sndprocs.js';
 import { se_wall_of_force, se_faint_splashing, se_heart_beat, se_typing_noise, se_hollow_sound, se_crackling_of_hellfire } from './generated/seffects_data.js';
 import { vault_summon_gd } from './vault.js';
 import { fill_pit, buried_ball_to_freedom } from './dig.js';
 import {
     mintrap, Trap_Killed_Mon, reset_utrap, instapetrify, t_at,
     activate_statue_trap, maketrap, feeltrap, dotrap, trapname,
-    deltrap, set_wounded_legs, legs_in_no_shape,
+    deltrap, set_wounded_legs, legs_in_no_shape, ceiling,
 } from './trap.js';
 import { stucksteed } from './steed.js';
 import { known_spell, spe_Fresh, SPE_JUMPING, spelleffects } from './spell.js';
@@ -821,7 +822,9 @@ async function use_mirror(obj) {
     }
     if (dz) {
         if (useeit) {
-            await pline(`You reflect the ${dz > 0 ? 'floor' : 'ceiling'}.`);
+            await pline(`You reflect the ${
+                dz > 0 ? surface(u.ux | 0, u.uy | 0) : ceiling(u.ux | 0, u.uy | 0)
+            }.`);
         }
         return ECMD_TIME;
     }
@@ -1018,7 +1021,11 @@ async function use_camera(obj) {
         await pline(`You take a picture of ${mon_nam(u.ustuck)}'s stomach.`);
     } else if (u.dz) {
         await pline(
-            `You take a picture of the ${u.dz > 0 ? 'floor' : 'ceiling'}.`,
+            `You take a picture of the ${
+                (u.dz | 0) > 0
+                    ? surface(u.ux | 0, u.uy | 0)
+                    : ceiling(u.ux | 0, u.uy | 0)
+            }.`,
         );
     } else if (!(u.dx | 0) && !(u.dy | 0)) {
         const { zapyourself } = await import('./zap.js');
@@ -1594,7 +1601,7 @@ export async function check_leash(x, y) {
     const u = game.u || {};
     for (const otmp of game.invent || []) {
         if ((otmp.otyp | 0) !== LEASH || (otmp.leashmon | 0) === 0) continue;
-        const mtmp = find_mid(otmp.leashmon | 0, 0);
+        const mtmp = find_mid(otmp.leashmon | 0, FM_FMON); // C apply.c:939
         if (!mtmp) {
             otmp.leashmon = 0;
             continue;
@@ -2358,8 +2365,8 @@ export async function use_grease(obj) {
  * touch_petrifies instapetrify; rider revive_corpse; cnutrit 0;
  * consume_obj_charge; mksobj(TIN,FALSE,FALSE) homemade; shop verbalize;
  * useup/useupf; hold_another_object. doapply does not assign res
- * (stays ECMD_TIME). Named omit: SetVoice; will_feel_cockatrice
- * (in floorfood); arti_speak.
+ * (stays ECMD_TIME). Named omit: will_feel_cockatrice
+ * (in floorfood); arti_speak. SetVoice is the live empty macro.
  */
 export async function use_tinning_kit(obj) {
     if (!obj) return;
@@ -2416,14 +2423,16 @@ export async function use_tinning_kit(obj) {
         if (carried(corpse)) {
             if (corpse.unpaid) {
                 const rooms = in_rooms(game.u?.ux | 0, game.u?.uy | 0, SHOPBASE);
-                shop_keeper(rooms.charCodeAt(0));
+                const shkp = shop_keeper(rooms ? rooms.charCodeAt(0) : 0);
+                SetVoice(shkp, 0, 80, 0);
                 await verbalize(you_buy_it);
             }
             useup(corpse);
         } else {
             if (costly_spot(corpse.ox | 0, corpse.oy | 0) && !corpse.no_charge) {
                 const rooms = in_rooms(corpse.ox | 0, corpse.oy | 0, SHOPBASE);
-                shop_keeper(rooms.charCodeAt(0));
+                const shkp = shop_keeper(rooms ? rooms.charCodeAt(0) : 0);
+                SetVoice(shkp, 0, 80, 0);
                 await verbalize(you_buy_it);
             }
             useupf(corpse, 1);
@@ -3266,10 +3275,6 @@ function is_pool_or_lava_apply(x, y) {
     return is_pool(x, y) || is_lava(x, y);
 }
 
-function ceiling_apply(_x, _y) {
-    return 'ceiling';
-}
-
 function accessible_apply(x, y) {
     const loc = game.level?.at?.(x, y);
     if (!loc) return false;
@@ -3351,7 +3356,7 @@ export async function use_whip(obj) {
     } else if (Underwater_hero()) {
         await pline('There is too much resistance to flick your bullwhip.');
     } else if ((u.dz | 0) < 0) {
-        await pline(`You flick a bug off of the ${ceiling_apply(u.ux, u.uy)}.`);
+        await pline(`You flick a bug off of the ${ceiling(u.ux | 0, u.uy | 0)}.`);
     } else if (!(u.dz | 0) && (IS_WATERWALL(game.level?.at?.(rx, ry)?.typ)
             || (game.level?.at?.(rx, ry)?.typ | 0) === LAVAWALL)) {
         await pline('You cause a small splash.');
@@ -4789,7 +4794,7 @@ export async function use_candelabrum(obj) {
 /**
  * C ref: apply.c use_candle — attach to carried candelabrum (spe<7) or
  * use_lamp. Swallow → no_elbow_room. Named omit: safe_qbuf truncation;
- * SetVoice; update_inventory; obfree oextra.
+ * update_inventory; obfree oextra. SetVoice is the live empty macro.
  * Lit split carries its light via splitobj → obj_split_light_source.
  */
 export async function use_candle(optr) {
@@ -4838,7 +4843,11 @@ export async function use_candle(optr) {
         await pline(`${(obj.quan | 0) > 1 ? 'They go' : 'It goes'} out.`);
     }
     if (obj.unpaid) {
-        // C SetVoice(shop_keeper(*in_rooms(..., SHOPBASE))) omitted
+        // C apply.c:1446–1453 — shop_keeper side effect, then SetVoice + verbalize
+        const uxy = game.u || {};
+        const rooms = in_rooms(uxy.ux | 0, uxy.uy | 0, SHOPBASE);
+        const shkp = shop_keeper(rooms ? rooms.charCodeAt(0) : 0);
+        SetVoice(shkp, 0, 80, 0);
         const them = (obj.quan | 0) > 1 ? 'them' : 'it';
         await verbalize(
             `You ${otmp.lamplit ? 'burn' : 'use'} ${them}, you bought ${them}!`,
@@ -4888,8 +4897,7 @@ async function use_unpaid_trapobj(otmp, _x, _y) {
  * and age == 20*oc_cost (`:1690-1698`).
  * Cursed spill: make_glib((Glib&TIMEOUT)+d(2,10)) — Glib is
  * (HGlib|EGlib) remaining timeout, not a flat `u.Glib` boolean (D-1052).
- * Named omit: candle SetVoice (no-op without audio voice; use_candle
- * attach arm omits it the same way, js/apply.js use_candle).
+ * SetVoice is the live empty macro (sndprocs.h !SND_LIB).
  */
 export async function use_lamp(obj) {
     if (!obj) return;
@@ -4950,8 +4958,10 @@ export async function use_lamp(obj) {
         if (obj.unpaid && costly_spot(u.ux | 0, u.uy | 0)
             && (obj.age | 0) === 20 * (objects()?.[obj.otyp | 0]?.oc_cost | 0)) {
             const ithem = (obj.quan | 0) > 1 ? 'them' : 'it';
-            // C SetVoice(shop_keeper(*in_rooms(...)), 0, 80, 0) omitted
-            // (audio voice no-op; use_candle attach arm omits it too)
+            // C apply.c:1690–1695 — shop_keeper, then SetVoice + verbalize
+            const rooms = in_rooms(u.ux | 0, u.uy | 0, SHOPBASE);
+            const shkp = shop_keeper(rooms ? rooms.charCodeAt(0) : 0);
+            SetVoice(shkp, 0, 80, 0);
             await verbalize(`You burn ${ithem}, you bought ${ithem}!`);
             await bill_dummy_object(obj);
         }
@@ -4963,7 +4973,7 @@ export async function use_lamp(obj) {
  * C ref: apply.c light_cocktail(struct obj **optr) — apply POT_OIL as a
  * lit flask. Writes *optr after snuff-merge (addinv) and after
  * split/hold; swallow / underwater / worn-snuff leave *optr unchanged.
- * Named omit: shop check_unpaid + SetVoice "in addition to the cost".
+ * Shop arm: check_unpaid, SetVoice, verbalize, bill_dummy_object.
  * @param {{ obj: object|null }} optr
  */
 export async function light_cocktail(optr) {
@@ -5001,6 +5011,12 @@ export async function light_cocktail(optr) {
     );
 
     if (obj.unpaid && costly_spot(u.ux | 0, u.uy | 0)) {
+        // C apply.c:1741–1751 — shop_keeper, check_unpaid, SetVoice, verbalize, bill
+        const rooms = in_rooms(u.ux | 0, u.uy | 0, SHOPBASE);
+        const shkp = shop_keeper(rooms ? rooms.charCodeAt(0) : 0);
+        await check_unpaid(obj);
+        SetVoice(shkp, 0, 80, 0);
+        await verbalize("That's in addition to the cost of the potion, of course.");
         await bill_dummy_object(obj);
     }
     makeknown(obj.otyp);
@@ -5826,8 +5842,8 @@ export async function splash_lit(obj) {
 
 /**
  * C ref: apply.c catch_lit — fire-damage ignition of light sources.
- * Named omissions: shop check_unpaid / SetVoice verbalize / bill_dummy;
- * set_msg_xy floor msg cursor.
+ * Shop arm: carried unpaid costly_spot → check_unpaid / verbalize / bill.
+ * Named omit: set_msg_xy floor msg cursor.
  * @returns {Promise<boolean>}
  */
 export async function catch_lit(obj) {
@@ -5876,7 +5892,18 @@ export async function catch_lit(obj) {
         await pline(`${nm} ${tensed} ${Blind ? 'warm.' : 'light!'}`);
     }
     if (t === POT_OIL) makeknown(obj.otyp);
-    // shop unpaid bill deferred (check_unpaid / verbalize / bill_dummy)
+    // C apply.c:1608–1618 — carried unpaid on a costly spot
+    if (carried(obj) && obj.unpaid && costly_spot(u.ux | 0, u.uy | 0)) {
+        const rooms = in_rooms(u.ux | 0, u.uy | 0, SHOPBASE);
+        const shkp = shop_keeper(rooms ? rooms.charCodeAt(0) : 0);
+        await check_unpaid(obj);
+        SetVoice(shkp, 0, 80, 0);
+        const self = (obj.quan | 0) === 1 ? 'itself' : 'themselves';
+        await verbalize(
+            `That's in addition to the cost of ${yname(obj)} ${self}, of course.`,
+        );
+        await bill_dummy_object(obj);
+    }
     begin_burn(obj, false);
     return true;
 }

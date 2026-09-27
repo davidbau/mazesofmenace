@@ -19,6 +19,7 @@ import {
     ACH_TMPL, ACH_SOKO, ACH_BGRM, ACH_TUNE,
     ACH_RNK1, ACH_RNK2, ACH_RNK3, ACH_RNK4,
     ACH_RNK5, ACH_RNK6, ACH_RNK7, ACH_RNK8,
+    ONAME_NO_FLAGS, CORPSTAT_FEMALE, CORPSTAT_MALE,
 } from './const.js';
 import { ATR_BOLD, NO_COLOR } from './terminal.js';
 import { formatkiller } from './end.js';
@@ -26,6 +27,16 @@ import { money_cnt } from './shk.js';
 import { hidden_gold } from './vault.js';
 import { num_genocides, sokoban_in_play } from './insight.js';
 import { timet_to_seconds } from './allmain.js';
+import { rnd } from './rng.js';
+/* C topten.c tt_oname → mkobj.c set_corpsenm. Hoisted function, called
+   only from tt_oname. Same 98-module SCC (`imports.mjs --can` CHECK:
+   no top-level read of the binding). */
+import { set_corpsenm } from './mkobj.js';
+import { oname } from './do_name.js';
+import { impossible } from './display.js';
+import {
+    PM_HUMAN, PM_RANGER, NON_PM, monsterNames,
+} from './generated/monsters_data.js';
 
 const NAMSZ = 10;
 const ROLESZ = 3;
@@ -510,6 +521,84 @@ function read_record_entries() {
         if (!(tt.points > 0)) break;
     }
     return entries;
+}
+
+const PM_HUMAN_MUMMY = monsterNames.indexOf('PM_HUMAN_MUMMY');
+
+/**
+ * C ref: topten.c classmon `:1355–1375`.
+ * `strncmp(plch, roles[i].filecode, ROLESZ)` while `roles[i].name.m`.
+ * `mnum == NON_PM` is `PM_HUMAN`. A 3.2 Elf score stored as `"E"` is
+ * Ranger (`strcmp`). Anything else calls `impossible` and returns
+ * `PM_HUMAN_MUMMY`. `impossible` is not awaited (this stays sync).
+ */
+export function classmon(plch) {
+    const pl = String(plch ?? '');
+    for (let i = 0; i < roles.length; i++) {
+        if (!roles[i].name?.m) break;
+        const code = String(roles[i].filecode ?? '');
+        if (pl.slice(0, ROLESZ) === code.slice(0, ROLESZ)) {
+            return (roles[i].mnum | 0) !== (NON_PM | 0)
+                ? (roles[i].mnum | 0)
+                : PM_HUMAN;
+        }
+    }
+    if (pl === 'E') return PM_RANGER;
+    impossible(`What weird role is this? (${pl})`);
+    return PM_HUMAN_MUMMY;
+}
+
+/**
+ * C ref: topten.c get_rnd_toptenentry `:1380–1414`.
+ * `fopen_datafile(RECORD)` failure (`:1389–1391`: `impossible`, NULL, no
+ * `rnd`) is the same named omit as `topten()`. The contest harness always
+ * creates an empty record, so a null or empty VFS record is that opened
+ * file: `rnd(sysopt.tt_oname_maxrank)` (default 10, `sys.c:70`), then
+ * `readentry` until `points == 0`. `rank > 1` rewinds and retries at rank 1.
+ * Still zero points → NULL. `fclose` is the VFS read ending here.
+ */
+export function get_rnd_toptenentry() {
+    const file = read_record_entries();
+    let pos = 0;
+    const readOne = () => (pos < file.length ? file[pos++] : { points: 0 });
+    const configured = game.sysopt?.tt_oname_maxrank;
+    let rank = rnd((configured | 0) >= 1 ? (configured | 0) : 10);
+    let tt;
+    // C `pickentry` — one rewind when the chosen rank falls off the file.
+    for (;;) {
+        tt = { points: 0 };
+        for (let i = rank; i; i--) {
+            tt = readOne();
+            if ((tt.points | 0) === 0) break;
+        }
+        if ((tt.points | 0) === 0) {
+            if (rank > 1) {
+                rank = 1;
+                pos = 0;
+                continue;
+            }
+            tt = null;
+        }
+        break;
+    }
+    return tt;
+}
+
+/**
+ * C ref: topten.c tt_oname `:1421–1441`.
+ * A null object returns before any RNG. No topten entry returns null and
+ * leaves corpsenm alone. An entry sets the role monster, then `spe` from
+ * `plgend[0]` (`F` / `M`), then `oname` with `ONAME_NO_FLAGS`.
+ */
+export function tt_oname(otmp) {
+    if (!otmp) return null;
+    const tt = get_rnd_toptenentry();
+    if (!tt) return null;
+    set_corpsenm(otmp, classmon(tt.plrole));
+    const g0 = String(tt.plgend ?? '')[0];
+    if (g0 === 'F') otmp.spe = CORPSTAT_FEMALE;
+    else if (g0 === 'M') otmp.spe = CORPSTAT_MALE;
+    return oname(otmp, tt.name, ONAME_NO_FLAGS);
 }
 
 function write_record_entries(list) {

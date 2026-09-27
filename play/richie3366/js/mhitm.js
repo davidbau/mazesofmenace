@@ -52,8 +52,6 @@ import {
     IS_TREE,
     IS_DOOR,
     IRONBARS,
-    D_CLOSED,
-    D_LOCKED,
     ismnum,
     has_mgivenname,
     MGIVENNAME,
@@ -149,7 +147,7 @@ import { mswings_verb, Conflict, unstuck, set_ustuck, digests, hitmsg, diseasemu
 import { sticks } from './engrave.js';
 import { mon_offmap, set_apparxy, mb_trapped, itsstuck } from './monmove.js';
 import { hurtle, mhurtle, will_hurtle } from './dothrow.js';
-import { make_stunned } from './potion.js';
+import { make_confused, make_stunned } from './potion.js';
 // imports.mjs --can mhitm.js mcastu.js touch_of_death Antimagic: SAFE
 // (hoisted functions; same 98-module SCC). Aliased because this file's
 // local Antimagic is the flat H||E clone; mcastu's also reads uprops
@@ -184,7 +182,7 @@ import { livelog_printf } from './pline.js';
 import { shtypes } from './shknam.js';
 import { obfree, setpaid, discard_damage_owned_by } from './shk.js';
 import { search_special } from './sounds.js';
-import { closed_door, test_move, u_locomotion } from './hack.js';
+import { closed_door, Passes_walls_prop, test_move, u_locomotion } from './hack.js';
 import { surface } from './sit.js';
 import { emits_light, del_light_source } from './light.js';
 import { on_level } from './dungeon.js';
@@ -1027,18 +1025,42 @@ async function mhitm_ad_halu(magr, mattk, mdef, mhm) {
 }
 
 /**
- * C ref: uhitm.c mhitm_ad_conf mhitm arm :3713–3724.
- * Confusing another monster has no real duration, so C checks
- * mspec_used but does not set it. Leftover mdamagem d() is kept
- * (unlike HALU/BLND, which zero dice).
- * Named omit: uhitm you-as-agr; mhitu you-as-def (hitmsg + rn2(4)
- * + make_confused).
- * mhitm_ad_phys shade_miss is D-1394. mhitm_ad_stun leftover is D-1396.
- * mhitm_ad_fire leftover is D-1405.
+ * C ref: uhitm.c mhitm_ad_conf :3690–3726 — three arms in C order.
+ * uhitm (hero as attacker, :3696–3702): !mconf → canseemon
+ * "%s looks confused." then mconf=1. Leftover d() stays (no mcan gate).
+ * mhitu (monster→you, :3703–3712): hitmsg always; !mcan && !rn2(4) &&
+ * !mspec_used → mspec_used += damage + rn2(6), HConfusion (youprop.h
+ * Confusion) picks the pline, make_confused(HConfusion + damage, FALSE);
+ * damage = 0 either way. mhitm (:3713–3724): confusing another monster
+ * has no duration, so mspec_used is checked and not set; vis+canseemon
+ * pline_mon, mconf=1, clear WAITFORU. Leftover d() stays.
  */
-async function mhitm_ad_conf(magr, mattk, mdef, mhm) {
-    void mattk;
-    void mhm; /* leftover d() stays */
+export async function mhitm_ad_conf(magr, mattk, mdef, mhm) {
+    if (is_youmonst(magr)) {
+        /* C :3696–3702 uhitm */
+        if (!(mdef.mconf | 0)) {
+            if (canseemon(mdef)) {
+                await pline(`${Monnam(mdef)} looks confused.`);
+            }
+            mdef.mconf = 1;
+        }
+        return;
+    }
+    if (is_youmonst(mdef)) {
+        /* C :3703–3712 mhitu */
+        await hitmsg(magr, mattk);
+        if (!(magr.mcan | 0) && !rn2(4) && !(magr.mspec_used | 0)) {
+            const dmg = mhm.damage | 0;
+            magr.mspec_used = (magr.mspec_used | 0) + (dmg + rn2(6));
+            const u = game.u || {};
+            if (u.HConfusion | 0) await pline('You are getting even more confused.');
+            else await pline('You are getting confused.');
+            await make_confused((u.HConfusion | 0) + dmg, false);
+        }
+        mhm.damage = 0;
+        return;
+    }
+    /* C :3713–3724 mhitm. Leftover d() stays. */
     if (!(magr.mcan | 0) && !(mdef.mconf | 0) && !(magr.mspec_used | 0)) {
         if (_mm_vis && canseemon(mdef)) {
             await pline_mon(mdef, `${Monnam(mdef)} looks confused.`);
@@ -5704,13 +5726,6 @@ function s_suffix_mm(s) {
     return `${buf}'s`;
 }
 
-/** C ref: monmove.c closed_door — IS_DOOR && (CLOSED|LOCKED). */
-function closed_door_mm(x, y) {
-    const loc = game.level?.at?.(x, y);
-    if (!loc || !IS_DOOR(loc.typ)) return false;
-    return !!((loc.doormask || 0) & (D_CLOSED | D_LOCKED));
-}
-
 /** C ref: mondata.h enfolds — AT_ENGL + AD_WRAP. */
 function enfolds(ptr) {
     const slots = ptr?.mattk;
@@ -5722,38 +5737,50 @@ function enfolds(ptr) {
 }
 
 /**
- * C ref: mhitm.c engulf_target — size + whirly + trap + rock/door/tree/bars.
- * gulpmm is mon-vs-mon; youmonst Passes_walls arms live in mhitu gulpmu.
+ * C ref: mhitm.c engulf_target `:807–845`.
+ * Too big, or smaller engulfer that is not whirly, cannot swallow.
+ * Either fighter's `mtrapped` refuses (youmonst.mtrapped, not `u.utrap`).
+ * Defender cell, then attacker cell: obstructed, closed door, tree, or
+ * iron bars unless the other monster is whirly. The hero uses `u.ux`/`u.uy`
+ * and `Passes_walls`; a monster uses `mx`/`my` and `passes_walls`.
+ * Not `passes_bars` — the engulfer is not squeezing through.
  */
-function engulf_target(magr, mdef) {
+export function engulf_target(magr, mdef) {
     if (!magr?.data || !mdef?.data) return false;
+    const uatk = magr === game.youmonst;
+    const udef = mdef === game.youmonst;
+    const u = game.u || {};
+    /* can't swallow something that's too big */
     if ((mdef.data.msize | 0) >= MZ_HUGE
         || ((magr.data.msize | 0) < (mdef.data.msize | 0)
             && !is_whirly(magr.data))) {
         return false;
     }
+    /* can't (move to) swallow if trapped */
     if (mdef.mtrapped || magr.mtrapped) return false;
 
-    const dx = mdef.mx | 0;
-    const dy = mdef.my | 0;
-    if (!passes_walls(mdef.data) && engulf_blocked(dx, dy, magr.data)) {
+    const dx = udef ? (u.ux | 0) : (mdef.mx | 0);
+    const dy = udef ? (u.uy | 0) : (mdef.my | 0);
+    if (!(udef ? Passes_walls_prop() : passes_walls(mdef.data))
+        && engulf_cell_blocks(dx, dy, magr.data)) {
         return false;
     }
-    const ax = magr.mx | 0;
-    const ay = magr.my | 0;
-    if (!passes_walls(magr.data) && engulf_blocked(ax, ay, mdef.data)) {
+    const ax = uatk ? (u.ux | 0) : (magr.mx | 0);
+    const ay = uatk ? (u.uy | 0) : (magr.my | 0);
+    if (!(uatk ? Passes_walls_prop() : passes_walls(magr.data))
+        && engulf_cell_blocks(ax, ay, mdef.data)) {
         return false;
     }
     return true;
 }
 
 /** C mhitm.c engulf_target — IS_OBSTRUCTED / closed_door / IS_TREE / bars. */
-function engulf_blocked(x, y, whirlyPtr) {
+function engulf_cell_blocks(x, y, otherData) {
     const lev = game.level?.at?.(x, y);
     if (!lev) return true;
     const typ = lev.typ | 0;
-    return !!(IS_OBSTRUCTED(typ) || closed_door_mm(x, y) || IS_TREE(typ)
-        || (typ === IRONBARS && !is_whirly(whirlyPtr)));
+    return !!(IS_OBSTRUCTED(typ) || closed_door(x, y) || IS_TREE(typ)
+        || (typ === IRONBARS && !is_whirly(otherData)));
 }
 
 /**

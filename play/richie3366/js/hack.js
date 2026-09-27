@@ -2,6 +2,7 @@
 // C ref: hack.c — losehp, nomul, unmul, overexertion, moverock/dopush (and related).
 
 import { game } from './gstate.js';
+import { cmd_from_func, visctrl } from './dokeylist.js';
 import {
     Upolyd, KILLED_BY, M_AP_FURNITURE, M_AP_OBJECT, M_AP_NOTHING,
     M_AP_TYPMASK, M_AP_TYPE, isok, u_at, TIP_ENHANCE, TIP_UNTRAP_MON, TIP_GETPOS,
@@ -69,7 +70,7 @@ import {
 import { ART_STING } from './generated/artifacts_data.js';
 import { hliquid, Hallucination, y_monnam, x_monnam, type_is_pname, YMonnam } from './do_name.js';
 import { get_level } from './dungeon.js';
-import { costly_spot, shop_keeper, addtobill, subfrombill, onshopbill, find_objowner, stolen_value, block_entry } from './shk.js';
+import { costly_spot, shop_keeper, addtobill, subfrombill, onshopbill, find_objowner, stolen_value, block_entry, block_door } from './shk.js';
 import { se_monster_behind_boulder, se_kerplunk_boulder_gone } from './generated/seffects_data.js';
 import { near_capacity, inv_weight, freeinv, weapon_descr, useupf } from './invent.js';
 import { record_achievement } from './insight.js';
@@ -366,8 +367,7 @@ function test_move_known_lwalking() {
  * `door_opened = FALSE` clear runs on all modes and is kept.
  * You_cant / Your / There / pline_The have no JS export (lock.js:602
  * precedent) — rendered as net-identical pline text, never new clones.
- * Named omissions (c-js-map turns): block_door (shk.c:5791 — stub-false
- * js/cmd.js, no shop ESHK wire-up) / ECMD_OK + canned-kick fake (JS doopen_indir returns bool, not
+ * Named omissions (c-js-map turns): ECMD_OK + canned-kick fake (JS doopen_indir returns bool, not
  * ECMD codes; cmdq_peek is cmd.js-local) / defsyms[].explanation prose
  * (tree/wall/solid-stone heuristic, cmd.js:1201 stand-in) / autodig flag
  * (no JS option; arm live on game.flags.autodig).
@@ -497,7 +497,7 @@ export async function test_move(ux, uy, dx, dy, mode) {
                     // arm below; the DO_MOVE pline there is unreachable on
                     // these modes, so only the gate runs here.
                     if (dx && dy && !Passes_walls_prop()
-                        && (!doorless_door(x, y) || false)) // C :1141 block_door named
+                        && (!doorless_door(x, y) || await block_door(x, y))) // C :1141
                         return false;
                 }
                 return false; // C :1142
@@ -505,7 +505,7 @@ export async function test_move(ux, uy, dx, dy, mode) {
         } else {
             // C :1144 testdiag label (open door): diagonal into intact doorway banned.
             if (dx && dy && !Passes_walls_prop() // C :1145–1147
-                && (!doorless_door(x, y) || false)) { // block_door named omit
+                && (!doorless_door(x, y) || await block_door(x, y))) { // C :1145 block_door
                 if (mode === DO_MOVE) { // C :1149–1155
                     if (Blind_tm())
                         feel_location(x, y);
@@ -2121,8 +2121,8 @@ export async function handle_tip(tip) {
         return true;
     }
     if (tip === TIP_SWIM) {
-        // C: visctrl(cmd_from_func(do_reqmenu)) → 'm' under default binds
-        await pline("(Tip: use 'm' prefix to step in if you really want to.)");
+        // C hack.c:1865–1866 visctrl(cmd_from_func(do_reqmenu))
+        await pline(`(Tip: use '${visctrl(cmd_from_func('reqmenu'))}' prefix to step in if you really want to.)`);
         return true;
     }
     if (tip === TIP_UNTRAP_MON) {
@@ -2265,7 +2265,7 @@ export async function avoid_trap_andor_region(x, y) {
  * via goodpos deferred → diagonal allowed when goodpos. Hero walk
  * bars are test_move D-1270, not this helper.
  */
-export function crawl_destination(x, y) {
+export async function crawl_destination(x, y) {
     const u = game.u;
     if (!u) return false;
     // Lazy goodpos via teleport to avoid hack→teleport→… cycles at load
@@ -2282,7 +2282,8 @@ export function crawl_destination(x, y) {
     if (m_at(x, y)) return false;
     if (x === u.ux || y === u.uy) return true;
     // diagonal: intact doorway ban
-    if (IS_DOOR(loc.typ) && !doorless_door(x, y)) return false;
+    // C hack.c:4095 — doorless shop door still blocked by block_door
+    if (IS_DOOR(loc.typ) && (!doorless_door(x, y) || await block_door(x, y))) return false;
     return true;
 }
 

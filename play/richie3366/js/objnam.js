@@ -57,6 +57,7 @@ import {
     BUFSZ,
     MAX_ERODE,
     GLIB,
+    FM_FMON,
 } from './const.js';
 import { currency } from './invent.js';
 
@@ -2573,6 +2574,16 @@ export function set_body_part(fn) {
 }
 
 /**
+ * C light.c find_mid. mon.js registers the export after both modules
+ * init: objnam cannot import mon.js (that edge initializes polyself
+ * while this `let` is still in TDZ).
+ */
+let _find_mid = null;
+export function set_find_mid(fn) {
+    _find_mid = fn;
+}
+
+/**
  * Seam for modules that cannot import polyself.js (wield: polyself→wield).
  * Not the C-locus name — that is only `polyself.js` `body_part`.
  * Unset → C mbodypart null-data humanoid (HUMANOID_PARTS).
@@ -3406,13 +3417,20 @@ export function doname_base(obj, doname_flags = 0) {
         && (obj.leashmon | 0) !== 0
         && !toolWorn;
     if (leashArm) {
-        const nid = obj.leashmon | 0;
+        // C objnam.c:1432 — find_mid(leashmon, FM_FMON) skips DEADMONSTER.
+        // _find_mid is the mon.js export. The scan is the same FM_FMON
+        // arm if doname runs before that registration.
         let mlsh = null;
-        for (const m of game.fmon || []) {
-            if ((m.mhp | 0) < 1) continue; // C find_mid FM_FMON
-            if ((m.m_id | 0) === nid) {
-                mlsh = m;
-                break;
+        if (_find_mid) {
+            mlsh = _find_mid(obj.leashmon | 0, FM_FMON);
+        } else {
+            const id = obj.leashmon >>> 0;
+            for (const m of game.fmon || []) {
+                if (!m || (m.mhp | 0) < 1) continue;
+                if ((m.m_id >>> 0) === id) {
+                    mlsh = m;
+                    break;
+                }
             }
         }
         if (mlsh && (mlsh.mhp | 0) >= 1) {

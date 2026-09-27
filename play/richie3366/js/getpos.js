@@ -58,7 +58,7 @@ import { t_at } from './trap.js';
 import { invocation_pos, handle_tip } from './hack.js';
 import { is_valid_travelpt } from './cmd.js';
 import { ok_to_quest } from './quest.js';
-import { visctrl } from './dokeylist.js';
+import { visctrl, cmd_from_func } from './dokeylist.js';
 import { distmin } from './hacklib.js';
 import { engr_at } from './engrave.js';
 import { objectNames } from './objects.js';
@@ -1083,16 +1083,15 @@ async function getpos_help(force, goal) {
     const terrainmode = game.iflags?.terrainmode | 0;
     const lines = [];
 
-    // C: cmd_from_func(do_move_{west,south,north,east}) → h,j,k,l
+    // C getpos.c:175–193 — cmd_from_func(do_move_*) / do_run_* / do_run / do_rush.
+    const vk = (name) => visctrl(cmd_from_func(name));
     lines.push(
-        `Use 'h', 'j', 'k', 'l' to move the cursor to ${goal || 'desired location'}.`,
+        `Use '${vk('movewest')}', '${vk('movesouth')}', '${vk('movenorth')}', '${vk('moveeast')}' to move the cursor to ${goal || 'desired location'}.`,
     );
-    // C: do_run_* → H,J,K,L
     lines.push(
-        `Use 'H', 'J', 'K', 'L' to fast-move the cursor, ${fastmovemode[moveskip ? 1 : 0]}.`,
+        `Use '${vk('runwest')}', '${vk('runsouth')}', '${vk('runnorth')}', '${vk('runeast')}' to fast-move the cursor, ${fastmovemode[moveskip ? 1 : 0]}.`,
     );
-    // C: do_run / do_rush → 'G' / 'g'
-    lines.push("(or prefix normal move with 'G' or 'g' to fast-move)");
+    lines.push(`(or prefix normal move with '${vk('run')}' or '${vk('rush')}' to fast-move)`);
     lines.push("Or enter a background symbol (ex. '<').");
     lines.push(
         `Use '${visctrl(getpos_spkey(NHKF_GETPOS_SELF))}' to move the cursor on yourself.`,
@@ -1597,8 +1596,9 @@ export async function getpos(ccp, force, goal, describeAt) {
 
         // C ref: getpos.c unknown key — force keeps looping; !force aborts
         // C: pline("Unknown direction: '%s' (%s).", visctrl((char) c), note);
+        // C getpos.c:1122–1128 — do_move_* plus NHKF_GETPOS_PICK.
         const note = force
-            ? "use 'h', 'j', 'k', 'l' or '.'"
+            ? `use '${visctrl(cmd_from_func('movewest'))}', '${visctrl(cmd_from_func('movesouth'))}', '${visctrl(cmd_from_func('movenorth'))}', '${visctrl(cmd_from_func('moveeast'))}' or '${visctrl(getpos_spkey(NHKF_GETPOS_PICK))}'`
             : 'aborted';
         await pline(`Unknown direction: '${visctrl(key)}' (${note}).`);
         msg_given = true;

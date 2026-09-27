@@ -5,34 +5,170 @@ import { game } from './gstate.js';
 import { NEW_MOON, FULL_MOON } from './const.js';
 
 /**
- * Parse contest YYYYMMDDHHMMSS into civil components.
- * @returns {{y:number,mo:number,d:number,h:number,mi:number,s:number}|null}
+ * C `atoi`: skip leading isspace, optional sign, then digits.
+ * Stops at the first non-digit. No digits yields 0 (`"00"` is 0,
+ * not a stand-in year or month).
+ * @param {string} str
+ * @returns {number}
  */
-function parseFixedDatetime(str) {
-    const d = String(str || '');
-    if (d.length !== 14) return null;
+function atoi(str) {
+    const s = String(str ?? '');
+    let i = 0;
+    while (i < s.length && (s[i] === ' ' || s[i] === '\t' || s[i] === '\n'
+        || s[i] === '\v' || s[i] === '\f' || s[i] === '\r')) {
+        i++;
+    }
+    let sign = 1;
+    if (s[i] === '+' || s[i] === '-') {
+        if (s[i] === '-') sign = -1;
+        i++;
+    }
+    let n = 0;
+    let any = false;
+    while (i < s.length && s[i] >= '0' && s[i] <= '9') {
+        any = true;
+        n = n * 10 + (s.charCodeAt(i) - 48);
+        i++;
+    }
+    if (!any) return 0;
+    return sign * n;
+}
+
+/** C `strlen`: stop at the first NUL. */
+function cStrlen(buf) {
+    const s = String(buf);
+    const z = s.indexOf('\0');
+    return z < 0 ? s.length : z;
+}
+
+/**
+ * POSIX `mktime` for a `struct tm` under America/New_York.
+ * `tm_wday` and `tm_yday` are ignored. `tm_isdst > 0` is EDT (UTC−4),
+ * `== 0` is EST (UTC−5), `< 0` asks `nyOffsetSecs` (determine).
+ * Out-of-range civil fields normalize the way `Date.UTC` does.
+ * Returns -1 when the result is not a finite `time_t`.
+ * `Date.UTC` maps years 0..99 onto 1900..1999; C does not.
+ * @param {object} t
+ * @returns {number}
+ */
+function mktime(t) {
+    const year = 1900 + (t.tm_year | 0);
+    const mon = t.tm_mon | 0;
+    const mday = t.tm_mday | 0;
+    const hour = t.tm_hour | 0;
+    const min = t.tm_min | 0;
+    const sec = t.tm_sec | 0;
+    let ms = Date.UTC(year, mon, mday, hour, min, sec);
+    if (year >= 0 && year <= 99) {
+        const shifted = new Date(ms);
+        shifted.setUTCFullYear(year);
+        ms = shifted.getTime();
+    }
+    if (!Number.isFinite(ms)) return -1;
+    const isdst = t.tm_isdst | 0;
+    let off;
+    if (isdst > 0) off = -4 * 3600;
+    else if (isdst === 0) off = -5 * 3600;
+    else off = nyOffsetSecs(Math.floor(ms / 1000));
+    const epoch = Math.floor(ms / 1000) - off;
+    if (!Number.isFinite(epoch)) return -1;
+    return epoch;
+}
+
+/**
+ * Contest patch 001 replaces `getlt()` here with `time()` + `localtime()`
+ * so `getnow` → `time_from_yyyymmddhhmmss` does not recurse.
+ * The contest recorder (`TZ=America/New_York`) copied that wall-clock
+ * `struct tm` while it was in EDT, so `tm_isdst` is 1 and a winter civil
+ * stamp stays on the EDT offset (D-1989). The host clock is not read:
+ * a winter judge run would move every fixed-datetime epoch.
+ * `mktime` ignores `tm_wday` and `tm_yday`.
+ * @returns {object}
+ */
+function contestRecorderLocaltime() {
     return {
-        y: parseInt(d.slice(0, 4), 10) || 1970,
-        mo: (parseInt(d.slice(4, 6), 10) || 1) - 1,
-        d: parseInt(d.slice(6, 8), 10) || 1,
-        h: parseInt(d.slice(8, 10), 10) || 0,
-        mi: parseInt(d.slice(10, 12), 10) || 0,
-        s: parseInt(d.slice(12, 14), 10) || 0,
+        tm_year: 0,
+        tm_mon: 0,
+        tm_mday: 0,
+        tm_hour: 0,
+        tm_min: 0,
+        tm_sec: 0,
+        tm_wday: 0,
+        tm_yday: 0,
+        tm_isdst: 1,
     };
 }
 
 /**
- * C ref: calendar.c time_from_yyyymmddhhmmss + contest getnow path.
- * Public sessions were recorded under TZ=America/New_York with patched
- * getnow copying wall-clock tm_isdst (summer → 1) into mktime, so winter
- * civil stamps are treated as EDT (UTC-4). Match that recorded quirk with
- * a fixed UTC-4 interpretation (stable across host TZ).
+ * C ref: calendar.c `time_from_yyyymmddhhmmss` `:120–175` plus contest
+ * patch 001 (`time` / `localtime`, not `getlt`).
+ * @param {string} buf 14-digit `YYYYMMDDHHMMSS`, or anything else → 0
+ * @returns {number} unix seconds, or 0
  */
 export function time_from_yyyymmddhhmmss(buf) {
-    const p = parseFixedDatetime(buf);
-    if (!p) return 0;
-    // Civil time as UTC-4 → unix seconds
-    return Math.floor(Date.UTC(p.y, p.mo, p.d, p.h, p.mi, p.s) / 1000) + 4 * 3600;
+    let k;
+    let timeresult = 0;
+    if (buf && cStrlen(buf) === 14) {
+        const src = String(buf);
+        let di = 0;
+        let y = '';
+        for (k = 0; k < 4; ++k) {
+            y += src[di];
+            di += 1;
+        }
+        let mo = '';
+        for (k = 0; k < 2; ++k) {
+            mo += src[di];
+            di += 1;
+        }
+        let md = '';
+        for (k = 0; k < 2; ++k) {
+            md += src[di];
+            di += 1;
+        }
+        let h = '';
+        for (k = 0; k < 2; ++k) {
+            h += src[di];
+            di += 1;
+        }
+        let mi = '';
+        for (k = 0; k < 2; ++k) {
+            mi += src[di];
+            di += 1;
+        }
+        let s = '';
+        for (k = 0; k < 2; ++k) {
+            s += src[di];
+            di += 1;
+        }
+        const lt = contestRecorderLocaltime();
+        if (lt) {
+            const t = {
+                tm_year: lt.tm_year,
+                tm_mon: lt.tm_mon,
+                tm_mday: lt.tm_mday,
+                tm_hour: lt.tm_hour,
+                tm_min: lt.tm_min,
+                tm_sec: lt.tm_sec,
+                tm_wday: lt.tm_wday,
+                tm_yday: lt.tm_yday,
+                tm_isdst: lt.tm_isdst,
+            };
+            t.tm_year = atoi(y) - 1900;
+            t.tm_mon = atoi(mo) - 1;
+            t.tm_mday = atoi(md);
+            t.tm_hour = atoi(h);
+            t.tm_min = atoi(mi);
+            t.tm_sec = atoi(s);
+            timeresult = mktime(t);
+        }
+        if (timeresult === -1) {
+            // `#if 0` debugpline1 (calendar.c:166–170) is compiled out.
+        } else {
+            return timeresult;
+        }
+    }
+    return 0;
 }
 
 /**
@@ -42,7 +178,7 @@ export function getnow() {
     const fixed = game.datetime;
     if (fixed) {
         const parsed = time_from_yyyymmddhhmmss(fixed);
-        if (parsed) return parsed;
+        if (parsed !== 0) return parsed;
     }
     return Math.floor(Date.now() / 1000);
 }
@@ -121,11 +257,10 @@ function nyLocaltime(epoch) {
 
 /**
  * C ref: calendar.c getlt() `:40–46` — `localtime(getnow())`.
- * Contest patch 001 `time_from_yyyymmddhhmmss` fills `struct tm` from the
- * recording machine's current `localtime` (tm_isdst = 1, EDT at record
- * time) then `mktime`, so `getnow()` for a winter civil stamp is the
- * stamp-as-EDT epoch (`time_from_yyyymmddhhmmss` above, UTC-4); `getlt`
- * re-reads it under America/New_York, landing one hour earlier in EST
+ * Contest patch 001 `time_from_yyyymmddhhmmss` copies the recorder's
+ * `localtime` (`tm_isdst` 1) then `mktime`, so `getnow()` for a winter
+ * civil stamp is the stamp-as-EDT epoch. `getlt` re-reads it under
+ * America/New_York, landing one hour earlier in EST
  * (e.g. `2000-02-06 00:00` → Feb 5 23:00, tm_yday −1 → moon phase 0).
  */
 export function getlt() {

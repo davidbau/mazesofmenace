@@ -1386,89 +1386,100 @@ function wish_otyp_by_wpnskill_prefix(bp) {
     return null;
 }
 
+/**
+ * C ref: objnam.c readobjnam_init `:3933–3961`.
+ * Zeros the wish-parse record, then the non-zero defaults, in that
+ * assignment order. `fruitbuf` and `globbuf` start empty (C memset).
+ * The caller copies the munged wish into `fruitbuf` (`:4926`) after
+ * the nothing/nil/none return. `tmp` and `tinv` stay unset, as in C.
+ */
+function readobjnam_init(bp, d) {
+    /* C `:3935` */
+    d.otmp = null;
+    /* C `:3936` */
+    d.cnt = 0;
+    d.spe = 0;
+    d.spesgn = 0;
+    d.typ = 0;
+    /* C `:3937–3945` — one zero chain, rightmost store is `fake`. */
+    d.very = 0;
+    d.rechrg = 0;
+    d.blessed = 0;
+    d.uncursed = 0;
+    d.iscursed = 0;
+    d.ispoisoned = 0;
+    d.isgreased = 0;
+    d.eroded = 0;
+    d.eroded2 = 0;
+    d.erodeproof = 0;
+    d.halfeaten = 0;
+    d.islit = 0;
+    d.unlabeled = 0;
+    d.ishistoric = 0;
+    d.isdiluted = 0;
+    d.trapped = 0;
+    d.locked = 0;
+    d.unlocked = 0;
+    d.broken = 0;
+    d.open = 0;
+    d.closed = 0;
+    d.doorless = 0;
+    d.looted = 0;
+    d.real = 0;
+    d.fake = 0;
+    /* C `:3946–3950` */
+    d.tvariety = RANDOM_TIN;
+    d.mgend = -1; /* not specified, aka random */
+    d.mntmp = NON_PM;
+    d.contents = TIN_UNDEFINED;
+    d.oclass = 0;
+    /* C `:3951–3954` — null name pointers; zombify is FALSE. */
+    d.actualn = null;
+    d.dn = null;
+    d.un = null;
+    d.wetness = 0;
+    d.gsize = 0;
+    d.zombify = 0;
+    /* C `:3955–3958` — bp/origbp alias the caller; ftype is current fruit. */
+    d.bp = bp;
+    d.origbp = bp;
+    d.p = null;
+    d.name = null;
+    d.ftype = (game.context?.current_fruit | 0);
+    /* C `:3959–3960` — memset('\0'). JS has no BUFSZ slab. */
+    d.globbuf = '';
+    d.fruitbuf = '';
+}
+
 export function readobjnam(bp, no_wish, missOut) {
     // Caller's char* after mungspaces and in-place writes (files.c:2568).
-    let d = null;
+    const d = {};
     let munged = null;
     const ret = (value) => {
         publishWishbuf(missOut, d, munged);
         return value;
     };
-    // C: readobjnam_init + if (!bp) goto any
+    // C objnam.c:4914 — init even when bp is null, then goto any.
+    readobjnam_init(bp, d);
     if (bp == null) {
-        return readobjnam_any({
-            typ: 0, oclass: 0, otmp: null,
-        });
+        return readobjnam_any(d);
     }
     munged = mungspaces(bp);
     bp = munged;
+    // C mungspaces edits the same buffer d.bp / d.origbp already alias.
+    d.bp = bp;
+    d.origbp = bp;
+    d._cbuf = bp;
+    d._boff = 0;
     // C: "nothing"/"nil"/"none" → return no_wish (wishless conduct)
     if (/^(nothing|nil|none)$/i.test(bp)) return ret(no_wish || NOTHING_OBJ);
     // C: empty bp (or ESC already cleared by makewish) → preparse returns 1 → any
     if (!bp || bp === '\x1b') {
-        return ret(readobjnam_any({
-            typ: 0, oclass: 0, otmp: null,
-        }));
+        return ret(readobjnam_any(d));
     }
-
-    d = {
-        bp,
-        origbp: bp,
-        // C objnam.c:3955 — d->bp and d->origbp alias the caller's buffer.
-        _cbuf: bp,
-        _boff: 0,
-        // C ref: objnam.c readobjnam `:4926` + readobjnam_init `:3958` —
-        // fruitbuf is the mungspaced wish before prefix stripping; ftype
-        // defaults to the current fruit id.
-        fruitbuf: bp,
-        ftype: (game.context?.current_fruit | 0),
-        halfeaten: 0,
-        cnt: 0,
-        spe: 0,
-        spesgn: 0,
-        rechrg: 0,
-        typ: 0,
-        blessed: 0,
-        uncursed: 0,
-        iscursed: 0,
-        real: 0,
-        fake: 0,
-        oclass: 0,
-        actualn: null,
-        dn: null,
-        un: null,
-        name: null,
-        mntmp: NON_PM,
-        // C ref: objnam.c readobjnam_init `:3946–3949` — tin variety default
-        // RANDOM_TIN, mgend -1 (random), contents TIN_UNDEFINED.
-        contents: TIN_UNDEFINED,
-        tvariety: RANDOM_TIN,
-        mgend: -1,
-        otmp: null,
-        islit: 0,
-        looted: 0,
-        trapped: 0,
-        locked: 0,
-        unlocked: 0,
-        broken: 0,
-        open: 0,
-        closed: 0,
-        doorless: 0,
-        ispoisoned: 0,
-        // C ref: objnam.c readobjnam_init `:3936–3956` — preparse field
-        // defaults (whole-chain zero; zombify FALSE; wetness/gsize 0).
-        very: 0,
-        eroded: 0,
-        eroded2: 0,
-        erodeproof: 0,
-        unlabeled: 0,
-        ishistoric: 0,
-        isdiluted: 0,
-        isgreased: 0,
-        zombify: 0,
-        wetness: 0,
-        gsize: 0,
-    };
+    // C objnam.c:4926 — Strcpy(d.fruitbuf, bp) after the nothing return.
+    // Init left fruitbuf zeroed; this is the pre-prefix wish text.
+    d.fruitbuf = bp;
 
     // C ref: objnam.c readobjnam `:4928` — preparse strips wish prefixes;
     // nonzero (empty bp) goes `any` (C `goto any`).

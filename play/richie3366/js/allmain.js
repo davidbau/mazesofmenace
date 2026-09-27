@@ -54,6 +54,7 @@ import { livelog_printf } from './pline.js';
 import { phase_of_the_moon, friday_13th, night, getnow, FULL_MOON, NEW_MOON } from './calendar.js';
 import { ATR_INVERSE } from './terminal.js';
 import { dosounds } from './sounds.js';
+import { ckmailstatus } from './mail.js';
 import { invault } from './vault.js';
 import { u_wipe_engr } from './engrave.js';
 import { nh_timeout, do_storms } from './timeout.js';
@@ -1401,6 +1402,10 @@ export async function moveloop_core() {
     } else if (search_repeat_active()) {
         await continue_search();
     } else {
+        // C allmain.c:532–536 — multi == 0, #ifdef MAIL: ckmailstatus()
+        // then rhack(0). The multi > 0 arm calls rhack(cmd_key) with no
+        // mail check; run/search stay on the branches above.
+        if ((g.multi || 0) === 0) await ckmailstatus();
         await rhack(0);
     }
     // C: if (u.utotype) deferred_goto() after rhack()

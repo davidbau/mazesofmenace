@@ -255,9 +255,11 @@ import {
     rndmonnam,
 } from './do_name.js';
 import { get_mtraits } from './corpstat.js';
-import { eaten_stat, vegetarian } from './eat.js';
+import { eaten_stat, fix_petrification, vegetarian } from './eat.js';
 import { cvt_sdoor_to_door, findit } from './detect.js';
-import { adj_pit_checks, fillholetyp, is_moat, watch_dig } from './dig.js';
+import {
+    adj_pit_checks, dighole, fillholetyp, is_moat, watch_dig,
+} from './dig.js';
 import { dropx, preflight_dropx } from './do.js';
 import { ceiling } from './dungeon.js';
 import { done } from './end.js';
@@ -1627,9 +1629,9 @@ export async function zapyourself(obj, ordinary, state = game) {
             learn_it = true;
             await polymon(PM_FLESH_GOLEM, state);
         }
-        if (state.u.uprops?.[STONED]?.intrinsic || state.u.stoned) {
+        if (state.u.uprops?.[STONED]?.intrinsic) {
             learn_it = true;
-            note_unported('eat.c fix_petrification');
+            await fix_petrification(state);
         }
         for (let item = state.invent; item;) {
             const next = item.nobj;
@@ -5126,8 +5128,9 @@ export async function zapnodir(obj, state = game) {
 
 // C ref: dig.c zap_dig() (1548-1754). The swallowed branch still stops at
 // digests()/expels() because their message and relocation chain is not yet
-// owned here; vertical digging skips the discarded-result dighole() call; and
-// adjacent-pit liquid flow skips dighole()/pit_flow() after preserving their
+// owned here; vertical down-dig calls the ported dighole() but later hole
+// descent remains incomplete; adjacent-pit liquid flow still skips
+// dighole()/pit_flow() after preserving their
 // source predicates and consumed fillholetyp() draw. The normal horizontal
 // and maze arms are complete through their beam animation, source terrain
 // order, vision updates, and discarded shop/watch hooks.
@@ -5225,7 +5228,7 @@ export async function zap_dig(
                 newsym(u.ux, u.uy, state);
             } else {
                 await watch_dig(null, u.ux, u.uy, true, { state });
-                note_unported('dig.c dighole');
+                await dighole(false, true, null, { state, random });
             }
         }
         return;

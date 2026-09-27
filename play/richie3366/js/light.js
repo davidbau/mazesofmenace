@@ -304,9 +304,7 @@ export function relink_light_sources(ghostly) {
                 if (!ls.id)
                     which = 'o';
             } else {
-                // C :549–551 — find_mid(nid, FM_EVERYWHERE). JS find_mid
-                // searches fmon only (FM_MIGRATE/FM_MYDOGS named omit in
-                // mon.js); the flag is passed for C fidelity.
+                // C :549–551 — find_mid(nid, FM_EVERYWHERE).
                 ls.id = find_mid(nid, FM_EVERYWHERE);
                 if (!ls.id)
                     which = 'm';
@@ -366,6 +364,38 @@ function whereis_mon(mon, fmflags) {
 }
 
 /**
+ * C ref: light.c light_sources_sanity_check `:606–630`.
+ * Walk `light_base`. A missing id panics. `LS_OBJECT` must be the
+ * object `find_oid` returns; `LS_MONSTER` must be the monster
+ * `find_mid(m_id, FM_EVERYWHERE)` returns. Any other type panics.
+ * Caller `wizcmds.c` `sanity_check` (opt-in). Sync; panic is a throw.
+ */
+export function light_sources_sanity_check() {
+    for (const ls of game.light_base || []) {
+        // C :615.
+        if (!ls?.id)
+            throw new Error('insane light source: no id!');
+        const t = ls.type | 0;
+        if (t === LS_OBJECT) {
+            // C :617–620.
+            const otmp = ls.id;
+            const auint = (otmp && typeof otmp === 'object') ? (otmp.o_id >>> 0) : (otmp >>> 0);
+            if (!otmp || typeof otmp !== 'object' || find_oid(auint) !== otmp)
+                throw new Error(`insane light source: can't find obj #${auint}!`);
+        } else if (t === LS_MONSTER) {
+            // C :622–625.
+            const mtmp = ls.id;
+            const auint = (mtmp && typeof mtmp === 'object') ? (mtmp.m_id >>> 0) : (mtmp >>> 0);
+            if (!mtmp || typeof mtmp !== 'object' || find_mid(auint, FM_EVERYWHERE) !== mtmp)
+                throw new Error(`insane light source: can't find mon #${auint}!`);
+        } else {
+            // C :627.
+            throw new Error(`insane light source: bad ls type ${t}`);
+        }
+    }
+}
+
+/**
  * C ref: light.c write_ls `:633–702` — serialize one light source for the
  * save file: swap the live id pointer for its numeric o_id/m_id (verified
  * against the object/monster chains), write the struct, put the pointer
@@ -378,8 +408,8 @@ function whereis_mon(mon, fmflags) {
  * returned `{type, x, y, range, id}` record (the serLight shape) IS the
  * write. Sync like C; the impossible arms stay fire-and-forget `void`
  * (delete_ls precedent — impossible can reach --More--).
- * Callees: live `find_oid` (shk.js) / `find_mid` (mon.js, fmon-only named
- * omit — the flag is still passed, relink_light_sources precedent) /
+ * Callees: live `find_oid` (shk.js) / `find_mid` (mon.js, the fmflags
+ * argument selects the chain) /
  * file-local `whereis_mon` above.
  * @param {object} ls  live light_base entry (id = obj/mtmp pointer)
  * @returns {{type:number,x:number,y:number,range:number,id:number}|null}

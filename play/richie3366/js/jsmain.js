@@ -15,6 +15,7 @@ import { initRng, enableRngLog, getRngLog } from './rng.js';
 import { setStorageForTesting } from './storage.js';
 import { pushKey, nhgetch } from './input.js';
 import { newgame, moveloop_core, welcome, moveloop_preamble, init_sound_disp_gamewindows } from './allmain.js';
+import { getmailstatus } from './mail.js';
 import { try_restore_save } from './save.js';
 import { vision_recalc, init_vision_globals } from './vision.js';
 import { parseNethackrc, set_playmode, init_fruit_chain } from './options.js';
@@ -229,6 +230,11 @@ export class NethackGame {
 
         // Install capture hook
         this._installCaptureHook();
+
+        // C unixmain.c:188–190 — #ifdef MAIL getmailstatus() after
+        // init_nhwindows, before set_playmode. libnhmain.c:220 is the
+        // library entry, not this unix tty build.
+        getmailstatus();
 
         // C ref: unixmain set_playmode before plnamesuffix — wizard mode
         // overwrites OPTIONS=name with "wizard" (options.c set_playmode).

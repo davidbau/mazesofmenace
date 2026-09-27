@@ -8,12 +8,15 @@
 // SIMPLE_MAIL/SERVER_ADMIN_MSG source-level body; both undefined per
 // unixconf.h:200/211, so C compiles neither it nor its callers) + newmail
 // daemon delivery.
-// Named omissions: MAILREADER child/execl subprocess + getmailstatus stat()
-// (Contest Rule #2: no subprocess/filesystem in scored js/); SIMPLE_MAIL /
-// AMS / VMS / !UNIX fake-junk-mail arms compiled out in this build;
-// ckmailstatus UNIX-mustgetmail/stat/broadcast variants (no mailbox stat or
-// broadcast queue in scored JS); newphone (shares md_start/md_stop when
-// ported).
+// Named omissions: MAILREADER child/execl subprocess (Contest Rule #2: no
+// subprocess in scored js/). SIMPLE_MAIL / AMS / VMS / !UNIX fake-junk-mail
+// arms are compiled out (config.h defines UNIX; unixconf.h leaves
+// SIMPLE_MAIL, SERVER_ADMIN_MSG, NO_MAILREADER, and PERMANENT_MAILBOX
+// undefined). ckmailstatus is the UNIX body (`:549–584`); the !UNIX
+// mustgetmail body (`:461–479`) and the VMS broadcast body (`:743–760`)
+// are not in this build. stat() reads the storage VFS, not the OS spool.
+// getpwuid + MAILPATH stay named (no passwd database). newphone shares
+// md_start/md_stop when ported.
 
 import { game } from './gstate.js';
 import {
@@ -24,7 +27,7 @@ import { vfsReadFile, vfsDeleteFile } from './storage.js';
 import { rn2 } from './rng.js';
 import { isok, dist2 } from './hacklib.js';
 import {
-    u_at, IS_STWALL, ROWNO, MSG_OTHER, ONAME_NO_FLAGS, NO_MM_FLAGS,
+    u_at, IS_STWALL, ROWNO, MSG_OTHER, MSG_MAIL, ONAME_NO_FLAGS, NO_MM_FLAGS,
     Never_mind,
 } from './const.js';
 import { couldsee, cansee } from './vision.js';
@@ -279,14 +282,16 @@ async function md_rush(md, tx, ty) {
  * C mail.c readmail `:703–733` (UNIX + DEF_MAILREADER; SIMPLE_MAIL off).
  * Order: debug_fuzzer early return, then display_nhwindow(WIN_MESSAGE,
  * FALSE), then the MAILREADER child/execl spawn, then getmailstatus().
- * The spawn (nh_getenv/child/execl) and the stat-based getmailstatus are
- * named omits (Rule #2); the portable remainder is the fuzzer guard plus
- * the message-window flush.
+ * The spawn (nh_getenv/child/execl) stays a named omit (Rule #2). The
+ * flush and the trailing getmailstatus() are the portable remainder.
  */
 export async function readmail(otmp) {
     void otmp; // C ARGSUSED: struct obj *otmp UNUSED
     if (game.iflags?.debug_fuzzer) return;
     await flush_topl_more(); /* C: display_nhwindow(WIN_MESSAGE, FALSE) */
+    /* C `:732` — refresh omstat after the reader. The child/execl above
+       this call is the named omit. */
+    getmailstatus();
 }
 
 /**
@@ -379,11 +384,10 @@ export async function read_simplemail(mbox, adminmsg) {
            --More-- (dig.js:1705 precedent). */
         await flush_topl_more();
     } else {
-        /* C `:673–674` unlink(mailbox) — the C global set by getmailstatus
-           (no JS counterpart, readmail D-1958 named omit); the only FALSE
-           caller passes mailbox itself as mbox, so the passed path doubles
-           as C's global. */
-        vfsDeleteFile(mbox);
+        /* C `:673–674` unlink(mailbox) — the global from getmailstatus.
+           The only FALSE caller passes that same path as mbox; if the
+           global is still null, unlink the argument. */
+        vfsDeleteFile(mailStat().mailbox || mbox);
     }
 }
 
@@ -452,6 +456,156 @@ export async function newmail(info) {
     /* C give_up: deliver MSG_OTHER even if no daemon ever shows up */
     if (!message_seen && info.message_typ === MSG_OTHER) {
         await pline('Hark!  "%s."', info.display_txt);
+    }
+}
+
+/* C unixconf.h:204 — how often the spool is stat'd, in moves. */
+const MAILCKFREQ = 50;
+
+/**
+ * File-scope UNIX mail statics (`mail.c:69–71`). Held on `game` so
+ * `resetGame()` matches a fresh C process (monsters.js overlay precedent).
+ * @returns {{ mailbox: string|null, laststattime: number, omstat: {st_mtime: number, st_size: number}, nmstat: {st_mtime: number, st_size: number} }}
+ */
+function mailStat() {
+    if (!game.mailstat) {
+        game.mailstat = {
+            mailbox: null,
+            laststattime: 0,
+            omstat: { st_mtime: 0, st_size: 0 },
+            nmstat: { st_mtime: 0, st_size: 0 },
+        };
+    }
+    return game.mailstat;
+}
+
+/**
+ * C `nh_getenv`. Scored ESM has no `node:` import; `globalThis.process.env`
+ * is the cfgfiles.js `c_getenv` precedent. Chrome leaves it unset.
+ * @param {string} name
+ * @returns {string|null}
+ */
+function nh_getenv(name) {
+    const env = (typeof globalThis !== 'undefined' && globalThis.process
+        && globalThis.process.env) || null;
+    if (!env || env[name] == null) return null;
+    return String(env[name]);
+}
+
+/**
+ * C `stat(path, &st)` for the mailbox only. Rule #2: the storage VFS, never
+ * the OS spool. A missing key is a failed stat (NULL). A present file has
+ * `st_size` = text length and a stable `st_mtime` of 1 — the VFS stores no
+ * timestamps, so a second stat of the same key does not look newer.
+ * @param {string} path
+ * @returns {{ st_mtime: number, st_size: number }|null}
+ */
+function vfsStat(path) {
+    const text = vfsReadFile(path);
+    if (text == null) return null;
+    return { st_mtime: 1, st_size: text.length };
+}
+
+/**
+ * C `flags.biff` (`optlist.h` mail, default On). JS doset stores that
+ * boolean as `flags.mail` (options.js). An unset field is the C default.
+ * @returns {boolean}
+ */
+function flagsBiff() {
+    const f = game.flags || {};
+    if (f.biff != null) return !!f.biff;
+    if (f.mail != null) return !!f.mail;
+    return true;
+}
+
+/**
+ * C mail.c free_maildata `:90–94` — drop the mailbox path. Caller
+ * `save.c:1082` `freedynamicdata` is not in JS (named). The
+ * PERMANENT_MAILBOX call at `:136` is compiled out.
+ */
+export function free_maildata() {
+    const st = mailStat();
+    if (st.mailbox) st.mailbox = null;
+}
+
+/**
+ * C mail.c getmailstatus `:97–141` (UNIX). Set `mailbox` from MAIL once,
+ * then stat it into `omstat`. The LINUX `MAILPATH` + `getpwuid` arm
+ * (`:116–123`) is a named omit: scored ESM has no passwd database
+ * (cmd.js `get_unix_pw`). `debugpline3` (`:128–131`) is a no-op unless
+ * DEBUG. PERMANENT_MAILBOX (`:134–136`) is undefined, so a failed stat
+ * only zeroes `st_mtime`.
+ */
+export function getmailstatus() {
+    const st = mailStat();
+    if (st.mailbox) {
+        /* C `:99–100` — no need to repeat the setup */
+    } else {
+        const mail = nh_getenv('MAIL');
+        if (mail != null) {
+            st.mailbox = mail; /* C `:101–102` dupstr */
+        }
+        /* else MAILPATH / getpwuid — named omit, mailbox stays null */
+    }
+    if (st.mailbox && !vfsStatInto(st.mailbox, st.omstat)) {
+        st.omstat.st_mtime = 0; /* C `:133–138` */
+    }
+}
+
+/**
+ * Write a successful stat into `out`. Returns false when stat fails
+ * (C's nonzero `stat()` result); the caller then sets `st_mtime`.
+ * @param {string} path
+ * @param {{ st_mtime: number, st_size: number }} out
+ * @returns {boolean}
+ */
+function vfsStatInto(path, out) {
+    const got = vfsStat(path);
+    if (!got) return false;
+    out.st_mtime = got.st_mtime;
+    out.st_size = got.st_size;
+    return true;
+}
+
+/**
+ * C mail.c ck_server_admin_msg `:685–700`. SERVER_ADMIN_MSG is undefined
+ * (`unixconf.h:212`), so the compiled function is empty. The stat +
+ * `read_simplemail(..., TRUE)` arm is not in this build.
+ */
+function ck_server_admin_msg() {}
+
+/**
+ * C mail.c ckmailstatus `:549–584` — the body this build compiles
+ * (`config.h` defines UNIX). `#if !defined(UNIX) && !defined(VMS)` at
+ * `:461–479` (mustgetmail / AMIGA `rn2`) and the VMS broadcast loop at
+ * `:743–760` are compiled out. Async because `newmail` can reach
+ * `nhgetch`; the early returns do not.
+ */
+export async function ckmailstatus() {
+    const st = mailStat();
+    ck_server_admin_msg(); /* C `:552` */
+
+    /* C `:554–559` — MAILCKFREQ is defined, so the moves test is live. */
+    if (!st.mailbox || game.u?.uswallow || !flagsBiff()
+        || (game.moves | 0) < (st.laststattime | 0) + MAILCKFREQ) {
+        return;
+    }
+
+    st.laststattime = game.moves | 0; /* C `:561` */
+    if (!vfsStatInto(st.mailbox, st.nmstat)) {
+        /* PERMANENT_MAILBOX undefined: failed stat zeroes mtime only. */
+        st.nmstat.st_mtime = 0; /* C `:567` */
+    } else if (st.nmstat.st_mtime > st.omstat.st_mtime) { /* C `:569` */
+        if (st.nmstat.st_size) { /* C `:570` */
+            /* NO_MAILREADER undefined: MSG_MAIL, not MSG_OTHER. */
+            await newmail({
+                message_typ: MSG_MAIL,
+                display_txt: 'I have some mail for you',
+                object_nam: null,
+                response_cmd: null,
+            });
+        }
+        getmailstatus(); /* C `:582` — might be too late ... */
     }
 }
 

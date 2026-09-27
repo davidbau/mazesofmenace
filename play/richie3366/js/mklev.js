@@ -10,8 +10,8 @@ import { GameMap } from './game.js';
 import { rn2, rnd, rn1, rnz } from './rng.js';
 import { CLR_CYAN, CLR_GRAY, CLR_BRIGHT_BLUE } from './terminal.js';
 import { init_rect, rnd_rect, get_rect, split_rects } from './rect.js';
-import { depth as depth_of_level, dist2, distmin, level_difficulty, strstri, upstart, swapbits } from './hacklib.js';
-import { getbones } from './bones.js';
+import { depth as depth_of_level, dist2, distmin, level_difficulty, strstri, upstart, swapbits, stripdigits, str_lines_maxlen } from './hacklib.js';
+import { getbones, sanitize_name } from './bones.js';
 import {
     COLNO, ROWNO, STONE, ROOM, CORR, DOOR, STAIRS,
     HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER,
@@ -27,6 +27,7 @@ import {
     W_NORTH, W_SOUTH, W_EAST, W_WEST, W_ANY, W_RANDOM, D_SECRET,
     DIR_N, DIR_S, DIR_E, DIR_W, DIR_180,
     IS_WALL, IS_STWALL, IS_DOOR, IS_ROOM, IS_OBSTRUCTED, IS_FURNITURE, IS_POOL,
+    SVALL, MAP_Y_LIM,
     IS_LAVA, IS_THRONE, SPACE_POS, isok, W_NONDIGGABLE, W_NONPASSWALL, FILL_NORMAL,
     ICE, MOAT, POOL, WATER, LAVAPOOL, LAVAWALL, DBWALL, ICED_POOL, ICED_MOAT,
     AIR, CLOUD, THRONE, TREE, DRAWBRIDGE_UP, DRAWBRIDGE_DOWN,
@@ -89,6 +90,7 @@ import {
     CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_FEMALE, CORPSTAT_NONE,
     NUM_NHCORE_CALLS,
     TT_BURIEDBALL, IN_SIGHT, COULD_SEE, NO_TRAP_FLAGS,
+    EGD,
 } from './const.js';
 import {
     RANDOM_CLASS, WEAPON_CLASS, ARMOR_CLASS, RING_CLASS,
@@ -102,7 +104,7 @@ import { shtypes, stock_room } from './shknam.js';
 import { setgemprobs } from './o_init.js';
 import { maketrap, t_at, undestroyable_trap, deltrap, reset_utrap, mintrap, set_levltyp, set_levltyp_lit } from './trap.js';
 import {
-    mkobj, mksobj, mksobj_at, mksobj_migr_to_species, mkobj_at, mkgold,
+    mkobj, mksobj, mksobj_at, mk_tt_object, mksobj_migr_to_species, mkobj_at, mkgold,
     mkcorpstat, next_ident,
     curse, bless, uncurse, blessorcurse, place_object, add_to_buried, weight, OBJ,
     set_corpsenm, obj_stop_timers, start_timer, spot_stop_timers,
@@ -142,7 +144,7 @@ import { make_engr_at, make_grave, wipe_engr_at, random_engraving, del_engr_at, 
 import { cmd_from_ecname } from './dokeylist.js';
 import {
     find_level, dungeon_branch, at_dgn_entrance, insert_branch, get_level,
-    on_level, init_dungeons, Is_special, Invocation_lev, In_W_tower,
+    on_level, init_dungeons, Is_special, Invocation_lev, In_W_tower, dupstr,
 } from './dungeon.js';
 import { premap_detect } from './detect.js';
 import {
@@ -152,6 +154,7 @@ import {
 import {
     Norep, newsym, impossible, pline, You, flush_screen, nh_delay_output, monsym,
     describe_level, cliparound, map_location, see_nearby_objects, Hallucination,
+    glyph_is_cmap, back_to_glyph, terrain_glyph, remember_shown_glyph,
 } from './display.js';
 import { buried_ball_to_punishment, fracture_rock } from './dig.js';
 import { obfree } from './shk.js';
@@ -2214,13 +2217,10 @@ function ledger_no_maz(lev) {
  * Walker is live objnam fruit_from_name(FALSE) like C `:8264`.
  */
 function fruitadd_orc(str) {
-    let altname = '';
     const raw = String(str || '');
+    // C copynchars(altname, str, PL_FSIZ-1) then sanitize_name (options.c:8259–8260).
     const n = raw.length > 31 ? raw.slice(0, 31) : raw;
-    for (let i = 0; i < n.length; i++) {
-        const c = n.charCodeAt(i) & 0x7f;
-        altname += (c < 0x20 || c === 0x7f) ? '.' : String.fromCharCode(c);
-    }
+    const altname = sanitize_name(n);
     if (!game.flags) game.flags = {};
     game.flags.made_fruit = true;
     const look = altname || str;
@@ -18865,6 +18865,52 @@ function flip_level_rnd(flp, extras) {
     if (c) flip_level(c, extras);
 }
 
+/**
+ * C ref: sp_lev.c:926–958 flip_vault_guard — transpose one vault guard's
+ * egd. FlipX / FlipY / inFlipArea are the macros at `:516–519`; they bind
+ * this function's min/max (the same names flip_level uses). gdx/gdy, then
+ * ogx/ogy, then fakecorr[fcbeg, fcend). Each pair is tested before either
+ * axis is written. Bit 1 is vertical, bit 2 is horizontal. The corridor
+ * cell is flipped from the saved fx/fy, not from a field already updated.
+ * staticfn; the two call sites are both inside flip_level.
+ */
+function flip_vault_guard(flp, grd, minx, miny, maxx, maxy) {
+    const FlipX = (val) => ((maxx - (val | 0)) + minx) | 0; /* C :516 */
+    const FlipY = (val) => ((maxy - (val | 0)) + miny) | 0; /* C :517 */
+    const inFlipArea = (x, y) =>
+        (x | 0) >= minx && (x | 0) <= maxx
+        && (y | 0) >= miny && (y | 0) <= maxy; /* C :518–519 */
+    const egd = EGD(grd); /* C :933 */
+    if (!egd) return;
+
+    if (inFlipArea(egd.gdx, egd.gdy)) { /* C :935 */
+        if (flp & 1)
+            egd.gdy = FlipY(egd.gdy); /* C :937 */
+        if (flp & 2)
+            egd.gdx = FlipX(egd.gdx); /* C :939 */
+    }
+    if (inFlipArea(egd.ogx, egd.ogy)) { /* C :941 */
+        if (flp & 1)
+            egd.ogy = FlipY(egd.ogy); /* C :943 */
+        if (flp & 2)
+            egd.ogx = FlipX(egd.ogx); /* C :945 */
+    }
+    const fcbeg = egd.fcbeg | 0;
+    const fcend = egd.fcend | 0;
+    for (let i = fcbeg; i < fcend; ++i) { /* C :947 */
+        const fc = egd.fakecorr ? egd.fakecorr[i] : undefined;
+        if (!fc) continue;
+        const fx = fc.fx | 0;
+        const fy = fc.fy | 0; /* C :948 */
+        if (inFlipArea(fx, fy)) { /* C :950 */
+            if (flp & 1)
+                fc.fy = FlipY(fy); /* C :952 */
+            if (flp & 2)
+                fc.fx = FlipX(fx); /* C :954 */
+        }
+    }
+}
+
 /** C ref: mkmaze.c get_level_extends — see bottom of file. */
 
 /**
@@ -18873,12 +18919,15 @@ function flip_level_rnd(flp, extras) {
  * Ported: ox/oy + buried coords; swap `_objects_at` with terrain cells
  * (D-0804; preserves nexthere — never rebuild from fobj); mgoal / priest
  * shrpos / shk shk|shd via Flip_coord (inFlipArea+x gate); ungated stairs;
- * `_level_monsters` swap (C level.monsters[][]). Named omissions:
- * SpLev_Map flip (C leaves unflipped); drawbridge helpers; vault-guard
- * extras; ball/chain; flip_visuals(extras).
+ * `_level_monsters` swap (C level.monsters[][]). Vault-guard egd flips
+ * through flip_vault_guard when extras (`sp_lev.c:640–645`, `:674–677`).
+ * Named omissions:
+ * SpLev_Map flip (C leaves unflipped); drawbridge helpers; ball/chain.
+ * Migrating priest shrpos and shopkeeper shk/shd (`sp_lev.c:678–685`)
+ * stay omitted. `flip_visuals` runs when `extras` (`sp_lev.c:916–919`).
  * Exclusion rectangles flip with the level (D-1109).
  */
-function flip_level(flp, _extras) {
+function flip_level(flp, extras) {
     if ((flp & 3) === 0) return;
     let { xmin: minx, ymin: miny, xmax: maxx, ymax: maxy } = get_level_extends();
     if (miny < 0) miny = 0;
@@ -18964,7 +19013,14 @@ function flip_level(flp, _extras) {
     // wormno tail segs via flip_worm_segs_vertical/horizontal, D-2222)
     if (game.fmon) {
         for (const mtmp of game.fmon) {
-            if (!mtmp || !inFlipArea(mtmp.mx, mtmp.my)) continue;
+            if (!mtmp) continue;
+            /* C sp_lev.c:640–645 — extras flips egd; mx==0 stays off the map. */
+            if (mtmp.isgd) {
+                if (extras)
+                    flip_vault_guard(flp, mtmp, minx, miny, maxx, maxy);
+                if ((mtmp.mx | 0) === 0) continue;
+            }
+            if (!inFlipArea(mtmp.mx, mtmp.my)) continue;
             if (flp & 1) mtmp.my = FlipY(mtmp.my);
             if (flp & 2) mtmp.mx = FlipX(mtmp.mx);
             Flip_coord(mtmp.mgoal);
@@ -18980,6 +19036,17 @@ function flip_level(flp, _extras) {
                 if (flp & 1) flip_worm_segs_vertical(mtmp, miny, maxy);
                 if (flp & 2) flip_worm_segs_horizontal(mtmp, minx, maxx);
             }
+        }
+    }
+    /* C sp_lev.c:674–677 — guards who left this level still have egd here.
+       Priest shrpos and shk shk/shd on the same walk (`:678–685`) stay
+       the named omit on flip_level. */
+    if (extras) {
+        for (const mtmp of game.migrating_mons || []) {
+            if (!mtmp?.isgd) continue;
+            const egd = EGD(mtmp);
+            if (egd && on_level(game.u?.uz, egd.gdlevel))
+                flip_vault_guard(flp, mtmp, minx, miny, maxx, maxy);
         }
     }
 
@@ -19127,10 +19194,69 @@ function flip_level(flp, _extras) {
 
     // C flip_level: fix_wall_spines after cell swap so corners/T-junctions
     // match the new orientation (TLCORNER moved to the right must become
-    // TRCORNER). flip_visuals only when extras (wizfliplevel) — deferred.
+    // TRCORNER). extras is #wizfliplevel (`sp_lev.c:915–919`).
     fix_wall_spines(1, 0, COLNO - 1, ROWNO - 1);
+    if (extras && flp) {
+        set_wall_state();
+        flip_visuals(flp, minx, miny, maxx, maxy);
+    }
     /* C sp_lev.c:921 — block map matches the flipped terrain. */
     vision_reset();
+}
+
+/**
+ * C ref: sp_lev.c flip_visuals `:458–495` — seen cells inside the flip
+ * rectangle. Unseen (`seenv == 0`) cells are skipped, including the glyph
+ * rebuild. `SVALL` keeps its octants. Otherwise bit 1 swaps top/bottom
+ * (`2↔4`, `1↔5`, `0↔6`) and bit 2 swaps left/right (`2↔0`, `3↔7`, `4↔6`).
+ * A wall or secret door whose memory id (`remembered_glyph.glyph`, C
+ * `lev->glyph`) is a cmap is stored again via `remember_shown_glyph`,
+ * the same writer `map_background` uses, so the painted `ch` matches
+ * the rebuilt cmap. `show_memory_glyph` paints that `ch`.
+ */
+function flip_visuals(flp, minx, miny, maxx, maxy) {
+    flp |= 0;
+    for (let y = miny | 0; y <= (maxy | 0); ++y) {
+        for (let x = minx | 0; x <= (maxx | 0); ++x) {
+            const lev = game.level?.at(x, y);
+            if (!lev) continue;
+            let seenv = (lev.seenv | 0) & 0xff;
+            /* locations which haven't been seen can be skipped */
+            if (seenv === 0) continue;
+            /* flip <x,y>'s seen vector; not necessary for locations seen
+               from all directions (the whole level after magic mapping) */
+            if (seenv !== SVALL) {
+                /* SV2 SV1 SV0 *
+                 * SV3 -+- SV7 *
+                 * SV4 SV5 SV6 */
+                if (flp & 1) { /* swap top and bottom */
+                    seenv = swapbits(seenv, 2, 4);
+                    seenv = swapbits(seenv, 1, 5);
+                    seenv = swapbits(seenv, 0, 6);
+                }
+                if (flp & 2) { /* swap left and right */
+                    seenv = swapbits(seenv, 2, 0);
+                    seenv = swapbits(seenv, 3, 7);
+                    seenv = swapbits(seenv, 4, 6);
+                }
+                lev.seenv = seenv & 0xff;
+            }
+            /* C sp_lev.c:489–493 — wall or SDOOR whose lev->glyph is a
+               cmap is replaced with back_to_glyph. lev->glyph is
+               remembered_glyph.glyph (rm.h:160). show_memory_glyph paints
+               remembered_glyph.ch, so the rebuilt cmap is stored the way
+               map_background does (remember_shown_glyph). */
+            const memGlyph = lev.remembered_glyph
+                ? lev.remembered_glyph.glyph
+                : undefined;
+            if ((IS_WALL(lev.typ) || lev.typ === SDOOR)
+                && glyph_is_cmap(memGlyph)) {
+                remember_shown_glyph(
+                    lev, terrain_glyph(lev, x, y), back_to_glyph(x, y),
+                );
+            }
+        }
+    }
 }
 
 /**
@@ -19704,7 +19830,7 @@ function mktrap_seen_victim(ttmp, opts) {
 function tut1_unlit_match(xstart, ystart, mf, ch) {
     for (let my = 0; my < mf.hei; my++) {
         for (let mx = 0; mx < mf.wid; mx++) {
-            if (mf.data[my]?.[mx] !== ch) continue;
+            if (mapfrag_char(mf, mx, my) !== ch) continue;
             const loc = game.level.at(xstart + mx, ystart + my);
             if (loc) loc.lit = false;
         }
@@ -27685,19 +27811,6 @@ export function morguemon() {
 }
 
 /**
- * C ref: mkobj.c mk_tt_object — CORPSE/STATUE with topten name or role pm.
- * Empty RECORD: get_rnd_toptenentry burns rnd(10) then null → rn1 role.
- */
-function mk_tt_object(objtype, x, y) {
-    const initialize_it = objtype !== STATUE;
-    const otmp = mksobj_at(objtype, x, y, initialize_it, false);
-    if (!otmp) return null;
-    rnd(10); // C get_rnd_toptenentry after successful open
-    set_corpsenm(otmp, rn1(PM_WIZARD - PM_ARCHEOLOGIST + 1, PM_ARCHEOLOGIST));
-    return otmp;
-}
-
-/**
  * C ref: mkroom.c mk_zoo_thronemon — sleeping hostile ruler + mace.
  */
 function mk_zoo_thronemon(x, y) {
@@ -28214,18 +28327,67 @@ function splev_chr2typ(ch) {
     return INVALID_TYPE;
 }
 
-// C ref: sp_lev.c mapfrag_fromstr / mapfrag_get
+/**
+ * C ref: sp_lev.c mapfrag_fromstr `:226–253`.
+ * `dupstr`, then `stripdigits`, then `str_lines_maxlen`. Height counts
+ * newline-separated rows; the `hei > MAP_Y_LIM` test runs before the
+ * increment, so 22 rows are kept and the 23rd returns null (`:240–244`).
+ * A trailing newline does not add a row (`*tmps` is 0).
+ *
+ * `data` is those rows joined by newlines, each padded out to `wid`.
+ * `mapfrag_get` indexes `y * (wid + 1) + x` (`:271`), which is a column
+ * only when every row is `wid` bytes. Every `dat/*.lua` `des.map` is
+ * already that wide (measured: 79 maps, 0 ragged, 0 digits). The embedded
+ * copies drop trailing spaces, so the pad puts those spaces back before
+ * the stride. `alloc` / `free` are the object and GC.
+ * @param {string} str
+ * @returns {{ wid: number, hei: number, data: string } | null}
+ */
 function mapfrag_fromstr(str) {
-    const lines = String(str).replace(/\r/g, '').split('\n');
-    // drop a single trailing empty line from a final newline
-    if (lines.length && lines[lines.length - 1] === '') lines.pop();
-    const wid = lines.reduce((m, l) => Math.max(m, l.length), 0);
-    const data = lines.map(l => l.padEnd(wid, ' '));
-    return { wid, hei: data.length, data };
+    const stripped = stripdigits(dupstr(str ?? ''));
+    const wid = str_lines_maxlen(stripped);
+    const rows = [];
+    let i = 0;
+    while (i < stripped.length) {
+        if (rows.length > MAP_Y_LIM) return null;
+        const nl = stripped.indexOf('\n', i);
+        if (nl >= 0) {
+            rows.push(stripped.slice(i, nl));
+            i = nl + 1;
+            if (i === stripped.length) break;
+        } else {
+            rows.push(stripped.slice(i));
+            break;
+        }
+    }
+    let data = '';
+    for (let r = 0; r < rows.length; r++) {
+        let row = rows[r];
+        if (row.length < wid) row += ' '.repeat(wid - row.length);
+        if (r) data += '\n';
+        data += row;
+    }
+    return { wid, hei: rows.length, data };
 }
 
+/** Character at a mapfrag column. Same index as `mapfrag_get` (`:271`). */
+function mapfrag_char(mf, x, y) {
+    return mf.data.charAt((y | 0) * ((mf.wid | 0) + 1) + (x | 0));
+}
+
+/**
+ * C ref: sp_lev.c mapfrag_get `:265–271` — terrain of one fragment cell.
+ * Out of range is `panic` in C; here it throws and does not return a type.
+ */
 function mapfrag_get(mf, x, y) {
-    return splev_chr2typ(mf.data[y][x]);
+    x |= 0;
+    y |= 0;
+    const wid = mf.wid | 0;
+    const hei = mf.hei | 0;
+    if (y < 0 || x < 0 || y > hei - 1 || x > wid - 1) {
+        throw new Error(`outside mapfrag (${wid},${hei}), wanted (${x},${y})`);
+    }
+    return splev_chr2typ(mapfrag_char(mf, x, y));
 }
 
 /** C ref: sp_lev.c match_maptyps — MATCH_WALL / MAX_TYPE / INVALID_TYPE. */

@@ -8,16 +8,17 @@
 //        speed_up() (2918-2928),
 //        itimeout/itimeout_incr/set_itimeout/incr_itimeout (55-86),
 //        bottlename() (1487-1494), potionhit() (1624-1928),
-//        potionbreathe() (1931-2118), make_blinded() (261-331),
+//        potionbreathe() (1931-2118), make_stoned() (222-240),
+//        make_blinded() (261-331),
 //        make_hallucinated() (387-442), toggle_blindness() (336-364).
 //
 // dodrink() is the #quaff command entry point. Branches for underwater,
 // worn-potion, and milky/smoky potions are fail-closed;
 // the common path calls getobj() -> dopotion() -> peffects().
 //
-// peffects() dispatches 26 potion types; POT_BOOZE, POT_CONFUSION, POT_SICKNESS,
-// POT_SPEED (with spell alias SPE_HASTE_SELF), POT_BLINDNESS, POT_HEALING,
-// POT_EXTRA_HEALING, POT_OIL, the POT_FRUIT_JUICE arm of
+// peffects() dispatches 26 potion types; POT_ACID, POT_BOOZE, POT_CONFUSION,
+// POT_SICKNESS, POT_SPEED (with spell alias SPE_HASTE_SELF), POT_BLINDNESS,
+// POT_HEALING, POT_EXTRA_HEALING, POT_OIL, the POT_FRUIT_JUICE arm of
 // peffect_see_invisible(), the ordinary POT_PARALYSIS arm, and POT_POLYMORPH
 // are ported. Unported arms throw UnsupportedQuaffError.
 //
@@ -80,6 +81,7 @@ import {
     POTHIT_OTHER_THROW,
     SEE_INVIS,
     SLEEP_RES,
+    STONED,
     STRANGLED,
     TELEPAT,
     TIMEOUT,
@@ -129,6 +131,12 @@ import { is_boots, is_gloves } from './obj.js';
 import { discover_object } from './o_init.js';
 import { encumber_msg } from './pickup.js';
 import { body_part, float_vs_flight, polyself } from './polyself.js';
+import {
+    dealloc_killer,
+    delayed_killer,
+    find_delayed_killer,
+} from './end.js';
+import { fix_petrification } from './eat.js';
 import { d, rn1, rn2, rnd, rne, rnz } from './rng.js';
 import { canSpotMonster } from './startup_a11y.js';
 import { cloneu } from './mhitu.js';
@@ -392,6 +400,29 @@ export function incr_itimeout(prop, incr) {
     set_itimeout(prop, itimeout_incr(prop.intrinsic, incr));
 }
 
+// C ref: potion.c make_stoned() (222-240). Set or clear the STONED timeout,
+// update the condition line only on a transition, and retain the delayed
+// killer which timeout.c consults when petrification expires.
+export async function make_stoned(
+    xtime, msg, killedby, killername, state = game,
+) {
+    const prop = state.u?.uprops?.[STONED];
+    if (!prop)
+        throw new Error('make_stoned requires initialized STONED state');
+    const old = prop.intrinsic & TIMEOUT;
+    set_itimeout(prop, xtime);
+    if (Boolean(xtime) !== Boolean(old)) {
+        state.disp ??= {};
+        state.disp.botl = true;
+        if (msg) await ttyPline(msg, state);
+    }
+    if (!(prop.intrinsic & TIMEOUT)) {
+        dealloc_killer(find_delayed_killer(STONED, state), state);
+    } else if (!old) {
+        delayed_killer(STONED, killedby, killername, state);
+    }
+}
+
 // C ref: potion.c make_glib() (460-468). Set or clear "slippery fingers".
 // polymon() calls make_glib(0) when the new form has no hands, clearing any
 // Glib timeout so the status line updates.
@@ -496,12 +527,7 @@ export async function make_blinded(xtime, talk, state = game, env = {}) {
         if (count !== 1) result = makeplural(result);
         return result;
     };
-    const strangeFeeling = () => {
-        // C's strange_feeling(NULL, NULL) has a discarded return and belongs
-        // to potion.c. Keep the source call visible without using a refusal
-        // as a substitute operation; its message owner is outside this span.
-        if (state === game) note_unported('potion.c strange_feeling');
-    };
+    const strangeFeeling = async () => strange_feeling(null, null, state);
 
     if (canSeeNow && !uCouldSee) {
         if (talk) {
@@ -517,7 +543,7 @@ export async function make_blinded(xtime, talk, state = game, env = {}) {
         // a blindfold, permanent blindness, or eyeless form in charge.
         if (talk) {
             if (!haseyes(state.youmonst?.data) || permaBlind) {
-                strangeFeeling();
+                await strangeFeeling();
             } else if (blindfolded) {
                 const name = eyes();
                 await message(`Your ${name} momentarily ${vtense(name, 'itch')}.`, state);
@@ -547,7 +573,7 @@ export async function make_blinded(xtime, talk, state = game, env = {}) {
     } else if (!old && xtime) {
         if (talk) {
             if (!haseyes(state.youmonst?.data) || permaBlind) {
-                strangeFeeling();
+                await strangeFeeling();
             } else if (blindfolded) {
                 const name = eyes();
                 await message(`Your ${name} momentarily ${vtense(name, 'twitch')}.`, state);
@@ -1162,6 +1188,35 @@ async function peffect_levitation(otmp, state) {
     float_vs_flight(state);
 }
 
+// C ref: potion.c peffect_acid() (1297-1315). A quaffed acid potion can also
+// cure petrification after applying its own acid damage.
+async function peffect_acid(otmp, state = game) {
+    if (Acid_resistance(state)) {
+        await ttyPline(
+            `This tastes ${Hallucination(state) ? 'tangy' : 'sour'}.`, state,
+        );
+    } else {
+        await ttyPline(
+            `This burns${otmp.blessed ? ' a little'
+                : otmp.cursed ? ' a lot' : ' like acid'}!`,
+            state,
+        );
+        const damage = d(otmp.cursed ? 2 : 1, otmp.blessed ? 4 : 8);
+        await losehp(
+            Maybe_Half_Phys(damage, state),
+            'potion of acid',
+            KILLED_BY_AN,
+            state,
+        );
+        await exercise(A_CON, false, state, { rn2 }, {
+            encumberMessage: encumber_msg,
+        });
+    }
+    if (state.u?.uprops?.[STONED]?.intrinsic)
+        await fix_petrification(state);
+    state.gp.potion_unkn++;
+}
+
 // C ref: potion.c peffects() (1333-1425). Dispatch the effect of a quaffed
 // potion or spell. Returns >=0 if the effect short-circuits dopotion()'s tail
 // (0 = no time, 1 = time), -1 to continue to the tail.
@@ -1233,7 +1288,8 @@ export async function peffects(otmp, state = game) {
         await peffect_oil(otmp, state);
         break;
     case POT_ACID:
-        throw new UnsupportedQuaffError('peffect_acid()');
+        await peffect_acid(otmp, state);
+        break;
     case POT_POLYMORPH:
         await peffect_polymorph(otmp, state);
         break;
@@ -1250,6 +1306,21 @@ function Hallucination(state) {
     const resistance = state.u?.uprops?.[HALLUC_RES];
     return Boolean(prop?.intrinsic
         && !(resistance?.intrinsic || resistance?.extrinsic));
+}
+
+// C ref: potion.c strange_feeling() (1461-1475). An absent object is used by
+// crystal-ball trap detection and make_blinded(); otherwise a known object can
+// be called and the selected object is consumed after that prompt completes.
+export async function strange_feeling(obj, txt, state = game) {
+    const message = state.flags?.beginner || !txt
+        ? `You have a ${Hallucination(state) ? 'normal' : 'strange'}`
+            + ' feeling for a moment, then it passes.'
+        : txt;
+    await ttyPline(message, state);
+
+    if (!obj) return;
+    if (obj.dknown) await trycall(obj, state);
+    useup(obj, { state });
 }
 
 // C ref: potion.c dopotion() (618-641). Called by dodrink() after the potion

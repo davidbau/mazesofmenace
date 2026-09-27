@@ -34,8 +34,9 @@ import {
     SF_DM_ILP32LL64_ON_IL32LLP64, SF_DM_I32LP64_ON_IL32LLP64,
     SF_DM_IL32LLP64_ON_I32LP64, SF_DM_MISMATCH, UTD_CHECKSIZES,
     UTD_CHECKFIELDCOUNTS, UTD_SKIP_SANITY1, UTD_WITHOUT_WAITSYNCH_PERFILE,
-    UTD_QUIETLY, WIN_ERR, SFCTOOL_BIT,
+    UTD_QUIETLY, WIN_ERR, SFCTOOL_BIT, OBJ_FLOOR,
 } from './const.js';
+import { shop_keeper, inhishop, inside_shop } from './shk.js';
 import { datamodel, what_datamodel_is_this } from './version.js';
 import { rn2 } from './rng.js';
 import { mungspaces } from './getline.js';
@@ -65,16 +66,34 @@ function is_hands_obj(obj) {
 }
 
 /**
- * C ref: invent.c merge_choice(gi.invent, obj) — first mergable slot.
- * Shop-floor no_charge / inhishop unpaid reject named (wizkit objs are
- * OBJ_FREE, so that arm never fires).
+ * C ref: invent.c merge_choice `:774–810` — first mergable object on
+ * objlist. Shop floor: shop_keeper(inside_shop); no_charge is cleared
+ * for the scan, or the object is rejected while the keeper is in the
+ * shop (the unpaid bit is not set yet). JS invent is an array.
+ * The inhishop reject returns without restoring no_charge (C does too;
+ * that arm only runs when no_charge was already clear).
  */
-function merge_choice(obj) {
+export function merge_choice(objlist, obj) {
+    if (!objlist) return null;
     if (!obj || (obj.otyp | 0) === SCR_SCARE_MONSTER) return null;
-    for (const otmp of game.invent || []) {
-        if (mergable(otmp, obj)) return otmp;
+    const saveNocharge = obj.no_charge;
+    if (objlist === game.invent && (obj.where | 0) === OBJ_FLOOR) {
+        const shkp = shop_keeper(inside_shop(obj.ox | 0, obj.oy | 0));
+        if (shkp) {
+            if (obj.no_charge) obj.no_charge = 0;
+            else if (inhishop(shkp)) return null;
+        }
     }
-    return null;
+    let found = null;
+    const seq = Array.isArray(objlist) ? objlist : [];
+    for (const otmp of seq) {
+        if (mergable(otmp, obj)) {
+            found = otmp;
+            break;
+        }
+    }
+    obj.no_charge = saveNocharge;
+    return found;
 }
 
 /**
@@ -126,7 +145,7 @@ async function wizkit_addinv(obj) {
     if (Role_if(PM_CLERIC)) obj.bknown = 1;
     if (obj.oclass !== COIN_CLASS
         && inv_cnt(false) >= INVLET_BASIC
-        && !merge_choice(obj)) {
+        && !merge_choice(game.invent, obj)) {
         add_to_migration(obj);
         obj.ox = 0;
         obj.oy = 1;

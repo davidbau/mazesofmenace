@@ -31,6 +31,50 @@ export function swapbits(val, bita, bitb) {
     return (val ^ ((tmp << bita) | (tmp << bitb))) | 0;
 }
 
+/**
+ * C ref: hacklib.c str_lines_maxlen `:252–272` — longest newline-separated
+ * row, not counting the newline. A missing newline takes the tail and ends
+ * the walk (`s1 = NULL`).
+ * @param {string} str
+ * @returns {number}
+ */
+export function str_lines_maxlen(str) {
+    const s = String(str ?? '');
+    let maxLen = 0;
+    let i = 0;
+    while (i < s.length) {
+        const nl = s.indexOf('\n', i);
+        let len;
+        if (nl >= 0) {
+            len = nl - i;
+            i = nl + 1;
+        } else {
+            len = s.length - i;
+            i = s.length;
+        }
+        if (len > maxLen) maxLen = len;
+        if (nl < 0) break;
+    }
+    return maxLen | 0;
+}
+
+/**
+ * C ref: hacklib.c stripdigits `:521–530` — drop `'0'..'9'` and return the
+ * buffer. JS strings are immutable, so the result is a new string; the
+ * sole C caller (`mapfrag_fromstr`) uses that return.
+ * @param {string} s
+ * @returns {string}
+ */
+export function stripdigits(s) {
+    const src = String(s ?? '');
+    let out = '';
+    for (let i = 0; i < src.length; i++) {
+        const c = src.charCodeAt(i);
+        if (c < 48 || c > 57) out += src[i];
+    }
+    return out;
+}
+
 /** C ref: hacklib.c online2 — orthogonal or diagonal line. */
 export function online2(x0, y0, x1, y1) {
     const dx = x0 - x1;
@@ -520,4 +564,46 @@ export function ordin(n) {
     const dd = nn % 10;
     return (dd === 0 || dd > 3 || Math.trunc((nn % 100) / 10) === 1)
         ? 'th' : (dd === 1) ? 'st' : (dd === 2) ? 'nd' : 'rd';
+}
+
+/**
+ * C ref: hacklib.c unicodeval_to_utf8str `:882–919`.
+ * Encode signed `int uval` as UTF-8 into `buffer` (a `uint8` array) and
+ * return 1, or 0 when `bufsz < 5`, when `uval` is a surrogate, or when
+ * `uval` is past U+10FFFF. `bufsz` is `size_t`. Division matches C `int`
+ * (toward zero). The surrogate test is unsigned (`uval - 0xd800u < 0x800`).
+ * A reject after the size check still stores a leading NUL; a short buffer
+ * is left untouched. Each stored byte is truncated to 8 bits.
+ * @param {number} uval
+ * @param {Uint8Array|number[]|null} buffer
+ * @param {number} bufsz
+ * @returns {number}
+ */
+export function unicodeval_to_utf8str(uval, buffer, bufsz) {
+    uval = uval | 0; // C `int`
+    const n = bufsz >>> 0; // C `size_t`
+    if (n < 5) return 0; // C `:887–888`
+    let i = 0;
+    buffer[i] = 0; // C `:897` *b = '\0' before the range chain
+    if (uval < 0x80) { // C `:898–899`
+        buffer[i++] = uval & 0xff;
+    } else if (uval < 0x800) { // C `:900–902`
+        buffer[i++] = (192 + ((uval / 64) | 0)) & 0xff;
+        buffer[i++] = (128 + (uval % 64)) & 0xff;
+    } else if ((((uval >>> 0) - 0xd800) >>> 0) < 0x800) { // C `:903–904`
+        return 0;
+    } else if (uval < 0x10000) { // C `:905–908`
+        buffer[i++] = (224 + ((uval / 4096) | 0)) & 0xff;
+        buffer[i++] = (128 + (((uval / 64) | 0) % 64)) & 0xff;
+        buffer[i++] = (128 + (uval % 64)) & 0xff;
+    } else if (uval < 0x110000) { // C `:909–913`
+        buffer[i++] = (240 + ((uval / 262144) | 0)) & 0xff;
+        buffer[i++] = (128 + (((uval / 4096) | 0) % 64)) & 0xff;
+        buffer[i++] = (128 + (((uval / 64) | 0) % 64)) & 0xff;
+        buffer[i++] = (128 + (uval % 64)) & 0xff;
+    } else { // C `:914–915`
+        return 0;
+    }
+    buffer[i] = 0; // C `:917` NUL terminate
+    return 1; // C `:918`
 }

@@ -16,15 +16,15 @@
 // Named omissions: hallu AD_STUN covered
 // D-0943; corpse_intrinsic/givit covered D-0944;
 // were*/mimic/attrcurse covered D-0945 (set_mimic_blocking /
-// retouch_equipment / display_nhwindow WIN_MAP polish / livelog /
-// eatmupdate hallu toggle);
+// retouch_equipment / display_nhwindow WIN_MAP polish / livelog);
+// eatmupdate hallu toggle is D-2896;
 // tainted Sick; make_blinded body / Hear_again afternmv;
 // sellobj_state on invent-full dropy; costly_alteration COST_BITE;
 // ?/* menu; gethungry ring/amulet accessorytime polish;
 // losestr setuhpmax / terminal-frailty full death path;
 // timeout.c vomiting_dialog cantvomit/Hallu texts;
 // Fixed_abil Popeye Olive/Bluto;
-// livelog conduct; cprefx polymon stone-golem failure polish.
+// doeat/eatcorpse/doeat_nonfood livelog conduct; cprefx polymon stone-golem failure polish.
 // D-0953: floorfood pool/lava reach + vault_gd_watching(GD_EATGOLD).
 // D-0956: Ring_gone / float_up / rescham / choke(strangle) /
 // set_mimic_blocking / perceives in eataccessory.
@@ -93,7 +93,7 @@ import {
     FIRE_RES, COLD_RES, SLEEP_RES, DISINT_RES, SHOCK_RES, POISON_RES,
     ACID_RES, STONE_RES, TELEPAT, TELEPORT, TELEPORT_CONTROL, LAST_PROP,
     SEE_INVIS, INVIS, PROT_FROM_SHAPE_CHANGERS, LEVITATION, SLEEPY,
-    M_AP_NOTHING, M_AP_OBJECT, DISMOUNT_FELL,
+    M_AP_NOTHING, M_AP_OBJECT, M_AP_TYPE, DISMOUNT_FELL,
     WWALKING, MAGICAL_BREATHING, FLYING, GD_EATGOLD, Is_waterlevel,
     Is_astralevel, EXPL_FIERY,
     CHOKING, STARVING, STARVED, A_LAWFUL, STRANGLED, PARANOID_EATING,
@@ -1022,17 +1022,19 @@ function food_xname(food, the_pfx) {
     return result;
 }
 
-/** C ref: eat.c violated_vegetarian — Monk feels guilty + adjalign(-1). */
-function violated_vegetarian() {
+/**
+ * C ref: eat.c violated_vegetarian `:1375–1384`.
+ * Increment unvegetarian, then Role_if(PM_MONK): You_feel("guilty.") then
+ * adjalign(-1). Async only because You_feel can reach nhgetch.
+ */
+async function violated_vegetarian() {
     if (!game.u.uconduct) game.u.uconduct = {};
     game.u.uconduct.unvegetarian = (game.u.uconduct.unvegetarian | 0) + 1;
+    // C you.h:247 Role_if — gu.urole.mnum == PM_MONK.
     if ((game.urole?.mnum ?? -1) === PM_MONK) {
-        // pline deferred to call site when async; sync bump for align
-        if (!game.u.ualign) game.u.ualign = { type: 0, record: 0 };
-        game.u.ualign.record = (game.u.ualign.record | 0) - 1;
-        return true;
+        await You_feel('guilty.');
+        adjalign(-1);
     }
-    return false;
 }
 
 /** C ref: eat.c consume_oeaten `:3808–3872` — whole body in C order. */
@@ -1811,12 +1813,70 @@ function eatmdone() {
 }
 
 /**
+ * C strlen: stop at the first NUL. These buffers are ASCII, so the
+ * count matches `Strlen` (`global.h:288` → `Strlen_`).
+ */
+function eatmStrlen(s) {
+    const str = String(s ?? '');
+    const z = str.indexOf('\0');
+    return z < 0 ? str.length : z;
+}
+
+/**
+ * C ref: eat.c eatmupdate `:181–213` — hallucination toggle while the
+ * hero is still mimicking (nomovemsg is the eatmbuf pointer).
+ * `is_obj_mappear` is the `monst.h:243` macro: `M_AP_TYPE == M_AP_OBJECT`
+ * and `mappearance == otyp`. No RNG. `alloc`/`free` are the buffer
+ * reseat: JS strings cannot be overwritten in place, so both the
+ * longer-message arm and the `strcpy` arm store `altmsg` and point
+ * `nomovemsg` at that same string (`strcpy` returns the buffer).
+ */
+export function eatmupdate() {
+    let altmsg = null;
+    let altapp = 0; /* C: lint suppression */
+
+    /* C :186 — not mimicking, or something else owns nomovemsg. */
+    if (!game.eatmbuf || game.nomovemsg !== game.eatmbuf) return;
+
+    const ym = game.youmonst;
+    if (M_AP_TYPE(ym) === M_AP_OBJECT
+        && (ym?.mappearance | 0) === ORANGE_OTYP
+        && !Hallucination()) {
+        /* revert from hallucinatory to "normal" mimicking */
+        altmsg = 'You now prefer mimicking yourself.';
+        altapp = GOLD_PIECE;
+    } else if (M_AP_TYPE(ym) === M_AP_OBJECT
+        && (ym?.mappearance | 0) === GOLD_PIECE
+        && Hallucination()) {
+        /* C: won't happen from make_hallucinated (that caller only
+           enters when !Hallucination). Kept in C order. */
+        altmsg = 'Your rind escaped intact.';
+        altapp = ORANGE_OTYP;
+    }
+
+    if (altmsg) {
+        const amlen = eatmStrlen(altmsg);
+        if (amlen > eatmStrlen(game.eatmbuf)) {
+            /* free(eatmbuf); eatmbuf = alloc(amlen + 1) */
+            game.eatmbuf = altmsg;
+        } else {
+            /* strcpy(eatmbuf, altmsg) into the existing buffer */
+            game.eatmbuf = altmsg;
+        }
+        game.nomovemsg = game.eatmbuf;
+        ym.mappearance = altapp;
+        const u = game.u || {};
+        newsym(u.ux | 0, u.uy | 0);
+    }
+}
+
+/**
  * C ref: eat.c cpostfx — post-corpse effects.
  * Branch envelope (D-0943/D-0944/D-0945): named specials + check_intrinsics
  * hallu/newt + corpse_intrinsic → givit / gainstr; were* set_ulycn;
  * mimic gold eatmdone/afternmv; disenchanter attrcurse.
  * Named omissions: set_mimic_blocking;
- * curs_on_u; livelog first polyself conduct; eatmupdate hallu toggle.
+ * curs_on_u; livelog first polyself conduct.
  */
 async function cpostfx(pm) {
     let tmp = 0;
@@ -2406,9 +2466,8 @@ export async function eatcorpse(otmp) {
         game.u.uconduct.unvegan = (game.u.uconduct.unvegan | 0) + 1;
     }
     if (!vegetarian(ptr)) {
-        if (violated_vegetarian()) {
-            await pline('You feel guilty.');
-        }
+        // C eat.c:1877–1882 — guilt message is inside violated_vegetarian.
+        await violated_vegetarian();
     }
 
     if (!nonrotting_corpse(mnum)) {
@@ -3195,7 +3254,7 @@ async function doeat_nonfood(otmp) {
     if (material === MAT_LEATHER || material === MAT_BONE
         || material === MAT_DRAGON_HIDE || material === MAT_WAX) {
         game.u.uconduct.unvegan = (game.u.uconduct.unvegan | 0) + 1;
-        if (material !== MAT_WAX) violated_vegetarian();
+        if (material !== MAT_WAX) await violated_vegetarian();
     }
 
     if (otmp.cursed) {
@@ -3227,17 +3286,43 @@ async function doeat_nonfood(otmp) {
 }
 
 /**
- * C ref: eat.c eating_conducts — food/unvegan/unvegetarian counters.
- * gulpum AD_DGST (D-1264). Livelog first-time messages deferred.
+ * C ref: eat.c eating_conducts `:576–599`.
+ * Post-increment food, then unvegan only when !vegan, then the meat
+ * livelog (no increment of its own) and violated_vegetarian when
+ * !vegetarian. ll_conduct suppresses a second livelog in the same call.
+ * pmnames[NEUTRAL] is the noun (JS table, not a field on the permonst).
  */
-export function eating_conducts(pd) {
+export async function eating_conducts(pd) {
+    let ll_conduct = 0;
     if (!game.u.uconduct) game.u.uconduct = {};
-    game.u.uconduct.food = (game.u.uconduct.food | 0) + 1;
+    const uc = game.u.uconduct;
+    // C `:582` pd->pmnames[NEUTRAL]. mndx is mons(); mnum is a saved copy.
+    const mndx = pd?.mndx ?? pd?.mnum;
+    const nm = (mndx != null && pmnames[mndx]) ? (pmnames[mndx][NEUTRAL] || '') : '';
+    // C `:580` `!u.uconduct.food++` — test the old value, always increment.
+    const food0 = uc.food | 0;
+    uc.food = food0 + 1;
+    if (!food0) {
+        livelog_printf(LL_CONDUCT, 'ate for the first time - %s', nm);
+        ll_conduct++;
+    }
     if (!vegan(pd)) {
-        game.u.uconduct.unvegan = (game.u.uconduct.unvegan | 0) + 1;
+        // C `:586` `!u.uconduct.unvegan++ && !ll_conduct` — increment is not
+        // short-circuited; the livelog is.
+        const unvegan0 = uc.unvegan | 0;
+        uc.unvegan = unvegan0 + 1;
+        if (!unvegan0 && !ll_conduct) {
+            livelog_printf(LL_CONDUCT,
+                'consumed animal products (%s) for the first time', nm);
+            ll_conduct++;
+        }
     }
     if (!vegetarian(pd)) {
-        violated_vegetarian();
+        // C `:592–595` — unvegetarian is not incremented here.
+        if (!(uc.unvegetarian | 0) && !ll_conduct) {
+            livelog_printf(LL_CONDUCT, 'tasted meat (%s) for the first time', nm);
+        }
+        await violated_vegetarian();
     }
 }
 
@@ -3334,7 +3419,7 @@ export async function eat_brains(magr, mdef, visflag, dmg_p) {
 
     let give_nutrit = false;
     if (magr === youmonst) {
-        eating_conducts(pd);
+        await eating_conducts(pd);
         if (mindless(pd)) {
             await pline(`${Monnam(mdef)} doesn't notice.`);
             return M_ATTK_MISS;
@@ -3647,7 +3732,7 @@ async function consume_tin(mesg) {
         const ptr = mons(mnum);
         const meat = pmnames[mnum]?.[2] || 'creature';
         await pline(`You consume ${tintxts[r].txt} ${meat}.`);
-        eating_conducts(ptr);
+        await eating_conducts(ptr);
         observe_object(tin);
         tin.known = 1;
         tin = game.context.tin.tin = await costly_tin(COST_OPEN);
@@ -4303,9 +4388,7 @@ export async function doeat() {
         const material = game.objects?.[otmp.otyp]?.oc_material | 0;
         if (material === MAT_FLESH) {
             game.u.uconduct.unvegan = (game.u.uconduct.unvegan | 0) + 1;
-            if (otmp.otyp !== EGG && violated_vegetarian()) {
-                await pline('You feel guilty.');
-            }
+            if (otmp.otyp !== EGG) await violated_vegetarian();
         } else if (
             otmp.otyp === PANCAKE
             || otmp.otyp === FORTUNE_COOKIE
