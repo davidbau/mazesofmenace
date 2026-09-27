@@ -49,7 +49,7 @@ import { hurtle } from './dothrow.js';
 import { make_confused, make_deaf, make_hallucinated, make_sick, make_slimed, make_stoned, make_stunned, make_vomiting, set_itimeout } from './potion.js';
 import { make_blinded } from './do.js';
 import { Fumbling, Fast, Very_fast, acurr, adjattrib, exercise, stone_luck, A_STR, A_DEX, A_CON } from './attrib.js';
-import { pline, You, You_feel, newsym, canseemon, verbalize, Norep, see_monsters, impossible, urgent_pline, Hallucination } from './display.js';
+import { pline, You, You_feel, You_see, newsym, canseemon, verbalize, Norep, see_monsters, impossible, urgent_pline, Hallucination } from './display.js';
 import { inv_weight, update_inventory, useup, useupall } from './invent.js';
 import { doname, makeplural, xname, an, The, the, vtense } from './objnam.js';
 import { rn2, rnd, rn1, d } from './rng.js';
@@ -1676,11 +1676,6 @@ function Yname2(obj) {
     return The(xname(obj));
 }
 
-async function You_see(line) {
-    if (Blind()) await pline(`You sense ${line}`);
-    else await pline(`You see ${line}`);
-}
-
 /**
  * C ref: timeout.c burn_away_slime — clear Slimed TIMEOUT with message.
  */
@@ -1920,7 +1915,7 @@ export async function burn_object(obj, timeout) {
                         );
                     } else if (obj.where === OBJ_FLOOR) {
                         await You_see(
-                            `${an(xname(obj))} flicker${considerably}.`,
+                            '%s flicker%s.', an(xname(obj)), considerably,
                         );
                     }
                 }
@@ -1937,7 +1932,7 @@ export async function burn_object(obj, timeout) {
                     || obj.where === OBJ_MINVENT) {
                     await pline(`${Yname2(obj)} seems about to go out.`);
                 } else if (obj.where === OBJ_FLOOR) {
-                    await You_see(`${an(xname(obj))} about to go out.`);
+                    await You_see('%s about to go out.', an(xname(obj)));
                 }
             }
         } else if (age === 0) {
@@ -1952,7 +1947,7 @@ export async function burn_object(obj, timeout) {
                     if ((obj.otyp | 0) === BRASS_LANTERN) {
                         await You_see('a lantern run out of power.');
                     } else {
-                        await You_see(`${an(xname(obj))} go out.`);
+                        await You_see('%s go out.', an(xname(obj)));
                     }
                 }
             }
@@ -2016,9 +2011,9 @@ export async function burn_object(obj, timeout) {
                         );
                     } else if (obj.where === OBJ_FLOOR) {
                         await You_see(
-                            `${many ? 'some ' : ''}${
-                                many ? xname(obj) : an(xname(obj))
-                            } consumed!`,
+                            '%s%s consumed!',
+                            many ? 'some ' : '',
+                            many ? xname(obj) : an(xname(obj)),
                         );
                         need_newsym = true;
                     }
@@ -2227,7 +2222,9 @@ export async function hatch_egg(egg, timeout) {
             );
         } else {
             await You_see(
-                `${monnambuf} ${locomotion_hatch(mon.data, 'drop')} out of your pack!`,
+                '%s %s out of your pack!',
+                monnambuf,
+                locomotion_hatch(mon.data, 'drop'),
             );
         }
         if (yours) {
@@ -2248,7 +2245,7 @@ export async function hatch_egg(egg, timeout) {
     case OBJ_FLOOR:
         if (cansee_hatchspot) {
             knows_egg = true;
-            await You_see(`${monnambuf} hatch.`);
+            await You_see('%s hatch.', monnambuf);
             redraw = true;
         }
         break;
@@ -2269,7 +2266,10 @@ export async function hatch_egg(egg, timeout) {
                 carriedby = 'thin air';
             }
             await You_see(
-                `${monnambuf} ${locomotion_hatch(mon.data, 'drop')} out of ${carriedby}!`,
+                '%s %s out of %s!',
+                monnambuf,
+                locomotion_hatch(mon.data, 'drop'),
+                carriedby,
             );
         }
         break;

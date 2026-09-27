@@ -144,14 +144,14 @@ import { level_difficulty, depth, ordin, strsubst } from './hacklib.js';
 import { make_stunned, make_hallucinated } from './potion.js';
 import { monstseesu, monstunseesu, defended, resists_magm } from './mondata.js';
 import { get_obj_location, burn_away_slime } from './timeout.js';
-import { costly_spot, shop_keeper, stolen_value, make_angry_shk, add_damage, sellobj, costly_alteration } from './shk.js';
+import { costly_spot, shop_keeper, stolen_value, make_angry_shk, add_damage, sellobj, costly_alteration, obfree } from './shk.js';
 import { unpunish, seffects } from './read.js';
 import { create_gas_cloud } from './region.js';
 import { polymon, body_part, mbodypart, float_vs_flight, Unchanging, polyself } from './polyself.js';
 import { done } from './end.js';
 import { make_blinded, dropx, setnotworn } from './do.js';
 import { Soundeffect } from './sndprocs.js';
-import { se_loud_crash, se_roar } from './generated/seffects_data.js';
+import { se_loud_crash, se_roar, se_soft_click } from './generated/seffects_data.js';
 import { mon_adjust_speed } from './muse.js';
 import { m_dowear, extract_from_minvent, update_mon_extrinsics } from './worn.js';
 import { m_unleash, number_leashed, unleash_all, check_leash, mon_has_amulet } from './apply.js';
@@ -2244,8 +2244,10 @@ async function trapeffect_pit(mtmp, trap, trflags) {
         if (!Sokoban && is_clinger(game.youmonst?.data) && !plunged) {
             const spiked = ttype === SPIKED_PIT ? 'spiked ' : '';
             if (already_known) {
-                await pline(
-                    `You see ${a_your[trap.madeby_u ? 1 : 0]} ${spiked}pit below you.`,
+                await You_see(
+                    '%s %spit below you.',
+                    a_your[trap.madeby_u ? 1 : 0],
+                    spiked,
                 );
             } else {
                 const full = ttype === SPIKED_PIT ? 'full of spikes ' : '';
@@ -2401,61 +2403,86 @@ async function trapeffect_pit(mtmp, trap, trflags) {
         : (mtmp.mtrapped ? Trap_Caught_Mon : Trap_Effect_Finished);
 }
 
-// C ref: trap.c trapeffect_dart_trap — hero + monster branches
-async function trapeffect_dart_trap(mtmp, trap) {
+/**
+ * C trap.c trapeffect_dart_trap `:1251–1321`.
+ * Hero: `oldumort`, then `once && tseen && !rn2(15)` → Soundeffect +
+ * You_hear + deltrap. Else `once = 1`, seetrap, pline, t_missile,
+ * `rn2(6)` poison, dmgval, `usteed && !rn2(2) && steedintrap`, else
+ * thitu then `poisoned` + `obfree`, or the floor drop. `done()` inside
+ * thitu/poisoned does not return, so a gameover skips the rest.
+ * Monster: `in_sight` / `see_it` before the click roll. `pline_mon` only
+ * when both. `seetrap` only when `in_sight`. Then thitm.
+ * `trflags` is UNUSED in C.
+ */
+async function trapeffect_dart_trap(mtmp, trap, trflags) {
+    void trflags;
     if (is_youmonst(mtmp)) {
         const u = game.u;
+        const oldumort = u.umortality | 0;
+
         if (trap.once && trap.tseen && !rn2(15)) {
+            Soundeffect(se_soft_click, 30);
             await You_hear('a soft click.');
             deltrap(trap);
             newsym(u.ux, u.uy);
             return Trap_Is_Gone;
         }
-        trap.once = true;
+        trap.once = 1;
         seetrap(trap);
         await pline('A little dart shoots out at you!');
         let otmp = t_missile(DART, trap);
         if (!rn2(6)) otmp.opoisoned = 1;
-        const dam = dmgval(otmp, game.youmonst || mtmp);
+        const dam = dmgval(otmp, game.youmonst);
         const box = { obj: otmp };
-        // C: `u.usteed && !rn2(2) && steedintrap(trap, otmp)` — steed takes it
+        // C: `u.usteed && !rn2(2) && steedintrap` — rn2 only when mounted.
+        // A truthy return (hit or Trap_Killed_Mon) consumes the dart inside.
         if (u.usteed && !rn2(2) && await steedintrap(trap, otmp)) {
-            /* nothing — otmp consumed by thitm inside steedintrap */
+            /* nothing */
         } else if (await thitu(7, maybe_half_phys(dam), box, 'little dart')) {
-            // thitu plines are sync-append-safe after the shoot message
+            if (game.program_state?.gameover) return Trap_Effect_Finished;
             otmp = box.obj;
             if (otmp) {
-                // poisoned() body deferred — still consume dart (obfree)
-                // Named omission: poison attrib / HP when opoisoned
-                // obfree: no obj_resists (delobj would burn rn2)
+                if (otmp.opoisoned) {
+                    await poisoned(
+                        'dart', A_CON, 'little dart',
+                        ((u.umortality | 0) > oldumort) ? 0 : 10,
+                        true,
+                    );
+                    if (game.program_state?.gameover) return Trap_Effect_Finished;
+                }
+                obfree(otmp, null);
             }
-            return Trap_Effect_Finished;
         } else {
-            otmp = box.obj;
-            if (otmp) {
-                place_object(otmp, u.ux, u.uy);
-                if (!u.Blind) observe_object(otmp);
-                stackobj(otmp);
-                newsym(u.ux, u.uy);
-            }
-            return Trap_Effect_Finished;
+            place_object(otmp, u.ux, u.uy);
+            if (!Blind()) observe_object(otmp);
+            stackobj(otmp);
+            newsym(u.ux, u.uy);
         }
         return Trap_Effect_Finished;
     }
 
-    // Monster branch
+    const usteed = game.u?.usteed;
+    const in_sight = canseemon(mtmp) || mtmp === usteed;
+    const see_it = cansee(mtmp.mx, mtmp.my);
+    let trapkilled = false;
+
     if (trap.once && trap.tseen && !rn2(15)) {
-        // deltrap omitted visually; remove from list
+        if (in_sight && see_it) {
+            await pline_mon(
+                mtmp,
+                '%s triggers a trap but nothing happens.',
+                Monnam(mtmp),
+            );
+        }
         deltrap(trap);
         newsym(mtmp.mx, mtmp.my);
         return Trap_Is_Gone;
     }
-    trap.once = true;
+    trap.once = 1;
     const otmp = t_missile(DART, trap);
     if (!rn2(6)) otmp.opoisoned = 1;
-    // C: if (in_sight) seetrap(trap);
-    seetrap(trap);
-    const trapkilled = await thitm(7, mtmp, otmp, 0, false);
+    if (in_sight) seetrap(trap);
+    if (await thitm(7, mtmp, otmp, 0, false)) trapkilled = true;
     return trapkilled ? Trap_Killed_Mon
         : (mtmp.mtrapped ? Trap_Caught_Mon : Trap_Effect_Finished);
 }
@@ -2465,9 +2492,9 @@ async function trapeffect_dart_trap(mtmp, trap) {
 // t_missile(ARROW) (mksobj o_id + full WEAPON init, quan forced to 1) with
 // NO poison roll, then thitm(8, …); the hero arm plines, gates
 // `u.usteed && !rn2(2) && steedintrap(trap, otmp)`, then thitu(8, …).
-// Omissions mirror the dart port: Soundeffect, the gone-arm
-// pline_mon, in_sight gating on seetrap, obfree obj_resists (all draw-free
-// except the gone-arm rn2(15), which is kept). C trace for
+// Still omitted vs C (not this iteration's row): Soundeffect, the
+// gone-arm pline_mon, in_sight gating on seetrap, and obfree after a
+// hero hit. The gone-arm rn2(15) is kept. C trace for
 // scen-poly-Priest-92021 drew o_id + mksobj_init `:877/:878/:881` +
 // blessorcurse(10) + erosions + rnd(20)@thitm here.
 async function trapeffect_arrow_trap(mtmp, trap) {
@@ -2581,8 +2608,9 @@ export function force_launch_placement() {
  * flooreffects + dist=-1 (D-1256). ROLL gate-drop via down_gate +
  * ship_object `:3424–3430`, post-switch flooreffects `:3509`, and
  * boulder-on-boulder chain `:3514–3529` (D-2318) and the
- * closed_door crash-through `:3533–3541` (this D-log). Named omissions:
- * LAUNCH_UNSEEN bowling msgs; dig context clear; STWALL `Thump!`;
+ * closed_door crash-through `:3533–3541` (this D-log). Seen
+ * LAUNCH_UNSEEN boulders call You_see. Named omissions:
+ * unseen You_hear bowling/rumbling; dig context clear; STWALL `Thump!`;
  * scatter MAY_FRACTURE/MAY_DESTROY/VIS_EFFECTS (explode.js); curs_on_u.
  * @returns {Promise<number>} 0 none, 1 placed, 2 used up
  */
@@ -2612,14 +2640,17 @@ export async function launch_obj(otyp, x1, y1, x2, y2, style) {
     }
     newsym(x1, y1);
 
-    // C: ROLL|LAUNCH_KNOWN → otrapped; ROLL|LAUNCH_UNSEEN rumble deferred
+    // C trap.c launch_obj `:3318–3332` — seen boulder You_see; unseen
+    // You_hear bowling/rumbling stays omitted (no Soundeffect here).
     let delaycnt = 1;
     if ((style & (ROLL | LAUNCH_KNOWN)) === (ROLL | LAUNCH_KNOWN)) {
         singleobj.otrapped = 1;
         style &= ~LAUNCH_KNOWN;
     }
     if ((style & LAUNCH_UNSEEN) !== 0) {
-        // rumble / bowling msgs deferred
+        if (otyp === BOULDER && cansee(x1, y1)) {
+            await You_see('%s start to roll.', an(xname(singleobj)));
+        }
         style &= ~LAUNCH_UNSEEN;
     }
     if ((style & ROLL) !== 0) delaycnt = 2;
@@ -4748,7 +4779,8 @@ export async function trapeffect_fire_trap(mtmp, trap, _trflags) {
             `A ${TOWER_OF_FLAME} erupts from the ${surf} under ${mon_nam(mtmp)}!`,
         );
     } else if (see_it) {
-        await pline(`You see a ${TOWER_OF_FLAME} erupt from the ${surf}!`);
+        set_msg_xy(mtmp.mx, mtmp.my);
+        await You_see('a %s erupt from the %s!', TOWER_OF_FLAME, surf);
     }
 
     if (resists_fire(mtmp)) {
@@ -5016,7 +5048,7 @@ async function domagictrap() {
             await make_blinded(rn1(5, 10), false);
             if (!Blind()) await pline(`Your ${VISION_CLEARS}`);
         } else if (!Blind()) {
-            await pline('You see a flash of light!');
+            await You_see('a flash of light!');
         }
         if (!Deaf()) {
             await You_hear('a deafening roar!');
@@ -5923,7 +5955,7 @@ async function trapeffect_vibrating_square(mtmp, trap, _trflags) {
 async function trapeffect_selector(mtmp, trap, trflags) {
     switch (trap.ttyp) {
     case DART_TRAP:
-        return trapeffect_dart_trap(mtmp, trap);
+        return trapeffect_dart_trap(mtmp, trap, trflags);
     case ARROW_TRAP:
         return trapeffect_arrow_trap(mtmp, trap);
     case ROCKTRAP:

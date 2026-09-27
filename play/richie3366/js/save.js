@@ -19,6 +19,7 @@ import {
     FULL_MOON, OBJ_INVENT, OBJ_CONTAINED, OBJ_MIGRATING,
     ECMD_OK, BUFSZ, VISITED, LFILE_EXISTS, REST_CURRENT_LEVEL,
     W_WEP, W_SWAPWEP, W_QUIVER, PL_NSIZ,
+    WRITING, FREEING, NHF_SAVEFILE,
 } from './const.js';
 import { objects_globals_init, objectNames } from './objects.js';
 import { nh_terminate_capture } from './topten.js';
@@ -32,7 +33,7 @@ import {
     restore_dungeon_topology,
 } from './dungeon.js';
 import { rest_track } from './track.js';
-import { open_levelfile } from './files.js';
+import { open_levelfile, new_nhfile, store_version, FNIDX_HISTORICAL } from './files.js';
 import { rest_regions } from './region.js';
 import { restore_timers, restore_light_sources, run_timers, dobjsfree } from './mkobj.js';
 import { dmonsfree } from './mon.js';
@@ -507,8 +508,25 @@ export async function dosave0() {
         + timet_delta(nowSave, game.urealtime.start_timing | 0);
     const savedStartTiming = game.urealtime.start_timing | 0;
     game.urealtime.start_timing = nowSave;
+    // C save.c:156–157 — create_savefile set structlevel / historical /
+    // WRITING; dosave0 ORs FREEING, then store_version. creat /
+    // viable_nhfile stay named (no POSIX creat). The handle fields
+    // store_version reads are set here. Schema key stays `version: 1`;
+    // the C header is `version_header`.
+    const nhfp = new_nhfile();
+    nhfp.ftype = NHF_SAVEFILE;
+    nhfp.mode = WRITING | FREEING;
+    nhfp.structlevel = true;
+    nhfp.fieldlevel = false;
+    nhfp.addinfo = false;
+    nhfp.style.deflt = false;
+    nhfp.style.binary = true;
+    nhfp.fnidx = FNIDX_HISTORICAL;
+    nhfp.fd = 0;
+    store_version(nhfp);
     const payload = {
         version: 1,
+        version_header: nhfp.sf || null,
         plname: game.plname,
         u: serHero(u),
         invent: serInventArray(game.invent),

@@ -126,7 +126,7 @@ import {
     clear_nhwindow_message, canseemon, map_invisible, zapdir_to_glyph,
     nh_delay_output, flush_topl_more,
 } from './display.js';
-import { paint_corner_nhw_menu, dismiss_nhw_menu, discover_object, makeknown, near_capacity, update_inventory, observe_object, useup as useup_inv } from './invent.js';
+import { paint_corner_nhw_menu, dismiss_nhw_menu, discover_object, makeknown, near_capacity, update_inventory, observe_object, useup as useup_inv, cmdq_add_key } from './invent.js';
 import { yn_function } from './getline.js';
 import { ATR_INVERSE, NO_COLOR } from './terminal.js';
 import { weight, mksobj, delobj, noveltitle, set_bknown } from './mkobj.js';
@@ -233,7 +233,7 @@ import {
     LL_CONDUCT,
     MENU_TRADITIONAL,
     MENU_FULL,
-    CMDQ_KEY,
+    CMDQ_KEY, CQ_REPEAT,
     Never_mind,
 } from './const.js';
 import { objectNames, objectNameStrs } from './generated/objects_data.js';
@@ -2847,7 +2847,8 @@ export async function spelleffects(spell_otyp, atme, force) {
 export async function docast() {
     const spell_no = await getspell();
     if (spell_no == null) return ECMD_FAIL;
-    // CQ_REPEAT spellet deferred
+    // C spell.c:825 — record the casting letter for ^A before the effect.
+    cmdq_add_key(CQ_REPEAT, spellet(spell_no));
     return spelleffects(spellid(spell_no), false, false);
 }
 

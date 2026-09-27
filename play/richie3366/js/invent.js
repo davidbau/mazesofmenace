@@ -49,13 +49,13 @@ import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import {
     flush_screen, flush_topl_more, pline, Your, docrt, status_line_2, message_menu,
-    endgamelevelname, obj_glyph, suppress_map_output,
+    obj_glyph, suppress_map_output,
     putmsghistory, impossible, tty_nhbell, tty_wait_synch,
     clear_nhwindow_message, Hallucination, set_bot_disabled,
     clear_committed_status,
     docorner, dxdy_to_dist_descr,
 } from './display.js';
-import { xprname, an, the, just_an, vtense, doname, distant_name, Japanese_item_name, xname, cxname_singular, set_xname_observe, set_distant_cansee, ansimpleoname, simpleonames, set_not_fully_identified, makeplural, makesingular, body_part_latebound, corpse_xname, killer_xname, maybereleaseobuf } from './objnam.js';
+import { xprname, an, the, vtense, doname, distant_name, Japanese_item_name, xname, cxname_singular, set_xname_observe, set_distant_cansee, ansimpleoname, simpleonames, set_not_fully_identified, makeplural, makesingular, body_part_latebound, corpse_xname, killer_xname, maybereleaseobuf } from './objnam.js';
 import { yn_function, y_n, getlin, mungspaces } from './getline.js';
 import { get_count, pmatchi, cmdq_pop, cmdq_clear } from './cmd.js';
 import { mergable, merged, is_damageable, stop_timer, splitobj, unsplitobj, clear_splitobjs, unknwn_contnr_contents, weight, delobj, curse } from './mkobj.js';
@@ -139,11 +139,6 @@ import {
     MINV_ALL,
     MINV_NOLET,
     engulfing_u,
-    In_endgame,
-    In_quest,
-    Is_bigroom,
-    Is_knox_level,
-    Is_rogue_level,
     thats_enough_tries,
     LARGEST_INT,
     GC_SAVEHIST,
@@ -167,7 +162,6 @@ import {
     TOCORE_PROHIBITED,
     TOCORE_TOO_EARLY,
     HAND,
-    HANDED,
     FINGER,
     FINGERTIP,
     GETOBJ_EXCLUDE,
@@ -248,11 +242,11 @@ import {
     from_what, stone_luck, set_moreluck,
     A_STR, A_INT, A_WIS, A_DEX, A_CON, A_CHA,
 } from './attrib.js';
-import { depth, ing_suffix, strstri, strsubst, ordin, highc, lcase } from './hacklib.js';
+import { ing_suffix, strstri, strsubst, ordin, highc, lcase } from './hacklib.js';
 import { visctrl } from './dokeylist.js';
 import { select_menu_pick_any, select_menu_pick_one, hide_unhide_msgtypes } from './options.js';
 import { rn2 } from './rng.js';
-import { newuexp } from './exper.js';
+import { background_enlightenment } from './insight.js';
 import {
     FOUNTAIN, THRONE, SINK, ALTAR, GRAVE, TREE, IRONBARS,
     DRAWBRIDGE_DOWN, DBWALL,
@@ -260,7 +254,6 @@ import {
     AM_SANCTUM, AM_SHRINE,
     Amask2align,
     A_LAWFUL, A_NEUTRAL, A_CHAOTIC,
-    ROLE_GENDMASK, ROLE_MALE, ROLE_FEMALE,
     IS_DOOR, IS_FOUNTAIN, IS_THRONE, IS_SINK, IS_ALTAR, IS_GRAVE,
     S_ndoor, S_vodoor, S_vcdoor, S_fountain, S_throne, S_lava,
     S_sink, S_vodbridge, S_vcdbridge, S_grave, S_tree,
@@ -280,8 +273,6 @@ import {
     WORN_SHIRT, WORN_BOOTS, WORN_GLOVES, WORN_HELMET, WORN_SHIELD,
     WORN_CLOAK, WORN_ARMOR, WORN_BLINDF, WORN_AMUL,
     LEFT_RING, RIGHT_RING, RIGHT_HANDED, LEFT_HANDED,
-    NEW_MOON,
-    FULL_MOON,
     Upolyd,
     M_AP_TYPE,
     M_AP_NOTHING,
@@ -320,7 +311,7 @@ import {
     LOOKHERE_NOFLAGS,
     MSGTYP_MASK_REP_SHOW,
 } from './const.js';
-import { align_str, align_gname, u_gname, rank_of, genders } from './roles.js';
+import { align_str, u_gname } from './roles.js';
 import {
     UNENCUMBERED, SLT_ENCUMBER, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER,
     OVERLOADED, WT_WEIGHTCAP_STRCON, WT_WEIGHTCAP_SPARE, MAX_CARR_CAP,
@@ -339,7 +330,7 @@ import { sticks } from './engrave.js';
 import { surface } from './sit.js';
 import { visible_region_at, reg_damg } from './region.js';
 import { PM_SAMURAI, PM_MONK, PM_CLERIC, PM_ARCHEOLOGIST, monsterNames } from './generated/monsters_data.js';
-import { humanoid, strongmonst, is_flyer, mons, touch_petrifies, poly_when_stoned, hides_under, throws_rocks, haseyes, dmgtype, hates_silver, is_male, is_female, is_neuter, vampshifted, nonliving, weirdnonliving } from './monsters.js';
+import { humanoid, strongmonst, is_flyer, mons, touch_petrifies, poly_when_stoned, hides_under, throws_rocks, haseyes, dmgtype, hates_silver, vampshifted, nonliving, weirdnonliving } from './monsters.js';
 import { hideunder } from './mon.js';
 import { set_artifact_intrinsic, undiscovered_artifact, discover_artifact, confers_luck, disp_artifact_discoveries } from './artifact.js';
 import { is_quest_artifact } from './quest.js';
@@ -5269,48 +5260,6 @@ function enlght_line_txt(start, middle, end, ps = '') {
     return buf;
 }
 
-/**
- * C ref: insight.c background_enlightenment location clause (you_are arg).
- * Ported: In_endgame + endgamelevelname / Elemental prefix; Is_knox;
- * quest dunlev vs depth; Is_rogue_level annotation; Is_bigroom + !Blind
- * ", a very big room" (D-2564).
- * observable_depth ≡ depth (C #if0 plane remap unused).
- */
-function background_dungeon_clause(uz = game.u?.uz) {
-    const lev = uz || { dnum: 0, dlevel: 1 };
-    if (In_endgame(lev)) {
-        const tmpbuf = endgamelevelname(depth(lev));
-        const elemental = tmpbuf.startsWith('Plane') ? 'Elemental ' : '';
-        return `in the endgame, on the ${elemental}${tmpbuf}`;
-    }
-    if (Is_knox_level(lev)) {
-        const dname = game.dungeons?.[lev.dnum | 0]?.dname || 'Fort Knox';
-        return `on the ${dname} level`;
-    }
-    let dgnbuf = game.dungeons?.[lev.dnum | 0]?.dname || 'The Dungeons of Doom';
-    if (/^The /i.test(dgnbuf)) {
-        dgnbuf = dgnbuf.charAt(0).toLowerCase() + dgnbuf.slice(1);
-    }
-    let tmpbuf = `level ${In_quest(lev) ? (lev.dlevel | 0) : depth(lev)}`;
-    if (Is_rogue_level(lev)) tmpbuf += ', a primitive area';
-    else if (Is_bigroom(lev) && !Blind()) tmpbuf += ', a very big room';
-    return `in ${dgnbuf}, on ${tmpbuf}`;
-}
-
-/**
- * C ref: insight.c background_enlightenment role/rank clause (you_are body).
- * !strcmpi(rank_titl, role_titl) → omit role, urace.noun, no "a " before level;
- * else → "a level N … adj role". Upolyd "actually " prefix deferred to callers.
- */
-function background_role_level_clause(rank, role, ulevel, genderPart, urace) {
-    const raceNoun = urace?.noun || urace?.name || 'human';
-    const raceAdj = urace?.adj || urace?.name || 'human';
-    if (String(rank).toLowerCase() === String(role).toLowerCase()) {
-        return `${an(rank)}, level ${ulevel} ${genderPart}${raceNoun}`;
-    }
-    return `${an(rank)}, a level ${ulevel} ${genderPart}${raceAdj} ${role}`;
-}
-
 /** C youprop.h Deaf ≡ HDeaf || EDeaf || uroleplay.deaf */
 function hero_Deaf(u = game.u || {}) {
     return !!((u.HDeaf | 0) || (u.EDeaf | 0) || u.uroleplay?.deaf || u.Deaf);
@@ -6194,10 +6143,10 @@ export function weapon_insight(final = 0, opts = {}) {
 /**
  * C ref: insight.c enlightenment — BASIC|MAGIC; final → putstr NHW_MENU
  * (--More-- pages), not ^X menu "(k of n)".
- * Named omissions: night/midnight; SCORE_ON_BOTL; most
- * status troubles beyond Deaf/Sleepy/transformed; vision beyond
- * Searching/Infravision/Stealth (See_invisible/telepathic/warned/Invisible
- * live); background Upolyd form + actually + handed normally + Basics
+ * Background is `background_enlightenment` (SCORE_ON_BOTL is not compiled).
+ * Named omissions: most status troubles beyond Deaf/Sleepy/transformed;
+ * vision beyond Searching/Infravision/Stealth (See_invisible/telepathic/
+ * warned/Invisible live); Basics
  * hit dice + wallet hidden_gold + Jumping/Teleportation/Teleport_control
  * live;
  * from_what suffixes; blocked-Stealth / other appearance props
@@ -6216,7 +6165,6 @@ export async function enlightenment(mode, final = 0) {
         return;
     }
     const { show_nhw_menu_text } = await import('./pager.js');
-    const { newuexp } = await import('./exper.js');
     const { Searching, Fast, Very_fast } = await import('./attrib.js');
     const { piousness, N_times, fmt_elapsed_time } = await import('./insight.js');
     const {
@@ -6233,27 +6181,11 @@ export async function enlightenment(mode, final = 0) {
     // u.mfemale, not the current form gender (the Upolyd form arm :496-506,
     // the were-form pmname and the form-line adj keep flags.female).
     const innateFemale = Upolyd(u) ? !!u.mfemale : female;
-    const hasFemaleName = !!game.urole?.name?.f;
-    // C insight.c:477-478 — role title follows innategend (saved gender
-    // when poly'd), same expression as the enlightenment title :392-397.
+    // C insight.c:392-397 — title uses saved gender when poly'd.
     const role = (innateFemale && game.urole?.name?.f)
         ? game.urole.name.f
         : (game.urole?.name?.m || 'Adventurer');
-    // C insight.c background_enlightenment — rank_of(u.ulevel, Role_switch, innategend)
-    const rank = rank_of(u.ulevel | 0, game.urole?.mnum, innateFemale);
-    const gender = innateFemale ? 'female' : 'male';
     const atype = u.ualign?.type ?? A_NEUTRAL;
-    const align = align_str(atype);
-    const turns = game.moves | 0;
-    const hand = (u.uhandedness === 1) ? 'left' : 'right';
-    const allowGend = (game.urole?.allow ?? 0) & ROLE_GENDMASK;
-    // C insight.c:476 — innategend is the saved gender when poly'd.
-    const innategend = innateFemale ? 1 : 0;
-    const initgend = game.flags?.initgend ? 1 : 0;
-    const genderPart = (!hasFemaleName
-        && (allowGend === (ROLE_MALE | ROLE_FEMALE) || innategend !== initgend))
-        ? `${gender} `
-        : '';
 
     const are = 'are ';
     const were = 'were ';
@@ -6265,132 +6197,11 @@ export async function enlightenment(mode, final = 0) {
 
     const lines = [];
     lines.push(`${name} the ${role}'s attributes:`);
-    lines.push('');
+    // C insight.c:408. MAGIC-only still gets the title separator.
+    if (!(mode & BASICENLIGHTENMENT)) lines.push('');
 
     if (mode & BASICENLIGHTENMENT) {
-        lines.push('Background:');
-        // C insight.c:491-511 — Upolyd current shape before underlying role.
-        if (Upolyd(u)) {
-            const uasmon = game.youmonst?.data || mons(u.umonnum);
-            const altphrasing = vampshifted(game.youmonst);
-            let ptmp = '';
-            if (!is_male(uasmon) && !is_female(uasmon) && !is_neuter(uasmon)) {
-                ptmp += `${genders[female ? 1 : 0].adj} `;
-            }
-            if (altphrasing) {
-                const chamPm = mons(game.youmonst?.cham);
-                ptmp += `${pmname(chamPm, female ? FEMALE : MALE)} in `;
-            }
-            const prefix = final ? '' : 'currently ';
-            const article = altphrasing ? just_an(ptmp) : 'in ';
-            const formBuf = `${prefix}${article}${ptmp}${pmname(uasmon, female ? FEMALE : MALE)} form`;
-            lines.push(you_are(formBuf));
-        }
-        // C: !strcmpi(rank, role) → noun + omit role (D-0928 #1194)
-        // C insight.c:517 — Upolyd role line carries "actually " prefix.
-        lines.push(you_are(
-            (Upolyd(u) ? 'actually ' : '') + background_role_level_clause(
-                rank, role, u.ulevel || 1, genderPart, game.urace,
-            ),
-        ));
-        // C insight.c:532-554 — adverb marks helm of opposite alignment
-        // (currently/temporarily), one-time conversion (now/belatedly) or
-        // ignored atheism (nominally); mission line has no period;
-        // pantheon continuation finishes it (D-2564).
-        const baseCur = u.ualignbase?.current ?? atype;
-        const baseOrig = u.ualignbase?.original ?? atype;
-        const adverb = (atype !== baseCur)
-            ? (final ? 'temporarily ' : 'currently ')
-            : (atype !== baseOrig)
-                ? (final ? 'belatedly ' : 'now ')
-                : (!(u.uconduct?.gnostic | 0) && turns > 1000)
-                    ? 'nominally '
-                    : '';
-        lines.push(
-            ` ${You_}${final ? were : are}${align}, ${adverb}on a mission for ${u_gname(game.urole, atype)}`,
-        );
-        let opposed = ` who ${final ? 'was' : 'is'} opposed by`;
-        if (atype !== A_LAWFUL) {
-            opposed += ` ${align_gname(game.urole, A_LAWFUL)} (${align_str(A_LAWFUL)}) and`;
-        }
-        if (atype !== A_NEUTRAL) {
-            opposed += ` ${align_gname(game.urole, A_NEUTRAL)} (${align_str(A_NEUTRAL)})`;
-            if (atype !== A_CHAOTIC) opposed += ' and';
-        }
-        if (atype !== A_CHAOTIC) {
-            opposed += ` ${align_gname(game.urole, A_CHAOTIC)} (${align_str(A_CHAOTIC)})`;
-        }
-        opposed += '.';
-        lines.push(opposed);
-        // C insight.c:574-587 — temporary alignment reports the permanent
-        // one ("actually …"); sex change or permanent alignment change
-        // (helm masked out) reports "started out …" (D-2564).
-        let difalgn = (atype !== baseCur ? 1 : 0)
-            + (baseCur !== baseOrig ? 2 : 0);
-        if (difalgn & 1) {
-            lines.push(you_are(`actually ${align_str(baseCur)}`));
-            difalgn &= ~1;
-        }
-        if (innategend !== initgend || difalgn) {
-            lines.push(` You started out ${innategend !== initgend ? genders[initgend].adj : ''}${(innategend !== initgend && difalgn) ? ' and ' : ''}${difalgn ? align_str(baseOrig) : ''}.`);
-        }
-        // C insight.c:565-569 — "normally " when poly form lacks hands.
-        // Non-poly keeps "" even under the objnam fallback ('body part').
-        {
-            const handedPrefix = !Upolyd(u)
-                ? ''
-                : (body_part_latebound(HANDED) === 'handed' ? '' : 'normally ');
-            lines.push(you_are(`${handedPrefix}${hand}-handed`));
-        }
-
-        // C ref: insight.c background_enlightenment — In_endgame /
-        // Is_knox / quest dunlev / rogue annotation
-        lines.push(you_are(background_dungeon_clause(u.uz)));
-        // C: moves==1 → just started; else entered N turns ago
-        if (turns === 1) {
-            lines.push(you_have('just started your adventure'));
-        } else {
-            lines.push(enlght_line_txt(You_, 'entered ', `the dungeon ${turns} turn${turns === 1 ? '' : 's'} ago`, ''));
-        }
-
-        // C ref: insight.c background_enlightenment — night/moon/friday
-        // between "entered" and experience (final uses iflags.at_*).
-        if (game.iflags?.at_midnight) {
-            lines.push(enlght_line_txt('It ', 'was ', 'the midnight hour', ''));
-        } else if (game.iflags?.at_night) {
-            lines.push(enlght_line_txt('It ', 'was ', 'nighttime', ''));
-        }
-        const moon = game.flags?.moonphase;
-        if (moon === FULL_MOON || moon === NEW_MOON) {
-            const phase = moon === FULL_MOON ? 'full' : 'new';
-            lines.push(enlght_line_txt(
-                'There ',
-                'was ',
-                `a ${phase} moon in effect when your adventure ended`,
-                '',
-            ));
-        }
-        if (game.flags?.friday13) {
-            lines.push(
-                ` Bad things ${final === ENL_GAMEOVERDEAD ? 'happened' : 'could have happened'} on Friday the 13th.`,
-            );
-        }
-
-        // C insight.c:687-709 — experience line suppressed while poly'd.
-        if (!Upolyd(u)) {
-            const uexp = u.uexp | 0;
-            const ulvl = u.ulevel | 0;
-            let xpbuf = `${uexp} experience point${uexp === 1 ? '' : 's'}`;
-            if (ulvl < 30) {
-                const nxtlvl = newuexp(ulvl);
-                const delta = nxtlvl - uexp;
-                xpbuf += `, ${delta} ${uexp > 0 ? 'more ' : ''}`;
-                if (final) xpbuf += (delta === 1) ? 'was ' : 'were ';
-                xpbuf += `${ulvl < 18 ? 'needed to attain' : 'needed for'} level ${ulvl + 1}`;
-            }
-            lines.push(you_have(xpbuf));
-        }
-
+        lines.push(...background_enlightenment(mode, final));
         lines.push('');
         lines.push('Basics:');
         let hp = Upolyd(u) ? (u.mh | 0) : (u.uhp | 0);
@@ -7068,42 +6879,11 @@ export async function doattributes(enl_mode = null) {
     // C insight.c:474-479 — when poly'd, role/rank/gender read the saved
     // u.mfemale, not the current form gender.
     const innateFemale = Upolyd(u) ? !!u.mfemale : female;
-    // C: insight.c — urole.name.f non-NULL (not same-string-as-m)
-    const hasFemaleName = !!game.urole?.name?.f;
-    // C: insight.c — role from name.f; rank via rank_of(u.ulevel, …)
+    // C insight.c:392-397 — title uses saved gender when poly'd.
     const role = (innateFemale && game.urole?.name?.f)
         ? game.urole.name.f
         : (game.urole?.name?.m || 'Tourist');
-    const rank = rank_of(u.ulevel | 0, game.urole?.mnum, innateFemale);
-    const gender = innateFemale ? 'female' : 'male';
     const atype = u.ualign?.type ?? A_NEUTRAL;
-    const align = align_str(atype);
-    const turns = game.moves | 0;
-    const hand = (u.uhandedness === 1 /* LEFT_HANDED */) ? 'left' : 'right';
-    // C ref: insight.c background_enlightenment — gender only when
-    // !name.f AND (both genders allowed OR innategend != initgend)
-    const allowGend = (game.urole?.allow ?? 0) & ROLE_GENDMASK;
-    // C insight.c:476 — innategend is the saved gender when poly'd.
-    const innategend = innateFemale ? 1 : 0;
-    const initgend = game.flags?.initgend ? 1 : 0;
-    const genderPart = (!hasFemaleName
-        && (allowGend === (ROLE_MALE | ROLE_FEMALE) || innategend !== initgend))
-        ? `${gender} `
-        : '';
-
-    // C ref: insight.c — mission for u_gname(); opposed by other pantheon gods
-    let opposed = '  who is opposed by';
-    if (atype !== A_LAWFUL) {
-        opposed += ` ${align_gname(game.urole, A_LAWFUL)} (${align_str(A_LAWFUL)}) and`;
-    }
-    if (atype !== A_NEUTRAL) {
-        opposed += ` ${align_gname(game.urole, A_NEUTRAL)} (${align_str(A_NEUTRAL)})`;
-        if (atype !== A_CHAOTIC) opposed += ' and';
-    }
-    if (atype !== A_CHAOTIC) {
-        opposed += ` ${align_gname(game.urole, A_CHAOTIC)} (${align_str(A_CHAOTIC)})`;
-    }
-    opposed += '.';
 
     // C ref: insight.c basics_enlightenment `:779–802` — gold; like doprgold
     // but without shop billing; includes container contents (hidden_gold).
@@ -7150,16 +6930,6 @@ export async function doattributes(enl_mode = null) {
     find_ac();
     const acBuf = basics_ac_buf(u.uac ?? 10);
 
-    // C ref: insight.c background_enlightenment — In_endgame /
-    // Is_knox / quest dunlev / rogue / bigroom (D-2564 lands the last)
-    const dungeonLine = `  You are ${background_dungeon_clause(u.uz)}.`;
-    // C: moves==1 → "just started"; else "entered … N turn(s) ago"
-    const adventureLine = turns === 1
-        ? '  You have just started your adventure.'
-        : `  You entered the dungeon ${turns} turn${turns === 1 ? '' : 's'} ago.`;
-    // C: wizard||final → ", N more needed for/to attain level M"
-    const uexp = u.uexp | 0;
-    const ulvl = u.ulevel | 0;
     const wizard = !!(game.flags?.wizard || game.flags?.debug);
     const discover = !!(game.flags?.explore || game.flags?.discover);
     // C insight.c doattributes: BASIC, OR MAGIC when wizard||discover.
@@ -7168,95 +6938,16 @@ export async function doattributes(enl_mode = null) {
         ? (enl_mode | 0)
         : (BASICENLIGHTENMENT | ((wizard || discover) ? MAGICENLIGHTENMENT : 0));
     const magic = !!(mode & MAGICENLIGHTENMENT);
-    let xpLine = `  You have ${uexp} experience point${uexp === 1 ? '' : 's'}`;
-    if (!Upolyd(u) && ulvl < 30 && wizard) {
-        const nxtlvl = newuexp(ulvl);
-        const delta = nxtlvl - uexp;
-        xpLine += `, ${delta} ${uexp > 0 ? 'more ' : ''}needed ${
-            ulvl < 18 ? 'to attain' : 'for'
-        } level ${ulvl + 1}`;
-    }
-    xpLine += '.';
 
-    // C ref: insight.c background_enlightenment — continuous stream; tty
-    // pages at 23 content rows then "(k of n)". Moon/friday13 sit between
-    // "entered" and experience. night()/midnight deferred.
-    // C: !strcmpi(rank, role) → noun + omit role (D-0928 #1194)
-    const roleLevel = background_role_level_clause(
-        rank, role, u.ulevel || 1, genderPart, game.urace,
-    );
     const lines = [
         ` ${name} the ${role}'s attributes:`,
-        '',
     ];
-    // C insight.c enlightenment: background/basics/characteristics iff BASIC
+    // C insight.c:408 — ^X is enlightenment(mode, ENL_GAMEINPROGRESS).
+    // MAGIC-only skips background; the title still gets the separator.
+    if (!(mode & BASICENLIGHTENMENT)) lines.push('');
     if (mode & BASICENLIGHTENMENT) {
-        lines.push(' Background:');
-        // C insight.c:490-506 — Upolyd current shape before underlying role
-        // (final=0 keeps the "currently " prefix; current flags.female
-        // for the adj/cham/form pmname calls; D-2564).
-        if (Upolyd(u)) {
-            const uasmon = game.youmonst?.data || mons(u.umonnum);
-            const altphrasing = vampshifted(game.youmonst);
-            let ptmp = '';
-            if (!is_male(uasmon) && !is_female(uasmon) && !is_neuter(uasmon)) {
-                ptmp += `${genders[female ? 1 : 0].adj} `;
-            }
-            if (altphrasing) {
-                ptmp += `${pmname(mons(game.youmonst?.cham), female ? FEMALE : MALE)} in `;
-            }
-            lines.push(`  You are currently ${altphrasing ? just_an(ptmp) : 'in '}${ptmp}${pmname(uasmon, female ? FEMALE : MALE)} form.`);
-        }
-        // C insight.c:517 — Upolyd role line carries "actually " prefix.
-        // C insight.c:532-554 — mission adverb (final=0: currently/now).
-        const baseCur = u.ualignbase?.current ?? atype;
-        const baseOrig = u.ualignbase?.original ?? atype;
-        const adverb = (atype !== baseCur)
-            ? 'currently '
-            : (atype !== baseOrig)
-                ? 'now '
-                : (!(u.uconduct?.gnostic | 0) && turns > 1000)
-                    ? 'nominally '
-                    : '';
+        lines.push(...background_enlightenment(mode, 0));
         lines.push(
-            `  You are ${(Upolyd(u) ? 'actually ' : '')}${roleLevel}.`,
-            `  You are ${align}, ${adverb}on a mission for ${u_gname(game.urole, atype)}`,
-            opposed,
-        );
-        // C insight.c:574-587 — temp alignment + started-out (final=0).
-        let difalgn = (atype !== baseCur ? 1 : 0)
-            + (baseCur !== baseOrig ? 2 : 0);
-        if (difalgn & 1) {
-            lines.push(`  You are actually ${align_str(baseCur)}.`);
-            difalgn &= ~1;
-        }
-        if (innategend !== initgend || difalgn) {
-            lines.push(`  You started out ${innategend !== initgend ? genders[initgend].adj : ''}${(innategend !== initgend && difalgn) ? ' and ' : ''}${difalgn ? align_str(baseOrig) : ''}.`);
-        }
-        // C insight.c:593-594 — "normally " when poly form lacks hands
-        // (same Upolyd-gated expression as the final builder).
-        lines.push(
-            `  You are ${!Upolyd(u) ? '' : (body_part_latebound(HANDED) === 'handed' ? '' : 'normally ')}${hand}-handed.`,
-            dungeonLine,
-            adventureLine,
-        );
-        // C insight.c:647-651 — ^X (final=0) reads live midnight()/night(),
-        // not the gameover-captured iflags (those are for final only).
-        const { night: isNight, midnight: isMidnight } = await import('./calendar.js');
-        if (isMidnight()) lines.push('  It is the midnight hour.');
-        else if (isNight()) lines.push('  It is nighttime.');
-        const moon = game.flags?.moonphase;
-        if (moon === FULL_MOON || moon === NEW_MOON) {
-            const phase = moon === FULL_MOON ? 'full' : 'new';
-            lines.push(`  There is a ${phase} moon in effect.`);
-        }
-        if (game.flags?.friday13) {
-            // C insight.c: Sprintf(buf, " Bad things %s…") then enlght_out;
-            // menu/tty paints one more leading space like enlght_line body rows.
-            lines.push('  Bad things can happen on Friday the 13th.');
-        }
-        lines.push(
-            xpLine,
             '',
             ' Basics:',
             `  You have ${hpLine}.`,
@@ -8872,16 +8563,24 @@ export function cmdq_add_int(q, val) {
 }
 
 /**
- * C cmd.c cmdq_add_key. Apply/dig/iactions keep canned clones (do not
- * write a fourth canned-only clone).
+ * C ref: cmd.c cmdq_add_key `:274–290`.
+ * Allocates a CMDQ_KEY node (`alloc` is GC) and tail-appends it on
+ * `command_queue[q]`. JS keeps each queue as an array: `cmdq_pop`
+ * shifts the head, so `push` is the `while (cq && cq->next)` walk.
+ * `key` is C `char`, stored as a one-character string.
  * @param {number} q CQ_CANNED or CQ_REPEAT
  * @param {string|number} key invlet or char code
  */
 export function cmdq_add_key(q, key) {
-    const name = cmdq_qname(q);
+    const name = cmdq_qname(q); // C :277 gc.command_queue[q]
     if (!game[name]) game[name] = [];
-    const k = typeof key === 'string' ? key : String.fromCharCode(key | 0);
-    game[name].push({ typ: CMDQ_KEY, key: k });
+    const tmp = {
+        typ: CMDQ_KEY, // C :279
+        key: typeof key === 'string' ? key : String.fromCharCode(key | 0), // C :280
+    };
+    // C :283–288 — walk to the tail and link, or install tmp as the head.
+    // Array push is that append for both arms.
+    game[name].push(tmp);
 }
 
 /**

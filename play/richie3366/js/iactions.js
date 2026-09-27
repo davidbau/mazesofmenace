@@ -16,8 +16,8 @@
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
-import { flush_screen, set_bot_disabled, tty_nhbell } from './display.js';
-import { paint_corner_nhw_menu, dismiss_nhw_menu, inuse_headers_accessories, inuse_headers_set_accessories, check_invent_gold, process_menu_search } from './invent.js';
+import { flush_screen, impossible, set_bot_disabled, tty_nhbell } from './display.js';
+import { paint_corner_nhw_menu, dismiss_nhw_menu, inuse_headers_accessories, inuse_headers_set_accessories, check_invent_gold, process_menu_search, cmdq_add_key } from './invent.js';
 import { cxname, the, xname, makeplural, singular, is_plural, the_unique_obj, an } from './objnam.js';
 import { body_part } from './polyself.js';
 import { ia_checkfile } from './pager.js';
@@ -30,34 +30,15 @@ import {
     GEM_CLASS, COIN_CLASS,
 } from './objects.js';
 import {
-    ECMD_OK, GETOBJ_SUGGEST,
-    CMDQ_EXTCMD,
+    ECMD_OK, GETOBJ_SUGGEST, CQ_CANNED,
     W_ARMOR, W_ACCESSORY, W_AMUL, W_RING, W_TOOL, Is_container,
     Has_contents, has_oname, ONAME, HANDS_SYM, IS_ALTAR, SHOPBASE,
     MENU_SEARCH, PICK_ONE, HAND, FINGER, P_DAGGER, P_SABER,
 } from './const.js';
 import { ATR_INVERSE } from './terminal.js';
-
-/** C ref: cmd.c cmdq_add_ec / cmdq_add_key for itemed canned follow-up. */
-function cmdq_add_ec(fn) {
-    if (!game._cmdq_canned) game._cmdq_canned = [];
-    game._cmdq_canned.push(fn);
-}
-
-/**
- * C cmd.c cmdq_add_ec: typ=CMDQ_EXTCMD, ec_entry=ext_func_tab_from_func.
- * Only IA_DIP_OBJ (#altdip INTERNALCMD) uses this; other arms stay
- * bare-function clones (do not write a sixth cmdq_add_ec module).
- */
-function cmdq_add_ec_entry(txt, fn, flags = 0) {
-    if (!game._cmdq_canned) game._cmdq_canned = [];
-    game._cmdq_canned.push({ typ: CMDQ_EXTCMD, txt, run: fn, flags: flags | 0 });
-}
-function cmdq_add_key(ch) {
-    if (!game._cmdq_canned) game._cmdq_canned = [];
-    const key = typeof ch === 'string' ? ch.charCodeAt(0) : ch;
-    game._cmdq_canned.push({ typ: 'key', key });
-}
+// imports.mjs --can js/apply.js js/cmd.js cmdq_add_ec (and dig/dothrow):
+// hoisted function, cycle-safe. iactions is the same edge.
+import { cmdq_add_ec } from './cmd.js';
 
 /**
  * C ref: iactions.c itemactions_pushkeys — queue CQ_CANNED ec + invlet.
@@ -65,36 +46,40 @@ function cmdq_add_key(ch) {
  * IA_UNWIELD / IA_NAME_* / IA_EAT_OBJ / IA_ENGRAVE_OBJ are D-1675.
  * IA_BUY_OBJ is D-1676. IA_TWOWEAPON is D-1677.
  * IA_RUB_OBJ / IA_SWAPWEAPON / IA_WHATIS_OBJ are D-1686.
+ * IA_QUAFF_OBJ m-prefix is D-2979. Signature is (act, otmp); C is (otmp, act).
  */
 async function itemactions_pushkeys(act, otmp) {
     switch (act) {
+    case IA_NONE:
+        /* C iactions.c `:146–147` — no queue. */
+        break;
     case IA_UNWIELD: {
         /* C iactions.c `:150–156` — uwep→dowield, uswapwep→remarm_swapwep
            (#altunwield), uquiver→dowieldquiver, else donull; then HANDS_SYM. */
         const u = game.u || {};
         if (otmp === u.uwep) {
             const { dowield } = await import('./wield.js');
-            cmdq_add_ec(dowield);
+            cmdq_add_ec(CQ_CANNED, dowield);
         } else if (otmp === u.uswapwep) {
             const { remarm_swapwep } = await import('./do_wear.js');
-            cmdq_add_ec_entry('altunwield', remarm_swapwep);
+            cmdq_add_ec(CQ_CANNED, remarm_swapwep, { txt: 'altunwield', flags: 0 });
         } else if (otmp === u.uquiver) {
             const { dowieldquiver } = await import('./wield.js');
-            cmdq_add_ec(dowieldquiver);
+            cmdq_add_ec(CQ_CANNED, dowieldquiver);
         } else {
             const { donull } = await import('./do.js');
-            cmdq_add_ec(donull);
+            cmdq_add_ec(CQ_CANNED, donull);
         }
-        cmdq_add_key(HANDS_SYM);
+        cmdq_add_key(CQ_CANNED, HANDS_SYM);
         break;
     }
     case IA_NAME_OBJ:
     case IA_NAME_OTYP: {
         /* C iactions.c `:167–171` — docallcmd then 'i'/'o' then invlet. */
         const { docallcmd } = await import('./do_name.js');
-        cmdq_add_ec(docallcmd);
-        cmdq_add_key(act === IA_NAME_OBJ ? 'i' : 'o');
-        cmdq_add_key(otmp.invlet);
+        cmdq_add_ec(CQ_CANNED, docallcmd);
+        cmdq_add_key(CQ_CANNED, act === IA_NAME_OBJ ? 'i' : 'o');
+        cmdq_add_key(CQ_CANNED, otmp.invlet);
         break;
     }
     case IA_EAT_OBJ: {
@@ -103,114 +88,118 @@ async function itemactions_pushkeys(act, otmp) {
         const { do_reqmenu, ext_func_tab_from_txt } = await import('./cmd.js');
         const { doeat } = await import('./eat.js');
         const tab = ext_func_tab_from_txt('reqmenu');
-        cmdq_add_ec_entry('reqmenu', do_reqmenu, tab?.flags | 0);
-        cmdq_add_ec(doeat);
-        cmdq_add_key(otmp.invlet);
+        cmdq_add_ec(CQ_CANNED, do_reqmenu, { txt: 'reqmenu', flags: tab?.flags | 0 });
+        cmdq_add_ec(CQ_CANNED, doeat);
+        cmdq_add_key(CQ_CANNED, otmp.invlet);
         break;
     }
     case IA_ENGRAVE_OBJ: {
-        /* C iactions.c `:184–187` — cmdq_add_ec(doengrave) + invlet. */
+        /* C iactions.c `:184–187` — cmdq_add_ec(CQ_CANNED, doengrave) + invlet. */
         const { doengrave } = await import('./engrave.js');
-        cmdq_add_ec(doengrave);
-        cmdq_add_key(otmp.invlet);
+        cmdq_add_ec(CQ_CANNED, doengrave);
+        cmdq_add_key(CQ_CANNED, otmp.invlet);
         break;
     }
     case IA_THROW_OBJ: {
         const { dothrow } = await import('./dothrow.js');
-        cmdq_add_ec(dothrow);
-        cmdq_add_key(otmp.invlet);
+        cmdq_add_ec(CQ_CANNED, dothrow);
+        cmdq_add_key(CQ_CANNED, otmp.invlet);
         break;
     }
     case IA_DROP_OBJ: {
         const { dodrop } = await import('./do.js');
-        cmdq_add_ec(dodrop);
-        cmdq_add_key(otmp.invlet);
+        cmdq_add_ec(CQ_CANNED, dodrop);
+        cmdq_add_key(CQ_CANNED, otmp.invlet);
         break;
     }
     case IA_APPLY_OBJ: {
         const { doapply } = await import('./apply.js');
-        cmdq_add_ec(doapply);
-        cmdq_add_key(otmp.invlet);
+        cmdq_add_ec(CQ_CANNED, doapply);
+        cmdq_add_key(CQ_CANNED, otmp.invlet);
         break;
     }
     case IA_READ_OBJ: {
         const { doread } = await import('./read.js');
-        cmdq_add_ec(doread);
-        cmdq_add_key(otmp.invlet);
+        cmdq_add_ec(CQ_CANNED, doread);
+        cmdq_add_key(CQ_CANNED, otmp.invlet);
         break;
     }
     case IA_QUAFF_OBJ: {
+        /* C iactions.c `:207–212` — do_reqmenu PREFIXCMD then #quaff +
+           invlet (m-prefix ignores a fountain or sink). */
+        const { do_reqmenu } = await import('./cmd.js');
         const { dodrink } = await import('./potion.js');
-        cmdq_add_ec(dodrink);
-        cmdq_add_key(otmp.invlet);
+        cmdq_add_ec(CQ_CANNED, do_reqmenu);
+        cmdq_add_ec(CQ_CANNED, dodrink);
+        cmdq_add_key(CQ_CANNED, otmp.invlet);
         break;
     }
     case IA_DIP_OBJ: {
-        /* C iactions.c `:159–166` — cmdq_add_ec(dip_into) looks up
+        /* C iactions.c `:159–166` — cmdq_add_ec(CQ_CANNED, dip_into) looks up
            INTERNALCMD "altdip"; potion invlet answers getobj drink_ok. */
         const { dip_into } = await import('./potion.js');
-        cmdq_add_ec_entry('altdip', dip_into);
-        cmdq_add_key(otmp.invlet);
+        cmdq_add_ec(CQ_CANNED, dip_into, { txt: 'altdip', flags: 0 });
+        cmdq_add_key(CQ_CANNED, otmp.invlet);
         break;
     }
     case IA_WIELD_OBJ: {
         const { dowield } = await import('./wield.js');
-        cmdq_add_ec(dowield);
-        cmdq_add_key(otmp.invlet);
+        cmdq_add_ec(CQ_CANNED, dowield);
+        cmdq_add_key(CQ_CANNED, otmp.invlet);
         break;
     }
     case IA_WEAR_OBJ: {
         const { dowear } = await import('./do_wear.js');
-        cmdq_add_ec(dowear);
-        cmdq_add_key(otmp.invlet);
+        cmdq_add_ec(CQ_CANNED, dowear);
+        cmdq_add_key(CQ_CANNED, otmp.invlet);
         break;
     }
     case IA_TAKEOFF_OBJ: {
-        /* C iactions.c `:230–232` — cmdq_add_ec(ia_dotakeoff) looks up
+        /* C iactions.c `:230–232` — cmdq_add_ec(CQ_CANNED, ia_dotakeoff) looks up
            INTERNALCMD "alttakeoff" (cmd.c `:2064`); invlet answers
            getobj takeoff_ok with covered armor SUGGESTed. */
         const { ia_dotakeoff } = await import('./do_wear.js');
-        cmdq_add_ec_entry('alttakeoff', ia_dotakeoff);
-        cmdq_add_key(otmp.invlet);
+        cmdq_add_ec(CQ_CANNED, ia_dotakeoff, { txt: 'alttakeoff', flags: 0 });
+        cmdq_add_key(CQ_CANNED, otmp.invlet);
         break;
     }
     case IA_ZAP_OBJ: {
         const { dozap } = await import('./zap.js');
-        cmdq_add_ec(dozap);
-        cmdq_add_key(otmp.invlet);
+        cmdq_add_ec(CQ_CANNED, dozap);
+        cmdq_add_key(CQ_CANNED, otmp.invlet);
         break;
     }
     case IA_QUIVER_OBJ: {
         const { dowieldquiver } = await import('./wield.js');
-        cmdq_add_ec(dowieldquiver);
-        cmdq_add_key(otmp.invlet);
+        cmdq_add_ec(CQ_CANNED, dowieldquiver);
+        cmdq_add_key(CQ_CANNED, otmp.invlet);
         break;
     }
     case IA_FIRE_OBJ: {
         const { dofire } = await import('./dothrow.js');
-        cmdq_add_ec(dofire);
+        cmdq_add_ec(CQ_CANNED, dofire);
         break;
     }
     case IA_ADJUST_OBJ: {
-        /* C iactions.c `:191–194` — cmdq_add_ec(doorganize) #adjust. */
+        /* C iactions.c `:191–194` — cmdq_add_ec(CQ_CANNED, doorganize) #adjust. */
         const { doorganize } = await import('./invent.js');
-        cmdq_add_ec(doorganize);
-        cmdq_add_key(otmp.invlet);
+        cmdq_add_ec(CQ_CANNED, doorganize);
+        cmdq_add_key(CQ_CANNED, otmp.invlet);
         break;
     }
     case IA_ADJUST_STACK: {
-        /* C iactions.c `:194–197` — cmdq_add_ec(adjust_split) looks up
+        /* C iactions.c `:194–197` — cmdq_add_ec(CQ_CANNED, adjust_split) looks up
            INTERNALCMD "altadjust"; invlet answers getobj("split"). */
         const { adjust_split } = await import('./invent.js');
-        cmdq_add_ec_entry('altadjust', adjust_split);
-        cmdq_add_key(otmp.invlet);
+        cmdq_add_ec(CQ_CANNED, adjust_split, { txt: 'altadjust', flags: 0 });
+        cmdq_add_key(CQ_CANNED, otmp.invlet);
         break;
     }
     case IA_SACRIFICE: {
-        /* C iactions.c `:198–201` — cmdq_add_ec(dosacrifice) #offer. */
+        /* C iactions.c `:198–201` — cmdq_add_ec(CQ_CANNED, dosacrifice) #offer. */
         const { dosacrifice } = await import('./pray.js');
-        cmdq_add_ec(dosacrifice);
-        cmdq_add_key(otmp.invlet);
+        cmdq_add_ec(CQ_CANNED, dosacrifice);
+        cmdq_add_key(CQ_CANNED, otmp.invlet);
         break;
     }
     case IA_TIP_CONTAINER: {
@@ -219,56 +208,57 @@ async function itemactions_pushkeys(act, otmp) {
         const { do_reqmenu, ext_func_tab_from_txt } = await import('./cmd.js');
         const { dotip } = await import('./pickup.js');
         const tab = ext_func_tab_from_txt('reqmenu');
-        cmdq_add_ec_entry('reqmenu', do_reqmenu, tab?.flags | 0);
-        cmdq_add_ec(dotip);
-        cmdq_add_key(otmp.invlet);
+        cmdq_add_ec(CQ_CANNED, do_reqmenu, { txt: 'reqmenu', flags: tab?.flags | 0 });
+        cmdq_add_ec(CQ_CANNED, dotip);
+        cmdq_add_key(CQ_CANNED, otmp.invlet);
         break;
     }
     case IA_INVOKE_OBJ: {
-        /* C iactions.c `:245–248` — cmdq_add_ec(doinvoke) #invoke. */
+        /* C iactions.c `:245–248` — cmdq_add_ec(CQ_CANNED, doinvoke) #invoke. */
         const { doinvoke } = await import('./artifact.js');
-        cmdq_add_ec(doinvoke);
-        cmdq_add_key(otmp.invlet);
+        cmdq_add_ec(CQ_CANNED, doinvoke);
+        cmdq_add_key(CQ_CANNED, otmp.invlet);
         break;
     }
     case IA_BUY_OBJ: {
-        /* C iactions.c `:203–206` — cmdq_add_ec(dopay) + invlet. */
+        /* C iactions.c `:203–206` — cmdq_add_ec(CQ_CANNED, dopay) + invlet. */
         const { dopay } = await import('./shk.js');
-        cmdq_add_ec(dopay);
-        cmdq_add_key(otmp.invlet);
+        cmdq_add_ec(CQ_CANNED, dopay);
+        cmdq_add_key(CQ_CANNED, otmp.invlet);
         break;
     }
     case IA_TWOWEAPON: {
-        /* C iactions.c `:260–262` — cmdq_add_ec(dotwoweapon); no invlet. */
+        /* C iactions.c `:260–262` — cmdq_add_ec(CQ_CANNED, dotwoweapon); no invlet. */
         const { dotwoweapon } = await import('./wield.js');
-        cmdq_add_ec(dotwoweapon);
+        cmdq_add_ec(CQ_CANNED, dotwoweapon);
         break;
     }
     case IA_RUB_OBJ: {
-        /* C iactions.c `:221–224` — cmdq_add_ec(dorub) + invlet. */
+        /* C iactions.c `:221–224` — cmdq_add_ec(CQ_CANNED, dorub) + invlet. */
         const { dorub } = await import('./apply.js');
-        cmdq_add_ec(dorub);
-        cmdq_add_key(otmp.invlet);
+        cmdq_add_ec(CQ_CANNED, dorub);
+        cmdq_add_key(CQ_CANNED, otmp.invlet);
         break;
     }
     case IA_SWAPWEAPON: {
-        /* C iactions.c `:257–258` — cmdq_add_ec(doswapweapon); no invlet. */
+        /* C iactions.c `:257–258` — cmdq_add_ec(CQ_CANNED, doswapweapon); no invlet. */
         const { doswapweapon } = await import('./wield.js');
-        cmdq_add_ec(doswapweapon);
+        cmdq_add_ec(CQ_CANNED, doswapweapon);
         break;
     }
     case IA_WHATIS_OBJ: {
-        /* C iactions.c `:267–271` — cmdq_add_ec(dowhatis) then 'i'
+        /* C iactions.c `:267–271` — cmdq_add_ec(CQ_CANNED, dowhatis) then 'i'
            (inventory look) then invlet. do_look pops the 'i';
            display_inventory pops the invlet (D-1686). */
         const { dowhatis } = await import('./pager.js');
-        cmdq_add_ec(dowhatis);
-        cmdq_add_key('i');
-        cmdq_add_key(otmp.invlet);
+        cmdq_add_ec(CQ_CANNED, dowhatis);
+        cmdq_add_key(CQ_CANNED, 'i');
+        cmdq_add_key(CQ_CANNED, otmp.invlet);
         break;
     }
     default:
-        // remaining arms deferred
+        /* C iactions.c `:144–145` — unknown action. */
+        await impossible('Unknown item action %d', act);
         break;
     }
 }

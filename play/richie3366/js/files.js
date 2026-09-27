@@ -550,7 +550,10 @@ const FQN_NUMBUF = 8;
 /** C files.c:92 — `static char fqn_filename_buffer[FQN_NUMBUF][FQN_MAX_FILENAME]`. */
 const fqn_filename_buffer = new Array(FQN_NUMBUF).fill('');
 /** C `hack.h:975–977` `enum saveformats` — whole-struct binary, as-is. */
-const FNIDX_HISTORICAL = 1;
+export const FNIDX_HISTORICAL = 1;
+/** C `hack.h:977` `exportascii` — fieldlevel ASCII. Not installed in
+ * `sfoflprocs` (`sfbase.c:653` stores `zerosfoflprocs`). */
+export const FNIDX_EXPORTASCII = 2;
 /** C POSIX ENOENT for the VFS-miss message (`fopen_wizkit_file`
  * precedent above: VFS miss ≡ C ENOENT → NULL). */
 const ENOENT = 2;
@@ -979,6 +982,212 @@ const CRITICAL_SIZES = [
 // C ref: version.c `:666` — file-scope `uchar cscbuf[SIZE(critical_sizes)]`
 // filled by the Sfi_uchar feed; zero-init, mutated in place like C.
 const CSCBUF = new Array(CRITICAL_SIZES.length).fill(0);
+
+/**
+ * C `char` on the contest UNIX build is signed. `(char) n` then
+ * promoted back to `int` is this value. `SIZE(critical_sizes)` is
+ * below 128, so the cast is the length.
+ * @param {number} n
+ * @returns {number}
+ */
+function toSignedChar(n) {
+    const b = (n | 0) & 0xff;
+    return b >= 128 ? b - 256 : b;
+}
+
+/** JSON stand-in for the historical byte stream, keyed by the Sfo tag. */
+function sfBag(nhfp) {
+    if (!nhfp.sf) nhfp.sf = {};
+    return nhfp.sf;
+}
+
+/**
+ * C ref: sfstruct.c historical_sfo_char `:106–110` — `bwrite` of `cnt`
+ * bytes. The POSIX `write` / `getidx` slot (bwrite `:493–544`) is the
+ * by-design file omit. The bytes are kept under `myname` so the VFS
+ * payload can carry the same record `Sfi_char` would read back.
+ * `cnt == 0` matches bwrite's early return.
+ * @param {object} nhfp
+ * @param {string} myname
+ * @param {string} text
+ */
+function historicalPutChars(nhfp, myname, text) {
+    if (!text) return;
+    const bag = sfBag(nhfp);
+    bag[myname] = bag[myname] == null ? text : String(bag[myname]) + text;
+}
+
+/**
+ * C ref: sfstruct.c historical_sfo_uchar — `bwrite` of one `uchar`
+ * (SF_C / SFO_BODY in sfstruct.c). Repeated calls with one tag append,
+ * matching the `cscbuf[i]` fill on the read side.
+ * @param {object} nhfp
+ * @param {string} myname
+ * @param {number} byte
+ */
+function historicalPutUchar(nhfp, myname, byte) {
+    const bag = sfBag(nhfp);
+    if (!Array.isArray(bag[myname])) bag[myname] = [];
+    bag[myname].push(byte & 0xff);
+}
+
+/**
+ * `cnt` bytes from a C `char *` or a single char value.
+ * @param {string|number} d_char
+ * @param {number} cnt
+ * @returns {string}
+ */
+function charBytes(d_char, cnt) {
+    const n = cnt | 0;
+    if (n <= 0) return '';
+    if (typeof d_char === 'string') {
+        let s = '';
+        for (let i = 0; i < n; i++) {
+            const c = d_char.charCodeAt(i);
+            s += String.fromCharCode((Number.isFinite(c) ? c : 0) & 0xff);
+        }
+        return s;
+    }
+    return String.fromCharCode((d_char | 0) & 0xff);
+}
+
+/**
+ * C ref: sfbase.c sfo_char `:249–262`. `fplog` `sf_log` is a named omit
+ * (stdio). `structlevel` dispatches `sfoprocs[fnidx]`; `sf_init`
+ * (`sfbase.c:651`) installs historical only. The fieldlevel arm saves
+ * and clears `fplog` around `sfoflprocs[fnidx]`, which `sf_init:653`
+ * leaves zero (`sf_setflprocs` has no caller).
+ * @param {object} nhfp
+ * @param {string|number} d_char
+ * @param {string} myname
+ * @param {number} cnt
+ */
+export function sfo_char(nhfp, d_char, myname, cnt) {
+    const n = cnt | 0;
+    if (nhfp.fplog) {
+        /* C sfbase.c:251 sf_log — named omit (Rule #2, no stdio log). */
+    }
+    if (nhfp.structlevel) {
+        if ((nhfp.fnidx | 0) === FNIDX_HISTORICAL) {
+            historicalPutChars(nhfp, myname, charBytes(d_char, n));
+        }
+        /* other fnidx: sfoprocs slot is zerosfoprocs — no writer. */
+    } else {
+        const saveFplog = nhfp.fplog;
+        nhfp.fplog = null;
+        /* C `:259` (*sfoflprocs[fnidx].fn_x.sf_char) — null proc. */
+        nhfp.fplog = saveFplog;
+    }
+}
+
+/**
+ * C ref: sfbase.c `SF_A(uchar)` `:119–133` `sfo_uchar`. Same dispatch as
+ * `sfo_char`. Historical writes one byte; fieldlevel proc is not installed.
+ * @param {object} nhfp
+ * @param {number} d_uchar
+ * @param {string} myname
+ */
+export function sfo_uchar(nhfp, d_uchar, myname) {
+    const byte = (d_uchar | 0) & 0xff;
+    if (nhfp.fplog) {
+        /* C sf_log — named omit (Rule #2, no stdio log). */
+    }
+    if (nhfp.structlevel) {
+        if ((nhfp.fnidx | 0) === FNIDX_HISTORICAL) {
+            historicalPutUchar(nhfp, myname, byte);
+        }
+    } else {
+        const saveFplog = nhfp.fplog;
+        nhfp.fplog = null;
+        /* C fieldlevel sfo_uchar — sfoflprocs is zerosfoflprocs. */
+        nhfp.fplog = saveFplog;
+    }
+}
+
+/**
+ * C ref: sfbase.c sfo_version_info `:330–346`. Historical stores the
+ * three `unsigned long` fields (`global.h:348–352`). Fieldlevel
+ * `exportascii_sfo_version_info` is an empty `SFO_BODY` (`sfexpasc.c:79`)
+ * and is not installed in `sfoflprocs` anyway.
+ * @param {object} nhfp
+ * @param {{ incarnation: number, feature_set: number, entity_count: number }} d_version_info
+ * @param {string} myname
+ */
+export function sfo_version_info(nhfp, d_version_info, myname) {
+    if (nhfp.fplog) {
+        /* C `:333` sf_log + complex_dump — named omit (stdio). */
+    }
+    if (nhfp.structlevel) {
+        if ((nhfp.fnidx | 0) === FNIDX_HISTORICAL) {
+            sfBag(nhfp)[myname] = {
+                incarnation: d_version_info.incarnation >>> 0,
+                feature_set: d_version_info.feature_set >>> 0,
+                entity_count: d_version_info.entity_count >>> 0,
+            };
+        }
+    } else {
+        const saveFplog = nhfp.fplog;
+        nhfp.fplog = null;
+        /* C fieldlevel sfo_version_info — empty body, proc not installed. */
+        nhfp.fplog = saveFplog;
+    }
+}
+
+/**
+ * C ref: version.c store_critical_bytes `:676–694`. Writes only when
+ * `mode & WRITING`. Indicate is `'h'` on structlevel, `'a'` when
+ * `fnidx == exportascii`, otherwise `'?'`. The count is
+ * `(char) SIZE(critical_sizes)` and the loop bound is that signed char.
+ * @param {object} nhfp
+ */
+export function store_critical_bytes(nhfp) {
+    let indicate = 'u';
+    const csc_count = toSignedChar(CRITICAL_SIZES.length);
+    if ((nhfp.mode | 0) & WRITING) {
+        indicate = nhfp.structlevel
+            ? 'h'
+            : ((nhfp.fnidx | 0) === FNIDX_EXPORTASCII ? 'a' : '?');
+        sfo_char(nhfp, indicate, 'indicate-format', 1);
+        sfo_char(nhfp, csc_count & 0xff, 'count-critical_sizes', 1);
+        const cnt = csc_count; /* (int) signed char */
+        for (let i = 0; i < cnt; i++) {
+            sfo_uchar(nhfp, CRITICAL_SIZES[i].ucsize | 0, 'critical_sizes');
+        }
+    }
+}
+
+/**
+ * C ref: version.c store_version `:512–537`. Zero `version_info`, then
+ * incarnation / feature_set / entity_count from nomakedefs. `structlevel`
+ * turns buffering off around the header (`bufoff` / `bufon`,
+ * sfstruct.c:435 / :414) so `bwrite` uses plain `write`. Those two are
+ * the by-design fd-buffer omit: this JSON record is the header either
+ * way, and nothing after it calls `bwrite`.
+ * @param {object} nhfp
+ */
+export function store_version(nhfp) {
+    const version_data = {
+        incarnation: 0,
+        feature_set: 0,
+        entity_count: 0,
+    };
+    /* actual version number */
+    version_data.incarnation = NOMAKEDEFS_VERSION_NUMBER >>> 0;
+    /* bitmask of config settings */
+    version_data.feature_set = NOMAKEDEFS_VERSION_FEATURES >>> 0;
+    /* # of monsters and objects */
+    version_data.entity_count = NOMAKEDEFS_VERSION_SANITY1 >>> 0;
+
+    /* bwrite() before bufon() uses plain write() */
+    if (nhfp.structlevel) {
+        /* C `:528` bufoff(nhfp->fd) — named omit (sfstruct.c buffering). */
+    }
+    store_critical_bytes(nhfp);
+    sfo_version_info(nhfp, version_data, 'version_info');
+    if (nhfp.structlevel) {
+        /* C `:535` bufon(nhfp->fd) — named omit (sfstruct.c buffering). */
+    }
+}
 
 /**
  * C ref: version.c check_version `:374–423` — incarnation, feature-set

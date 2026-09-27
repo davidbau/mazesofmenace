@@ -29,23 +29,33 @@ import {
     MIGR_EXACT_XY, MIGR_RANDOM, MM_NOMSG,
 } from './const.js';
 import { ATR_INVERSE } from './terminal.js';
-import { make_blinded } from './do.js';
+import { make_blinded, save_currentstate } from './do.js';
 import { m_at, rescham, dmonsfree } from './mon.js';
 import { dobjsfree } from './mkobj.js';
 /* C lock.c maybe_reset_pick — hoisted fn, called only from
    makemap_prepost (`imports.mjs --can wizcmds.js lock.js` SAFE). */
 import { maybe_reset_pick } from './lock.js';
 import { minimal_monnam } from './do_name.js';
-import { strsubst, depth, mungspaces } from './hacklib.js';
+import { strsubst, depth, mungspaces, strncmpi } from './hacklib.js';
 import { getpos } from './getpos.js';
 import { usmellmon, makemon, rndmonst } from './makemon.js';
 import { check_invent_gold } from './invent.js';
+/* C worn.c check_wornmask_slots — hoisted async fn, called only from
+   you_sanity_check (imports.mjs --can wizcmds.js worn.js cycle-safe
+   once the export is a function declaration). */
+import { check_wornmask_slots } from './worn.js';
 import { rn2 } from './rng.js';
 import { float_vs_flight, body_part } from './polyself.js';
 import { pooleffects } from './pickup.js';
 import { mons, olfaction } from './monsters.js';
 import { PM_GRID_BUG } from './generated/monsters_data.js';
 import { NUM_OBJECTS } from './objects.js';
+/* C dungeon.c overview_stats — hoisted fn
+   (`imports.mjs --can wizcmds.js dungeon.js overview_stats` SAFE). */
+import { overview_stats } from './dungeon.js';
+/* C worm.c size_wseg — hoisted fn
+   (`imports.mjs --can wizcmds.js worm.js size_wseg` SAFE). */
+import { size_wseg } from './worm.js';
 
 /** C timeout.c propertynames[] — wizard #wizintrinsic menu order. */
 const PROPERTYNAMES = [
@@ -570,7 +580,7 @@ function zero_dest_area() {
  * Punished placebc / docrt / flush / splev / check_special_room(FALSE).
  * Named omissions: makemap_remove_mons / rm_mapseen / mine·soko prize;
  * digging memset; polearm.hitmon;
- * savelev freeing nhfile; INSURANCE save_currentstate;
+ * savelev freeing nhfile;
  * sp_lev.c lspo_reset_level / lspo_finalize_level.
  */
 export async function makemap_prepost(pre, wiztower) {
@@ -634,6 +644,8 @@ export async function makemap_prepost(pre, wiztower) {
     await flush_screen(1);
     await deliver_splev_message();
     await check_special_room(false);
+    // C cmd.c:1063–1064 — INSURANCE checkpoint after the new level is shown.
+    save_currentstate();
 }
 
 /**
@@ -658,8 +670,8 @@ export async function wiz_makemap() {
 
 /**
  * C wizcmds.c you_sanity_check `:1401–1441` — swallow/overlay/HP-Pw
- * clamps then invent gold/invlet. Caller sanity_check.
- * Named omit: worn.c check_wornmask_slots `:1439`.
+ * clamps, then worn-slot sanity, then invent gold/invlet.
+ * Caller sanity_check.
  */
 async function you_sanity_check() {
     const u = game.u || (game.u = {});
@@ -701,7 +713,8 @@ async function you_sanity_check() {
         u.uen = u.uenmax | 0;
     }
 
-    // C `:1439` check_wornmask_slots — named omit (worn.c).
+    // C `:1439` check_wornmask_slots, then check_invent_gold("invent").
+    await check_wornmask_slots();
     await check_invent_gold('invent');
 }
 
@@ -712,8 +725,9 @@ async function you_sanity_check() {
  * ("invent") then `bc_sanity_check` (`ball.c:1034–1102`, `:1476` —
  * after light_sources, before trap). Caller allmain.c moveloop_core
  * when iflags.sanity_check || debug_fuzzer (opt_in Off).
+ * check_wornmask_slots runs inside you_sanity_check.
  * Named omit: obj/timer/mon/trap/engraving/levl sanity;
- * check_wornmask_slots; dobjsfree / clear_bypasses / resume_wish.
+ * dobjsfree / clear_bypasses / resume_wish.
  */
 export async function sanity_check() {
     if (!game.iflags) game.iflags = {};
@@ -915,7 +929,10 @@ export async function wiz_levltyp_legend() {
 /* C struct sizes for the `#stats` memory display, LP64 — measured from the
  * pinned headers with gcc (probe in /tmp/sizeof_probe.c, not committed):
  * trap=32 engr=64 light=32 timer=48 damage=32 region=96 rect=8 kinfo=272
- * cemetery=184. The contest recorder builds the same LP64 layout, so these
+ * cemetery=184. Object and monster structs, same probe: obj=112
+ * oextra=32 monst=192 mextra=64 egd=640 epri=56 eshk=4960 emin=8
+ * edog=64 ebones=28. wseg=16 lives next to size_wseg in worm.js.
+ * The contest recorder builds the same LP64 layout, so these
  * header/size constants print what C prints. */
 const SIZEOF_TRAP = 32; // struct trap (trap.h:18)
 const SIZEOF_ENGR = 64; // struct engr (engrave.h:18)
@@ -927,6 +944,20 @@ const SIZEOF_RECT = 8; // NhRect (rect.h:8)
 const SIZEOF_KINFO = 272; // struct kinfo (hack.h:598)
 const SIZEOF_CEMETERY = 184; // struct cemetery (rm.h:418)
 const SIZEOF_UNSIGNED = 4; // region monsters[] element (unsigned *)
+const SIZEOF_OBJ = 112; // struct obj (obj.h:35)
+const SIZEOF_OEXTRA = 32; // struct oextra (obj.h:27)
+const SIZEOF_MONST = 192; // struct monst (monst.h:96)
+const SIZEOF_MEXTRA = 64; // struct mextra (mextra.h:205)
+const SIZEOF_EGD = 640; // struct egd (mextra.h:77)
+const SIZEOF_EPRI = 56; // struct epri (mextra.h:95)
+const SIZEOF_ESHK = 4960; // struct eshk (mextra.h:123)
+const SIZEOF_EMIN = 8; // struct emin (mextra.h:151)
+const SIZEOF_EDOG = 64; // struct edog (mextra.h:172)
+const SIZEOF_EBONES = 28; // struct ebones (mextra.h:189)
+
+/* C wizcmds.c:1112–1114 — template / header / separator for #stats. */
+const STATS_TEMPLATE_HDR = '                             count  bytes';
+const STATS_SEP = '---------------------------  ----- -------';
 
 /**
  * C ref: wizcmds.c `template[]` `:1112` `"%-27s  %4ld  %6ld"` — one stats
@@ -1041,8 +1072,8 @@ function region_stats(tot) {
  * "Miscellaneous" row per live list. Signature adaptation (NHW_TEXT idiom,
  * D-2508/D-2516): `win` is the caller's collected string array; the two
  * C out-params are the mutated `total` accumulator ({ count, size }).
- * The caller (C wiz_show_stats `:1676`, not yet ported) displays the
- * window; this function only appends rows, in C order.
+ * The caller (`wiz_show_stats`, C `:1676`) displays the window; this
+ * function only appends rows, in C order.
  *
  * @param {string[]} lines caller-collected window lines
  * @param {{ count: number, size: number }} total misc accumulator
@@ -1177,6 +1208,305 @@ export function misc_stats(lines, total) {
         // C `:1392` Strcpy(hdrbuf, "object type names, text").
         lines.push(stats_row('object type names, text', count, size));
     }
+}
+
+/**
+ * Walk one C `nobj` or `nmon` chain. Invent, fmon, migrating monsters,
+ * and mydogs are arrays in this port (unshift is the C head insert);
+ * buried objects are an array after a bones restore and a linked list
+ * otherwise. `reorder_invent_adjust` swaps array slots and does not
+ * rewrite `nobj`, so an array is the chain. A null slot is not a link.
+ * @param {object|object[]|null|undefined} chain
+ * @param {'nobj'|'nmon'} link
+ * @param {(node: object) => void} visit
+ */
+function walk_chain(chain, link, visit) {
+    if (!chain) return;
+    if (Array.isArray(chain)) {
+        for (let i = 0; i < chain.length; i++) {
+            const node = chain[i];
+            if (node) visit(node);
+        }
+        return;
+    }
+    for (let node = chain; node; node = node[link]) visit(node);
+}
+
+/**
+ * Bytes of a C `char *` that size_obj / size_monst add: 0 when the
+ * pointer is null, else `strlen + 1`. JS stores a missing pointer as
+ * null, undefined, or the free sentinel 0. `""` is the alloc
+ * placeholder (`new_oname`, `new_mgivenname`) and counts as one NUL.
+ * @param {string|null|undefined} s
+ * @returns {number}
+ */
+function c_str_bytes(s) {
+    // 0 is the free sentinel (dealloc_mextra sets mgivenname = 0).
+    if (s == null || s === 0) return 0;
+    return String(s).length + 1;
+}
+
+/**
+ * C ref: wizcmds.c size_obj `:1117–1132` (staticfn).
+ * `sizeof (struct obj)`, plus `oextra` and the name, attached monster,
+ * and mail-command string it owns. Contained objects are not included;
+ * `count_obj` walks those. `OMAILCMD` is null in C when there is no
+ * command; this port stores that as `""` (`new_omailcmd`), so only a
+ * non-empty command is an allocation.
+ * @param {object} otmp
+ * @returns {number}
+ */
+function size_obj(otmp) {
+    // C `:1119` — sz = sizeof (struct obj).
+    let sz = SIZEOF_OBJ;
+    // C `:1121–1130`.
+    if (otmp.oextra) {
+        sz += SIZEOF_OEXTRA;
+        sz += c_str_bytes(otmp.oextra.oname);
+        // C `:1125–1126` — statue/figurine monster, worm segments excluded.
+        if (otmp.oextra.omonst)
+            sz += size_monst(otmp.oextra.omonst, false);
+        const mail = otmp.oextra.omailcmd;
+        if (mail) sz += String(mail).length + 1;
+    }
+    return sz;
+}
+
+/**
+ * C ref: wizcmds.c count_obj `:1135–1151` (staticfn).
+ * When `top`, each object on this chain counts. When `recurse`, each
+ * object's `cobj` is counted as its own top-level chain (and that
+ * call recurses). The two out-params are `total` ({ count, size }).
+ * @param {object|object[]|null|undefined} chain
+ * @param {{ count: number, size: number }} total
+ * @param {boolean} top
+ * @param {boolean} recurse
+ */
+function count_obj(chain, total, top, recurse) {
+    let count = 0;
+    let size = 0;
+    // C `:1141–1148` — for (obj = chain; obj; obj = obj->nobj).
+    walk_chain(chain, 'nobj', (obj) => {
+        if (top) {
+            count += 1;
+            size += size_obj(obj);
+        }
+        if (recurse && obj.cobj)
+            count_obj(obj.cobj, total, true, true);
+    });
+    // C `:1149–1150`.
+    total.count += count;
+    total.size += size;
+}
+
+/**
+ * C ref: wizcmds.c obj_chain `:1156–1174` (staticfn).
+ * Count the chain without its contents. `force` prints a zero row
+ * (invent and fobj). Otherwise a zero chain is silent and is not
+ * added to the caller's totals.
+ * @param {string[]} lines
+ * @param {string} src
+ * @param {object|object[]|null|undefined} chain
+ * @param {boolean} force
+ * @param {{ count: number, size: number }} total
+ */
+function obj_chain(lines, src, chain, force, total) {
+    const part = { count: 0, size: 0 };
+    // C `:1166` — count_obj(..., TRUE, FALSE).
+    count_obj(chain, part, true, false);
+    // C `:1168–1173`.
+    if (part.count || part.size || force) {
+        total.count += part.count;
+        total.size += part.size;
+        lines.push(stats_row(src, part.count, part.size));
+    }
+}
+
+/**
+ * C ref: wizcmds.c mon_invent_chain `:1177–1196` (staticfn).
+ * Sum each monster's `minvent` (top level only). No `force`: a zero
+ * sum prints nothing. Dead monsters stay on fmon; their empty packs
+ * add nothing.
+ * @param {string[]} lines
+ * @param {string} src
+ * @param {object|object[]|null|undefined} chain
+ * @param {{ count: number, size: number }} total
+ */
+function mon_invent_chain(lines, src, chain, total) {
+    const part = { count: 0, size: 0 };
+    // C `:1187–1188`.
+    walk_chain(chain, 'nmon', (mon) => {
+        count_obj(mon.minvent, part, true, false);
+    });
+    // C `:1190–1195`.
+    if (part.count || part.size) {
+        total.count += part.count;
+        total.size += part.size;
+        lines.push(stats_row(src, part.count, part.size));
+    }
+}
+
+/**
+ * C ref: wizcmds.c contained_stats `:1199–1225` (staticfn).
+ * Contents only (`top` false, `recurse` true) of invent, fobj, buried
+ * objects, migrating objects, and both monster-inventory chains.
+ * Bill objects and mydogs are not walked. A zero sum is silent.
+ * @param {string[]} lines
+ * @param {string} src
+ * @param {{ count: number, size: number }} total
+ */
+function contained_stats(lines, src, total) {
+    const part = { count: 0, size: 0 };
+    // C `:1208–1211`.
+    count_obj(game.invent, part, false, true);
+    count_obj(game.fobj, part, false, true);
+    count_obj(game.level?.buriedobjlist, part, false, true);
+    count_obj(game.migrating_objs, part, false, true);
+    // C `:1212–1217` — dead monsters have no inventory; still walked.
+    walk_chain(game.fmon, 'nmon', (mon) => {
+        count_obj(mon.minvent, part, false, true);
+    });
+    walk_chain(game.migrating_mons, 'nmon', (mon) => {
+        count_obj(mon.minvent, part, false, true);
+    });
+    // C `:1219–1224`.
+    if (part.count || part.size) {
+        total.count += part.count;
+        total.size += part.size;
+        lines.push(stats_row(src, part.count, part.size));
+    }
+}
+
+/**
+ * C ref: wizcmds.c size_monst `:1228–1254` (staticfn).
+ * `sizeof (struct monst)`, plus worm segments when `incl_wsegs`, plus
+ * `mextra` and each extension it actually points at. `mcorpsenm` is
+ * inside `mextra` and is not a further allocation.
+ * @param {object} mtmp
+ * @param {boolean} incl_wsegs
+ * @returns {number}
+ */
+function size_monst(mtmp, incl_wsegs) {
+    // C `:1230`.
+    let sz = SIZEOF_MONST;
+    // C `:1232–1233` — migrating monsters and mydogs do not count segments.
+    if ((mtmp.wormno | 0) && incl_wsegs)
+        sz += size_wseg(mtmp);
+    // C `:1235–1252`.
+    if (mtmp.mextra) {
+        sz += SIZEOF_MEXTRA;
+        sz += c_str_bytes(mtmp.mextra.mgivenname);
+        if (mtmp.mextra.egd) sz += SIZEOF_EGD;
+        if (mtmp.mextra.epri) sz += SIZEOF_EPRI;
+        if (mtmp.mextra.eshk) sz += SIZEOF_ESHK;
+        if (mtmp.mextra.emin) sz += SIZEOF_EMIN;
+        if (mtmp.mextra.edog) sz += SIZEOF_EDOG;
+        if (mtmp.mextra.ebones) sz += SIZEOF_EBONES;
+    }
+    return sz;
+}
+
+/**
+ * C ref: wizcmds.c mon_chain `:1257–1281` (staticfn).
+ * Worm segments count only when `src` is `"fmon"` (`strcmpi`). `force`
+ * prints a zero row. `total` is the caller's { count, size }.
+ * @param {string[]} lines
+ * @param {string} src
+ * @param {object|object[]|null|undefined} chain
+ * @param {boolean} force
+ * @param {{ count: number, size: number }} total
+ */
+function mon_chain(lines, src, chain, force, total) {
+    // C `:1268` — !strcmpi(src, "fmon"); strcmpi is strncmpi(..., -1).
+    const inclWsegs = strncmpi(src, 'fmon', -1) === 0;
+    let count = 0;
+    let size = 0;
+    // C `:1271–1274`.
+    walk_chain(chain, 'nmon', (mon) => {
+        count += 1;
+        size += size_monst(mon, inclWsegs);
+    });
+    // C `:1275–1280`.
+    if (count || size || force) {
+        total.count += count;
+        total.size += size;
+        lines.push(stats_row(src, count, size));
+    }
+}
+
+/**
+ * C ref: wizcmds.c wiz_show_stats `:1616–1697` — the #stats command.
+ * Memory totals for objects, monsters, the dungeon overview, and the
+ * miscellaneous lists, then one grand total. NHW_TEXT is the caller's
+ * line array (same idiom as misc_stats). `tty_display_nhwindow` blocks
+ * for every text window, so `show_text_pages` is that wait.
+ * Caller: cmd.c extcmdlist "stats" `:1876–1877`.
+ * @returns {Promise<number>} ECMD_OK
+ */
+export async function wiz_show_stats() {
+    const { show_text_pages } = await import('./pager.js');
+    // C `:1625–1626` — create_nhwindow(NHW_TEXT); title.
+    const lines = [];
+    lines.push('Current memory statistics:');
+
+    // C `:1628–1647` — objects.
+    const objTot = { count: 0, size: 0 };
+    lines.push(STATS_TEMPLATE_HDR);
+    lines.push(`  Objects, base size ${SIZEOF_OBJ}`);
+    obj_chain(lines, 'invent', game.invent, true, objTot);
+    obj_chain(lines, 'fobj', game.fobj, true, objTot);
+    obj_chain(lines, 'buried', game.level?.buriedobjlist, false, objTot);
+    obj_chain(lines, 'migrating obj', game.migrating_objs, false, objTot);
+    obj_chain(lines, 'billobjs', game.billobjs, false, objTot);
+    mon_invent_chain(lines, 'minvent', game.fmon, objTot);
+    mon_invent_chain(lines, 'migrating minvent', game.migrating_mons, objTot);
+    contained_stats(lines, 'contained', objTot);
+    lines.push(STATS_SEP);
+    lines.push(stats_row('  Obj total', objTot.count, objTot.size));
+
+    // C `:1649–1662` — monsters. mydogs is only live across a level
+    // change or disclosure; an empty list still no-ops (force is false).
+    const monTot = { count: 0, size: 0 };
+    lines.push('');
+    lines.push(`  Monsters, base size ${SIZEOF_MONST}`);
+    mon_chain(lines, 'fmon', game.fmon, true, monTot);
+    mon_chain(lines, 'migrating', game.migrating_mons, false, monTot);
+    if (game.mydogs)
+        mon_chain(lines, 'mydogs', game.mydogs, false, monTot);
+    lines.push(STATS_SEP);
+    lines.push(stats_row('  Mon total', monTot.count, monTot.size));
+
+    // C `:1664–1671` — overview_stats appends its own rows.
+    const ovrTot = { count: 0, size: 0 };
+    lines.push('');
+    lines.push('  Overview');
+    overview_stats(lines, ovrTot);
+    lines.push(STATS_SEP);
+    lines.push(stats_row('  Over total', ovrTot.count, ovrTot.size));
+
+    // C `:1673–1679`.
+    const miscTot = { count: 0, size: 0 };
+    lines.push('');
+    lines.push('  Miscellaneous');
+    misc_stats(lines, miscTot);
+    lines.push(STATS_SEP);
+    lines.push(stats_row('  Misc total', miscTot.count, miscTot.size));
+
+    // C `:1681–1688` — grand total of the four sections.
+    lines.push('');
+    lines.push(STATS_SEP);
+    lines.push(stats_row(
+        '  Grand total',
+        objTot.count + monTot.count + ovrTot.count + miscTot.count,
+        objTot.size + monTot.size + ovrTot.size + miscTot.size,
+    ));
+
+    // C `:1690–1692` — show_borlandc_stats is
+    // `#if defined(__BORLANDC__) && !defined(_WIN32)`, not this build.
+
+    // C `:1694–1695` — display_nhwindow(win, FALSE); destroy_nhwindow.
+    await show_text_pages(lines);
+    return ECMD_OK;
 }
 
 /**

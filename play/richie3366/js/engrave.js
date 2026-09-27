@@ -45,7 +45,7 @@ import { game } from './gstate.js';
 import { surface } from './sit.js';
 import { sanitize_name } from './bones.js';
 import { rn1, rn2, rnd } from './rng.js';
-import { pline, You, newsym, impossible, Hallucination } from './display.js';
+import { pline, You, You_see, newsym, impossible, Hallucination } from './display.js';
 import { getlin, yn_function } from './getline.js';
 import { getobj, useup, hold_another_object, prinv, update_inventory, Blind } from './invent.js';
 import { splitobj, obj_extract_self } from './mkobj.js';
@@ -529,7 +529,7 @@ export async function read_engr_at(x, y) {
     case ENGR_BLOOD:
         if (!blind) {
             sensed = true;
-            await pline('You see a message scrawled in blood here.');
+            await You_see('a message scrawled in blood here.');
         }
         break;
     default:

@@ -18,7 +18,7 @@ import {
     M_AP_FURNITURE, M_AP_OBJECT, Something, FINGER, S_hcdoor, S_vcdoor,
     CMDQ_DIR, CMDQ_KEY, CQ_CANNED, CQ_REPEAT,
     xytodir, getdirInp, u_at,
-    CLICK_1, CLICK_2, N_DIRS, MV_WALK, xdir, ydir, zdir,
+    CLICK_1, CLICK_2, N_DIRS, xdir, ydir, zdir,
     NHKF_ESC, NHKF_GETDIR_SELF, NHKF_GETDIR_SELF2, NHKF_GETDIR_HELP,
     NHKF_GETDIR_MOUSE, NHKF_GETPOS_PICK, NHKF_GETPOS_PICK_Q,
     NHKF_GETPOS_PICK_O, NHKF_GETPOS_PICK_V,
@@ -58,7 +58,7 @@ import { mb_trapped } from './monmove.js';
 import { b_trapped, t_at, could_untrap, untrap } from './trap.js';
 import { currency, cmdq_add_key } from './invent.js';
 import { show_text_pages, dowhatdoes_core } from './pager.js';
-import { visctrl, cmdbind_get, cmd_from_dir } from './dokeylist.js';
+import { visctrl, cmdbind_get, show_direction_keys } from './dokeylist.js';
 import { getpos } from './getpos.js';
 import { highc } from './hacklib.js';
 import { doloot, container_at } from './pickup.js';
@@ -194,40 +194,6 @@ export function dxdy_moveok() {
         u.dx = u.dy = 0;
     }
     return !!(u.dx || u.dy);
-}
-
-/**
- * C ref: cmd.c show_direction_keys `:4122–4165` (staticfn) — the grid
- * help_dir `:4268` prints. C reads the live bindings with
- * visctrl(cmd_from_func(do_move_*)); JS uses live cmd_from_dir(dir,
- * MV_WALK) through visctrl — the same move_funcs row-0 table — so a
- * rebound layout paints here exactly as in C. `lines` stands in for the
- * NHW_TEXT window (C putstr(win, 0, …)); Sprintf layouts verbatim.
- * `:4129–4130` falsy centerchar falls back to ' '.
- * MOVE_WALK_ECNAMES index = C move_funcs rows 0..7 (dokeylist.js:161–164):
- * 0 west, 1 northwest, 2 north, 3 northeast, 4 east, 5 southeast,
- * 6 south, 7 southwest.
- */
-function show_direction_keys(lines, centerchar, nodiag) {
-    const c = centerchar || ' ';
-    // C `:4135`/`4140`/`4144`/… visctrl(cmd_from_func(do_move_*)).
-    const key = (dir) => visctrl(cmd_from_dir(dir, MV_WALK));
-    if (nodiag) {
-        // C `:4133–4146` cardinal-only grid.
-        lines.push(`             ${key(2)}   `);
-        lines.push('             |   ');
-        lines.push(`          ${key(0)}- ${c} -${key(4)}`);
-        lines.push('             |   ');
-        lines.push(`             ${key(6)}   `);
-    } else {
-        // C `:4147–4164` full 8-way grid.
-        lines.push(`          ${key(1)}  ${key(2)}  ${key(3)}`);
-        lines.push('           \\ | / ');
-        lines.push(`          ${key(0)}- ${c} -${key(4)}`);
-        lines.push('           / | \\ ');
-        // C `:4158–4162` arg order southwest, south, southeast.
-        lines.push(`          ${key(7)}  ${key(6)}  ${key(5)}`);
-    }
 }
 
 /**

@@ -9,7 +9,7 @@ import {
     mtrapped_in_pit, LEVEL_SPECIFIC_NOCORPSE, unlink_minvent,
 } from './mon.js';
 import { game } from './gstate.js';
-import { pline, pline_mon, newsym, canspotmon, canseemon, map_invisible, unmap_object, memory_glyph_is_invisible, You, Your, pline_The, You_feel, flush_screen, flush_topl_more, verbalize, sensemon, shieldeff, mon_visible } from './display.js';
+import { pline, pline_mon, newsym, canspotmon, canseemon, map_invisible, unmap_object, memory_glyph_is_invisible, You, Your, pline_The, You_feel, You_see, flush_screen, flush_topl_more, verbalize, sensemon, shieldeff, mon_visible } from './display.js';
 import { cansee } from './vision.js';
 import { dist2, isok } from './hacklib.js';
 import { resist_conflict, set_mon_data, on_fire, mhis, mhe, little_to_big, defended, monsndx, Resists_Elem } from './mondata.js';
@@ -3574,13 +3574,8 @@ export async function vamprises(mtmp) {
             if (!seeit) {
                 await You_hear(trapped ? 'an explosion.' : 'a door being smashed.');
             } else if (!canspotmon(mtmp)) {
-                const line = trapped ? 'a door exploding.' : 'a door being smashed.';
-                const u = game.u || {};
-                const blind = !!((u.HBlinded | 0) || (u.EBlinded | 0) || u.Blind);
-                // C You_see (pline.c): Unaware dreams, Blind senses (dbridge.js:74).
-                if (unaware) await pline(`You dream that you see ${line}`);
-                else if (blind) await pline(`You sense ${line}`);
-                else await pline(`You see ${line}`);
+                const line = trapped ? 'a door exploding' : 'a door being smashed';
+                await You_see('%s.', line);
             } else if (!unaware) {
                 await pline(`The door is smashed${trapped ? ' and it explodes!' : '.'}`);
             }

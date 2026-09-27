@@ -78,6 +78,7 @@ import { picking_lock } from './lock.js';
 import { mbodypart } from './polyself.js';
 import {
     newsym, pline, pline_The, canseemon as display_canseemon, pline_mon, pline_xy,
+    You_see,
     canspotmon as display_canspotmon, sensemon, Norep, verbalize, set_msg_xy,
 } from './display.js';
 import { dog_move, finish_meating, cursed_object_at, dogfood } from './dogmove.js';
@@ -1382,9 +1383,9 @@ export async function msg_mon_movement(mtmp, omx, omy) {
 /**
  * C ref: mon.c hideunder — set mundetected under object / pool for eels.
  * You_see "%s %s under %s" when canseemon before hide (forces --More--
- * when prior topline cannot append). Named omissions: youmonst path
- * (is_u Stone_resistance / u.uundetected; mon.js covers the sync half);
- * set_msg_xy / PLNMSG_HIDE_UNDER / last_hider.
+ * when prior topline cannot append), after set_msg_xy. Named omissions:
+ * youmonst path (is_u Stone_resistance / u.uundetected; mon.js covers
+ * the sync half); PLNMSG_HIDE_UNDER / last_hider.
  */
 async function hideunder(mtmp) {
     if (!mtmp?.mx) return false;
@@ -1441,7 +1442,8 @@ async function hideunder(mtmp) {
     // C: if (undetected && seenmon && seenobj) You_see("%s %s under %s."…)
     if (undetected && seenmon && seenobj) {
         if (!locomo) locomo = locomotion(mtmp.data, 'hide');
-        await pline(`You see ${seenmon} ${locomo} under ${seenobj}.`);
+        set_msg_xy(mtmp.mx | 0, mtmp.my | 0);
+        await You_see('%s %s under %s.', seenmon, locomo, seenobj);
     }
     if (undetected !== oldundetctd) newsym(x, y);
     return undetected;
@@ -1669,7 +1671,7 @@ export async function postmov(mtmp, omx, omy, mmoved, can_tunnel, can_unlock, ca
                 if (canseeit && canspotmon(mtmp)) {
                     await pline_mon(mtmp, `${Monnam(mtmp)} unlocks and opens a door.`);
                 } else if (canseeit) {
-                    await pline('You see a door unlock and open.');
+                    await You_see('a door unlock and open.');
                 } else if (!game.u?.Deaf) {
                     await pline('You hear a door unlock and open.');
                 }
@@ -1684,7 +1686,7 @@ export async function postmov(mtmp, omx, omy, mmoved, can_tunnel, can_unlock, ca
                 if (canseeit && canspotmon(mtmp)) {
                     await pline_mon(mtmp, `${Monnam(mtmp)} opens a door.`);
                 } else if (canseeit) {
-                    await pline('You see a door open.');
+                    await You_see('a door open.');
                 } else if (!game.u?.Deaf) {
                     await pline('You hear a door open.');
                 }
@@ -1702,7 +1704,7 @@ export async function postmov(mtmp, omx, omy, mmoved, can_tunnel, can_unlock, ca
                 if (canseeit && canspotmon(mtmp)) {
                     await pline_mon(mtmp, `${Monnam(mtmp)} smashes down a door.`);
                 } else if (canseeit) {
-                    await pline('You see a door crash open.');
+                    await You_see('a door crash open.');
                 } else if (!game.u?.Deaf) {
                     await pline('You hear a door crash open.');
                 }
@@ -1895,7 +1897,7 @@ export function sticks(ptr) {
 
 /**
  * C ref: monmove.c itsstuck — stuck grabber cannot walk away.
- * C pline_mon (D-1227); You_hear/You_see arms elsewhere stay pline.
+ * C pline_mon (D-1227). Door You_see sites are in postmov.
  */
 export async function itsstuck(mtmp) {
     const u = game.u;

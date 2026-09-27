@@ -19,7 +19,7 @@ import { init_objects } from './o_init.js';
 import { init_artifacts, mkot_trap_warn } from './artifact.js';
 import { init_dungeons, find_level, print_level_annotation } from './dungeon.js';
 import { depth } from './hacklib.js';
-import { schedule_goto, deferred_goto, l_nhcore_call, hellish_smoke_mesg } from './do.js';
+import { schedule_goto, deferred_goto, l_nhcore_call, hellish_smoke_mesg, save_currentstate } from './do.js';
 import { obj_delivery } from './dokick.js';
 import { read_wizkit } from './files.js';
 import { setup_role_race_from_rc, u_init_misc, u_init_inventory_attrs, u_init_skills_discoveries, find_ac } from './u_init.js';
@@ -898,8 +898,10 @@ export async function newgame() {
     await flush_screen(1);
     await bot();
 
-    // C allmain.c `:835–836` — wall-clock play time for disclosure / save.
+    // C allmain.c `:835–838` — wall-clock play time, then the insurance
+    // checkpoint, then something_worth_saving.
     g.urealtime = { realtime: 0, start_timing: getnow(), finish_time: 0 };
+    save_currentstate();
     if (!g.program_state) g.program_state = {};
     g.program_state.something_worth_saving =
         (g.program_state.something_worth_saving | 0) + 1;

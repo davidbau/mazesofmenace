@@ -11,12 +11,11 @@
 // :340–769; imports.mjs --can: monsters/rng/pickup/steed/trap/teleport/
 // end/mhitm/uhitm/hack/sndprocs/region/mondata/eat/attrib all SAFE —
 // same 89-module SCC, hoisted function declarations, no top-level TDZ).
-// Named omit: Blind/Unaware You_see
-// polish; debugpline D_DEBUG-only lines; local wake_nearto STRAT_WAITMASK
+// Named omit: debugpline D_DEBUG-only lines; local wake_nearto STRAT_WAITMASK
 // + wake_msg/G_UNIQ (mon.c wake_nearto_core, review-28 residual).
 
 import { game } from './gstate.js';
-import { pline, newsym, canseemon, Hallucination, canspotmon } from './display.js';
+import { pline, newsym, canseemon, Hallucination, canspotmon, You_see } from './display.js';
 import { cansee, recalc_block_point, vision_recalc, does_block, unblock_point } from './vision.js';
 import { obj_extract_self, delobj, objects_at, sobj_at, mksobj_at } from './mkobj.js';
 import { m_at, minliquid } from './mon.js';
@@ -63,16 +62,6 @@ import {
 
 const BOULDER = objectNames.indexOf('BOULDER');
 const IRON_CHAIN = objectNames.indexOf('IRON_CHAIN');
-
-/**
- * C ref: pline.c You_see — "You see " prefix; Blind→sense / Unaware deferred.
- */
-async function You_see(line) {
-    const u = game.u || {};
-    const blind = !!((u.HBlinded | 0) || (u.EBlinded | 0) || u.Blind);
-    if (blind) await pline(`You sense ${line}`);
-    else await pline(`You see ${line}`);
-}
 
 /** C ref: distu — squared distance from hero. */
 function distu(x, y) {

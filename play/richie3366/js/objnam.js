@@ -1810,10 +1810,15 @@ export function Tobjnam(otmp, verb) {
 }
 
 /**
- * C ref: objnam.c singular — temporarily force quan=1 for naming.
+ * C ref: objnam.c singular `:2091–2105` — xname of a corpse does not
+ * give the monster type, so that pair is rewritten to cxname before
+ * quan is forced to 1 and restored. Null otmp is not a C path
+ * (NONNULLPTRS); the guard only avoids a throw.
  */
 export function singular(obj, func = xname) {
     if (!obj) return func(obj);
+    /* using xname for corpses does not give the monster type */
+    if ((obj.otyp | 0) === CORPSE && func === xname) func = cxname;
     const savequan = obj.quan;
     obj.quan = 1;
     const nam = func(obj);

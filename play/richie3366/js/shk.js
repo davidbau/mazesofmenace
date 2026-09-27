@@ -931,26 +931,6 @@ export function inside_shop(x, y) {
     return rno;
 }
 
-/**
- * C ref: zap.c get_obj_location — subset for shop pricing (floor/invent/
- * contained). BURIED_TOO / minvent deferred unless locflags request.
- */
-function get_obj_location(obj, locflags = 0) {
-    if (!obj) return null;
-    switch (obj.where) {
-    case OBJ_INVENT:
-        return { x: game.u?.ux | 0, y: game.u?.uy | 0 };
-    case OBJ_FLOOR:
-        return { x: obj.ox | 0, y: obj.oy | 0 };
-    case OBJ_CONTAINED:
-        if (locflags & 0x1) { // CONTAINED_TOO
-            return get_obj_location(obj.ocontainer, locflags);
-        }
-        return null;
-    default:
-        return null;
-    }
-}
 
 /**
  * C ref: shk.c costly_spot — shop goods square (not shk free spot).
@@ -2424,7 +2404,7 @@ export async function costly_alteration(obj, alter_type) {
     if (carried_shop(obj) || obj.where === OBJ_INVENT || obj.where === OBJ_FREE) {
         if (!obj.unpaid) return;
     } else {
-        const loc = get_obj_location(obj, 0x1);
+        const loc = shk_full_get_obj_location(obj, 0x1); // CONTAINED_TOO
         if (loc) {
             ox = loc.x | 0;
             oy = loc.y | 0;
@@ -3425,7 +3405,7 @@ export function get_cost_of_shop_item(obj) {
         || obj === u?.uball || obj === u?.uchain) {
         return { cost, nochrg };
     }
-    const loc = get_obj_location(obj, 0x1); // CONTAINED_TOO
+    const loc = shk_full_get_obj_location(obj, 0x1); // CONTAINED_TOO
     if (!loc) return { cost, nochrg };
     const { x, y } = loc;
     const rooms = in_rooms(x, y, SHOPBASE);

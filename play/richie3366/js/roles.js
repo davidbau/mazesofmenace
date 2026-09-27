@@ -828,11 +828,28 @@ export function rank_of(lev, monnum, female) {
     return 'Player';
 }
 
-// C ref: align.c / extern align_str()
-export function align_str(a) {
-    if (a === A_LAWFUL) return 'lawful';
-    if (a === A_CHAOTIC) return 'chaotic';
-    return 'neutral';
+/**
+ * C ref: insight.c align_str `:3187–3200`.
+ * `(int) alignment` selects the adjective. `A_NONE` is the altar and
+ * artifact value `-128`, not a third moral pole. Anything else,
+ * including a corrupted `aligntyp`, is `"unknown"`.
+ * Callers that want the artifact-list wording remap `"unaligned"` to
+ * `"non-aligned"` after this return (`artifact.c:1165–1166`).
+ * @param {number} alignment aligntyp
+ * @returns {string}
+ */
+export function align_str(alignment) {
+    switch (alignment | 0) { // C `(int) alignment`
+    case A_CHAOTIC: // insight.c:3190
+        return 'chaotic';
+    case A_NEUTRAL: // insight.c:3192
+        return 'neutral';
+    case A_LAWFUL: // insight.c:3194
+        return 'lawful';
+    case A_NONE: // insight.c:3196
+        return 'unaligned';
+    }
+    return 'unknown'; // insight.c:3199
 }
 
 /**

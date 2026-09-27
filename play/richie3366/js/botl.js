@@ -73,6 +73,8 @@ import {
 import { describe_level, objnum_to_glyph, Hallucination, impossible } from './display.js';
 import { rank_of, roles } from './roles.js';
 import { money_cnt } from './shk.js';
+import { hidden_gold } from './vault.js';
+import { nowrap_add } from './end.js';
 import { pmname } from './do_name.js';
 import { sticks } from './engrave.js';
 import { unconscious } from './teleport.js';
@@ -82,7 +84,10 @@ import { weapon_type } from './weapon.js';
 import { is_sword, objectNames } from './objects.js';
 import { bimanual, is_weptool } from './wield.js';
 import { helm_simple_name } from './do_wear.js';
-import { upstart, strNsubst, stripchars, str_start_is, fuzzymatch, lowc } from './hacklib.js';
+import {
+    upstart, strNsubst, stripchars, str_start_is, fuzzymatch, lowc,
+    deepest_lev_reached,
+} from './hacklib.js';
 import { clr2colorname } from './artifact.js';
 import { humanoid, mons, is_flyer, NON_PM } from './monsters.js';
 import { Flying, Levitation } from './mhitu.js';
@@ -2351,14 +2356,49 @@ export function armor_status() {
     return upstart(armbuf); // C :612
 }
 
+/**
+ * config.h:627 — `#define SCORE_ON_BOTL` is commented out, and the
+ * linux.500 hints line `-DSCORE_ON_BOTL` is commented out too. The
+ * contest binary does not call `botl_score`. The three C sites keep
+ * that off arm; the function below is the on-arm body.
+ */
+export const SCORE_ON_BOTL = false;
+
+/**
+ * C ref: botl.c botl_score `:419–436` (`#ifdef SCORE_ON_BOTL`).
+ * Known-container gold (`hidden_gold(FALSE)`) plus carried coin, less
+ * starting gold with no penalty once it is gone, plus the depth bonus,
+ * saturated onto `u.urexp` by `nowrap_add` (`integer.h:129`).
+ * `gi.invent` is `game.invent`. `nowrap_add` is the end.js export of
+ * that macro (not a second clone).
+ * @returns {number}
+ */
+export function botl_score() {
+    const u = game.u || {};
+    // C :421 — (long) deepest_lev_reached(FALSE).
+    const deepest = Math.trunc(Number(deepest_lev_reached(false)) || 0);
+    // C :425 — money_cnt(gi.invent) + hidden_gold(FALSE).
+    let umoney = money_cnt(game.invent) + hidden_gold(false);
+    // C :427–428 — subtract starting gold; clamp a deficit to 0.
+    umoney -= Math.trunc(Number(u.umoney0) || 0);
+    if (umoney < 0) umoney = 0;
+    // C :429–432 — 50 per depth below the first, then the deep bonus.
+    const depthbonus = (50 * (deepest - 1))
+        + (deepest > 30 ? 10000
+            : deepest > 20 ? (1000 * (deepest - 20))
+                : 0);
+    // C :435 — nowrap_add(u.urexp, umoney + depthbonus).
+    const urexp = Math.trunc(Number(u.urexp) || 0);
+    return nowrap_add(urexp, umoney + depthbonus);
+}
+
 // C botl.c:962-1279 bot_via_windowport() (staticfn) — fill gb.blstats[idx]
 // for the windowport status update, then evaluate_and_notify_windowport().
 // C min(x,9999) caps hp/maxhp/pw/maxpw/gold match the tty formatter so the
 // two display modes never disagree (:977-982). Property predicates expand
 // the youprop.h macros against game.u (display.js _statusLine2 precedent
 // for the shared arms); C macros with no JS export are read inline, never
-// re-cloned as functions. botl_score() is compiled out (!SCORE_ON_BOTL,
-// config.h:625-627), so BL_SCORE is constant 0 (C :1031-1035).
+// re-cloned as functions.
 export function bot_via_windowport() {
     const u = game.u;
     if (!u) return; // JS null-state guard (display.js bot() precedent)
@@ -2412,8 +2452,12 @@ export function bot_via_windowport() {
     bs[BL_ALIGN].val = (u.ualign?.type === A_CHAOTIC) ? 'Chaotic'
         : (u.ualign?.type === A_NEUTRAL) ? 'Neutral' : 'Lawful';
 
-    // C :1031-1035 score (SCORE_ON_BOTL off: constant 0L).
-    bs[BL_SCORE].a.a_long = 0;
+    // C :1029–1034. #ifdef SCORE_ON_BOTL (config.h:627 off) is `0L`.
+    // The on-arm is flags.showscore ? botl_score() : 0L.
+    if (SCORE_ON_BOTL && flags.showscore)
+        bs[BL_SCORE].a.a_long = botl_score();
+    else
+        bs[BL_SCORE].a.a_long = 0;
 
     // C :1038-1045 hit points (gameover uhp -1 reads 0).
     let hp = polyd ? (u.mh | 0) : (u.uhp | 0); // C :1039

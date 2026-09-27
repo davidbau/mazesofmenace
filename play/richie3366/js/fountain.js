@@ -48,7 +48,7 @@
 import { game } from './gstate.js';
 import { rn2, rnd, rn1 } from './rng.js';
 import {
-    pline, newsym, You_feel, flush_topl_more, canspotmon, verbalize,
+    pline, newsym, You_feel, You_see, flush_topl_more, canspotmon, verbalize,
     glyph_is_invisible, tmp_at,
 } from './display.js';
 import {
@@ -343,7 +343,7 @@ export async function sink_backs_up(x, y) {
 
     const loc = game.level?.at(x, y);
     if (loc && !((loc.looted | 0) & S_LRING)) {
-        if (!Blind) await pline('You see a ring shining in its midst.');
+        if (!Blind) await You_see('a ring shining in its midst.');
         mkobj_at(RING_CLASS, x, y, true);
         newsym(x, y);
         exercise(A_DEX, true);
@@ -864,7 +864,7 @@ export async function drinkfountain() {
                     await pline('Then it passes.');
                 }
             } else {
-                await pline('You see an image of someone stalking you.');
+                await You_see('an image of someone stalking you.');
                 await pline('But it disappears.');
             }
             u.HSee_invisible = (u.HSee_invisible || 0) | FROMOUTSIDE;

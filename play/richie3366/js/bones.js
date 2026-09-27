@@ -404,7 +404,7 @@ export function delete_bonesfile(lev) {
  * Persists current level after ghost envelope for cross-segment getbones.
  * Fruit chain is savefruitchn (fid>=0 after goodfruit).
  */
-export function write_bonesfile(lev) {
+export function write_bonesfile(lev, versionHeader = null) {
     const { filename, bonesid } = set_bonesfile_name(lev);
     // C: open_bonesfile miss required — do not replace existing
     if (vfsReadFile(vfsPath(filename)) != null) return false;
@@ -465,6 +465,8 @@ export function write_bonesfile(lev) {
         // Older getbones reads `flags` as level.flags (not linfo).
         flags: levelBlob.level_flags,
     };
+    // C bones.c:613 store_version — header from savebones, not schema `version`.
+    if (versionHeader) payload.version_header = versionHeader;
 
     return vfsWriteFile(vfsPath(filename), JSON.stringify(payload));
 }

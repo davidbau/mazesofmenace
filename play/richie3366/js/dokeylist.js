@@ -678,39 +678,40 @@ function keylist_putcmds(lines, docount, inclFlags, exclFlags, keysUsed) {
     return count; // C `:2862`
 }
 
-function show_direction_keys(lines) {
-    const binds = build_default_cmdbinds();
-    const find = (txt) => {
-        for (let i = 0; i < 256; i++) {
-            if (binds[i]?.txt === txt) {
-                const t = visctrl(i);
-                // prefer printable single-byte like cmd_from_func
-                if (i >= 32 && i <= 126) return t;
-            }
-        }
-        for (let i = 0; i < 256; i++) {
-            if (binds[i]?.txt === txt) return visctrl(i);
-        }
-        return '?';
-    };
-    // Prefer letter keys from sdir for the grid
-    const k = (name, prefer) => {
-        if (prefer != null && binds[prefer]?.txt === name) return visctrl(prefer);
-        return find(name);
-    };
-    const y = k('movenorthwest', 'y'.charCodeAt(0));
-    const kk = k('movenorth', 'k'.charCodeAt(0));
-    const u = k('movenortheast', 'u'.charCodeAt(0));
-    const h = k('movewest', 'h'.charCodeAt(0));
-    const l = k('moveeast', 'l'.charCodeAt(0));
-    const b = k('movesouthwest', 'b'.charCodeAt(0));
-    const j = k('movesouth', 'j'.charCodeAt(0));
-    const n = k('movesoutheast', 'n'.charCodeAt(0));
-    lines.push(`          ${y}  ${kk}  ${u}`);
-    lines.push('           \\ | / ');
-    lines.push(`          ${h}- . -${l}`);
-    lines.push('           / | \\ ');
-    lines.push(`          ${b}  ${j}  ${n}`);
+/**
+ * C ref: cmd.c show_direction_keys `:4122–4165` (staticfn).
+ * `lines` is the NHW_TEXT window: each push is `putstr(win, 0, buf)`.
+ * `centerchar` 0 becomes ' ' (`:4129–4130`). `nodiag` is the cardinal
+ * grid (`NODIAG` / grid bug); otherwise the eight-way grid.
+ * Each label is `visctrl(cmd_from_func(do_move_*))` (`:4134–4161`).
+ * The extcmd txt is that function's `ef_txt` (move_funcs column 0).
+ * @param {string[]} lines
+ * @param {string|number} centerchar
+ * @param {boolean} nodiag
+ */
+export function show_direction_keys(lines, centerchar, nodiag) {
+    // C `:4129–4130` — '\0' is the only falsy char; ' ' stays.
+    if (!centerchar) centerchar = ' ';
+    else if (typeof centerchar === 'number') {
+        centerchar = String.fromCharCode(centerchar & 0xff);
+    }
+    // C `:4134` / `:4138` / … visctrl(cmd_from_func(do_move_*)).
+    const vk = (ecname) => visctrl(cmd_from_func(ecname));
+    if (nodiag) {
+        // C `:4132–4145` cardinal-only.
+        lines.push(`             ${vk('movenorth')}   `); // do_move_north
+        lines.push('             |   ');
+        lines.push(`          ${vk('movewest')}- ${centerchar} -${vk('moveeast')}`);
+        lines.push('             |   ');
+        lines.push(`             ${vk('movesouth')}   `); // do_move_south
+    } else {
+        // C `:4146–4164` eight-way. Sprintf arg order is the putstr order.
+        lines.push(`          ${vk('movenorthwest')}  ${vk('movenorth')}  ${vk('movenortheast')}`);
+        lines.push('           \\ | / ');
+        lines.push(`          ${vk('movewest')}- ${centerchar} -${vk('moveeast')}`);
+        lines.push('           / | \\ ');
+        lines.push(`          ${vk('movesouthwest')}  ${vk('movesouth')}  ${vk('movesoutheast')}`);
+    }
 }
 
 /**
@@ -749,7 +750,8 @@ export function dokeylist_lines() {
 
     lines.push('');
     lines.push('Directional keys:');
-    show_direction_keys(lines);
+    // C dokeylist `:2919` show_direction_keys(datawin, '.', FALSE).
+    show_direction_keys(lines, '.', false);
 
     lines.push('');
     lines.push(

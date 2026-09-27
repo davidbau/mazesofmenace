@@ -1,7 +1,7 @@
 // worn.js — Monster armor don/doff helpers.
 // C ref: worn.c — which_armor, wearmask_to_obj, wearslot, mon_set_minvis,
 //   m_dowear, m_dowear_type, update_mon_extrinsics, extra_pref,
-//   racial_exception; mon.c check_gear_next_turn.
+//   racial_exception, check_wornmask_slots; mon.c check_gear_next_turn.
 // Named omissions:
 //   dragon-scale altprop beyond alchemy smock.
 // extract_from_minvent calls the D-2734 sync obj_no_longer_held core
@@ -12,7 +12,8 @@ import { game } from './gstate.js';
 import {
     W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU, W_AMUL, W_WEP,
     W_RINGL, W_RINGR, W_SWAPWEP, W_QUIVER, W_TOOL, W_BALL, W_CHAIN, W_SADDLE,
-    I_SPECIAL, AC_MAX, OBJ_MINVENT, P_NONE, DISMOUNT_FELL,
+    W_ART, W_ARTI, I_SPECIAL, NEUTRAL, AC_MAX, OBJ_MINVENT, P_NONE,
+    DISMOUNT_FELL,
     INVIS, FAST, ANTIMAGIC, REFLECTING, PROTECTION, CLAIRVOYANT, STEALTH,
     TELEPAT, LEVITATION, FLYING, WWALKING, DISPLACED, FUMBLING, JUMPING,
     FIRE_RES, COLD_RES, SLEEP_RES, DISINT_RES, SHOCK_RES, POISON_RES,
@@ -22,7 +23,7 @@ import {
 import {
     verysmall, nohands, is_animal, mindless, humanoid, noncorporeal,
     bigmonst, is_whirly, touch_petrifies, M1_SLITHY, MZ_SMALL, MZ_HUGE,
-    monsterNames, PM_WIZARD, PM_LONG_WORM,
+    monsterNames, mons, pmnames, PM_WIZARD, PM_LONG_WORM,
 } from './monsters.js';
 import { is_art } from './artifact.js';
 import { ART_EYES_OF_THE_OVERWORLD } from './generated/artifacts_data.js';
@@ -33,7 +34,7 @@ import {
 } from './objects.js';
 import {
     curse, obj_extract_self, oc_merge_of, place_object,
-    place_object_no_longer_held,
+    place_object_no_longer_held, fmt_ptr,
 } from './mkobj.js';
 import {
     canseemon, newsym, impossible, pline, pline_mon,
@@ -64,6 +65,15 @@ import { can_saddle, can_ride, dismount_steed } from './steed.js';
 import { mon_adjust_speed } from './muse.js';
 import { instapetrify } from './trap.js';
 import { You_hear } from './hack.js';
+/* C obj.h Is_dragon_scales — hoisted fn
+   (imports.mjs --can worn.js makemon.js Is_dragon_scales SAFE). */
+import { Is_dragon_scales } from './makemon.js';
+/* C obj.h is_launcher / is_ammo / is_missile and mondata.h could_twoweap —
+   hoisted fns (imports.mjs --can worn.js wield.js SAFE). File-local
+   is_weptool and bimanual already match those macros. */
+import {
+    is_launcher, is_ammo, is_missile, could_twoweap,
+} from './wield.js';
 
 const ARM_SUIT = 0;
 const ARM_SHIELD = 1;
@@ -1192,4 +1202,189 @@ export function clear_bypasses() {
     if (u.uball) u.uball.bypass = 0;
     if (u.uchain) u.uchain.bypass = 0;
     if (game.context) game.context.bypasses = false;
+}
+
+/** C `%08lx` — at least eight lowercase hex digits. */
+function hex08(n) {
+    return (n >>> 0).toString(16).padStart(8, '0');
+}
+
+/**
+ * Hero pack in C `gi.invent` / `nobj` order. This port stores that chain
+ * as `game.invent`. `reorder_invent_adjust` swaps array slots and does
+ * not relink `nobj`, so the array is the pack.
+ * @returns {object[]}
+ */
+function heroInvent() {
+    const list = game.invent;
+    if (!list) return [];
+    if (Array.isArray(list)) {
+        const out = [];
+        for (let i = 0; i < list.length; i++) {
+            if (list[i]) out.push(list[i]);
+        }
+        return out;
+    }
+    const out = [];
+    for (let otmp = list; otmp; otmp = otmp.nobj) out.push(otmp);
+    return out;
+}
+
+/**
+ * C obj.h Dragon_scales_to_pm — `&mons[PM_GRAY_DRAGON + otyp − base]`.
+ * The sanity compare is pointer identity, which is this index.
+ */
+function Dragon_scales_to_pmndx(obj) {
+    return PM_GRAY_DRAGON + ((obj?.otyp | 0) - GRAY_DRAGON_SCALES);
+}
+
+/**
+ * C youmonst.data. set_uasmon is not always run; the form is then
+ * `u.umonnum` (role `mnum` before polymorph), same as can_chant.
+ */
+function heroFormData(u) {
+    const data = game.youmonst?.data;
+    if (data) return data;
+    const mndx = u.umonnum ?? game.urole?.mnum;
+    return mons(mndx);
+}
+
+/**
+ * C ref: worn.c check_wornmask_slots `:355–471`.
+ * Walk worn[] (ball and chain skipped; bc_sanity_check owns them).
+ * A filled slot must be that invent object with exactly this mask bit,
+ * plus the artifact / saddle / ball / chain bits C ignores. No other
+ * invent object may claim the bit, except embedded scales
+ * (`uskin`, `W_ARM|I_SPECIAL`) on the suit bit.
+ * config.h defines EXTRA_SANITY_CHECKS, so the uskin block and the
+ * two-weapon block are both live. sanity_check_worn is only named in
+ * the C comment at worn.c:398; this function does not call it.
+ * Caller: wizcmds.c you_sanity_check `:1439`.
+ */
+export async function check_wornmask_slots() {
+    // C: #define IGNORE_SLOTS (W_ART | W_ARTI | W_SADDLE | W_BALL | W_CHAIN)
+    const IGNORE_SLOTS = (W_ART | W_ARTI | W_SADDLE | W_BALL | W_CHAIN) | 0;
+    const u = game.u || {};
+    const uskin = u.uskin || null;
+    // C worn.c worn[] `:18–34`, including the w_what strings.
+    const worn = [
+        [W_ARM, 'uarm', 'suit'],
+        [W_ARMC, 'uarmc', 'cloak'],
+        [W_ARMH, 'uarmh', 'helmet'],
+        [W_ARMS, 'uarms', 'shield'],
+        [W_ARMG, 'uarmg', 'gloves'],
+        [W_ARMF, 'uarmf', 'boots'],
+        [W_ARMU, 'uarmu', 'shirt'],
+        [W_RINGL, 'uleft', 'left ring'],
+        [W_RINGR, 'uright', 'right ring'],
+        [W_WEP, 'uwep', 'weapon'],
+        [W_SWAPWEP, 'uswapwep', 'alternate weapon'],
+        [W_QUIVER, 'uquiver', 'quiver'],
+        [W_AMUL, 'uamul', 'amulet'],
+        [W_TOOL, 'ublindf', 'facewear'],
+        [W_BALL, 'uball', 'chained ball'],
+        [W_CHAIN, 'uchain', 'attached chain'],
+    ];
+    const pack = heroInvent();
+
+    for (let i = 0; i < worn.length; i++) {
+        const m = worn[i][0] | 0;
+        const slot = worn[i][1];
+        const what = worn[i][2];
+        // Slot mask is only bits this check ignores (ball, chain).
+        if ((m & IGNORE_SLOTS) !== 0 && (m & ~IGNORE_SLOTS) === 0) continue;
+
+        const o = u[slot] || null;
+        if (o) {
+            let whybuf = '';
+            let otmp = null;
+            for (let k = 0; k < pack.length; k++) {
+                if (pack[k] === o) {
+                    otmp = pack[k];
+                    break;
+                }
+            }
+            if (!otmp) {
+                whybuf = `${what} (${fmt_ptr(o)}) not found in invent`;
+            } else if (((o.owornmask | 0) & m) === 0) {
+                whybuf = `${what} bit not set in owornmask [0x${hex08(o.owornmask)}]`;
+            } else if (((o.owornmask | 0) & ~(m | IGNORE_SLOTS)) !== 0) {
+                whybuf = `${what} wrong bit set in owornmask [0x${hex08(o.owornmask)}]`;
+            }
+            if (whybuf) {
+                await impossible('Worn-slot insanity: %s.', whybuf);
+            }
+        }
+
+        // Any other invent object that claims this slot bit.
+        // Embedded scales (W_ARM|I_SPECIAL on uskin) are not a second suit.
+        for (let k = 0; k < pack.length; k++) {
+            const otmp = pack[k];
+            const bits = otmp.owornmask | 0;
+            if (otmp !== o && (bits & m) !== 0
+                && (m !== W_ARM || otmp !== uskin || (bits & I_SPECIAL) === 0)) {
+                const whybuf = `${simpleonames(otmp)} [0x${hex08(bits)}] has ${what} mask 0x${hex08(m)} bit set`;
+                await impossible('Worn-slot insanity: %s.', whybuf);
+            }
+        }
+    }
+
+    // C `#ifdef EXTRA_SANITY_CHECKS` — config.h defines it.
+    if (uskin) {
+        const what = 'embedded scales';
+        const o = uskin;
+        const m = (W_ARM | I_SPECIAL) | 0;
+        let whybuf = '';
+        let otmp = null;
+        for (let k = 0; k < pack.length; k++) {
+            if (pack[k] === o) {
+                otmp = pack[k];
+                break;
+            }
+        }
+        if (!otmp) {
+            whybuf = `${what} (${fmt_ptr(o)}) not found in invent`;
+        } else if (((o.owornmask | 0) & m) !== m) {
+            whybuf = `${what} bits not set in owornmask [0x${hex08(o.owornmask)}]`;
+        } else if (((o.owornmask | 0) & ~(m | IGNORE_SLOTS)) !== 0) {
+            whybuf = `${what} wrong bit set in owornmask [0x${hex08(o.owornmask)}]`;
+        } else if (!Is_dragon_scales(o)) {
+            whybuf = `${what} (${simpleonames(o)}) ${otense(o, 'are')} not dragon scales`;
+        } else if (Dragon_scales_to_pmndx(o) !== (u.umonnum | 0)) {
+            const nm = pmnames[u.umonnum | 0]?.[NEUTRAL] || '';
+            whybuf = `${what}, hero is not ${an(nm)}`;
+        }
+        if (whybuf) {
+            await impossible('Worn-slot insanity: %s.', whybuf);
+        }
+    }
+
+    if (u.twoweap) {
+        const uwep = u.uwep || null;
+        const uswapwep = u.uswapwep || null;
+        const uarms = u.uarms || null;
+        let why = null;
+        if (!uwep || !uswapwep) {
+            why = `without ${!uwep ? 'uwep' : ''}${(!uwep && !uswapwep) ? ' and without ' : ''}${!uswapwep ? 'uswapwep' : ''}`;
+        } else if (uarms) {
+            why = 'while wearing shield';
+        } else if (uwep.oclass !== WEAPON_CLASS && !is_weptool(uwep)) {
+            why = 'uwep is not a weapon';
+        } else if (is_launcher(uwep) || is_ammo(uwep) || is_missile(uwep)) {
+            why = 'uwep is not a melee weapon';
+        } else if (bimanual(uwep)) {
+            why = 'uwep is two-handed';
+        } else if (uswapwep.oclass !== WEAPON_CLASS && !is_weptool(uswapwep)) {
+            why = 'uswapwep is not a weapon';
+        } else if (is_launcher(uswapwep) || is_ammo(uswapwep) || is_missile(uswapwep)) {
+            why = 'uswapwep is not a melee weapon';
+        } else if (bimanual(uswapwep)) {
+            why = 'uswapwep is two-handed';
+        } else if (!could_twoweap(heroFormData(u))) {
+            why = 'without two weapon attacks';
+        }
+        if (why) {
+            await impossible('Two-weapon insanity: %s.', why);
+        }
+    }
 }

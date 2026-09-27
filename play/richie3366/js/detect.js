@@ -55,7 +55,7 @@ import {
     newsym, pline, magic_map_background, map_background, obj_glyph,
     show_glyph_cell, display_self, map_trap, map_engraving, canspotmon, sensemon,
     map_invisible, glyph_is_invisible, glyph_is_monster, warning_of, You_feel,
-    feel_location, feel_newsym, unmap_invisible, map_object, Norep,
+    feel_location, feel_newsym, unmap_invisible, map_object, Norep, You_see,
     see_monsters, flush_screen, docrt, cls, more, set_msg_xy, unmap_object, flush_topl_more,
     glyph_is_object, glyph_to_obj, glyph_is_trap, glyph_at,
     Hallucination, random_object, random_monster,
@@ -2617,13 +2617,11 @@ export async function use_crystal_ball(obj) {
                 );
                 break;
             case 4:
-                await pline(
-                    'You see goldfish swimming above fluorescent rocks.',
-                );
+                await You_see('goldfish swimming above fluorescent rocks.');
                 break;
             case 5:
-                await pline(
-                    'You see tiny snowflakes spinning around a miniature farmhouse.',
+                await You_see(
+                    'tiny snowflakes spinning around a miniature farmhouse.',
                 );
                 break;
             default:
@@ -2688,17 +2686,13 @@ export async function use_crystal_ball(obj) {
             const i = rn2(LEVEL_DETECTS.length);
             const det = LEVEL_DETECTS[i];
             const where = game[det.whereKey];
-            await pline(
-                `You see ${det.what}, ${level_distance(where)}.`,
-            );
+            await You_see('%s, %s.', det.what, level_distance(where));
             ret = 0;
         }
 
         if (ret) {
             if (!rn2(100)) {
-                await pline(
-                    'You see the Wizard of Yendor gazing out at you.',
-                );
+                await You_see('the Wizard of Yendor gazing out at you.');
             } else {
                 await pline('The vision is unclear.');
             }

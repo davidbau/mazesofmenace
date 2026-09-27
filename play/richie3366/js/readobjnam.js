@@ -41,6 +41,7 @@ import { oname, lookup_novel } from './do_name.js';
 import { name_to_mon, name_to_monplus } from './mondata.js';
 import { tin_variety_txt, set_tin_variety, obj_nutrition, consume_oeaten } from './eat.js';
 import { makesingular, makeplural, An, an, japanese_otyp_by_name } from './objnam.js';
+import { align_str } from './roles.js';
 import { is_weptool, is_ammo, is_missile } from './wield.js';
 import { Is_candle } from './timeout.js';
 import { genus, dead_species, can_be_hatched } from './mon.js';
@@ -539,11 +540,8 @@ async function wizterrainwish(d) {
         else if (strncmpi_start(bp, 'unaligned ')) al = A_NONE;
         else al = !rn2(6) ? A_NONE : (rn2((A_LAWFUL | 0) + 2) - 1);
         lev.altarmask = Align2amask(al);
-        const alstr = al === A_NONE ? 'unaligned'
-            : al === A_CHAOTIC ? 'chaotic'
-            : al === A_LAWFUL ? 'lawful'
-            : 'neutral';
-        await pline(`${An(alstr)} altar.`);
+        // C objnam.c:3704 — An(align_str(al)), including "unaligned".
+        await pline(`${An(align_str(al))} altar.`);
         madeterrain = true;
     } else if (bstrcmpi_end(bp, 'grave') || bstrcmpi_end(bp, 'headstone')) {
         const { make_grave } = await import('./engrave.js');

@@ -13,6 +13,7 @@ import {
     m_dowear, which_armor, check_gear_next_turn, bypass_obj, mon_break_armor,
     mon_set_minvis,
 } from './worn.js';
+import { hard_helmet } from './do_wear.js';
 import { possibly_unwield } from './weapon.js';
 import {
     LOW_PM,
@@ -128,7 +129,7 @@ import {
     is_lminion,
 } from './teleport.js';
 import {
-    mksobj, mkobj, mkobj_at, weight, objects_at, curse, bless, is_crackable,
+    mksobj, mkobj, mkobj_at, weight, objects_at, curse, bless,
     set_corpsenm, stop_timer, add_to_container, add_to_minv, rnd_class,
     carry_obj_effects, obj_extract_self, place_object, unknow_object,
 } from './mkobj.js';
@@ -2223,64 +2224,66 @@ function m_initthrow(mtmp, otyp_, oquan) {
     mpickobj(mtmp, otmp);
 }
 
-// C ref: worn.c which_armor — avoid makemon↔trap cycle
-function which_armor_local(mtmp, mask) {
-    if (!mtmp) return null;
-    for (let otmp = mtmp.minvent; otmp; otmp = otmp.nobj) {
-        if ((otmp.owornmask || 0) & mask) return otmp;
-    }
-    return null;
-}
-
-// C ref: do_wear.c hard_helmet — metallic or glass helmet
-function hard_helmet_local(obj) {
-    if (!obj) return false;
-    const oc = objects[obj.otyp] ?? game.objects?.[obj.otyp];
-    if (!oc || (obj.oclass ?? oc.oc_class) !== ARMOR_CLASS) return false;
-    // ARM_HELM = 2 (objclass.h oc_armcat / oc_skill for helms)
-    if ((oc.oc_skill ?? oc.oc_armcat ?? -1) !== 2) return false;
-    const mat = oc.oc_material ?? 0;
-    const IRON = 11, MITHRIL = 15;
-    if (mat >= IRON && mat <= MITHRIL) return true;
-    return is_crackable(obj);
-}
-
-// C ref: muse.c rnd_offensive_item — ordinary non-animal path only
+/**
+ * C ref: muse.c rnd_offensive_item `:2035–2081`.
+ * Animals, exploding attacks, mindless monsters, ghosts, and Keystone
+ * Kops return 0 before any RNG. Difficulty is
+ * `mons[monsndx(pm)].difficulty` (`mon_difficulty` reads that table,
+ * including the erinys update). Case 0 is SCR_EARTH only when the
+ * monster wears a hard helmet or its form is not buried by earth;
+ * otherwise FALLTHROUGH to WAN_STRIKING (D-0535).
+ * `which_armor` and `hard_helmet` are the live exports
+ * (`imports.mjs --can` SAFE for hard_helmet; which_armor already imported).
+ */
 export function rnd_offensive_item(mtmp) {
-    const pm_ = mtmp.data;
-    const difficulty = mon_difficulty(pm_.mndx);
+    const pm = mtmp.data;
+    /* C: mons[(monsndx(pm))].difficulty — monsndx is pm->pmidx, JS mndx. */
+    const difficulty = mon_difficulty(pm.mndx);
+    /* monattk.h AT_EXPL — explodes in proximity. */
     const AT_EXPL = 13;
-    // animal / expl / mindless / ghost / kop → 0 (no RNG)
-    if (is_animal(pm_) || attacktype(pm_, AT_EXPL) || mindless(pm_)
-        || pm_.mlet === 'S_GHOST' || pm_.mlet === 'S_KOP') {
+
+    if (is_animal(pm) || attacktype(pm, AT_EXPL) || mindless(pm)
+        || pm.mlet === 'S_GHOST' || pm.mlet === 'S_KOP') {
         return 0;
     }
     if (difficulty > 7 && !rn2(35)) return otyp('WAN_DEATH');
+    /* C: rn2(9 - (difficulty < 4) + 4 * (difficulty > 6)); relations are 0/1. */
     switch (rn2(9 - (difficulty < 4 ? 1 : 0) + 4 * (difficulty > 6 ? 1 : 0))) {
     case 0: {
-        // C: SCR_EARTH only if hard helm / amorphous / walls / noncorporeal / unsolid;
-        // else FALLTHROUGH → WAN_STRIKING (D-0535)
-        const helmet = which_armor_local(mtmp, W_ARMH);
-        if (hard_helmet_local(helmet) || amorphous(pm_)
-            || passes_walls(pm_) || noncorporeal(pm_) || unsolid(pm_)) {
+        const mtmp_helmet = which_armor(mtmp, W_ARMH);
+
+        if (hard_helmet(mtmp_helmet) || amorphous(pm)
+            || passes_walls(pm) || noncorporeal(pm) || unsolid(pm)) {
             return otyp('SCR_EARTH');
         }
     }
-    // FALLTHROUGH
-    case 1: return otyp('WAN_STRIKING');
-    case 2: return otyp('POT_ACID');
-    case 3: return otyp('POT_CONFUSION');
-    case 4: return otyp('POT_BLINDNESS');
-    case 5: return otyp('POT_SLEEPING');
-    case 6: return otyp('POT_PARALYSIS');
+    /* FALLTHROUGH */
+    case 1:
+        return otyp('WAN_STRIKING');
+    case 2:
+        return otyp('POT_ACID');
+    case 3:
+        return otyp('POT_CONFUSION');
+    case 4:
+        return otyp('POT_BLINDNESS');
+    case 5:
+        return otyp('POT_SLEEPING');
+    case 6:
+        return otyp('POT_PARALYSIS');
     case 7:
-    case 8: return otyp('WAN_MAGIC_MISSILE');
-    case 9: return otyp('WAN_SLEEP');
-    case 10: return otyp('WAN_FIRE');
-    case 11: return otyp('WAN_COLD');
-    case 12: return otyp('WAN_LIGHTNING');
-    default: return 0;
+    case 8:
+        return otyp('WAN_MAGIC_MISSILE');
+    case 9:
+        return otyp('WAN_SLEEP');
+    case 10:
+        return otyp('WAN_FIRE');
+    case 11:
+        return otyp('WAN_COLD');
+    case 12:
+        return otyp('WAN_LIGHTNING');
     }
+    /*NOTREACHED*/
+    return 0;
 }
 
 // C ref: makemon.c mongets — mksobj then demon / lminion / mplayer-sword /

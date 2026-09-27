@@ -169,7 +169,8 @@ import { rnd } from './rng.js';
 import { str_end_is, str_start_is, highc, lowc, strstri, strsubst, strNsubst, strkitten } from './hacklib.js';
 import { name_to_mon } from './mondata.js';
 import { nhgetch } from './input.js';
-import { flush_screen, pline, docrt, bot, check_gold_symbol, clear_committed_status, set_bot_disabled, tty_wait_synch, update_ov_primary_symset, update_ov_rogue_symset, impossible, SYM_OFF_X } from './display.js';
+import { flush_screen, pline, You_cant, docrt, bot, check_gold_symbol, clear_committed_status, set_bot_disabled, tty_wait_synch, update_ov_primary_symset, update_ov_rogue_symset, impossible, SYM_OFF_X } from './display.js';
+import { get_feature_notice_ver, get_current_feature_ver } from './version.js';
 import { paint_corner_nhw_menu, dismiss_nhw_menu, collect_menu_gacc, process_menu_search, toggle_menu_curr, menu_digit_is_gacc, reassign, update_inventory, invlet_constant, perm_invent_toggled, select_menu_pick_none } from './invent.js';
 import {
     ATR_INVERSE,
@@ -6531,6 +6532,14 @@ async function doset_compound_via_getlin(opt) {
     // In-game: !opt_initial so fruitadd runs. doset has give_opt_msg false.
     if (name === 'fruit') {
         optfn_fruit(allopt_idx('fruit'), REQ_DO_SET, false, `fruit:${abuf}`, abuf, false);
+    } else if (name === 'suppress_alert') {
+        // C doset_simple_menu `:8675–8680` getlin + parseoptions("suppress_alert:<abuf>")
+        // ("pass the buck"); awaited here so the !opt_initial You_cant/pline
+        // arms of feature_alert_opts run in order (C `:4147` do_set caller).
+        const saVal = abuf ? String(abuf) : EMPTY_OPTSTR;
+        const saReslt = await optfn_suppress_alert(
+            allopt_idx(name), REQ_DO_SET, false, `${name}:${saVal}`, saVal);
+        if (saReslt === OPTN_OK) opt_set_in_config[allopt_idx(name)] = true; // C `:639–640`
     }
     // Named omission: remaining Comp/Othr getlin → parseoptions arms
 }
@@ -7783,6 +7792,259 @@ const SET_HIDDEN = 7, SET_WIZONLY = 5, SET_WIZNOFUZ = 6;
 /** C global.h `:605–611` enum opt OPTCOUNT — row count for the unix build. */
 const OPTCOUNT = 217;
 
+/* C options.c `:75–80` enum window_option_types (MESSAGE_OPTION=1 …). */
+const MESSAGE_OPTION = 1, STATUS_OPTION = 2, MAP_OPTION = 3,
+    MENU_OPTION = 4, TEXT_OPTION = 5;
+
+/**
+ * C options.c wc_set_font_name `:9979–10010` (staticfn) — store the font
+ * name on the matching iflags field (C free+dupstr is the assignment; GC).
+ * @param {number} opttype one of the window_option_types above
+ * @param {string} fontname C fontname (NULL → no-op)
+ */
+function wc_set_font_name(opttype, fontname) {
+    if (!fontname) return; // C `:9983–9984`
+    let key = null;
+    switch (opttype) { // C `:9985`
+    case MAP_OPTION: key = 'wc_font_map'; break; // C `:9986–9988`
+    case MESSAGE_OPTION: key = 'wc_font_message'; break; // C `:9989–9991`
+    case TEXT_OPTION: key = 'wc_font_text'; break; // C `:9992–9994`
+    case MENU_OPTION: key = 'wc_font_menu'; break; // C `:9995–9997`
+    case STATUS_OPTION: key = 'wc_font_status'; break; // C `:9998–10000`
+    default: return; // C `:10001–10002`
+    }
+    const iflags = game.iflags || (game.iflags = {});
+    iflags[key] = String(fontname); // C `:10004–10007`
+}
+
+/**
+ * C options.c pfxfn_font `:5038–5165` (staticfn) — shared do_set/get_val
+ * body behind the ten optfn_font_* wrappers. do_set maps optidx to the
+ * window_option_types slot (font_size_* additionally gates on `duplicate`
+ * and an explicit value tail, then stores iflags.wc_fontsiz_*); the plain
+ * font_* names store via wc_set_font_name. get_val reports the stored
+ * name or size, falling back to defopt[] (`:126` "default").
+ * The `:5111–5113` set_font_name call is MACOS9-only (not this build).
+ * @param {number} optidx C optidx (allopt_idx of the font_* name)
+ * @param {number} req REQ_DO_INIT / REQ_DO_SET / REQ_GET_VAL / REQ_GET_CNF_VAL
+ * @param {boolean} negated
+ * @param {string|{buf:string}} opts do_set option string / get_val holder
+ * @param {string} op value tail (re-derived from opts like C)
+ * @returns {number} OPTN_* result
+ */
+export function pfxfn_font(optidx, req, negated, opts, op) {
+    const iflags = game.iflags || (game.iflags = {});
+    let opttype = -1; // C `:5042`
+    if (req === REQ_DO_INIT) { // C `:5044`
+        return OPTN_OK; // C `:5045`
+    }
+    if (req === REQ_DO_SET) { // C `:5048`
+        /* WINCAP setting font options */ // C `:5049`
+        if (optidx === allopt_idx('font_map')) opttype = MAP_OPTION; // C `:5050–5051`
+        else if (optidx === allopt_idx('font_message')) opttype = MESSAGE_OPTION; // C `:5052–5053`
+        else if (optidx === allopt_idx('font_text')) opttype = TEXT_OPTION; // C `:5054–5055`
+        else if (optidx === allopt_idx('font_menu')) opttype = MENU_OPTION; // C `:5056–5057`
+        else if (optidx === allopt_idx('font_status')) opttype = STATUS_OPTION; // C `:5058–5059`
+        else if (optidx === allopt_idx('font_size_map') // C `:5060–5064`
+                || optidx === allopt_idx('font_size_message')
+                || optidx === allopt_idx('font_size_text')
+                || optidx === allopt_idx('font_size_menu')
+                || optidx === allopt_idx('font_size_status')) {
+            if (optidx === allopt_idx('font_size_map')) opttype = MAP_OPTION; // C `:5065–5066`
+            else if (optidx === allopt_idx('font_size_message')) opttype = MESSAGE_OPTION; // C `:5067–5068`
+            else if (optidx === allopt_idx('font_size_text')) opttype = TEXT_OPTION; // C `:5069–5070`
+            else if (optidx === allopt_idx('font_size_menu')) opttype = MENU_OPTION; // C `:5071–5072`
+            else if (optidx === allopt_idx('font_size_status')) opttype = STATUS_OPTION; // C `:5073–5074`
+            else {
+                config_error_add("Unknown %s parameter '%s'", // C `:5076–5077`
+                    allopt_name(optidx), opts);
+                return OPTN_ERR; // C `:5078`
+            }
+            if (duplicateOpt) complain_about_duplicate(optidx); // C `:5080–5081` (stub: sink named)
+            if (opttype > 0 && !negated // C `:5082–5083`
+                && (op = string_for_opt(opts, false)) !== EMPTY_OPTSTR) {
+                switch (opttype) { // C `:5084`
+                case MAP_OPTION:
+                    iflags.wc_fontsiz_map = opt_atoi(op); // C `:5085–5086`
+                    break;
+                case MESSAGE_OPTION:
+                    iflags.wc_fontsiz_message = opt_atoi(op); // C `:5088–5089`
+                    break;
+                case TEXT_OPTION:
+                    iflags.wc_fontsiz_text = opt_atoi(op); // C `:5091–5092`
+                    break;
+                case MENU_OPTION:
+                    iflags.wc_fontsiz_menu = opt_atoi(op); // C `:5094–5095`
+                    break;
+                case STATUS_OPTION:
+                    iflags.wc_fontsiz_status = opt_atoi(op); // C `:5097–5098`
+                    break;
+                }
+            }
+            return OPTN_OK; // C `:5102`
+        } else {
+            config_error_add("Unknown %s parameter '%s'", // C `:5104–5105`
+                'font', opts);
+            return OPTN_ERR; // C `:5106 return FALSE (== optn_err)`
+        }
+        if (opttype > 0 // C `:5108–5109`
+            && (op = string_for_opt(opts, false)) !== EMPTY_OPTSTR) {
+            wc_set_font_name(opttype, op); // C `:5110`
+            // C `:5111–5113` set_font_name is MACOS9-only (not this build).
+            return OPTN_OK; // C `:5114`
+        } else if (negated) { // C `:5115`
+            bad_negation(allopt_name(optidx), true); // C `:5116` (stub: sink named)
+            return OPTN_ERR; // C `:5117`
+        }
+        return OPTN_OK; // C `:5119`
+    }
+    if (req === REQ_GET_VAL || req === REQ_GET_CNF_VAL) { // C `:5121`
+        if (optidx === allopt_idx('font_map')) { // C `:5122`
+            set_optbuf(opts, iflags.wc_font_map ? iflags.wc_font_map : 'default'); // C `:5123–5124` (defopt[] `:126`)
+        } else if (optidx === allopt_idx('font_message')) { // C `:5125`
+            set_optbuf(opts, iflags.wc_font_message ? iflags.wc_font_message : 'default'); // C `:5126–5127`
+        } else if (optidx === allopt_idx('font_status')) { // C `:5128`
+            set_optbuf(opts, iflags.wc_font_status ? iflags.wc_font_status : 'default'); // C `:5129–5130`
+        } else if (optidx === allopt_idx('font_menu')) { // C `:5131`
+            set_optbuf(opts, iflags.wc_font_menu ? iflags.wc_font_menu : 'default'); // C `:5132–5133`
+        } else if (optidx === allopt_idx('font_text')) { // C `:5134`
+            set_optbuf(opts, iflags.wc_font_text ? iflags.wc_font_text : 'default'); // C `:5135–5136`
+        } else if (optidx === allopt_idx('font_size_map')) { // C `:5137`
+            set_optbuf(opts, iflags.wc_fontsiz_map // C `:5138–5141`
+                ? String(iflags.wc_fontsiz_map) : 'default');
+        } else if (optidx === allopt_idx('font_size_message')) { // C `:5142`
+            set_optbuf(opts, iflags.wc_fontsiz_message // C `:5143–5146`
+                ? String(iflags.wc_fontsiz_message) : 'default');
+        } else if (optidx === allopt_idx('font_size_status')) { // C `:5147`
+            set_optbuf(opts, iflags.wc_fontsiz_status // C `:5148–5151`
+                ? String(iflags.wc_fontsiz_status) : 'default');
+        } else if (optidx === allopt_idx('font_size_menu')) { // C `:5152`
+            set_optbuf(opts, iflags.wc_fontsiz_menu // C `:5153–5156`
+                ? String(iflags.wc_fontsiz_menu) : 'default');
+        } else if (optidx === allopt_idx('font_size_text')) { // C `:5157`
+            set_optbuf(opts, iflags.wc_fontsiz_text // C `:5158–5161`
+                ? String(iflags.wc_fontsiz_text) : 'default');
+        }
+        return OPTN_OK; // C `:5163`
+    }
+    return OPTN_OK; // C `:5165`
+}
+
+/* C options.c optfn_font_* `:1616–1702` (staticfn) — one thin wrapper per
+ * font_* allopt row; each sends its request over to the prefix handling
+ * for font_ (`:1620` "send them over to the prefix handling for font_").
+ * C order: map, menu, message, size_map, size_menu, size_message,
+ * size_status, size_text, status, text. */
+export function optfn_font_map(optidx, req, negated, opts, op) {
+    return pfxfn_font(optidx, req, negated, opts, op); // C `:1621`
+}
+export function optfn_font_menu(optidx, req, negated, opts, op) {
+    return pfxfn_font(optidx, req, negated, opts, op); // C `:1630`
+}
+export function optfn_font_message(optidx, req, negated, opts, op) {
+    return pfxfn_font(optidx, req, negated, opts, op); // C `:1639`
+}
+export function optfn_font_size_map(optidx, req, negated, opts, op) {
+    return pfxfn_font(optidx, req, negated, opts, op); // C `:1648`
+}
+export function optfn_font_size_menu(optidx, req, negated, opts, op) {
+    return pfxfn_font(optidx, req, negated, opts, op); // C `:1657`
+}
+export function optfn_font_size_message(optidx, req, negated, opts, op) {
+    return pfxfn_font(optidx, req, negated, opts, op); // C `:1666`
+}
+export function optfn_font_size_status(optidx, req, negated, opts, op) {
+    return pfxfn_font(optidx, req, negated, opts, op); // C `:1675`
+}
+export function optfn_font_size_text(optidx, req, negated, opts, op) {
+    return pfxfn_font(optidx, req, negated, opts, op); // C `:1684`
+}
+export function optfn_font_status(optidx, req, negated, opts, op) {
+    return pfxfn_font(optidx, req, negated, opts, op); // C `:1693`
+}
+export function optfn_font_text(optidx, req, negated, opts, op) {
+    return pfxfn_font(optidx, req, negated, opts, op); // C `:1702`
+}
+
+/**
+ * C options.c feature_alert_opts `:7557–7585` (staticfn) — validate a
+ * suppress_alert value tail through get_feature_notice_ver (version.c):
+ * unparseable is 0; a future version is rejected (in-game You_cant, at
+ * init config_error_add); otherwise flags.suppress_alert takes the packed
+ * version and in-game plines the disabled-through notice. Async for the
+ * You_cant/pline arms; the opt_initial/config_error_add path runs
+ * synchronously through (no await reached). Sole C caller is the
+ * optfn_suppress_alert do_set arm (`:4147`).
+ * @param {string} op value tail (C op)
+ * @param {string} optname option name for the config error (C optn)
+ * @returns {Promise<number>} 1 set, 0 rejected (C int)
+ */
+export async function feature_alert_opts(op, optname) {
+    const fnv = get_feature_notice_ver(op) >>> 0; // C `:7561`
+    if (fnv === 0) return 0; // C `:7563–7564`
+    if (fnv > get_current_feature_ver()) { // C `:7565`
+        if (!game.go?.opt_initial) { // C `:7566`
+            await You_cant('disable new feature alerts for future versions.'); // C `:7567`
+        } else {
+            config_error_add( // C `:7569–7571`
+                '%s=%s Invalid reference to a future version ignored',
+                optname, op);
+        }
+        return 0; // C `:7573`
+    }
+    if (!game.flags) game.flags = {};
+    game.flags.suppress_alert = fnv; // C `:7576`
+    if (!game.go?.opt_initial) { // C `:7577`
+        const sa = game.flags.suppress_alert >>> 0;
+        const buf = `${sa >>> 24}.${(sa & 0xff0000) >>> 16}.${(sa & 0xff00) >>> 8}`; // C `:7578–7579` FEATURE_NOTICE_VER_MAJ/MIN/PATCH (hack.h `:1508–1512`)
+        await pline( // C `:7580–7582`
+            'Feature change alerts disabled for NetHack %s features and prior.',
+            buf);
+    }
+    return 1; // C `:7584`
+}
+
+/**
+ * C options.c optfn_suppress_alert `:4134–4161` (staticfn) — suppress_alert
+ * row handler (optlist.h `:740`). do_set rejects negation and passes any
+ * value tail to feature_alert_opts; get_val/get_cnf_val report the packed
+ * version, "(none)" (none[] `:125`) when unset, "" for unset get_cnf_val.
+ * Async like feature_alert_opts; sync dispatch sites (parseoptions,
+ * allopt_array_init, get_option_value) observe the same outcome as the
+ * previous null optfn — the opt_initial arms run synchronously through.
+ * @param {number} optidx C optidx
+ * @param {number} req REQ_DO_INIT / REQ_DO_SET / REQ_GET_VAL / REQ_GET_CNF_VAL
+ * @param {boolean} negated
+ * @param {string|{buf:string}} opts do_set option string / get_val holder
+ * @param {string} op value tail (EMPTY_OPTSTR when valueless)
+ * @returns {Promise<number>} OPTN_* result
+ */
+export async function optfn_suppress_alert(optidx, req, negated, opts, op) {
+    if (req === REQ_DO_INIT) { // C `:4139`
+        return OPTN_OK; // C `:4140`
+    }
+    if (req === REQ_DO_SET) { // C `:4142`
+        if (negated) { // C `:4143`
+            bad_negation(allopt_name(optidx), false); // C `:4144` (stub: sink named)
+            return OPTN_ERR; // C `:4145`
+        } else if (op !== EMPTY_OPTSTR) { // C `:4146`
+            await feature_alert_opts(op, allopt_name(optidx)); // C `:4147` (void)
+        }
+        return OPTN_OK; // C `:4148`
+    }
+    if (req === REQ_GET_VAL || req === REQ_GET_CNF_VAL) { // C `:4150`
+        const sa = (game.flags?.suppress_alert ?? 0) >>> 0; // C `:4151–4153 flags.suppress_alert == 0L`
+        if (req === REQ_GET_CNF_VAL && sa === 0) set_optbuf(opts, ''); // C `:4151–4152`
+        else if (sa === 0) set_optbuf(opts, '(none)'); // C `:4153–4154` none[] `:125`
+        else {
+            set_optbuf(opts, // C `:4156–4157`
+                `${sa >>> 24}.${(sa & 0xff0000) >>> 16}.${(sa & 0xff00) >>> 8}`);
+        }
+        return OPTN_OK; // C `:4158`
+    }
+    return OPTN_OK; // C `:4160`
+}
+
 /* C ref: options.c `:59–67` allopt_init[] (optlist.h NHOPT_PARSE rows plus the
  * `:63–67` null-name sentinel) copied to live `allopt` by allopt_array_init
  * (`:7405`: memcpy + addr=initval + do_init optfn calls — config/doset scope,
@@ -7795,9 +8057,10 @@ const OPTCOUNT = 217;
  * optfn } — addr twins DOSET_BOOL_ADDR (doset toggles) plus 8 live-field
  * mappings (debug_mongen, female, menu_tab_sep, monpolycontrol,
  * montelecontrol, perm_invent, sanity_check, splash_screen); 18 BoolOpt rows
- * keep addr null (their C addr has no live JS field — named). Every optfn is
- * null (optfn_boolean, optfn_*, pfxfn_* unported — named). The C sentinel
- * (name 0, disregarded) is omitted: JS length terminates the loops. */
+ * keep addr null (their C addr has no live JS field — named). Every other
+ * optfn is null (optfn_boolean and the remaining optfn and pfxfn handlers
+ * are unported — named). The C sentinel (name 0, disregarded) is omitted:
+ * JS length terminates the loops. */
 const allopt = [
     // optlist.h:117 NHOPTC(windowtype)
     { name: 'windowtype', opttyp: CompOpt, idx: 0, setwhere: SET_GAMEVIEW, initval: false, addr: null, optfn: null },
@@ -7910,25 +8173,25 @@ const allopt = [
     // optlist.h:312 NHOPTB(fixinv)
     { name: 'fixinv', opttyp: BoolOpt, idx: 54, setwhere: SET_IN_GAME, initval: true, addr: { obj: 'flags', key: 'invlet_constant' }, optfn: null },
     // optlist.h:315 NHOPTC(font_map)
-    { name: 'font_map', opttyp: CompOpt, idx: 55, setwhere: SET_GAMEVIEW, initval: false, addr: null, optfn: null },
+    { name: 'font_map', opttyp: CompOpt, idx: 55, setwhere: SET_GAMEVIEW, initval: false, addr: null, optfn: optfn_font_map },
     // optlist.h:317 NHOPTC(font_menu)
-    { name: 'font_menu', opttyp: CompOpt, idx: 56, setwhere: SET_GAMEVIEW, initval: false, addr: null, optfn: null },
+    { name: 'font_menu', opttyp: CompOpt, idx: 56, setwhere: SET_GAMEVIEW, initval: false, addr: null, optfn: optfn_font_menu },
     // optlist.h:319 NHOPTC(font_message)
-    { name: 'font_message', opttyp: CompOpt, idx: 57, setwhere: SET_GAMEVIEW, initval: false, addr: null, optfn: null },
+    { name: 'font_message', opttyp: CompOpt, idx: 57, setwhere: SET_GAMEVIEW, initval: false, addr: null, optfn: optfn_font_message },
     // optlist.h:322 NHOPTC(font_size_map)
-    { name: 'font_size_map', opttyp: CompOpt, idx: 58, setwhere: SET_GAMEVIEW, initval: false, addr: null, optfn: null },
+    { name: 'font_size_map', opttyp: CompOpt, idx: 58, setwhere: SET_GAMEVIEW, initval: false, addr: null, optfn: optfn_font_size_map },
     // optlist.h:324 NHOPTC(font_size_menu)
-    { name: 'font_size_menu', opttyp: CompOpt, idx: 59, setwhere: SET_GAMEVIEW, initval: false, addr: null, optfn: null },
+    { name: 'font_size_menu', opttyp: CompOpt, idx: 59, setwhere: SET_GAMEVIEW, initval: false, addr: null, optfn: optfn_font_size_menu },
     // optlist.h:326 NHOPTC(font_size_message)
-    { name: 'font_size_message', opttyp: CompOpt, idx: 60, setwhere: SET_GAMEVIEW, initval: false, addr: null, optfn: null },
+    { name: 'font_size_message', opttyp: CompOpt, idx: 60, setwhere: SET_GAMEVIEW, initval: false, addr: null, optfn: optfn_font_size_message },
     // optlist.h:328 NHOPTC(font_size_status)
-    { name: 'font_size_status', opttyp: CompOpt, idx: 61, setwhere: SET_GAMEVIEW, initval: false, addr: null, optfn: null },
+    { name: 'font_size_status', opttyp: CompOpt, idx: 61, setwhere: SET_GAMEVIEW, initval: false, addr: null, optfn: optfn_font_size_status },
     // optlist.h:330 NHOPTC(font_size_text)
-    { name: 'font_size_text', opttyp: CompOpt, idx: 62, setwhere: SET_GAMEVIEW, initval: false, addr: null, optfn: null },
+    { name: 'font_size_text', opttyp: CompOpt, idx: 62, setwhere: SET_GAMEVIEW, initval: false, addr: null, optfn: optfn_font_size_text },
     // optlist.h:332 NHOPTC(font_status)
-    { name: 'font_status', opttyp: CompOpt, idx: 63, setwhere: SET_GAMEVIEW, initval: false, addr: null, optfn: null },
+    { name: 'font_status', opttyp: CompOpt, idx: 63, setwhere: SET_GAMEVIEW, initval: false, addr: null, optfn: optfn_font_status },
     // optlist.h:334 NHOPTC(font_text)
-    { name: 'font_text', opttyp: CompOpt, idx: 64, setwhere: SET_GAMEVIEW, initval: false, addr: null, optfn: null },
+    { name: 'font_text', opttyp: CompOpt, idx: 64, setwhere: SET_GAMEVIEW, initval: false, addr: null, optfn: optfn_font_text },
     // optlist.h:336 NHOPTB(force_invmenu)
     { name: 'force_invmenu', opttyp: BoolOpt, idx: 65, setwhere: SET_IN_GAME, initval: false, addr: { obj: 'flags', key: 'force_invmenu' }, optfn: null },
     // optlist.h:339 NHOPTC(fruit)
@@ -8154,7 +8417,7 @@ const allopt = [
     // optlist.h:734 NHOPTC(statuslines)
     { name: 'statuslines', opttyp: CompOpt, idx: 176, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: null },
     // optlist.h:740 NHOPTC(suppress_alert)
-    { name: 'suppress_alert', opttyp: CompOpt, idx: 177, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: null },
+    { name: 'suppress_alert', opttyp: CompOpt, idx: 177, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: optfn_suppress_alert },
     // optlist.h:743 NHOPTC(symset)
     { name: 'symset', opttyp: CompOpt, idx: 178, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: optfn_symset },
     // optlist.h:746 NHOPTC(term_cols)

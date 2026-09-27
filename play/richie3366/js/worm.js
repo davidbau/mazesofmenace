@@ -132,6 +132,22 @@ export function count_wsegs(mtmp) {
     return i;
 }
 
+/* sizeof (struct wseg): pointer + two coordxy, LP64, BITFIELDS on.
+ * gcc probe of the worm.c:12 struct (not committed): 16. */
+const SIZEOF_WSEG = 16;
+
+/**
+ * C ref: worm.c size_wseg `:827–830`.
+ * `count_wsegs(worm) * sizeof (struct wseg)`. The head segment is not
+ * in the count (`count_wsegs` starts at `wtails[wormno]->nseg`).
+ * Caller: wizcmds.c size_monst when `wormno && incl_wsegs`.
+ * @param {object} worm
+ * @returns {number}
+ */
+export function size_wseg(worm) {
+    return count_wsegs(worm) * SIZEOF_WSEG;
+}
+
 /**
  * C ref: worm.c wseg_at :946–966 — tail-segment index number for (x,y).
  * C: `m_at(x, y) == worm` gate, then `n - i` over the wtails chain

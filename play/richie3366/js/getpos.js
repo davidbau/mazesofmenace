@@ -54,8 +54,9 @@ import {
     ROGUESET, Is_rogue_level,
     HI_ZAP, TIP_GETPOS,
     SUPPRESS_HISTORY, OVERRIDE_MSGTYPE, NO_CURS_ON_U,
+    CQ_REPEAT,
 } from './const.js';
-import { paint_corner_nhw_menu } from './invent.js';
+import { paint_corner_nhw_menu, cmdq_add_key } from './invent.js';
 import { t_at } from './trap.js';
 import { invocation_pos, handle_tip } from './hack.js';
 import { is_valid_travelpt } from './cmd.js';
@@ -1388,6 +1389,11 @@ export async function getpos(ccp, force, goal, describeAt) {
         const key = await nhgetch();
         need_full_flush = true;
         const ch = String.fromCharCode(key);
+        // C getpos.c:885–886 — the interactive read (cmdq_pop miss) is
+        // recorded when iflags.remember_getpos and not already replaying.
+        if (g.iflags?.remember_getpos && !g.in_doagain) {
+            cmdq_add_key(CQ_REPEAT, ch);
+        }
 
         // C: if (iflags.autodescribe) msg_given = FALSE;
         if (g.iflags?.autodescribe) msg_given = false;

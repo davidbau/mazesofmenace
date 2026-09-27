@@ -7,8 +7,9 @@
 // (patchlevel.h) so no Beta/WIP/post-release suffix, and the
 // deterministic-runtime patch pins the build date to
 // "May  2 2026 12:00:00" (double space, 20 chars like
-// __DATE__ " " __TIME__). No RUNTIME_PORT_ID / NETHACK_GIT_* strings,
-// so getversionstring returns the version_id unchanged.
+// __DATE__ " " __TIME__). RUNTIME_PORT_ID is not defined, and the
+// NETHACK_GIT_* strings are unset, so the live getversionstring
+// result is version_id with its trailing dot restored.
 export const VERSION = '0.1.0';
 export const BUILD_DATE = '2026-04-18';
 export const COMMIT = 'contest-skeleton';
@@ -79,32 +80,175 @@ export function version_string() {
         : mdlib_version_string('.');
 }
 
+// C ref: global.h:389 BUFSZ. File-local: version.js stays import-free
+// (D-1881 — const.js:21 reads COMMIT_NUMBER at load).
+const VERSION_BUFSZ = 256;
+
+/* C ref: hack.h `:1504–1506` FEATURE_NOTICE_VER(major, minor, patch) —
+ * (major << 24) | (minor << 16) | (patch << 8). `>>> 0` keeps the C
+ * unsigned-long value (cf cfgfiles.js FEATURE_NOTICE_VER_3_7_0). */
+function feature_notice_ver(major, minor, patch) {
+    return (((major << 24) | (minor << 16) | (patch << 8)) >>> 0);
+}
+
+/* C atoi as version.c uses it on the notice segments: leading blanks,
+ * optional sign, digit run; nothing parsable is 0. */
+function notice_atoi(s) {
+    const m = /^\s*[+-]?\d+/.exec(String(s ?? ''));
+    return m ? parseInt(m[0], 10) : 0;
+}
+
 /**
- * C ref: version.c getversionstring `:35–80` — copy of
- * nomakedefs.version_id plus " (port-id,git-sha,branch,prefix)" when
- * any extra text is present. RUNTIME_PORT_ID is not defined; the git
- * strings are unset, so nothing is appended and the " (" is stripped
- * back off. A trailing "." is lifted before the append and restored
- * after (dotoff), leaving the string unchanged here.
+ * C ref: version.c get_feature_notice_ver `:431–460` — parse
+ * "maj.min.patch" (digits and two dots only; the walk breaks right after
+ * the second dot, so the patch tail is unchecked like C) into the
+ * FEATURE_NOTICE_VER packing, else 0L. The input copy (`strcpy(buf)`)
+ * is the owned segments below (GC, no caller mutation).
+ * Sole C caller is options.c feature_alert_opts (`:7562`).
+ * @param {string} str version text (C char *, NULL → 0)
+ * @returns {number} packed version, 0 when unparseable
+ */
+export function get_feature_notice_ver(str) {
+    if (str == null) return 0; // C `:437–438`
+    const buf = String(str); // C `:439 strcpy(buf, str)`
+    const istr = [];
+    let j = 0, k = 0;
+    istr[j] = 0; // C `:440 istr[j] = str`
+    while (k < buf.length) { // C `:441 while (*str)`
+        const ch = buf[k];
+        if (ch === '.') { // C `:442–443`
+            // C `:444 *str++ = '\0'` — segment ends at k.
+            istr[j] = buf.slice(istr[j], k);
+            j++;
+            k++;
+            istr[j] = k; // C `:445 istr[j] = str`
+            if (j === 2) break; // C `:446–447`
+        } else if (ch >= '0' && ch <= '9') { // C `:448 strchr("0123456789")`
+            k++; // C `:449 str++`
+        } else {
+            return 0; // C `:450–451`
+        }
+    }
+    if (j !== 2) return 0; // C `:453–454`
+    istr[2] = buf.slice(istr[2]); // patch tail after the second dot
+    return feature_notice_ver( // C `:459`
+        notice_atoi(istr[0]), notice_atoi(istr[1]), notice_atoi(istr[2]));
+}
+
+/**
+ * C ref: version.c get_current_feature_ver `:464–467` —
+ * FEATURE_NOTICE_VER(VERSION_MAJOR, VERSION_MINOR, PATCHLEVEL).
+ * @returns {number} packed current version
+ */
+export function get_current_feature_ver() {
+    return feature_notice_ver(VERSION_MAJOR, VERSION_MINOR, PATCHLEVEL); // C `:466`
+}
+
+/**
+ * C ref: version.c getversionstring `:35–79`.
+ * Copies `nomakedefs.version_id` into the caller buffer, then appends
+ * " (port-id,git-sha,branch:…,prefix:…)" when any extra pointer is
+ * non-NULL. A trailing "." is lifted off before that append and put
+ * back after (`dotoff`). Each append is `Snprintf(eos(buf),
+ * (bufsz - strlen(buf)) - 1, …)`: `vsnprintf` writes at most `size-1`
+ * characters (`hacklib.c nh_snprintf`). `c++` in the separator is
+ * evaluated before the write, including when the write does not fit.
+ * A non-NULL empty string still counts (`const char *` is not a
+ * JS falsy check).
+ *
+ * JS strings are immutable, so this returns the text C would leave in
+ * `buf` and does not mutate the argument. `eos` is the hacklib.c:193
+ * end index (embedded NUL stops); it is not imported — version.js →
+ * hacklib.js → const.js → version.js would read `COMMIT_NUMBER` before
+ * this module finishes (D-1881).
+ *
+ * The values are the post-`early_init` fields. `unixmain.c:66` runs
+ * `early_init` → `runtime_info_init` → `populate_nomakedefs` before
+ * `early_options`, so the date.c:25 static "1.0.0-0" initializer is
+ * already gone at every call site. `NETHACK_GIT_*` are undefined, so
+ * the three git pointers stay NULL (date.c:119–127).
+ * @param {string} [_buf] C out-buffer; contents are overwritten
+ * @param {number} [bufsz] `sizeof buf`, BUFSZ at every caller
  * @returns {string}
  */
-export function getversionstring() {
-    let buf = NOMAKEDEFS_VERSION_ID;
-    let c = 0;
-    const dotoff = buf.endsWith('.');
-    if (dotoff) buf = buf.slice(0, -1);
-    buf += ' (';
-    if (GIT_SHA) buf += `${c++ ? ',' : ''}${GIT_SHA}`;
-    // C: git_branch only when NH_DEVEL_STATUS != NH_STATUS_RELEASED.
-    if (GIT_PREFIX) buf += `${c++ ? ',' : ''}prefix:${GIT_PREFIX}`;
-    if (c) {
-        buf += ')';
-    } else {
-        // C: nothing added — strip the " (" back off.
-        buf = buf.slice(0, -2);
+export function getversionstring(_buf, bufsz) {
+    // hacklib.c eos `:193–199` — index of the terminating NUL.
+    function eosIndex(s) {
+        const str = typeof s === 'string' ? s : String(s ?? '');
+        let i = 0;
+        while (i < str.length && str.charCodeAt(i) !== 0) i += 1;
+        return i;
     }
-    if (dotoff) buf += '.';
-    return buf;
+
+    // Snprintf(eos(buf), (bufsz - strlen(buf)) - 1, "%s", text).
+    // size_t subtraction wraps when strlen >= bufsz; vsnprintf then
+    // still copies a short piece. size 0 or 1 writes no character.
+    function snprintfAppend(cur, limit, text) {
+        const len = eosIndex(cur);
+        const head = cur.slice(0, len);
+        let size;
+        if (len >= limit) size = Number.MAX_SAFE_INTEGER;
+        else size = (limit - len) - 1;
+        if (size <= 0) return head;
+        const maxChars = size - 1;
+        if (maxChars <= 0) return head;
+        const add = String(text);
+        if (add.length > maxChars) return head + add.slice(0, maxChars);
+        return head + add;
+    }
+
+    const limit = bufsz == null ? VERSION_BUFSZ : (bufsz >>> 0);
+    // C `:37` Strcpy — no size check. Stop at an embedded NUL.
+    const id = NOMAKEDEFS_VERSION_ID == null ? '' : String(NOMAKEDEFS_VERSION_ID);
+    let out = id.slice(0, eosIndex(id));
+
+    let c = 0; // C `:40`
+    // patchlevel.h:25 / :33. git_branch is compiled only when this
+    // is not NH_STATUS_RELEASED.
+    const NH_STATUS_RELEASED = 0;
+    const NH_DEVEL_STATUS = NH_STATUS_RELEASED;
+    // Not defined. get_port_id is sys/windows/windsys.c:501.
+    const RUNTIME_PORT_ID = false;
+
+    let p = eosIndex(out); // C `:44`
+    const dotoff = p > 0 && out.charCodeAt(p - 1) === 46; // C `:45` '.'
+    if (dotoff) p -= 1; // C `:47–48`
+    out = out.slice(0, p) + ' ('; // C `:49` Strcpy(p, " (")
+
+    if (RUNTIME_PORT_ID) { // C `:50–55`
+        const tmp = null; // get_port_id(tmpbuf) — not this build
+        if (tmp != null) {
+            const comma = c ? ',' : '';
+            c += 1;
+            out = snprintfAppend(out, limit, comma + tmp);
+        }
+    }
+    if (GIT_SHA != null) { // C `:56–58` pointer, not emptiness
+        const comma = c ? ',' : '';
+        c += 1;
+        out = snprintfAppend(out, limit, comma + GIT_SHA);
+    }
+    if (NH_DEVEL_STATUS !== NH_STATUS_RELEASED) { // C `:59–64`
+        if (GIT_BRANCH != null) {
+            const comma = c ? ',' : '';
+            c += 1;
+            out = snprintfAppend(out, limit, `${comma}branch:${GIT_BRANCH}`);
+        }
+    }
+    if (GIT_PREFIX != null) { // C `:65–68`
+        const comma = c ? ',' : '';
+        c += 1;
+        out = snprintfAppend(out, limit, `${comma}prefix:${GIT_PREFIX}`);
+    }
+    if (c) { // C `:69–71`
+        out = snprintfAppend(out, limit, ')');
+    } else {
+        out = out.slice(0, p); // C `:73` *p = '\0' — drop " ("
+    }
+    if (dotoff) { // C `:74–76`
+        out = snprintfAppend(out, limit, '.');
+    }
+    return out; // C `:78`
 }
 
 // ---------------------------------------------------------------------------

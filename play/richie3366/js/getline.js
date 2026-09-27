@@ -899,6 +899,16 @@ const EXT_CMDS = [
         },
     },
     {
+        // C: cmd.c:1876 "stats" IFBURIED|AUTOCOMPLETE|WIZMODECMD → wiz_show_stats
+        name: 'stats',
+        wiz: true,
+        autocomplete: true,
+        run: async () => {
+            const { wiz_show_stats } = await import('./wizcmds.js');
+            return wiz_show_stats();
+        },
+    },
+    {
         name: 'monster',
         wiz: false,
         autocomplete: true,

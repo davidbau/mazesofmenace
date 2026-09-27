@@ -77,9 +77,9 @@ import {
     VANQ_COUNT_H_L,
     VANQ_COUNT_L_H,
 } from './const.js';
-import { pline, impossible } from './display.js';
+import { pline, impossible, endgamelevelname } from './display.js';
 import { DEF_MONSYM_MLET } from './mondata.js';
-import { getnow } from './calendar.js';
+import { getnow, night, midnight } from './calendar.js';
 import { timet_delta } from './allmain.js';
 import { livelog_printf } from './pline.js';
 import { objectNameStrs } from './objects.js';
@@ -88,12 +88,14 @@ import { visible_region_at, reg_damg } from './region.js';
 import {
     NUMMONS, mons, haseyes, G_UNIQ, M2_PNAME, monsterNames, pmnames, NEUTRAL,
     MZ_TINY, MZ_SMALL, MZ_MEDIUM, MZ_LARGE, MZ_HUGE, is_animal,
-    is_rider,
+    is_rider, is_male, is_female, is_neuter, vampshifted,
 } from './monsters.js';
-import { an, makeplural } from './objnam.js';
-import { upstart, ordin, strncmpi } from './hacklib.js';
-import { align_str, rank_of, rank_to_xlev } from './roles.js';
-import { x_monnam, a_monnam } from './do_name.js';
+import { an, just_an, makeplural } from './objnam.js';
+import { upstart, ordin, strncmpi, depth, lowc } from './hacklib.js';
+import { align_str, align_gname, u_gname, rank_of, rank_to_xlev, genders } from './roles.js';
+import { x_monnam, a_monnam, pmname } from './do_name.js';
+import { newuexp } from './exper.js';
+import { SCORE_ON_BOTL, botl_score } from './botl.js';
 import { find_mac } from './mhitm.js';
 import { digests, enfolds } from './mhitu.js';
 import { sticks } from './engrave.js';
@@ -112,6 +114,10 @@ import {
     ARTICLE_YOUR, SUPPRESS_IT, SUPPRESS_INVISIBLE,
     STRAT_WAITMASK, MFAST, MSLOW,
     EPRI, EMIN, EDOG, ismnum,
+    FEMALE, MALE, HANDED, RIGHT_HANDED,
+    ENL_GAMEOVERALIVE, ROLE_GENDMASK, ROLE_MALE, ROLE_FEMALE,
+    FULL_MOON, NEW_MOON,
+    In_endgame, In_quest, Is_knox, Is_rogue_level, Is_bigroom,
 } from './const.js';
 
 const PM_HIGH_CLERIC = monsterNames.indexOf('PM_HIGH_CLERIC');
@@ -133,7 +139,9 @@ const LL_MAJORS =
     0x4000;  // LL_DUMP
 
 const You_ = 'You ';
+const are = 'are ';
 const have = 'have ';
+const had = 'had ';
 const were = 'were ';
 const have_been = 'have been ';
 const have_never = 'have never ';
@@ -259,6 +267,216 @@ function you_have_never(final, badthing) {
 
 function you_have_X(final, something) {
     return enl_msg(final, You_, have, '', something, '');
+}
+
+/**
+ * C ref: insight.c background_enlightenment `:468–722`.
+ * `unused_mode` is the enlightenment mode C does not read.
+ * `final` selects present vs past (`enl_msg`) and `ge.en_via_menu`
+ * (`!final`, set by `enlightenment` before the call). Menu rows gain
+ * the one extra leading space the ^X painter already stores; a blank
+ * separator stays blank. `enlght_out` / `enlght_line` are the line text.
+ * @param {number} unused_mode
+ * @param {number} final ENL_GAMEINPROGRESS / GAMEOVERALIVE / GAMEOVERDEAD
+ * @returns {string[]}
+ */
+export function background_enlightenment(unused_mode, final) {
+    void unused_mode;
+    const u = game.u || {};
+    const lines = [];
+    // C insight.c:389 — en_via_menu = !final, before this call.
+    const menu = !final;
+    const out = (buf) => {
+        lines.push(menu && buf ? ` ${buf}` : buf);
+    };
+    // C insight.c:107–108 — you_are / you_have macros capture `final`.
+    const youAre = (attr, ps = '') => out(enl_msg(final, You_, are, were, attr, ps));
+    const youHave = (attr, ps = '') => out(enl_msg(final, You_, have, had, attr, ps));
+
+    // C `:476–479` — poly'd role/rank read saved u.mfemale, not flags.female.
+    const innategend = (Upolyd(u) ? u.mfemale : game.flags?.female) ? 1 : 0;
+    const roleTitl = (innategend && game.urole?.name?.f)
+        ? game.urole.name.f
+        : (game.urole?.name?.m || '');
+    // C `:479` — rank_of(u.ulevel, Role_switch, innategend).
+    const rankTitl = rank_of(u.ulevel | 0, game.urole?.mnum, innategend);
+
+    out(''); // separator after the title line
+    out('Background:');
+
+    // C `:490–511` — current shape before the underlying role.
+    if (Upolyd(u)) {
+        const uasmon = game.youmonst?.data || mons(u.umonnum | 0);
+        const altphrasing = vampshifted(game.youmonst);
+        // Current gender, not the saved role gender (C comment `:496`).
+        const curFem = game.flags?.female ? 1 : 0;
+        let tmpbuf = '';
+        if (uasmon && !is_male(uasmon) && !is_female(uasmon) && !is_neuter(uasmon)) {
+            tmpbuf = `${genders[curFem].adj} `;
+        }
+        if (altphrasing) {
+            tmpbuf += `${pmname(mons(game.youmonst?.cham), curFem ? FEMALE : MALE)} in `;
+        }
+        const article = altphrasing ? just_an(tmpbuf) : 'in ';
+        const formName = pmname(uasmon, curFem ? FEMALE : MALE);
+        youAre(`${!final ? 'currently ' : ''}${article}${tmpbuf}${formName} form`);
+    }
+
+    // C `:514–528` — omit the gender adjective when the role name already
+    // carries it, unless both genders are allowed or sex has changed.
+    let genderAdj = '';
+    const allowGend = (game.urole?.allow ?? 0) & ROLE_GENDMASK;
+    const initgend = game.flags?.initgend ? 1 : 0;
+    if (!game.urole?.name?.f
+        && (allowGend === (ROLE_MALE | ROLE_FEMALE) || innategend !== initgend)) {
+        genderAdj = `${genders[innategend].adj} `;
+    }
+    const urace = game.urace || {};
+    const raceNoun = urace.noun || urace.name || 'human';
+    const raceAdj = urace.adj || urace.name || 'human';
+    let roleBuf = Upolyd(u) ? 'actually ' : '';
+    const ulevel = u.ulevel | 0;
+    // C `:519` — strcmpi is strncmpi(..., -1) (global.h).
+    if (strncmpi(rankTitl, roleTitl, -1) === 0) {
+        roleBuf += `${an(rankTitl)}, level ${ulevel} ${genderAdj}${raceNoun}`;
+    } else {
+        roleBuf += `${an(rankTitl)}, a level ${ulevel} ${genderAdj}${raceAdj} ${roleTitl}`;
+    }
+    youAre(roleBuf);
+
+    // C `:532–554` — helm (currently/temporarily), conversion
+    // (now/belatedly), atheist after 1000 turns (nominally), else empty.
+    // ualignbase is {current, original} for A_CURRENT / A_ORIGINAL.
+    const atype = u.ualign?.type ?? A_NEUTRAL;
+    const baseCur = u.ualignbase?.current ?? atype;
+    const baseOrig = u.ualignbase?.original ?? atype;
+    const moves = game.moves | 0;
+    const adverb = (atype !== baseCur)
+        ? (!final ? 'currently ' : 'temporarily ')
+        : (atype !== baseOrig)
+            ? (!final ? 'now ' : 'belatedly ')
+            : (!(u.uconduct?.gnostic | 0) && moves > 1000)
+                ? 'nominally '
+                : '';
+    out(` ${You_}${!final ? are : were}${align_str(atype)}, ${adverb}on a mission for ${u_gname(game.urole, atype)}`);
+
+    // C `:556–570` — the other two gods finish the sentence.
+    let opposed = ` who ${!final ? 'is' : 'was'} opposed by`;
+    if (atype !== A_LAWFUL) {
+        opposed += ` ${align_gname(game.urole, A_LAWFUL)} (${align_str(A_LAWFUL)}) and`;
+    }
+    if (atype !== A_NEUTRAL) {
+        opposed += ` ${align_gname(game.urole, A_NEUTRAL)} (${align_str(A_NEUTRAL)})`;
+        if (atype !== A_CHAOTIC) opposed += ' and';
+    }
+    if (atype !== A_CHAOTIC) {
+        opposed += ` ${align_gname(game.urole, A_CHAOTIC)} (${align_str(A_CHAOTIC)})`;
+    }
+    opposed += '.';
+    out(opposed);
+
+    // C `:574–587` — temporary alignment reports the permanent one, then
+    // sex change and/or permanent conversion ("started out").
+    const difgend = innategend !== initgend;
+    let difalgn = ((atype !== baseCur) ? 1 : 0)
+        + ((baseCur !== baseOrig) ? 2 : 0);
+    if (difalgn & 1) {
+        youAre(`actually ${align_str(baseCur)}`);
+        difalgn &= ~1;
+    }
+    if (difgend || difalgn) {
+        out(` You started out ${difgend ? genders[initgend].adj : ''}${(difgend && difalgn) ? ' and ' : ''}${difalgn ? align_str(baseOrig) : ''}.`);
+    }
+
+    // C `:593–595` — "normally " when body_part(HANDED) is not "handed".
+    const handed = body_part(HANDED);
+    const side = ((u.uhandedness | 0) === RIGHT_HANDED) ? 'right' : 'left';
+    youAre(`${handed === 'handed' ? '' : 'normally '}${side}-handed`);
+
+    // C `:605–640` — endgame / Knox / quest dunlev vs depth, rogue, bigroom.
+    const uz = u.uz || { dnum: 0, dlevel: 1 };
+    if (In_endgame(uz)) {
+        // observable_depth's compiled body is depth() (topten.c:202–203;
+        // the #if 0 plane remap is not in this build).
+        const tmpbuf = endgamelevelname(depth(uz));
+        // C strncmp(tmpbuf, "Plane", 5) == 0.
+        const elemental = (tmpbuf.length >= 5 && tmpbuf.slice(0, 5) === 'Plane')
+            ? 'Elemental ' : '';
+        youAre(`in the endgame, on the ${elemental}${tmpbuf}`);
+    } else if (Is_knox(uz)) {
+        const dname = game.dungeons?.[uz.dnum | 0]?.dname || 'Fort Knox';
+        youAre(`on the ${dname} level`);
+    } else {
+        let dgnbuf = game.dungeons?.[uz.dnum | 0]?.dname || 'The Dungeons of Doom';
+        // C `:627–628` — strncmpi "The " then lowc the first byte only.
+        if (strncmpi(dgnbuf, 'The ', 4) === 0 && dgnbuf.length) {
+            dgnbuf = lowc(dgnbuf.charAt(0)) + dgnbuf.slice(1);
+        }
+        // C dunlev (`dungeon.c:1327`) is `lev->dlevel`. The three JS copies
+        // are file-local, so this reads the field rather than a fourth clone.
+        let tmpbuf = `level ${In_quest(uz) ? (uz.dlevel | 0) : depth(uz)}`;
+        if (Is_rogue_level(uz)) {
+            tmpbuf += ', a primitive area';
+        } else if (Is_bigroom(uz) && !Blind()) {
+            tmpbuf += ', a very big room';
+        }
+        youAre(`in ${dgnbuf}, on ${tmpbuf}`);
+    }
+
+    // C `:644–650` — moves == 1, else "entered" (same tense either way).
+    if (moves === 1) {
+        youHave('just started your adventure');
+    } else {
+        out(enlght_line(You_, 'entered ', `the dungeon ${moves} turn${plur(moves)} ago`, ''));
+    }
+
+    // C `:656–660` — gameover uses iflags captured in really_done.
+    if (final ? game.iflags?.at_midnight : midnight()) {
+        out(enl_msg(final, 'It ', 'is ', 'was ', 'the midnight hour', ''));
+    } else if (final ? game.iflags?.at_night : night()) {
+        out(enl_msg(final, 'It ', 'is ', 'was ', 'nighttime', ''));
+    }
+    const moon = game.flags?.moonphase;
+    if (moon === FULL_MOON || moon === NEW_MOON) {
+        // The quarter arms are unreachable inside this guard; C still writes them.
+        const phase = (moon === FULL_MOON) ? 'full'
+            : (moon === NEW_MOON) ? 'new'
+                : (moon < FULL_MOON) ? 'first quarter'
+                    : 'last quarter';
+        const ended = final ? ' when your adventure ended' : '';
+        out(enl_msg(final, 'There ', 'is ', 'was ', `a ${phase} moon in effect${ended}`, ''));
+    }
+    if (game.flags?.friday13) {
+        const what = !final ? 'can happen'
+            : (final === ENL_GAMEOVERALIVE) ? 'could have happened'
+                : 'happened';
+        out(` Bad things ${what} on Friday the 13th.`);
+    }
+
+    // C `:687–709` — no experience line while polymorphed.
+    if (!Upolyd(u)) {
+        const uexp = u.uexp | 0;
+        const ulvl = u.ulevel | 0;
+        let xp = `${uexp} experience point${plur(uexp)}`;
+        // C wizard is flags.debug; this port also sets flags.wizard.
+        if (ulvl < 30 && (final || wizardMode())) {
+            const nxtlvl = newuexp(ulvl);
+            const delta = nxtlvl - uexp;
+            const more = uexp > 0 ? 'more ' : '';
+            const tense = !final ? '' : (delta === 1 ? 'was ' : 'were ');
+            const prep = ulvl < 18 ? 'to attain' : 'for';
+            xp += `, ${delta} ${more}${tense}needed ${prep} level ${ulvl + 1}`;
+        }
+        youHave(xp);
+    }
+    // C `:713–720`. SCORE_ON_BOTL is off (config.h:627), so this build
+    // does not disclose the approximate score. The on-arm is botl_score().
+    if (SCORE_ON_BOTL && game.flags?.showscore) {
+        const buf = `${botl_score()}${!final ? '' : ' before end-of-game adjustments'}`;
+        out(enl_msg(final, 'Your score ', 'is ', 'was ', buf, ''));
+    }
+
+    return lines;
 }
 
 /** C ref: insight.c num_genocides */

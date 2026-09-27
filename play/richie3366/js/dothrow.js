@@ -123,6 +123,8 @@ import {
 } from './shk.js';
 // imports.mjs --can js/dothrow.js js/mthrowu.js miss: hoisted, cycle-safe.
 import { miss } from './mthrowu.js';
+// imports.mjs --can js/dothrow.js js/cmd.js cmdq_add_ec: hoisted, cycle-safe.
+import { cmdq_add_ec } from './cmd.js';
 
 const GLASS = 19;
 const POT_WATER = objectNames.indexOf('POT_WATER');
@@ -220,12 +222,6 @@ const PM_MONKEY = monsterNames.indexOf('PM_MONKEY');
 const PM_APE = monsterNames.indexOf('PM_APE');
 const PM_LICHEN = monsterNames.indexOf('PM_LICHEN');
 const VEGGY = 3; // objclass.h
-
-/** C ref: cmd.c cmdq_add_ec(CQ_CANNED, …) — shared with rhack via game._cmdq_canned */
-function cmdq_add_ec(fn) {
-    if (!game._cmdq_canned) game._cmdq_canned = [];
-    game._cmdq_canned.push(fn);
-}
 
 /**
  * C dothrow.c throw_ok `:316–348` — SUGGEST AutoReturn / coins /
@@ -2728,8 +2724,8 @@ export async function dofire() {
             } else if (fireassist
                        && u.uswapwep && is_pole(u.uswapwep)
                        && !(u.uswapwep.cursed && u.uswapwep.bknown)) {
-                cmdq_add_ec(doswapweapon);
-                cmdq_add_ec(dofire);
+                cmdq_add_ec(CQ_CANNED, doswapweapon);
+                cmdq_add_ec(CQ_CANNED, dofire);
                 return 0;
             } else {
                 // C `:527` You("have no ammunition readied.") leaves NEED_MORE.
@@ -2771,18 +2767,18 @@ export async function dofire() {
         if (ammo_and_launcher(u.uquiver, uwep)) {
             obj = u.uquiver;
         } else if (ammo_and_launcher(u.uquiver, u.uswapwep)) {
-            cmdq_add_ec(doswapweapon);
-            cmdq_add_ec(dofire);
+            cmdq_add_ec(CQ_CANNED, doswapweapon);
+            cmdq_add_ec(CQ_CANNED, dofire);
             return ecmd_took_time(res);
         } else {
             const olauncher = find_launcher(u.uquiver);
             if (olauncher) {
                 if (uwep && !game.flags?.pushweapon) {
-                    cmdq_add_ec(doswapweapon);
+                    cmdq_add_ec(CQ_CANNED, doswapweapon);
                 }
-                cmdq_add_ec(dowield);
+                cmdq_add_ec(CQ_CANNED, dowield);
                 cmdq_add_key(CQ_CANNED, olauncher.invlet);
-                cmdq_add_ec(dofire);
+                cmdq_add_ec(CQ_CANNED, dofire);
                 return ecmd_took_time(res);
             }
         }

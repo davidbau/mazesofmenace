@@ -40,6 +40,7 @@ import {
     In_quest, ismnum, has_ebones, has_mgivenname, MGIVENNAME, BUFSZ,
     M_AP_TYPE, M_AP_MONSTER,
     FIRE_RES, STONE_RES, INTRINSIC,
+    WRITING, NHF_BONESFILE,
 } from './const.js';
 import { G_NOCORPSE, G_UNIQ, mons, likes_gold, likes_gems, likes_objs, likes_magic, is_vampshifter, is_undead } from './monsters.js';
 import { m_at, mongone, dmonsfree, zombie_maker, m_carrying } from './mon.js';
@@ -61,7 +62,7 @@ import { objectNames } from './generated/objects_data.js';
 import { monsterNames, PM_TOURIST, LOW_PM } from './generated/monsters_data.js';
 import { paybill, money2mon, obfree, doname_with_price } from './shk.js';
 import { hidden_gold, paygd } from './vault.js';
-import { clearlocks, debugcore } from './files.js';
+import { clearlocks, debugcore, new_nhfile, store_version, FNIDX_HISTORICAL } from './files.js';
 import { clearpriests } from './priest.js';
 import { shkname, shkname_is_pname } from './shknam.js';
 import {
@@ -113,8 +114,8 @@ const PM_VLAD = monsterNames.indexOf('PM_VLAD_THE_IMPALER');
 const MS_LEADER = 36;
 const MS_NEMESIS = 37;
 
-/** C ref: integer.h nowrap_add — saturate at LONG_MAX (JS Number analogue). */
-function nowrap_add(a, b) {
+/** C ref: integer.h:129 nowrap_add — saturate at LONG_MAX (JS Number analogue). */
+export function nowrap_add(a, b) {
     const LONG_MAX = Number.MAX_SAFE_INTEGER;
     const aa = Number(a) || 0;
     const bb = Number(b) || 0;
@@ -1751,8 +1752,22 @@ async function savebones(how, when, corpse) {
     if (!game.level) game.level = {};
     game.level.bonesinfo = newbones;
 
-    // C: create_bonesfile + savelev after ghost envelope
-    write_bonesfile(u.uz);
+    // C bones.c:600–613 — create_bonesfile, then mode = WRITING,
+    // store_version. creat / errno / VMS chmod stay named (no POSIX
+    // creat). The handle fields store_version reads match
+    // files.c:849–857. write_bonesfile is the VFS savelev that follows.
+    const nhfp = new_nhfile();
+    nhfp.ftype = NHF_BONESFILE;
+    nhfp.mode = WRITING;
+    nhfp.structlevel = true;
+    nhfp.fieldlevel = false;
+    nhfp.addinfo = true;
+    nhfp.style.deflt = true;
+    nhfp.style.binary = true;
+    nhfp.fnidx = FNIDX_HISTORICAL;
+    nhfp.fd = 0;
+    store_version(nhfp);
+    write_bonesfile(u.uz, nhfp.sf || null);
 }
 
 /**

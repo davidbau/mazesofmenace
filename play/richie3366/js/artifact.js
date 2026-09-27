@@ -520,8 +520,8 @@ set_undiscovered_artifact(undiscovered_artifact);
  * C ref: artifact.c disp_artifact_discoveries `:1147–1175` — list discovered
  * artifacts from artidisco[] (empty slot ends the list); return the count.
  * C takes a text window, or WIN_ERR to count only. JS lines-array model:
- * pass null to count (WIN_ERR). A_NONE prints "non-aligned": C remaps
- * align_str's "unaligned"; JS align_str (roles.js) has no unaligned arm.
+ * pass null to count (WIN_ERR). A_NONE's align_str is "unaligned";
+ * C then remaps that word to "non-aligned" for this list only.
  * @param {Array|null} lines text-window lines, or null (WIN_ERR) to count
  * @returns {number} discovered artifact count
  */
@@ -537,7 +537,9 @@ export function disp_artifact_discoveries(lines) {
         const entry = list[m] || {};
         const otyp = entry.otyp | 0;
         const algn = entry.alignment | 0;
-        const algnstr = algn === A_NONE ? 'non-aligned' : align_str(algn);
+        // C artifact.c:1164–1166 — align_str, then "unaligned" → "non-aligned".
+        let algnstr = align_str(algn);
+        if (algnstr === 'unaligned') algnstr = 'non-aligned';
         lines.push({
             text: `  ${artiname(m)} [${algnstr} ${simple_typename(otyp)}]`,
             attr: 0,

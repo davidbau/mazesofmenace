@@ -8,7 +8,7 @@
 // shieldeff (D-1087; sparkle opt_out default On; sit rndcurse caller).
 
 import { game } from './gstate.js';
-import { bot_via_windowport } from './botl.js';
+import { bot_via_windowport, SCORE_ON_BOTL, botl_score } from './botl.js';
 import { rank_of } from './roles.js';
 import { cansee, couldsee, vision_recalc, vision_off_newsym_gbuf } from './vision.js';
 import { objects_at, sobj_at } from './mkobj.js';
@@ -150,7 +150,7 @@ import {
 } from './attrib.js';
 import { depth, dist2 } from './hacklib.js';
 import { monsterNames } from './generated/monsters_data.js';
-import { observe_object, near_capacity, update_inventory } from './invent.js';
+import { observe_object, near_capacity, update_inventory, Blind } from './invent.js';
 import { visible_region_at, show_region } from './region.js';
 import { see_wsegs, worm_known, level_mon_at } from './worm.js';
 import { SoundSpeak } from './sndprocs.js';
@@ -5870,11 +5870,16 @@ export function do_statusline1() {
         : 'St:? Dx:? Co:? In:? Wi:? Ch:?';
     const align = u.ualign?.type === 0 ? 'Neutral'
         : u.ualign?.type > 0 ? 'Lawful' : 'Chaotic';
+    // C botl.c:93–96. SCORE_ON_BOTL is off (config.h:627), so this build
+    // does not append " S:%ld". The on-arm is botl_score().
+    let scoreSuffix = '';
+    if (SCORE_ON_BOTL && game.flags?.showscore)
+        scoreSuffix = ` S:${botl_score()}`;
     // C bot_via_windowport BL_TITLE "%-30s" + " St:%s" → St: at col 31.
     // Contest capture compresses the pad to CSI CUF when gap > 4.
     const gap = Math.max(1, 31 - title.length);
-    if (gap > 4) return `${title}\x1b[${gap}C${stats} ${align}`;
-    return `${title}${' '.repeat(gap)}${stats} ${align}`;
+    if (gap > 4) return `${title}\x1b[${gap}C${stats} ${align}${scoreSuffix}`;
+    return `${title}${' '.repeat(gap)}${stats} ${align}${scoreSuffix}`;
 }
 
 function _statusLine1() {
@@ -7704,7 +7709,8 @@ function vpline_consume_msg_loc(msg) {
 // C ref: pline.c You `:366–374` / Your `:376–385` / You_cant `:402–411` /
 // pline_The `:413–422` / There `:424–433` — YouMessage (`:362–363`)
 // prefixes the format, then vpline. You_buf (`:338–348`) is unneeded
-// in JS. You_feel (`:387–400`) and You_see are below; You_hear is hack.js.
+// in JS. You_feel (`:387–400`) and You_see (`:455–469`) are below;
+// You_hear is hack.js.
 export async function You(fmt, ...args) {
     if (fmt == null || fmt === '') return;
     await vpline(`You ${fmt}`, ...args);
@@ -7738,11 +7744,24 @@ export async function You_feel(line, ...the_args) {
         : 'You feel ';
     await vpline(`${prefix}${line}`, ...the_args);
 }
-export async function You_see(fmt, ...args) {
-    // Named: C Unaware «dream that you see» + Blind «sense» arms (D-2065
-    // family; need Unaware/Blind prop edges — plain arm only here).
-    if (fmt == null || fmt === '') return;
-    await vpline(`You see ${fmt}`, ...args);
+/**
+ * C ref: pline.c You_see `:455–469`.
+ * Unaware (youprop.h:399; eat.js) is tested first. Else Blind
+ * (youprop.h:104; invent.js) selects "You sense ". Else "You see ".
+ * YouPrefix (`:359–360`) copies the prefix; strcat appends `line`;
+ * vpline (`:466`) prints that format with the same args. You_buf
+ * (`:338–348`) is C buffer growth — unneeded in JS.
+ * `imports.mjs --can display.js invent.js Blind` — already imported.
+ */
+export async function You_see(line, ...the_args) {
+    let prefix;
+    if (Unaware())
+        prefix = 'You dream that you see ';
+    else if (Blind())
+        prefix = 'You sense ';
+    else
+        prefix = 'You see ';
+    await vpline(`${prefix}${line}`, ...the_args);
 }
 
 // C ref: pline.c verbalize :476–490 — quote the format, then vpline.

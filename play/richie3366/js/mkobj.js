@@ -3307,7 +3307,7 @@ export async function obj_meld(p1, p2) {
  */
 export async function pudding_merge_message(otmp, otmp2) {
     if (!otmp || !otmp2) return;
-    const { pline } = await import('./display.js');
+    const { pline, You_see } = await import('./display.js');
     const { cansee } = await import('./vision.js');
     const { obj_typename, makeplural } = await import('./objnam.js');
     const Blind = () => {
@@ -3328,7 +3328,7 @@ export async function pudding_merge_message(otmp, otmp2) {
     const inpack = carried(otmp) || carried(otmp2);
     if ((!Blind() && visible) || inpack) {
         if (Hallucination()) {
-            if (onfloor) await pline('You see parts of the floor melting!');
+            if (onfloor) await You_see('parts of the floor melting!');
             else if (inpack) {
                 await pline('Your pack reaches out and grabs something!');
             }
@@ -3928,6 +3928,27 @@ export function is_mines_prize(o) {
 export function is_soko_prize(o) {
     if (!o) return false;
     return (o.o_id | 0) === ((game.context?.achieveo?.soko_prize_oid) | 0);
+}
+
+/** C ref: mkobj.c treefruits `:1978–1980`. */
+const TREEFRUITS = [
+    objectNames.indexOf('APPLE'),
+    objectNames.indexOf('ORANGE'),
+    objectNames.indexOf('PEAR'),
+    objectNames.indexOf('BANANA'),
+    objectNames.indexOf('EUCALYPTUS_LEAF'),
+];
+
+/**
+ * C ref: mkobj.c is_treefruit `:1991–1999`.
+ * Caller: pager.c look_at_object (dangling vs stuck).
+ */
+export function is_treefruit(otmp) {
+    const otyp = otmp.otyp | 0;
+    for (let fruitidx = 0; fruitidx < TREEFRUITS.length; ++fruitidx) {
+        if (TREEFRUITS[fruitidx] === otyp) return true;
+    }
+    return false;
 }
 
 // C ref: mkobj.c mkgold()

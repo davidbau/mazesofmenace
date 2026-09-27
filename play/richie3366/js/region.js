@@ -28,7 +28,7 @@
 
 import { game } from './gstate.js';
 import { rn2, rn1, d, rnd } from './rng.js';
-import { pline, You_feel, show_glyph_cell, newsym, impossible } from './display.js';
+import { pline, You_feel, You_see, show_glyph_cell, newsym, impossible } from './display.js';
 import { CLR_GRAY, CLR_BRIGHT_GREEN } from './terminal.js';
 import {
     isok, ACCESSIBLE, COLNO, ROWNO, u_at, TIMEOUT, REG_HERO_INSIDE,
@@ -958,15 +958,6 @@ export function m_in_out_region(mon, x, y) {
  */
 function plur(n) {
     return (n | 0) === 1 ? '' : 's';
-}
-
-/**
- * C ref: pline.c You_see — "You see " prefix; Blind → "You sense".
- * Unaware deferred.
- */
-async function You_see(line) {
-    if (Blind()) await pline(`You sense ${line}`);
-    else await pline(`You see ${line}`);
 }
 
 /**

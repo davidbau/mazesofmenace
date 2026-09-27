@@ -93,7 +93,7 @@
 import { game } from './gstate.js';
 import { quest_info } from './questpgr.js';
 import { pline, You, Your, urgent_pline, newsym, You_feel, verbalize, canspotmon, tmp_at, cmap_to_glyph, map_invisible, shieldeff, monsym } from './display.js';
-import { xname, makeplural, an, vtense, otense, otyp_is_charged, Yname2, Yobjnam2, Tobjnam, doname, actualoname } from './objnam.js';
+import { xname, makeplural, an, vtense, otense, otyp_is_charged, Yname2, Yobjnam2, Tobjnam, doname, actualoname, singular } from './objnam.js';
 import {
     SCROLL_CLASS, SPBOOK_CLASS, COIN_CLASS, WEAPON_CLASS, GEM_CLASS,
     ARMOR_CLASS, BALL_CLASS, CHAIN_CLASS, WAND_CLASS, RING_CLASS, TOOL_CLASS,
@@ -2193,6 +2193,14 @@ export async function doread() {
         // local clone at :260 (review 1688).
         useup_live(scroll);
         return 1; // C ECMD_TIME (this file returns 1 for TIME, 0 for OK)
+    }
+
+    // C read.c:491–493 doread — a can of grease has no label (ECMD_OK).
+    // Shirt, credit card, marker, coin, orb, and candy stay the
+    // "silly thing" fallthrough below.
+    if ((otyp | 0) === CAN_OF_GREASE) {
+        await pline(`This ${singular(scroll, xname)} has no label.`);
+        return 0;
     }
 
     if (scroll.oclass !== SCROLL_CLASS && scroll.oclass !== SPBOOK_CLASS) {

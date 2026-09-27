@@ -48,7 +48,7 @@ import {
     maybe_blocked_staircase_down, DEFSYMS_CH,
 } from './getpos.js';
 import { mon_at, defsym_explanation } from './uhitm.js';
-import { sobj_at, mksobj, mkobj, obj_stop_timers } from './mkobj.js';
+import { sobj_at, mksobj, mkobj, obj_stop_timers, dealloc_obj, is_treefruit } from './mkobj.js';
 import {
     doname_vague_quan, an, the, xname, singular, ansimpleoname,
     distant_name, simpleonames,
@@ -84,7 +84,7 @@ import {
 import {
     BOLT_LIM, COLNO, ROWNO, STAIRS, LA_DOWN, ROOM, CORR, STONE, SCORR, SDOOR,
     GPCOORDS_NONE, GPCOORDS_MAP, GPCOORDS_COMPASS, GPCOORDS_SCREEN,
-    STRAT_WAITMASK, IS_WALL, IS_GRAVE, Upolyd, Is_airlevel, Is_waterlevel, Is_astralevel,
+    STRAT_WAITMASK, IS_WALL, IS_TREE, IS_GRAVE, Upolyd, Is_airlevel, Is_waterlevel, Is_astralevel,
     Is_rogue_level,
     u_at, TER_MON, TER_OBJ, TER_MAP, TER_DETECT,
     Amask2align, AM_SANCTUM, AM_MASK, D_BROKEN, D_TRAPPED,
@@ -1795,37 +1795,59 @@ export function object_from_map(glyphotyp, x, y) {
 }
 
 /**
- * C ref: pager.c look_at_object `:380–399`.
- * Callers: lookat / look_all / getpos auto_describe + brief_at (D-1547).
- * C `:390–391` picks doname_with_price when dknown, doname_vague_quan
- * otherwise (farlook "some gold pieces").
- * Tree suffix named (needs is_treefruit for dangling vs stuck).
+ * Append `extra` the way `Strcat` / the tree `Snprintf` write into a
+ * `BUFSZ` look buffer: stop at `BUFSZ - 1` so the NUL still fits.
+ */
+function look_buf_cat(buf, extra) {
+    const room = (BUFSZ - 1) - buf.length;
+    if (room <= 0 || !extra) return buf;
+    return extra.length <= room ? buf + extra : buf + extra.slice(0, room);
+}
+
+/**
+ * C ref: pager.c look_at_object `:380–419`.
+ * Callers pass glyphotyp (C `glyph_to_obj`); this port has no integer
+ * glyph ids. `doname_with_price` when `dknown`, else `doname_vague_quan`.
+ * A fake is named, then `OBJ_FREE` + `dealloc_obj`, so the suffix chain
+ * sees a null `otmp` and still applies terrain (tree before stone).
  */
 export function look_at_object(x, y, glyphotyp) {
-    const { fakeobj, otmp } = object_from_map(glyphotyp, x, y);
-    let buf = 'something';
+    // C `:387` object_from_map(glyph, x, y, &otmp)
+    let { fakeobj, otmp } = object_from_map(glyphotyp, x, y);
+    let buf;
     if (otmp) {
+        // C `:390–393` — STRANGE_OBJECT uses obj_descr[].oc_name
         buf = ((otmp.otyp | 0) !== STRANGE_OBJECT)
             ? distant_name(otmp,
                 otmp.dknown ? doname_with_price : doname_vague_quan)
             : (objectNameStrs[STRANGE_OBJECT] || 'strange object');
         if (fakeobj) {
-            // C: object_from_map set OBJ_FLOOR; never placed on fobj
+            // C `:395–396` object_from_map set OBJ_FLOOR; no contents
             otmp.where = OBJ_FREE;
+            dealloc_obj(otmp);
+            otmp = null;
         }
+    } else {
+        buf = 'something'; // C decl.c c_something
     }
-    if (otmp && !fakeobj) {
-        // C ref: pager.c look_at_object `:388–399` — buried/embedded
-        // suffixes read the looked cell. The tree arm stays named
-        // (needs is_treefruit for dangling vs stuck); fakes take no
-        // suffix (C deallocs the fake, so otmp is NULL below).
-        const typ = game.level?.at?.(x, y)?.typ | 0;
-        if ((otmp.where | 0) === OBJ_BURIED) buf += ' (buried)';
-        else if (typ === STONE || typ === SCORR) buf += ' embedded in stone';
-        else if (IS_WALL(typ) || typ === SDOOR) buf += ' embedded in a wall';
-        else if (closed_door(x, y)) buf += ' embedded in a door';
-        else if (is_pool(x, y)) buf += ' in water';
-        else if (is_lava(x, y)) buf += ' in molten lava';
+
+    const typ = game.level?.at(x, y)?.typ | 0;
+    if (otmp && (otmp.where | 0) === OBJ_BURIED) {
+        buf = look_buf_cat(buf, ' (buried)');
+    } else if (IS_TREE(typ)) {
+        // C `:404–407` — TREE before STONE (arboreal stone is a tree)
+        const which = (otmp && is_treefruit(otmp)) ? 'dangling' : 'stuck';
+        buf = look_buf_cat(buf, ` ${which} in a tree`);
+    } else if (typ === STONE || typ === SCORR) {
+        buf = look_buf_cat(buf, ' embedded in stone');
+    } else if (IS_WALL(typ) || typ === SDOOR) {
+        buf = look_buf_cat(buf, ' embedded in a wall');
+    } else if (closed_door(x, y)) {
+        buf = look_buf_cat(buf, ' embedded in a door');
+    } else if (is_pool(x, y)) {
+        buf = look_buf_cat(buf, ' in water');
+    } else if (is_lava(x, y)) {
+        buf = look_buf_cat(buf, ' in molten lava');
     }
     return buf;
 }
@@ -2893,7 +2915,7 @@ export async function doextversion() {
     const lines = [];
     const putstr = (s) => lines.push(s); // C `:175` win + putstr `:200–203`
 
-    let ver = getversionstring(); // C `:191`
+    let ver = getversionstring('', BUFSZ); // C `:174` buf[BUFSZ], `:191`
     let extra = null;
     // C `:192–199`: extra git text onto its own line unless it wraps on (x86).
     if (ver.length >= COLNO) { // C `:194`
@@ -2958,7 +2980,7 @@ export async function doextversion() {
  */
 export async function doversion() {
     if (game.iflags?.menu_requested) return doextversion();
-    await pline(getversionstring());
+    await pline('%s', getversionstring('', BUFSZ)); // C `:158` buf[BUFSZ], `:163`
     return 0;
 }
 

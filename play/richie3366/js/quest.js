@@ -35,6 +35,7 @@ import { exercise, adjalign, A_WIS } from './attrib.js';
 import { fully_identify_obj, update_inventory, observe_object } from './invent.js';
 import { the, xname } from './objnam.js';
 import { objectNames } from './objects.js';
+import { align_str } from './roles.js';
 
 const AMULET_OF_YENDOR = objectNames.indexOf('AMULET_OF_YENDOR');
 const FAKE_AMULET_OF_YENDOR = objectNames.indexOf('FAKE_AMULET_OF_YENDOR');
@@ -183,13 +184,6 @@ export async function onquest() {
     if (Is_qstart(u.uz)) await on_start();
     else if (Is_qlocate(u.uz)) await on_locate();
     else if (Is_nemesis(u.uz)) await on_goal();
-}
-
-/** C ref: align.h / botl align_str subset for wizard is_pure talk. */
-function align_str(a) {
-    if (a === 1) return 'lawful';
-    if (a === -1) return 'chaotic';
-    return 'neutral';
 }
 
 /** C ref: quest.c not_capable — u.ulevel < MIN_QUEST_LEVEL. */

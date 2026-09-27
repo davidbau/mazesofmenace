@@ -35,7 +35,7 @@ import {
     in_rooms, in_town, stop_occupation, is_pool, is_lava, is_moat,
     confdir, losehp, maybe_half_phys, nomul, switch_terrain, On_stairs,
 } from './hack.js';
-import { currency } from './invent.js';
+import { currency, cmdq_add_key } from './invent.js';
 import { objectNames } from './generated/objects_data.js';
 import {
     WEAPON_CLASS, TOOL_CLASS, GEM_CLASS, POTION_CLASS, COIN_CLASS, is_axe,
@@ -78,6 +78,8 @@ import {
 import { obj_resists } from './dogmove.js';
 import { unpunish, punish } from './read.js';
 import { getdir, dxdy_moveok } from './lock.js';
+// imports.mjs --can js/dig.js js/cmd.js cmdq_add_ec: hoisted, cycle-safe.
+import { cmdq_add_ec } from './cmd.js';
 // C ref: explode.c explode — dighole magical-trap explode arm
 // (hoisted fn, cycle-safe per imports.mjs).
 import { explode } from './explode.js';
@@ -122,7 +124,7 @@ import {
     xytodir, DIR_180, DIR_ERR, xdir, ydir, N_DIRS,
     ICE, DRAWBRIDGE_UP, DB_UNDER, DB_MOAT, DB_LAVA, DB_ICE,
     ROT_ORGANIC, TIMER_OBJECT, Has_contents, OBJ_FREE, OBJ_FLOOR,
-    CORPSTAT_HISTORIC, STATUE_TRAP,
+    CORPSTAT_HISTORIC, STATUE_TRAP, CQ_CANNED,
 } from './const.js';
 
 const BOULDER = objectNames.indexOf('BOULDER');
@@ -2465,19 +2467,6 @@ function otense_dig(_obj, verb) {
     return verb;
 }
 
-/** C ref: cmd.c cmdq_add_ec — rhack(0) awaits the function (D-1018). */
-function cmdq_add_ec(fn) {
-    if (!game._cmdq_canned) game._cmdq_canned = [];
-    game._cmdq_canned.push(fn);
-}
-
-/** C ref: cmd.c cmdq_add_key — getobj pops CMDQ_KEY as invlet char. */
-function cmdq_add_key(ch) {
-    if (!game._cmdq_canned) game._cmdq_canned = [];
-    const key = typeof ch === 'string' ? ch.charCodeAt(0) : ch;
-    game._cmdq_canned.push({ typ: 'key', key });
-}
-
 /**
  * C ref: dig.c use_pick_axe — wield if needed, ask direction, use_pick_axe2.
  */
@@ -2486,10 +2475,10 @@ export async function use_pick_axe(obj) {
     let res = ECMD_OK;
     if (obj !== u.uwep) {
         if (await wield_tool(obj, 'swing')) {
-            // C: cmdq_add_ec(CQ_CANNED, doapply); cmdq_add_key(CQ_CANNED, obj->invlet)
+            // C dig.c:1104–1105 — cmdq_add_ec(CQ_CANNED, doapply); cmdq_add_key(CQ_CANNED, obj->invlet)
             const { doapply } = await import('./apply.js');
-            cmdq_add_ec(doapply);
-            cmdq_add_key(obj.invlet);
+            cmdq_add_ec(CQ_CANNED, doapply);
+            cmdq_add_key(CQ_CANNED, obj.invlet);
             return ECMD_TIME;
         }
         return ECMD_OK;
