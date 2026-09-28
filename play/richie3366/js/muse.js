@@ -63,7 +63,7 @@ import {
 import { dropy, make_blinded, flooreffects } from './do.js';
 import {
     learnwand, lightdamage, buzz, dobuzz, unturn_you, unturn_dead, resist,
-    zhitm, is_ice,
+    zhitm, is_ice, bhito,
 } from './zap.js';
 import {
     BOLT_LIM, MSLOW, MFAST, isok, u_at, ZAP_POS, IS_DOOR,
@@ -883,12 +883,37 @@ async function mbhitm(mtmp, otmp, hits_you) {
 }
 
 /**
+ * C ref: muse.c fhito_loc `:1706–1726` (staticfn) — run fhito over the
+ * floor pile at (tx,ty); TRUE when anything hit. The hero-side analogue
+ * is zap.js bhitpile, whose extra arms (statue-trap pre-activation,
+ * poly aftermath, boulder resort) are zap.c bhitpile arms, not this
+ * function's. fhito is async in JS (live bhito is async); all three C
+ * mbhit callers pass bhito (`:864`, `:978`, `:1884`), so mbhit hardwires
+ * it as C's fhito parameter is hardwired at every live site.
+ */
+async function fhito_loc(obj, tx, ty, fhito) {
+    if (!fhito || !objects_at(tx, ty)) return false; // C `:1715–1716` !fhito || !OBJ_AT
+    let hitanything = 0;
+    for (let otmp = objects_at(tx, ty); otmp;) { // C `:1718`
+        const next_obj = otmp.nexthere; // C `:1719` — fhito may unchain otmp
+        if (otmp.where !== OBJ_FLOOR // C `:1721–1722`
+            || (otmp.ox | 0) !== (tx | 0) || (otmp.oy | 0) !== (ty | 0)) {
+            otmp = next_obj;
+            continue;
+        }
+        hitanything += (await fhito(otmp, obj)) | 0; // C `:1723`
+        otmp = next_obj;
+    }
+    return hitanything ? true : false; // C `:1725`
+}
+
+/**
  * C ref: muse.c mbhit — mon wand beam toward mux/muy.
  * Doorlock WAN_OPENING/WAN_LOCKING/WAN_STRIKING (D-1484; C `:1785–1802`;
  * callee lock.c doorlock already live D-1462/D-1475/D-1482). zap_oseen
  * makeknown (not hero bhit learnwand / !Deaf). Shop D_BROKEN
  * add_damage(0) (not SHOP_DOOR_COST / pay_for_damage).
- * Named omissions: fhito_loc / destroy_drawbridge; map_invisible.
+ * Named omissions: destroy_drawbridge; map_invisible.
  */
 async function mbhit(mon, range, obj) {
     const bhitpos = game._bhitpos || (game._bhitpos = { x: 0, y: 0 });
@@ -921,7 +946,8 @@ async function mbhit(mon, range, obj) {
                 r -= 3;
             }
         }
-        /* C muse.c mbhit :1772 — fhito_loc deferred. */
+        /* C muse.c mbhit :1772 — object pile hit costs one range. */
+        if (await fhito_loc(obj, x, y, bhito)) r--;
         const loc = game.level?.at?.(x, y);
         const ltyp = loc?.typ;
         /* C muse.c mbhit :1776–1803 — STRIKING find_drawbridge then

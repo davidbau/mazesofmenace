@@ -11,6 +11,7 @@ import {
 import {
     objects_at, obj_extract_self, place_object, splitobj, stackobj, delobj,
     eaten_stat, peek_at_iced_corpse_age, is_organic, is_metallic, is_rustprone,
+    sobj_at,
 } from './mkobj.js';
 import { mattackm, max_passive_dmg, mdisplacem, mondied } from './mhitm.js';
 import { mon_reflects } from './mhitu.js';
@@ -38,13 +39,13 @@ import {
     xdir, ydir, xytodir,
     DISMOUNT_THROWN, DISMOUNT_POLY, W_ARMS, COST_DEGRD, OBJ_FREE,
     S_sink, something,
-    M_AP_FURNITURE, M_AP_OBJECT, M_AP_MONSTER, M_AP_TYPE,
-    COST_CONTENTS,
+    M_AP_FURNITURE, M_AP_OBJECT, M_AP_MONSTER, M_AP_TYPE, M_AP_NOTHING,
+    COST_CONTENTS, Is_rogue_level,
 } from './const.js';
 import { FOOD_CLASS, BALL_CLASS, CHAIN_CLASS, ROCK_CLASS, COIN_CLASS, SILVER, objectNames, is_pick, objectDescrs, objectNameStrs } from './objects.js';
 import {
     monsterNames, mons, carnivorous, herbivorous, vegan, acidic, poisonous,
-    is_swimmer, likes_lava, throws_rocks, is_rider, humanoid,
+    is_swimmer, likes_lava, throws_rocks, passes_walls, is_rider, humanoid,
     is_undead, is_elf,
     unsolid, nolimbs, has_head, LOW_PM, NUMMONS,
     PM_LICHEN, MZ_TINY, MZ_SMALL, MZ_MEDIUM, MZ_LARGE, MZ_HUGE,
@@ -68,6 +69,7 @@ import { goodpos } from './teleport.js';
 import { m_in_out_region } from './region.js';
 import { resists_poison } from './zap.js';
 import { polyfood } from './eat.js';
+import { may_dig } from './dig.js'; // C: dogmove.c can_reach_location may_dig arm (imports.mjs SAFE — hoisted fn, runtime use)
 
 const PM_FLOATING_EYE = monsterNames.indexOf('PM_FLOATING_EYE');
 const PM_GELATINOUS_CUBE = monsterNames.indexOf('PM_GELATINOUS_CUBE');
@@ -349,46 +351,53 @@ export function dogfood(mon, obj) {
 // Goal state for current dog_move (C: gg.gtyp/gx/gy)
 const gg = { gtyp: UNDEF, gx: 0, gy: 0 };
 
-/**
- * C ref: dogmove.c could_reach_item — pool/lava/boulder gates.
- * Flyer-only reach deferred (C has no flyer special here).
- */
-function could_reach_item(mon, nx, ny) {
+/* C ref: dogmove.c could_reach_item `:1362–1369` — pool/lava/boulder gates
+ * in C order. C reads mon->data directly (NONNULLARG1); JS keeps the
+ * mon?.data ?? mons() guard idiom. Boulder arm is exact-C sobj_at
+ * (mkobj.js live export — replaces the objects_at loop). */
+export function could_reach_item(mon, nx, ny) {
     const ptr = mon?.data ?? mons(mon?.mnum);
-    if (is_pool(nx, ny) && !is_swimmer(ptr)) return false;
-    if (is_lava(nx, ny) && !likes_lava(ptr)) return false;
-    if (BOULDER >= 0) {
-        for (let obj = objects_at(nx, ny); obj; obj = obj.nexthere) {
-            if ((obj.otyp | 0) === BOULDER && !throws_rocks(ptr)) return false;
-        }
-    }
-    return true;
+    if ((!is_pool(nx, ny) || is_swimmer(ptr)) // C `:1364`
+        && (!is_lava(nx, ny) || likes_lava(ptr)) // C `:1365`
+        && (!sobj_at(BOULDER, nx, ny) || throws_rocks(ptr))) // C `:1366`
+        return true; // C `:1367`
+    return false; // C `:1368`
 }
 
 function isok(x, y) {
     return x >= 1 && x < COLNO && y >= 0 && y < ROWNO;
 }
 
-/** C ref: dogmove.c can_reach_location — recursive path toward goal. */
+/* C ref: dogmove.c can_reach_location `:1379–1414` — recursive path toward
+ * the goal, in C order. The IS_OBSTRUCTED arm is exact-C: wall-walkers
+ * pass, diggers tunnel (may_dig && tunnels) except on the rogue level.
+ * Note C precedence: the `|| Is_rogue_level` sits INSIDE the dig paren
+ * (`:1400–1402`), i.e. obstructed blocks unless
+ * (passes_walls || (may_dig && tunnels && !rogue)). */
 function can_reach_location(mon, mx, my, fx, fy) {
-    if (mx === fx && my === fy) return true;
-    if (!isok(mx, my)) return false;
-    const dist = dist2(mx, my, fx, fy);
+    if (mx === fx && my === fy) return true; // C `:1387–1388`
+    if (!isok(mx, my)) return false; // C `:1389–1390`
+    const ptr = mon?.data ?? mons(mon?.mnum); // C `mon->data`
+    const dist = dist2(mx, my, fx, fy); // C `:1392`
     for (let i = mx - 1; i <= mx + 1; i++) {
         for (let j = my - 1; j <= my + 1; j++) {
-            if (!isok(i, j)) continue;
-            if (dist2(i, j, fx, fy) >= dist) continue;
+            if (!isok(i, j)) continue; // C `:1395–1396`
+            if (dist2(i, j, fx, fy) >= dist) continue; // C `:1397–1398`
             const loc = game.level?.at?.(i, j);
             const typ = loc?.typ ?? 0;
-            if (IS_OBSTRUCTED(typ) /* passes_walls / dig stub: pets can't */)
+            if (IS_OBSTRUCTED(typ) && !passes_walls(ptr) // C `:1399`
+                && (!may_dig(i, j) || !tunnels(ptr) // C `:1400–1401`
+                    /* tunnelling monsters can't do that on rogue level */
+                    || Is_rogue_level(game.u?.uz))) // C `:1402`
                 continue;
-            if (IS_DOOR(typ) && ((loc?.doormask || 0) & (D_CLOSED | D_LOCKED)))
-                continue;
-            if (!could_reach_item(mon, i, j)) continue;
-            if (can_reach_location(mon, i, j, fx, fy)) return true;
+            if (IS_DOOR(typ) // C `:1404–1405`
+                && ((loc?.doormask || 0) & (D_CLOSED | D_LOCKED)))
+                continue; // C `:1406`
+            if (!could_reach_item(mon, i, j)) continue; // C `:1407–1408`
+            if (can_reach_location(mon, i, j, fx, fy)) return true; // C `:1409–1410`
         }
     }
-    return false;
+    return false; // C `:1413`
 }
 
 // C ref: dogmove.c cursed_object_at()
@@ -1660,10 +1669,19 @@ export async function dog_move(mtmp, after) {
 /**
  * C ref: dogmove.c finish_meating — clear meal timer; mimic AP reset deferred.
  */
+/* C ref: dogmove.c finish_meating `:1448–1457` — clear meating; a pet that
+ * was imitating something non-mimic drops the disguise (m_ap_type reset +
+ * newsym). Exact-C M_AP_TYPE (const.js live macro). */
 export function finish_meating(mtmp) {
     if (!mtmp) return;
-    mtmp.meating = 0;
-    // M_AP_NOTHING / mappearance reset for non-mimic quickmimic deferred
+    mtmp.meating = 0; // C `:1450`
+    if (M_AP_TYPE(mtmp) !== M_AP_NOTHING // C `:1451`
+        && mtmp.data?.mlet !== 'S_MIMIC') {
+        /* was eating a mimic and now appearance needs resetting */ // C `:1452`
+        mtmp.m_ap_type = M_AP_NOTHING; // C `:1453`
+        mtmp.mappearance = 0; // C `:1454`
+        newsym(mtmp.mx, mtmp.my); // C `:1455`
+    }
 }
 
 /**

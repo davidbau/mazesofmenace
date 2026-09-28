@@ -54,7 +54,7 @@ import {
     distant_name, simpleonames,
     makeplural, makesingular, fruit_from_name,
 } from './objnam.js';
-import { strstri, lcase, upstart, strsubst } from './hacklib.js';
+import { strstri, lcase, upstart, strsubst, tabexpand } from './hacklib.js';
 import { distant_monnam, coyotename, PM_COYOTE, pmname, Mgender, Ugender, mon_nam, rndmonnam } from './do_name.js';
 import { hides_under, is_hider, is_clinger, is_flyer, is_orc, mons,
     M2_HUMAN, M2_ELF, M2_ORC, M2_DEMON, pmnames, NEUTRAL,
@@ -151,26 +151,7 @@ function get_lua_version_shuffle() {
     game._nhl_version_align = align;
 }
 
-/**
- * C ref: hacklib.c tabexpand — expand tabs to 8-column stops in place.
- */
-function tabexpand(s) {
-    let out = '';
-    let idx = 0;
-    for (const ch of String(s || '')) {
-        if (ch === '\t') {
-            do {
-                out += ' ';
-                idx++;
-            } while (idx % 8);
-        } else {
-            out += ch;
-            idx++;
-        }
-        if (idx >= 255) break; // BUFSZ-1ish truncate
-    }
-    return out;
-}
+/** `tabexpand` lives in js/hacklib.js (canonical C home: hacklib.c); consumed at both call sites below. */
 
 /**
  * C ref: wintty.c tty_display_nhwindow(NHW_TEXT) + process_text_window.

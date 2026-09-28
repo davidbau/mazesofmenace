@@ -2,8 +2,9 @@
 // C ref: cmd.c dokeylist / keylist_putcmds / show_direction_keys / key2txt;
 //        options.c show_menu_controls.
 //
-// Builds NHW_TEXT lines from extracted extcmdlist[] + default !num_pad
-// bindings (commands_init + reset_commands). rhack cmdbind_get of those
+// Builds NHW_TEXT lines from extracted extcmdlist[] + live special keys
+// (game.Cmd.spkeys) + live iflags.num_pad (dokeylist C order; spkey_name
+// ported for the keyless-special arm). rhack cmdbind_get of those
 // defaults (M('?') → "?" / doextlist) is D-1643. Overlay BIND= on if/else
 // keys is D-1657 (`rhack_user_overlay_key` + EXT_CMDS runners). After
 // `reset_commands` (D-2861), `cmdbinds_live` uses `_layoutSlots` for
@@ -22,7 +23,16 @@ import {
     CMD_PARAM,
 } from './generated/extcmdlist_data.js';
 import {
-    NHKF_ESC, NHKF_COUNT, MV_ANY, MV_WALK, MV_RUN, MV_RUSH,
+    NHKF_ESC, NHKF_COUNT, NHKF_GETDIR_SELF, NHKF_GETDIR_SELF2,
+    NHKF_GETDIR_HELP, NHKF_GETDIR_MOUSE, NHKF_GETPOS_SELF, NHKF_GETPOS_PICK,
+    NHKF_GETPOS_PICK_Q, NHKF_GETPOS_PICK_O, NHKF_GETPOS_PICK_V,
+    NHKF_GETPOS_SHOWVALID, NHKF_GETPOS_AUTODESC, NHKF_GETPOS_MON_NEXT,
+    NHKF_GETPOS_MON_PREV, NHKF_GETPOS_OBJ_NEXT, NHKF_GETPOS_OBJ_PREV,
+    NHKF_GETPOS_DOOR_NEXT, NHKF_GETPOS_DOOR_PREV, NHKF_GETPOS_UNEX_NEXT,
+    NHKF_GETPOS_UNEX_PREV, NHKF_GETPOS_INTERESTING_NEXT,
+    NHKF_GETPOS_INTERESTING_PREV, NHKF_GETPOS_VALID_NEXT,
+    NHKF_GETPOS_VALID_PREV, NHKF_GETPOS_HELP, NHKF_GETPOS_LIMITVIEW,
+    NHKF_GETPOS_MOVESKIP, NHKF_GETPOS_MENU, MV_ANY, MV_WALK, MV_RUN, MV_RUSH,
     xdir, ydir, zdir, N_DIRS_Z,
     MENU_SELECT_ALL, MENU_UNSELECT_ALL, MENU_INVERT_ALL,
     MENU_SELECT_PAGE, MENU_UNSELECT_PAGE, MENU_INVERT_PAGE,
@@ -98,6 +108,77 @@ export const SPKEYS_DEFAULT = {
     [NHKF_ESC]: 27,
     [NHKF_COUNT]: 'n'.charCodeAt(0),
 };
+
+/**
+ * C ref: cmd.c spkeys_binds `:3161–3191` name column, in C row order.
+ * `bind_specialkey` matches a BIND name against this column; `spkey_name`
+ * reads it back. NHKF_ESC has no binding name (C `(char *) 0`).
+ */
+const SPKEY_NAMES = [
+    [NHKF_ESC, null],
+    [NHKF_GETDIR_SELF, 'getdir.self'],
+    [NHKF_GETDIR_SELF2, 'getdir.self2'],
+    [NHKF_GETDIR_HELP, 'getdir.help'],
+    [NHKF_GETDIR_MOUSE, 'getdir.mouse'],
+    [NHKF_COUNT, 'count'],
+    [NHKF_GETPOS_SELF, 'getpos.self'],
+    [NHKF_GETPOS_PICK, 'getpos.pick'],
+    [NHKF_GETPOS_PICK_Q, 'getpos.pick.quick'],
+    [NHKF_GETPOS_PICK_O, 'getpos.pick.once'],
+    [NHKF_GETPOS_PICK_V, 'getpos.pick.verbose'],
+    [NHKF_GETPOS_SHOWVALID, 'getpos.valid'],
+    [NHKF_GETPOS_AUTODESC, 'getpos.autodescribe'],
+    [NHKF_GETPOS_MON_NEXT, 'getpos.mon.next'],
+    [NHKF_GETPOS_MON_PREV, 'getpos.mon.prev'],
+    [NHKF_GETPOS_OBJ_NEXT, 'getpos.obj.next'],
+    [NHKF_GETPOS_OBJ_PREV, 'getpos.obj.prev'],
+    [NHKF_GETPOS_DOOR_NEXT, 'getpos.door.next'],
+    [NHKF_GETPOS_DOOR_PREV, 'getpos.door.prev'],
+    [NHKF_GETPOS_UNEX_NEXT, 'getpos.unexplored.next'],
+    [NHKF_GETPOS_UNEX_PREV, 'getpos.unexplored.prev'],
+    [NHKF_GETPOS_INTERESTING_NEXT, 'getpos.all.next'],
+    [NHKF_GETPOS_INTERESTING_PREV, 'getpos.all.prev'],
+    [NHKF_GETPOS_VALID_NEXT, 'getpos.valid.next'],
+    [NHKF_GETPOS_VALID_PREV, 'getpos.valid.prev'],
+    [NHKF_GETPOS_HELP, 'getpos.help'],
+    [NHKF_GETPOS_LIMITVIEW, 'getpos.filter'],
+    [NHKF_GETPOS_MOVESKIP, 'getpos.moveskip'],
+    [NHKF_GETPOS_MENU, 'getpos.menu'],
+];
+
+/**
+ * C ref: cmd.c spkey_name `:3208–3220` (staticfn — file-local like C).
+ * Name of a special-key id, or null when the id is not bound
+ * (C returns `(const char *) 0`). Sole C caller is dokeylist `:2972`
+ * with misc_keys ids (NHKF_ESC → "escape", NHKF_COUNT → "count").
+ * @param {number} nhkf
+ * @returns {string|null}
+ */
+function spkey_name(nhkf) {
+    let name = null; // C `:3210`
+    for (let i = 0; i < SPKEY_NAMES.length; i++) { // C `:3213`
+        if (SPKEY_NAMES[i][0] === nhkf) { // C `:3214`
+            // C `:3215` — ESC prints "escape", never the (null) bind name.
+            name = (nhkf === NHKF_ESC) ? 'escape' : SPKEY_NAMES[i][1];
+            break; // C `:3216`
+        }
+    }
+    return name; // C `:3219`
+}
+
+/**
+ * C ref: cmd.c `gc.Cmd.spkeys[nhkf]` — the live special-key table
+ * (`reset_commands` `:3365–3366` seeds it from spkeys_binds defaults;
+ * `bind_specialkey` `:3194–3205` rebinds by name). Missing table falls
+ * back to those defaults so ESC stays `\033` and count stays `n`.
+ * @param {number} nhkf
+ * @returns {number}
+ */
+function live_spkey(nhkf) {
+    const v = game.Cmd?.spkeys?.[nhkf];
+    if (typeof v === 'number') return v & 0xff; // C `(uchar)` cast
+    return SPKEYS_DEFAULT[nhkf] || 0;
+}
 
 /**
  * C ref: options.c show_menu_controls `:9080–9086` static hardcoded[].
@@ -716,106 +797,146 @@ export function show_direction_keys(lines, centerchar, nodiag) {
 }
 
 /**
- * C ref: cmd.c dokeylist — Full Current Key Bindings List lines.
+ * C ref: cmd.c dokeylist `:2867–3013` — Full Current Key Bindings List lines.
+ * `lines` replaces the NHW_TEXT window (each push is `putstr(datawin, 0,
+ * buf)`); the ?j help-menu caller (pager.js) displays via show_text_pages,
+ * which is C `:3010–3011` display_nhwindow(datawin, FALSE) + destroy.
+ * Special keys read live `gc.Cmd.spkeys` via live_spkey; the num_pad arms
+ * follow live `iflags.num_pad`. Unix build: NO_SIGNAL is not defined, so
+ * ^C is pre-marked used (`:2884`) and prints as a bound key (`:2955`).
  */
 export function dokeylist_lines() {
+    // C `:2876–2877` memsets.
     const keysUsed = new Array(256).fill(false);
-    const numPad = false;
+    const pfxSeen = new Array(256).fill(0);
+    const numPad = !!(game.iflags && game.iflags.num_pad); // C `iflags.num_pad`
 
-    // NO_SIGNAL: mark ^C used
+    // C `:2884` (#ifndef NO_SIGNAL) — tty raw mode owns SIGINT.
     keysUsed[C('c')] = true;
+    // C `:2888` — movement keys have been flagged in keys_used[]; clone them.
     const movSeen = keysUsed.slice();
 
-    let spkeyGap = false;
-    const pfxSeen = new Array(256).fill(0);
+    // C `:2891–2902` misc_keys prefix scan.
+    let spkeyGap = false; // C `:2891`
     for (const mk of MISC_KEYS) {
-        if (mk.numpad && !numPad) continue;
-        const key = SPKEYS_DEFAULT[mk.nhkf] || 0;
-        if (key && !movSeen[key] && !pfxSeen[key]) {
-            keysUsed[key] = true;
-            pfxSeen[key] = mk.nhkf + 1; // distinguish unset(0)
+        if (mk.numpad && !numPad) continue; // C `:2892`
+        const key = live_spkey(mk.nhkf); // C `:2894` gc.Cmd.spkeys[j]
+        if (key && !movSeen[key] && !pfxSeen[key]) { // C `:2895`
+            keysUsed[key] = true; // C `:2896`
+            // +1: C stores nhkf `j` (`:2897`) where 0 means unset; JS
+            // NHKF_ESC is 0, so the sentinel must not collide with it.
+            pfxSeen[key] = mk.nhkf + 1;
         } else {
-            spkeyGap = true;
+            spkeyGap = true; // C `:2900`
         }
     }
 
     const lines = [];
-    lines.push('');
+    // C `:2904` create_nhwindow(NHW_TEXT) is the `lines` sink itself.
+    lines.push(''); // C `:2905`
+    // C `:2906` Sprintf "%7s %s".
     lines.push(`${' '.repeat(7)} ${'    Full Current Key Bindings List'}`);
-    for (const extcmd of EXTCMDLIST) {
-        if (spkeyGap || !keylist_func_has_key(extcmd, keysUsed)) {
+    // C `:2908–2914` — any keyless command forces the "(also ...)" header.
+    for (const extcmd of EXTCMDLIST) { // C `:2908` extcmd->ef_txt
+        if (!extcmd.txt) break;
+        if (spkeyGap || !keylist_func_has_key(extcmd, keysUsed)) { // C `:2909`
+            // C `:2910–2911` Sprintf "%7s %s".
             lines.push(`${' '.repeat(7)} ${'(also commands with no key assignment)'}`);
-            break;
+            break; // C `:2912`
         }
     }
 
-    lines.push('');
-    lines.push('Directional keys:');
-    // C dokeylist `:2919` show_direction_keys(datawin, '.', FALSE).
+    /* directional keys */ // C `:2916`
+    lines.push(''); // C `:2917`
+    lines.push('Directional keys:'); // C `:2918`
+    // C `:2919` show_direction_keys(datawin, '.', FALSE); '.'==self.
     show_direction_keys(lines, '.', false);
 
-    lines.push('');
+    let runPrefix; // C `:2927/:2932` Strcpy(buf, "Shift"/"Meta")
+    if (!numPad) { // C `:2921`
+        lines.push(''); // C `:2922`
+        lines.push( // C `:2923–2924`
+            'Ctrl+<direction> will run in specified direction until something very',
+        );
+        // C `:2925` Sprintf "%7s %s".
+        lines.push(`${' '.repeat(7)} ${'interesting is seen.'}`);
+        runPrefix = 'Shift'; // C `:2926` — append the rest below
+    } else {
+        /* num_pad */ // C `:2928`
+        lines.push(''); // C `:2929`
+        runPrefix = 'Meta'; // C `:2930` — append the rest next
+    }
+    // C `:2931–2932` Strcat "+<direction> will run ... until you encounter".
     lines.push(
-        'Ctrl+<direction> will run in specified direction until something very',
+        `${runPrefix}+<direction> will run in specified direction until you encounter`,
     );
-    lines.push(`${' '.repeat(7)} ${'interesting is seen.'}`);
-    lines.push(
-        'Shift+<direction> will run in specified direction until you encounter',
-    );
+    // C `:2933` Sprintf "%7s %s".
     lines.push(`${' '.repeat(7)} ${'an obstacle.'}`);
 
-    lines.push('');
-    lines.push('Miscellaneous keys:');
+    lines.push(''); // C `:2935`
+    lines.push('Miscellaneous keys:'); // C `:2936`
+    // C `:2937–2948` bound special keys.
     for (const mk of MISC_KEYS) {
-        if (mk.numpad && !numPad) continue;
-        const key = SPKEYS_DEFAULT[mk.nhkf] || 0;
-        if (key && !movSeen[key] && pfxSeen[key] === mk.nhkf + 1) {
+        if (mk.numpad && !numPad) continue; // C `:2938`
+        const key = live_spkey(mk.nhkf); // C `:2940–2941`
+        if (key && !movSeen[key] && pfxSeen[key] === mk.nhkf + 1) { // C `:2942–2943`
+            // C `:2944` Sprintf "%-7s %s".
             lines.push(`${fmtLeft(key2txt(key), 7)} ${mk.desc}`);
         }
     }
-    // ^C interrupt (NO_SIGNAL)
-    {
+    /* (see above) */ // C `:2950`
+    { // C `:2951` key = C('c')
+        // C `:2955` (#ifndef NO_SIGNAL) — last of the special keys.
+        // (#else `:2957–2958` would print "[key]" 21-wide as the first of
+        // the keyless commands; not compiled — see fn doc.)
         const key = C('c');
+        // C `:2955` Sprintf "%-7s", then `:2960` Strcat " interrupt: ...".
         lines.push(`${fmtLeft(key2txt(key), 7)} interrupt: break out of NetHack (SIGINT)`);
     }
-    if (spkeyGap) {
-        for (const mk of MISC_KEYS) {
-            if (mk.numpad && !numPad) continue;
-            const key = SPKEYS_DEFAULT[mk.nhkf] || 0;
-            if (!key || pfxSeen[key] !== mk.nhkf + 1) {
-                const name = mk.nhkf === NHKF_ESC ? 'escape' : 'count';
-                const label = `[${name}]`;
+    /* keyless special key commands, if any */ // C `:2962`
+    if (spkeyGap) { // C `:2963`
+        for (const mk of MISC_KEYS) { // C `:2964`
+            if (mk.numpad && !numPad) continue; // C `:2965`
+            const key = live_spkey(mk.nhkf); // C `:2967`
+            if (!key || pfxSeen[key] !== mk.nhkf + 1) { // C `:2968`
+                // C `:2969` Sprintf "[%s]", spkey_name(j).
+                const label = `[${spkey_name(mk.nhkf) ?? ''}]`;
+                /* lines up with the other unassigned commands which use
+                   "#%-20s ", but not with the other special keys */ // C `:2970–2971`
+                // C `:2972` Snprintf "%-21s %s".
                 lines.push(`${fmtLeft(label, 21)} ${mk.desc}`);
             }
         }
     }
 
-    const IGNORECMD = WIZMODECMD | INTERNALCMD | MOVEMENTCMD;
+    const IGNORECMD = WIZMODECMD | INTERNALCMD | MOVEMENTCMD; // C `:2982`
 
-    lines.push('');
-    show_menu_controls_lines(lines, true);
+    lines.push(''); // C `:2984`
+    show_menu_controls(lines, true); // C `:2985` show_menu_controls(datawin, TRUE)
 
-    // C cmd.c:2987–3008 — same keys_used array; docount does not write it.
-    if (keylist_putcmds(lines, true, GENERALCMD, IGNORECMD, keysUsed)) {
-        lines.push('');
-        lines.push('General commands:');
-        keylist_putcmds(lines, false, GENERALCMD, IGNORECMD, keysUsed);
+    // C `:2987–3011` — same keys_used array; docount does not write it.
+    if (keylist_putcmds(lines, true, GENERALCMD, IGNORECMD, keysUsed)) { // C `:2987`
+        lines.push(''); // C `:2988`
+        lines.push('General commands:'); // C `:2989`
+        keylist_putcmds(lines, false, GENERALCMD, IGNORECMD, keysUsed); // C `:2990–2991`
     }
 
-    if (keylist_putcmds(lines, true, 0, GENERALCMD | IGNORECMD, keysUsed)) {
-        lines.push('');
-        lines.push('Game commands:');
-        keylist_putcmds(lines, false, 0, GENERALCMD | IGNORECMD, keysUsed);
+    if (keylist_putcmds(lines, true, 0, GENERALCMD | IGNORECMD, keysUsed)) { // C `:2994`
+        lines.push(''); // C `:2995`
+        lines.push('Game commands:'); // C `:2996`
+        keylist_putcmds(lines, false, 0, GENERALCMD | IGNORECMD, keysUsed); // C `:2997–2998`
     }
 
-    const wizard = !!(game.wizard || game.flags?.debug);
+    const wizard = !!(game.wizard || game.flags?.debug); // C `:3002` wizard
     if (wizard
         && keylist_putcmds(lines, true, WIZMODECMD, INTERNALCMD, keysUsed)) {
-        lines.push('');
-        lines.push('Debug mode commands:');
-        keylist_putcmds(lines, false, WIZMODECMD, INTERNALCMD, keysUsed);
+        lines.push(''); // C `:3003`
+        lines.push('Debug mode commands:'); // C `:3004`
+        keylist_putcmds(lines, false, WIZMODECMD, INTERNALCMD, keysUsed); // C `:3005–3006`
     }
 
+    // C `:3010–3011` display_nhwindow(datawin, FALSE) + destroy_nhwindow —
+    // the pager.js ?j caller shows these lines via show_text_pages.
     return lines;
 }
 

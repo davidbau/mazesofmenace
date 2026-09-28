@@ -23,7 +23,7 @@ import {
     SHOPBASE, COURT, ZOO, BEEHIVE, MORGUE, BARRACKS, SWAMP, TEMPLE,
     LEPREHALL, COCKNEST, ANTHOLE,
     FOODSHOP, TOOLSHOP, CANDLESHOP, FODDERSHOP, WANDSHOP, BOOKSHOP,
-    WEAPONSHOP, ARMORSHOP,
+    WEAPONSHOP, ARMORSHOP, SCROLLSHOP, POTIONSHOP, RINGSHOP,
     W_NORTH, W_SOUTH, W_EAST, W_WEST, W_ANY, W_RANDOM, D_SECRET,
     DIR_N, DIR_S, DIR_E, DIR_W, DIR_180,
     IS_WALL, IS_STWALL, IS_DOOR, IS_ROOM, IS_OBSTRUCTED, IS_FURNITURE, IS_POOL,
@@ -1663,12 +1663,7 @@ export function lspo_room(opts, contentsFn) {
         throw new Error('lspo_room: Room must have both w and h');
     tmproom.xalign = l_or_r2i[splev_opt_index(o.xalign, 'random', left_or_right)]; // C :4068-4069
     tmproom.yalign = t_or_b2i[splev_opt_index(o.yalign, 'random', top_or_bot)]; // C :4070-4071
-    tmproom.rtype = OROOM; // C :4072 get_table_roomtype_opt defval
-    if (o.type) { // C: non-empty roomstr searches room_types (strcmpi)
-        const mapped = splev_roomtype(o.type, -1);
-        if (mapped === -1) impossible(`Unknown room type '${o.type}'`); // C: impossible, keeps defval
-        else tmproom.rtype = mapped;
-    }
+    tmproom.rtype = get_table_roomtype_opt(o, 'type', OROOM); // C :4072
     tmproom.chance = splev_opt_int(o.chance, 100); // C :4073
     tmproom.rlit = splev_opt_int(o.lit, -1); // C :4074
     // theme rooms default to unfilled (C :4075-4077)
@@ -1873,12 +1868,7 @@ export function lspo_region(a, b) {
         const irregular = splev_opt_boolean(o.irregular, 0); // C :5603
         const joined = splev_opt_boolean(o.joined, 1); // C :5604 (TRUE)
         const do_arrival_room = splev_opt_boolean(o.arrival_room, 0); // C :5605
-        let rtype = OROOM; // C :5606 defval
-        if (o.type) { // C :5606 get_table_roomtype_opt (lspo_room idiom)
-            const mapped = splev_roomtype(o.type, -1);
-            if (mapped === -1) impossible(`Unknown room type '${o.type}'`);
-            else rtype = mapped;
-        }
+        const rtype = get_table_roomtype_opt(o, 'type', OROOM); // C :5606
         let rlit = splev_opt_int(o.lit, -1); // C :5607
         let dx1 = splev_opt_int(o.x1, -1); // C :5563-5566 get_table_coords_or_region
         let dy1 = splev_opt_int(o.y1, -1);
@@ -2133,7 +2123,7 @@ export function lspo_map(a, contentsFn) {
         // C :6315 reset_xystart_size — which never clears SpLev_Map (the JS full reset would, so the keep variant runs)
         splev_reset_xystart_size_keep_spmap();
     } else if (has_contents) { // C :6317
-        contents({ width: game.splev_xsize, height: game.splev_ysize }); // C :6318 l_push_wid_hei_table {width,height} + nhl_pcall_handle (no Lua stack — direct call)
+        contents(l_push_wid_hei_table(game.splev_xsize, game.splev_ysize)); // C :6318 l_push_wid_hei_table + nhl_pcall_handle (no Lua stack — direct call)
         splev_reset_xystart_size_keep_spmap(); // C :6319 reset_xystart_size
     }
     return sel; // C :6321-6324 l_selection_push_copy + selection_free + return 1 (no Lua stack — the live selection is returned)
@@ -20342,7 +20332,7 @@ function lvlfill_maze_grid(x1, y1, x2, y2, filling) {
     }
 }
 
-/** C ref: mkmaze.c okay — two mz_move steps land on STONE inside maze bounds. */
+/** Live gx.x_maze_max/gy.y_maze_max (see mazexy note); X_MAZE_MAX/Y_MAZE_MAX defaults. */
 function maze_x_max() {
     return game.x_maze_max != null ? (game.x_maze_max | 0) : X_MAZE_MAX;
 }
@@ -20644,6 +20634,11 @@ function mkinvk_check_wall(x, y) {
     return (IS_STWALL(ltyp) || ltyp === IRONBARS) ? 1 : 0;
 }
 
+/**
+ * C ref: mkmaze.c okay `:297-305` (split name) — two mz_move steps must land
+ * on STONE inside maze bounds; both C callers (`:1259`, `:1300`) sit in
+ * walkfrom's direction loop, wired here via maze_okay (`:20672` below).
+ */
 function maze_okay(x, y, dir) {
     let xx = x, yy = y;
     const step = (d) => {
@@ -22930,29 +22925,116 @@ function splev_room_trap(croom) {
 }
 
 /**
- * C ref: sp_lev.c room_types[] get_table_roomtype_opt — subset used by minetn.
+ * C ref: sp_lev.c room_types[] `:3956–3988` — the full type table in C
+ * order, shared by both directions (get_mkroom_name forward,
+ * get_table_roomtype_opt reverse). Names are all-lowercase in C, so the
+ * reverse search lowercases the input like strcmpi.
+ */
+const ROOM_TYPES = [
+    { name: 'ordinary', type: OROOM }, // C :3961
+    { name: 'themed', type: THEMEROOM }, // C :3962
+    { name: 'throne', type: COURT }, // C :3963
+    { name: 'swamp', type: SWAMP }, // C :3964
+    { name: 'vault', type: VAULT }, // C :3965
+    { name: 'beehive', type: BEEHIVE }, // C :3966
+    { name: 'morgue', type: MORGUE }, // C :3967
+    { name: 'barracks', type: BARRACKS }, // C :3968
+    { name: 'zoo', type: ZOO }, // C :3969
+    { name: 'delphi', type: DELPHI }, // C :3970
+    { name: 'temple', type: TEMPLE }, // C :3971
+    { name: 'anthole', type: ANTHOLE }, // C :3972
+    { name: 'cocknest', type: COCKNEST }, // C :3973
+    { name: 'leprehall', type: LEPREHALL }, // C :3974
+    { name: 'shop', type: SHOPBASE }, // C :3975
+    { name: 'armor shop', type: ARMORSHOP }, // C :3976
+    { name: 'scroll shop', type: SCROLLSHOP }, // C :3977
+    { name: 'potion shop', type: POTIONSHOP }, // C :3978
+    { name: 'weapon shop', type: WEAPONSHOP }, // C :3979
+    { name: 'food shop', type: FOODSHOP }, // C :3980
+    { name: 'ring shop', type: RINGSHOP }, // C :3981
+    { name: 'wand shop', type: WANDSHOP }, // C :3982
+    { name: 'tool shop', type: TOOLSHOP }, // C :3983
+    { name: 'book shop', type: BOOKSHOP }, // C :3984
+    { name: 'health food shop', type: FODDERSHOP }, // C :3985
+    { name: 'candle shop', type: CANDLESHOP }, // C :3986
+];
+
+/** C ref: sp_lev.c room_types[] linear search — first match wins. */
+function splev_roomtype_entry(lcName) {
+    for (const e of ROOM_TYPES) {
+        if (e.name === lcName) return e; // C get_mkroom_name/get_table_roomtype_opt `:3994–3996`/`:4009–4013`
+    }
+    return undefined;
+}
+
+/**
+ * C ref: sp_lev.c room_types[] get_table_roomtype_opt — name lookup
+ * without the impossible (callers that keep their own sentinel).
  */
 function splev_roomtype(name, defval = OROOM) {
     if (!name) return defval;
-    const map = {
-        ordinary: OROOM,
-        themed: THEMEROOM,
-        temple: TEMPLE,
-        morgue: MORGUE,
-        delphi: DELPHI,
-        throne: COURT,
-        barracks: BARRACKS,
-        shop: SHOPBASE,
-        'tool shop': TOOLSHOP,
-        'wand shop': WANDSHOP,
-        'book shop': BOOKSHOP,
-        'food shop': FOODSHOP,
-        'health food shop': FODDERSHOP,
-        'candle shop': CANDLESHOP,
-        'weapon shop': WEAPONSHOP,
-        'armor shop': ARMORSHOP,
+    return splev_roomtype_entry(String(name).toLowerCase())?.type ?? defval;
+}
+
+/**
+ * C ref: sp_lev.c get_mkroom_name `:3990–4001` — rtype to room_types[]
+ * name in C order; unknown rtype impossibles and falls back to
+ * "unknown" (never NULL).
+ */
+export function get_mkroom_name(rtype) {
+    for (const e of ROOM_TYPES) {
+        if (e.type === rtype) return e.name; // C :3994–3996
+    }
+    impossible(`get_mkroom_name unknown rtype ${rtype}`); // C :3998
+    return 'unknown'; // C :3999
+}
+
+/**
+ * C ref: sp_lev.c get_table_roomtype_opt `:4003–4020` — unpacked-opts
+ * form (C reads the Lua field via get_table_str_opt with an empty
+ * default; function-valued fields are read as plain values per this
+ * file's unpacked-opts architecture). Empty/missing keeps defval (C
+ * `:4008`); unknown impossibles and keeps defval (C `:4015–4016`).
+ */
+export function get_table_roomtype_opt(opts, name, defval) {
+    const roomstr = opts ? opts[name] : undefined; // C :4006 get_table_str_opt (Free is a GC no-op)
+    let res = defval;
+    if (roomstr) { // C :4008 `roomstr && *roomstr`
+        const hit = splev_roomtype_entry(String(roomstr).toLowerCase()); // C :4009–4013 strcmpi
+        if (hit) res = hit.type;
+        else impossible(`Unknown room type '${roomstr}'`); // C :4015
+    }
+    return res; // C :4018–4019
+}
+
+/**
+ * C ref: sp_lev.c l_push_mkroom_table `:3057–3070` — the room table the
+ * contents callbacks receive (C pushes it on the Lua stack via the
+ * nhlua.c entry helpers, by-design with no scored analogue; the plain
+ * object is the entry). Width/height are 1-based spans (C `:3062–
+ * 3063`); region carries lx/ly/hx/hy as x1/y1/x2/y2 (C `:3064–3065`
+ * via nhl_add_table_entry_region); lit is the (boolean) rlit cast, so
+ * nonzero rlit (incl. -1) is true (C `:3066`).
+ */
+export function l_push_mkroom_table(tmpr) {
+    return {
+        width: 1 + (tmpr.hx - tmpr.lx), // C :3062
+        height: 1 + (tmpr.hy - tmpr.ly), // C :3063
+        region: { x1: tmpr.lx, y1: tmpr.ly, x2: tmpr.hx, y2: tmpr.hy }, // C :3064–3065
+        lit: !!tmpr.rlit, // C :3066
+        irregular: !!tmpr.irregular, // C :3067
+        needjoining: !!tmpr.needjoining, // C :3068
+        type: get_mkroom_name(tmpr.rtype), // C :3069
     };
-    return map[String(name).toLowerCase()] ?? defval;
+}
+
+/**
+ * C ref: sp_lev.c l_push_wid_hei_table `:3049–3055` — the map table the
+ * des.map contents callback receives (C `:6308–6310` pushes it for the
+ * pcall; the plain object is the push).
+ */
+export function l_push_wid_hei_table(wid, hei) {
+    return { width: wid, height: hei }; // C :3053–3054
 }
 
 /** C ref: nhlib.lua monkfoodshop */
@@ -23129,7 +23211,7 @@ function splev_room_door(croom, state, wall, pos = -1) {
 function splev_build_room(opts, parent) {
     const g = game;
     const chance = opts.chance ?? 100;
-    const wantType = splev_roomtype(opts.type, OROOM);
+    const wantType = get_table_roomtype_opt(opts, 'type', OROOM);
     // C: (!chance || rn2(100) < chance) ? rtype : OROOM
     const rtype = (!chance || rn2(100) < chance) ? wantType : OROOM;
     const rlit = opts.lit ?? -1;
@@ -29950,8 +30032,7 @@ function create_mimic_as_chest(croom) {
  */
 function themeroom_nesting_contents(croom) {
     // C l_push_mkroom_table: width/height = 1+(hx-lx)/(hy-ly)
-    const rmWidth = 1 + (croom.hx - croom.lx);
-    const rmHeight = 1 + (croom.hy - croom.ly);
+    const { width: rmWidth, height: rmHeight } = l_push_mkroom_table(croom);
     // math.random(math.floor(rm.width/2), rm.width-2)
     const wid = lua_random2(Math.floor(rmWidth / 2), rmWidth - 2);
     const hei = lua_random2(Math.floor(rmHeight / 2), rmHeight - 2);
@@ -30035,8 +30116,7 @@ function themeroom_huge_contents(croom) {
  * mummy/vampire/lich/zombie or human corpse, optional secret door.
  */
 function themeroom_mausoleum_contents(croom) {
-    const rmWidth = 1 + (croom.hx - croom.lx);
-    const rmHeight = 1 + (croom.hy - croom.ly);
+    const { width: rmWidth, height: rmHeight } = l_push_mkroom_table(croom);
     // Lua (rm.width-1)/2 is an integral float for odd outer sizes.
     const cx = Math.trunc((rmWidth - 1) / 2);
     const cy = Math.trunc((rmHeight - 1) / 2);
@@ -30125,8 +30205,7 @@ function themeroom_pillars_contents(croom) {
     nhlib_shuffle(terr);
     const typ = terr[0];
     // C l_push_mkroom_table: width = 1+(hx-lx), height = 1+(hy-ly)
-    const width = 1 + (croom.hx - croom.lx);
-    const height = 1 + (croom.hy - croom.ly);
+    const { width, height } = l_push_mkroom_table(croom);
     // Lua: for x = 0, (rm.width / 4) - 1 do  (float upper bound)
     for (let x = 0; x <= (width / 4) - 1; x++) {
         for (let y = 0; y <= (height / 4) - 1; y++) {
@@ -30980,7 +31059,9 @@ function lspo_map_themeroom(mapdef) {
             }
         }
 
-        if (contents_fn) contents_fn();
+        // C lspo_map :6308–6310 — the map contents callback receives the
+        // wid/hei table (no-arg mapdef bodies ignore it, like Lua).
+        if (contents_fn) contents_fn(l_push_wid_hei_table(xsize, ysize));
         else filler_region(mapdef.fx, mapdef.fy);
         // C resets xystart after contents
         g.splev_xstart = 1;
@@ -32327,17 +32408,20 @@ function place_branch(branchp, x = 0, y = 0) {
 export function is_solid(x, y) {
     return !isok(x | 0, y | 0) || IS_STWALL(game.level?.at(x | 0, y | 0)?.typ ?? STONE);
 }
-function isWallOrStone(x, y) {
+/* C ref: mkmaze.c iswall_or_stone `:59-66` — out of bounds counts as stone. */
+function iswall_or_stone(x, y) {
     if (!isok(x, y)) return 1;
     const typ = game.level?.at(x, y)?.typ ?? STONE;
-    return (typ === STONE || isWallTile(x, y)) ? 1 : 0;
+    return (typ === STONE || iswall(x, y)) ? 1 : 0;
 }
-function isWallTile(x, y) {
+/* C ref: mkmaze.c iswall `:45-55` — wall/door/lavawall/water/sdoor/bars join spines. */
+function iswall(x, y) {
     if (!isok(x, y)) return 0;
     const typ = game.level?.at(x, y)?.typ ?? STONE;
     return (IS_WALL(typ) || IS_DOOR(typ) || typ === LAVAWALL
         || typ === WATER || typ === SDOOR || typ === IRONBARS) ? 1 : 0;
 }
+/* C ref: mkmaze.c extend_spine `:166-194` — spine unless flanked both sides. */
 function extend_spine(locale, wall_there, dx, dy) {
     const nx = 1 + dx, ny = 1 + dy;
     if (!wall_there) return 0;
@@ -32369,36 +32453,47 @@ function wall_cleanup(x1, y1, x2, y2) {
                 loc.typ = STONE;
         }
 }
-/** C ref: mkmaze.c fix_wall_spines — join wall glyphs after typ change. */
+/**
+ * C ref: mkmaze.c fix_wall_spines `:229-287` — set wall joins after typ change.
+ * `:252-253` bounds panic (NORETURN in C → throw, trap.js deltrap idiom);
+ * `:264-268` loc_f is iswall inside the baalz inarea else iswall_or_stone;
+ * `:278-281` spine bits always probe iswall; `:284-285` free-standing
+ * (bits 0) keeps its typ — spine_array[0] VWALL is never written.
+ */
 export function fix_wall_spines(x1, y1, x2, y2) {
-    const spineArray = [VWALL, HWALL, HWALL, HWALL,
+    const spineArray = [VWALL, HWALL, HWALL, HWALL, // C :243-246
         VWALL, TRCORNER, TLCORNER, TDWALL,
         VWALL, BRCORNER, BLCORNER, TUWALL,
         VWALL, TLWALL, TRWALL, CROSSWALL];
+    // C :252-253 — sanity check on incoming variables (panic is NORETURN).
+    if (x1 < 0 || x2 >= COLNO || x1 > x2 || y1 < 0 || y2 >= ROWNO || y1 > y2)
+        throw new Error(`wall_extends: bad bounds (${x1},${y1}) to (${x2},${y2})`);
     const map = game.level;
-    if (!map) return;
+    if (!map) return; // JS-only: C levl always exists; nothing to join yet.
     const bh = bughack_state();
-    for (let x = x1; x <= x2; x++)
-        for (let y = y1; y <= y2; y++) {
-            const loc = map.at(x, y);
-            const typ = loc?.typ ?? STONE;
-            if (!(IS_WALL(typ) && typ !== DBWALL)) continue;
-            // C: inside baalz inarea use iswall (not iswall_or_stone)
-            const inBug = within_bounded_area(
+    for (let x = x1; x <= x2; x++) // C :256
+        for (let y = y1; y <= y2; y++) { // C :257
+            const loc = map.at(x, y); // C :258 lev = &levl[x][y]
+            const typ = loc?.typ ?? STONE; // C :259
+            if (!(IS_WALL(typ) && typ !== DBWALL)) continue; // C :260-261
+            // C :264-268 — rock-or-wall test around (x,y).
+            const locFn = within_bounded_area(
                 x, y,
                 bh.inarea.x1, bh.inarea.y1, bh.inarea.x2, bh.inarea.y2,
-            );
-            const locFn = inBug ? isWallTile : isWallOrStone;
+            ) ? iswall : iswall_or_stone;
+            // C :269-276 — locale[col][row]: [0]=(x-1) col, [1]=x col,
+            // [2]=(x+1) col; center [1][1] never read (extend_spine skips it).
             const locale = [
-                [locFn(x-1,y-1), locFn(x-1,y), locFn(x-1,y+1)],
-                [locFn(x,y-1), 0, locFn(x,y+1)],
-                [locFn(x+1,y-1), locFn(x+1,y), locFn(x+1,y+1)],
+                [locFn(x - 1, y - 1), locFn(x - 1, y), locFn(x - 1, y + 1)],
+                [locFn(x, y - 1), 0, locFn(x, y + 1)],
+                [locFn(x + 1, y - 1), locFn(x + 1, y), locFn(x + 1, y + 1)],
             ];
-            const bits = (extend_spine(locale, isWallTile(x,y-1), 0, -1) << 3)
-                | (extend_spine(locale, isWallTile(x,y+1), 0, 1) << 2)
-                | (extend_spine(locale, isWallTile(x+1,y), 1, 0) << 1)
-                | extend_spine(locale, isWallTile(x-1,y), -1, 0);
-            if (bits) loc.typ = spineArray[bits];
+            // C :278-281 — NSEW extension bits, always via iswall.
+            const bits = (extend_spine(locale, iswall(x, y - 1), 0, -1) << 3)
+                | (extend_spine(locale, iswall(x, y + 1), 0, 1) << 2)
+                | (extend_spine(locale, iswall(x + 1, y), 1, 0) << 1)
+                | extend_spine(locale, iswall(x - 1, y), -1, 0);
+            if (bits) loc.typ = spineArray[bits]; // C :284-285
         }
 }
 function wallification(x1, y1, x2, y2) {

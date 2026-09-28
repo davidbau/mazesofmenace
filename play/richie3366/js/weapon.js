@@ -24,10 +24,11 @@ import {
 import { is_pool, handle_tip } from './hack.js';
 import { dist2 } from './hacklib.js';
 import {
-    is_ammo, ammo_and_launcher, is_missile, mwelded, is_weptool, bimanual,
+    is_ammo, ammo_and_launcher, matching_launcher, is_missile, mwelded, is_weptool, bimanual,
 } from './wield.js';
 import {
-    is_lord, is_prince, strongmonst, mon_hates_blessings, mon_hates_silver,
+    is_lord, is_prince, is_mplayer, is_elf, is_orc, is_gnome,
+    strongmonst, mon_hates_blessings, mon_hates_silver,
     bigmonst, thick_skinned, is_wooden, hates_light, is_swimmer, passes_walls,
     is_giant, mons, resists_ston, touch_petrifies,
     throws_rocks, likes_gems, mindless, is_animal,
@@ -61,7 +62,7 @@ import { mbodypart } from './polyself.js';
 import { attacktype_fordmg } from './uhitm.js';
 import { acurr, A_STR } from './attrib.js';
 import { m_carrying, mon_has_shield } from './mon.js';
-import { mhis } from './mondata.js';
+import { mhis, monsndx } from './mondata.js';
 import { ATR_INVERSE, ATR_NONE } from './terminal.js';
 import {
     skill_based_spellbook_id, spell_skilltype,
@@ -1680,32 +1681,56 @@ export function skill_init(class_skill) {
     if (!game.u.uroleplay?.pauper) skill_based_spellbook_id();
 }
 
-/** C ref: mthrowu.c monmulti */
+/** C ref: mthrowu.c monmulti `:199–258` — monster multishot count. */
 export function monmulti(mtmp, otmp, mwep) {
     let multishot = 1;
-    const quan = otmp.quan || 1;
-    if (quan > 1
+
+    if ((otmp.quan | 0) > 1 /* no point checking if there's only 1 */
+        /* ammo requires corresponding launcher be wielded */
         && (is_ammo(otmp)
-            ? ammo_and_launcher(otmp, mwep)
+            ? matching_launcher(otmp, mwep)
+            /* otherwise any stackable (non-ammo) weapon */
             : otmp.oclass === WEAPON_CLASS)
         && !mtmp.mconf) {
         const ptr = mtmp.data;
+        /* Assumes lords are skilled, princes are expert */
         if (is_prince(ptr)) multishot += 2;
         else if (is_lord(ptr)) multishot++;
+        /* fake players treated as skilled (regardless of role limits) */
+        else if (is_mplayer(ptr)) multishot++;
 
-        if (objectNames[otmp.otyp] === 'ELVEN_ARROW' && !otmp.cursed) multishot++;
-        if (mwep && objectNames[mwep.otyp] === 'ELVEN_BOW'
+        /* this portion is different from hero multishot; from slash'em? */
+        /* Elven Craftsmanship makes for light, quick bows */
+        if (otmp.otyp === otyp('ELVEN_ARROW') && !otmp.cursed) multishot++;
+        /* for arrow, we checked bow&arrow when entering block, but for
+           bow, so far we've only validated that otmp is a weapon stack;
+           need to verify that it's a stack of arrows rather than darts */
+        if (mwep && mwep.otyp === otyp('ELVEN_BOW')
             && ammo_and_launcher(otmp, mwep) && !mwep.cursed) {
             multishot++;
         }
+        /* 1/3 of launcher enchantment */
         if (ammo_and_launcher(otmp, mwep) && (mwep.spe | 0) > 1) {
             multishot += rounddiv(mwep.spe | 0, 3);
         }
+        /* Some randomness */
         multishot = rnd(multishot);
-        multishot += multishot_class_bonus(mtmp.mnum ?? ptr?.mndx, otmp, mwep);
-        // Racial elf/orc/gnome bow bonuses deferred (no race-bit helpers yet)
+
+        /* class bonus */
+        multishot += multishot_class_bonus(monsndx(ptr), otmp, mwep);
+
+        /* racial bonus */
+        if ((is_elf(ptr) && otmp.otyp === otyp('ELVEN_ARROW')
+                && mwep && mwep.otyp === otyp('ELVEN_BOW'))
+            || (is_orc(ptr) && otmp.otyp === otyp('ORCISH_ARROW')
+                && mwep && mwep.otyp === otyp('ORCISH_BOW'))
+            || (is_gnome(ptr) && otmp.otyp === otyp('CROSSBOW_BOLT')
+                && mwep && mwep.otyp === otyp('CROSSBOW'))) {
+            multishot++;
+        }
     }
-    if (quan < multishot) multishot = quan;
+
+    if ((otmp.quan | 0) < multishot) multishot = (otmp.quan | 0);
     if (multishot < 1) multishot = 1;
     return multishot;
 }

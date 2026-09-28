@@ -301,17 +301,43 @@ export function del_engr_at(x, y) {
     if (ep) del_engr(ep);
 }
 
-/** C ref: engrave.c del_engr — unlink one engraving. */
+/**
+ * C ref: engrave.c del_engr `:1644–1663` — unlink one engraving, then free.
+ * Head-first match (`:1648–1649`), else walk for the node whose nxt is ep
+ * (`:1651–1657`); a miss prints the `:1659` impossible and returns without
+ * freeing (`:1658–1660`). C `:1662` dealloc_engr(ep) is free()
+ * (engrave.h:45) — GC under JS strings, so unlinking is the whole effect.
+ * impossible is async (display.js) but this list unlink runs in sync
+ * contexts — `void` fire-and-forget (botl.js:351 / do_name.js:714
+ * precedent). The `!ep` guard is a JS extension (C NONNULLARG1): JS
+ * passes engr_at() misses straight in (del_engr_at above).
+ * Callers: engrave.c:287 (wipe_engr_at erode-to-empty) → local
+ * wipe_engr_at copy (js/engrave.js:629); engrave.c:427 (make_engr_at
+ * replace-at) → js/engrave.js:755; engrave.c:466 (del_engr_at) →
+ * js/engrave.js:299; engrave.c:1067/1141/1232 (doengrave de.oep) →
+ * js/engrave.js:1499/1558/1629; sp_lev.c:353 → js/mklev.js:20132;
+ * zap.c:3654/3661 → js/zap.js:6341/6352. Extra JS site make_grave
+ * (:398, del_engr(engr_at())) ≡ C make_grave:1698 del_engr_at (inlined,
+ * pre-existing). No caller edits; sync signature kept.
+ */
 export function del_engr(ep) {
-    if (!ep) return;
-    let prev = null;
-    for (let cur = game.head_engr; cur; prev = cur, cur = cur.nxt_engr) {
-        if (cur === ep) {
-            if (prev) prev.nxt_engr = cur.nxt_engr;
-            else game.head_engr = cur.nxt_engr;
-            return;
+    if (!ep) return; // JS guard (C NONNULLARG1)
+    if (ep === game.head_engr) { // C `:1648` ep == head_engr
+        game.head_engr = ep.nxt_engr; // C `:1649`
+    } else {
+        let ept = game.head_engr; // C `:1652`
+        for (; ept; ept = ept.nxt_engr) { // C `:1653`
+            if (ept.nxt_engr === ep) { // C `:1654`
+                ept.nxt_engr = ep.nxt_engr; // C `:1655`
+                break; // C `:1656`
+            }
+        }
+        if (!ept) { // C `:1658`
+            void impossible('Error in del_engr?'); // C `:1659`
+            return; // C `:1660` (no dealloc on the miss path)
         }
     }
+    // C `:1662` dealloc_engr(ep) — free(), GC in JS.
 }
 
 /**

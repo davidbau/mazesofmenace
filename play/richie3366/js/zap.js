@@ -5411,7 +5411,7 @@ export async function drain_item(obj, by_you) {
  * make-invisible and for an unknown effect (`impossible`); slow,
  * speed, nothing, and healing set `res` to 0.
  * Named: `debugpline` pulsate (no JS `debugpline`); `muse.c` `mbhit`
- * `fhito_loc` / `destroy_drawbridge` (doorlock is D-1484).
+ * `destroy_drawbridge` (doorlock is D-1484; `fhito_loc` now wired).
  * `maybe_unhide_at` hero path stays named on that callee.
  * @returns {Promise<number>} 1 if the object was affected
  */

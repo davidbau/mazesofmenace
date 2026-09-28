@@ -897,6 +897,12 @@ export function glyph_is_normal_object(glyph) {
     return g != null && g >= GLYPH_OBJ_OFF && g < GLYPH_OBJ_OFF + NUM_OBJECTS;
 }
 
+/** C display.h glyph_is_normal_generic_obj `:839–840` — OBJ bank below FIRST_OBJECT. */
+export function glyph_is_normal_generic_obj(glyph) {
+    const g = glyph_id(glyph);
+    return g != null && g > GLYPH_OBJ_OFF && g < GLYPH_OBJ_OFF + FIRST_OBJECT - 1;
+}
+
 /** C display.h glyph_is_piletop generic obj — GLYPH_OBJ_PILETOP_OFF. */
 export function glyph_is_piletop_generic_obj(glyph) {
     const g = glyph_id(glyph);
@@ -2537,6 +2543,37 @@ function ensure_message_win() {
 }
 
 /**
+ * C report.c get_saved_pline `:571–592` (DUMPLOG_CORE is always on in the
+ * pinned build, config.h `:269–270`). lineno-th most-recent valid entry
+ * of the live `dumplogmsg` ring above: `:577–578` out-of-range lineno
+ * returns null, `:579` starts at the newest slot, the `:581` limit walk
+ * skips empty slots (`:582`) and older entries (`:583–584`), returning
+ * the entry when the skip count runs out (`:586`), else null (`:591`).
+ * C `USED_if_dumplog` is the no-DUMPLOG build only — always live here.
+ * Index-0 note: C `(0 - 1) % 50` reads out of bounds (callers only run
+ * on the crash path with a full ring); JS yields undefined → invalid →
+ * null instead of an OOB read.
+ * @param {number} lineno
+ * @returns {string|null}
+ */
+export function get_saved_pline(lineno) {
+    let skip = lineno | 0; // C `:571` int lineno
+    if (skip >= DUMPLOG_MSG_COUNT) return null; // C `:577–578`
+    let p = (_saved_pline_index - 1) % DUMPLOG_MSG_COUNT; // C `:579`
+    let limit = DUMPLOG_MSG_COUNT; // C `:575`
+    while (limit--) { // C `:581`
+        if (_saved_plines[p]) { // C `:582` valid line
+            if (skip--) { // C `:583`
+                p = (p - 1 + DUMPLOG_MSG_COUNT) % DUMPLOG_MSG_COUNT; // C `:584`
+            } else {
+                return _saved_plines[p]; // C `:586`
+            }
+        }
+    }
+    return null; // C `:591`
+}
+
+/**
  * C pline.c dumplogmsg `:21–46` (DUMPLOG_CORE). Skip "Unknown command".
  * Reuse the slot when the old string is long enough.
  * @param {string} line
@@ -4011,11 +4048,79 @@ export function map_glyphinfo(x, y, base, mgflags) {
 
 // ── show_glyph_cell ──
 /**
- * C ref: display.c show_glyph — store gbuf then optional glyph_updates pline.
+ * C ref: display.c show_glyph `:1877–2072` — suppress gate (`:1886`),
+ * bad-pos/bad-glyph impossible arms (`:1894–2000`), then store gbuf
+ * with optional glyph_updates pline (`:2006–2070`, via map_glyphinfo,
+ * show_glyph_change_wanted, emit_show_glyph_change).
  * Async only yields when mention_map/glyph_updates fires (default Off).
  * Classifier does not re-roll Hallu (D-1221).
  */
 export async function show_glyph_cell(x, y, ch, color = NO_COLOR, decgfx = false, attr = 0, glyph) {
+    // C show_glyph `:1886` — don't process map glyphs when saving,
+    // restoring, or in_mklev (same gate as newsym/feel_location/flush_screen).
+    if (suppress_map_output()) return;
+    // C show_glyph `:1894–2000` — bad positions and glyphs. Column 0 is
+    // invalid but used as a flag, so it returns silently (`:1898–1900`;
+    // isok itself is cmd.c:4325–4330, x == 1 first column). Any other bad
+    // position impossible()s with the glyph-bank name from the offset chain
+    // below, which assumes display.h ordering, highest bank first.
+    const gid = typeof glyph === 'number' ? glyph | 0 : NO_GLYPH;
+    if (!isok(x, y)) {
+        if (x === 0) return;
+        let text = '';
+        let offset = -1;
+        if (gid < 0 || gid >= MAX_GLYPH) text = 'invalid'; // C `:1906–1908`
+        else if ((offset = gid - GLYPH_NOTHING_OFF) >= 0) text = 'nothing'; // C `:1909`
+        else if ((offset = gid - GLYPH_UNEXPLORED_OFF) >= 0) text = 'unexplored'; // C `:1911`
+        else if ((offset = gid - GLYPH_STATUE_FEM_PILETOP_OFF) >= 0) text = 'statue of a female monster at top of a pile'; // C `:1913`
+        else if ((offset = gid - GLYPH_STATUE_MALE_PILETOP_OFF) >= 0) text = 'statue of a male monster at top of a pile'; // C `:1915`
+        else if ((offset = gid - GLYPH_BODY_PILETOP_OFF) >= 0) text = 'body at top of a pile'; // C `:1917`
+        else if ((offset = gid - GLYPH_OBJ_PILETOP_OFF) >= 0) text = (glyph_is_piletop_generic_obj(gid) ? 'generic object at top of a pile' : 'object at top of a pile'); // C `:1919–1922`
+        else if ((offset = gid - GLYPH_STATUE_FEM_OFF) >= 0) text = 'statue of female monster'; // C `:1923`
+        else if ((offset = gid - GLYPH_STATUE_MALE_OFF) >= 0) text = 'statue of male monster'; // C `:1925`
+        else if ((offset = gid - GLYPH_WARNING_OFF) >= 0) text = 'warning explosion'; // C `:1927–1929`
+        else if ((offset = gid - GLYPH_EXPLODE_FROSTY_OFF) >= 0) text = 'frosty explosion'; // C `:1930`
+        else if ((offset = gid - GLYPH_EXPLODE_FIERY_OFF) >= 0) text = 'fiery explosion'; // C `:1932`
+        else if ((offset = gid - GLYPH_EXPLODE_MAGICAL_OFF) >= 0) text = 'magical explosion'; // C `:1934`
+        else if ((offset = gid - GLYPH_EXPLODE_WET_OFF) >= 0) text = 'wet explosion'; // C `:1936`
+        else if ((offset = gid - GLYPH_EXPLODE_MUDDY_OFF) >= 0) text = 'muddy explosion'; // C `:1938`
+        else if ((offset = gid - GLYPH_EXPLODE_NOXIOUS_OFF) >= 0) text = 'noxious explosion'; // C `:1940`
+        else if ((offset = gid - GLYPH_EXPLODE_DARK_OFF) >= 0) text = 'dark explosion'; // C `:1942`
+        else if ((offset = gid - GLYPH_SWALLOW_OFF) >= 0) text = 'swallow'; // C `:1944`
+        else if ((offset = gid - GLYPH_CMAP_C_OFF) >= 0) text = 'cmap C'; // C `:1946`
+        else if ((offset = gid - GLYPH_ZAP_OFF) >= 0) text = 'zap'; // C `:1948`
+        else if ((offset = gid - GLYPH_CMAP_B_OFF) >= 0) text = 'cmap B'; // C `:1950`
+        else if ((offset = gid - GLYPH_ALTAR_OFF) >= 0) text = 'altar'; // C `:1952`
+        else if ((offset = gid - GLYPH_CMAP_A_OFF) >= 0) text = 'cmap A'; // C `:1954`
+        else if ((offset = gid - GLYPH_CMAP_SOKO_OFF) >= 0) text = 'sokoban dungeon walls'; // C `:1956`
+        else if ((offset = gid - GLYPH_CMAP_KNOX_OFF) >= 0) text = 'knox dungeon walls'; // C `:1958`
+        else if ((offset = gid - GLYPH_CMAP_GEH_OFF) >= 0) text = 'gehennom dungeon walls'; // C `:1960`
+        else if ((offset = gid - GLYPH_CMAP_MINES_OFF) >= 0) text = 'gnomish mines dungeon walls'; // C `:1962`
+        else if ((offset = gid - GLYPH_CMAP_MAIN_OFF) >= 0) text = 'main dungeon walls'; // C `:1964`
+        else if ((offset = gid - GLYPH_CMAP_STONE_OFF) >= 0) text = 'stone'; // C `:1966`
+        else if ((offset = gid - GLYPH_OBJ_OFF) >= 0) text = (glyph_is_normal_generic_obj(gid) ? 'generic object' : 'object'); // C `:1968–1971`
+        else if ((offset = gid - GLYPH_RIDDEN_FEM_OFF) >= 0) text = 'ridden female monster'; // C `:1972`
+        else if ((offset = gid - GLYPH_RIDDEN_MALE_OFF) >= 0) text = 'ridden male monster'; // C `:1974`
+        else if ((offset = gid - GLYPH_BODY_OFF) >= 0) text = 'body'; // C `:1976`
+        else if ((offset = gid - GLYPH_DETECT_FEM_OFF) >= 0) text = 'detected female monster'; // C `:1978`
+        else if ((offset = gid - GLYPH_DETECT_MALE_OFF) >= 0) text = 'detected male monster'; // C `:1980`
+        else if ((offset = gid - GLYPH_INVIS_OFF) >= 0) text = 'invisible monster'; // C `:1982`
+        else if ((offset = gid - GLYPH_PET_FEM_OFF) >= 0) text = 'female pet'; // C `:1984`
+        else if ((offset = gid - GLYPH_PET_MALE_OFF) >= 0) text = 'male pet'; // C `:1986`
+        else if ((offset = gid - GLYPH_MON_FEM_OFF) >= 0) text = 'female monster'; // C `:1988`
+        else if ((offset = gid - GLYPH_MON_MALE_OFF) >= 0) text = 'male monster'; // C `:1990`
+        await impossible('show_glyph:  bad pos <%d,%d> with glyph %d [%s %d].', x, y, gid, text, offset); // C `:1993–1994`
+        return;
+    } else if (typeof glyph === 'number' && gid !== NO_GLYPH && (gid < 0 || gid >= MAX_GLYPH)) {
+        // C `:1996–2000` — valid location but invalid glyph. Gated on a
+        // real integer id: id-less paints (JS-only callers carrying
+        // pre-decoded ch/color with no glyph, or the NO_GLYPH sentinel a
+        // memory repaint can carry for a valid cell) have nothing to
+        // validate — every C caller passes a banked id, and C's NO_GLYPH
+        // (== MAX_GLYPH) never reaches show_glyph.
+        await impossible('show_glyph:  bad glyph %d [max %d] at <%d,%d>.', gid, MAX_GLYPH, x, y);
+        return;
+    }
     const loc = game.level?.at(x, y);
     if (!loc) return;
     // C reset_glyphmap: (GMAP_ROGUELEVEL && !has_rogue_color) → NO_COLOR

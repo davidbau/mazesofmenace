@@ -84,7 +84,7 @@ import { getpos, getpos_sethilite } from './getpos.js';
 import { walk_path, walk_path_async, hurtle_jump, thitmonst, hurtle } from './dothrow.js';
 import { uhim, uhis, genders } from './roles.js';
 import { PM_HEALER } from './generated/monsters_data.js';
-import { is_art, retouch_object } from './artifact.js';
+import { is_art, retouch_object, arti_speak } from './artifact.js';
 import { ART_SNICKERSNEE } from './generated/artifacts_data.js';
 import { P_SKILL, weapon_type, uwep_skill_type, dbon, MON_WEP, is_wet_towel, dry_a_towel, hands_obj, possibly_unwield, setmnotwielded } from './weapon.js';
 import { pickup_object, spoteffects } from './pickup.js';
@@ -2458,6 +2458,27 @@ export async function use_tinning_kit(obj) {
  * getdir mouse.
  * @returns {boolean} true if the command took time (ECMD_TIME)
  */
+/**
+ * C ref: apply.c doapply `:4421–4424` — shared artifact tail
+ * (`if (obj && obj->oartifact) res |= arti_speak(obj)`).
+ * JS doapply returns boolean (true = ECMD_TIME); the helper ORs the ECMD
+ * bit then maps back, so a TIME-only flip propagates exactly once per arm.
+ * Wired at artifact-eligible arms (base otyps with a pinned artilist.h
+ * entry: SKELETON_KEY, CREDIT_CARD, MIRROR, CRYSTAL_BALL, LENSES,
+ * LUCKSTONE). All other arms are guard-dead: oartifact is only ever set
+ * on a matching artilist base otyp (artifact.c artifact_exists `:380–384`
+ * matches `a->otyp == otmp->otyp`; mk_artifact builds that otyp), so the
+ * C guard cannot fire there. C early returns (nohands/capacity/!obj/
+ * retouch/WAND/SPBOOK/COIN/default-FAIL) skip the tail as in C.
+ */
+async function doapply_arti_tail(obj, timeSpent) {
+    if (obj?.oartifact) {
+        const r = await arti_speak(obj);
+        return timeSpent || r === ECMD_TIME;
+    }
+    return timeSpent;
+}
+
 export async function doapply() {
     // C ref: apply.c doapply — nohands + check_capacity((char *)0) before getobj
     if (nohands(game.youmonst?.data)) {
@@ -2501,7 +2522,8 @@ export async function doapply() {
         || obj.otyp === CREDIT_CARD) {
         // C: res = (pick_lock(...) != 0) ? ECMD_TIME : ECMD_OK
         const pl = await pick_lock(obj);
-        return pl !== 0;
+        // C :4421–4424 tail (SKELETON_KEY/CREDIT_CARD artifacts: Master Key speaks)
+        return doapply_arti_tail(obj, pl !== 0);
     }
 
     if (obj.otyp === STETHOSCOPE) {
@@ -2512,7 +2534,8 @@ export async function doapply() {
     // C apply.c case MIRROR → use_mirror (D-0736)
     if (obj.otyp === MIRROR) {
         const res = await use_mirror(obj);
-        return res === ECMD_TIME;
+        // C :4421–4424 tail (Magic Mirror of Merlin speaks)
+        return doapply_arti_tail(obj, res === ECMD_TIME);
     }
 
     // C apply.c case EXPENSIVE_CAMERA → use_camera (D-0736 partial)
@@ -2641,7 +2664,8 @@ export async function doapply() {
     if (CRYSTAL_BALL >= 0 && obj.otyp === CRYSTAL_BALL) {
         const { use_crystal_ball } = await import('./detect.js');
         await use_crystal_ball(obj);
-        return true; // ECMD_TIME (doapply res defaults to TIME)
+        // C :4421–4424 tail (Orb of Detection/Fate base otyp)
+        return doapply_arti_tail(obj, true); // ECMD_TIME (doapply res defaults to TIME)
     }
 
     // C apply.c case BLINDFOLD / LENSES → Blindf_on / Blindf_off (D-1013)
@@ -2663,13 +2687,15 @@ export async function doapply() {
                     : 'wearing lenses';
             await pline(`You are already ${already}.`);
         }
-        return true; // ECMD_TIME
+        // C :4421–4424 tail (Eyes of the Overworld base otyp)
+        return doapply_arti_tail(obj, true); // ECMD_TIME
     }
 
     // C apply.c case LUCKSTONE/LOADSTONE/TOUCHSTONE/FLINT → use_stone (D-1014)
     if (is_graystone(obj)) {
         const res = await use_stone(obj);
-        return (res & ECMD_TIME) !== 0;
+        // C :4421–4424 tail (Heart of Ahriman luckstone base otyp)
+        return doapply_arti_tail(obj, (res & ECMD_TIME) !== 0);
     }
 
     // C apply.c case LUMP_OF_ROYAL_JELLY → use_royal_jelly (D-1021)

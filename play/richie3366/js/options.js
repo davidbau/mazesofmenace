@@ -171,7 +171,7 @@ import { rnd } from './rng.js';
 import { str_end_is, str_start_is, highc, lowc, strstri, strsubst, strNsubst, strkitten, fuzzymatch, trimspaces } from './hacklib.js';
 import { name_to_mon } from './mondata.js';
 import { nhgetch } from './input.js';
-import { flush_screen, pline, You_cant, docrt, bot, check_gold_symbol, clear_committed_status, set_bot_disabled, tty_wait_synch, update_ov_primary_symset, update_ov_rogue_symset, impossible, SYM_OFF_X } from './display.js';
+import { flush_screen, pline, You_cant, docrt, bot, check_gold_symbol, clear_committed_status, set_bot_disabled, tty_wait_synch, update_ov_primary_symset, update_ov_rogue_symset, impossible, SYM_OFF_X, reglyph_darkroom, raw_printf } from './display.js';
 import { get_feature_notice_ver, get_current_feature_ver } from './version.js';
 import { paint_corner_nhw_menu, dismiss_nhw_menu, collect_menu_gacc, process_menu_search, toggle_menu_curr, menu_digit_is_gacc, reassign, update_inventory, invlet_constant, perm_invent_toggled, select_menu_pick_none } from './invent.js';
 import {
@@ -193,7 +193,7 @@ import { EXTCMDLIST, INTERNALCMD } from './generated/extcmdlist_data.js';
 import { LOADSYMS, SYM_CONTROL } from './generated/glyphsyms_data.js';
 import { COLORTABLE } from './generated/colortable_data.js';
 import { dupstr } from './dungeon.js';
-import { glyphrep_to_custom_map_entries } from './glyphs.js';
+import { glyphrep_to_custom_map_entries, free_glyphid_cache, glyphid_cache_status, apply_customizations } from './glyphs.js';
 import { yyyymmddhhmmss } from './calendar.js';
 import { getlin, mungspaces } from './getline.js';
 import { makesingular, fruit_from_name, makeplural } from './objnam.js';
@@ -215,6 +215,7 @@ import {
     Is_rogue_level,
     ROLE_NONE, ROLE_RANDOM, PL_NSIZ,
     RS_ROLE, RS_RACE, RS_GENDER, RS_ALGNMNT, RS_filter,
+    EXIT_FAILURE,
 } from './const.js';
 import {
     roles, races, aligns, genders,
@@ -223,6 +224,8 @@ import {
 import {
     clearrolefilter, setrolefilter, rolefilterstring,
 } from './player_selection.js';
+import { rcfile, read_config_file, config_error_init, config_error_done } from './cfgfiles.js';
+import { nh_terminate } from './end.js';
 
 /** C ref: global.h PL_FSIZ — fruit name buffer. */
 const PL_FSIZ = 32;
@@ -6612,6 +6615,119 @@ function saveoptstr(optidx, optstr, phase) {
     roleoptvals[roleoptindx][ph] = s; // C `:769–771` free + dupstr
 }
 
+/* C options.c `:709–711` roleopt2opt — optidx per roleopt slot
+   (role, race, gender, alignment). */
+const ROLEOPT2OPT = [OPT_ROLE, OPT_RACE, OPT_GENDER, OPT_ALIGNMENT];
+
+/* C config.h `:234` sysconf name (cf. cfgfiles.js:191). */
+const SYSCF_FILE = 'sysconf';
+
+/**
+ * C options.c unsaveoptstr `:775–783` (staticfn) — discard one saved
+ * option string. JS strings are GC'd, so clearing the slot is the free.
+ * Sole C caller is freeroleoptvals below.
+ * @param {number} optidx
+ * @param {number} ophase
+ */
+function unsaveoptstr(optidx, ophase) {
+    const roleoptindx = opt2roleopt(optidx); // C `:777`
+    const ph = ophase | 0;
+    if (roleoptvals[roleoptindx][ph]) // C `:779`
+        roleoptvals[roleoptindx][ph] = null; // C `:780–781` free + 0
+}
+
+/**
+ * C options.c freeroleoptvals `:786–794` — discard all saved strings.
+ * C callers: saveoptvals `:818` (`#if 0`, uncompiled) and save.c
+ * freedynamicdata `:1131` (save-freeing, no JS counterpart) — no live
+ * JS caller; JS teardown never persists roleoptvals across runs.
+ */
+export function freeroleoptvals() {
+    for (let i = 0; i < 4; ++i) // C `:790`
+        for (let j = 0; j < NUM_OPT_PHASES; ++j) // C `:791` num_opt_phases
+            unsaveoptstr(ROLEOPT2OPT[i], j); // C `:793`
+}
+
+/* C options.c saveoptvals `:799–819` + restoptvals `:823–848` — no JS
+   symbol by design: both sit inside `#if 0 / * not needed * /`
+   (options.c:797), uncompiled (precedent: cmd.js:1617). The live table
+   stays in roleoptvals above; JSON save has no optvals chunk. */
+
+/**
+ * C options.c initoptions `:7078–7115` — sysconf pass + finish.
+ * No live JS caller yet (C callers: earlyarg.c scores_only `:419`,
+ * unixmain.c `:150`; restore.c:716 and wintty.c:523 cite it in
+ * comments): JS startup resolves options in-process (rcfile +
+ * init_fruit_chain run there directly), and the initoptions_init half
+ * is unported — calling this now would run the finish half without it.
+ * Named omits: initoptions_init (186-line MISSING closure, own row);
+ * assure_syscf_file (no scored port — POSIX open + exit, Rule #2);
+ * do_deferred_showpaths (ATTRNORETURN exit; reveal_paths 117-line
+ * MISSING, freedynamicdata/dlb_cleanup/l_nhcore_done by-design).
+ */
+export function initoptions() {
+    if ((game.go?.opt_phase | 0) !== BUILTIN_OPT) { // C `:7087–7088`
+        /* Named omit: initoptions_init() — see doc above. */
+    }
+    /* C `:7090–7108` SYSCF (config.h:233) + SYSCF_FILE (config.h:234)
+       both live on this build. */
+    /* C `:7093` assure_syscf_file() — named omit, see doc above. */
+    config_error_init(true, SYSCF_FILE, false); // C `:7094`
+    if (!game.go) game.go = {};
+    game.go.opt_phase = SYSCF_OPT; // C `:7097`
+    if (!read_config_file(SYSCF_FILE, SET_IN_SYSCONF)) { // C `:7098`
+        if (config_error_done() && !game.iflags?.initoptions_noterminate) // C `:7099`
+            nh_terminate(EXIT_FAILURE); // C `:7100`
+    }
+    config_error_done(); // C `:7102`
+    /* C `:7111–7112` deferred --showpaths exit. C-gd fields live flat on
+       game in JS (game.dogname precedent); deferred_showpaths has no JS
+       writer, so this stays false like C's default. */
+    if (game.gd?.deferred_showpaths) { // C `:7111`
+        /* Named omit: do_deferred_showpaths(0) — see doc above. */
+    }
+    initoptions_finish(); // C `:7114`
+}
+
+/**
+ * C options.c initoptions_finish `:7323–7384` — post-config pass.
+ * Sole live C caller is initoptions `:7114` (options.c:1216 cites it
+ * in a comment); wired there. Named omits: the `:7343–7347` boulder
+ * showsyms write (get_othersym by-design; showsyms has no JS home) and
+ * `:7349` reset_glyphmap(gm_optionchange) (by-design, CURRENT.md
+ * Do-not fortress guard).
+ */
+export function initoptions_finish() {
+    rcfile(); // C `:7327`
+    /* C `:7329` fruitadd(pl_fruit, NULL) + `:7341` oc_name = "fruit":
+       same-file init_fruit_chain ports both (`:5680–5693`). */
+    init_fruit_chain();
+    /* C `:7343–7347` boulder showsyms — named omit, see doc above. */
+    reglyph_darkroom(); // C `:7348`
+    /* C `:7349` reset_glyphmap(gm_optionchange) — named omit. */
+    /* C `:7350–7365` STATUS_HILITES (config.h:616) live. */
+    if (game.iflags?.hilite_delta && !wc2_supported('statushilites')) { // C `:7360`
+        raw_printf('Status highlighting not supported for %s interface.', // C `:7361–7362`
+            game.windowprocs?.name ?? 'tty'); // tty default, display.js:8305
+        game.iflags.hilite_delta = 0; // C `:7363`
+    }
+    update_rest_on_space(); // C `:7366`
+    /* C `:7368–7375` tiled/ascii fallback for multi-interface binaries. */
+    if (game.iflags?.wc_tiled_map && !wc_supported('tiled_map')) // C `:7370`
+        game.iflags.wc_tiled_map = false, game.iflags.wc_ascii_map = true; // C `:7371`
+    else if (game.iflags?.wc_ascii_map && !wc_supported('ascii_map') // C `:7372–7373`
+        && wc_supported('tiled_map'))
+        game.iflags.wc_ascii_map = false, game.iflags.wc_tiled_map = true; // C `:7374`
+    /* C `:7376–7381` ENHANCED_SYMBOLS (config.h:368) live. */
+    if (glyphid_cache_status()) // C `:7378`
+        free_glyphid_cache(); // C `:7379`
+    /* C sym.h:132–135 do_custom_symbols (2) | do_custom_colors (1);
+       glyphs.js keeps the same values file-local (`:625`). */
+    apply_customizations(game.currentgraphics | 0, 2 | 1); // C `:7380–7381`
+    game.go.opt_initial = false; // C `:7382`
+    return; // C `:7383`
+}
+
 /**
  * C options.c get_cnf_role_opt `:8019–8033`. Newest phase that is not
  * cmdline, environ, or builtin.
@@ -8475,7 +8591,7 @@ export function strbuf_empty(sbuf) {
 
 /** C ref: optlist.h `:19` enum OptType; global.h `:580–588` optset_restrictions. */
 const BoolOpt = 0, CompOpt = 1, OthrOpt = 2;
-const SET_IN_CONFIG = 1, SET_GAMEVIEW = 3, SET_IN_GAME = 4;
+const SET_IN_SYSCONF = 0, SET_IN_CONFIG = 1, SET_GAMEVIEW = 3, SET_IN_GAME = 4; // C global.h `:581–586` sysconf first
 // C global.h `:580–588` optset_restrictions values used by allopt rows.
 const SET_HIDDEN = 7, SET_WIZONLY = 5, SET_WIZNOFUZ = 6;
 /** C global.h `:605–611` enum opt OPTCOUNT — row count for the unix build. */

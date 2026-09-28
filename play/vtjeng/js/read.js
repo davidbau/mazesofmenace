@@ -10,6 +10,7 @@
 
 import {
     A_WIS,
+    ALL_SPELLS,
     BLINDED,
     BY_COOKIE,
     COLNO,
@@ -98,6 +99,7 @@ import {
     G_NOCORPSE,
     G_UNIQ,
     NON_PM,
+    PM_ACID_BLOB,
     PM_ALIGNED_CLERIC,
     PM_ANGEL,
     PM_DOPPELGANGER,
@@ -184,7 +186,12 @@ import {
     tamedog,
 } from './dog.js';
 import { makemon_runtime, newcham } from './makemon_create.js';
-import { mkclass, rndmonst, set_malign } from './makemon.js';
+import {
+    create_critters,
+    mkclass,
+    rndmonst,
+    set_malign,
+} from './makemon.js';
 import { monster_census } from './minion.js';
 import { Monnam, hcolor, hliquid, mon_nam } from './do_name.js';
 import {
@@ -312,6 +319,7 @@ import { flooreffects, trycall } from './do.js';
 import { y_n } from './cmd.js';
 import {
     study_book,
+    losespells,
 } from './spell.js';
 import {
     Ring_gone,
@@ -338,7 +346,7 @@ import {
 import { canSpotMonster } from './startup_a11y.js';
 import { m_at } from './monst.js';
 import { hard_helmet } from './do_wear.js';
-import { dmgval } from './weapon.js';
+import { dmgval, drain_weapon_skill } from './weapon.js';
 import { objectGenerationEnv } from './object_generation.js';
 import { body_part, mbodypart } from './polyself.js';
 // read.js -> monmove.js -> muse.js -> read.js is a function-body-only cycle:
@@ -2668,14 +2676,90 @@ async function seffect_food_detection(scroll, state = game) {
     return Boolean(await food_detect(scroll, state));
 }
 
+// C ref: read.c forget() and seffect_amnesia(). Amnesia clears only the
+// remembered ball/chain contact and monster recognition specified by C;
+// blessed scrolls retain spell knowledge but still drain weapon training.
+async function forget(howmuch, state, random, message) {
+    if (state.uball) state.u.bc_felt = 0;
+
+    if (howmuch & ALL_SPELLS)
+        await losespells(state, { random });
+
+    await drain_weapon_skill(random.rnd(howmuch ? 5 : 3), state, {
+        random,
+        message,
+    });
+
+    for (let monster = state.level?.monlist ?? state.fmon;
+        monster; monster = monster.nmon) {
+        if (monster !== state.u.usteed && monster !== state.u.ustuck)
+            monster.meverseen = false;
+    }
+    for (let monster = state.gm?.migrating_mons;
+        monster; monster = monster.nmon)
+        monster.meverseen = false;
+}
+
+export async function seffect_amnesia(
+    scroll,
+    state = game,
+    { random = { rn2, rnd, rnl }, message = ttyPline } = {},
+) {
+    const blessed = Boolean(scroll.blessed);
+    state.gk ??= {};
+    state.gk.known = true;
+    await forget(blessed ? 0 : ALL_SPELLS, state, random, message);
+
+    if (propertyActive(HALLUC, state)) {
+        await message(
+            'Your mind releases itself from mundane concerns.', state,
+        );
+    } else if (String(state.plname ?? '').slice(0, 4).toLowerCase() === 'maud') {
+        await message(
+            'As your mind turns inward on itself, you forget everything else.',
+            state,
+        );
+    } else if (random.rn2(2)) {
+        await message('Who was that Maud person anyway?', state);
+    } else {
+        await message(
+            'Thinking of Maud you forget everything else.', state,
+        );
+    }
+    await exercise(A_WIS, false, state, random);
+}
+
 // C ref: read.c seffects() (2194-2290). Preserve the complete source switch,
 // its pre-dispatch Wisdom exercise, post-effect inventory refresh, and
 // `sobj ? 0 : 1` return. C's effect helpers are void and receive `&sobj`;
 // helpers not yet ported are explicit gaps rather than command refusals.
-export async function seffects(scroll, state = game) {
+//
+// C ref: read.c seffect_create_monster() (1606-1623). The count expression's
+// short-circuit draws precede the consumed create_critters() visibility result.
+async function seffect_create_monster(scroll, state = game,
+    random = { rn2, rnd }) {
+    const blessed = Boolean(scroll.blessed);
+    const cursed = Boolean(scroll.cursed);
+    const confused = propertyActive(CONFUSION, state);
+    const count = 1
+        + ((confused || cursed) ? 12 : 0)
+        + ((blessed || random.rn2(73)) ? 0 : random.rnd(4));
+    if (await create_critters(
+        count,
+        confused ? state.mons[PM_ACID_BLOB] : null,
+        false,
+        state,
+        { random },
+    )) {
+        state.gk.known = true;
+    }
+}
+
+export async function seffects(scroll, state = game, env = {}) {
     state.gk ??= {};
+    const random = env.random ?? { rn2, rnd, rnl };
     if (objectType(scroll, state).oc_magic)
-        await exercise(A_WIS, true, state, { rn2 });
+        await exercise(A_WIS, true, state, random);
 
     const confused = propertyActive(CONFUSION, state);
     switch (scroll.otyp) {
@@ -2724,7 +2808,7 @@ export async function seffects(scroll, state = game) {
         break;
     case SCR_CREATE_MONSTER:
     case SPE_CREATE_MONSTER:
-        note_unported('read.c seffect_create_monster');
+        await seffect_create_monster(scroll, state, random);
         break;
     case SCR_ENCHANT_WEAPON:
         if (await seffect_enchant_weapon(scroll, state)) scroll = null;
@@ -2766,7 +2850,7 @@ export async function seffects(scroll, state = game) {
         }
         break;
     case SCR_AMNESIA:
-        note_unported('read.c seffect_amnesia');
+        await seffect_amnesia(scroll, state, { random });
         break;
     case SCR_FIRE:
         await seffect_fire(scroll, state);

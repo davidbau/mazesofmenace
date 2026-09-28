@@ -341,6 +341,80 @@ export function init_objects() {
 }
 
 /**
+ * C ref: o_init.c savenames `:375-407` — JSON analogue of the names chunk,
+ * in C order: bases[MAXOCLASSES+2] (`names-bases`), disco[NUM_OBJECTS]
+ * (`names-disco`), objclass per object (`names-objclass`), then the
+ * oc_uname string of each object that has one (`names-len`+`names-oc_uname`).
+ * Sfo_* binary encode is a named omit (stash/JSON architecture, msghistory
+ * precedent); the `update_file` gate always writes on the VFS path; the
+ * uname length prefix rides inline (`oc_uname: string|null` per entry —
+ * oc_uname is genericptr-opaque to sftags, hence C's separate string loop).
+ * The `release_data` free is a GC no-op: the live table keeps its names
+ * (C frees only because the saver exits; FREE_ALL_MEMORY `freenames()` —
+ * save.c:1096 — is compiled out here, named, not ported).
+ * Live C caller save.c:325 (savegamestate) wires via dosave0 in save.js.
+ * @returns {{objects: object[], bases: number[]|null, disco: number[]}}
+ */
+export function savenames() {
+    const objects = objs();
+    // C `:381-383` names-bases.
+    const outBases = bases() ? [...bases()] : null;
+    // C `:384-386` names-disco.
+    const outDisco = game.disco ? [...game.disco] : [];
+    // C `:387-389` names-objclass + `:394-406` uname loop, folded per entry:
+    // the Sfo_objclass mutable fields plus oc_uname where present.
+    const outObjects = (objects || []).map((oc) => ({
+        oc_name_known: oc.oc_name_known | 0,
+        oc_descr_idx: oc.oc_descr_idx | 0,
+        oc_color: oc.oc_color | 0,
+        oc_tough: oc.oc_tough | 0,
+        oc_material: oc.oc_material | 0,
+        oc_prob: oc.oc_prob | 0,
+        oc_encountered: oc.oc_encountered | 0,
+        oc_uname: oc.oc_uname || null,
+    }));
+    return { objects: outObjects, bases: outBases, disco: outDisco };
+}
+
+/**
+ * C ref: o_init.c restnames `:411-437` — JSON analogue, in C order: bases,
+ * disco, objclass per object, then oc_uname where the save has one
+ * (C `:429-435` `if (objects[i].oc_uname)` marker arm — the fresh table's
+ * entries start null, so set-only is exact). Sfi_* binary decode is a named
+ * omit; object-table reset stays with the caller (C boots init'ed, JS calls
+ * objects_globals_init first); `shuffle_tiles` is TILES_IN_GLYPHMAP-only
+ * (already named at init_objects `:231-233`). Live C caller restore.c:719
+ * (restgamestate) wires via try_restore_save in save.js.
+ * @param {object} saved record from savenames()
+ */
+export function restnames(saved) {
+    if (!saved) return;
+    const objects = objs();
+    // C `:415-417` names-bases.
+    if (saved.bases) game.bases = saved.bases;
+    // C `:418-420` names-disco (old saves without the key keep `[]`).
+    game.disco = saved.disco || [];
+    // C `:421-423` names-objclass overlay (static fields are identical
+    // tables on both ends, so only the mutable fields merge).
+    if (saved.objects && objects) {
+        for (let i = 0; i < saved.objects.length && i < objects.length; i++) {
+            const src = saved.objects[i];
+            const dst = objects[i];
+            if (!src || !dst) continue;
+            dst.oc_name_known = src.oc_name_known | 0;
+            dst.oc_descr_idx = src.oc_descr_idx | 0;
+            dst.oc_color = src.oc_color | 0;
+            dst.oc_tough = src.oc_tough | 0;
+            dst.oc_material = src.oc_material | 0;
+            dst.oc_prob = src.oc_prob | 0;
+            dst.oc_encountered = src.oc_encountered | 0;
+            // C `:429-435` uname marker arm.
+            if (src.oc_uname) dst.oc_uname = src.oc_uname;
+        }
+    }
+}
+
+/**
  * C ref: o_init.c interesting_to_discover `:525–540`.
  * Samurai Japanese items always; else uname or (known|encountered)+OBJ_DESCR.
  */

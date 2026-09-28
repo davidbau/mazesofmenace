@@ -30,7 +30,7 @@ import {
     pmnames, MALE, FEMALE, NEUTRAL, NON_PM, NUMMONS, LOW_PM, NUM_MGENDERS,
 } from './monsters.js';
 import { BOGUSMON_BUF } from './generated/bogusmon_data.js';
-import { upstart, highc, ordin, strstri, mungspaces } from './hacklib.js';
+import { upstart, highc, ordin, strstri, mungspaces, chrcasecpy } from './hacklib.js';
 import { genders } from './roles.js';
 import {
     PM_SAMURAI, PM_CLERIC, PM_ARCHEOLOGIST, PM_LICHEN, PM_ACID_BLOB, PM_LONG_WORM_TAIL,
@@ -2042,21 +2042,13 @@ function eqCI(a, b) {
     return true;
 }
 
-/** C ref: hacklib.c chrcasecpy `:300–313` — convert nc into oc's case. */
-function chrcasecpy(oc, nc) {
-    if (oc >= 'a' && oc <= 'z') {
-        if (nc >= 'A' && nc <= 'Z') return String.fromCharCode(nc.charCodeAt(0) + 32);
-    } else if (oc >= 'A' && oc <= 'Z') {
-        if (nc >= 'a' && nc <= 'z') return String.fromCharCode(nc.charCodeAt(0) - 32);
-    }
-    return nc;
-}
-
 /**
  * C ref: hacklib.c strcasecpy `:322–341` — overwrite at `at` with `src`,
  * each char taking the case of the char it replaces; overrun past the old
  * end takes the case of the last old char (C reads dst[-1] when dst starts
  * empty — unreachable here: every append arm has a non-empty head).
+ * Case folding via the hacklib.js `chrcasecpy` export (canonical C home;
+ * the C-signature port is `strcasecpy` there).
  */
 function strcasecpy_at(base, at, src) {
     let out = base.slice(0, at);

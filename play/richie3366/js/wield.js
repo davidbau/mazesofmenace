@@ -24,7 +24,7 @@ import {
     ECMD_OK, ECMD_TIME, Upolyd, HAND, RIGHT_HANDED,
     has_oname, ONAME, COST_DEGRD, COST_DECHNT, CXN_PFX_THE, STONE_RES,
 } from './const.js';
-import { retouch_object, set_artifact_intrinsic, is_art, u_wield_art, restrict_name } from './artifact.js';
+import { retouch_object, set_artifact_intrinsic, is_art, u_wield_art, restrict_name, arti_speak } from './artifact.js';
 import { setworn, reset_remarm } from './do_wear.js';
 import { ART_SNICKERSNEE, ART_MAGICBANE, ART_OGRESMASHER, ART_SUNSWORD } from './generated/artifacts_data.js';
 import { makeknown, encumber_msg, compactify_invlets, update_inventory, getobj_take_count, getobj_apply_count, getobj_from_cmdq, getobj_display_pickinv, splittable, freeinv, prinv } from './invent.js';
@@ -133,12 +133,17 @@ export function is_ammo(obj) {
     return sk >= -P_CROSSBOW && sk <= -P_BOW;
 }
 
-/** C ref: obj.h matching_launcher / ammo_and_launcher */
-export function ammo_and_launcher(ammo, launcher) {
-    if (!ammo || !launcher || !is_ammo(ammo)) return false;
+/** C ref: obj.h matching_launcher — skill-mirror of ammo and launcher. */
+export function matching_launcher(ammo, launcher) {
+    if (!ammo || !launcher) return false;
     const ask = game.objects?.[ammo.otyp]?.oc_skill ?? 0;
     const lsk = game.objects?.[launcher.otyp]?.oc_skill ?? 0;
     return ask === -lsk;
+}
+
+/** C ref: obj.h ammo_and_launcher — is_ammo && matching_launcher. */
+export function ammo_and_launcher(ammo, launcher) {
+    return is_ammo(ammo) && matching_launcher(ammo, launcher);
 }
 
 /** C ref: obj.h is_missile */
@@ -543,7 +548,8 @@ async function cant_wield_corpse(obj) {
  * C ref: wield.c ready_weapon `:168–273` — full arm order: empty-hands,
  * corpse (`cant_wield_corpse`), bimanual+shield, retouch, will_weld pline vs
  * prinv (+AKLYS tether), setuwep, twoweap message, artifact light, shop.
- * Named omissions: `arti_speak` rumor/verbalize (res already TIME, message-only here).
+ * `arti_speak` wired below (C `:241–243`); res already TIME here so only
+ * its rumor/pline side effect is new.
  * @returns {number} 0 = ECMD_OK/ECMD_FAIL (no turn); 1 = ECMD_TIME
  */
 async function ready_weapon(wep) {
@@ -614,7 +620,10 @@ async function ready_weapon(wep) {
         await pline(`You ${ok ? are_no_longer_twoweap : can_no_longer_twoweap}.`);
     }
 
-    // C :241–243 — arti_speak → res |= TIME; named omit (see above)
+    // C :241–243 — KMH talking artifacts: res |= arti_speak(wep).
+    // JS ready_weapon returns TIME unconditionally past retouch, so the
+    // OR is a no-op on res; the await keeps the rumor/pline side effect.
+    if (wep.oartifact) await arti_speak(wep);
     // C :245–250 — artifact light begins to burn + shine pline
     const { artifact_light, begin_burn } = await import('./timeout.js');
     if (artifact_light(wep) && !wep.lamplit) {

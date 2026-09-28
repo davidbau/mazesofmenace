@@ -900,8 +900,8 @@ export function read_config_file(filename, src) {
 
 /**
  * C ref: cfgfiles.c rcfile `:1892–1957` (!SFCTOOL).
- * initoptions_finish (`options.c:7327`) is not a JS function — this export
- * is the body; startup does not call it (map-named).
+ * Called by initoptions_finish (`options.c:7327`, live js/options.js);
+ * startup does not call it (map-named).
  */
 export function rcfile() {
     if (!game.go) game.go = {};

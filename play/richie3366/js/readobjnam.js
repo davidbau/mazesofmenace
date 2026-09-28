@@ -6,7 +6,7 @@
 
 import { game } from './gstate.js';
 import { rn2, rnd } from './rng.js';
-import { str_start_is, strstri, strsubst, mungspaces, strncmpi } from './hacklib.js';
+import { str_start_is, strstri, strsubst, mungspaces, strncmpi, fuzzymatch, copynchars } from './hacklib.js';
 import { ALT_SPELLINGS } from './generated/alt_spellings.js';
 import { LAST_REAL_GEM } from './generated/objects_data.js';
 import {
@@ -40,7 +40,7 @@ import { is_quest_artifact } from './quest.js';
 import { oname, lookup_novel } from './do_name.js';
 import { name_to_mon, name_to_monplus } from './mondata.js';
 import { tin_variety_txt, set_tin_variety, obj_nutrition, consume_oeaten } from './eat.js';
-import { makesingular, makeplural, An, an, japanese_otyp_by_name } from './objnam.js';
+import { makesingular, makeplural, An, an, japanese_otyp_by_name, maybereleaseobuf } from './objnam.js';
 import { align_str } from './roles.js';
 import { is_weptool, is_ammo, is_missile } from './wield.js';
 import { Is_candle } from './timeout.js';
@@ -51,6 +51,7 @@ import {
     is_male, is_female, is_neuter, is_human, is_were,
 } from './monsters.js';
 import {
+    BUFSZ,
     ONAME_WISH, SPE_LIM,
     MALE, FEMALE, NEUTRAL,
     CORPSTAT_RANDOM, CORPSTAT_NEUTER, CORPSTAT_FEMALE, CORPSTAT_MALE,
@@ -234,27 +235,99 @@ function CAN_OVERWRITE_TERRAIN(ttyp) {
     return ttyp !== LADDER && ttyp !== STAIRS;
 }
 
-function fuzzymatch(u, t) {
-    const norm = (x) => String(x).toLowerCase().replace(/[- ]+/g, '');
-    return norm(u) === norm(t);
-}
-
-/** C ref: objnam.c wishymatch — fuzzy + "of" inversion subset. */
+/**
+ * C ref: objnam.c wishymatch `:3243–3338` (staticfn; file-local here too).
+ * User spelling vs canonical objects[] name with "of" inversion and the
+ * dwarvish/elven/helm/gauntlets/detect/detection/ability/aluminum arms,
+ * in C order. C `char buf[BUFSZ]` writes become immutable-string builds
+ * (`eos` append point is the string end by construction); `strcmpi(a,b)`
+ * is `strncmpi(a,b,-1)` (global.h); `releaseobuf` is the GC no-op
+ * `maybereleaseobuf`. `strstri` returns the match tail (hacklib.js:448),
+ * so `!*(p + len)` (match runs to NUL) is `tail.length === len` and
+ * `p - u_str` (match index) is `u_str.length - tail.length`.
+ */
 function wishymatch(u_str, o_str, retry_inverted) {
-    if (!u_str || !o_str) return false;
-    if (fuzzymatch(u_str, o_str)) return true;
+    const DETECT_SP = 'detect '; // C `:3249` detect_SP
+    const SP_DETECTION = ' detection'; // C `:3250` SP_detection
+    u_str = String(u_str ?? '');
+    o_str = String(o_str ?? '');
+    // C `:3254–3256` — ignore spaces & hyphens and upper/lower case
+    if (fuzzymatch(u_str, o_str, ' -', true)) return true;
     if (retry_inverted) {
-        const uOf = u_str.toLowerCase().indexOf(' of ');
-        const oOf = o_str.toLowerCase().indexOf(' of ');
-        if (uOf >= 0 && oOf < 0) {
-            const buf = `${u_str.slice(uOf + 4)} ${u_str.slice(0, uOf)}`;
-            if (fuzzymatch(buf, o_str)) return true;
-        } else if (oOf >= 0 && uOf < 0) {
-            const buf = `${o_str.slice(oOf + 4)} ${o_str.slice(0, oOf)}`;
-            if (fuzzymatch(u_str, buf)) return true;
+        // C `:3258–3275` — "foo of bar" <-> "bar foo" when just one has " of "
+        const u_of = strstri(u_str, ' of ');
+        const o_of = strstri(o_str, ' of ');
+        if (u_of !== null && o_of === null) {
+            // C `:3266–3269` Strcpy(buf, u_of+4) + " " + first (u_of-u_str)
+            const buf = u_of.slice(4) + ' '
+                + copynchars(u_str, u_str.length - u_of.length);
+            if (fuzzymatch(buf, o_str, ' -', true)) return true;
+        } else if (o_of !== null && u_of === null) {
+            // C `:3271–3274`
+            const buf = o_of.slice(4) + ' '
+                + copynchars(o_str, o_str.length - o_of.length);
+            if (fuzzymatch(u_str, buf, ' -', true)) return true;
         }
     }
-    return false;
+    // C note `:3277–3280` — one if/else-if chain; a missed prefix arm below
+    // falls through to FALSE without trying the later arms.
+    if (o_str.slice(0, 9) === 'dwarvish ') { // C `:3281` !strncmp 9
+        if (strncmpi(u_str, 'dwarven ', 8) === 0) // C `:3282`
+            return fuzzymatch(u_str.slice(8), o_str.slice(9), ' -', true);
+    } else if (o_str.slice(0, 6) === 'elven ') { // C `:3284` !strncmp 6
+        if (strncmpi(u_str, 'elvish ', 7) === 0) // C `:3285`
+            return fuzzymatch(u_str.slice(7), o_str.slice(6), ' -', true);
+        else if (strncmpi(u_str, 'elfin ', 6) === 0) // C `:3287`
+            return fuzzymatch(u_str.slice(6), o_str.slice(6), ' -', true);
+    } else if (strstri(o_str, 'helm') !== null // C `:3289`
+            && strstri(u_str, 'helmet') !== null) {
+        // C `:3290–3292` copynchars(buf, u_str, BUFSZ-1), helmet->helm
+        let buf = copynchars(u_str, BUFSZ - 1);
+        buf = strsubst(buf, 'helmet', 'helm');
+        return wishymatch(buf, o_str, true);
+    } else if (strstri(o_str, 'gauntlets') !== null // C `:3293`
+            && strstri(u_str, 'gloves') !== null) {
+        // C `:3295–3297` -3: room to replace shorter "gloves" with longer
+        let buf = copynchars(u_str, BUFSZ - 1 - 3);
+        buf = strsubst(buf, 'gloves', 'gauntlets');
+        return wishymatch(buf, o_str, true);
+    } else if (o_str.slice(0, 7) === DETECT_SP) { // C `:3298` !strncmp 7
+        // C `:3300–3311` — "<foo> detection" (match runs to end) vs
+        // "detect <foo>"; the *p='\0' truncation makes u_str the head, so
+        // the "monster" check runs against the head; *p=' ' restores it.
+        const p = strstri(u_str, SP_DETECTION);
+        if (p !== null && p.length === SP_DETECTION.length) {
+            const head = u_str.slice(0, u_str.length - p.length);
+            let buf = DETECT_SP + head;
+            // C `:3307` "detect monster" -> "detect monsters"
+            if (strncmpi(head, 'monster', -1) === 0) buf += 's';
+            return fuzzymatch(buf, o_str, ' -', true);
+        }
+    } else if (strstri(o_str, SP_DETECTION) !== null) { // C `:3312`
+        // C `:3314–3323` — inverse: "detect <foo>s" vs "<foo> detection"
+        if (strncmpi(u_str, DETECT_SP, 7) === 0) {
+            const p = makesingular(u_str.slice(DETECT_SP.length));
+            const buf = p + SP_DETECTION;
+            // C `:3321` avoid churning obufs while looping objects[]
+            maybereleaseobuf(p);
+            return fuzzymatch(buf, o_str, ' -', true);
+        }
+    } else if (strstri(o_str, 'ability') !== null) { // C `:3324`
+        // C `:3328–3332` — "{potion(s),ring} of {gain,restore,sustain}
+        // abilities": trailing "abilities" (to end) -> "ability".
+        // C uses strncpy (exact head, no newline stop), not copynchars.
+        const p = strstri(u_str, 'abilities');
+        if (p !== null && p.length === 9) {
+            const buf = u_str.slice(0, u_str.length - p.length) + 'ability';
+            return fuzzymatch(buf, o_str, ' -', true);
+        }
+    } else if (o_str === 'aluminum') { // C `:3333` !strcmp
+        // C `:3336–3337` — " wand" already stripped; aluminium+9 /
+        // aluminum+8 skip the full words (empty-vs-empty when exact).
+        if (strncmpi(u_str, 'aluminium', -1) === 0)
+            return fuzzymatch(u_str.slice(9), o_str.slice(8), ' -', true);
+    }
+    return false; // C `:3338`
 }
 
 /** C ref: objnam.c rnd_otyp_by_namedesc */

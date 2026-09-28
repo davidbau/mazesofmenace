@@ -6,8 +6,7 @@
 //   (D-1570), redraw_worm (D-1577), wormhitu (D-1798),
 //   flip_worm_segs_vertical / flip_worm_segs_horizontal (D-2222;
 //   caller sp_lev.c flip_level wormno arm in js/mklev.js).
-// Named omissions: save/rest wsegs (rest_worm/save_worm chain)
-//   callers; muse.c / mhitu.c worm_move callers. Wormgone callers all
+// Named omissions: muse.c / mhitu.c worm_move callers. Wormgone callers all
 //   live: newcham head-back (D-1573), m_detach (D-2231), mon_leave (D-2296).
 
 import { game } from './gstate.js';
@@ -668,6 +667,73 @@ export function clear_wormdata() {
         wgrowtime[i] = 0;
     }
     game._level_monsters = new Map();
+}
+
+/**
+ * C ref: worm.c save_worm `:527–568` — savelev writer (sole C caller
+ * save.c:543): snapshot every slot's chain tail-first (C file order) as
+ * plain records, then the wgrowtime row. The count includes the dummy
+ * head seg (`:524` — the walk counts every node, so a stored list's
+ * length IS the C count, empty ⇔ null). Sfo_* binary encode ⇔
+ * plain-record copy (JS saves JSON per Constitution §1.6 — the binary
+ * format stays a named omission, save/rest_engravings precedent D-3005).
+ * The update_file arm (`:535`) always snapshots in JS; the release_data
+ * arm (`:553–567` free + zero) already lives at the callers (level
+ * teardown clear_wormdata above, mklev.js).
+ * @returns {{segs:(null|{wx:number,wy:number}[])[], wgrowtime:number[]}}
+ *   segs[i] tail-first coord list for slots 1..MAX-1 (null ⇔ count 0;
+ *   slot 0 always null like C), wgrowtime all MAX slots.
+ */
+export function save_worm() {
+    // C `:536–548`: slots 1..MAX-1; count, then coords tail-first.
+    const segs = new Array(MAX_NUM_WORMS).fill(null);
+    for (let i = 1; i < MAX_NUM_WORMS; i++) {
+        if (!wtails[i]) continue; // C count 0 ⇔ no Sfo_coordxy writes
+        const list = [];
+        for (let curr = wtails[i]; curr; curr = curr.nseg)
+            list.push({ wx: curr.wx | 0, wy: curr.wy | 0 });
+        segs[i] = list;
+    }
+    // C `:549–550`: wgrowtime slots 0..MAX-1.
+    return { segs, wgrowtime: Array.from(wgrowtime, (t) => t | 0) };
+}
+
+/**
+ * C ref: worm.c rest_worm `:577–603` — getlev reader (sole C caller
+ * restore.c:1147): rebuild each slot's chain tail-first with newseg —
+ * first node becomes wtails[i], last becomes wheads[i] (`:586–597`) —
+ * then the wgrowtime row (`:599–601`). Sfi_* binary decode ⇔ record
+ * copy; newseg arena ⇔ fresh literal (GC). A missing/legacy stored
+ * record (old saves predate the slot) reads as all-zero counts, and the
+ * count-0 arm clears the slot: C `:585–597` leaves the (BSS-zero) slot
+ * null, which the explicit null below reproduces on a reused table.
+ * @param {{segs?:(null|{wx:number,wy:number}[])[], wgrowtime?:number[]}|null|undefined} stored
+ *   a save_worm() record (or legacy nullish ⇒ empty tables, C count 0).
+ */
+export function rest_worm(stored) {
+    const recs = (stored && typeof stored === 'object') ? stored : {};
+    const segs = Array.isArray(recs.segs) ? recs.segs : [];
+    const times = Array.isArray(recs.wgrowtime) ? recs.wgrowtime : [];
+    // C `:583–598`: slots 1..MAX-1; curr = 0, then one newseg per count.
+    for (let i = 1; i < MAX_NUM_WORMS; i++) {
+        const list = Array.isArray(segs[i]) ? segs[i] : [];
+        let curr = null; // C `:585`
+        for (const s of list) {
+            const temp = newseg(); // C `:587`
+            temp.nseg = null; // C `:588`
+            temp.wx = (s?.wx) | 0; // C `:589` Sfi_coordxy
+            temp.wy = (s?.wy) | 0; // C `:590`
+            if (curr)
+                curr.nseg = temp; // C `:591–592`
+            else
+                wtails[i] = temp; // C `:593–594`
+            curr = temp;
+        }
+        if (!curr) wtails[i] = null; // count-0 arm (C slot already null)
+        wheads[i] = curr; // C `:597`
+    }
+    // C `:599–601`: wgrowtime slots 0..MAX-1.
+    for (let i = 0; i < MAX_NUM_WORMS; ++i) wgrowtime[i] = (times[i] | 0);
 }
 
 /**

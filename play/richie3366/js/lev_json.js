@@ -24,6 +24,8 @@ import { savecemetery, restcemetery, save_exclusions } from './dungeon.js';
 import { forget_temple_entry } from './priest.js';
 import { peek_track } from './track.js';
 import { save_engravings } from './engrave.js';
+import { save_worm } from './worm.js';
+import { save_rooms, save_rooms_from } from './mkroom.js';
 import { timer_is_local, light_is_local } from './mkobj.js';
 import { write_ls } from './light.js';
 
@@ -719,6 +721,9 @@ export function serLevel(src) {
         : (src.damagelist ?? lvl?.damagelist ?? null);
     const stairs = live ? game.stairs : src.stairs;
     const head_engr = live ? save_engravings() : src.head_engr; // C save.c:548 (stash re-serializes as-is).
+    // C save.c:543 savelev → save_worm (worm.c:527–568): live snapshots
+    // the chains tail-first; a stash re-serializes its records as-is.
+    const worm_data = live ? save_worm() : src.worm_data;
     const bonesinfo = live ? lvl?.bonesinfo : (src.level?.bonesinfo ?? src.bonesinfo);
 
     const monsOut = [];
@@ -734,8 +739,10 @@ export function serLevel(src) {
         updest,
         dndest,
         level_flags: lvl?.flags ? { ...lvl.flags } : {},
-        rooms: jsonClone(lvl?.rooms, []),
-        nroom: lvl?.nroom | 0,
+        // C save.c:534 savelev → save_rooms (mkroom.c:862–871): live
+        // reads game.level; a stash re-serializes its records as-is
+        // (head_engr precedent — records carry no pointers/monsters).
+        ...(live ? save_rooms() : save_rooms_from(src.level)),
         doors: jsonClone(lvl?.doors, []),
         doorindex: lvl?.doorindex | 0,
         upstair: lvl?.upstair ? { ...lvl.upstair } : null,
@@ -746,6 +753,7 @@ export function serLevel(src) {
         billobjs: serObjChain(billobjs),
         traps: serTraps(traps),
         head_engr: jsonClone(head_engr, null),
+        worm_data: jsonClone(worm_data, null),
         bonesinfo: savecemetery(bonesinfo),
         regions,
         exclusion_zones,
@@ -812,6 +820,10 @@ export function deserLevel(blob, opts) {
         ftrap: map.traps,
         stairs: src.stairs || null,
         head_engr: src.head_engr || null,
+        // C restore.c:1147 getlev → rest_worm (worm.c:577–603): blob for
+        // the rest_worm install at the caller's install site (head_engr
+        // precedent — deserLevel builds info, callers install).
+        worm_data: src.worm_data || null,
         track: src.track || null,
         regions: jsonClone(src.regions || [], []),
         // Records for load_exclusions at install (copies fields into
@@ -867,6 +879,7 @@ export function levelBlobFromPayload(payload) {
         billobjs: payload.billobjs,
         traps: payload.traps ?? payload.ftrap,
         head_engr: payload.head_engr,
+        worm_data: payload.worm_data || null,
         bonesinfo: payload.bonesinfo,
         regions: payload.regions,
         exclusion_zones: payload.exclusion_zones,

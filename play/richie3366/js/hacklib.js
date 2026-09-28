@@ -256,6 +256,143 @@ export function copynchars(src, n) {
     return out;
 }
 
+/**
+ * C ref: hacklib.c upwords `:122–138` — uppercase the first letter of
+ * each blank-separated word, in place, returning `s`. The `letter()`
+ * guard (`:68–72`: '@'..'Z' or 'a'..'z') is expanded inline; `highc` is
+ * identity outside a-z so the fold below is exact. JS strings are
+ * immutable; return a new string.
+ * @param {string} s
+ * @returns {string}
+ */
+export function upwords(s) {
+    const src = typeof s === 'string' ? s : String(s ?? ''); // C `:123` NONNULL buffer
+    let out = '';
+    let space = true; // C `:124`
+    for (const ch of src) { // C `:126` for (p = s; *p; p++)
+        if (ch === ' ') { // C `:127`
+            space = true; // C `:128`
+            out += ch;
+        } else if (space && ((ch >= '@' && ch <= 'Z') || (ch >= 'a' && ch <= 'z'))) { // C `:129` letter(*p)
+            out += highc(ch); // C `:130`
+            space = false; // C `:131`
+        } else { // C `:133`
+            space = false; // C `:134`
+            out += ch;
+        }
+    }
+    return out; // C `:136`
+}
+
+/**
+ * C ref: hacklib.c c_eos `:202–208` — pointer just past the last char
+ * (the NUL). JS has no pointers: the analogue is the end index, i.e. the
+ * string length. (Sibling `eos` also stops at an embedded NUL; `c_eos`
+ * callers pass NUL-terminated buffers, so plain length is exact.)
+ * @param {string} s
+ * @returns {number}
+ */
+export function c_eos(s) {
+    if (s == null) return 0; // C NONNULL; guard mirrors `eos`
+    const str = typeof s === 'string' ? s : String(s);
+    return str.length; // C `:205–207` scan to NUL
+}
+
+/**
+ * C ref: hacklib.c chrcasecpy `:300–317` — convert `nc` into `oc`'s
+ * case (lowercase `oc` downcases an uppercase `nc` and vice versa). The
+ * `#if 0` unsigned-char prologue is disabled in C; kept disabled here.
+ * Canonical home; js/objnam.js `strcasecpy_at` consumes this export.
+ * @param {string} oc single char whose case wins
+ * @param {string} nc single char to convert
+ * @returns {string}
+ */
+export function chrcasecpy(oc, nc) {
+    if (oc >= 'a' && oc <= 'z') { // C `:306`
+        if (nc >= 'A' && nc <= 'Z') // C `:308`
+            return String.fromCharCode(nc.charCodeAt(0) + 32); // C `:309` lowc(nc)
+    } else if (oc >= 'A' && oc <= 'Z') { // C `:310`
+        if (nc >= 'a' && nc <= 'z') // C `:312`
+            return String.fromCharCode(nc.charCodeAt(0) - 32); // C `:313` highc(nc)
+    }
+    return nc; // C `:315`
+}
+
+/**
+ * C ref: hacklib.c strcasecpy `:321–341` — copy `src` over `dst`, each
+ * char taking the replaced char's case via `chrcasecpy`; past `dst`'s
+ * end the last `dst` char's case propagates (`:335`); an empty `dst`
+ * reads `dst[-1]` in C (a caller tail-pointer in practice — unreachable
+ * here, falls through to `nc`). C mutates `dst` and returns it; JS
+ * returns a new string. Sole C mention is the `Strcasecpy` macro
+ * (objnam.c `:69`), used by no live C caller; js/objnam.js
+ * `strcasecpy_at` is the adapted in-tree user.
+ * @param {string} dst case-template buffer
+ * @param {string} src text to copy
+ * @returns {string}
+ */
+export function strcasecpy(dst, src) {
+    const d = typeof dst === 'string' ? dst : String(dst ?? '');
+    const s = typeof src === 'string' ? src : String(src ?? '');
+    let out = '';
+    let dstExhausted = false; // C `:326`
+    for (let i = 0; i < s.length && s[i] !== '\0'; i++) { // C `:332` while *src
+        if (!dstExhausted && i >= d.length) // C `:333–334` !*dst
+            dstExhausted = true;
+        const oc = dstExhausted ? (d[d.length - 1] ?? '') : d[i]; // C `:335` *(dst - dst_exhausted)
+        out += chrcasecpy(oc, s[i]); // C `:336`
+    }
+    return out; // C `:338–339` NUL + result
+}
+
+/**
+ * C ref: hacklib.c tabexpand `:428–464` — expand tabs to 8-column stops
+ * in place, truncated at BUFSZ-1 output chars (`:453–456` rewind the tail
+ * to `&buf[BUFSZ-1]`), returning `sbuf`. The clang-8 `-Os` comment in C
+ * is a compiler workaround, not semantics. C returns the mutated buffer;
+ * JS strings are immutable so callers assign the return (js/pager.js
+ * `lookup_data_base_entry`, `doextversion`). Canonical home promoted
+ * from the js/pager.js local clone (which capped one char looser on tab
+ * overshoot past the bound).
+ * @param {string} s
+ * @returns {string}
+ */
+export function tabexpand(s) {
+    const src = typeof s === 'string' ? s : String(s ?? '');
+    if (!src) return src; // C `:436–437` empty passthrough (same content)
+    let out = '';
+    let idx = 0; // C `:435` (bp = buf)
+    for (const ch of src) { // C `:437` for (; *s; s++)
+        if (ch === '\t') { // C `:438`
+            do { // C `:446–448`
+                out += ' ';
+                idx++;
+            } while (idx % 8);
+        } else { // C `:449`
+            out += ch; // C `:450`
+            idx++; // C `:451`
+        }
+        if (idx >= BUFSZ) { // C `:453`
+            out = out.slice(0, BUFSZ - 1); // C `:454` bp = &buf[BUFSZ-1]
+            break;
+        }
+    }
+    return out; // C `:458–459` NUL + strcpy
+}
+
+/**
+ * C ref: hacklib.c sitoa `:637–644` — signed int with an explicit `+`
+ * for non-negative (`Sprintf(buf, (n<0) ? "%d" : "+%d", n)`). C returns
+ * a static buffer; JS returns a fresh string (GC). No live C callers
+ * (objnam.c `:1423`/`:1501` cite it only in comments).
+ * @param {number} n
+ * @returns {string}
+ */
+export function sitoa(n) {
+    const v = n | 0; // C `int`
+    return v < 0 ? String(v) : '+' + v; // C `:641`
+}
+
 /** C hacklib.c highc — ASCII a-z → A-Z. */
 export function highc(c) {
     if (c == null || c === '') return c;

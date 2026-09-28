@@ -127,6 +127,7 @@ import {
     freeinv_core, getobj, ggetobj, useup, useupall,
 } from './invent.js';
 import { can_reach_floor, set_occupation, engr_at, sticks, save_engravings, rest_engravings } from './engrave.js';
+import { rest_rooms } from './mkroom.js';
 import {
     pickup, pooleffects, query_category, query_objlist, add_valid_menu_class,
     allow_category, allow_all, count_justpicked, find_justpicked,
@@ -155,7 +156,7 @@ import {
     PM_TOURIST, PM_ROGUE, monsterNames,
 } from './generated/monsters_data.js';
 import { dismount_steed, place_monster, stucksteed } from './steed.js';
-import { place_wsegs } from './worm.js';
+import { place_wsegs, rest_worm, save_worm } from './worm.js';
 import { set_residency, costly_alteration, is_unpaid, stolen_value } from './shk.js';
 import { set_ustuck, gulp_blnd_check, digests, Flying } from './mhitu.js';
 import { onquest, ok_to_quest } from './quest.js';
@@ -1735,6 +1736,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
                 ftrap: game.ftrap,
                 stairs: game.stairs,
                 head_engr: save_engravings(), // C save.c:548 savelev Sfo arm (release arm: teardown null below).
+                worm_data: save_worm(), // C save.c:543 savelev → save_worm Sfo arm (release arm: level teardown clear_wormdata).
                 track: trackSnap,
                 // C savelev → save_regions; rest_regions on getlev.
                 // Snapshot like C's Sfo writes: the release_data arm
@@ -1872,11 +1874,17 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         // C: getlev — restore in-memory stash + place/catchup/restore_cham/hide_monst + rest_track
         // C restore.c Sfi_dest_area updest/dndest after rest_stairs.
         game.level = info.level;
+        // C restore.c:1132 getlev → rest_rooms (mkroom.c:892–906): the
+        // stash holds records (or live rooms); rebuild live rooms here —
+        // subrooms re-linked, residents nulled, re-linked from fmon at
+        // getlev_place_monsters below (restore.c:1181–1184).
+        rest_rooms({ nroom: info.level.nroom, rooms: info.level.rooms });
         game.fmon = info.fmon || [];
         game.fobj = info.fobj || null;
         game.ftrap = info.ftrap || null;
         game.stairs = info.stairs || null;
         game.head_engr = rest_engravings(info.head_engr); // C restore.c:1174 getlev.
+        rest_worm(info.worm_data); // C restore.c:1147 getlev → rest_worm.
         // C restore.c getlev `:1225` rest_regions — rebuild live regions
         // from the stash (ttl rebased on elapsed moves, expired dropped);
         // pre-stash levels omit regions → empty. Stash getlev is never

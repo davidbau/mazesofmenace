@@ -849,6 +849,16 @@ const EXT_CMDS = [
         },
     },
     {
+        // C: cmd.c "wizdispmacros" IFBURIED|AUTOCOMPLETE|WIZMODECMD → wiz_display_macros
+        name: 'wizdispmacros',
+        wiz: true,
+        autocomplete: true,
+        run: async () => {
+            const { wiz_display_macros } = await import('./wizcmds.js');
+            return wiz_display_macros();
+        },
+    },
+    {
         // C: cmd.c "wizidentify" IFBURIED|WIZMODECMD (no AUTOCOMPLETE) → wiz_identify
         name: 'wizidentify',
         wiz: true,

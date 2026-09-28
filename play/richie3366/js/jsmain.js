@@ -11,6 +11,7 @@
 // For browser play, see nethack.js (uses NethackGame directly).
 
 import { game, resetGame } from './gstate.js';
+import { sys_early_init } from './sys.js';
 import { initRng, enableRngLog, getRngLog } from './rng.js';
 import { setStorageForTesting } from './storage.js';
 import { pushKey, nhgetch } from './input.js';
@@ -98,6 +99,7 @@ export class NethackGame {
 
     async start() {
         const g = resetGame();
+        sys_early_init(); // C allmain.c:43 early_init → sys_early_init (sys.c:20–112)
         reset_display_messages();
         // Frozen VFS contract: the harness shares this handle across segments.
         setStorageForTesting(this._storage);

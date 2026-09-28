@@ -81,7 +81,7 @@ import {
     You_see,
     canspotmon as display_canspotmon, sensemon, Norep, verbalize, set_msg_xy,
 } from './display.js';
-import { dog_move, finish_meating, cursed_object_at, dogfood } from './dogmove.js';
+import { dog_move, finish_meating, cursed_object_at, dogfood, could_reach_item } from './dogmove.js'; // C: dogmove.c could_reach_item (single home; clone removed)
 import { worm_move, worm_nomove, see_wsegs, worm_known, wormhitu } from './worm.js';
 import {
     shk_move, gd_move, pri_move, costly_spot, inhishop, bill_dummy_object,
@@ -446,22 +446,6 @@ function mon_would_consume_item(mtmp, otmp) {
     }
 
     return false;
-}
-
-/**
- * C ref: dogmove.c could_reach_item — pool/lava/boulder gates.
- * Flyer-only arms N/A in C (D-0823 / D-0824).
- */
-function could_reach_item(mon, nx, ny) {
-    const ptr = mon?.data;
-    if (is_pool(nx, ny) && !is_swimmer(ptr)) return false;
-    if (is_lava(nx, ny) && !likes_lava(ptr)) return false;
-    if (BOULDER >= 0) {
-        for (let obj = objects_at(nx, ny); obj; obj = obj.nexthere) {
-            if ((obj.otyp | 0) === BOULDER && !throws_rocks(ptr)) return false;
-        }
-    }
-    return true;
 }
 
 /**

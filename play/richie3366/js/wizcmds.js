@@ -3,7 +3,7 @@
 
 import { game } from './gstate.js';
 import { cmd_from_func } from './dokeylist.js';
-import { pline, You, docrt, impossible, flush_topl_more, Warn_of_mon, glyph_at, glyph_is_monster, glyph_is_invisible_id, map_invisible, unmap_invisible } from './display.js';
+import { pline, You, docrt, impossible, flush_topl_more, Warn_of_mon, glyph_at, glyph_is_monster, glyph_is_invisible_id, map_invisible, unmap_invisible, glyph_is_cmap, glyph_to_cmap, glyph_is_cmap_zap, glyph_to_mon, glyph_is_object, glyph_to_obj, NO_GLYPH, MAX_GLYPH, MAXPCHARS } from './display.js';
 import { getlin, yn_function } from './getline.js';
 import { pluslvl, losexp } from './exper.js';
 import { makewish } from './zap.js';
@@ -23,7 +23,7 @@ import {
     SWIMMING, SLOW_DIGESTION, HALF_SPDAM, HALF_PHDAM, REGENERATION,
     ENERGY_REGENERATION, PROTECTION, PROT_FROM_SHAPE_CHANGERS,
     POLYMORPH_CONTROL, UNCHANGING, REFLECTING, FREE_ACTION, FIXED_ABIL,
-    LIFESAVED, Upolyd, COLNO, ROWNO, STONE, S_sink, S_fountain,
+    LIFESAVED, Upolyd, COLNO, ROWNO, STONE, S_sink, S_fountain, S_vbeam, S_rslant,
     In_sokoban, Is_knox, In_endgame, ARM, u_at,
     Is_stronghold, Is_botlevel, has_mgivenname, MGIVENNAME,
     MIGR_EXACT_XY, MIGR_RANDOM, MM_NOMSG,
@@ -47,7 +47,7 @@ import { check_wornmask_slots } from './worn.js';
 import { rn2 } from './rng.js';
 import { float_vs_flight, body_part } from './polyself.js';
 import { pooleffects } from './pickup.js';
-import { mons, olfaction } from './monsters.js';
+import { mons, olfaction, NUMMONS } from './monsters.js';
 import { PM_GRID_BUG } from './generated/monsters_data.js';
 import { NUM_OBJECTS } from './objects.js';
 /* C dungeon.c overview_stats — hoisted fn
@@ -56,6 +56,10 @@ import { overview_stats } from './dungeon.js';
 /* C worm.c size_wseg — hoisted fn
    (`imports.mjs --can wizcmds.js worm.js size_wseg` SAFE). */
 import { size_wseg } from './worm.js';
+/* C glyphs.c glyphmap[MAX_GLYPH] accessor for wizcustom_callback below
+   (`imports.mjs --can wizcmds.js glyphs.js` IN-SCC, function declaration,
+   called only at runtime — no top-level read). */
+import { ensure_glyphmap } from './glyphs.js';
 
 /** C timeout.c propertynames[] — wizard #wizintrinsic menu order. */
 const PROPERTYNAMES = [
@@ -1511,6 +1515,160 @@ export async function wiz_show_stats() {
     // C `:1694–1695` — display_nhwindow(win, FALSE); destroy_nhwindow.
     await show_text_pages(lines);
     return ECMD_OK;
+}
+
+/**
+ * C ref: wizcmds.c wiz_display_macros `:1705–1778` — #wizdispmacros command.
+ * Verifies the display macros return sane values: every glyph that claims
+ * to be cmap / monster / object must peel back to a live table subscript
+ * (defsyms / mons / objects). NHW_TEXT via show_text_pages (same idiom as
+ * wiz_show_stats above): each C putstr is one collected line;
+ * display_nhwindow(win, FALSE) is the page wait inside show_text_pages.
+ * Caller: cmd.c extcmdlist "wizdispmacros" `:1956–1958`
+ * (IFBURIED|AUTOCOMPLETE|WIZMODECMD) → EXT_CMDS runnable entry.
+ * @returns {Promise<number>} ECMD_OK
+ */
+export async function wiz_display_macros() {
+    const { show_text_pages } = await import('./pager.js');
+    // C `:1708` — static header, printed once ahead of the first trouble
+    // line (`if (!trouble++)` below).
+    const display_issues = 'Display macro issues:';
+    // C `:1710` — no_glyph = NO_GLYPH, max_glyph = MAX_GLYPH.
+    const no_glyph = NO_GLYPH;
+    const max_glyph = MAX_GLYPH;
+    // C `:1710` SIZE(defsyms) — drawing.c:64 defsyms[MAXPCHARS + 1]; the
+    // trailing fencepost entry keeps MAXPCHARS a legal subscript, so
+    // IndexOk(test, defsyms) is `0 <= test <= MAXPCHARS`.
+    const defsyms_size = MAXPCHARS + 1;
+    // C `:1712` — create_nhwindow(NHW_TEXT).
+    const lines = [];
+    let trouble = 0;
+    // C `:1714` — for (glyph = 0; glyph < MAX_GLYPH; ++glyph).
+    for (let glyph = 0; glyph < MAX_GLYPH; ++glyph) {
+        // C `:1715–1742` — glyph_is_cmap / glyph_to_cmap().
+        if (glyph_is_cmap(glyph)) {
+            const test = glyph_to_cmap(glyph);
+            // C `:1718–1726` — check for MAX_GLYPH return
+            // (NO_GLYPH === MAX_GLYPH, display.js:229).
+            if (test === no_glyph) {
+                if (!trouble++) lines.push(display_issues);
+                lines.push(`glyph_is_cmap() / glyph_to_cmap(glyph=${glyph}) sync failure, returned NO_GLYPH (${test})`);
+            }
+            // C `:1727–1734` — zap glyphs must peel to a zap cmap.
+            if (glyph_is_cmap_zap(glyph)
+                && !(test >= S_vbeam && test <= S_rslant)) {
+                if (!trouble++) lines.push(display_issues);
+                lines.push(`glyph_is_cmap_zap(glyph=${glyph}) returned non-zap cmap ${test}`);
+            }
+            // C `:1735–1742` — check against defsyms array subscripts.
+            if (!(test >= 0 && test < defsyms_size)) {
+                if (!trouble++) lines.push(display_issues);
+                lines.push(`glyph_to_cmap(glyph=${glyph}) returns ${test} exceeds defsyms[${defsyms_size}] bounds (MAX_GLYPH = ${max_glyph})`);
+            }
+        }
+        // C `:1743–1756` — glyph_is_monster / glyph_to_mon, checked
+        // against mons array subscripts.
+        if (glyph_is_monster(glyph)) {
+            const test = glyph_to_mon(glyph);
+            if (test < 0 || test >= NUMMONS) {
+                if (!trouble++) lines.push(display_issues);
+                lines.push(`glyph_to_mon(glyph=${glyph}) returns ${test} exceeds mons[${NUMMONS}] bounds`);
+            }
+        }
+        // C `:1757–1770` — glyph_is_object / glyph_to_obj, checked
+        // against objects array subscripts (upper bound is `>`, per C).
+        if (glyph_is_object(glyph)) {
+            const test = glyph_to_obj(glyph);
+            if (test < 0 || test > NUM_OBJECTS) {
+                if (!trouble++) lines.push(display_issues);
+                lines.push(`glyph_to_obj(glyph=${glyph}) returns ${test} exceeds objects[${NUM_OBJECTS}] bounds`);
+            }
+        }
+    }
+    // C `:1771–1773`.
+    if (!trouble) lines.push('No display macro issues detected.');
+    // C `:1774–1776` — display_nhwindow(win, FALSE); destroy_nhwindow(win).
+    await show_text_pages(lines);
+    return ECMD_OK;
+}
+
+/**
+ * C ref: wizcmds.c wizcustom_callback `:1986–2027` — `#wizcustom` menu-fill
+ * callback: one customized glyph becomes one menu line. Sole C caller is
+ * wizcustom_glyphids (glyphs.c:818), wired in js/glyphs.js. ENHANCED_SYMBOLS
+ * is live (config.h:368), so the `:2001` u arm compiles.
+ * add_menu `:2022–2023` lands on the JS raw menu array (options.js `raw`
+ * idiom): nul_glyphinfo/attr/color/flags have no raw-array counterpart
+ * (ATR_NONE, NO_COLOR and MENU_ITEMFLAGS_NONE are the defaults); the
+ * PICK_NONE consumer (wiz_custom `:1969`, unported) never selects, so
+ * selectable:false with a_int kept for the `#if 0` a_int-1 reader.
+ * @param {object[]} win raw menu array (C winid)
+ * @param {number} glyphnum
+ * @param {string} id glyph identifier from the glyphid cache
+ */
+export function wizcustom_callback(win, glyphnum, id) {
+    // C `:1997` if (win && id).
+    if (win && id) {
+        // C `:1989` extern glyph_map glyphmap[MAX_GLYPH]; `:1998`
+        // cgm = &glyphmap[glyphnum].
+        const cgm = ensure_glyphmap()[glyphnum];
+        // C `:1999–2003` gate: u (ENHANCED_SYMBOLS arm `:2001`) or nonzero
+        // customcolor.
+        if (cgm.u != null || (cgm.customcolor >>> 0) !== 0) {
+            // C `:2004` Sprintf(bufa, "[%04d] %-44s", glyphnum, id).
+            const bufa = `[${String(glyphnum).padStart(4, '0')}] ${id.padEnd(44, ' ')}`;
+            // C `:2005–2006` Sprintf(bufb, "'\\%03d' %02d",
+            // gs.showsyms[cgm->sym.symidx], cgm->sym.color). nhsym is uchar
+            // (global.h:108); game.gs.showsyms is still null
+            // (init_symbols unported), so this reads 0 until that state lands.
+            const sh = game.gs?.showsyms?.[cgm.sym.symidx];
+            const symch = ((typeof sh === 'string' ? sh.codePointAt(0) : sh) | 0) & 0xff;
+            const bufb = `'\\${String(symch).padStart(3, '0')}' ${String(cgm.sym.color | 0).padStart(2, '0')}`;
+            // C `:2007` Sprintf(bufc, "%011lx", customcolor).
+            const bufc = (cgm.customcolor >>> 0).toString(16).padStart(11, '0');
+            // C `:2008` bufu[0] = '\0'.
+            let bufu = '';
+            // C `:2010` if (cgm->u && cgm->u->utf8str) — a pointer check, so
+            // an empty string still enters (the walk then adds nothing).
+            if (cgm.u && cgm.u.utf8str != null) {
+                // C `:2011` Sprintf(bufu, "U+%04lx", utf32ch).
+                bufu = 'U+' + (cgm.u.utf32ch >>> 0).toString(16).padStart(4, '0');
+                // C `:2012–2017` cp walk over the NUL-terminated UTF-8 bytes;
+                // JS holds utf8str as a UTF-16 string (dupstr ≡ assignment),
+                // so re-encode to UTF-8 bytes inline (no TextEncoder dependency).
+                const ustr = cgm.u.utf8str;
+                const bytes = [];
+                for (let ui = 0; ui < ustr.length; ui++) {
+                    let cp = ustr.charCodeAt(ui);
+                    if (cp >= 0xd800 && cp <= 0xdbff && ui + 1 < ustr.length) {
+                        const lo = ustr.charCodeAt(ui + 1);
+                        if (lo >= 0xdc00 && lo <= 0xdfff) {
+                            cp = 0x10000 + ((cp - 0xd800) << 10) + (lo - 0xdc00);
+                            ui++;
+                        }
+                    }
+                    if (cp < 0x80) bytes.push(cp);
+                    else if (cp < 0x800) bytes.push(0xc0 | (cp >> 6), 0x80 | (cp & 0x3f));
+                    else if (cp < 0x10000) bytes.push(0xe0 | (cp >> 12), 0x80 | ((cp >> 6) & 0x3f), 0x80 | (cp & 0x3f));
+                    else bytes.push(0xf0 | (cp >> 18), 0x80 | ((cp >> 12) & 0x3f), 0x80 | ((cp >> 6) & 0x3f), 0x80 | (cp & 0x3f));
+                }
+                // C `:2013` while (*cp) — a 0 byte ends the walk like NUL.
+                let bi = 0;
+                while (bi < bytes.length && bytes[bi] !== 0) {
+                    bufu += ` <${bytes[bi]}>`; // C `:2014–2015` Sprintf(bufd) + Strcat
+                    bi++; // C `:2016` cp++
+                }
+            }
+            // C `:2020` any.a_int = glyphnum + 1 (avoid 0).
+            const a_int = glyphnum + 1;
+            // C `:2021` Snprintf(buf, sizeof buf, "%s %s %s %s", ...) — the
+            // fourth %s is always present, so empty bufu ⇒ trailing space.
+            const buf = `${bufa} ${bufb} ${bufc} ${bufu}`;
+            // C `:2022–2023` add_menu — see the header comment for the mapping.
+            if (Array.isArray(win)) win.push({ text: buf, selectable: false, a_int });
+        }
+    }
+    // C `:2026` return (void).
 }
 
 /**

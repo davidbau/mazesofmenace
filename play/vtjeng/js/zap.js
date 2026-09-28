@@ -262,7 +262,7 @@ import { cvt_sdoor_to_door, findit } from './detect.js';
 import {
     adj_pit_checks, dighole, fillholetyp, is_moat, watch_dig,
 } from './dig.js';
-import { dropx, preflight_dropx } from './do.js';
+import { dropx, dropy } from './do.js';
 import { ceiling } from './dungeon.js';
 import { done } from './end.js';
 import { losexp, more_experienced } from './exper.js';
@@ -281,7 +281,6 @@ import {
     hands_obj,
     hold_another_object,
     stackobj,
-    prepareHoldDropAdmission,
     delete_contents,
     replace_inventory_core,
     update_inventory,
@@ -297,7 +296,7 @@ import {
     show_transient_light,
     transient_light_cleanup,
 } from './light.js';
-import { monhp_per_lvl, newmcorpsenm } from './makemon.js';
+import { create_critters, monhp_per_lvl, newmcorpsenm } from './makemon.js';
 import {
     makemon_revival,
     makemon_runtime,
@@ -494,6 +493,7 @@ import {
     CHEST,
     TIN,
     WAN_SECRET_DOOR_DETECTION,
+    WAN_CREATE_MONSTER,
     WAN_SLEEP,
     WAN_TELEPORTATION,
     POT_OIL,
@@ -2125,14 +2125,10 @@ export async function makewish(state = game) {
                 state,
             ),
             newsym,
-            preflightDropObject: preflight_dropx,
             dropObject: dropx,
+            dropy,
         },
     };
-    // The supported drop tail must be admitted before doname() records
-    // discovery and before wish conduct changes. The returned token is
-    // consumed after addinv() reaches the source drop_it branch.
-    const holdDropAdmission = prepareHoldDropAdmission(otmp, holdEnv);
 
     // 6398 builds a BUFSZ-sized local string before livelog_printf() receives
     // it. Keep that inner truncation separate from pline.c's larger formatted
@@ -2166,8 +2162,8 @@ export async function makewish(state = game) {
         );
     }
 
-    // 6405-6420.  readobjnam() refuses a corpse, so otmp->wishedfor is 0 and
-    // both tests that read it take their other branch.
+    // 6405-6420. makewish() derives the drop verb and caller message before
+    // hold_another_object() checks whether the object can stay in inventory.
     const verb = (Is_airlevel(state.u.uz) || state.u.uinwater)
         ? 'slip' : 'drop';
     const here = state.level.at(state.u.ux, state.u.uy).typ;
@@ -2182,7 +2178,6 @@ export async function makewish(state = game) {
     await hold_another_object(
         otmp, oops_msg, The(aobjnam(otmp, verb, state), state), null,
         holdEnv,
-        holdDropAdmission,
     );
     state.u.ublesscnt += rn1(100, 50); /* the gods take notice */
 }
@@ -5180,13 +5175,21 @@ export async function ubreatheu(
         state.u.ux, state.u.uy, state, random);
 }
 
-// C ref: zap.c zapnodir() (2539-2596), restricted to the wand of secret door
-// detection. Its findit() call is observable even when it finds nothing, so a
-// seen wand goes through the shared discovery tail. Every other NODIR object
-// retains the previous fail-closed boundary.
-export async function zapnodir(obj, state = game) {
+// C ref: zap.c zapnodir() (2539-2596), covering create-monster and
+// secret-door-detection wands. create_critters()' visibility result controls
+// discovery; findit() remains observable even when no door is found.
+export async function zapnodir(obj, state = game,
+    random = { rn1, rn2 }) {
     let known = false;
     switch (obj.otyp) {
+    case WAN_CREATE_MONSTER:
+        if (await create_critters(
+            random.rn2(23) ? 1 : random.rn1(7, 2),
+            null, false, state, { random },
+        )) {
+            known = Boolean(obj.dknown);
+        }
+        break;
     case WAN_SECRET_DOOR_DETECTION:
         known = Boolean(obj.dknown);
         await findit(state);
@@ -5579,7 +5582,7 @@ export async function weffects(
         }
         await zapwrapup(state);
     } else if (oc_dir === NODIR) {
-        await zapnodir(obj, state);
+        await zapnodir(obj, state, random);
     } else {
         /* neither immediate nor directionless */
 

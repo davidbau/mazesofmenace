@@ -483,6 +483,16 @@ export function write_ls(ls) {
 }
 
 /**
+ * C ref: light.c:718–722 any_light_source — true iff any light source
+ * exists (`gl.light_base != NULL`; C extern.h:1423). JS light_base is an
+ * array, so emptiness is length, not identity. Caller: mon.c:1332 movemon
+ * post-loop vision_full_recalc arm.
+ */
+export function any_light_source() {
+    return !!((game.light_base || []).length);
+}
+
+/**
  * C ref: light.c do_light_sources — mark TEMP_LIT in cs_rows.
  * Camera flash: range 0 + Null obj, caller already set ls.{x,y} (D-1597).
  * Exact circle ring via circle_ptr (light.c:213-226); a range-3 lamp no
