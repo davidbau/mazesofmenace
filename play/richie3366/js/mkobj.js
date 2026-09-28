@@ -59,7 +59,7 @@ import {
     ROT_ORGANIC, ROT_CORPSE, REVIVE_MON, ZOMBIFY_MON,
     TIMER_NONE, NUM_TIMER_KINDS, NUM_TIME_FUNCS,
     TIMER_OBJECT, TIMER_LEVEL, TIMER_GLOBAL, TIMER_MONSTER,
-    RANGE_LEVEL,
+    RANGE_LEVEL, RANGE_GLOBAL,
     MELT_ICE_AWAY, HATCH_EGG, FIG_TRANSFORM, BURN_OBJECT, SHRINK_GLOB,
     MAX_EGG_HATCH_TIME,
     Has_contents,
@@ -1126,6 +1126,98 @@ export function timer_is_local(timer) {
 }
 
 /**
+ * C ref: timeout.c write_timer `:2505–2551` (staticfn) — per-entry save
+ * write with the pointer→id fixup. Called only from maybe_write_timer's
+ * `write_it` arm (`:2639`/`:2646`); exported here because the JS per-entry
+ * save writer is lev_json.js serTimer (snapshotLocal/GlobalTimers +
+ * serTimerList), which delegates to this function. The C `Sfo_fe` binary
+ * write has no JS layer (Constitution §1.5/§1.6 — JSON VFS, do.js savelev
+ * precedent, light.js write_ls precedent D-2666); the returned record (the
+ * serTimer shape) IS the write. Sync like C. Default arm: panic (loud
+ * throw; no paniclog, Rule #2 — start_timer precedent).
+ * Callees: none (field reads only).
+ * @param {object} timer live _timer_base entry (obj/mon = live pointers)
+ * @returns {{timeout:number,tid:number,kind:number,action:number,a_long:number,arg_id:number,arg_kind:number}}
+ * record to persist.
+ */
+export function write_timer(timer) {
+    const base = {
+        timeout: timer.timeout | 0,
+        tid: timer.tid | 0,
+        kind: timer.kind | 0,
+        action: timer.action | 0,
+        a_long: timer.a_long | 0,
+    };
+    switch (timer.kind | 0) {
+    case TIMER_GLOBAL: // C :2511.
+    case TIMER_LEVEL: // C :2512.
+        // C :2513–2514 — assume no pointers in arg; write as-is (JS carries
+        // a_long beside the record, so arg_id is always 0 here).
+        return { ...base, arg_id: 0, arg_kind: timer.kind | 0 };
+    case TIMER_OBJECT: // C :2517.
+        // C :2518–2519 — needs_fixup entries already carry the numeric id,
+        // so C writes the struct untouched.
+        if (timer.needs_fixup)
+            return { ...base, arg_id: timer.arg_id | 0, arg_kind: timer.kind | 0 };
+        // C :2520–2529 — replace the object pointer with its o_id for the
+        // write, then put the pointer back (:2527). The `cg.zeroany` union
+        // step collapses: JS timers hold obj beside the record, so the
+        // record takes the id while the live entry is never mutated
+        // (no in-place swap needed outside the binary write). A restored
+        // (relinked) entry keeps its numeric arg_id — prefer it, matching
+        // the old serTimer fallback exactly.
+        if (timer.arg_id != null)
+            return { ...base, arg_id: timer.arg_id | 0, arg_kind: timer.kind | 0 };
+        return { ...base, arg_id: timer.obj?.o_id | 0, arg_kind: timer.kind | 0 }; // C :2524.
+    case TIMER_MONSTER: // C :2532.
+        // C :2533–2534 — needs_fixup entries already carry the numeric id.
+        if (timer.needs_fixup)
+            return { ...base, arg_id: timer.arg_id | 0, arg_kind: timer.kind | 0 };
+        // C :2535–2544 — replace the monster pointer with its m_id (:2539);
+        // restored entries keep arg_id (see OBJECT arm).
+        if (timer.arg_id != null)
+            return { ...base, arg_id: timer.arg_id | 0, arg_kind: timer.kind | 0 };
+        return { ...base, arg_id: timer.mon?.m_id | 0, arg_kind: timer.kind | 0 };
+    default:
+        // C :2547–2550 — panic("write_timer").
+        throw new Error('write_timer: bad kind ' + (timer.kind | 0));
+    }
+}
+
+/**
+ * C ref: timeout.c maybe_write_timer `:2627–2651` (staticfn) — count (+
+ * optionally write) the chain entries selected by range. C's only caller is
+ * save_timers (`:2677` count pass, `:2679` write pass); the C `NHFILE`
+ * argument has no JS layer (JSON VFS), so the per-entry writer is a
+ * callback — the JS save paths pass `t => out.push(write_timer(t))`
+ * (lev_json.js snapshotLocal/GlobalTimers). Sync like C; returns the count
+ * (C `:2650`).
+ * Callees: live `timer_is_local` above.
+ * @param {number} range RANGE_GLOBAL or RANGE_LEVEL
+ * @param {(timer: object) => void} [write_it] per-entry writer (C write_timer)
+ * @returns {number} entries selected (C count)
+ */
+export function maybe_write_timer(range, write_it) {
+    let count = 0; // C :2630.
+    for (let curr = game._timer_base; curr; curr = curr.next) { // C :2633.
+        if ((range | 0) === RANGE_GLOBAL) { // C :2634.
+            // C :2635–2640 — global timers.
+            if (!timer_is_local(curr)) { // C :2637.
+                count++; // C :2638.
+                if (write_it) write_it(curr); // C :2639 — C write_timer.
+            }
+        } else {
+            // C :2641–2647 — local timers.
+            if (timer_is_local(curr)) { // C :2644.
+                count++; // C :2645.
+                if (write_it) write_it(curr); // C :2646 — C write_timer.
+            }
+        }
+    }
+    return count; // C :2650.
+}
+
+/**
  * C ref: timeout.c save_timers — peel RANGE_LEVEL locals (or RANGE_GLOBAL
  * non-locals) off gt.timer_base. JS in-memory stash returns the peeled
  * list; no NHFILE. C: !(range==LEVEL xor timer_is_local) → remove.
@@ -1152,15 +1244,25 @@ export function save_timers(range) {
 }
 
 /**
- * C ref: timeout.c restore_timers — re-insert saved elements (adjust 0
- * for in-memory getlev; bones ghostly timeout+=adjust deferred).
+ * C ref: timeout.c restore_timers `:2707–2728` — pull the saved timer
+ * elements back onto the chain in timeout order. C reads the records from
+ * the NHFILE (`:2714–2721`: timer_id when RANGE_GLOBAL, count, then one
+ * alloc+Sfi_fe per element); the JSON analogues live at the call sites —
+ * timer_id at save.js restgamestate, per-element hydration at lev_json.js
+ * deserTimerList — and this function is the `:2718–2726` insert loop.
+ * Ghostly `timeout += adjust` (`:2722–2723`, bones) is deferred (Named).
+ * Callees: live `insert_timer` above (C `:2724`, `#ifndef SFCTOOL` always
+ * true in JS).
+ * @param {object[]} list hydrated timer entries (deserTimerList shape)
  */
 export function restore_timers(list) {
     if (!list) return;
+    // C :2718 — `while (count-- > 0)`: one element per iteration (alloc +
+    // read collapsed into the hydrated record).
     for (const t of list) {
         if (!t) continue;
         t.next = null;
-        insert_timer(t);
+        insert_timer(t); // C :2724.
     }
 }
 

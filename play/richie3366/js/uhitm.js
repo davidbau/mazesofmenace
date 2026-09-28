@@ -27,6 +27,7 @@ import {
     KILLED_BY_AN, SLOW_DIGESTION, MALE, FEMALE, MMOVE_DIED, CXN_ARTICLE,
     ERODE_ROT, NO_NC_FLAGS, AD_CURS, EDOG, is_pit, FACE, NEUTRAL, CXN_PFX_THE,
     EXPL_FIERY, ismnum, EXT_ENCUMBER, NOTELL,
+    POTHIT_HERO_BASH, POTHIT_HERO_THROW,
     isok, xytodir, xdir, ydir,
     DIR_LEFT, DIR_RIGHT, DIR_LEFT2, DIR_RIGHT2, DIR_ERR,
     something,
@@ -49,13 +50,13 @@ import {
 } from './weapon.js';
 import {
     ammo_and_launcher, is_weptool, is_launcher, is_ammo, is_missile,
-    is_pole, drop_uswapwep, uwepgone, set_twoweap,
+    is_pole, drop_uswapwep, uwepgone, set_twoweap, setuwep,
 } from './wield.js';
-import { near_capacity, useup, useupall, hold_another_object, Blind, observe_object } from './invent.js';
+import { near_capacity, useup, useupall, hold_another_object, Blind, observe_object, freeinv } from './invent.js';
 import { PM_BARBARIAN, PM_MONK, PM_KNIGHT, PM_SAMURAI, PM_ARCHEOLOGIST, PM_WIZARD, PM_HUMAN, PM_HEALER, PM_ROGUE, PM_ELF } from './generated/monsters_data.js';
 import {
     find_mac, get_mattk, make_corpse, monstone, mhitm_knockback, monkilled, mondead,
-    troll_baned, mhitm_ad_poly, mhitm_ad_slee, mhitm_ad_heal, mhitm_ad_blnd, mhitm_ad_ston, mhitm_ad_elec, mhitm_ad_sedu, mhitm_ad_tlpt, mhitm_ad_rust, mhitm_ad_fire, mhitm_ad_dren, mhitm_ad_conf, could_seduce, failed_grab, shade_miss,
+    troll_baned, mhitm_ad_poly, mhitm_ad_slee, mhitm_ad_heal, mhitm_ad_blnd, mhitm_ad_ston, mhitm_ad_elec, mhitm_ad_sedu, mhitm_ad_tlpt, mhitm_ad_rust, mhitm_ad_corr, mhitm_ad_fire, mhitm_ad_dren, mhitm_ad_conf, could_seduce, failed_grab, shade_miss,
     shade_aware, paralyze_monst,
     mhitm_mgc_atk_negated, mhitm_ad_drst, mhitm_ad_deth, mhitm_ad_dise, mhitm_ad_pest, mhitm_ad_stck, erode_armor, engulf_target, golemeffects_mm,
     attk_protection,
@@ -80,7 +81,7 @@ import {
 } from './monsters.js';
 import {
     mkobj, mksobj_at, place_object, stackobj, delobj, relobj_on_death, obj_extract_self,
-    weight, obj_stop_timers, objects_at,
+    weight, obj_stop_timers, objects_at, splitobj,
 } from './mkobj.js';
 import {
     monnear, record_mvitals_died, seemimic, wakeup, setmangry, dist2,
@@ -110,7 +111,7 @@ import { cutworm } from './worm.js';
 import { m_unleash, objdescr_is } from './apply.js';
 import { mhe, mhis, defended, resists_blnd } from './mondata.js';
 import { Unaware } from './eat.js';
-import { helm_simple_name } from './do_wear.js';
+import { helm_simple_name, cloak_simple_name } from './do_wear.js';
 import { findgold, inv_cnt } from './steal.js';
 import { mselftouch, instapetrify, minstapetrify, t_at } from './trap.js';
 import { set_ustuck, ugolemeffects } from './mhitu.js';
@@ -119,7 +120,8 @@ import { merge_choice_invent } from './pickup.js';
 import { addinv } from './u_init.js';
 import { dropy, flooreffects } from './do.js';
 import { obfree } from './shk.js';
-import { breaktest, release_camera_demon, mhurtle } from './dothrow.js';
+import { breaktest, release_camera_demon, mhurtle, stone_missile } from './dothrow.js';
+import { potionhit } from './potion.js';
 import { munslime, mon_adjust_speed } from './muse.js';
 import { night } from './calendar.js';
 import { p_coaligned, ghod_hitsu } from './priest.js';
@@ -1799,6 +1801,132 @@ async function hmon_hitmon_msg_hit(hmd, mon, obj) {
     }
 }
 
+/**
+ * C ref: uhitm.c hmon_hitmon_weapon_ranged `:884–917` — improper-weapon
+ * damage (no skill use/training). C order: shade glare gate (`:892–895`),
+ * silver sear flags + bonus (`:896–900`), wielded-boomerang splinter
+ * (`:901–916`, `obj = 0` stays local to this helper).
+ */
+async function hmon_hitmon_weapon_ranged(hmd, mon, obj) {
+    if ((hmd.mdat?.mndx | 0) === PM_SHADE && !shade_glare(obj)) { // C `:892`
+        hmd.dmg = 0;
+    } else {
+        hmd.dmg = rnd(2); // C `:895`
+    }
+    if ((hmd.material | 0) === SILVER && mon_hates_silver(mon)) { // C `:896`
+        hmd.silvermsg = hmd.silverobj = true;
+        hmd.dmg += rnd(hmd.dmg ? 20 : 10); // C `:899`
+    }
+    if (!hmd.thrown && obj === game.u?.uwep && (obj.otyp | 0) === BOOMERANG // C `:901–902`
+        && rnl(4) === 4 - 1) {
+        const more_than_1 = (obj.quan | 0) > 1; // C `:903`
+        await pline(`As you hit ${mon_nam(mon)}, ${more_than_1 ? 'one of ' : ''}${yname(obj)} breaks into splinters.`); // C `:905–907`
+        if (!more_than_1)
+            await uwepgone(); // C `:908–909`
+        useup(obj); // C `:910`
+        // C `:911–912` obj = 0 is local; the caller keeps its reference.
+        hmd.hittxt = true; // C `:913`
+        if ((hmd.mdat?.mndx | 0) !== PM_SHADE)
+            hmd.dmg++; // C `:914–915`
+    }
+}
+
+/**
+ * C ref: uhitm.c hmon_hitmon_weapon `:1069–1092` — ranged/melee dispatch.
+ * C order: launcher (`:1077`), missile/ammo in hand (`:1079`), short pole
+ * unmounted (`:1081–1082`), ammo without its launcher (`:1084–1085`) go
+ * ranged; everything else goes melee with its doreturn (`:1087–1090`).
+ * hmd doubles as the melee ctx (shared dmg/use/train/hittxt/doreturn/
+ * retval/dieroll/thrown/hand_to_hand/jousting/ispoisoned/lightobj fields).
+ */
+async function hmon_hitmon_weapon(hmd, mon, obj) {
+    const u = game.u || {};
+    if (is_launcher(obj) // C `:1077`
+        || (!hmd.thrown && (is_missile(obj) || is_ammo(obj))) // C `:1079`
+        || (!hmd.thrown && !u.usteed && is_pole(obj) // C `:1081–1082`
+            && !is_art(obj, ART_SNICKERSNEE))
+        || (is_ammo(obj) && (hmd.thrown !== HMON_THROWN // C `:1084–1085`
+            || !ammo_and_launcher(obj, u.uwep)))) {
+        await hmon_hitmon_weapon_ranged(hmd, mon, obj); // C `:1086`
+    } else {
+        await hmon_hitmon_weapon_melee(mon, obj, hmd); // C `:1088`
+        if (hmd.doreturn) // C `:1089–1090`
+            return;
+    }
+}
+
+/**
+ * C ref: uhitm.c hmon_hitmon_potion `:1094–1116` — bash/throw a potion.
+ * C order: split one off a stack or unequip (`:1100–1103`), freeinv
+ * (`:1104`), potionhit with BASH/THROW (`:1105–1106`), killed → doreturn
+ * FALSE (`:1107–1111`), else hittxt + refresh mdat + shade-zeroed 1 dmg
+ * (`:1112–1115`).
+ */
+async function hmon_hitmon_potion(hmd, mon, obj) {
+    if ((obj.quan | 0) > 1)
+        obj = splitobj(obj, 1); // C `:1100–1101`
+    else {
+        const shine = setuwep(null); // C `:1102–1103`
+        if (shine) await shine;
+    }
+    freeinv(obj); // C `:1104`
+    await potionhit(mon, obj, // C `:1105–1106`
+        hmd.hand_to_hand ? POTHIT_HERO_BASH : POTHIT_HERO_THROW);
+    if ((mon.mhp | 0) < 1) { // C `:1107` DEADMONSTER(mon)
+        hmd.doreturn = true;
+        hmd.retval = false; // C `:1108–1110` killed
+        return;
+    }
+    hmd.hittxt = true; // C `:1112`
+    hmd.mdat = mon.data; // C `:1114` transformation refresh
+    hmd.dmg = ((hmd.mdat?.mndx | 0) === PM_SHADE) ? 0 : 1; // C `:1115`
+}
+
+/**
+ * C ref: uhitm.c hmon_hitmon_do_hit `:1386–1433` — hmon_hitmon's damage
+ * dispatch. C order: bare hands (`:1392–1393`), thrown/kicked stone
+ * missile vs a rock-passer (`:1399–1407`), saved_oname snapshot
+ * (`:1410–1413`), WEAPON/tool/GEM → weapon (`:1415–1419`), POTION →
+ * potion (`:1421–1424`), else shade-unaware zero or misc_obj
+ * (`:1425–1430`).
+ */
+async function hmon_hitmon_do_hit(hmd, mon, obj) {
+    if (!obj) { // C `:1392`
+        hmon_hitmon_barehands(hmd, mon); // C `:1393`
+    } else {
+        if ((hmd.thrown === HMON_THROWN // C `:1399–1401`, not Applied
+                || hmd.thrown === HMON_KICKED)
+            && stone_missile(obj) && passes_walls(hmd.mdat) && !unsolid(hmd.mdat)) { // C mondata.h:208 passes_rocks
+            await hit(mshot_xname(obj), mon, ' but does no harm.'); // C `:1402`
+            await wakeup(mon, true); // C `:1403`
+            hmd.doreturn = true; // C `:1404`
+            hmd.retval = true; // C `:1405`
+            return; // C `:1406`
+        }
+        if (!(artifact_light(obj) && obj.lamplit)) // C `:1410–1411`
+            hmd.saved_oname = cxname(obj);
+        else
+            hmd.saved_oname = bare_artifactname(obj); // C `:1413`
+
+        if ((obj.oclass | 0) === WEAPON_CLASS || is_weptool(obj) // C `:1415`
+            || (obj.oclass | 0) === GEM_CLASS) {
+            await hmon_hitmon_weapon(hmd, mon, obj); // C `:1417`
+            if (hmd.doreturn) // C `:1418–1419`
+                return;
+        } else if ((obj.oclass | 0) === POTION_CLASS) { // C `:1421`
+            await hmon_hitmon_potion(hmd, mon, obj); // C `:1422`
+            if (hmd.doreturn) // C `:1423–1424`
+                return;
+        } else {
+            if ((hmd.mdat?.mndx | 0) === PM_SHADE && !shade_aware(obj)) { // C `:1426`
+                hmd.dmg = 0; // C `:1427`
+            } else {
+                await hmon_hitmon_misc_obj(mon, obj, hmd); // C `:1429`
+            }
+        }
+    }
+}
+
 async function hmon_hitmon(mon, obj, thrown, _dieroll) {
     // C hmon_hitmon_misc_obj CREAM_PIE / BLINDING_VENOM before weapon dmg
     if (obj && (obj.otyp === CREAM_PIE || obj.otyp === BLINDING_VENOM)) {
@@ -1865,136 +1993,54 @@ async function hmon_hitmon(mon, obj, thrown, _dieroll) {
     /* C hmon_hitmon :1780 — melee, or an applied polearm (implies uwep). */
     const hand_to_hand = thrown === HMON_MELEE
         || (thrown === HMON_APPLIED && is_pole(game.u?.uwep));
-    if (!obj) {
-        // C hmon_hitmon_do_hit :1392 → hmon_hitmon_barehands :838–882.
-        const hmd = {
-            dmg: 0,
-            use_weapon_skill: false,
-            train_weapon_skill: false,
-            twohits,
-            barehand_silver_rings: 0,
-            silvermsg: false,
-            mdat: mon.data,
-        };
-        hmon_hitmon_barehands(hmd, mon);
-        dmg = hmd.dmg | 0;
-        use_weapon_skill = !!hmd.use_weapon_skill;
-        train_weapon_skill = !!hmd.train_weapon_skill;
-        barehand_silver_rings = hmd.barehand_silver_rings | 0;
-        mdat = hmd.mdat || mon.data;
-    } else if (obj.oclass === WEAPON_CLASS
-        || game.objects?.[obj.otyp]?.oc_skill != null) {
-        // C uhitm.c hmon_hitmon_weapon :1074–1094 — a launcher, a missile
-        // or ammo in hand, a short pole (unmounted, not Snickersnee), or
-        // ammo without its launcher goes ranged: 1–2 dmg, no weapon skill
-        // use or training. Everything else goes melee below.
-        const uW = game.u || {};
-        if (is_launcher(obj)
-            || (!thrown && (is_missile(obj) || is_ammo(obj)))
-            || (!thrown && !uW.usteed && is_pole(obj)
-                && !is_art(obj, ART_SNICKERSNEE))
-            || (is_ammo(obj) && (thrown !== HMON_THROWN
-                || !ammo_and_launcher(obj, uW.uwep)))) {
-            // C uhitm.c hmon_hitmon_weapon_ranged :885–917. Silver sear
-            // message named (hmon has no msg_silver plumbing); shade with
-            // no glare takes 0; wielded-boomerang splinter tail below.
-            // use/train_weapon_skill stay false (C init FALSE; the ranged
-            // arm sets neither), so the recalc below adds udaminc +
-            // strength only.
-            if ((mon.data?.mndx | 0) === PM_SHADE && !shade_glare(obj)) {
-                dmg = 0;
-            } else {
-                dmg = rnd(2);
-            }
-            // C uhitm.c:896 mon_hates_silver(mon) = is_vampshifter(mon)
-            // || hates_silver(mon->data) (mondata.c:516–520).
-            if ((game.objects?.[obj.otyp]?.oc_material | 0) === SILVER
-                && mon_hates_silver(mon)) {
-                dmg += rnd(dmg ? 20 : 10);
-            }
-            // C uhitm.c hmon_hitmon_weapon_ranged :901–917 — wielded
-            // boomerang may splinter: !thrown && obj==uwep && BOOMERANG
-            // && rnl(4)==3 → splinter pline + uwepgone/useup + hittxt
-            // + dmg++ (non-shade). C's obj=0 is local to the ranged
-            // helper (caller keeps obj), so no nulling here. yname is
-            // the pre-existing local clone below (wielded ⇒ "your X").
-            if (!thrown && obj === game.u?.uwep && obj.otyp === BOOMERANG
-                && rnl(4) === 3) {
-                const more_than_1 = (obj.quan | 0) > 1;
-                await pline(`As you hit ${mon_nam(mon)}, ${more_than_1 ? 'one of ' : ''}${yname(obj)} breaks into splinters.`);
-                if (!more_than_1) await uwepgone();
-                useup(obj);
-                hittxt = true;
-                if ((mon.data?.mndx | 0) !== PM_SHADE) dmg++;
-            }
-        } else {
-            // C uhitm.c hmon_hitmon_weapon_melee :933–1067 — ordinary melee:
-            // dmgval, Healer/Rogue/shatter arms, artifact_hit with doreturn.
-            // hand_to_hand mirrors hmon_hitmon :1780 (melee, or applied
-            // polearm implying uwep); Grayswandir spec_dbon stays in the
-            // recalc below (D-0613).
-            const ctx = {
-                dmg,
-                use_weapon_skill,
-                train_weapon_skill,
-                hittxt,
-                get_dmg_bonus: true, // C :1778 (no melee arm clears it)
-                doreturn: false,
-                retval: true,
-                dieroll: _dieroll | 0,
-                thrown,
-                hand_to_hand,
-            };
-            await hmon_hitmon_weapon_melee(mon, obj, ctx);
-            dmg = ctx.dmg | 0;
-            use_weapon_skill = ctx.use_weapon_skill;
-            train_weapon_skill = ctx.train_weapon_skill;
-            hittxt = ctx.hittxt;
-            ispoisoned = !!ctx.ispoisoned;
-            jousting = ctx.jousting | 0;
-            lightobj = !!ctx.lightobj;
-            get_dmg_bonus = ctx.get_dmg_bonus; // C: melee keeps the :1778 TRUE
-            // C hmon_hitmon :1797 — artifact doreturn (killed → FALSE,
-            // dmg-zeroed → TRUE) skips recalc/pet/msg entirely.
-            if (ctx.doreturn) return !!ctx.retval;
-        }
-    } else if (obj.oclass === POTION_CLASS) {
-        // C hmon_hitmon_do_hit :1421–1424 — potions go to
-        // hmon_hitmon_potion, not misc_obj (that function is unported);
-        // keep the old dmgval behavior rather than misrouting them.
-        dmg = dmgval(obj, mon);
-    } else if (obj.oclass === GEM_CLASS) {
-        // C hmon_hitmon_do_hit :1415–1418 — GEM_CLASS goes to the weapon
-        // path, not misc_obj; keep dmgval (no melee bonuses on this path).
-        dmg = dmgval(obj, mon);
-    } else if ((mon.data?.mndx | 0) === PM_SHADE && !shade_aware(obj)) {
-        // C hmon_hitmon_do_hit :1425–1428 — a shade unaware of the
-        // object takes no damage (the :1812 shade_miss below still runs).
-        dmg = 0;
-    } else {
-        // C hmon_hitmon_do_hit :1429 — non-weapon, non-potion damage.
-        const mctx = {
-            thrown,
-            mdat: mon.data, // C :1767
-            material: game.objects?.[obj.otyp]?.oc_material | 0, // C :1774
-            dmg: 0,
-            hittxt,
-            get_dmg_bonus: true, // C :1778 (recalc gate wired; :1817 bump still named)
-            unarmed: false,
-            doreturn: false,
-            retval: true,
-            dryit: false,
-            silvermsg: false,
-            silverobj: false,
-        };
-        await hmon_hitmon_misc_obj(mon, obj, mctx);
-        // C: camera/corpse/egg doreturn skips recalc/pet/msg entirely.
-        if (mctx.doreturn) return !!mctx.retval;
-        dmg = mctx.dmg | 0;
-        hittxt = mctx.hittxt;
-        dryit = mctx.dryit;
-        get_dmg_bonus = mctx.get_dmg_bonus; // C misc_obj FALSE arms :1137/:1190/:1316/:1339/:1349
-    }
+    // C hmon_hitmon :1760–1793 — hmd init, then :1795 do_hit dispatch.
+    // hmd doubles as the weapon-melee/misc ctx (shared field names).
+    const hmdHit = {
+        dmg: 0, // C `:1763`
+        thrown, // C `:1764`
+        twohits, // C `:1765`
+        dieroll: _dieroll | 0, // C `:1766`
+        mdat: mon.data, // C `:1767`
+        use_weapon_skill: false, // C `:1768`
+        train_weapon_skill: false, // C `:1769`
+        barehand_silver_rings: 0, // C `:1770`
+        silvermsg: false, // C `:1771`
+        silverobj: false, // C `:1772`
+        lightobj: false, // C `:1773`
+        material: obj ? (game.objects?.[obj.otyp]?.oc_material | 0) : 0, // C `:1774–1775`
+        jousting: 0, // C `:1776`
+        hittxt, // C `:1777`
+        get_dmg_bonus: true, // C `:1778`
+        unarmed: false, // C `:1779` recomputed below at :1859
+        hand_to_hand, // C `:1780–1782`
+        ispoisoned: false, // C `:1783`
+        unpoisonmsg: false, // C `:1784`
+        needpoismsg: false, // C `:1785`
+        poiskilled: false, // C `:1786`
+        already_killed: false, // C `:1787`
+        offmap: false, // C `:1788`
+        destroyed: false, // C `:1789`
+        dryit: false, // C `:1790`
+        doreturn: false, // C `:1791`
+        retval: false, // C `:1792`
+        saved_oname: '', // C `:1793`
+    };
+    await hmon_hitmon_do_hit(hmdHit, mon, obj); // C `:1795`
+    if (hmdHit.doreturn) // C `:1796–1797`
+        return !!hmdHit.retval;
+    dmg = hmdHit.dmg | 0;
+    use_weapon_skill = !!hmdHit.use_weapon_skill;
+    train_weapon_skill = !!hmdHit.train_weapon_skill;
+    hittxt = !!hmdHit.hittxt;
+    mdat = hmdHit.mdat || mon.data;
+    ispoisoned = !!hmdHit.ispoisoned;
+    jousting = hmdHit.jousting | 0;
+    lightobj = !!hmdHit.lightobj;
+    get_dmg_bonus = !!hmdHit.get_dmg_bonus;
+    barehand_silver_rings = hmdHit.barehand_silver_rings | 0;
+    dryit = !!hmdHit.dryit;
+    // C `:1793` saved_oname now filled by do_hit for the silver/light lines.
+    let saved_oname = hmdHit.saved_oname || '';
     // C hmon_hitmon :1806–1807 — if (hmd.dmg > 0) recalc, before stagger
     if (dmg > 0) {
         dmg = await hmon_hitmon_dmg_recalc(dmg, obj, thrown, twohits,
@@ -2058,8 +2104,7 @@ async function hmon_hitmon(mon, obj, thrown, _dieroll) {
     if (!already_killed) {
         if (obj
             && (obj === game.u?.uwep || (obj === game.u?.uswapwep && game.u?.twoweap))
-            && (obj.oclass === WEAPON_CLASS
-                || game.objects?.[obj.otyp]?.oc_skill != null)
+            && ((obj.oclass | 0) === WEAPON_CLASS || is_weptool(obj))
             && (thrown === HMON_MELEE || thrown === HMON_APPLIED)
             && !jousting
             && dmg > 0
@@ -2106,24 +2151,25 @@ async function hmon_hitmon(mon, obj, thrown, _dieroll) {
     // after the hit message; dryit implies obj is still intact.
     if (dryit) await dry_a_towel(obj, -1, true);
 
-    // C :1877 — barehand silver rings. Weapon/misc silvermsg stays the
-    // pre-existing omit (saved_oname from do_hit is not filled).
+    // C :1877 — barehand silver rings use do_hit's saved_oname; weapon
+    // silvermsg/silverobj stay the pre-existing named omit (no weapon
+    // plumbing — same as the melee header).
     if (barehand_silver_rings > 0) {
         await hmon_hitmon_msg_silver({
             barehand_silver_rings,
             silvermsg: true,
             silverobj: false,
-            saved_oname: '',
+            saved_oname,
             mdat,
         }, mon);
     }
 
-    // C :1880–1881 — lit artifact vs a light-hater. do_hit stores
+    // C :1880–1881 — lit artifact vs a light-hater. do_hit stored
     // bare_artifactname when artifact_light && lamplit (the only case
-    // that sets lightobj).
+    // that sets lightobj), so reuse saved_oname.
     if (lightobj && obj) {
         await hmon_hitmon_msg_lightobj({
-            saved_oname: bare_artifactname(obj),
+            saved_oname: saved_oname || bare_artifactname(obj),
             mdat,
         }, mon, obj);
     }
@@ -2262,22 +2308,8 @@ function damageum_ad_phys(mdef, mattk, mhm) {
     }
 }
 
-/**
- * C ref: objnam.c cloak_simple_name `:5492–5509`.
- * Used by m_slips_free when the grab target is undiscovered oilskin.
- */
-function cloak_simple_name(cloak) {
-    if (cloak) {
-        const t = cloak.otyp | 0;
-        if (t === ROBE) return 'robe';
-        if (t === MUMMY_WRAPPING) return 'wrapping';
-        if (t === ALCHEMY_SMOCK) {
-            const ocl = game.objects?.[t];
-            return (ocl?.oc_name_known && cloak.dknown) ? 'smock' : 'apron';
-        }
-    }
-    return 'cloak';
-}
+/* cloak_simple_name: canonical export from ./do_wear.js (objnam.c:5491–5509);
+ * local twin deleted — m_slips_free undiscovered-oilskin naming now via import. */
 
 /**
  * C ref: uhitm.c m_slips_free `:2053–2093` — greased/oilskin clothing
@@ -2889,6 +2921,12 @@ async function damageum_adtyping(mattk, mdef, mhm) {
            dice zeroed either way. Routed through the shared mhitm.js
            arm (elec precedent); mhitu arm is mhitm_ad_rust_u in mhitu.js. */
         await mhitm_ad_rust(game.youmonst, mattk, mdef, mhm);
+    } else if (adtyp === AD_CORR) {
+        /* C ref: uhitm.c mhitm_adtyping `:4806` → mhitm_ad_corr `:2342–2345`
+           uhitm (hero as attacker) arm: erode_armor(CORRODE), leftover
+           zeroed. Routed through the shared mhitm.js arm (rust precedent);
+           mhitu arm is mhitm_ad_corr_u in mhitu.js. */
+        await mhitm_ad_corr(game.youmonst, mattk, mdef, mhm);
     } else if (adtyp === AD_FIRE) {
         /* C ref: uhitm.c mhitm_adtyping `:4792` → mhitm_ad_fire `:2529–2560`
            uhitm (hero as attacker) arm: mgc-negate gate, !Blind on_fire
@@ -3688,7 +3726,7 @@ export async function explum(mdef, mattk) {
             (ad - 1) + 20,
             tmp,
             MON_EXPLODE,
-            adtyp_to_expltype(ad),
+            await adtyp_to_expltype(ad),
         );
         if (mdef && (mdef.mhp | 0) < 1) {
             return M_ATTK_DEF_DIED;

@@ -82,7 +82,7 @@ import {
     POT_WATER, is_pick,
 } from './objects.js';
 import {
-    newsym, pline, Norep, verbalize, Your, You, You_feel, docrt, flush_screen,
+    newsym, pline, pline_The, Norep, verbalize, Your, You, You_feel, docrt, flush_screen,
     canspotmon, canseemon, sensemon, impossible, bot,
     map_invisible, nh_delay_output,
 } from './display.js';
@@ -2185,7 +2185,7 @@ export async function pay_for_damage(dmgstr, cant_mollify) {
         const was_outside = !inhishop(shkp);
         const sx = shkp.mx | 0;
         const sy = shkp.my | 0;
-        let owed = check_credit(cost_of_damage, shkp);
+        let owed = await check_credit(cost_of_damage, shkp); // C :5312
         if (owed > 0) {
             money2mon(shkp, owed);
             if (game.flags) game.flags.botl = true;
@@ -3186,8 +3186,8 @@ function stolen_container(obj, shkp, price, ininv) {
  * C ref: shk.c stolen_value — charge debit/robbed for removed shop goods.
  * Branch envelope: find_objowner/billable/onbill; container + gold; peaceful
  * credit+owe / angry thief + hot_pursuit + angry_guards.
- * Named omissions: check_credit pline_The reused via local msg path only;
- * SetVoice; Hallu currency.
+ * Named omissions: SetVoice; Hallu currency.
+ * (check_credit `:3821` is the live shared export — no local clone.)
  * @returns {Promise<number>} charged value
  */
 export async function stolen_value(obj, x, y, peaceful, silent) {
@@ -3250,21 +3250,8 @@ export async function stolen_value(obj, x, y, peaceful, silent) {
 
     if (peaceful) {
         const credit_use = !!(eshkp.credit | 0);
-        // C check_credit with pline_The (pay path keeps silent check_credit)
-        {
-            let credit = eshkp.credit | 0;
-            if (credit) {
-                if (credit >= value) {
-                    await pline('The price is deducted from your credit.');
-                    eshkp.credit = credit - value;
-                    value = 0;
-                } else {
-                    await pline('The price is partially covered by your credit.');
-                    eshkp.credit = 0;
-                    value -= credit;
-                }
-            }
-        }
+        // C :3821 — the live check_credit carries both pline_The arms.
+        value = await check_credit(value, shkp);
         if (ANGRY(shkp)) eshkp.robbed = (eshkp.robbed | 0) + value;
         else eshkp.debit = (eshkp.debit | 0) + value;
 
@@ -5336,34 +5323,48 @@ export async function doinvbill(mode) {
 }
 
 /**
- * C ref: shk.c check_credit — apply shop credit toward tmp.
- * Named omissions: pline_The credit messages (silent when credit==0).
+ * C ref: shk.c check_credit `:1278–1294` — apply shop credit toward tmp.
+ * Whole body in C order: credit==0 falls through and returns tmp (`:1283`,
+ * the `;` no-op arm); credit>=tmp deducts fully (`:1284–1287`, pline_The
+ * then `credit -= tmp`, `tmp = 0`); else partial cover (`:1288–1292`,
+ * pline_The then `credit = 0`, `tmp -= credit`). Async only because
+ * pline_The can reach --More-- (Constitution §2: async propagates to
+ * nhgetch-reaching callees). Callers: pay `:1300`, stolen_value `:3821`,
+ * pay_for_damage `:5312`.
  */
-function check_credit(tmp, shkp) {
+async function check_credit(tmp, shkp) {
     const eshkp = ESHK(shkp);
-    let credit = eshkp?.credit | 0;
-    if (!credit) return tmp;
-    if (credit >= tmp) {
-        eshkp.credit = credit - tmp;
-        return 0;
+    const credit = eshkp?.credit | 0; // C :1281 long credit
+    if (credit === 0) {
+        ; // C :1283 nothing to do; just 'return tmp;'
+    } else if (credit >= tmp) { // C :1284
+        await pline_The('price is deducted from your credit.'); // C :1285
+        eshkp.credit -= tmp; // C :1286
+        tmp = 0; // C :1287
+    } else { // C :1288
+        await pline_The('price is partially covered by your credit.'); // C :1289
+        eshkp.credit = 0; // C :1290
+        tmp -= credit; // C :1291
     }
-    eshkp.credit = 0;
-    return tmp - credit;
+    return tmp; // C :1293
 }
 
 /**
- * C ref: shk.c pay — money2mon after credit; money2u when tmp < 0 (sell).
+ * C ref: shk.c pay `:1297–1313` — whole body in C order: snapshot robbed
+ * (`:1301`), balance via check_credit for tmp>0 (`:1302`), money2mon /
+ * money2u arms (`:1304–1307`), disp.botl (`:1308`, JS game.flags.botl per
+ * file idiom), robbed payback clamped at 0 (`:1309–1313`).
  * Named omit: invent-full dropy on money2u (gold merges).
  */
 async function pay(tmp, shkp) {
     const eshkp = ESHK(shkp);
-    const robbed = eshkp?.robbed | 0;
-    const balance = tmp <= 0 ? tmp : check_credit(tmp, shkp);
-    if (balance > 0) money2mon(shkp, balance);
-    else if (balance < 0) await money2u(shkp, -balance);
-    if (game.flags) game.flags.botl = true;
-    if (robbed && eshkp) {
-        eshkp.robbed = Math.max(0, robbed - tmp);
+    const robbed = eshkp?.robbed | 0; // C :1301
+    const balance = tmp <= 0 ? tmp : await check_credit(tmp, shkp); // C :1302
+    if (balance > 0) money2mon(shkp, balance); // C :1304–1305
+    else if (balance < 0) await money2u(shkp, -balance); // C :1306–1307
+    if (game.flags) game.flags.botl = true; // C :1308 disp.botl = TRUE
+    if (robbed && eshkp) { // C :1309
+        eshkp.robbed = Math.max(0, robbed - tmp); // C :1310–1312 clamp
     }
 }
 
@@ -5603,30 +5604,35 @@ async function insufficient_funds(shkp, item, cost) {
 }
 
 /**
- * C ref: shk.c reject_purchase `:2417–2451` — shk won't sell the intact
- * remainder until the used-up portion is paid. Named omit: SetVoice.
+ * C ref: shk.c reject_purchase `:2419–2451` — whole body in C order: shk
+ * won't sell the intact remainder until the used-up portion is paid.
+ * SetVoice is the live sndprocs.h empty-macro no-op (file convention).
+ * (C `:2424` assert(intact_quan < billed_quan) holds by construction —
+ * both callers guard `quan < bquan` — so no JS assert arm.)
  */
 async function reject_purchase(shkp, obj, billed_quan) {
-    const intact_quan = obj.quan | 0;
-    obj.quan = (billed_quan | 0) - intact_quan;
-    if (!hero_deaf() && !muteshk(shkp)) {
+    const intact_quan = obj.quan | 0; // C :2423
+    // C :2424 assert(intact_quan < billed_quan): caller-guarded, see doc.
+    obj.quan = (billed_quan | 0) - intact_quan; // C :2426 temp used-up quan
+    if (!hero_deaf() && !muteshk(shkp)) { // C :2427 !Deaf && !muteshk
         let which;
-        if ((obj.where | 0) === OBJ_CONTAINED) {
-            which = `the one${plur(intact_quan)} in ${thesimpleoname(obj.ocontainer)}`;
+        if ((obj.where | 0) === OBJ_CONTAINED) { // C :2430
+            which = `the one${plur(intact_quan)} in ${thesimpleoname(obj.ocontainer)}`; // C :2431–2432
         } else {
-            which = intact_quan > 1 ? 'these' : 'this one';
+            which = intact_quan > 1 ? 'these' : 'this one'; // C :2434
         }
-        await verbalize(
+        SetVoice(shkp, 0, 80, 0); // C :2437 live empty-macro no-op
+        await verbalize( // C :2438–2441
             `${ANGRY(shkp) ? 'Pay' : 'Please pay'} for the other ${simpleonames(obj)} before buying ${which}.`,
         );
-    } else {
-        await pline(
+    } else { // C :2442
+        await pline( // C :2443–2447
             `${Shknam(shkp)} ${ANGRY(shkp) ? 'angrily ' : ''}${
                 nolimbs(shkp.data) ? 'motions to' : 'points out'
             } your bill for the other ${simpleonames(obj)} first.`,
         );
     }
-    obj.quan = intact_quan;
+    obj.quan = intact_quan; // C :2449 restore
 }
 
 /**

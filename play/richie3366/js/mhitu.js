@@ -49,7 +49,7 @@ import { steal, stealamulet, stealgold, unresponsive, remove_worn_item } from '.
 import { cloneu, split_mon, attrcurse } from './sit.js';
 import {
     stop_donning, setworn, Ring_on, Ring_gone, suit_simple_name, hard_helmet,
-    some_armor, helm_simple_name,
+    some_armor, helm_simple_name, cloak_simple_name,
 } from './do_wear.js';
 import { mpickobj } from './makemon.js';
 import { money2mon } from './shk.js';
@@ -1145,22 +1145,8 @@ function sticks(ptr) {
         || attacktype_aatyp(ptr, AT_HUGS);
 }
 
-/**
- * C ref: objnam.c cloak_simple_name `:5492–5509`.
- * u_slip_free uses this for undiscovered oilskin (not "slippery cloak").
- */
-function cloak_simple_name(cloak) {
-    if (cloak) {
-        const t = cloak.otyp | 0;
-        if (t === ROBE) return 'robe';
-        if (t === MUMMY_WRAPPING) return 'wrapping';
-        if (t === ALCHEMY_SMOCK) {
-            const ocl = game.objects?.[t];
-            return (ocl?.oc_name_known && cloak.dknown) ? 'smock' : 'apron';
-        }
-    }
-    return 'cloak';
-}
+/* cloak_simple_name: canonical export from ./do_wear.js (objnam.c:5491–5509);
+ * local twin deleted — u_slip_free undiscovered-oilskin naming now via import. */
 
 /**
  * C ref: mhitu.c `:25` `#define ld()`.

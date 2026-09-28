@@ -2044,6 +2044,53 @@ export function dealloc_killer(kptr) {
     }
 }
 
+/**
+ * C ref: end.c save_killers `:1760–1776` (called from save.c `:293`).
+ * JSON analogue of the update_file arm (`:1764–1767` Sfo_kinfo per node,
+ * sentinel first): persist the delayed-killer chain as plain records with
+ * the struct's data fields (hack.h `:598–606` id, format, name).
+ * VFS always writes, so there is no update_file gate; the release_data
+ * FREEING arm (`:1769–1774` free nodes past the sentinel) is omitted —
+ * in-memory state stays (save_oracles/save_msghistory precedent) — and
+ * the save.c `:1097` free_killers exit-free has no JS path (GC). Named.
+ * @returns {{id:number,format:number,name:string}[]}
+ */
+export function save_killers() {
+    const out = []; // C `:1763` kptr = &svk.killer
+    for (let k = game.killer; k; k = k.next ?? null) { // C `:1764`
+        out.push({ // C `:1766` Sfo_kinfo
+            id: k.id | 0,
+            format: k.format | 0,
+            name: String(k.name || ''),
+        });
+    }
+    return out;
+}
+
+/**
+ * C ref: end.c restore_killers `:1780–1790` (called from restore.c `:653`).
+ * JSON analogue of the Sfi_kinfo loop (`:1784–1789` read into the sentinel,
+ * alloc each further node): rebuild the chain from records. A missing or
+ * empty key is an old save — leave the fresh-boot sentinel alone
+ * (restore_oracles precedent).
+ */
+export function restore_killers(saved) {
+    if (!Array.isArray(saved) || saved.length === 0) return; // old save
+    game.killer = null; // C `:1784` first read lands on &svk.killer
+    let tail = null;
+    for (const rec of saved) {
+        const node = { // C `:1787` alloc(sizeof (struct kinfo))
+            id: rec?.id | 0,
+            format: rec?.format | 0,
+            name: String(rec?.name || ''),
+            next: null, // C `:1786` null-terminates until the next read
+        };
+        if (!game.killer) game.killer = node;
+        else tail.next = node;
+        tail = node;
+    }
+}
+
 /* C `isspace((uchar) *p)` over the C locale — the six ASCII blanks
  * (options.js `isOptSpace` precedent, same set; no unicode folding). */
 function isEndSpace(ch) {

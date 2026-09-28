@@ -1,8 +1,8 @@
 // quest.js — quest branch arrival hooks + leader talk.
 // C ref: quest.c onquest / on_start / on_locate / on_goal / artitouch /
 //        quest_talk / leader_speaks / chat_with_leader / is_pure / expulsion.
-// Named omissions: locate_next beyond Bar/Arc/Pri/Wiz; chat_with_nemesis/guardian
-// (quest_chat MS_NEMESIS / MS_GUARDIAN — not nemesis_speaks); posthanks/banished pager texts
+// Named omissions: locate_next beyond Bar/Arc/Pri/Wiz (not nemesis_speaks);
+// posthanks/banished pager texts
 // (calls live in chat_with_leader — miss no-ops after the C nhl_init shuffle);
 // exercise side-effects beyond call; full convert_arg
 // catalogue for assignquest; find_quest_artifact OBJ_INVENT/MIGRATING.
@@ -22,9 +22,9 @@ import { qt_pager, com_pager } from './questpgr.js';
 import { livelog_printf } from './pline.js';
 import { create_gas_cloud } from './region.js';
 import { pline, verbalize, canseemon, impossible } from './display.js';
-import { Monnam, noit_mon_nam } from './do_name.js';
+import { Monnam, mon_nam, noit_mon_nam } from './do_name.js';
 import { SetVoice } from './sndprocs.js';
-import { angry_guards, monnear } from './mon.js';
+import { angry_guards, monnear, setmangry } from './mon.js';
 import { rn2 } from './rng.js';
 import { monsterNames } from './monsters.js';
 import { yn_function } from './getline.js';
@@ -46,6 +46,8 @@ const PM_PRISONER = monsterNames.indexOf('PM_PRISONER');
 const MS_DJINNI = 29;
 /** C ref: monflag.h:52 MS_NEMESIS (local const; mhitm.js / sounds.js keep the same value). */
 const MS_NEMESIS = 37;
+/** C ref: monflag.h MS_GUARDIAN 38 (local const; dogmove.js / trap.js / questpgr.js keep the same value). */
+const MS_GUARDIAN = 38;
 
 /** C ref: dungeon.c on_level */
 function on_level(a, b) {
@@ -499,18 +501,67 @@ async function leader_speaks(mtmp) {
 }
 
 /**
- * C ref: quest.c quest_chat — player #chat with quest character.
- * Named omissions: setmangry on pissed_off; nemesis/guardian chat.
+ * C ref: quest.c chat_with_nemesis `:393–400` (staticfn) — the whole body
+ * in C order. `Qstat(met_nemesis++)` (`:398–399`) increments the counter
+ * field once from 0 to 1; `|0)+1` is that increment with JS's
+ * boolean-or-absent scorecard normalized. qt_pager miss (discourage text
+ * not yet extracted) is a no-op deliver — the call still burns the C
+ * nhl_init shuffle, so RNG matches C either way (D-2623 pattern).
+ * Sole C caller: quest_chat (`:484`).
+ */
+async function chat_with_nemesis() {
+    const qs = game.quest_status || (game.quest_status = {});
+    await qt_pager('discourage'); // :397
+    if (!qs.met_nemesis) // :398
+        qs.met_nemesis = ((qs.met_nemesis | 0) + 1); // :399
+}
+
+/**
+ * C ref: quest.c chat_with_guardian `:440–448` (staticfn) — the whole body
+ * in C order. qt_pager miss (guardtalk_after/guardtalk_before texts not
+ * yet extracted) is a no-op deliver — the call still burns the C nhl_init
+ * shuffle, so RNG matches C either way (D-2623 pattern).
+ * Sole C caller: quest_chat (`:487`).
+ */
+async function chat_with_guardian() {
+    const u = game.u || {};
+    const qs = game.quest_status || (game.quest_status = {});
+    /* These guys/gals really don't have much to say... */ // :443
+    if (u.uhave?.questart && qs.killed_nemesis) // :444
+        await qt_pager('guardtalk_after'); // :445
+    else // :446
+        await qt_pager('guardtalk_before'); // :447
+}
+
+/**
+ * C ref: quest.c quest_chat `:472–492` — player #chat with quest character,
+ * the whole body in C order. Leader arm (`:475–480`): chat, then
+ * setmangry when the chat pissed the leader off (FALSE = no attack).
+ * MS_NEMESIS / MS_GUARDIAN arms (`:483–488`) delegate to the staticfns
+ * above; anything else is a C impossible (`:490`, async pline path).
+ * C caller: domonnoise (sounds.c:731), wired in js/sounds.js:1293.
  */
 export async function quest_chat(mtmp) {
-    if (!mtmp) return;
+    if (!mtmp) return; // C NONNULLARG1; JS callers pass through
     const qs = game.quest_status || (game.quest_status = {});
-    if ((mtmp.m_id | 0) === (qs.leader_m_id | 0) && qs.leader_m_id) {
-        await chat_with_leader(mtmp);
-        // C: pissed_off → setmangry deferred
-        return;
+    if ((mtmp.m_id | 0) === (qs.leader_m_id | 0)) { // :475
+        await chat_with_leader(mtmp); // :476
+        /* leader might have become pissed during the chat */ // :477
+        if (qs.pissed_off) // :478
+            await setmangry(mtmp, false); // :479 FALSE
+        return; // :480
     }
-    // MS_NEMESIS / MS_GUARDIAN deferred
+    switch ((mtmp.data?.msound | 0)) { // :482
+    case MS_NEMESIS: // :483
+        await chat_with_nemesis(); // :484
+        break; // :485
+    case MS_GUARDIAN: // :486
+        await chat_with_guardian(); // :487
+        break; // :488
+    default: // :489
+        await impossible('quest_chat: Unknown quest character %s.', // :490
+            mon_nam(mtmp));
+    }
 }
 
 /**

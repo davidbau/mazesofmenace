@@ -20,7 +20,7 @@ import { game } from './gstate.js';
 import { d, rn1, rn2, rnd, rnl } from './rng.js';
 import {
     newsym, pline, You, You_feel, tmp_at, nh_delay_output, verbalize,
-    feel_newsym, flush_screen, flush_topl_more,
+    feel_newsym, flush_screen, flush_topl_more, under_ground,
 } from './display.js';
 import {
     cansee, does_block, recalc_block_point, unblock_point, vision_recalc,
@@ -34,6 +34,7 @@ import {
 import {
     in_rooms, in_town, stop_occupation, is_pool, is_lava, is_moat,
     confdir, losehp, maybe_half_phys, nomul, switch_terrain, On_stairs,
+    Passes_walls_prop,
 } from './hack.js';
 import { currency, cmdq_add_key } from './invent.js';
 import { objectNames } from './generated/objects_data.js';
@@ -43,7 +44,8 @@ import {
 import { CLR_WHITE } from './terminal.js';
 import {
     is_watch, is_flyer, is_floater, grounded, MZ_HUGE, passes_walls, mons,
-    is_whirly, G_UNIQ,
+    is_whirly, G_UNIQ, amorphous, noncorporeal, unsolid, tunnels, needspick,
+    can_teleport,
 } from './monsters.js';
 import {
     PM_DWARF, PM_ELF, PM_RANGER, PM_ARCHEOLOGIST, PM_SAMURAI,
@@ -94,6 +96,9 @@ import { mb_trapped, maybe_unhide_at } from './monmove.js';
 // C ref: pray.c altarmask_at `:2489–2504` — dig_check reads the mimic-aware
 // mask like C (static; hoisted fn, cycle-safe per imports.mjs).
 import { altarmask_at } from './pray.js';
+// C ref: teleport.c dotele — escape_tomb teleport arm (hoisted fn,
+// cycle-safe per imports.mjs --can dig.js teleport.js).
+import { dotele } from './teleport.js';
 import {
     IS_STWALL, IS_TREE, IS_WALL, IS_OBSTRUCTED, IS_DOOR, IS_FOUNTAIN,
     IS_THRONE, IS_ALTAR, IS_ROOM, IS_SINK, IS_FURNITURE, IS_GRAVE,
@@ -125,8 +130,10 @@ import {
     ICE, DRAWBRIDGE_UP, DB_UNDER, DB_MOAT, DB_LAVA, DB_ICE,
     ROT_ORGANIC, TIMER_OBJECT, Has_contents, OBJ_FREE, OBJ_FLOOR,
     CORPSTAT_HISTORIC, STATUE_TRAP, CQ_CANNED,
+    TELEPORT, TELEPORT_CONTROL, STRANGLED,
 } from './const.js';
 
+const AMULET_OF_STRANGULATION = objectNames.indexOf('AMULET_OF_STRANGULATION');
 const BOULDER = objectNames.indexOf('BOULDER');
 const ROCK = objectNames.indexOf('ROCK');
 const STATUE = objectNames.indexOf('STATUE');
@@ -139,6 +146,7 @@ const BEARTRAP = objectNames.indexOf('BEARTRAP');
 // C ref: dig.c earth-debris `rn2(2) ? PM_EARTH_ELEMENTAL : PM_XORN`
 // (minion.js convention — generated data exports only role PM consts).
 const PM_EARTH_ELEMENTAL = monsterNames.indexOf('PM_EARTH_ELEMENTAL');
+const PM_WATER_ELEMENTAL = monsterNames.indexOf('PM_WATER_ELEMENTAL');
 const PM_XORN = monsterNames.indexOf('PM_XORN');
 const TREEFRUITS = [
     objectNames.indexOf('APPLE'),
@@ -611,6 +619,75 @@ export function buried_ball_to_freedom() {
         reset_utrap(true);
         del_engr_at(cc.x, cc.y);
         newsym(cc.x, cc.y);
+    }
+}
+
+/**
+ * C ref: dig.c unearth_you `:2229–2238` — release a buried hero, in C order.
+ * `:2233` uburied clear; `:2234` under_ground limited update; `:2235–2236`
+ * Strangled release unless the strangulation amulet is worn (C `Strangled`
+ * ≡ uprops[STRANGLED].intrinsic per youprop.h:110; the u.Strangled mirror
+ * is this tree's convention, cleared alongside like do_wear.js:3145);
+ * `:2237` vision_recalc. Async only because under_ground can reach cls
+ * (Constitution §2). Named omission: `:2232` debugpline0 is D_DEBUG-only.
+ */
+export async function unearth_you() {
+    const u = game.u || {};
+    u.uburied = 0; // C :2233
+    await under_ground(0); // C :2234
+    const uamul = u.uamul;
+    if (!uamul || (uamul.otyp | 0) !== AMULET_OF_STRANGULATION) { // C :2235
+        u.Strangled = 0; // C :2236
+        if (u.uprops?.[STRANGLED]) u.uprops[STRANGLED].intrinsic = 0;
+    }
+    vision_recalc(0); // C :2237
+}
+
+/**
+ * C ref: dig.c escape_tomb `:2240–2270` — buried-hero escape attempts.
+ * `:2244–2247` teleport arm (Teleportation/can_teleport + Teleport_control/
+ * Luck gate, dotele unwires via unearth_you per the C comment); `:2248`
+ * still-buried arm (form gate `:2251–2255`, verb + surface message
+ * `:2256–2262`, dighole for tunnelers `:2264–2265`, unearth_you
+ * `:2266–2267`). C macros Teleportation/Teleport_control/Passes_walls are
+ * H||E (youprop.h:227/231/286); JS reads the uprops slots + flat mirrors
+ * too (trap.js drown convention). Async only because You/dotele/dighole
+ * can reach --More-- (Constitution §2). Named omission: `:2243`
+ * debugpline0 is D_DEBUG-only. No C caller (queue: callers 0) — exported
+ * for the future writer, unwired like C.
+ */
+export async function escape_tomb() {
+    const u = game.u || {};
+    const data = game.youmonst?.data;
+    const teleportation = !!((u.HTeleportation | 0) || (u.ETeleportation | 0) // C :2244
+        || u.Teleportation
+        || (u.uprops?.[TELEPORT]?.intrinsic | 0) || (u.uprops?.[TELEPORT]?.extrinsic | 0));
+    const teleportControl = !!((u.HTeleport_control | 0) || (u.ETeleport_control | 0) // C :2245
+        || u.Teleport_control
+        || (u.uprops?.[TELEPORT_CONTROL]?.intrinsic | 0) || (u.uprops?.[TELEPORT_CONTROL]?.extrinsic | 0));
+    const luck = (u.uluck | 0) + (u.moreluck | 0); // C :2245 Luck
+    if ((teleportation || can_teleport(data)) // C :2244
+        && (teleportControl || rn2(3) < luck + 2)) { // C :2245
+        await You('attempt a teleport spell.'); // C :2246
+        await dotele(false); // C :2247 calls unearth_you()
+    } else if ((u.uburied | 0)) { // C :2248 still buried after 'port attempt
+        const tunneler = !!(tunnels(data) && !needspick(data));
+        // C :2253–2254 `data != &mons[PM_WATER_ELEMENTAL]` — mons() builds
+        // a fresh object per call, so compare the hero form index instead
+        // (trap.js drown PM_GREMLIN arm convention).
+        const notWaterElem = ((data?.mndx ?? u.umonnum ?? -1) | 0) !== PM_WATER_ELEMENTAL;
+        if (amorphous(data) || Passes_walls_prop() // C :2251–2255
+            || noncorporeal(data)
+            || (unsolid(data) && notWaterElem)
+            || tunneler) {
+            const verb = tunneler ? 'try to tunnel' // C :2257–2261
+                : amorphous(data) ? 'ooze' : 'phase';
+            await You(`${verb} up through the ${surface(u.ux | 0, u.uy | 0)}.`); // C :2256–2262
+            const good = tunneler // C :2264–2265
+                ? await dighole(true, false, null)
+                : true;
+            if (good) await unearth_you(); // C :2266–2267
+        }
     }
 }
 

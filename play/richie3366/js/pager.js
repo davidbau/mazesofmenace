@@ -3263,6 +3263,39 @@ export function setopt_cmd() {
 }
 
 /**
+ * C ref: pager.c docontact `:2718–2745` — whole body in C order.
+ * C `create_nhwindow(NHW_TEXT)` + putstr / display / destroy idiom is
+ * show_text_pages (file convention); DEVTEAM_EMAIL/URL are the
+ * hack.h:1556–1557 literals. C caller: the help-menu table `:2848`
+ * (wired as dohelp 'o' below).
+ */
+export function docontact_lines() {
+    const lines = [];
+    const support = game.sysopt?.support; // C `:2723`
+    const wizards = game.sysopt?.fmtd_wizard_list; // C `:2728`
+    if (support != null) { // C `:2723–2727` (NULL check; empty stays truthy as in C)
+        lines.push(`To contact local support, ${support}`);
+        lines.push('');
+    } else if (wizards != null) { // C `:2728–2732`
+        lines.push(`To contact local support, contact ${wizards}.`);
+        lines.push('');
+    }
+    lines.push('To contact the NetHack development team directly,'); // C `:2733`
+    lines.push("see the 'Contact' form on our website or email <devteam@nethack.org>."); // C `:2736–2737`
+    lines.push(''); // C `:2738`
+    lines.push('For more information on NetHack, or to report a bug,'); // C `:2739`
+    lines.push('visit our website "https://www.nethack.org/".'); // C `:2740–2741`
+    return lines;
+}
+
+/**
+ * C ref: pager.c docontact `:2742–2743` display + destroy.
+ */
+export async function docontact() {
+    await show_text_pages(docontact_lines());
+}
+
+/**
  * C ref: pager.c dohelp — help menu.
  */
 export async function dohelp() {
@@ -3292,16 +3325,8 @@ export async function dohelp() {
         } },
         { key: 'm', text: "Description of NetHack's command line.", fn: dispfile_usagehelp },
         { key: 'n', text: 'The NetHack license.', fn: dispfile_license },
-        // C ref: pager.c docontact
-        { key: 'o', text: 'Support information.', fn: async () => {
-            await show_text_pages([
-                'To contact the NetHack development team directly,',
-                "see the 'Contact' form on our website or email <devteam@nethack.org>.",
-                '',
-                'For more information on NetHack, or to report a bug,',
-                'visit our website "https://www.nethack.org/".',
-            ]);
-        } },
+        // C ref: pager.c docontact `:2848` table row
+        { key: 'o', text: 'Support information.', fn: docontact },
     ];
     if (game.flags?.debug || game.wizard) {
         items.push({

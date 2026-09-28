@@ -103,7 +103,7 @@ import {
 import { SchroedingersBox } from './pickup.js';
 import { age_is_relative, begin_burn } from './timeout.js';
 import { Inhell } from './minion.js';
-import { mon_has_amulet } from './apply.js';
+import { mon_has_amulet, objdescr_is } from './apply.js';
 import { extract_from_minvent, which_armor, mon_set_minvis } from './worn.js';
 import { hard_helmet } from './do_wear.js';
 import { obfree, inhishop } from './shk.js';
@@ -1287,16 +1287,7 @@ async function drop_boulder_on_monster(x, y, confused, byu) {
     return true;
 }
 
-/**
- * C ref: o_init.c objdescr_is — OBJ_DESCR(objects[otyp]) vs descr.
- */
-function objdescr_is(obj, descr) {
-    if (!obj) return false;
-    const oc = game.objects?.[obj.otyp];
-    if (!oc) return false;
-    const dn = objectDescrs[oc.oc_descr_idx ?? obj.otyp];
-    return dn != null && dn === descr;
-}
+/* objdescr_is — canonical export in js/apply.js (o_init.c `:352-365`). */
 
 /**
  * C ref: mon.c healmon — monster HP bump (+ optional max overheal).

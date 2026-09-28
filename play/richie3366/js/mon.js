@@ -96,7 +96,7 @@ import { experience, more_experienced, newexplevel } from './exper.js';
 import { hastrack } from './track.js';
 import { MON_WEP } from './weapon.js';
 import { is_axe, is_pick, GOLD } from './objects.js';
-import { get_mleash } from './apply.js';
+import { get_mleash, objdescr_is } from './apply.js';
 import { ofood, polyfood } from './eat.js';
 import { mcureblindness, removed_from_icebox } from './muse.js';
 import { unpunish } from './read.js';
@@ -2538,14 +2538,7 @@ function mstoning_meat(obj) {
     return flesh_petrifies(mons(obj.corpsenm));
 }
 
-/** C ref: o_init.c objdescr_is — OBJ_DESCR(objects[otyp]) vs descr. */
-function objdescr_is_meat(obj, descr) {
-    if (!obj) return false;
-    const oc = game.objects?.[obj.otyp];
-    if (!oc) return false;
-    const dn = objectDescrs[oc.oc_descr_idx ?? obj.otyp];
-    return dn != null && dn === descr;
-}
+/* objdescr_is — canonical export in js/apply.js (o_init.c `:352-365`). */
 
 /**
  * C ref: mon.c meatobj — non-pet eats organic floor objects and engulfs
@@ -2620,7 +2613,7 @@ export async function meatobj(mtmp) {
                     );
                 }
                 if ((otmp.oclass | 0) === SCROLL_CLASS
-                    && objdescr_is_meat(otmp, 'YUM YUM')) {
+                    && objdescr_is(otmp, 'YUM YUM')) {
                     await pline(`Yum${otmp.blessed ? '!' : '.'}`);
                 }
             } else {

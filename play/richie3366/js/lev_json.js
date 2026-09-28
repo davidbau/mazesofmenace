@@ -15,6 +15,7 @@ import { GameMap } from './game.js';
 import {
     OBJ_FLOOR, OBJ_MINVENT, OBJ_BURIED, OBJ_CONTAINED,
     TIMER_LEVEL, TIMER_GLOBAL, TIMER_OBJECT, TIMER_MONSTER,
+    RANGE_LEVEL, RANGE_GLOBAL,
     LS_OBJECT, LS_MONSTER, ESHK,
 } from './const.js';
 import { mons } from './monsters.js';
@@ -26,7 +27,7 @@ import { peek_track } from './track.js';
 import { save_engravings } from './engrave.js';
 import { save_worm } from './worm.js';
 import { save_rooms, save_rooms_from } from './mkroom.js';
-import { timer_is_local, light_is_local } from './mkobj.js';
+import { light_is_local, write_timer, maybe_write_timer } from './mkobj.js';
 import { write_ls } from './light.js';
 
 /**
@@ -285,22 +286,11 @@ function deserDamage(arr) {
 }
 
 function serTimer(t) {
-    let arg_id = 0;
-    let arg_kind = t.kind | 0;
-    if ((t.kind | 0) === TIMER_OBJECT) {
-        arg_id = t.arg_id != null ? (t.arg_id | 0) : (t.obj?.o_id | 0);
-    } else if ((t.kind | 0) === TIMER_MONSTER) {
-        arg_id = t.arg_id != null ? (t.arg_id | 0) : (t.mon?.m_id | 0);
-    }
-    return {
-        timeout: t.timeout | 0,
-        tid: t.tid | 0,
-        kind: t.kind | 0,
-        action: t.action | 0,
-        a_long: t.a_long | 0,
-        arg_id,
-        arg_kind,
-    };
+    // C ref: timeout.c maybe_write_timer `:2639`/`:2646` write_it arm
+    // (`write_timer`) — per-entry save write with the pointer→id fixup.
+    // write_timer returns the record (the Sfo_fe analogue); callers skip
+    // nothing (C writes every selected entry; bad-kind panics loud).
+    return write_timer(t);
 }
 
 function deserTimer(raw) {
@@ -338,11 +328,10 @@ function serLight(ls) {
 }
 
 function snapshotLocalTimers() {
+    // C ref: timeout.c save_timers RANGE_LEVEL write pass
+    // (maybe_write_timer `:2641–2647` via `:2679`).
     const out = [];
-    for (let t = game._timer_base; t; t = t.next) {
-        if (!timer_is_local(t)) continue;
-        out.push(serTimer(t));
-    }
+    maybe_write_timer(RANGE_LEVEL, (t) => out.push(serTimer(t)));
     return out;
 }
 
@@ -537,11 +526,10 @@ export function findMidInRoots(id, roots) {
  * @returns {object[]}
  */
 export function snapshotGlobalTimers() {
+    // C ref: timeout.c save_timers RANGE_GLOBAL write pass
+    // (maybe_write_timer `:2634–2640` via `:2679`).
     const out = [];
-    for (let t = game._timer_base; t; t = t.next) {
-        if (timer_is_local(t)) continue;
-        out.push(serTimer(t));
-    }
+    maybe_write_timer(RANGE_GLOBAL, (t) => out.push(serTimer(t)));
     return out;
 }
 

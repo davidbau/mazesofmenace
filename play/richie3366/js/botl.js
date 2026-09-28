@@ -1054,6 +1054,38 @@ export function evaluate_and_notify_windowport(valsetlist, idx) {
     if (game.gu) game.gu.update_all = false; // C :1679 gu.update_all = FALSE
 }
 
+// C botl.c:1722-1756 — status_finish(): windowport status teardown, called
+// from freedynamicdata (save.c:1173, save-freeing teardown with no JS
+// counterpart — named omission, end.js:522/sys.js:91 precedent).
+// C :1739-1754 STATUS_HILITES arm is live (config.h:616).
+export function status_finish() {
+    // C :1727-1729 call the window port cleanup routine first. The tty
+    // port leaves the proc null; the optional hook mirrors the C null
+    // check (cmd.js:329 win_exit_nhwindows precedent).
+    const hook = game.windowprocs?.win_status_finish;
+    if (typeof hook === 'function') hook();
+    // C :1731 free the alloc'd memory now. C frees static storage; JS
+    // drops the refs (GC). Rows build on demand (:1634), so guard the
+    // sparse shelf — an unbuilt row is already empty.
+    const gbstats = game.gb?.blstats;
+    for (let i = 0; i < MAXBLSTATS; i++) { // C :1732
+        const r0 = gbstats?.[0]?.[i];
+        const r1 = gbstats?.[1]?.[i];
+        if (r0?.val) r0.val = null; // C :1733-1735 free + NULL
+        if (r1?.val) r1.val = null; // C :1736-1738
+        // C :1740-1742 null the hilite_rule cache (the thresholds list is
+        // about to go away).
+        if (r0) r0.hilite_rule = 0;
+        if (r1) r1.hilite_rule = 0; // C :1742
+        // C :1743-1753 walk the row-0 threshold chain freeing each node,
+        // then NULL both mirrors (they alias, :1653). JS drops the head.
+        if (r0?.thresholds) { // C :1743
+            r0.thresholds = null;
+            if (r1) r1.thresholds = null; // C :1750-1752
+        }
+    }
+}
+
 // =======================================================================
 // bot_via_windowport() fill path (botl.c:962-1279) + the tables and
 // same-file callees it needs. Caller: C bot() (botl.c:262) takes this arm
@@ -2646,6 +2678,32 @@ export function bot_via_windowport() {
 
     // C :1277 request rendering.
     evaluate_and_notify_windowport(valset, idx);
+}
+
+// C botl.c:1284-1299 — stat_update_time() (staticfn): time-only windowport
+// push, called from timebot()'s VIA_WINDOWPORT arm (botl.c:286-287).
+export function stat_update_time() {
+    const idx = now_or_before_idx; // C :1287 (no 0/1 toggle)
+    const fld = BL_TIME; // C :1288
+
+    // C :1290-1291 Time (moves): svm.moves is game.moves (:2506 precedent).
+    game.gb.blstats[idx][fld].a.a_long = game.moves ?? 0;
+    // C :1292 gv.valset[fld] = FALSE. gv.valset (decl.h:994) has no JS
+    // mirror — bot_via_windowport keeps a local fill array — so pass a
+    // false-filled shelf: eval_notify_windowport_field reads only [fld]
+    // (:979), making this observationally identical here.
+    const valset = new Array(MAXBLSTATS).fill(false);
+    valset[fld] = false; // C :1292
+
+    eval_notify_windowport_field(fld, valset, idx); // C :1294
+    // C :1295-1298 WC2_FLUSH_STATUS push. No windowport registry in JS →
+    // caps read 0 (named omit, :1039 precedent); the arm skips, exactly as
+    // with a status-incapable windowport in C.
+    const wincap2 = 0; // named omit: windowprocs.wincap2 (windowport registry)
+    if ((wincap2 & WC2_FLUSH_STATUS) !== 0) { // C :1295
+        status_update(BL_FLUSH, 0, 0, 0, NO_COLOR, null); // C :1296-1297
+    }
+    // C :1298 return (void).
 }
 
 // =======================================================================

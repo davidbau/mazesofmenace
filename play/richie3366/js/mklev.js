@@ -392,15 +392,23 @@ const TRAPPED_CHEST = 25;
 function is_hole(t) { return t === HOLE || t === TRAPDOOR; }
 function is_pit(t) { return t === PIT || t === SPIKED_PIT; }
 
-// Stairway list management — C ref: stairs.c stairway_add
-function stairway_add(x, y, up, isladder, dest) {
+// C ref: stairs.c stairway_add `:8-24` — alloc + zero, assign fields,
+// assign_level tolev, prepend to gs.stairs. Export matches C extern
+// (extern.h:3101); every reader uses truthiness, so C boolean/int
+// coercions hold. tolev copies dnum/dlevel only (assign_level), never
+// the caller's extra fields.
+export function stairway_add(x, y, up, isladder, dest) {
+    // C `:15` memset zero then field assigns `:16-20`
     const node = {
-        sx: x, sy: y, up, isladder,
-        tolev: { ...dest },
-        u_traversed: false,
-        next: game.stairs,
+        sx: x | 0, // C `:16` coordxy
+        sy: y | 0, // C `:17` coordxy
+        up: !!up, // C `:18` boolean
+        isladder: !!isladder, // C `:19` boolean
+        u_traversed: false, // C `:20` FALSE
+        tolev: { dnum: dest.dnum | 0, dlevel: dest.dlevel | 0 }, // C `:21`
+        next: game.stairs, // C `:22`
     };
-    game.stairs = node;
+    game.stairs = node; // C `:23`
 }
 
 // ── Stairway lookup ──
@@ -32335,10 +32343,18 @@ function is_branchlev() {
     return null;
 }
 
+/* C ref: mklev.c find_branch_room `:1660-1673` — whole body in C order. */
 function find_branch_room(mp) {
-    const croom = generate_stairs_find_room();
-    if (croom) somexyspace(croom, mp);
-    return croom;
+    let croom = null; // C :1662 croom = 0
+    if ((game.level?.nroom | 0) === 0) { // C :1664 svn.nroom == 0
+        mazexy(mp); // C :1665 — already verifies location
+    } else {
+        croom = generate_stairs_find_room(); // C :1667
+        // C :1668 assert(croom != NULL) — Null iff nroom==0 which won't get here
+        if (!somexyspace(croom, mp)) // C :1669
+            impossible("Can't place branch!"); // C :1670
+    }
+    return croom; // C :1672
 }
 
 /**
@@ -32362,10 +32378,10 @@ function place_branch(branchp, x = 0, y = 0) {
     // C ref: mklev.c place_branch — early-out if none or already placed
     if (!branchp || g.made_branch) return;
 
-    if (!x) {
+    if (!x) { // C :1708-1712 — (void) find_branch_room(&m); x = m.x; y = m.y
         const mp = { x: 0, y: 0 };
-        const croom = find_branch_room(mp);
-        if (croom && mp.x > 0) {
+        find_branch_room(mp); // C :1710 — sets mp via mazexy() or somexyspace(); return unused
+        if (mp.x > 0) {
             x = mp.x;
             y = mp.y;
         } else {

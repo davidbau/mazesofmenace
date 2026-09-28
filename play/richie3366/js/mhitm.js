@@ -994,6 +994,31 @@ export async function mhitm_ad_rust(magr, mattk, mdef, mhm) {
 }
 
 /**
+ * C ref: uhitm.c mhitm_ad_corr `:2337–2360` — uhitm (you→mon, `:2342–2345`)
+ * and mhitm (mon→mon, `:2352–2359`) in C order. uhitm: erode_armor(CORRODE),
+ * leftover zeroed. mhitu arm (`:2346–2351`) lives split in mhitu.js
+ * mhitm_ad_corr_u (hitmsg + mcan + erode_armor, rust precedent). mhitm:
+ * cancelled → return (leftover kept); else erode_armor(CORRODE), WAITFORU
+ * clear, leftover zeroed.
+ */
+export async function mhitm_ad_corr(magr, mattk, mdef, mhm) {
+    void mattk;
+    if (is_youmonst(magr)) {
+        /* C `:2342–2345` uhitm (hero as attacker) */
+        await erode_armor(mdef, ERODE_CORRODE);
+        mhm.damage = 0;
+        return;
+    }
+    if (is_youmonst(mdef)) return; /* C `:2346–2351` mhitu: mhitu.js mhitm_ad_corr_u */
+    /* C `:2352–2359` mhitm */
+    if (magr.mcan)
+        return;
+    await erode_armor(mdef, ERODE_CORRODE);
+    mdef.mstrategy = (mdef.mstrategy | 0) & ~STRAT_WAITFORU;
+    mhm.damage = 0;
+}
+
+/**
  * C ref: uhitm.c mhitm_ad_halu mhitm arm :3911–3919.
  * Black-light AT_EXPL via explmm→mdamagem. uhitm/mhitu arms just
  * zero dice (named).
@@ -4826,6 +4851,40 @@ async function mdamagem(magr, mdef, mattk, mwep, dieroll) {
             done: false,
         };
         await mhitm_ad_rust(magr, mattk, mdef, mhm);
+        // C mhitm.c:1061-1065 — knockback preempts damage on HIT/DEF_DIED/offmap
+        if (await mhitm_knockback(magr, mdef, mattk, mhm, !!mwep)
+            && (((mhm.hitflags & (M_ATTK_DEF_DIED | M_ATTK_HIT)) !== 0) || mon_offmap(mdef))) {
+            return mhm.hitflags;
+        }
+        if (mhm.done) return mhm.hitflags;
+        damage = mhm.damage | 0;
+        hitflags = mhm.hitflags | 0;
+        if (!damage) return hitflags;
+        mdef.mhp -= damage;
+        if (mdef.mhp < 1) {
+            mdef.mhp = 0;
+            await mdamagem_monkilled(magr, mdef, mattk, mwep);
+            if ((mdef.mhp | 0) > 0) return hitflags; /* lifesaved */
+            if (hitflags === M_ATTK_AGR_DIED) {
+                return M_ATTK_DEF_DIED | M_ATTK_AGR_DIED;
+            }
+            const grew = await grow_up(magr, mdef);
+            return M_ATTK_DEF_DIED | (grew ? 0 : M_ATTK_AGR_DIED);
+        }
+        return (hitflags === M_ATTK_AGR_DIED) ? M_ATTK_AGR_DIED : M_ATTK_HIT;
+    }
+
+    // C: mhitm_adtyping → mhitm_ad_corr for AD_CORR (uhitm.c:4806,
+    // mhitm arm :2352–2359). Cancelled → return (leftover kept); else
+    // erode_armor(CORRODE), WAITFORU clear, leftover zeroed. uhitm arm
+    // is the damageum_adtyping row; mhitu arm is mhitm_ad_corr_u (mhitu.js).
+    if ((mattk.adtyp | 0) === AD_CORR) {
+        const mhm = {
+            damage,
+            hitflags: M_ATTK_MISS,
+            done: false,
+        };
+        await mhitm_ad_corr(magr, mattk, mdef, mhm);
         // C mhitm.c:1061-1065 — knockback preempts damage on HIT/DEF_DIED/offmap
         if (await mhitm_knockback(magr, mdef, mattk, mhm, !!mwep)
             && (((mhm.hitflags & (M_ATTK_DEF_DIED | M_ATTK_HIT)) !== 0) || mon_offmap(mdef))) {

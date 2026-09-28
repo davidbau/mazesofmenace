@@ -654,6 +654,56 @@ export function get_artifact(obj) {
 }
 
 /**
+ * C ref: artifact.c finesse_ahriman `:2235–2260` — whole body in C order.
+ * Probe whether dropping obj ends levitation: TRUE only when levitating
+ * via an invoked (W_ARTI) LEVITATION artifact — Heart of Ahriman — so
+ * freeinv() would toggle levitation (`:2242–2247`, `||` short-circuit
+ * kept; non-artifact is `list[ART_NONARTIFACT]` per get_artifact above).
+ * Otherwise save u.uprops[LEVITATION] (`:2254`), clear the float_down
+ * targets (`:2255–2256`), read Levitation (`:2257`), restore (`:2258`).
+ * JS keeps H/ELevitation flats beside the uprops table (set_spfx_extrinsic
+ * convention), so the probe clears and restores both stores. Sync: no
+ * pline/input on this path. Sole C caller: do.c drop `:762`.
+ * @returns {boolean}
+ */
+export function finesse_ahriman(obj) {
+    const list = artilist();
+    const oart = get_artifact(obj);
+    // C `:2244–2246` — guard arms.
+    if (!Levitation()
+        || oart === list[ART_NONARTIFACT]
+        || (oart?.inv_prop | 0) !== LEVITATION
+        || !((game.u?.ELevitation | 0) & W_ARTI))
+        return false;
+    // C `:2254` — save_Lev = u.uprops[LEVITATION] (struct copy).
+    const u = game.u || {};
+    const slot = u.uprops?.[LEVITATION];
+    const saveSlot = slot
+        ? { intrinsic: slot.intrinsic | 0, extrinsic: slot.extrinsic | 0, blocked: slot.blocked | 0 }
+        : null;
+    const saveH = u.HLevitation | 0;
+    const saveE = u.ELevitation | 0;
+    // C `:2255–2256` — HLevitation &= ~(I_SPECIAL|TIMEOUT); ELevitation &= ~W_ARTI.
+    u.HLevitation = saveH & ~(I_SPECIAL | TIMEOUT);
+    u.ELevitation = saveE & ~W_ARTI;
+    if (slot) {
+        slot.intrinsic = (slot.intrinsic | 0) & ~(I_SPECIAL | TIMEOUT);
+        slot.extrinsic = (slot.extrinsic | 0) & ~W_ARTI;
+    }
+    // C `:2257` — result = !Levitation.
+    const result = !Levitation();
+    // C `:2258` — u.uprops[LEVITATION] = save_Lev.
+    u.HLevitation = saveH;
+    u.ELevitation = saveE;
+    if (slot && saveSlot) {
+        slot.intrinsic = saveSlot.intrinsic;
+        slot.extrinsic = saveSlot.extrinsic;
+        slot.blocked = saveSlot.blocked;
+    }
+    return result;
+}
+
+/**
  * C ref: artifact.c arti_speak `:2279–2296` — whole body in C order.
  * Non-artifact or no-SPFX_SPEAK guard returns ECMD_OK (`:2286–2287`;
  * `||` short-circuit kept); else rumor by bless/curse sign (`:2289`
@@ -1337,27 +1387,36 @@ export function restrict_name(otmp, name) {
     return false;
 }
 
-/** C ref: artifact.c artifact_origin */
+/** C ref: artifact.c artifact_origin `:478–513` — whole body in C order. */
 export function artifact_origin(arti, aflags) {
-    const a = arti?.oartifact | 0;
-    if (!a) return;
+    const a = arti?.oartifact | 0; // C `:482` `a = arti->oartifact`
+    if (!a) return; // C `:484` `if (a)`
     if (!game.artiexist) artifacts_globals_init();
-    const slot = {
-        exists: 1,
-        found: (aflags & ONAME_KNOW_ARTI) ? 1 : 0,
-        wish: (aflags & ONAME_WISH) ? 1 : 0,
-        gift: (aflags & ONAME_GIFT) ? 1 : 0,
-        viadip: (aflags & ONAME_VIA_DIP) ? 1 : 0,
-        named: (aflags & ONAME_VIA_NAMING) ? 1 : 0,
-        lvldef: (aflags & ONAME_LEVEL_DEF) ? 1 : 0,
-        bones: (aflags & ONAME_BONES) ? 1 : 0,
-        rnd: (aflags & ONAME_RANDOM) ? 1 : 0,
+    // C `:486` `artiexist[a] = zero_artiexist` — all bits zero (`rnd`
+    // holds C `.rndm`; file convention js/artifact.js:558)
+    const slot = game.artiexist[a] = {
+        exists: 0, found: 0, wish: 0, gift: 0,
+        viadip: 0, named: 0, lvldef: 0, bones: 0, rnd: 0,
     };
-    // Ensure exactly one origin bit when none given — C defaults RANDOM
-    const originBits = ONAME_VIA_NAMING | ONAME_WISH | ONAME_GIFT
-        | ONAME_VIA_DIP | ONAME_LEVEL_DEF | ONAME_BONES | ONAME_RANDOM;
-    if ((aflags & originBits) === 0) slot.rnd = 1;
-    game.artiexist[a] = slot;
+    // C `:488` set 'exists' back on (no ONAME_ flag carries it)
+    slot.exists = 1;
+    // C `:491–492` wish/gift/viadip/named arms set 'found'
+    if (((aflags | 0) & ONAME_KNOW_ARTI) !== 0) slot.found = 1;
+    // C `:494–509` exactly one origin bit; each arm sets its bit and counts
+    let ct = 0; // C `:494`
+    if (((aflags | 0) & ONAME_WISH) !== 0) { slot.wish = 1; ++ct; } // C `:496–497`
+    if (((aflags | 0) & ONAME_GIFT) !== 0) { slot.gift = 1; ++ct; } // C `:498–499`
+    if (((aflags | 0) & ONAME_VIA_DIP) !== 0) { slot.viadip = 1; ++ct; } // C `:500–501`
+    if (((aflags | 0) & ONAME_VIA_NAMING) !== 0) { slot.named = 1; ++ct; } // C `:502–503`
+    if (((aflags | 0) & ONAME_LEVEL_DEF) !== 0) { slot.lvldef = 1; ++ct; } // C `:504–505`
+    if (((aflags | 0) & ONAME_BONES) !== 0) { slot.bones = 1; ++ct; } // C `:506–507`
+    if (((aflags | 0) & ONAME_RANDOM) !== 0) { slot.rnd = 1; ++ct; } // C `:508–509`
+    // C `:510–511` `impossible("invalid artifact origin: %4o", aflags)` —
+    // `%4o` is space-padded octal; JS `impossible` expands `%s`/`%d` only
+    // so pre-format. Sync `void` fire-and-forget per botl/dungeon precedent
+    // (all four C call sites pass exactly one origin bit, so this never
+    // fires in normal play and the export stays sync like its callers).
+    if (ct !== 1) void impossible('invalid artifact origin: %s', ((aflags | 0) >>> 0).toString(8).padStart(4, ' '));
 }
 
 /**

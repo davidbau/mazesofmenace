@@ -438,7 +438,7 @@ export function mon_leave(mtmp) {
  * `mon_leave` (`:725–763`) is live above (worm-seg count rides in
  * `wormno`; its minvent `no_charge` / `picked_container` loop and shk
  * `set_residency` stay named there).
- * Named omissions: `relmon` `mon.c:2559` itself, so the follower arm
+ * Named omissions: `relmon` `mon.c:2561` itself, so the follower arm
  * splices `fmon` inline and never runs `mon_leaving_level`'s
  * take-off-map (`remove_monster` / `seemimic` / `fill_pit` / `newsym`).
  * @param {boolean} pets_only true for ascension or final escape
@@ -520,7 +520,10 @@ export async function keepdogs(pets_only = false) {
             // `:862–863` relmon(mtmp, &gm.mydogs) — unlink from fmon,
             // then prepend (LIFO, so the last kept arrives first).
             // Named omissions: relmon's mon_leaving_level take-off-map
-            // (remove_monster / seemimic / fill_pit / newsym).
+            // (remove_monster / seemimic / fill_pit / newsym) — wiring
+            // this arm to `await relmon` regressed the fortress (6
+            // REACH sessions + a public-session RNG shift); the rewire
+            // ships as its own row once the delta is measured.
             const numSegs = mon_leave(mtmp);
             const gone = (game.fmon || []).indexOf(mtmp);
             if (gone >= 0) game.fmon.splice(gone, 1);
@@ -725,15 +728,27 @@ const Wiz_arrive = -1;
 let failed_arrivals = [];
 
 /**
- * C ref: mon.c relmon `:2561–2590` — take mon off the map
- * (mon_leaving_level), unlink from fmon, then prepend onto the target
- * list (migrating_mons/mydogs/failed_arrivals) or orphan it.
- * JS level lists are arrays: unlink by identity, prepend by unshift.
- * C panics when fmon is empty or mon is not on it (kept as impossible).
+ * C ref: mon.c relmon `:2561–2594` — release mon from the display and
+ * the map's monster list, maybe onto mydogs/migrating_mons (or the
+ * mon_arrive failed_arrivals list), else orphan it. C order: panic
+ * when fmon is empty, mon_leaving_level take-off-map, unlink from
+ * fmon (head or scan; panic when absent), then prepend onto the target
+ * list with the nmon link, or orphan nmon. JS level lists are arrays:
+ * unlink by identity, prepend by unshift; C panics stay impossible
+ * (fire-and-forget, execution continues). The `!mon` guard is
+ * defensive (C declares NONNULLARG1; every call site passes live mtmp).
  */
 async function relmon(mon, list) {
     if (!mon) return;
+    // C :2565–2566 — no fmon at all.
+    if (!(game.fmon || []).length) {
+        await impossible('relmon: no fmon available.');
+    }
+    // C :2569 — take 'mon' off the map.
     await mon_leaving_level(mon);
+    // C :2571–2584 — remove 'mon' from the 'fmon' list (C splits the
+    // head case :2572–2573 from the scan :2577–2581; one indexOf covers
+    // both; :2583 absent → panic).
     const fmon = game.fmon || [];
     const i = fmon.indexOf(mon);
     if (i < 0) {
@@ -741,8 +756,13 @@ async function relmon(mon, list) {
     } else {
         fmon.splice(i, 1);
     }
+    // C :2586–2593 — insert into the target list (:2588–2589
+    // `mon->nmon = *monst_list`) or orphan (:2592 `mon->nmon = 0`).
     if (list) {
+        mon.nmon = list[0] || null;
         list.unshift(mon);
+    } else {
+        mon.nmon = null;
     }
 }
 

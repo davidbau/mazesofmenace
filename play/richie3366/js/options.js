@@ -1076,6 +1076,66 @@ function is_wc2_option(optnam) {
     return false;
 }
 
+/**
+ * C options.c set_option_mod_status `:9854–9869` — set allopt `setwhere`
+ * for the first option whose name starts with `optnam` (case-blind);
+ * out-of-range status hits the impossible() guard and returns.
+ * SET__IS_VALUE_VALID (global.h `:603`) reads valid but means invalid:
+ * below set_in_sysconf or above set_wiznofuz. Sync like C; impossible()
+ * is fire-and-forget per file precedent (`void impossible`, disclosure).
+ */
+export function set_option_mod_status(optnam, status) {
+    status = status | 0; // C `:9855` int status
+    if (status < SET_IN_SYSCONF || status > SET_WIZNOFUZ) { // C `:9859`
+        void impossible(`set_option_mod_status: status out of range ${status}.`); // C `:9860`
+        return; // C `:9861`
+    }
+    for (let k = 0; k < allopt.length && allopt[k].name; k++) { // C `:9864`
+        if (str_start_is(allopt[k].name, optnam, true)) { // C `:9865` TRUE
+            allopt[k].setwhere = status; // C `:9866`
+            return; // C `:9867`
+        }
+    }
+}
+
+/**
+ * C options.c set_wc_option_mod_status `:9880–9896` — run the head over
+ * every wc_options row whose bit sits in `optmask`. The C table is
+ * null-terminated; the JS length loop matches is_wc_option above.
+ * All WC_ bits fit 32 bits (const.js), so `&` + `!== 0` matches C nonzero.
+ */
+export function set_wc_option_mod_status(optmask, status) {
+    optmask = optmask | 0; // C `:9881` unsigned long optmask
+    status = status | 0;
+    if (status < SET_IN_SYSCONF || status > SET_WIZNOFUZ) { // C `:9885`
+        void impossible(`set_wc_option_mod_status: status out of range ${status}.`); // C `:9886`
+        return;
+    }
+    for (let k = 0; k < wc_options.length; k++) { // C `:9891` while (wc_options[k].wc_name)
+        if ((optmask & wc_options[k].wc_bit) !== 0) { // C `:9892`
+            set_option_mod_status(wc_options[k].wc_name, status); // C `:9893`
+        }
+    }
+}
+
+/**
+ * C options.c set_wc2_option_mod_status `:9934–9950` — same over
+ * wc2_options[] (C `:9823–9842`, live above).
+ */
+export function set_wc2_option_mod_status(optmask, status) {
+    optmask = optmask | 0; // C `:9935` unsigned long optmask
+    status = status | 0;
+    if (status < SET_IN_SYSCONF || status > SET_WIZNOFUZ) { // C `:9939`
+        void impossible(`set_wc2_option_mod_status: status out of range ${status}.`); // C `:9940`
+        return;
+    }
+    for (let k = 0; k < wc2_options.length; k++) { // C `:9945`
+        if ((optmask & wc2_options[k].wc_bit) !== 0) { // C `:9946`
+            set_option_mod_status(wc2_options[k].wc_name, status); // C `:9947`
+        }
+    }
+}
+
 /** C botl.h:213 VIA_WINDOWPORT(). Message bits do not set this. */
 function via_windowport() {
     return (windowprocs_wincap2() & (WC2_HILITE_STATUS | WC2_FLUSH_STATUS)) !== 0;
@@ -5135,6 +5195,25 @@ export async function query_attr(prompt, dflt_attr) {
 }
 
 /**
+ * C ref: coloratt.c query_color_attr `:303–317` — sequential
+ * query_color then query_attr over the same prompt, writing `ca`
+ * only when both succeed. Async: both callees await. Sole C caller
+ * is options.c handler_menu_headings `:5782`.
+ * @param {object} ca C `color_attr` (`{ attr, color }`)
+ * @param {string|null} prompt
+ * @returns {Promise<boolean>}
+ */
+export async function query_color_attr(ca, prompt) {
+    const c = await query_color(prompt, ca.color); // C `:308`
+    if (c === -1) return false; // C `:309–310`
+    const a = await query_attr(prompt, ca.attr); // C `:311`
+    if (a === -1) return false; // C `:312–313`
+    ca.color = c; // C `:314`
+    ca.attr = a; // C `:315`
+    return true; // C `:316`
+}
+
+/**
  * C ref: options.c test_regex_pattern `:7871–7900` — validate only, the
  * compiled regexp is discarded. config_error_add paths named
  * (msgtype_add precedent); regex_error_desc has no JS counterpart.
@@ -5469,6 +5548,36 @@ export async function handler_menu_colors() {
             // :6495–6496 pick_cnt >= 0 → again
         }
     }
+}
+
+/**
+ * C ref: options.c handler_menu_headings `:5779–5792` (staticfn) —
+ * do_handler of optfn_menu_headings (`:2219`). Queries the
+ * color+attribute pair, refreshes the persistent inventory display
+ * when a pair was picked, then returns optn_ok. Async:
+ * query_color_attr awaits (update_inventory is sync and already
+ * imported from invent.js).
+ * @returns {Promise<number>}
+ */
+export async function handler_menu_headings() {
+    if (!game.iflags) game.iflags = {};
+    const ifl = game.iflags;
+    if (!ifl.menu_headings || typeof ifl.menu_headings !== 'object') {
+        // C optfn_menu_headings `:2197–2199` default (OPTIONS=menu_headings
+        // without value): no-color&inverse.
+        ifl.menu_headings = { color: NO_COLOR, attr: ATR_INVERSE };
+    }
+    const gotca = await query_color_attr( // C `:5782–5783`
+        ifl.menu_headings,
+        'How to highlight menu headings:'
+    );
+    if (gotca) { // C `:5785`
+        /* header highlighting affects persistent inventory display */ // C `:5786`
+        if (ifl.perm_invent) update_inventory(); // C `:5787–5788`
+    }
+    // C `:5790` adjust_menu_promptstyle(WIN_INVEN, &iflags.menu_headings) —
+    // no scored analogue (by-design); named omission.
+    return optn_ok; // C `:5791`
 }
 
 /**
@@ -8591,7 +8700,7 @@ export function strbuf_empty(sbuf) {
 
 /** C ref: optlist.h `:19` enum OptType; global.h `:580–588` optset_restrictions. */
 const BoolOpt = 0, CompOpt = 1, OthrOpt = 2;
-const SET_IN_SYSCONF = 0, SET_IN_CONFIG = 1, SET_GAMEVIEW = 3, SET_IN_GAME = 4; // C global.h `:581–586` sysconf first
+export const SET_IN_SYSCONF = 0, SET_IN_CONFIG = 1, SET_GAMEVIEW = 3, SET_IN_GAME = 4; // C global.h `:581–586` sysconf first
 // C global.h `:580–588` optset_restrictions values used by allopt rows.
 const SET_HIDDEN = 7, SET_WIZONLY = 5, SET_WIZNOFUZ = 6;
 /** C global.h `:605–611` enum opt OPTCOUNT — row count for the unix build. */

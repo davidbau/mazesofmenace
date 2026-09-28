@@ -8,7 +8,7 @@
 // shieldeff (D-1087; sparkle opt_out default On; sit rndcurse caller).
 
 import { game } from './gstate.js';
-import { bot_via_windowport, SCORE_ON_BOTL, botl_score } from './botl.js';
+import { bot_via_windowport, SCORE_ON_BOTL, botl_score, stat_update_time } from './botl.js';
 import { rank_of } from './roles.js';
 import { cansee, couldsee, vision_recalc, vision_off_newsym_gbuf } from './vision.js';
 import { objects_at, sobj_at } from './mkobj.js';
@@ -44,7 +44,7 @@ import {
     S_stone, S_vwall, S_trwall, S_ndoor, S_brdnladder, S_grave, S_altar, S_room,
     S_tree, S_darkroom, S_corr, S_litcorr, S_pool, S_ice, S_lava, S_lavawall,
     S_air, S_cloud, S_water,
-    S_arrow_trap, S_web, S_vibrating_square,
+    S_arrow_trap, S_polymorph_trap, S_hcdoor, S_web, S_vibrating_square,
     S_vbeam, S_hbeam, S_lslant, S_rslant,
     S_digbeam, S_flashbeam, S_boomleft, S_boomright,
     S_ss1, S_ss2, S_ss3, S_ss4, S_poisoncloud, S_goodpos,
@@ -3128,6 +3128,41 @@ export function check_gold_symbol() {
 function rogue_nocolor_active() {
     return (game.currentgraphics | 0) === ROGUESET
         && (game.gs?.symset?.[ROGUESET]?.nocolor | 0) !== 0;
+}
+
+/**
+ * C ref: display.c cmap_to_roguecolor `:2699–2719` (staticfn) — RogueIBM
+ * color for one cmap index. C order throughout:
+ * `:2703–2704` symset nocolor → NO_COLOR; `:2706–2707` S_vwall..S_hcdoor →
+ * CLR_BROWN; `:2708–2709` S_arrow_trap..S_polymorph_trap → CLR_MAGENTA;
+ * `:2710–2711` S_corr/S_litcorr → CLR_GRAY; `:2712–2714`
+ * S_room..S_water except S_darkroom → CLR_GREEN; else `:2715–2716`
+ * NO_COLOR. Pure (no RNG): safe to call from paint paths.
+ * Callers: the five `has_rogue_color` arms of C reset_glyphmap
+ * (`:2874`, `:2916`, `:2922`, `:2935`, `:2962`) — reset_glyphmap itself
+ * stays by-design unported (ledger; CURRENT.md fortress guard), so those
+ * arms are Named omissions of this row, not unwired live callers.
+ */
+export function cmap_to_roguecolor(cmap) {
+    let color = NO_COLOR;
+
+    if ((game.gs?.symset?.[game.currentgraphics | 0]?.nocolor | 0))
+        return NO_COLOR;
+
+    cmap |= 0;
+    if (cmap >= S_vwall && cmap <= S_hcdoor)
+        color = CLR_BROWN;
+    else if (cmap >= S_arrow_trap && cmap <= S_polymorph_trap)
+        color = CLR_MAGENTA;
+    else if (cmap === S_corr || cmap === S_litcorr)
+        color = CLR_GRAY;
+    else if (cmap >= S_room && cmap <= S_water
+                && cmap !== S_darkroom)
+        color = CLR_GREEN;
+    else
+        color = NO_COLOR;
+
+    return color;
 }
 
 function wall_glyph_table() {
@@ -7432,7 +7467,7 @@ export async function bot() {
 
 /**
  * C ref: botl.c timebot — status update when only svm.moves changed.
- * VIA_WINDOWPORT → stat_update_time deferred; tty path → full bot().
+ * VIA_WINDOWPORT → stat_update_time(); tty path → full bot().
  * Named omissions: hangup done_hup in suppress_map_output.
  */
 export async function timebot() {
@@ -7442,7 +7477,13 @@ export async function timebot() {
     const iflags = game.iflags || {};
     // C: status_updates defaults TRUE; treat undefined as enabled
     if (flags.time && iflags.status_updates !== false) {
-        await bot();
+        // C botl.h:213 VIA_WINDOWPORT() (bot() :7406-7408 precedent).
+        const wincap2 = game.windowprocs?.wincap2 | 0;
+        if ((wincap2 & (WC2_HILITE_STATUS | WC2_FLUSH_STATUS)) !== 0) {
+            stat_update_time(); // C :286-287
+        } else {
+            await bot(); // C :288-290 old status display updates everything
+        }
     } else if (game.flags) {
         game.flags.time_botl = false;
     }

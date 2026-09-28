@@ -79,7 +79,7 @@ import { body_part } from './polyself.js';
 import { Glib } from './potion.js';
 import { Levitation, Flying } from './mhitu.js';
 import { Punished } from './pray.js';
-import { m_unleash } from './apply.js';
+import { m_unleash, objdescr_is } from './apply.js';
 
 const SADDLE = objectNames.indexOf('SADDLE');
 const BOULDER = objectNames.indexOf('BOULDER');
@@ -212,14 +212,7 @@ async function u_handsy() {
     return true;
 }
 
-/** C ref: o_init.c objdescr_is — appearance string match. */
-function objdescr_is(obj, descr) {
-    if (!obj) return false;
-    const oc = game.objects?.[obj.otyp];
-    if (!oc) return false;
-    const dn = objectDescrs[oc.oc_descr_idx ?? obj.otyp];
-    return dn != null && dn === descr;
-}
+/* objdescr_is — canonical export in js/apply.js (o_init.c `:352-365`). */
 
 /** C invent freeinv — remove from hero invent array. */
 function freeinv(otmp) {

@@ -775,9 +775,16 @@ export function Hello(arg) {
         }
         return 'Konnichi wa';
     }
-    if (mnum === PM_TOURIST) return 'Aloha';
-    if (mnum === PM_VALKYRIE) return 'Velkommen';
-    return 'Hello';
+    if (mnum === PM_TOURIST) return 'Aloha'; // C :2130-2131
+    if (mnum === PM_VALKYRIE) {
+        // C :2132-2136 — MAIL_STRUCTURES is live (global.h:430), so the
+        // mail-daemon `Hallo` arm is real C, mirroring the Samurai shk arm.
+        if (mtmp && mtmp.data?.name === 'PM_MAIL_DAEMON') {
+            return 'Hallo';
+        }
+        return 'Velkommen'; /* Norse */
+    }
+    return 'Hello'; // C :2137-2138
 }
 
 /** C ref: role.c Goodbye — Role_switch farewell; uses game.urole.mnum. */
@@ -891,15 +898,30 @@ export function align_gname(urole, alignment) {
     return gnam;
 }
 
-// C ref: pray.c align_gtitle — "goddess" iff raw name starts with '_'
+// C ref: pray.c align_gtitle :2628–2649 — whole body in C order.
+// C reads global gu.urole; JS threads it as the first param (callers pass
+// game.urole/urole). "goddess" iff the raw god name starts with '_'.
 export function align_gtitle(urole, a) {
     const r = urole || {};
     let gnam;
-    if (a === A_LAWFUL) gnam = r.lgod;
-    else if (a === A_CHAOTIC) gnam = r.cgod;
-    else gnam = r.ngod;
-    if (gnam && gnam.charAt(0) === '_') return 'goddess';
-    return 'god';
+    let result = 'god'; // C :2631
+    switch (a) {
+    case A_LAWFUL: // C :2634
+        gnam = r.lgod;
+        break;
+    case A_NEUTRAL: // C :2637
+        gnam = r.ngod;
+        break;
+    case A_CHAOTIC: // C :2640
+        gnam = r.cgod;
+        break;
+    default: // C :2643–2645
+        gnam = 0;
+        break;
+    }
+    if (gnam && gnam.charAt(0) === '_') // C :2647
+        result = 'goddess';
+    return result;
 }
 
 export function u_gname(urole, ualignType) {

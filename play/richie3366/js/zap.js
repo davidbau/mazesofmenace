@@ -232,6 +232,7 @@ import {
 import { show_text_pages } from './pager.js';
 import { cansee, couldsee, vision_recalc } from './vision.js';
 import { readobjnam_wish, HANDS_OBJ, NOTHING_OBJ } from './readobjnam.js';
+import { select_menu_pick_one } from './options.js';
 import {
     hold_another_object, makeknown, encumber_msg, enlightenment, freeinv_core,
     observe_object, display_minventory, display_binventory, display_cinventory,
@@ -369,6 +370,7 @@ import {
     MM_NOTAIL, MM_ADJACENTOK, NATTK,
     MAGICENLIGHTENMENT, ENL_GAMEINPROGRESS,
     P_SHURIKEN, P_BOW,
+    P_ISRESTRICTED, P_UNSKILLED, P_BASIC, P_SKILLED, P_EXPERT,
     IS_FURNITURE, IS_GRAVE, SCORR, VAULT, TEMPLE, In_quest, Is_firelevel,
     VIBRATING_SQUARE, MAGIC_PORTAL, HEADSTONE, TRAP_EXPLODE, is_magical_trap,
     GETOBJ_EXCLUDE, GETOBJ_SUGGEST, GETOBJ_NOFLAGS,
@@ -377,6 +379,8 @@ import {
     FM_FMON,
 } from './const.js';
 import { monstseesu, monstunseesu, defended, Resists_Elem } from './mondata.js';
+import { spell_skilltype } from './spell.js';
+import { P_SKILL } from './weapon.js';
 
 const MZ_HUMAN = MZ_MEDIUM;
 const SPE_HEALING = objectNames.indexOf('SPE_HEALING');
@@ -1368,16 +1372,50 @@ export async function zap_over_floor(x, y, type, shopdamage, ignoremon, explodin
 }
 
 /**
- * C ref: zap.c zap_hit — rn2(20) vs AC_VALUE(ac).
- * spell_hit_bonus deferred (type always 0 for wand rays here).
+ * C ref: zap.c spell_hit_bonus :3509–3543 (staticfn; caller zap_hit :4710).
+ * Hero-cast ray to-hit bonus from spell skill plus DEX.
  */
-function zap_hit(ac, _type) {
-    const chance = rn2(20);
-    if (!chance) return rnd(10) < (ac | 0);
-    // C: AC_VALUE — positive as-is; negative → -rnd(-ac)
+function spell_hit_bonus(skill) {
+    let hit_bon = 0; // C :3511
+    const dex = acurr(A_DEX); // C :3512 — ACURR(x) is acurr(x)
+    switch (P_SKILL(spell_skilltype(skill))) { // C :3514
+    case P_ISRESTRICTED: // C :3515
+    case P_UNSKILLED: // C :3516
+        hit_bon = -4; // C :3517
+        break;
+    case P_BASIC: // C :3519
+        hit_bon = 0; // C :3520
+        break;
+    case P_SKILLED: // C :3522
+        hit_bon = 2; // C :3523
+        break;
+    case P_EXPERT: // C :3525
+        hit_bon = 3; // C :3526
+        break;
+    }
+    if (dex < 4) hit_bon -= 3; // C :3530-3531
+    else if (dex < 6) hit_bon -= 2; // C :3532-3533
+    else if (dex < 8) hit_bon -= 1; // C :3534-3535
+    else if (dex < 14) hit_bon -= 0; // C :3536-3538 — kept: explicit no-op arm
+    /* Even increment for dexterous heroes (see weapon.c abon) */ // C :3540
+    else hit_bon += dex - 14; // C :3541
+    return hit_bon; // C :3543
+}
+
+/**
+ * C ref: zap.c zap_hit :4705–4719 (staticfn) — rn2(20) vs AC plus the
+ * hero-spell bonus (caller dobuzz :4872 passes spell_type, :4962 passes 0).
+ */
+function zap_hit(ac, type) {
+    const chance = rn2(20); // C :4709
+    const spell_bonus = (type | 0) ? spell_hit_bonus(type) : 0; // C :4710
+    /* small chance for naked target to avoid being hit */ // C :4712
+    if (!chance) return rnd(10) < (ac | 0) + spell_bonus; // C :4713-4714
+    /* very high armor protection does not achieve invulnerability */ // C :4716
+    // C :4717 AC_VALUE — positive as-is; negative → -rnd(-ac)
     let a = ac | 0;
     if (a < 0) a = -rnd(-a);
-    return 3 - chance < a;
+    return 3 - chance < a + spell_bonus; // C :4719
 }
 
 /** C ref: zap.c bounce_dir */
@@ -2233,6 +2271,8 @@ export async function dobuzz(
     const damgtype = fltyp % 10;
     // C: Hallucination ? rn2(6) : damgtype — Hallu path deferred
     const hdmgtype = damgtype;
+    // C zap.c:4800 — hero-spell SPE_TYPE for the zap_hit bonus, else 0
+    const spell_type = is_hero_spell(type) ? SPE_MAGIC_MISSILE + damgtype : 0;
     // C: fireball = (type == ZT_SPELL(ZT_FIRE))
     const fireball = (type | 0) === (ZT_SPELL_0 + ZT_FIRE);
     let sx = sx0;
@@ -2304,7 +2344,7 @@ export async function dobuzz(
                     if ((type | 0) >= 0 && mon.mstrategy != null) {
                         mon.mstrategy &= ~STRAT_WAITMASK;
                     }
-                    if (!forcemiss && zap_hit(find_mac(mon), 0)) {
+                    if (!forcemiss && zap_hit(find_mac(mon), spell_type)) {
                         // mon_reflects deferred
                         const mon_could_move = !!mon.mcanmove;
                         const ootmp = { otmp: null };
@@ -7193,10 +7233,46 @@ export function wish_history_add(buf) {
 
 /**
  * C ref: zap.c wish_history_menu :6275–6309 (staticfn; caller makewish :6335).
- * `DEBUG` is defined, so the menu is in the C build. This remains a no-op:
- * `buf` is not modified. The menu body is named in the map.
+ * `DEBUG` is defined (patchlevel.h:36), so the menu is in the C build.
+ * C order: window lifecycle is owned by the live PICK_ONE picker below
+ * (select_menu_pick_one, js/options.js) — same shape as artifact.js
+ * invoke_create_portal; items carry a plain a_int instead of cg.zeroany.
+ * JS strings are immutable, so the pick is returned (caller assigns to
+ * buf); "buf is not modified, if nothing was selected" is the input
+ * returned unchanged.
  */
-export function wish_history_menu(_buf) {
+export async function wish_history_menu(buf) {
+    const orig = String(buf ?? '');
+    // C :6287–6296 — newest-first ring walk; skip empty slots.
+    const hist = game.wish_history;
+    const wish_history_idx = game.wish_history_idx | 0;
+    if (!Array.isArray(hist) || hist.length !== MAX_WISH_HISTORY) return orig;
+    // C :6275–6284 win = create_nhwindow(NHW_MENU); start_menu STANDARD;
+    // any = cg.zeroany — items array with plain a_int fields.
+    // C :6298 end_menu prompt "Wish what?" is modelled as non-selectable
+    // header rows (same shape as artifact.js invoke_create_portal).
+    const items = [
+        { text: 'Wish what?', selectable: false },
+        { text: '', selectable: false },
+    ];
+    for (let i = MAX_WISH_HISTORY - 1; i >= 0; i--) {
+        const idx = (wish_history_idx + i) % MAX_WISH_HISTORY;
+        if (hist[idx] == null) continue;
+        // C :6292–6294 any.a_int = i + 1; add_menu ATR_NONE/NO_COLOR text.
+        items.push({ text: String(hist[idx]), selectable: true, a_int: i + 1 });
+    }
+    if (!items.some((it) => it.selectable)) return orig;
+    // C :6299 npick = select_menu(win, PICK_ONE, &picks);
+    // C :6300 destroy_nhwindow(win) — picker-owned teardown.
+    const n = await select_menu_pick_one(items);
+    // C :6301–6307 if (npick > 0): i = picks->item.a_int; i--;
+    if (n?.kind !== 'pick' || !n.item) return orig;
+    let i = (n.item.a_int | 0);
+    i--;
+    const idx = (wish_history_idx + i) % MAX_WISH_HISTORY;
+    // C :6306–6307 if (wish_history[idx]) strcpy(buf, wish_history[idx]).
+    if (hist[idx] == null) return orig;
+    return String(hist[idx]);
 }
 
 /**
@@ -7204,7 +7280,7 @@ export function wish_history_menu(_buf) {
  * Terrain wish via readobjnam_wish → wizterrainwish traps (D-1289) +
  * door/wall (D-1290) + secret corridor (D-1304) + switch_terrain
  * (D-1279). wishcmdassist help arm live; wish_history_add live (D-2873);
- * wish_history_menu still the no-op; wish livelog arms live (D-1892).
+ * wish_history_menu returns the pick (caller assigns); wish livelog arms live (D-1892).
  */
 export async function makewish() {
     // C zap.c:6323 — makewish clears resume_wish at entry (zap.c:6341 sets
@@ -7227,7 +7303,14 @@ export async function makewish() {
             prompt += " (enter 'help' for assistance)";
         }
         prompt += '?';
-        buf = mungspaces(await getlin(prompt)); // C `:6345`
+        // C zap.c:6334–6337 — requested history menu with prior wishes picks
+        // from it (wish_history_menu returns the pick; C strcpy into buf),
+        // otherwise the line prompt :6336-6337. C :6339 mungspaces both.
+        if (game.iflags?.menu_requested && (game.wish_history?.[0]) && tries === 0) {
+            buf = mungspaces(await wish_history_menu(buf));
+        } else {
+            buf = mungspaces(await getlin(prompt)); // C `:6337`
+        }
         if (buf === '\x1b') {
             buf = '';
             break;

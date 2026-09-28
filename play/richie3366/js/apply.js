@@ -1133,13 +1133,23 @@ async function use_cream_pie(obj) {
     return ECMD_OK;
 }
 
-/** C ref: o_init.c objdescr_is — appearance string match. */
+/**
+ * C ref: o_init.c objdescr_is `:352-365` — OBJ_DESCR(objects[otyp]) vs descr.
+ * C order: null-obj guard `:356-359`, OBJ_DESCR fetch `:361`
+ * (objclass.h `:191`: obj_descr[oc_descr_idx].oc_descr), null-descr
+ * fallthrough `:362-363`, strcmp match `:364`.
+ */
 export function objdescr_is(obj, descr) {
+    // C `:356-359` — impossible("objdescr_is: null obj") is a screen side
+    // effect and impossible() is async (D-2608 wall_angle precedent); this
+    // sync hot path (9 C call sites, all boolean tests) keeps the control
+    // flow arm (return FALSE) and omits the pline.
     if (!obj) return false;
-    const oc = game.objects?.[obj.otyp];
+    const oc = game.objects?.[obj.otyp]; // C `:361` objects[obj->otyp]
     if (!oc) return false;
-    const dn = objectDescrs[oc.oc_descr_idx ?? obj.otyp];
-    return dn != null && dn === descr;
+    const dn = objectDescrs[oc.oc_descr_idx ?? obj.otyp]; // C `:361` OBJ_DESCR
+    if (dn == null) return false; // C `:362-363` no description, no match
+    return dn === descr; // C `:364` !strcmp(objdescr, descr)
 }
 
 /** C ref: invent.c freehand — either hand free. */

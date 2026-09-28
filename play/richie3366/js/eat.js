@@ -38,6 +38,7 @@ import {
     pline, You_feel, newsym, see_monsters, more,
     canspotmon, canseemon, bot, Hallucination, verbalize, impossible,
 } from './display.js';
+import { objdescr_is } from './apply.js';
 import { yn_function, paranoid_query, y_n } from './getline.js';
 import {
     FOOD_CLASS, COIN_CLASS, WEAPON_CLASS, BALL_CLASS, CHAIN_CLASS,
@@ -2772,16 +2773,7 @@ function use_up_tin(tin) {
     game.context.tin = { tin: null, o_id: 0, reqtime: 0, usedtime: 0 };
 }
 
-/**
- * C ref: o_init.c objdescr_is — OBJ_DESCR(objects[otyp]) vs descr.
- */
-function objdescr_is(obj, descr) {
-    if (!obj) return false;
-    const oc = game.objects?.[obj.otyp];
-    if (!oc) return false;
-    const dn = objectDescrs[oc.oc_descr_idx ?? obj.otyp];
-    return dn != null && dn === descr;
-}
+/* objdescr_is — canonical export in js/apply.js (o_init.c `:352-365`). */
 
 /** C util.h sgn — sign of n as -1/0/1. */
 export function sgn(n) {

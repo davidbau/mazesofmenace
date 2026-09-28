@@ -447,7 +447,7 @@ function restWornFromInvent(invent) {
 /**
  * C ref: save.c dosave0 — write current game to VFS (JSON subset of savelev).
  * Named omissions: binary NHFILE format; hangup arms; overwrite yn;
- * compress; uid/nhuuid/wreserve; save_killers;
+ * compress; uid/nhuuid/wreserve;
  * save_bc loose ball when swallowed.
  * mapseenchn cemetery JSON is save_dungeon/save_mapseen (D-1685);
  * current-level bonesinfo is savelev savecemetery.
@@ -459,7 +459,7 @@ export async function dosave0() {
     // save→end is CHECK, so lazy dynamic import like end.js:995).
     // The `:80–96` preamble (saving++, notice_mon_off, uinvulnerable=0,
     // save_uswallow/uinwater/uburied restores) stays unported — own rows.
-    const { done_object_cleanup } = await import('./end.js');
+    const { done_object_cleanup, save_killers } = await import('./end.js');
     await done_object_cleanup();
     const u = game.u || {};
     // C save.c savemonchn `:904–907` — stamp m_id from live pointers.
@@ -572,6 +572,8 @@ export async function dosave0() {
         artidisco: game.artidisco ? [...game.artidisco] : null,
         // C save.c `:321` save_oracles oracle_cnt + live oracle_loc deck.
         oracles: save_oracles(),
+        // C save.c `:293` save_killers delayed-killer chain (sentinel first).
+        killers: save_killers(),
         quest_status: game.quest_status
             ? JSON.parse(JSON.stringify(game.quest_status)) : null,
         pl_fruit: game.pl_fruit || null,
@@ -869,6 +871,10 @@ export async function try_restore_save() {
     // C restore.c `:712` restore_oracles (flg=1 when cnt nonzero; old
     // saves without the key keep the fresh-boot flg 0 → init_oracles).
     restore_oracles(payload.oracles);
+    // C restore.c `:653` restore_killers (old saves without the key keep
+    // the fresh-boot sentinel; save→end is lazy like dosave0 above).
+    const { restore_killers } = await import('./end.js');
+    restore_killers(payload.killers);
 
     const invent = deserInventArray(payload.invent);
     game.invent = invent;

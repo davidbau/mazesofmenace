@@ -14,7 +14,7 @@ import { rn2, rnd, rn1, rnz, d } from './rng.js';
 import { depth, builds_up, level_difficulty } from './hacklib.js';
 import {
     STAIRS, LADDER, ECMD_OK, ECMD_TIME, ECMD_FAIL, ECMD_CANCEL,
-    DIR_DOWN, I_SPECIAL, W_ARTI, TOOKPLUNGE, VIBRATING_SQUARE,
+    DIR_DOWN, I_SPECIAL, W_ARTI, W_ART, TOOKPLUNGE, VIBRATING_SQUARE,
     S_dnstair, S_dnladder, LEVITATION, Can_fall_thru, Is_stronghold,
     W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU, W_ARMOR,
     W_WEP, W_SWAPWEP, W_QUIVER, W_RINGL, W_RINGR, W_AMUL, W_TOOL,
@@ -25,7 +25,7 @@ import {
     WRITING, FREEING,
     UNENCUMBERED, KILLED_BY, DISMOUNT_FELL, NO_KILLER_PREFIX, ESCAPED,
     MAGIC_PORTAL, TIMEOUT, BLINDED, STONED, SLIMED, STRANGLED, SICK,
-    RLOC_NOMSG, EYE, HAND, FROMOUTSIDE,
+    RLOC_NOMSG, EYE, HAND, STOMACH, FROMOUTSIDE,
     WARN_OF_MON, TELEPAT, INFRAVISION,
     ACH_HELL, ACH_MINE, ACH_SOKO, ACH_ENDG, ACH_ASTR, ACH_BGRM,
     LL_ACHIEVE, LL_DEBUG,
@@ -117,10 +117,10 @@ import { place_object, stackobj, weight, delobj, obj_extract_self,
 } from './mkobj.js';
 import { ship_object, obj_delivery, container_impact_dmg, impact_drop } from './dokick.js';
 import {
-    doname, xname, the, The, vtense, an, yname, corpse_xname, is_plural,
+    doname, xname, the, The, vtense, an, yname, yobjnam, corpse_xname, is_plural,
     otense, makeplural, body_part_latebound, Tobjnam,
 } from './objnam.js';
-import { Monnam, Amonnam, Adjmonnam, mon_nam, hliquid, rndmonnam, trycall, obj_pmname } from './do_name.js';
+import { Monnam, Amonnam, Adjmonnam, mon_nam, s_suffix, hliquid, rndmonnam, trycall, obj_pmname } from './do_name.js';
 import { revive } from './zap.js';
 import {
     near_capacity, learn_unseen_invent, encumber_msg,
@@ -135,9 +135,9 @@ import {
 } from './pickup.js';
 import { Fumbling } from './attrib.js';
 import {
-    welded, bimanual, setuwep, setuswapwep, setuqwep, set_twoweap,
+    welded, weldmsg, bimanual, setuwep, setuswapwep, setuqwep, set_twoweap,
 } from './wield.js';
-import { body_part } from './polyself.js';
+import { body_part, mbodypart } from './polyself.js';
 import {
     setworn, confer_oc_oprop, recalc_telepat_range, reset_remarm,
     cancel_doff,
@@ -149,7 +149,7 @@ import { Unaware, carried, polyfood } from './eat.js';
 import { addinv_nomerge } from './u_init.js';
 import {
     set_artifact_intrinsic, revoke_invoked_property, Sting_effects,
-    artifact_has_invprop,
+    artifact_has_invprop, finesse_ahriman,
 } from './artifact.js';
 import { more_experienced, newexplevel } from './exper.js';
 import {
@@ -2876,56 +2876,98 @@ export async function dosinkring(obj) {
 }
 
 /**
- * C ref: do.c drop — canletgo, corpse better_not_try guard (:720), unwield,
- * ring-over-sink dosinkring (:753-757, D-2527), verbose pline, dropx.
- * Named omissions: Heart of Ahriman finesse_ahriman/float_down;
- * swallowed digests path.
+ * C ref: do.c drop `:714–780` — whole body in C order: null/canletgo/
+ * corpse guards (`:716–721`), unwield with welded weldmsg (`:722–728`),
+ * quiver/swap clear (`:729–734`), swallowed verbose into-monster pline
+ * (`:736–751`), ring-over-sink dosinkring (`:753–757`, D-2527),
+ * levitating freeinv + hitfloor with Heart of Ahriman finesse/float_down
+ * (`:758–772`), altar-gated verbose pline (`:774–775`), how_lost + dropx
+ * (`:777–779`). No named omissions — every arm ported, every callee live.
  */
 export async function drop(obj) {
+    // C `:716–717` — null guard.
     if (!obj) return ECMD_FAIL;
+    // C `:718–719` — canletgo(obj, "drop").
     if (!(await canletgo(obj, 'drop'))) return ECMD_FAIL;
+    // C `:720–721` — corpse fatal-touch guard.
     const CORPSE_DROP = objectNames.indexOf('CORPSE');
     if ((obj.otyp | 0) === CORPSE_DROP && (await better_not_try_to_drop_that(obj))) {
         return ECMD_FAIL;
     }
 
     const u = game.u || {};
+    // C `:722–728` — unwield; the welded re-check after canletgo keeps
+    // its own message (weldmsg, no setuwep). Unreachable while canletgo
+    // rejects welded uwep first, same as C.
     if (obj === u.uwep) {
-        // canletgo already rejected welded uwep
+        if (welded(u.uwep)) {
+            await weldmsg(obj);
+            return ECMD_FAIL;
+        }
         const shine = setuwep(null);
         if (shine) await shine;
     }
+    // C `:729–734` — quiver/swap clear.
     if (obj === u.uquiver) setuqwep(null);
     if (obj === u.uswapwep) setuswapwep(null);
 
+    // C `:736–751` — swallowed: barrier between you and the floor.
     if (u.uswallow) {
+        // C `:738` — verbose gate.
         if (game.flags?.verbose !== false) {
-            await pline(`You drop ${doname(obj)} into something.`);
+            // C `:741–748` — mon_nam first (doname can reuse the
+            // s_suffix buffer), then "'s stomach" via s_suffix +
+            // mbodypart when the engulfer digests; unpaid shows
+            // yobjnam, else doname.
+            let mnam = mon_nam(u.ustuck);
+            if (digests(u.ustuck?.data)) {
+                mnam = `${s_suffix(mnam)} ${mbodypart(u.ustuck, STOMACH)}`;
+            }
+            const onam = is_unpaid(obj) ? yobjnam(obj, null) : doname(obj);
+            // C `:750` — You("drop %s into %s.").
+            await You(`drop ${onam} into ${mnam}.`);
         }
     } else {
-        // C do.c:753-757 — ring (or meat ring) dropped over a sink.
+        // C `:753–757` — ring (or meat ring) dropped over a sink.
         const here = game.level?.at?.(u.ux | 0, u.uy | 0);
         if ((obj.oclass === RING_CLASS || (obj.otyp | 0) === MEAT_RING)
             && IS_SINK(here?.typ)) {
             await dosinkring(obj);
             return ECMD_TIME;
         }
+        // C `:758–772` — can't reach the floor (levitating): levitation
+        // from #invoke Heart of Ahriman would end inside freeinv(), so
+        // probe it first and pin ELevitation past freeinv + hitfloor so
+        // hitfloor() happens before float_down().
         if (!can_reach_floor(true)) {
-            // C do.c:758–772 — freeinv + hitfloor(TRUE); how_lost not
-            // set on this arm. finesse_ahriman / float_down named.
-            if (game.flags?.verbose !== false) {
-                await pline(`You drop ${doname(obj)}.`);
+            // C `:762` — levhack probe.
+            const levhack = finesse_ahriman(obj);
+            if (levhack) {
+                // C `:764–765` — ELevitation = W_ART (other than W_ARTI);
+                // ELevitation is uprops[LEVITATION].extrinsic, mirrored
+                // on the JS flat (set_spfx_extrinsic convention).
+                u.ELevitation = W_ART;
+                if (u.uprops?.[LEVITATION]) u.uprops[LEVITATION].extrinsic = W_ART;
             }
+            // C `:766–767` — verbose "drop %s." (no altar gate here).
+            if (game.flags?.verbose !== false) {
+                await You(`drop ${doname(obj)}.`);
+            }
+            // C `:768` — freeinv (do.js freeinv_drop: invent removal core).
             freeinv_drop(obj);
+            // C `:769` — hitfloor before float_down.
             const { hitfloor } = await import('./dothrow.js');
             await hitfloor(obj, true);
+            // C `:770–771` — end the probed levitation after landing.
+            if (levhack) await float_down(I_SPECIAL | TIMEOUT, W_ARTI | W_ART);
             return ECMD_TIME;
         }
-        // C: skip verbose "You drop" when standing on altar (doaltarobj speaks)
+        // C `:774–775` — skip verbose "You drop" on an altar (doaltarobj speaks).
         if (!IS_ALTAR(here?.typ) && game.flags?.verbose !== false) {
-            await pline(`You drop ${doname(obj)}.`);
+            await You(`drop ${doname(obj)}.`);
         }
     }
+    // C `:777–779` — normal landing: mark how_lost, dropx.
     obj.how_lost = LOST_DROPPED;
     await dropx(obj);
     return ECMD_TIME;

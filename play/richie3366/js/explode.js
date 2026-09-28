@@ -111,6 +111,14 @@ const AD_DISN = 5;
 const AD_ELEC = 6;
 const AD_DRST = 7;
 const AD_ACID = 8;
+/** C ref: monattk.h attack-type values needed by adtyp_to_expltype. */
+const AD_DREN = 16;
+const AD_DRDX = 30;
+const AD_DRCO = 31;
+const AD_DISE = 33;
+const AD_PEST = 38;
+const AD_ENCH = 41;
+const AD_SPEL = 241;
 /** C ref: monattk.h AD_SPC2 — upper bound for mon_explodes breath-style. */
 const AD_SPC2 = 10;
 const AD_RBRE = 242;
@@ -305,15 +313,31 @@ async function explosionmask(m, adtyp, olet) {
     }
 }
 
-/** C ref: explode.c adtyp_to_expltype — explum / mon_explodes callee. */
-export function adtyp_to_expltype(adtyp) {
-    if (adtyp === AD_FIRE) return EXPL_FIERY;
-    if (adtyp === AD_COLD) return EXPL_FROSTY;
-    if (adtyp === AD_ELEC) return EXPL_MAGICAL;
-    // C: AD_DRST (+ DRDX/DRCO/DISE/PEST) and AD_PHYS → NOXIOUS
-    if (adtyp === AD_DRST || adtyp === AD_PHYS) return EXPL_NOXIOUS;
-    // C default (MAGM/DISN/ACID/…) → EXPL_FIERY after impossible()
-    return EXPL_FIERY;
+/** C ref: explode.c:986–1012 adtyp_to_expltype — explum / mon_explodes callee. */
+export async function adtyp_to_expltype(adtyp) {
+    switch (adtyp) {
+    // C:990–996 — Electricity isn't magical, but there currently isn't an
+    // electric explosion type. Magical is the next best thing.
+    case AD_ELEC:
+    case AD_SPEL:
+    case AD_DREN:
+    case AD_ENCH:
+        return EXPL_MAGICAL;
+    case AD_FIRE: // C:997–998
+        return EXPL_FIERY;
+    case AD_COLD: // C:999–1000
+        return EXPL_FROSTY;
+    case AD_DRST: // C:1001–1008
+    case AD_DRDX:
+    case AD_DRCO:
+    case AD_DISE:
+    case AD_PEST:
+    case AD_PHYS: // gas spore
+        return EXPL_NOXIOUS;
+    default: // C:1009–1011
+        await impossible('adtyp_to_expltype: bad explosion type %d', adtyp);
+        return EXPL_FIERY;
+    }
 }
 
 /** C ref: mon.c wake_nearto — clear sleep in radius (no RNG). */
@@ -832,7 +856,7 @@ export async function mon_explodes(mon, mattk) {
         type,
         dmg,
         MON_EXPLODE,
-        adtyp_to_expltype(ad),
+        await adtyp_to_expltype(ad),
     );
 
     game.killer.name = '';

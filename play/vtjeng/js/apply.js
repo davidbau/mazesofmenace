@@ -16,9 +16,9 @@
 // use_trap()/set_trap(); and HORN_OF_PLENTY delegates to mkobj.c. Ordinary
 // food and armor return their source unknown-use result. The unicorn-horn arm
 // calls apply.c use_unicorn_horn(); its unported void effect helpers remain
-// explicit note_unported gaps. Other named arms,
-// plus the wand, spellbook, and coin shortcuts above the switch, still stop at
-// a refusal naming the C function they need.
+// explicit note_unported gaps. Other named arms and the wand shortcut still
+// stop at a refusal naming the C function they need; spellbooks and coins
+// call their source helpers.
 // use_stethoscope() covers the whole source function. Calls to the void
 // insight.c mstatusline() remain named gaps in mounted/swallowed arms, and the
 // upward engrave.c cant_reach_floor() call remains a named gap; the downward
@@ -135,6 +135,7 @@ import {
     UNENCUMBERED,
     WEAK,
     MAXULEV,
+    MAX_SPELL_STUDY,
     WOUNDED_LEGS,
     VOMITING,
     NO_KILLER_PREFIX,
@@ -243,6 +244,7 @@ import {
 } from './mondata.js';
 import {
     accessible, closed_door, m_in_air, monflee, onscary, set_apparxy, youHear,
+    youSee,
 } from './monmove.js';
 import { m_at } from './monst.js';
 import { paralyze_monst } from './mhitm.js';
@@ -381,6 +383,9 @@ import {
     BEARTRAP,
     SADDLE,
     TIN,
+    SPE_BLANK_PAPER,
+    SPE_BOOK_OF_THE_DEAD,
+    SPE_NOVEL,
 } from './objects.js';
 import {
     AD_BLND, AT_ENGL, AT_WEAP, MZ_TINY, PM_AMOROUS_DEMON,
@@ -470,7 +475,7 @@ import {
 } from './uhitm.js';
 import { transient_light_cleanup } from './light.js';
 import { bhit, zapyourself } from './zap.js';
-import { verbalize } from './pline.js';
+import { heroUnaware, verbalize } from './pline.js';
 import { note_unported } from './unported.js';
 import { dbon, setmnotwielded, uwep_skill_type } from './weapon.js';
 import { mwelded } from './wield.js';
@@ -3467,9 +3472,9 @@ export async function doapply(state = game, env = {}) {
     if (obj.oclass === WAND_CLASS)
         throw new UnsupportedApplyError('do_break_wand()');
     if (obj.oclass === SPBOOK_CLASS)
-        throw new UnsupportedApplyError('flip_through_book()');
+        return await flip_through_book(obj, state);
     if (obj.oclass === COIN_CLASS)
-        throw new UnsupportedApplyError('flip_coin()');
+        return await flip_coin(obj, state, env);
 
     switch (obj.otyp) {
     case BLINDFOLD:
@@ -3654,6 +3659,157 @@ export async function doapply(state = game, env = {}) {
     // C's tail, `if (obj && obj->oartifact) res |= arti_speak(obj)`, has no
     // reachable input: the retouch_object() stop above refuses every artifact
     // before the switch, and no arm here can turn a non-artifact into one.
+}
+
+// C ref: apply.c flip_coin() (4526-4556). splitobj()'s returned coin is used
+// for stacked drops. The ordinary floor drop is wired to do.c:dropx(); its
+// underwater and visible-Hallucination side-effect paths remain named gaps.
+export async function flip_coin(obj, state = game, env = {}) {
+    const message = env.message ?? ttyPline;
+    const random = env.random ?? {};
+    const drawRn2 = random.rn2 ?? rn2;
+    let coin = obj;
+    let loseCoin = false;
+
+    await message(`You flip ${an(singular(obj, xnameFresh, state), state)}.`, state);
+    if (state.u?.uinwater) {
+        await message('It tumbles away.', state);
+        loseCoin = true;
+    } else {
+        const glib = state.u?.uprops?.[GLIB]?.intrinsic;
+        const fumbling = state.u?.uprops?.[FUMBLING];
+        if (glib || fumbling?.intrinsic || fumbling?.extrinsic
+            || (acurr(state, A_DEX) < 10
+                && !drawRn2(acurr(state, A_DEX)))) {
+            await message(
+                `It slips between your ${fingers_or_gloves(false, state)}.`,
+                state,
+            );
+            loseCoin = true;
+        }
+    }
+
+    if (loseCoin) {
+        if (coin.quan > 1)
+            coin = splitobj(coin, 1, { ...env, state });
+        if (state.u?.uinwater) {
+            // C discards dropx()'s result. Its underwater drop/floor effects
+            // are still unported, so retain that source-named gap.
+            note_unported('do.c dropx underwater');
+        } else if (heroHallucinating(state)) {
+            // dropx()'s hallucinated floor display is refused by its current
+            // source-admission boundary; the caller discards this void call.
+            note_unported('do.c dropx hallucinated display');
+        } else {
+            await dropx(coin, {
+                ...env,
+                state,
+                hooks: {
+                    ...(env.hooks ?? {}),
+                    encumberMessage: env.hooks?.encumberMessage
+                        ?? ((targetState) => encumber_msg(targetState, {
+                            message: env.planning ? async () => {} : ttyPline,
+                        })),
+                    extractExternalObject:
+                        env.hooks?.extractExternalObject ?? remove_object,
+                    newsym: env.hooks?.newsym
+                        ?? (env.planning ? () => {} : (x, y) => newsym(x, y)),
+                },
+            });
+        }
+        return ECMD_TIME;
+    }
+
+    if (heroHallucinating(state)) {
+        await message(drawRn2(100)
+            ? 'Wow, a double header!'
+            : 'The coin miraculously lands on its edge!', state);
+    } else {
+        await message(`It comes up ${drawRn2(2) ? 'heads' : 'tails'}.`, state);
+    }
+    return ECMD_TIME;
+}
+
+// C ref: apply.c flip_through_book() (4473-4526), selected by doapply() for
+// every SPBOOK_CLASS object. Soundeffect() is an empty macro in the recorder's
+// tty build; the following You_hear/You_see/You_feel messages remain active.
+async function flip_through_book(obj, state = game) {
+    if (state.u?.uinwater) {
+        await ttyPline(
+            "You don't want to get the pages even more soggy, do you?", state,
+        );
+        return ECMD_OK;
+    }
+
+    await ttyPline(
+        `You flip through the pages of ${thesimpleoname(obj, state)}.`, state,
+    );
+
+    if (obj.otyp === SPE_BOOK_OF_THE_DEAD) {
+        if (!heroDeaf(state)) {
+            // The C Soundeffect(se_rustling_paper, 50) expands to nothing in
+            // this build. You_hear still applies the acoustics/Unaware rules.
+            const heard = youHear(
+                `the pages make an unpleasant ${
+                    heroHallucinating(state) ? 'chuckling' : 'rustling'
+                } sound.`,
+                state,
+            );
+            if (heard) await ttyPline(heard, state);
+        } else if (!heroIsBlind(state)) {
+            await ttyPline(
+                youSee(
+                    `the pages glow faintly ${hcolor('red', state)}.`, state,
+                ),
+                state,
+            );
+        } else {
+            const prefix = heroUnaware(state)
+                ? 'You dream that you feel' : 'You feel';
+            await ttyPline(`${prefix} the pages tremble.`, state);
+        }
+    } else if (heroIsBlind(state)) {
+        await ttyPline(
+            `The pages feel ${
+                heroHallucinating(state) ? 'freshly picked' : 'rough and dry'
+            }.`,
+            state,
+        );
+    } else if (obj.otyp === SPE_BLANK_PAPER) {
+        await ttyPline(
+            `This spellbook ${heroHallucinating(state)
+                ? "doesn't have much of a plot"
+                : 'has nothing written in it'}.`,
+            state,
+        );
+        // C makeknown(obj->otyp) expands to discover_object(type, TRUE, TRUE,
+        // TRUE); it also credits the hero's discovery and Wisdom exercise.
+        discover_object(obj.otyp, true, true, true, state);
+    } else if (heroHallucinating(state)) {
+        await ttyPline('You enjoy the animated initials.', state);
+    } else if (obj.otyp === SPE_NOVEL) {
+        await ttyPline(
+            'This looks like it might be interesting to read.', state,
+        );
+    } else {
+        const fadeness = [
+            'fresh',
+            'slightly faded',
+            'very faded',
+            'extremely faded',
+            'barely visible',
+        ];
+        const findx = Math.min(obj.spestudied ?? 0, MAX_SPELL_STUDY);
+        const magic = objectType(obj.otyp, state).oc_magic;
+        await ttyPline(
+            `The${magic ? ' magical' : ''} ink in this spellbook is ${
+                fadeness[findx]
+            }.`,
+            state,
+        );
+    }
+
+    return ECMD_TIME;
 }
 
 // C ref: apply.c grease_ok() (2585-2601). The inventory callback is pure:

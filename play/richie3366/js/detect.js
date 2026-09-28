@@ -46,8 +46,9 @@
 // mfind0 set_msg_xy / display_nhwindow flush;
 // object_detect buried/minvent/cursed-mimic/clear_stale_map caller;
 // observe_recursively on buried/minvent (invent+floor do_dknown D-1417);
-// furniture_detect M_AP_FURNITURE seemimic polish;
-// food_detect; under_water/under_ground after reconstrain.
+// furniture_detect whole (D-3045; !revealed display_nhwindow named);
+// map_redisplay reconstrain + under_water/under_ground (D-3045);
+// food_detect remaining.
 
 import { game } from './gstate.js';
 import { rnl, rn2, rnd } from './rng.js';
@@ -57,7 +58,8 @@ import {
     map_invisible, glyph_is_invisible, glyph_is_monster, warning_of, You_feel,
     feel_location, feel_newsym, unmap_invisible, map_object, Norep, You_see,
     see_monsters, flush_screen, docrt, cls, more, set_msg_xy, unmap_object, flush_topl_more,
-    glyph_is_object, glyph_to_obj, glyph_is_trap, glyph_at,
+    glyph_is_object, glyph_to_obj, glyph_is_trap, glyph_at, glyph_to_cmap,
+    There, Your, under_water, under_ground,
     Hallucination, random_object, random_monster,
     pet_to_glyph, detected_mon_to_glyph, mon_to_glyph, monsym, glyph_tty_attr,
     flash_glyph_at, invisible_glyph_cell, memory_glyph_is_invisible,
@@ -107,9 +109,9 @@ import {
     D_TRAPPED, WM_MASK, Is_box, NO_PART, u_at,
     STATUE_TRAP, NO_TRAP, TRAPNUM, Is_rogue_level, BOLT_LIM, COLNO, ROWNO,
     SVALL, IS_FURNITURE, STONE, W_NONDIGGABLE, W_NONPASSWALL,
-    S_hcdoor, S_vcdoor, S_corr, COULD_SEE,
+    S_hcdoor, S_vcdoor, S_corr, S_upstair, S_fountain, COULD_SEE,
     TER_MAP, TER_TRP, TER_OBJ, TER_MON, TER_FULL, TER_DETECT, ECMD_OK,
-    I_SPECIAL, M_AP_TYPE, M_AP_OBJECT, has_mcorpsenm, MCORPSENM,
+    I_SPECIAL, M_AP_TYPE, M_AP_OBJECT, M_AP_FURNITURE, has_mcorpsenm, MCORPSENM,
     ARTICLE_A, ROOMOFFSET,
     TIMEOUT, Never_mind, KILLED_BY_AN, TOE, NOSE, SYM_BOULDER,
     IN_SIGHT, CLAIRVOYANT, LAVAPOOL, LAVAWALL, Has_contents,
@@ -1317,13 +1319,19 @@ async function browse_map(ter_typ, ter_explain) {
 }
 
 /**
- * C ref: detect.c map_redisplay — reconstrain + docrt.
- * Underwater/buried under_* deferred with unconstrain.
+ * C ref: detect.c:93–102 map_redisplay — reconstrain + docrt + packages.
+ * Unconditional reconstrain_map like C (monster_detect :859 and trap paths
+ * reach here with stale-zero saves, same as C). flush_screen(1) retained
+ * from the previous JS body (screen-model flush).
  */
 async function map_redisplay() {
-    // reconstrain_map no-op when unconstrain was not applied
-    const { docrt, flush_screen } = await import('./display.js');
-    await docrt();
+    reconstrain_map(); // :96
+    await docrt(); // :97 redraw the screen to remove unseen traps
+    const u = game.u || {};
+    if ((u.uinwater | 0) !== 0) // :98 Underwater
+        await under_water(2); // :99
+    if ((u.uburied | 0) !== 0) // :100
+        await under_ground(2); // :101
     await flush_screen(1);
 }
 
@@ -2444,40 +2452,51 @@ export async function trap_detect(sobj) {
 }
 
 /**
- * C ref: detect.c furniture_detect — crystal ball furniture chars.
- * Always returns 0 (C). Named omissions: M_AP_FURNITURE seemimic;
- * is_cmap_furniture glyph path; display_nhwindow when !revealed.
+ * C ref: detect.c:1091–1134 furniture_detect — crystal ball furniture
+ * scan over the whole level. Always returns 0 (C). Per-arm C-line cites
+ * below. Named omissions: display_nhwindow(WIN_MAP, TRUE) (:1126) — no
+ * JS display_nhwindow export exists (sym.mjs); the !revealed arm falls
+ * through to map_redisplay.
  */
 async function furniture_detect() {
-    let found = 0;
-    let revealed = 0;
-    for (let y = 0; y < ROWNO; y++) {
-        for (let x = 1; x < COLNO; x++) {
-            const loc = game.level?.at(x, y);
-            if (!loc) continue;
-            const before = loc.remembered_glyph;
-            if (IS_FURNITURE(loc.typ)) {
-                found++;
-                magic_map_background(x, y, 1);
+    let found = 0; // :1095
+    let revealed = 0; // :1095
+    unconstrain_map(); // :1097
+    for (let y = 0; y < ROWNO; y++) { // :1099
+        for (let x = 1; x < COLNO; x++) { // :1100
+            const glyph = glyph_at(x, y); // :1101
+            const sym = glyph_to_cmap(glyph); // :1102
+            const loc = game.level?.at(x, y); // levl[x][y] :1103
+            if (loc && IS_FURNITURE(loc.typ)) { // :1103
+                found++; // :1104
+                magic_map_background(x, y, 1); // :1105
+            } else if (sym >= S_upstair && sym <= S_fountain) { // :1106 sym.h:104 is_cmap_furniture
+                found++; // :1107
+                const mon = m_at(x, y); // :1108
+                if (mon && M_AP_TYPE(mon) === M_AP_FURNITURE) // :1108–1109
+                    seemimic(mon); // :1110
+                if (!mon || !canspotmon(mon)) // :1111
+                    map_invisible(x, y); // :1112
             }
-            if (loc.remembered_glyph !== before) revealed++;
+            if (glyph_at(x, y) !== glyph) // :1114
+                revealed++; // :1115
         }
     }
-    if (!found) {
-        await pline('There seems to be nothing of interest on this level.');
-    } else if (!revealed) {
-        await pline('Your map already shows all relevant locations.');
+    if (!found) { // :1118
+        await There('seems to be nothing of interest on this level.'); // :1119
+    } else if (!revealed) { // :1120
+        await Your('map already shows all relevant locations.'); // :1123
     }
-    if (!revealed) {
-        // C: display_nhwindow(WIN_MAP) — no browse
-    } else {
-        await browse_map(
+    if (!revealed) { // :1125
+        // C :1126 display_nhwindow(WIN_MAP, TRUE) — no JS export; omitted.
+    } else { // :1127
+        await browse_map( // :1129–1130
             TER_DETECT | TER_MAP | TER_TRP | TER_OBJ | TER_MON,
             'location',
         );
     }
-    await map_redisplay();
-    return 0;
+    await map_redisplay(); // :1132
+    return 0; // :1133
 }
 
 /**

@@ -1745,8 +1745,9 @@ export function suit_simple_name(suit) {
 /**
  * C ref: objnam.c cloak_simple_name `:5491–5509` — robe / wrapping /
  * smock-or-apron, else cloak. Exported for worn.c mon_break_armor
- * (D-1914) and the trap.js burn/water paths; mhitu/uhitm locals are
- * C-matched twins of this body.
+ * (D-1914), the trap.js burn/water paths, mhitu/uhitm slip/removal
+ * paths (local twins deleted), do_wear canwearoff/takeoff/disrobe
+ * arms and zap.c item_what W_ARMC.
  */
 export function cloak_simple_name(cloak) {
     if (cloak) {
@@ -2003,8 +2004,8 @@ async function armor_or_accessory_off(obj) {
         || (obj === u.uarmu && (u.uarmc || u.uarm))
     ) {
         const parts = [];
-        if (u.uarmc) parts.push('cloak');
-        if (obj === u.uarmu && u.uarm) parts.push('suit');
+        if (u.uarmc) parts.push(cloak_simple_name(u.uarmc)); /* C do_wear.c:1785 */
+        if (obj === u.uarmu && u.uarm) parts.push(suit_simple_name(u.uarm)); /* C do_wear.c:1787–1789 */
         await pline(
             `You can't take that off without taking off your ${parts.join(' and ')} first.`,
         );
@@ -2237,7 +2238,7 @@ async function select_off(otmp) {
         let why = null;
         let buf = '';
         if (u.uarmc && u.uarmc.cursed) {
-            buf = 'remove your cloak';
+            buf = `remove your ${cloak_simple_name(u.uarmc)}`; /* C do_wear.c:2761 */
             why = u.uarmc;
         } else if (otmp === u.uarmu && u.uarm && u.uarm.cursed) {
             buf = 'remove your suit';
@@ -2716,18 +2717,18 @@ export async function canwearobj(otmp, maskOut, noisy) {
         if (u.uarm || u.uarmc || u.uarmu) {
             if (noisy) {
                 if (u.uarmu) await pline('You are already wearing a shirt.');
-                else await pline("You can't wear that over your armor.");
+                else await pline(`You can't wear that over your ${(u.uarm && !u.uarmc) ? 'armor' : cloak_simple_name(u.uarmc)}.`); /* C do_wear.c:2164–2167 c_armor (`"armor"`) else cloak_simple_name */
             }
             err++;
         } else mask = W_ARMU;
     } else if (is_cloak(otmp)) {
         if (u.uarmc) {
-            if (noisy) await pline('You are already wearing a cloak.');
+            if (noisy) await already_wearing(an(cloak_simple_name(u.uarmc))); /* C do_wear.c:2174 */
             err++;
         } else mask = W_ARMC;
     } else if (is_suit(otmp)) {
         if (u.uarmc) {
-            if (noisy) await pline('You cannot wear armor over a cloak.');
+            if (noisy) await pline(`You cannot wear armor over a ${cloak_simple_name(u.uarmc)}.`); /* C do_wear.c:2181 */
             err++;
         } else if (u.uarm) {
             if (noisy) await pline('You are already wearing some armor.');
