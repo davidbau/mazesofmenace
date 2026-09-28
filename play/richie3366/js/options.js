@@ -166,7 +166,7 @@ import { game } from './gstate.js';
 import { get_sortdisco, choose_disco_sort } from './o_init.js';
 import { sanitize_name } from './bones.js';
 import { rnd } from './rng.js';
-import { str_end_is, str_start_is, highc, lowc, strstri, strsubst, strNsubst, strkitten } from './hacklib.js';
+import { str_end_is, str_start_is, highc, lowc, strstri, strsubst, strNsubst, strkitten, fuzzymatch, trimspaces } from './hacklib.js';
 import { name_to_mon } from './mondata.js';
 import { nhgetch } from './input.js';
 import { flush_screen, pline, You_cant, docrt, bot, check_gold_symbol, clear_committed_status, set_bot_disabled, tty_wait_synch, update_ov_primary_symset, update_ov_rogue_symset, impossible, SYM_OFF_X } from './display.js';
@@ -2463,6 +2463,152 @@ export async function handler_pickup_burden() {
 }
 
 /**
+ * C ref: options.c unlocktypes `:207–212` — autounlock menu rows. Menu index
+ * i carries bit (1 << i), matching the AUTOUNLOCK_* bit order
+ * (`:1111–1121`); get_val spells the set names in this order (`:1153–1160`).
+ */
+const UNLOCKTYPES = [
+    ['untrap', '(might fail)'],
+    ['apply-key', ''],
+    ['kick', '(doors only)'],
+    ['force', '(chests/boxes only)'],
+];
+
+/**
+ * C options.c optfn_autounlock `:1066–1168` (staticfn; NHOPTC wires
+ * &optfn_autounlock, optlist.h `:193`). do_handler (`:1164–1165`) is
+ * handler_autounlock(), async-split into doset_optfn_do_handler
+ * (optfn_disclose precedent).
+ * @param {number} optidx
+ * @param {number} req
+ * @param {boolean} negated
+ * @param {string|{buf:string}} opts
+ * @param {string} _op C overwrites op via string_for_opt (`:1087`)
+ * @param {object|null} [flagsBag] rc result.flags; omitted → game.flags
+ */
+export function optfn_autounlock(optidx, req, negated, opts, _op, flagsBag) {
+    const flags = flagsBag || game.flags || (game.flags = {});
+    if (req === REQ_DO_INIT) { // C `:1073–1075`
+        flags.autounlock = AUTOUNLOCK_APPLY_KEY;
+        return OPTN_OK;
+    }
+    if (req === REQ_DO_SET) { // C `:1077`
+        const optstr = typeof opts === 'string' ? opts : '';
+        let tail = string_for_opt(optstr, true); // C `:1087`
+        if (tail === EMPTY_OPTSTR) { // C `:1087`
+            flags.autounlock = negated ? 0 : AUTOUNLOCK_APPLY_KEY; // C `:1088`
+            return OPTN_OK; // C `:1089`
+        }
+        let newflags = 0; // C `:1091`
+        const sep = tail.includes('+') ? '+' : ' '; // C `:1092`
+        while (tail !== null) { // C `:1093` while (op)
+            let matched = false; // C `:1094`
+            let cur = trimspaces(tail); // C `:1095`
+            let nxt = null;
+            const si = cur.indexOf(sep); // C `:1096`
+            if (si >= 0) {
+                nxt = cur.slice(si + 1);
+                cur = trimspaces(cur.slice(0, si)); // C `:1097–1098`
+            }
+            if (str_start_is('none', cur, true)) { // C `:1101`
+                negated = true; matched = true; // C `:1102`
+            }
+            for (let i = 0; i < UNLOCKTYPES.length && !matched; ++i) { // C `:1103`
+                if (str_start_is(UNLOCKTYPES[i][0], cur, true) // C `:1104`
+                    || fuzzymatch(cur, UNLOCKTYPES[i][0], ' -_', true)) { // C `:1108`
+                    matched = true; // C `:1109`
+                    switch (cur[0]) { // C `:1110` switch (*op)
+                    case 'u': newflags |= AUTOUNLOCK_UNTRAP; break; // C `:1111–1112`
+                    case 'a': newflags |= AUTOUNLOCK_APPLY_KEY; break; // C `:1114–1115`
+                    case 'k': newflags |= AUTOUNLOCK_KICK; break; // C `:1117–1118`
+                    case 'f': newflags |= AUTOUNLOCK_FORCE; break; // C `:1120–1121`
+                    default: matched = false; break; // C `:1123–1124`
+                    }
+                }
+            }
+            if (!matched) { // C `:1129`
+                config_error_add('Invalid value for "%s": "%s"', // C `:1130–1131`
+                    allopt_name(optidx), cur);
+                return OPTN_SILENTERR; // C `:1132`
+            }
+            tail = nxt; // C `:1134`
+        }
+        if (negated && newflags !== 0) { // C `:1136`
+            config_error_add( // C `:1137–1139`
+                'Invalid value combination for "%s": \'none\' with some',
+                allopt_name(optidx));
+            return OPTN_SILENTERR; // C `:1140`
+        }
+        flags.autounlock = newflags; // C `:1142`
+        return OPTN_OK; // C `:1143`
+    }
+    if (req === REQ_GET_VAL || req === REQ_GET_CNF_VAL) { // C `:1145`
+        // C `:1146` reads flags.autounlock, always set by do_init (`:1074`,
+        // jsmain carries the same default); an unset bag reads as the default.
+        const au = flags.autounlock ?? AUTOUNLOCK_APPLY_KEY;
+        if (!au) {
+            set_optbuf(opts, 'none'); // C `:1147`
+        } else {
+            const parts = []; // C `:1149–1150` plus[]/p
+            if (au & AUTOUNLOCK_UNTRAP) parts.push(UNLOCKTYPES[0][0]); // C `:1153–1154`
+            if (au & AUTOUNLOCK_APPLY_KEY) parts.push(UNLOCKTYPES[1][0]); // C `:1155–1156`
+            if (au & AUTOUNLOCK_KICK) parts.push(UNLOCKTYPES[2][0]); // C `:1157–1158`
+            if (au & AUTOUNLOCK_FORCE) parts.push(UNLOCKTYPES[3][0]); // C `:1159–1160`
+            set_optbuf(opts, parts.join(' + '));
+        }
+        return OPTN_OK; // C `:1162`
+    }
+    /* do_handler `:1164–1165` is handler_autounlock(), async-split into
+       doset_optfn_do_handler (optfn_disclose precedent). */
+    return OPTN_OK; // C `:1167`
+}
+
+/**
+ * C options.c handler_autounlock `:5624–5672` (staticfn). Sole C caller is
+ * the optfn_autounlock do_handler arm (`:1165`), reached from doset `:8935`;
+ * JS doset's handler loop awaits it for that arm.
+ * @param {number} optidx
+ * @returns {Promise<number>}
+ */
+export async function handler_autounlock(optidx) {
+    if (!game.flags) game.flags = {};
+    const oldflags = game.flags.autounlock; // C `:5629`
+    const optname = allopt_name(optidx); // C `:5630`
+    const sep = game.iflags?.menu_tab_sep ? '\t' : ' '; // C `:5631`
+    // C `:5636–5638` create_nhwindow/start_menu/zeroany — raw menu below.
+    // C `:5648–5649` end_menu prompt painted as the header (menustyle precedent).
+    const raw = [{ text: `Select '${optname.slice(0, 20)}' actions:`, selectable: false }];
+    for (let i = 0; i < UNLOCKTYPES.length; ++i) { // C `:5639` SIZE(unlocktypes)
+        const head = UNLOCKTYPES[i][0].slice(0, 10).padEnd(10, ' '); // C `:5640–5641` %-10.10s
+        raw.push({ // C `:5644–5646` a_int i+1, letter *name, SELECTED
+            text: `${head}${sep}${UNLOCKTYPES[i][1].slice(0, 40)}`, // C `:5640–5641` %c%.40s
+            selectable: true,
+            selector: UNLOCKTYPES[i][0][0],
+            a_int: i + 1,
+            selected: (((game.flags.autounlock ?? 0) | 0) & (1 << i)) !== 0, // C `:5643`
+        });
+    }
+    const picks = await select_menu_pick_any(raw, { cancelValue: null }); // C `:5650`
+    if (picks !== null && picks.length > 0) { // C `:5651` n > 0
+        let newflags = 0; // C `:5652`
+        for (let i = 0; i < picks.length; ++i) // C `:5654–5655`
+            newflags |= (1 << (((picks[i].a_int | 0)) - 1));
+        game.flags.autounlock = newflags; // C `:5656`
+        // C `:5657` free — GC
+    } else if (picks !== null) { // C `:5658` n == 0, menu not cancelled
+        game.flags.autounlock = 0; // C `:5663`
+    }
+    // C `:5664` destroy — inside the helper
+    const chngd = game.flags.autounlock !== oldflags; // C `:5665`
+    if ((chngd || game.flags.verbose !== false) && game.give_opt_msg !== false) { // C `:5666`
+        const holder = { buf: '' };
+        optfn_autounlock(optidx, REQ_GET_VAL, false, holder, EMPTY_OPTSTR); // C `:5667`
+        await pline(`'${optname}' ${chngd ? 'changed to' : 'is still'} '${holder.buf}'.`); // C `:5668–5669`
+    }
+    return OPTN_OK; // C `:5671` return res (optn_ok)
+}
+
+/**
  * C options.c optfn_sortdiscoveries `:3862–3911`. do_handler (`:3906–3908`)
  * calls choose_disco_sort(0) (o_init.c), async-split into
  * doset_optfn_do_handler. get_val calls get_sortdisco (o_init.c `:1209`).
@@ -2709,6 +2855,9 @@ async function doset_optfn_do_handler(name) {
     }
     if (name === 'align_message' || name === 'align_status') {
         return handler_align_misc(allopt_idx(name)); // C `:967` / `:1016`
+    }
+    if (name === 'autounlock') {
+        return handler_autounlock(allopt_idx(name)); // C `:1165`
     }
     if (name === 'menustyle') {
         return handler_menustyle(); // C `:2372`
@@ -6551,9 +6700,9 @@ function currently_set_val(n) {
 
 /**
  * C ref: options.c optfn_* get_val for doset_simple_menu compound/othr rows.
- * Named omissions: full handlers for autounlock/symset/
+ * Named omissions: full handlers for symset/
  * statuslines/exceptions/status rules — display values only until those
- * handlers are ported (menu colors and number_pad handlers are live).
+ * handlers are ported (menu colors, number_pad and autounlock handlers are live).
  */
 function simple_opt_get_val(opt) {
     const name = opt.name;
@@ -6573,19 +6722,7 @@ function simple_opt_get_val(opt) {
     if (name === 'windowborders') return doset_compopt_get_val(optfn_windowborders, 'windowborders');
     if (name === 'align_message') return doset_compopt_get_val(optfn_align_message, 'align_message');
     if (name === 'align_status') return doset_compopt_get_val(optfn_align_status, 'align_status');
-    if (name === 'autounlock') {
-        // C: flags.autounlock default AUTOUNLOCK_APPLY_KEY; get_val joins names
-        const au = game.flags?.autounlock;
-        if (au === 0) return 'none';
-        if (au == null || au === undefined) return 'apply-key';
-        const parts = [];
-        const bits = Number(au);
-        if (bits & AUTOUNLOCK_UNTRAP) parts.push('untrap');
-        if (bits & AUTOUNLOCK_APPLY_KEY) parts.push('apply-key');
-        if (bits & AUTOUNLOCK_KICK) parts.push('kick');
-        if (bits & AUTOUNLOCK_FORCE) parts.push('force');
-        return parts.length ? parts.join(' + ') : 'apply-key';
-    }
+    if (name === 'autounlock') return doset_compopt_get_val(optfn_autounlock, 'autounlock');
     if (name === 'pickup_types') return doset_compopt_get_val(optfn_pickup_types, 'pickup_types');
     if (name === 'boulder') return doset_compopt_get_val(optfn_boulder, 'boulder');
     if (name === 'runmode') return doset_compopt_get_val(optfn_runmode, 'runmode');
@@ -7555,7 +7692,7 @@ export async function doset() {
         raw.push(doset_add_menu(name, shown, 0));
     }
     const compounds = [
-        { name: 'autounlock', val: 'apply-key' },
+        { name: 'autounlock', get_val: () => doset_compopt_get_val(optfn_autounlock, 'autounlock'), handler: true },
         { name: 'boulder', get_val: () => doset_compopt_get_val(optfn_boulder, 'boulder') },
         { name: 'crash_email', val: 'unknown' },
         { name: 'crash_name', val: 'unknown' },
@@ -7701,7 +7838,7 @@ export async function doset() {
 
 /**
  * C ref: options.c doset_simple — loop doset_simple_menu until no pick.
- * Named omissions: autounlock/symset/status handlers;
+ * Named omissions: symset/status handlers (autounlock handler is live);
  * help descr lines under simple_options_help; fruitadd bones/restore
  * ghostfruit else is D-1541 (clone in bones.js).
  */
@@ -8107,7 +8244,7 @@ const allopt = [
     // optlist.h:190 NHOPTB(autoquiver)
     { name: 'autoquiver', opttyp: BoolOpt, idx: 21, setwhere: SET_IN_GAME, initval: false, addr: { obj: 'flags', key: 'autoquiver' }, optfn: null },
     // optlist.h:193 NHOPTC(autounlock)
-    { name: 'autounlock', opttyp: CompOpt, idx: 22, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: null },
+    { name: 'autounlock', opttyp: CompOpt, idx: 22, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: optfn_autounlock },
     // optlist.h:196 NHOPTB(bgcolors)
     { name: 'bgcolors', opttyp: BoolOpt, idx: 23, setwhere: SET_IN_GAME, initval: true, addr: { obj: 'iflags', key: 'bgcolors' }, optfn: null },
     // optlist.h:199 NHOPTO("bind keys")

@@ -1043,11 +1043,25 @@ export async function nh_timeout() {
     }
     // C: for (upp = u.uprops; …) if ((intrinsic & TIMEOUT) && !(--intrinsic & TIMEOUT))
 
-    const hw = u.HWounded_legs | 0;
+    // C HWounded_legs ≡ uprops[WOUNDED_LEGS].intrinsic (youprop.h:136,
+    // single storage). OR-read + dual-write like the DEAF/FUMBLING/FAST
+    // arms: -- only the flat left #wizintrinsic/beartrap TIMEOUT stuck in
+    // the slot, so flat|slot readers (mount_steed's steed.c:228 wounded
+    // gate, dokick, pray…) believed the legs wounded forever — C printed
+    // "I see nobody there." while JS refused the mount (cf. D-1817 DEAF).
+    const hw = (u.HWounded_legs | 0)
+        | (u.uprops?.[WOUNDED_LEGS]?.intrinsic | 0);
     if (hw & TIMEOUT) {
         // C: --upp->intrinsic then test TIMEOUT bits cleared
         const next = hw - 1;
         u.HWounded_legs = next;
+        if (!u.uprops) u.uprops = {};
+        if (!u.uprops[WOUNDED_LEGS]) {
+            u.uprops[WOUNDED_LEGS] = { intrinsic: 0, extrinsic: 0, blocked: 0 };
+        }
+        u.uprops[WOUNDED_LEGS].intrinsic =
+            ((u.uprops[WOUNDED_LEGS].intrinsic | 0) & ~TIMEOUT)
+            | (next & TIMEOUT);
         if (!(next & TIMEOUT)) {
             // C case WOUNDED_LEGS: heal_legs(0); stop_occupation();
             await heal_legs(0);
@@ -1656,6 +1670,24 @@ export function get_obj_location(obj, locflags = 0) {
             return get_obj_location(obj.ocontainer, locflags);
         }
         break;
+    }
+    return null;
+}
+
+/** C ref: zap.c get_mon_location :692–709 — youmonst/steed read hero
+ * pos (:695–699); mx>0 + (!mburied || locflags) reads mx,my
+ * (:699–703); migrating/buried zeroes + FALSE (:704–707).
+ * House shape follows sibling get_obj_location above: {x,y} or null.
+ * `_youmonst` marker counts as youmonst identity (mhitm.js
+ * is_youmonst idiom — JS passes marker stand-ins, not &gy.youmonst).
+ * Sole C caller: light.c do_light_sources :192 (locflags 0). */
+export function get_mon_location(mon, locflags = 0) {
+    if (!mon) return null;
+    if (mon === game.youmonst || mon._youmonst
+        || (game.u?.usteed && mon === game.u.usteed)) {
+        return { x: game.u?.ux | 0, y: game.u?.uy | 0 };
+    } else if ((mon.mx | 0) > 0 && (!mon.mburied || locflags)) {
+        return { x: mon.mx | 0, y: mon.my | 0 };
     }
     return null;
 }

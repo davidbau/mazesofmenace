@@ -423,7 +423,10 @@ export async function intemple(roomno) {
                 }
             }
         }
-        // mapseen_temple deferred
+        // C priest.c:500 — flag the valley/sanctum overview node once
+        // the temple priest is met (priest arg UNUSED in C).
+        const { mapseen_temple } = await import('./dungeon.js');
+        mapseen_temple(priest);
     } else {
         /* untended */
         switch (rn2(4)) {

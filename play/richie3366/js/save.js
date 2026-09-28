@@ -31,6 +31,7 @@ import {
     maxledgerno,
     save_dungeon_topology,
     restore_dungeon_topology,
+    load_exclusions,
 } from './dungeon.js';
 import { rest_track } from './track.js';
 import { open_levelfile, new_nhfile, store_version, FNIDX_HISTORICAL } from './files.js';
@@ -931,6 +932,9 @@ export async function try_restore_save() {
     if (info.dndest) game.dndest = { ...info.dndest };
     // C restore.c rest_bubbles after rest_regions
     if (info.waterlevel) restore_waterlevel(info.waterlevel);
+    // C restore.c getlev `:1227` load_exclusions — after rest_bubbles.
+    // Old saves without the key install an empty list.
+    load_exclusions(info.exclusion_zones);
     // C restore.c dorecover → restore_dungeon mapseen_count +
     // load_mapseen (dungeon.c :251–262 / :2752). After branches.
     restore_mapseenchn(payload);

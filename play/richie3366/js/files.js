@@ -512,6 +512,7 @@ export function delete_levelfile(lev) {
             info.head_engr = null;
             info.track = null;
             info.regions = null;
+            info.exclusion_zones = null;
             info.lastseentyp = null;
             info.timers = null;
             info.lights = null;

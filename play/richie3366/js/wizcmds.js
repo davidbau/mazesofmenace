@@ -578,7 +578,7 @@ function zero_dest_area() {
  * ((amulet?1:0)|(wiztower?2:0)) (D-1288; C :1043–1046) instead of
  * safe_teleds, then losedogs / kill_genocided / u_collide_m / initrack /
  * Punished placebc / docrt / flush / splev / check_special_room(FALSE).
- * Named omissions: makemap_remove_mons / rm_mapseen / mine·soko prize;
+ * Named omissions: makemap_remove_mons / mine·soko prize;
  * digging memset; polearm.hitmon;
  * savelev freeing nhfile;
  * sp_lev.c lspo_reset_level / lspo_finalize_level.
@@ -586,6 +586,10 @@ function zero_dest_area() {
 export async function makemap_prepost(pre, wiztower) {
     const u = game.u || (game.u = {});
     if (pre) {
+        // C cmd.c:992-993 — makemap_remove_mons (named omit) then
+        // rm_mapseen: discard overview info for the level being remade.
+        const { rm_mapseen, ledger_no } = await import('./dungeon.js');
+        rm_mapseen(ledger_no(game.u?.uz));
         const { ballrelease, unplacebc } = await import('./ball.js');
         const { reset_utrap } = await import('./trap.js');
         const { check_special_room, set_uinwater } = await import('./hack.js');

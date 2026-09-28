@@ -20,7 +20,7 @@ import {
 import { mons } from './monsters.js';
 import { savemon_edog } from './makemon.js';
 import { restmon } from './restore.js';
-import { savecemetery, restcemetery } from './dungeon.js';
+import { savecemetery, restcemetery, save_exclusions } from './dungeon.js';
 import { forget_temple_entry } from './priest.js';
 import { peek_track } from './track.js';
 import { timer_is_local, light_is_local } from './mkobj.js';
@@ -209,7 +209,7 @@ function deserMon(raw) {
     return mtmp;
 }
 
-function jsonClone(v, fallback) {
+export function jsonClone(v, fallback) {
     if (v == null) return fallback;
     try {
         return JSON.parse(JSON.stringify(v, (_k, val) =>
@@ -703,6 +703,11 @@ export function serLevel(src) {
     const regions = live
         ? jsonClone(game.regions || [], [])
         : jsonClone(src.regions || [], []);
+    // C save.c savelev → save_exclusions (dungeon.c:2595-2614); non-live
+    // re-serializes the stash array as-is (count ⇔ length).
+    const exclusion_zones = live
+        ? save_exclusions()
+        : jsonClone(src.exclusion_zones || [], []);
     const updest = live ? snapDest(game.updest) : snapDest(src.updest);
     const dndest = live ? snapDest(game.dndest) : snapDest(src.dndest);
     const lastseentyp = live
@@ -742,6 +747,7 @@ export function serLevel(src) {
         head_engr: jsonClone(head_engr, null),
         bonesinfo: savecemetery(bonesinfo),
         regions,
+        exclusion_zones,
         timers,
         track,
         lights,
@@ -807,6 +813,9 @@ export function deserLevel(blob, opts) {
         head_engr: src.head_engr || null,
         track: src.track || null,
         regions: jsonClone(src.regions || [], []),
+        // Records for load_exclusions at install (copies fields into
+        // fresh nodes — no aliasing, no clone needed here).
+        exclusion_zones: src.exclusion_zones || null,
         updest: snapDest(src.updest),
         dndest: snapDest(src.dndest),
         lastseentyp: jsonClone(src.lastseentyp, null),
@@ -859,6 +868,7 @@ export function levelBlobFromPayload(payload) {
         head_engr: payload.head_engr,
         bonesinfo: payload.bonesinfo,
         regions: payload.regions,
+        exclusion_zones: payload.exclusion_zones,
         timers: payload.timers,
         track: payload.track,
         lights: payload.lights,

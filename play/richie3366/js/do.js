@@ -70,6 +70,7 @@ import {
 import { yn_function, paranoid_ynq, y_n } from './getline.js';
 import { vision_recalc, vision_reset, recalc_block_point, cansee, couldsee } from './vision.js';
 import { clear_regions, in_out_region, rest_regions } from './region.js';
+import { jsonClone } from './lev_json.js';
 import {
     stairway_at,
     stairway_find_from,
@@ -89,6 +90,7 @@ import {
     In_tutorial, at_dgn_entrance, print_level_annotation,
     recalc_mapseen, recbranch_mapseen, remdun_mapseen,
     maxledgerno, ledger_to_dnum, find_hell,
+    save_exclusions, load_exclusions,
 } from './dungeon.js';
 import { record_achievement } from './insight.js';
 import { livelog_printf } from './pline.js';
@@ -1727,8 +1729,13 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
                 stairs: game.stairs,
                 head_engr: game.head_engr,
                 track: trackSnap,
-                // C savelev → save_regions; rest_regions on getlev
-                regions: game.regions || [],
+                // C savelev → save_regions; rest_regions on getlev.
+                // Snapshot like C's Sfo writes: the release_data arm
+                // (:792-794) frees the live objects right after.
+                regions: jsonClone(game.regions || [], []),
+                // C save.c savelev → save_exclusions; load_exclusions on
+                // getlev. Snapshot like the regions Sfo writes above.
+                exclusion_zones: save_exclusions(),
                 updest: snapDest(game.updest),
                 dndest: snapDest(game.dndest),
                 lastseentyp: snapLastseen(game.lastseentyp),
@@ -1824,6 +1831,11 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     // restores the stashed array. RANGE_LEVEL lights already peeled;
     // RANGE_GLOBAL (invent lamps) stay on light_base.
     clear_regions();
+    // Drop the stale live exclusion list (the mklev path does this via
+    // free_exclusions at mklev.c:921; the stash path runs no
+    // clear_level_structures, so detach here — getlev installs the
+    // stashed records below, and load_exclusions prepends like C).
+    game.exclusion_zones = null;
     // C: memset updest/dndest before getlev/mklev; fixup_special re-fills.
     game.updest = { lx: 0, ly: 0, hx: 0, hy: 0, nlx: 0, nly: 0, nhx: 0, nhy: 0 };
     game.dndest = { lx: 0, ly: 0, hx: 0, hy: 0, nlx: 0, nly: 0, nhx: 0, nhy: 0 };
@@ -1880,6 +1892,9 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         game.billobjs = info.billobjs || null;
         // C restore.c rest_bubbles before rest_track
         if (info.waterlevel) await restore_waterlevel(info.waterlevel);
+        // C restore.c getlev `:1227` load_exclusions — after rest_bubbles,
+        // before rest_track. Pre-stash levels omit the key → empty list.
+        load_exclusions(info.exclusion_zones);
         rest_track(info.track);
         // C: Sokoban ≡ level.flags.sokoban_rules — sync JS alias after getlev
         // (clear_level_structures only runs on mklev, not stash restore).

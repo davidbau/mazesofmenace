@@ -53,6 +53,8 @@ import { resists_poison } from './zap.js';
 import { uhim, uhis } from './roles.js';
 import { sticks } from './engrave.js';
 import { Soundeffect, se_blast } from './sndprocs.js';
+// imports.mjs --can explode.js mhitm.js mondead: SAFE (hoisted fn)
+import { mondead } from './mhitm.js';
 import { digests, ugolemeffects } from './mhitu.js';
 import {
     maybe_half_phys, nomul, stop_occupation, You_hear, in_rooms,
@@ -809,12 +811,15 @@ export async function mon_explodes(mon, mattk) {
         // C: type = -((adtyp - 1) + 20) for AD_MAGM..AD_SPC2
         type = -((ad - 1) + 20);
     } else {
-        // Unknown AT_BOOM adtyp — C impossible()
+        // C explode.c:1044–1047 — impossible, then return un-exploded.
+        await impossible('unknown type for mon_explode %d', ad);
         return;
     }
 
+    // C explode.c:1049–1054 — mondead, never an inline mhp=0: m_detach
+    // sets MON_DETACH and counts purge_monsters for dmonsfree (D-3000).
     if ((mon.mhp | 0) >= 1) {
-        mon.mhp = 0;
+        await mondead(mon);
     }
 
     if (!game.killer) game.killer = {};

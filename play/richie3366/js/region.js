@@ -8,7 +8,7 @@
 // read.c valid_cloud_pos.
 // Named omissions: numeric cmap glyph ints (JS tags
 // 'S_poisoncloud'/'S_cloud'); binary save_regions format; force
-// fields (#if 0 create_force_field); free_region teardown;
+// fields (#if 0 create_force_field);
 // create_msg_region (#if 0; never sets enter/leave_msg in live C);
 // can_enter/leave/enter/leave table indices (gas NO_CALLBACK);
 // attach_2_m skip is m_in_out_region (D-1176; update_monster_region
@@ -641,9 +641,27 @@ async function make_gas_cloud(cloud, damage, inside_cloud) {
 }
 
 /**
+ * C ref: region.c:262-276 free_region — release a region's heap blocks
+ * in C order (rects :266-267, monsters :268-269, enter_msg :270-271,
+ * leave_msg :272-273, the struct itself :274). GC owns the JS object
+ * (callers drop it: remove_region splices before the newsym passes,
+ * clear_regions rebinds the list), so each live C free() renders as a
+ * null release and `:274` is a no-op by construction. C linkage is
+ * extern (decl :15); callers remove_region (:385) + clear_regions (:399).
+ */
+export function free_region(reg) {
+    if (!reg) return; /* C :265 */
+    if (reg.rects) reg.rects = null; /* C :266-267 */
+    if (reg.monsters) reg.monsters = null; /* C :268-269 */
+    if (reg.enter_msg) reg.enter_msg = null; /* C :270-271 */
+    if (reg.leave_msg) reg.leave_msg = null; /* C :272-273 */
+    /* C :274 free(reg) ⇔ GC: the caller already dropped the object. */
+}
+
+/**
  * C ref: region.c remove_region — drop then ttl=-2 so visible_region_at
  * skips; two-pass unblock_point / newsym (D-1576). Pass 1 u.uinwater=0
- * (does_block Underwater moat). Blind skips pass 2. free_region named.
+ * (does_block Underwater moat). Blind skips pass 2. free_region (:385).
  */
 function remove_region(reg) {
     const regs = game.regions || [];
@@ -680,15 +698,23 @@ function remove_region(reg) {
         }
         if (game.u) game.u.uinwater = tmp_uinwater;
     }
+    free_region(reg); /* C :385 — heap blocks released after the redraw */
 }
 
 /**
- * C ref: region.c clear_regions — free all NhRegions (mklev clear_level_structures;
- * rest_regions security wipe). Named omissions: free_region field teardown;
- * save_regions binary format (JS stashes the array on level_info;
- * rest_regions below rebuilds live regions from the stash).
+ * C ref: region.c:393-405 clear_regions — free every live NhRegion in
+ * list order (:398-399), then drop the list itself (n_regions = 0 :400;
+ * free(gr.regions) :401-402; max_regions = 0 :403; NULL :404).
+ * Counters ⇔ game.regions.length (D-2639); rebind ⇔ free + NULL.
+ * C callers: mklev clear_level_structures (:920), save_regions
+ * release_data arm (:794 — the do.js level-leave stash snapshots first,
+ * like C's Sfo writes), rest_regions security wipe (:808).
+ * Named omissions: save_regions binary format (stash/JSON, data.md).
  */
 export function clear_regions() {
+    /* C :398-399 */
+    for (const reg of game.regions || []) free_region(reg);
+    /* C :400-404: n_regions/max_regions ⇔ length; rebind ⇔ free + NULL. */
     game.regions = [];
 }
 

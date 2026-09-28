@@ -7,7 +7,7 @@
 
 import { game } from './gstate.js';
 import { debugcore } from './files.js';
-import { rn2, rn1 } from './rng.js';
+import { rn2, rn1, rnd } from './rng.js';
 import { dungeonProto } from './generated/dungeon_data.js';
 import {
     MAXLEVEL,
@@ -1036,6 +1036,24 @@ export function maxledgerno() {
 }
 
 /**
+ * C ref: dungeon.c:1985-1995 assign_rnd_level — copy src dnum (:1988),
+ * jitter dlevel by +rnd(range) / -rnd(-range) (:1989), clamp into
+ * [1, dunlevs_in_dungeon] (:1991-1994; C calls it twice — pure, one call).
+ * Sole C caller is the do.c:1548 Gehennom mystery-force arm (named omit
+ * at js/do.js goto_level); this body is whole — both arms, live callees.
+ */
+export function assign_rnd_level(dest, src, range) {
+    dest.dnum = src.dnum; /* C :1988 */
+    const r = range | 0;
+    dest.dlevel = (src.dlevel | 0) + (r > 0 ? rnd(r) : -rnd(-r)); /* C :1989 */
+    const max = dunlevs_in_dungeon(dest);
+    if ((dest.dlevel | 0) > max) /* C :1991-1992 */
+        dest.dlevel = max;
+    else if ((dest.dlevel | 0) < 1) /* C :1993-1994 */
+        dest.dlevel = 1;
+}
+
+/**
  * C ref: dungeon.c ledger_to_dnum :1401–1416 —
  * ledger_start < ledgerno ≤ ledger_start + num_dunlevs.
  */
@@ -1509,6 +1527,29 @@ function dumpit() {
  * dungeon.lua is embedded at build time via `js/generated/dungeon_data.js`
  * (D-0477 pattern), so its failure arms are named omits (map data.md).
  */
+/**
+ * C ref: dungeon.c:1184-1201 free_proto_dungeon — release the proto
+ * dungeon's malloc'd names in C order (branch names :1189-1191, level
+ * names + chainlvl :1192-1196, dungeon names + protonames over
+ * svn.n_dgns :1197-1200). GC owns the JS strings (the pd object drops
+ * out of scope in init_dungeons), so each C free() renders as a null
+ * release (free_region precedent, js/region.js). C linkage is staticfn
+ * (decl :62); sole caller init_dungeons (:1315).
+ */
+function free_proto_dungeon(pd) {
+    for (let i = 0; i < (pd.n_brs | 0); i++) { /* C :1189-1191 */
+        pd.tmpbranch[i].name = null;
+    }
+    for (let i = 0; i < (pd.n_levs | 0); i++) { /* C :1192-1196 */
+        pd.tmplevel[i].name = null;
+        if (pd.tmplevel[i].chainlvl) pd.tmplevel[i].chainlvl = null; /* C :1194-1195 */
+    }
+    for (let i = 0; i < (game.n_dgns | 0); i++) { /* C :1197-1200 */
+        pd.tmpdungeon[i].name = null;
+        pd.tmpdungeon[i].protoname = null;
+    }
+}
+
 export function init_dungeons() {
     // C: `memset(&pd, 0, ...)` + `pd.n_levs = pd.n_brs = 0` (`:1212–1213`),
     // re-zeroed as `pd.start = 0; pd.n_levs = 0; pd.n_brs = 0` after the
@@ -1593,8 +1634,10 @@ export function init_dungeons() {
     // (`:1310–1312`); `nhl_done` frees the private Lua state — no counterpart.
     init_castle_tune();
     fixup_level_locations();
-    // C: `free_proto_dungeon(&pd)` (`:1313–1315`) frees malloc'd names — GC in
-    // JS, omitted. C: `#ifdef DEBUG dumpit()` (`:1316–1318`); DEBUG is on.
+    // C: `free_proto_dungeon(&pd)` (`:1315`) releases the proto names; each
+    // C free() is a null release (GC owns the strings). C: `#ifdef DEBUG
+    // dumpit()` (`:1316–1318`); DEBUG is on.
+    free_proto_dungeon(pd);
     dumpit();
 }
 
@@ -2533,6 +2576,100 @@ export function remdun_mapseen(dnum) {
             mptr.flags.notreachable = 1;
         }
     }
+}
+
+/**
+ * C ref: dungeon.c:2595-2614 save_exclusions — count the list (:2601-2602)
+ * then write count + per-zone zonetype/lx/ly/hx/hy (:2605-2612). JSON
+ * idiom: the count ⇔ array length; the update_file (mode != FREEING) gate
+ * ⇔ callers invoke only on WRITING paths (do.js stash, serLevel).
+ * Caller: save.c:552 savelev_core.
+ * @returns {Array<{zonetype:number,lx:number,ly:number,hx:number,hy:number}>}
+ */
+export function save_exclusions() {
+    const recs = [];
+    for (let ez = game.exclusion_zones; ez; ez = ez.next) { /* C :2606 */
+        recs.push({
+            zonetype: ez.zonetype | 0, /* C :2607 */
+            lx: ez.lx | 0, /* C :2608 */
+            ly: ez.ly | 0, /* C :2609 */
+            hx: ez.hx | 0, /* C :2610 */
+            hy: ez.hy | 0, /* C :2611 */
+        });
+    }
+    return recs;
+}
+
+/**
+ * C ref: dungeon.c:2616-2634 load_exclusions — read count (:2622), alloc
+ * + read each zone (:2624-2630), PREPEND onto the list (:2631-2632), so
+ * the restored list runs reversed vs the save order. alloc ⇔ object
+ * literal (GC); no clear-first in C (fresh level context — callers free
+ * on leave via free_exclusions / the release_data detach). Caller:
+ * restore.c:1227 getlev.
+ * @param {Array|undefined|null} recs
+ */
+export function load_exclusions(recs) {
+    const arr = Array.isArray(recs) ? recs : []; /* C :2622 count */
+    let k = 0;
+    let nez = arr.length;
+    while (nez-- > 0) { /* C :2624 */
+        const s = arr[k++] || {};
+        const ez = { /* C :2625 alloc */
+            zonetype: s.zonetype | 0, /* C :2626 */
+            lx: s.lx | 0, /* C :2627 */
+            ly: s.ly | 0, /* C :2628 */
+            hx: s.hx | 0, /* C :2629 */
+            hy: s.hy | 0, /* C :2630 */
+            next: game.exclusion_zones || null, /* C :2631-2632 */
+        };
+        game.exclusion_zones = ez;
+    }
+}
+
+/**
+ * C ref: dungeon.c:2664-2692 rm_mapseen — find the node whose
+ * dungeons[dnum].ledger_start + dlevel == ledger_num (:2670-2673),
+ * release custom (:2677-2678) + the cemetery chain (:2680-2684), unlink
+ * (:2686-2690). game.mapseenchn is an array (C walks ->next): unlink ⇔
+ * splice; each C free() ⇔ null release / drop (GC). Sole C caller
+ * cmd.c:993 makemap_prepost.
+ */
+export function rm_mapseen(ledger_num) {
+    const want = ledger_num | 0;
+    const chn = game.mapseenchn || [];
+    let idx = -1;
+    for (let i = 0; i < chn.length; i++) { /* C :2670-2673 */
+        const m = chn[i];
+        const dun = game.dungeons?.[m?.lev?.dnum | 0];
+        if (((dun?.ledger_start | 0) + (m?.lev?.dlevel | 0)) === want) {
+            idx = i;
+            break;
+        }
+    }
+    if (idx < 0) return; /* C :2674-2675 */
+    const mptr = chn[idx];
+    if (mptr.custom) mptr.custom = null; /* C :2677-2678 */
+    /* C :2680-2684 — per-node free of the cemetery chain ⇔ drop the head;
+       GC owns the nodes (no observable state beyond release). */
+    mptr.final_resting_place = null;
+    chn.splice(idx, 1); /* C :2686-2691 unlink + free(mptr) */
+}
+
+/**
+ * C ref: dungeon.c:3263-3278 mapseen_temple — flag the current level's
+ * overview node valley (:3274-3275) or msanctum (:3276-3277) once its
+ * temple priest is met. priest is UNUSED in C (:3268). Sole C caller
+ * priest.c:500 intemple.
+ */
+export function mapseen_temple(_priest) {
+    const mptr = find_mapseen(game.u?.uz); /* C :3270 */
+    if (!mptr) return; /* C :3272-3273 */
+    if (!mptr.flags) mptr.flags = {};
+    if (Is_valley(game.u?.uz)) /* C :3274-3275 */
+        mptr.flags.valley = 1;
+    else if (Is_sanctum(game.u?.uz)) /* C :3276-3277 */
+        mptr.flags.msanctum = 1;
 }
 
 /** C ref: dungeon.c seen_string — 0/1/2/3 → no/a|an/some/many */

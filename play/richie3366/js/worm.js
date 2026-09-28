@@ -387,7 +387,8 @@ export async function cutworm(worm, x, y, cuttier) {
 }
 
 /**
- * C ref: mon.c mcalcmove(mon, FALSE) — mmove + MSLOW/MFAST only; the
+ * C ref: mon.c mcalcmove(mon, FALSE) — MSLOW/MFAST scale + the :1148
+ * steed-gallop arm, mirrored so the clone tracks mcalcmove exactly; the
  * m_moving rn2 rounding is skipped. Local copy so worm.js does not
  * import mon.js (mon.js already imports worm_cross).
  */
@@ -398,6 +399,10 @@ function worm_mcalcmove(worm) {
         else mmove = 4 + Math.trunc(mmove / 3);
     } else if (worm.mspeed === MFAST) {
         mmove = Math.trunc((4 * mmove + 2) / 3);
+    }
+    // C mon.c:1148–1153 — steed-gallop mirror (D-3000).
+    if (worm === game.u?.usteed && (game.u?.ugallop | 0) !== 0 && game.context?.mv) {
+        mmove = Math.trunc(((rn2(2) ? 4 : 5) * mmove) / 3);
     }
     return mmove;
 }

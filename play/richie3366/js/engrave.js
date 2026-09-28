@@ -6,7 +6,8 @@
 //        freehand, cant_reach_floor;
 //        hack.c maybe_smudge_engr.
 //
-// Branch envelope: u_can_engrave floor gate + live getobj("write with",
+// Branch envelope: u_can_engrave `:502–541` full (swallow/lava/pool/air/
+// cantwield/capacity + messages) + live getobj("write with",
 // stylus_ok, GETOBJ_PROMPT) (hands `-` SUGGEST; canned IA_ENGRAVE_OBJ
 // KEY D-1675) + DUST fingertip You/getlin + literate bump + DUST/blood/
 // Blind/Confusion/Stunned/Hallu mix-up + set_occupation `engrave`
@@ -45,9 +46,9 @@ import { game } from './gstate.js';
 import { surface } from './sit.js';
 import { sanitize_name } from './bones.js';
 import { rn1, rn2, rnd } from './rng.js';
-import { pline, You, You_see, newsym, impossible, Hallucination } from './display.js';
+import { pline, You, You_cant, You_see, newsym, impossible, Hallucination } from './display.js';
 import { getlin, yn_function } from './getline.js';
-import { getobj, useup, hold_another_object, prinv, update_inventory, Blind } from './invent.js';
+import { getobj, useup, hold_another_object, prinv, update_inventory, Blind, near_capacity } from './invent.js';
 import { splitobj, obj_extract_self } from './mkobj.js';
 import { A_WIS, exercise } from './attrib.js';
 import { getrumor, get_rnd_text, xcrypt } from './rumors.js';
@@ -62,19 +63,20 @@ import {
 import {
     DUST, ENGRAVE, BURN, MARK, ENGR_BLOOD, HEADSTONE, N_ENGRAVE, ICE,
     ENGRAVEFILE, EPITAPHFILE, MD_PAD_RUMORS,
-    ROOM, GRAVE, IS_GRAVE, MM_NOMSG, COLNO, ROWNO,
-    ACCESSIBLE, IS_FOUNTAIN, IS_AIR, IS_POOL, IS_LAVA,
+    ROOM, GRAVE, IS_GRAVE, MM_NOMSG, COLNO, ROWNO, CLOUD,
+    ACCESSIBLE, IS_FOUNTAIN, IS_AIR, IS_POOL, IS_LAVA, EXT_ENCUMBER,
     Never_mind, Is_airlevel, Is_waterlevel, P_RIDING, P_BASIC,
     FLYING, GETOBJ_SUGGEST, GETOBJ_DOWNPLAY, GETOBJ_PROMPT,
     ECMD_TIME, WAND_BACKFIRE_CHANCE, FINGERTIP, HAND, DRAWBRIDGE_DOWN,
 } from './const.js';
-import { nomul } from './hack.js';
+import { nomul, is_lava, is_pool, SURFACE_AT } from './hack.js';
 import { t_at, uteetering_at_seen_pit, uescaped_shaft, ceiling } from './trap.js';
 import { goodpos } from './teleport.js';
 import { makemon } from './makemon.js';
 import { monsterNames } from './generated/monsters_data.js';
 import {
     mons, is_hider, is_clinger, is_flyer, is_demon, is_vampire, MZ_HUGE,
+    is_animal, is_whirly, nohands, verysmall,
 } from './monsters.js';
 import {
     yname, doname, Yname2, Yobjnam2, Tobjnam, otense, The, xname,
@@ -978,18 +980,58 @@ async function doengrave_empty_text(de, u) {
     return 0;
 }
 
-/** C ref: engrave.c u_can_engrave — floor/reach subset. */
-function u_can_engrave() {
+/**
+ * C ref: engrave.c u_can_engrave `:502–541` (staticfn; sole C caller
+ * doengrave `:964`). Async: the message arms await pline / You_cant /
+ * cant_reach_floor.
+ * @returns {Promise<boolean>}
+ */
+async function u_can_engrave() {
     const u = game.u || {};
-    const loc = game.level?.at(u.ux, u.uy);
-    const typ = loc?.typ ?? 0;
-    if (u.uswallow) return false;
-    if (IS_LAVA(typ) || IS_POOL(typ) || IS_FOUNTAIN(typ) || IS_AIR(typ)) {
+    const levtyp = SURFACE_AT(u.ux, u.uy); // C `:505`
+
+    if (u.uswallow) { // C `:507`
+        const edata = u.ustuck?.data ?? null;
+        if (is_animal(edata)) { // C `:508–510`
+            await pline('What would you write?  "Jonah was here"?');
+            return false;
+        } else if (is_whirly(edata)) { // C `:511–514`
+            await cant_reach_floor(u.ux, u.uy, false, false, false);
+            return false;
+        }
+        /* C `:514–516`: amorphous engulfers fall through to the
+           cantwield/capacity gates; the 'jello' result is in doengrave() */
+    } else if (is_lava(u.ux, u.uy)) { // C `:517–519`
+        await You_cant('write on the %s!', surface(u.ux, u.uy));
+        return false;
+    } else if (is_pool(u.ux, u.uy) || IS_FOUNTAIN(levtyp)) { // C `:520–522`
+        await You_cant('write on the %s!', surface(u.ux, u.uy));
+        return false;
+    } else if (IS_AIR(levtyp)) { // C `:523–527`
+        /* C `:524`: airlevel or inside bubble on waterlevel */
+        await You_cant('write in %s!',
+            levtyp === CLOUD ? 'cloud vapor' : 'thin air');
+        return false;
+    } else if (!ACCESSIBLE(levtyp)) { // C `:528–531`
+        /* C `:529`: stone, tree, wall, secret corridor, pool, lava, bars */
+        await You_cant('write here.');
         return false;
     }
-    if (!ACCESSIBLE(typ)) return false;
-    // cantwield / check_capacity deferred — humanoid start always ok
-    return true;
+
+    /* C `:533–536`; mondata.h:123 cantwield(ptr) macro */
+    const youdata = game.youmonst?.data;
+    if (nohands(youdata) || verysmall(youdata)) {
+        await You_cant('even hold anything!');
+        return false;
+    }
+    /* C `:539–540` check_capacity(NULL) — inlined per the trap.js
+       help_monster_out precedent (pickup.js clone stays sync for sync
+       callers): near_capacity() >= EXT_ENCUMBER prints and blocks. */
+    if (near_capacity() >= EXT_ENCUMBER) {
+        await You_cant('do that while carrying so much stuff.');
+        return false;
+    }
+    return true; // C `:541`
 }
 
 /** C ref: cmd.c timed_occupation — wrap fn; count down multi each tick. */
@@ -1235,8 +1277,8 @@ async function engrave() {
 /** C engrave.c doengrave `:955–1263`. D-1689 non-hands sfx; add-to ynq + HEADSTONE + BUFSZ room live. */
 export async function doengrave() {
     const u = game.u || {};
-    if (!u_can_engrave()) {
-        await pline('You can\'t write here.');
+    /* C `:964`: messages print inside u_can_engrave; no second pline. */
+    if (!(await u_can_engrave())) {
         return 0;
     }
 

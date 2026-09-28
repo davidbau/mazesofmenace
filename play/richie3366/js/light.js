@@ -18,7 +18,7 @@ import { dist2 } from './hacklib.js';
 import { place_object, obj_extract_self, fmt_ptr } from './mkobj.js';
 import { simpleonames, otense, xname } from './objnam.js';
 import { monsterNames } from './monsters.js';
-import { ignitable, artifact_light, end_burn } from './timeout.js';
+import { ignitable, artifact_light, end_burn, get_mon_location } from './timeout.js';
 import { objectNames } from './objects.js';
 import { find_oid } from './shk.js';
 import { find_mid } from './mon.js';
@@ -491,9 +491,9 @@ export function write_ls(ls) {
  * (light.c:177/:204–211, D-2302; paint is OR-idempotent so the trim only
  * skips redundant repaints). FALSE location arms reset ls.{x,y} to 0
  * (zap.c:685/:705).
- * Named omissions: LSF_NEEDS_FIXUP; get_*_location refinement arms
- * (youmonst/usteed identity, mburied gate, OBJ_BURIED/OBJ_CONTAINED —
- * JS refreshes ls.{x,y} inline, D-2157).
+ * Named omissions: LSF_NEEDS_FIXUP; get_obj_location refinement
+ * arms (OBJ_BURIED/OBJ_CONTAINED — JS refreshes obj ls.{x,y} inline,
+ * D-2157). The MONSTER arm calls live get_mon_location (timeout.js).
  */
 export function do_light_sources(cs_rows) {
     const list = game.light_base;
@@ -509,16 +509,17 @@ export function do_light_sources(cs_rows) {
         // C light.c:177 — SHOW is per-recalc state, cleared up front.
         ls.flags = (ls.flags | 0) & ~LSF_SHOW;
         if (ls.type === LS_MONSTER) {
-            // C get_mon_location (zap.c:691–709): migrating/buried reads
-            // x,y = 0 with no SHOW. youmonst/usteed identity + mburied
-            // gate stay named (JS refreshes inline, D-2157).
-            const m = ls.id;
-            if (!m || (m.mx | 0) <= 0) {
+            // C light.c:191–194 — get_mon_location (zap.c:691–709,
+            // locflags 0): youmonst/steed read hero pos; mx>0 unburied
+            // reads mx,my; migrating/buried zeroes with no SHOW
+            // (zap.c:704–707). Retires the D-2157 inline refresh.
+            const loc = get_mon_location(ls.id, 0);
+            if (!loc) {
                 ls.x = 0;
                 ls.y = 0;
             } else {
-                ls.x = m.mx | 0;
-                ls.y = m.my | 0;
+                ls.x = loc.x;
+                ls.y = loc.y;
                 ls.flags |= LSF_SHOW;
             }
         } else if (ls.type === LS_OBJECT) {

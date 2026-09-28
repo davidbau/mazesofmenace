@@ -36,6 +36,7 @@ import { delete_convertedfile } from './files.js';
 import { mons, monsterNames, SPECIAL_PM } from './monsters.js';
 import { cant_revive } from './zap.js';
 import { rest_regions } from './region.js';
+import { load_exclusions } from './dungeon.js';
 
 const BONES_VFS_PREFIX = 'bones/';
 const SLIME_MOLD = objectNames.indexOf('SLIME_MOLD');
@@ -633,6 +634,7 @@ async function trickery(reason) {
  * Named omissions: installing the blob's RANGE_LEVEL timers/lights,
  * lastseentyp (C getlev restores it); shk residency peace; hide_monst.
  * Regions ARE restored (rest_regions ghostly arm below, D-2639).
+ * Exclusions likewise (load_exclusions, same C order).
  * @param {object} payload  bones VFS payload (top-level level blob)
  */
 function getlev_bones(payload) {
@@ -693,6 +695,9 @@ function getlev_bones(payload) {
     // level's regions with no ttl decay (ghostly ⇒ tmstamp 0), old-player
     // hero bits cleared, monster ids remapped (D-2639).
     rest_regions(info.regions || [], 0, true);
+    // C restore.c getlev `:1227` load_exclusions ghostly — same order as
+    // live getlev (after rest_regions/rest_bubbles, before rest_track).
+    load_exclusions(info.exclusion_zones);
     // C ref: restore.c getlev → rest_track (bones NHFILE includes utrack)
     rest_track(info.track);
     // C getlev ghostly: freefruitchn(oldfruit) after restobjchn / rest_track.

@@ -84,7 +84,7 @@ import {
 } from './mkobj.js';
 import {
     monnear, record_mvitals_died, seemimic, wakeup, setmangry, dist2,
-    wake_nearto, m_carrying, healmon, zombie_maker, zombie_form,
+    m_next2u, wake_nearto, m_carrying, healmon, zombie_maker, zombie_form,
     mtrapped_in_pit, LEVEL_SPECIFIC_NOCORPSE, unique_corpstat,
     iter_mons, anger_quest_guardians, NODIAG,
 } from './mon.js';
@@ -4545,12 +4545,26 @@ export async function flash_hits_mon(mtmp, otmp) {
 }
 
 /**
- * C ref: uhitm.c stumble_onto_mimic — reveal + wakeup(FALSE).
- * AD_STCK set_ustuck / map_invisible deferred.
+ * C ref: uhitm.c stumble_onto_mimic `:6282–6297` — reveal, maybe stick,
+ * wake, map the unseen square. C order: MIM_REVEAL, then the AD_STCK
+ * set_ustuck arm (hero unstuck, mimic not fleeing, sticky mimic adjacent —
+ * a polearm attack could come from farther away), then wakeup(FALSE) which
+ * clears mimicking, then map_invisible when the hero still can't spot the
+ * revealed monster (blind-hero arm `:6294–6297`). Short-circuit preserved.
  */
 export async function stumble_onto_mimic(mtmp) {
-    await that_is_a_mimic(mtmp, MIM_REVEAL);
-    await wakeup(mtmp, false);
+    await that_is_a_mimic(mtmp, MIM_REVEAL); // C `:6285`
+    // C `:6287–6291`: must be adjacent; polearm attack may be farther.
+    const u0 = game.u || {};
+    if (!u0.ustuck && !mtmp.mflee && dmgtype(mtmp.data, AD_STCK)
+        && m_next2u(mtmp))
+        set_ustuck(mtmp);
+    await wakeup(mtmp, false); // C `:6293` clears mimicking
+    // C `:6294–6297`: blind hero — wakeup won't display it though revealed.
+    // glyph_is_invisible(levl[mx][my].glyph) is the hero-memory id (D-1774).
+    if (!canspotmon(mtmp)
+        && !memory_glyph_is_invisible(game.level?.at?.(mtmp.mx, mtmp.my)))
+        map_invisible(mtmp.mx, mtmp.my);
 }
 
 /**

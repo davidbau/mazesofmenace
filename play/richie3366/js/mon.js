@@ -985,7 +985,11 @@ export function mcalcmove(mon, m_moving) {
     } else if (mon.mspeed === MFAST) {
         mmove = Math.trunc((4 * mmove + 2) / 3);
     }
-    // steed gallop deferred
+    // C mon.c:1148–1153 — galloping steed: 1.5× with variance (rn2(2)).
+    // u.ugallop is game.u.ugallop, svc.context.mv is game.context.mv.
+    if (mon === game.u?.usteed && (game.u?.ugallop | 0) !== 0 && game.context?.mv) {
+        mmove = Math.trunc(((rn2(2) ? 4 : 5) * mmove) / 3);
+    }
     if (m_moving) {
         const mmove_adj = mmove % NORMAL_SPEED;
         mmove -= mmove_adj;
@@ -3822,8 +3826,12 @@ export async function movemon() {
     return game._somebody_can_move;
 }
 
-/** C ref: you.h m_next2u — squared distu ≤ 2. */
-function m_next2u(mtmp) {
+/**
+ * C ref: you.h:560 m_next2u — squared distu ≤ 2 (macro, on top of or next
+ * to the hero). Canonical export: uhitm stumble_onto_mimic imports this
+ * one (no 7th clone); the other file-local copies predate it.
+ */
+export function m_next2u(mtmp) {
     const u = game.u || {};
     const dx = (mtmp.mx | 0) - (u.ux | 0);
     const dy = (mtmp.my | 0) - (u.uy | 0);

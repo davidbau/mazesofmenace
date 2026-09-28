@@ -296,7 +296,9 @@ export function put_saddle_on_mon(saddle, mtmp) {
  * poly_when_stoned && polymon(STONE_GOLEM) guard)/special/can_saddle;
  * chance from DEX/CHA/tame/level/Knight/riding skill/impair/gloves|boots/
  * cursed; maybewakesteed; rn2(100)<chance → freeinv+put_saddle_on_mon.
- * Named omit: update_mon_extrinsics; poly body_part(HAND) phrasing.
+ * No omit: update_mon_extrinsics runs inside put_saddle_on_mon (:290) per
+ * C steed.c:163, and C steed.c:36–139 has no body_part(HAND) phrasing
+ * (D-1008 doc omissions retired stale, D-2999).
  * @returns {Promise<number>} ECMD_OK | ECMD_TIME | ECMD_CANCEL
  */
 export async function use_saddle(otmp) {

@@ -128,7 +128,7 @@ import {
     PM_ARCHEOLOGIST, PM_WIZARD, PM_GIANT_SPIDER, PM_MONK, PM_LICHEN,
     is_male, is_female, is_orc, M2_ORC, mons, G_NOGEN, G_UNIQ, G_IGNORE,
     monsterNames,
-    LOW_PM, pmnames,
+    LOW_PM, NUMMONS, pmnames,
     MALE, FEMALE, NEUTRAL,
     is_flyer, is_floater, is_swimmer, amphibious,
     passes_walls, noncorporeal, likes_fire,
@@ -1042,8 +1042,8 @@ export function l_levregion(opts) {
  *                 "monster-generation", region = { x1,y1,x2,y2 } }).
  * Default type "teleport". get_location(ANY_LOC|NO_LOC_WARN) so packed
  * coords become absolute (map origin, or croom lx/ly). Prepend onto
- * sve.exclusion_zones. Named omit: hellfill rnd_hell_prefab maps;
- * save_exclusions / load_exclusions.
+ * sve.exclusion_zones (persisted via save_exclusions / load_exclusions).
+ * Named omit: hellfill rnd_hell_prefab maps.
  */
 const EZ_TYPES = {
     teleport: LR_TELE,
@@ -22651,6 +22651,25 @@ function get_location_in_room(croom, humidity = DRY, ok_fn = null) {
     return { x: -1, y: -1 };
 }
 
+/**
+ * C ref: sp_lev.c get_room_loc `:1359–1378` — resolve caller coords inside
+ * croom. Both negative (:1364) → somexy random (:1365–1367), throwing like
+ * the C `:1369` panic when the room has no free cell (loud-throw house
+ * idiom); otherwise per-axis negative → rn2(span) (:1371–1374), then add
+ * the room origin (:1375–1376). C takes coordxy out-params; JS mutates the
+ * {x, y} holder like same-file somexy does.
+ */
+function get_room_loc(c, croom) {
+    if (c.x < 0 && c.y < 0) {
+        if (somexy(croom, c)) return;
+        throw new Error("get_room_loc: can't find a place!"); // C :1369 panic
+    }
+    if (c.x < 0) c.x = rn2(croom.hx - croom.lx + 1); // C :1371-1372
+    if (c.y < 0) c.y = rn2(croom.hy - croom.ly + 1); // C :1373-1374
+    c.x += croom.lx; // C :1375
+    c.y += croom.ly; // C :1376
+}
+
 /** C ref: sp_lev.c get_free_room_loc — DRY then ROOM-typed retry. */
 function get_free_room_loc(croom) {
     let pos = get_location_coord_in_room(croom, DRY);
@@ -22659,8 +22678,7 @@ function get_free_room_loc(croom) {
     let trycnt = 0;
     do {
         const c = { x: -1, y: -1 };
-        // C get_room_loc random → somexy
-        if (!somexy(croom, c)) break;
+        get_room_loc(c, croom); // C :1396-1397 (both random → somexy arm)
         pos = { x: c.x, y: c.y };
         if (game.level.at(pos.x, pos.y)?.typ === ROOM) return pos;
     } while (++trycnt <= 100);
@@ -22677,8 +22695,12 @@ function get_free_room_loc_coord(croom, rx, ry) {
     if (game.level.at(pos.x, pos.y)?.typ === ROOM) return pos;
     let trycnt = 0;
     do {
+        // C :1396 — each retry re-seeds from the caller's x/y, which are
+        // -1,-1 at both C call sites (create_trap :1817, create_altar
+        // :2446), so the retry always takes the somexy arm (:1364–1369);
+        // the per-axis rn2 arms (:1371–1374) stay live for direct callers.
         const c = { x: -1, y: -1 };
-        if (!somexy(croom, c)) break;
+        get_room_loc(c, croom);
         pos = { x: c.x, y: c.y };
         if (game.level.at(pos.x, pos.y)?.typ === ROOM) return pos;
     } while (++trycnt <= 100);
@@ -28863,24 +28885,43 @@ function create_object_themed(opts, x, y) {
     return otmp;
 }
 
+/**
+ * C ref: sp_lev.c find_montype `:3142–3164` (staticfn) — resolve a
+ * des.monster name to a monster index plus gender. File-local like
+ * same-file `get_room_loc` (C staticfn). The C `lua_State *L UNUSED`
+ * has no JS analog; `mgender` is the C `int *mgender` out-param as a
+ * nullable `{ mgender }` holder. C order: NEUTRAL seed `:3148`,
+ * name_to_monplus with NULL remainder `:3150`, LOW_PM/NUMMONS range
+ * `:3151`, fixed-sex override `:3152–3153`, else name gender or
+ * rn2(2) `:3154–3156`, out-param `:3157–3158`, failure NEUTRAL +
+ * NON_PM `:3161–3163`.
+ */
+function find_montype(s, mgender = null) {
+    const genderVar = { gender: NEUTRAL }; // C `:3148` mgend = NEUTRAL
+    const i = name_to_monplus(s, null, genderVar); // C `:3150`
+    if (i >= LOW_PM && i < NUMMONS) { // C `:3151`
+        const ptr = mons(i); // C `&mons[i]`
+        let mgend = genderVar.gender;
+        if (is_male(ptr) || is_female(ptr)) // C `:3152` short-circuit
+            mgend = is_female(ptr) ? FEMALE : MALE; // C `:3153`
+        else // C `:3154–3156`
+            mgend = mgend === FEMALE ? FEMALE : mgend === MALE ? MALE : rn2(2);
+        if (mgender) mgender.mgender = mgend; // C `:3157–3158`
+        return i; // C `:3159`
+    }
+    if (mgender) mgender.mgender = NEUTRAL; // C `:3161–3162`
+    return NON_PM; // C `:3163`
+}
+
 // C ref: sp_lev.c find_montype — gender from name_to_monplus / fixed-sex / rn2(2)
 function find_montype_gender(name) {
-    // C: int mgend = NEUTRAL; then name_to_monplus(..., &mgend)
-    const genderVar = { gender: NEUTRAL };
-    const i = name_to_monplus(name, null, genderVar);
+    // C find_montype `:3150–3163`: range-checked index + gender burn.
+    const box = { mgender: NEUTRAL };
+    const i = find_montype(name, box);
+    // Callers guard `mndx < 0 || mndx === NON_PM`, so the failure
+    // female is unobservable; keep the historical 0 shape.
     if (i < 0 || i === NON_PM) return { mndx: NON_PM, female: 0 };
-    const ptr = mons(i);
-    let female = 0;
-    if (is_male(ptr) || is_female(ptr)) {
-        female = is_female(ptr) ? FEMALE : MALE;
-    } else {
-        const mgend = genderVar.gender;
-        // C: (mgend == FEMALE) ? FEMALE : (mgend == MALE) ? MALE : rn2(2)
-        female = mgend === FEMALE ? FEMALE
-            : mgend === MALE ? MALE
-            : rn2(2);
-    }
-    return { mndx: i, female };
+    return { mndx: i, female: box.mgender };
 }
 
 // C ref: selvar.c selection_filter_percent — rn2(100) < pct per set cell

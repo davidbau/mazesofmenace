@@ -76,6 +76,7 @@ import {
     MIGR_RANDOM, MIGR_STAIRS_DOWN, MIGR_STAIRS_UP,
     MIGR_LADDER_DOWN, MIGR_LADDER_UP, MIGR_SSTAIRS,
     In_endgame, In_sokoban, Is_container, ismnum, Is_rogue_level, Is_earthlevel,
+    Is_knox,
     Can_dig_down, IS_FURNITURE, IS_DRAWBRIDGE, W_NONDIGGABLE,
     PIT, HOLE, WEB, BEAR_TRAP, something, Something, AD_RBRE,
     ARTICLE_A, SUPPRESS_IT, SUPPRESS_INVISIBLE, SUPPRESS_SADDLE, AUGMENT_IT,
@@ -97,7 +98,7 @@ import { stairway_at } from './mklev.js';
 import { place_monster, remove_monster } from './steed.js';
 import {
     monflee, maybe_unhide_at, locomotion, accessible, mon_would_take_item,
-    can_carry,
+    can_carry, mon_offmap,
 } from './monmove.js';
 import { SchroedingersBox } from './pickup.js';
 import { age_is_relative, begin_burn } from './timeout.js';
@@ -256,6 +257,25 @@ function m_next2u(mtmp) {
     const dx = (mtmp.mx | 0) - (u.ux | 0);
     const dy = (mtmp.my | 0) - (u.uy | 0);
     return dx * dx + dy * dy <= 2;
+}
+
+/**
+ * C ref: muse.c m_next2m `:419–436` (staticfn) — TRUE when another monster
+ * stands on mtmp's 3×3 neighborhood (own square counts only for a
+ * different monster: C `:433` `m2 != mtmp`). Sole C caller:
+ * find_defensive `:459` (Knox tryescape guard).
+ */
+function m_next2m(mtmp) {
+    if ((mtmp.mhp | 0) < 1 || mon_offmap(mtmp)) return false; // C `:426–427` DEADMONSTER
+    const x0 = mtmp.mx | 0, y0 = mtmp.my | 0;
+    for (let x = x0 - 1; x <= x0 + 1; x++) {
+        for (let y = y0 - 1; y <= y0 + 1; y++) {
+            if (!isok(x, y)) continue; // C `:431–432`
+            const m2 = m_at(x, y); // C `:433`
+            if (m2 && m2 !== mtmp) return true;
+        }
+    }
+    return false;
 }
 
 /**
@@ -1836,7 +1856,7 @@ function m_use_healing(mtmp) {
 /**
  * C ref: muse.c find_defensive `:439–750` — horn/undead/bugle/wand
  * dig/tele/create selection + D-1809 stairs/trap/scroll/heal envelope.
- * Named omit: tryescape Is_knox m_next2m.
+ * Knox tryescape guard (`:457–460`) wired via file-local m_next2m.
  */
 /**
  * C ref: muse.c m_sees_sleepy_soldier `:361` — a mercenary bugler wakes when
@@ -1877,7 +1897,10 @@ export function find_defensive(mtmp, tryescape) {
     if (!tryescape && dist2(x, y, mtmp.mux, mtmp.muy) > 25) {
         return false;
     }
-    // C tryescape && Is_knox && !m_next2u && m_next2m — m_next2m named omit
+    if (tryescape && Is_knox(game.u?.uz) // C `:457–460` Knox tryescape guard
+        && !m_next2u(mtmp) && m_next2m(mtmp)) {
+        return false;
+    }
     if (game.u?.uswallow && mtmp === game.u?.ustuck) return false;
 
     /* C: unicorn horns don't get used up; a cursed horn would be retried

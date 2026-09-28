@@ -106,6 +106,7 @@ import {
     IS_OBSTRUCTED, IS_STWALL, IS_TREE, IRONBARS,
     HVY_ENCUMBER, EXT_ENCUMBER, UNENCUMBERED, SLT_ENCUMBER, WT_TOOMUCH_DIAGONAL,
     TELEDS_ALLOW_DRAG, TELEDS_TELEPORT, TELEPORT, TELEPORT_CONTROL,
+    WOUNDED_LEGS,
     ECMD_OK, ECMD_TIME, MON_DETACH,
     Is_container, Waterproof_container, Is_box,
     xytodir, DIR_180, DIR_ERR,
@@ -3567,6 +3568,16 @@ export async function heal_legs(how) {
     u.HWounded_legs = 0;
     u.EWounded_legs = 0;
     u.Wounded_legs = false;
+    // C do.c heal_legs zeroes the single HWounded_legs field; clear the
+    // uprops mirror too, or flat|slot readers (mount_steed's wounded gate
+    // via steed.c:228, dokick, pray…) stay wounded after a ticker-bypass
+    // heal (potion, prayer, dismount) — same stuck shape the nh_timeout
+    // arm had before it dual-wrote (cf. D-1817 DEAF). Masked: non-TIMEOUT
+    // slot bits are not C's.
+    if (u.uprops?.[WOUNDED_LEGS]) {
+        u.uprops[WOUNDED_LEGS].intrinsic =
+            (u.uprops[WOUNDED_LEGS].intrinsic | 0) & ~TIMEOUT;
+    }
     // C: encumber_msg only for ordinary heal (how==0), not dismount
     if ((how | 0) === 0) await encumber_msg();
 }
