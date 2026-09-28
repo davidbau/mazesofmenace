@@ -72,6 +72,7 @@ import { option_help_lines } from './options.js';
 import {
     dokeylist_lines, domenucontrols_lines, cmdbind_get, movecmd,
     MISC_KEYS, SPKEYS_DEFAULT, cmd_from_func, cmdname_from_func, visctrl,
+    key2txt,
 } from './dokeylist.js';
 import { trapname, t_at, ice_descr } from './trap.js';
 import { trapped_chest_at, trapped_door_at } from './detect.js';
@@ -2984,17 +2985,9 @@ export async function doversion() {
     return 0;
 }
 
-/**
- * C ref: cmd.c key2txt — short label for one-byte key.
- */
-function key2txt(c) {
-    if (c === 32) return '<space>';
-    if (c === 27) return '<esc>';
-    if (c === 10 || c === 13) return '<enter>';
-    if (c === 127) return '<del>';
-    if (c >= 1 && c <= 26) return `^${String.fromCharCode(c + 64)}`;
-    return String.fromCharCode(c);
-}
+// key2txt is the shared js/dokeylist.js export (C cmd.c `:3225–3240`);
+// the local clone (which mapped '\r' to "<enter>" and dropped the
+// visctrl M-/^? arms) is removed so both pager call sites match C.
 
 /**
  * C ref: cmd.c key2extcmddesc `:2561–2621` — description for a command key.
@@ -3149,7 +3142,7 @@ export async function dowhatdoes() {
             await pline('%s%s', reslt.slice(0, 8), reslt.slice(nl + 1));
         }
     } else {
-        const label = key2txt(q);
+        const label = visctrl(q); // C pager.c `:2711` visctrl, not key2txt
         await pline(
             `No such command '${label}', char code ${q} (0${q.toString(8).padStart(3, '0')} or 0x${q.toString(16).padStart(2, '0')}).`,
         );

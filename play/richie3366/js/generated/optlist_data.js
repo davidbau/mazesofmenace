@@ -396,7 +396,8 @@ export const dosetSimpleOpts = [
       "obj": "flags",
       "key": "autodig"
     },
-    "autopickupSuffix": false
+    "autopickupSuffix": false,
+    "descr": "dig if moving and wielding a digging tool"
   },
   {
     "name": "autoopen",
@@ -407,7 +408,8 @@ export const dosetSimpleOpts = [
       "obj": "flags",
       "key": "autoopen"
     },
-    "autopickupSuffix": false
+    "autopickupSuffix": false,
+    "descr": "walking into a door attempts to open it"
   },
   {
     "name": "autopickup",
@@ -418,14 +420,16 @@ export const dosetSimpleOpts = [
       "obj": "flags",
       "key": "pickup"
     },
-    "autopickupSuffix": false
+    "autopickupSuffix": false,
+    "descr": "automatically pick up objects"
   },
   {
     "name": "autopickup exceptions",
     "section": "Behavior",
     "opttyp": "Othr",
     "hasHandler": true,
-    "autopickupSuffix": false
+    "autopickupSuffix": false,
+    "descr": "edit autopickup exceptions"
   },
   {
     "name": "autoquiver",
@@ -436,14 +440,16 @@ export const dosetSimpleOpts = [
       "obj": "flags",
       "key": "autoquiver"
     },
-    "autopickupSuffix": false
+    "autopickupSuffix": false,
+    "descr": "fill empty quiver automatically when firing"
   },
   {
     "name": "autounlock",
     "section": "Behavior",
     "opttyp": "Comp",
     "hasHandler": true,
-    "autopickupSuffix": false
+    "autopickupSuffix": false,
+    "descr": "action to take when encountering locked door or chest"
   },
   {
     "name": "bgcolors",
@@ -454,7 +460,8 @@ export const dosetSimpleOpts = [
       "obj": "iflags",
       "key": "bgcolors"
     },
-    "autopickupSuffix": false
+    "autopickupSuffix": false,
+    "descr": "use background color for some map hilighting"
   },
   {
     "name": "cmdassist",
@@ -465,7 +472,8 @@ export const dosetSimpleOpts = [
       "obj": "iflags",
       "key": "cmdassist"
     },
-    "autopickupSuffix": false
+    "autopickupSuffix": false,
+    "descr": "give help for errors on direction input"
   },
   {
     "name": "color",
@@ -476,7 +484,8 @@ export const dosetSimpleOpts = [
       "obj": "iflags",
       "key": "wc_color"
     },
-    "autopickupSuffix": false
+    "autopickupSuffix": false,
+    "descr": "use color in map"
   },
   {
     "name": "customcolors",
@@ -487,7 +496,8 @@ export const dosetSimpleOpts = [
       "obj": "iflags",
       "key": "customcolors"
     },
-    "autopickupSuffix": false
+    "autopickupSuffix": false,
+    "descr": "use custom colors in map"
   },
   {
     "name": "customsymbols",
@@ -498,7 +508,8 @@ export const dosetSimpleOpts = [
       "obj": "iflags",
       "key": "customsymbols"
     },
-    "autopickupSuffix": false
+    "autopickupSuffix": false,
+    "descr": "use custom utf8 symbols in map"
   },
   {
     "name": "dropped_nopick",
@@ -509,7 +520,8 @@ export const dosetSimpleOpts = [
       "obj": "flags",
       "key": "nopick_dropped"
     },
-    "autopickupSuffix": true
+    "autopickupSuffix": true,
+    "descr": "don't autopickup dropped items"
   },
   {
     "name": "fireassist",
@@ -520,14 +532,16 @@ export const dosetSimpleOpts = [
       "obj": "iflags",
       "key": "fireassist"
     },
-    "autopickupSuffix": false
+    "autopickupSuffix": false,
+    "descr": "fire-command tries to be helpful"
   },
   {
     "name": "fruit",
     "section": "General",
     "opttyp": "Comp",
     "hasHandler": false,
-    "autopickupSuffix": false
+    "autopickupSuffix": false,
+    "descr": "name of a fruit you enjoy eating"
   },
   {
     "name": "hilite_pet",
@@ -538,7 +552,8 @@ export const dosetSimpleOpts = [
       "obj": "iflags",
       "key": "wc_hilite_pet"
     },
-    "autopickupSuffix": false
+    "autopickupSuffix": false,
+    "descr": "use highlight for pets"
   },
   {
     "name": "hilite_pile",
@@ -549,7 +564,8 @@ export const dosetSimpleOpts = [
       "obj": "iflags",
       "key": "hilite_pile"
     },
-    "autopickupSuffix": false
+    "autopickupSuffix": false,
+    "descr": "highlight piles of items"
   },
   {
     "name": "hitpointbar",
@@ -560,21 +576,24 @@ export const dosetSimpleOpts = [
       "obj": "iflags",
       "key": "wc2_hitpointbar"
     },
-    "autopickupSuffix": false
+    "autopickupSuffix": false,
+    "descr": "show colored bar for hit points"
   },
   {
     "name": "menu colors",
     "section": "Status",
     "opttyp": "Othr",
     "hasHandler": true,
-    "autopickupSuffix": false
+    "autopickupSuffix": false,
+    "descr": "change colors used in menus"
   },
   {
     "name": "number_pad",
     "section": "General",
     "opttyp": "Comp",
     "hasHandler": true,
-    "autopickupSuffix": false
+    "autopickupSuffix": false,
+    "descr": "use the number pad for movement"
   },
   {
     "name": "pickup_stolen",
@@ -585,7 +604,8 @@ export const dosetSimpleOpts = [
       "obj": "flags",
       "key": "pickup_stolen"
     },
-    "autopickupSuffix": true
+    "autopickupSuffix": true,
+    "descr": "autopickup stolen items"
   },
   {
     "name": "pickup_thrown",
@@ -596,14 +616,16 @@ export const dosetSimpleOpts = [
       "obj": "flags",
       "key": "pickup_thrown"
     },
-    "autopickupSuffix": true
+    "autopickupSuffix": true,
+    "descr": "autopickup thrown items"
   },
   {
     "name": "pickup_types",
     "section": "Behavior",
     "opttyp": "Comp",
     "hasHandler": true,
-    "autopickupSuffix": true
+    "autopickupSuffix": true,
+    "descr": "types of objects to pick up automatically"
   },
   {
     "name": "price_quotes",
@@ -614,7 +636,8 @@ export const dosetSimpleOpts = [
       "obj": "iflags",
       "key": "pricequotes"
     },
-    "autopickupSuffix": false
+    "autopickupSuffix": false,
+    "descr": "display prices you have seen for unidentified objects"
   },
   {
     "name": "pushweapon",
@@ -625,7 +648,8 @@ export const dosetSimpleOpts = [
       "obj": "flags",
       "key": "pushweapon"
     },
-    "autopickupSuffix": false
+    "autopickupSuffix": false,
+    "descr": "previous weapon goes to secondary slot"
   },
   {
     "name": "showexp",
@@ -636,7 +660,8 @@ export const dosetSimpleOpts = [
       "obj": "flags",
       "key": "showexp"
     },
-    "autopickupSuffix": false
+    "autopickupSuffix": false,
+    "descr": "show experience points in status line"
   },
   {
     "name": "showrace",
@@ -647,7 +672,8 @@ export const dosetSimpleOpts = [
       "obj": "flags",
       "key": "showrace"
     },
-    "autopickupSuffix": false
+    "autopickupSuffix": false,
+    "descr": "show your character by race rather than role"
   },
   {
     "name": "sparkle",
@@ -658,35 +684,40 @@ export const dosetSimpleOpts = [
       "obj": "flags",
       "key": "sparkle"
     },
-    "autopickupSuffix": false
+    "autopickupSuffix": false,
+    "descr": "display sparkly effect when resisting magic"
   },
   {
     "name": "status condition fields",
     "section": "Status",
     "opttyp": "Othr",
     "hasHandler": true,
-    "autopickupSuffix": false
+    "autopickupSuffix": false,
+    "descr": "change status condition highlighting"
   },
   {
     "name": "status highlight rules",
     "section": "Status",
     "opttyp": "Othr",
     "hasHandler": true,
-    "autopickupSuffix": false
+    "autopickupSuffix": false,
+    "descr": "change status line highlighting"
   },
   {
     "name": "statuslines",
     "section": "Status",
     "opttyp": "Comp",
     "hasHandler": false,
-    "autopickupSuffix": false
+    "autopickupSuffix": false,
+    "descr": "2 or 3 lines for status display"
   },
   {
     "name": "symset",
     "section": "Map",
     "opttyp": "Comp",
     "hasHandler": true,
-    "autopickupSuffix": false
+    "autopickupSuffix": false,
+    "descr": "load a set of display symbols from symbols file"
   },
   {
     "name": "time",
@@ -697,7 +728,8 @@ export const dosetSimpleOpts = [
       "obj": "flags",
       "key": "time"
     },
-    "autopickupSuffix": false
+    "autopickupSuffix": false,
+    "descr": "display game turns in status line"
   }
 ];
 export const dosetSimpleSections = ["General", "Behavior", "Map", "Status"];

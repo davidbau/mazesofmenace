@@ -80,6 +80,9 @@ import {
     u_on_newpos,
     u_on_rndspot,
     mklev,
+    free_luathemes,
+    tut_themes,
+    most_themes,
     fumaroles,
     movebubbles,
     save_waterlevel,
@@ -123,7 +126,7 @@ import {
     near_capacity, learn_unseen_invent, encumber_msg,
     freeinv_core, getobj, ggetobj, useup, useupall,
 } from './invent.js';
-import { can_reach_floor, set_occupation, engr_at, sticks } from './engrave.js';
+import { can_reach_floor, set_occupation, engr_at, sticks, save_engravings, rest_engravings } from './engrave.js';
 import {
     pickup, pooleffects, query_category, query_objlist, add_valid_menu_class,
     allow_category, allow_all, count_justpicked, find_justpicked,
@@ -1689,8 +1692,12 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         for (const mtmp of game.fmon || []) {
             if (mtmp?.ispriest) forget_temple_entry(mtmp);
         }
+    } else {
+        // C do.c:1645-1647 — cant_go_back: release the theme states that can
+        // no longer be reached (tutorial-only when leaving the tutorial,
+        // all-but-astral when entering the endgame).
+        free_luathemes(leaving_tutorial ? tut_themes : most_themes);
     }
-    // Named omit: else free_luathemes(tut_themes / most_themes).
 
     // C: savelev — in-memory stash + VISITED|LFILE_EXISTS + omoves timestamp
     // C save.c:480–491 — mode != FREEING: dmonsfree when purge_monsters,
@@ -1727,7 +1734,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
                 fobj: game.fobj,
                 ftrap: game.ftrap,
                 stairs: game.stairs,
-                head_engr: game.head_engr,
+                head_engr: save_engravings(), // C save.c:548 savelev Sfo arm (release arm: teardown null below).
                 track: trackSnap,
                 // C savelev → save_regions; rest_regions on getlev.
                 // Snapshot like C's Sfo writes: the release_data arm
@@ -1869,7 +1876,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         game.fobj = info.fobj || null;
         game.ftrap = info.ftrap || null;
         game.stairs = info.stairs || null;
-        game.head_engr = info.head_engr || null;
+        game.head_engr = rest_engravings(info.head_engr); // C restore.c:1174 getlev.
         // C restore.c getlev `:1225` rest_regions — rebuild live regions
         // from the stash (ttl rebased on elapsed moves, expired dropped);
         // pre-stash levels omit regions → empty. Stash getlev is never

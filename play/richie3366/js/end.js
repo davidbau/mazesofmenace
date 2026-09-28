@@ -50,7 +50,7 @@ import { oname, christen_monst, free_oname, mon_nam, Monnam, m_monnam, pmname, U
 import { mkcorpstat, curse, place_object, stackobj, mksobj, add_to_minv, add_to_container, weight } from './mkobj.js';
 import { artifact_light, end_burn } from './timeout.js';
 import { obj_is_burning } from './light.js';
-import { make_grave, sticks } from './engrave.js';
+import { make_grave, sticks, forget_engravings } from './engrave.js';
 import { makemon, adj_lev, mongets } from './makemon.js';
 import {
     write_bonesfile, bones_file_exists, delete_bonesfile,
@@ -1612,7 +1612,6 @@ async function remove_mon_from_bones(mtmp) {
  * C bones.c:444–445 iter_mons(remove_mon_from_bones) + dmonsfree now live
  * (this file); the statue arm is D-2060.
  * Named omissions: file compress; unleash_all/unpunish/dismount;
- * forget_engravings;
  * resetobjs(FALSE) known-strip on minvent/fobj/buriedobjlist (the save
  * arm is live in bones.js; savebones does not call it); map memory clear
  * (ux/uy zero); ebones; obj_attach_mid;
@@ -1652,6 +1651,9 @@ async function savebones(how, when, corpse) {
         await remove_mon_from_bones(mtmp);
     }
     await dmonsfree();
+
+    // C bones.c:449 forget_engravings — the next hero hasn't read these.
+    forget_engravings();
 
     // C savebones `:450–453` — negate all fids before drop_upon_death
     savebones_negate_fruit_ids();

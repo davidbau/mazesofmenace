@@ -89,7 +89,7 @@ import { set_moreluck } from './attrib.js';
 import { recalc_block_point, cansee } from './vision.js';
 import { del_light_source, discard_flashes, obj_sheds_light, obj_adjust_light_radius } from './light.js';
 import { arti_light_radius, get_obj_location, obj_split_light_source, Is_candle, obj_merge_light_sources, kind_name } from './timeout.js';
-import { obfree, splitbill, same_price, globby_bill_fixup, costly_spot, costly_adjacent, find_objowner, costly_alteration } from './shk.js';
+import { obfree, splitbill, same_price, globby_bill_fixup, costly_spot, costly_adjacent, find_objowner, costly_alteration, oid_price_adjustment } from './shk.js';
 /* C lock.c maybe_reset_pick — hoisted fn, called only from
    add_to_migration (`imports.mjs --can mkobj.js lock.js` SAFE). */
 import { maybe_reset_pick } from './lock.js';
@@ -426,9 +426,34 @@ export function next_ident() {
 }
 
 /**
+ * C ref: mkobj.c nextoid `:534–551` (staticfn) — price-matched o_id for a
+ * split/bill-dummy stack. `:538` oid starts at ident-1 (U32 wrap);
+ * `:540` olddif from the old stack's o_id; `:541–545` increment (skip 0 on
+ * wrap) until the new stack's adjustment matches or 257 tries elapse;
+ * `:548–549` ident=oid then next_ident() advances past it (one rnd(2));
+ * return oid. oid_price_adjustment() draws no RNG, so the search itself
+ * is RNG-free. Exported (not file-local) because the second C caller,
+ * bill_dummy_object, lives in js/shk.js (C mkobj.c:725).
+ */
+export function nextoid(oldobj, newobj) {
+    if (!game.context) game.context = {};
+    let oid = (((game.context.ident || 1) - 1) >>> 0);
+    const olddif = oid_price_adjustment(oldobj, oldobj?.o_id | 0);
+    let trylimit = 256;
+    let newdif = 0;
+    do {
+        oid = (oid + 1) >>> 0;
+        if (!oid) oid = (oid + 1) >>> 0;
+        newdif = oid_price_adjustment(newobj, oid);
+    } while (newdif !== olddif && --trylimit >= 0);
+    game.context.ident = oid >>> 0;
+    next_ident();
+    return oid >>> 0;
+}
+
+/**
  * C ref: mkobj.c splitobj — reduce obj->quan by num; return new stack of num.
- * nextoid shop-price search omitted: ordinary items take first oid then
- * next_ident() (one rnd(2)), matching non-shop dog_invent / throw paths.
+ * o_id via nextoid `:469` (price-matched; one rnd(2) through next_ident).
  * Light split live via obj_split_light_source (C `:500–501`).
  */
 export function splitobj(obj, num) {
@@ -437,8 +462,8 @@ export function splitobj(obj, num) {
 
     const otmp = { ...obj };
     otmp.oextra = null;
-    // C: nextoid → next_ident when oid_price_adjustment matches (typical)
-    otmp.o_id = next_ident();
+    // C `:469` — price-matched split o_id (next_ident when it matches).
+    otmp.o_id = nextoid(obj, otmp);
     otmp.timed = 0;
     otmp.lamplit = 0;
     otmp.owornmask = 0;
@@ -644,38 +669,48 @@ export async function curse(otmp) {
     if (otmp.lamplit) await maybe_adjust_light(otmp, old_light);
 }
 /**
- * C ref: mkobj.c bless `:1744–1764` — async only for the lamplit tail;
- * state changes precede the first await (see curse). Named omit:
- * COIN_CLASS guard, BAG_OF_HOLDING weight (luck arm live, D-2287).
+ * C ref: mkobj.c bless `:1744–1764` — full body in C order; async only for
+ * the lamplit tail, state changes precede the first await (see curse).
+ * `:1749–1750` coins never take BUC; `:1751–1752` radius before the flip;
+ * `:1753–1754` cursed=0/blessed=1; `:1755–1760` carried luck → set_moreluck
+ * else BAG_OF_HOLDING weight else timed FIGURINE stop FIG_TRANSFORM;
+ * `:1761–1762` lamplit tail. carried() is where==OBJ_INVENT (obj.h:332);
+ * obj_to_any() is identity (hack.js:212).
  */
 export async function bless(otmp) {
     if (!otmp) return;
-    const old_light = otmp.lamplit ? arti_light_radius(otmp) : 0;
-    otmp.blessed = true;
+    if ((otmp.oclass | 0) === COIN_CLASS) return;
+    let old_light = 0;
+    if (otmp.lamplit) old_light = arti_light_radius(otmp);
+    // C `:1753–1754` — bitfield 0/1; JS stores BUC flags as booleans (curse).
     otmp.cursed = false;
-    // C mkobj.c bless `:1755–1756` — carried luck-conferrer → set_moreluck
-    // (else-if: a luckstone is never a timed figurine).
+    otmp.blessed = true;
     if ((otmp.where | 0) === OBJ_INVENT && confers_luck(otmp)) {
         set_moreluck();
+    } else if ((otmp.otyp | 0) === BAG_OF_HOLDING) {
+        otmp.owt = weight(otmp);
     } else if ((otmp.otyp | 0) === FIGURINE && (otmp.timed | 0)) {
-        // C mkobj.c bless — stop FIG_TRANSFORM if figurine timed
-        stop_timer(FIG_TRANSFORM, otmp);
+        stop_timer(FIG_TRANSFORM, obj_to_any(otmp));
     }
     if (otmp.lamplit) await maybe_adjust_light(otmp, old_light);
 }
 
 /**
- * C ref: mkobj.c unbless `:1766–1780` — async only for the lamplit tail;
- * state change precedes the first await (see curse). Named omit:
- * BAG_OF_HOLDING weight (luck arm live, D-2287).
+ * C ref: mkobj.c unbless `:1766–1780` — full body in C order; async only for
+ * the lamplit tail, state change precedes the first await (see curse).
+ * `:1770–1771` radius before the flip; `:1772` blessed=0 (cursed untouched);
+ * `:1773–1776` carried luck → set_moreluck else BAG_OF_HOLDING weight;
+ * `:1777–1778` lamplit tail. carried() is where==OBJ_INVENT (obj.h:332).
  */
 export async function unbless(otmp) {
     if (!otmp) return;
-    const old_light = otmp.lamplit ? arti_light_radius(otmp) : 0;
+    let old_light = 0;
+    if (otmp.lamplit) old_light = arti_light_radius(otmp);
     otmp.blessed = false;
-    // C mkobj.c unbless `:1774–1775` — carried luck-conferrer → set_moreluck.
     if ((otmp.where | 0) === OBJ_INVENT && confers_luck(otmp)) {
         set_moreluck();
+    } else if ((otmp.otyp | 0) === BAG_OF_HOLDING) {
+        otmp.owt = weight(otmp);
     }
     if (otmp.lamplit) await maybe_adjust_light(otmp, old_light);
 }

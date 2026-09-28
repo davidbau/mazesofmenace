@@ -59,7 +59,7 @@ import {
 import { paint_corner_nhw_menu, cmdq_add_key } from './invent.js';
 import { t_at } from './trap.js';
 import { invocation_pos, handle_tip } from './hack.js';
-import { is_valid_travelpt } from './cmd.js';
+import { is_valid_travelpt, lock_mouse_buttons } from './cmd.js';
 import { ok_to_quest } from './quest.js';
 import { visctrl, cmd_from_func } from './dokeylist.js';
 import { distmin } from './hacklib.js';
@@ -1366,6 +1366,9 @@ export async function getpos(ccp, force, goal, describeAt) {
         NHKF_GETPOS_VALID_NEXT, NHKF_GETPOS_VALID_PREV,
     ];
 
+    // C getpos.c:858 — lock mouse-button bindings for the targeting loop;
+    // exitgetpos (`:1155`) restores them in the finally below.
+    lock_mouse_buttons(true);
     for (;;) {
         // C getpos: show_goal_msg / auto_describe then curs then readchar.
         if (show_goal_msg) {
@@ -1654,6 +1657,12 @@ export async function getpos(ccp, force, goal, describeAt) {
         return 0; // C: result = 0 (not -1)
     }
     } finally {
+        // C getpos.c:1153–1155 exitgetpos — restore the mouse-button
+        // bindings locked before the read loop. This finally is the
+        // single-exit funnel (all four returns above + fall-through),
+        // like C's exitgetpos label; order vs the dx/dy/dz restore below
+        // is unobservable (disjoint state).
+        lock_mouse_buttons(false);
         if (g.u) {
             g.u.dx = udx;
             g.u.dy = udy;

@@ -2708,7 +2708,8 @@ export async function dofire() {
     let skip_fireassist = false;
     let res = ECMD_OK;
     let obj = u.uquiver || null;
-    const fireassist = game.flags?.fireassist !== false;
+    // C dothrow.c:518,557 reads iflags.fireassist (optlist.h:310 &iflags.fireassist).
+    const fireassist = game.iflags?.fireassist !== false;
 
     if (uwep_Throw_and_Return && (!obj || is_ammo(obj))) {
         obj = uwep;

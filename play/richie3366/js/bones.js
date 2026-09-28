@@ -31,7 +31,7 @@ import { in_rooms } from './hack.js';
 import { tended_shop } from './sounds.js';
 import { mongone, unique_corpstat } from './mon.js';
 import { no_bones_level, done } from './end.js';
-import { sanitize_engravings } from './engrave.js';
+import { sanitize_engravings, rest_engravings } from './engrave.js';
 import { delete_convertedfile } from './files.js';
 import { mons, monsterNames, SPECIAL_PM } from './monsters.js';
 import { cant_revive } from './zap.js';
@@ -688,7 +688,7 @@ function getlev_bones(payload) {
     game.fobj = info.fobj;
     game.billobjs = info.billobjs;
     game.ftrap = map.traps;
-    game.head_engr = info.head_engr;
+    game.head_engr = rest_engravings(info.head_engr); // C restore.c:1174 ghostly getlev.
     game.stairs = info.stairs;
     rebuildObjectsAt(info.fobj);
     // C restore.c getlev `:1225` rest_regions ghostly — install the bones

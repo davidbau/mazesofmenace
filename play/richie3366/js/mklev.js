@@ -106,7 +106,7 @@ import { maketrap, t_at, undestroyable_trap, deltrap, reset_utrap, mintrap, set_
 import {
     mkobj, mksobj, mksobj_at, mk_tt_object, mksobj_migr_to_species, mkobj_at, mkgold,
     mkcorpstat, next_ident,
-    curse, bless, uncurse, blessorcurse, place_object, add_to_buried, weight, OBJ,
+    curse, bless, unbless, uncurse, blessorcurse, place_object, add_to_buried, weight, OBJ,
     set_corpsenm, obj_stop_timers, start_timer, spot_stop_timers,
     obj_extract_self, is_organic, remove_object,
     add_to_container, objects_at, sobj_at, stackobj, oc_merge_of, dealloc_obj,
@@ -2927,13 +2927,14 @@ async function makemaz(s) {
     if (protofile) {
         // C mkmaze.c:707-711 — check_ransacked ASSIGNS (orctown is minetn-1)
         g.ransacked = ((g.u?.uz?.dnum | 0) === (g.mines_dnum | 0) && protofile === 'minetn-1');
-        // C :1186 — Strcat(protofile, LEV_EXT); dispatch takes the bare
-        // stem while the message keeps the extension like C's call.
+        // C :1186 — Strcat(protofile, LEV_EXT): the message and the
+        // load_special call both carry the extension like C.
         const levfile = `${protofile}.lua`;
         // C :1187 — gi.in_mk_themerooms = FALSE
         g.in_mk_themerooms = false;
         // C :1188-1192 — if (load_special(protofile)): dmonsfree(); return
-        if (await load_special_proto(protofile)) {
+        // (load_special strips LEV_EXT for the stem dispatch)
+        if (await load_special(levfile)) {
             await dmonsfree();
             return; // no mazification right now
         }
@@ -2987,6 +2988,31 @@ function makemaz_maze_fallback() {
     place_branch(is_branchlev(), 0, 0);
     // C :1221 — populate_maze()
     populate_maze();
+}
+
+/**
+ * C ref: sp_lev.c load_special `:6454–6502` — General loader in C order.
+ * C entry creates the des coder (`:6459`); `load_lua(name, &sbi)` (`:6461`)
+ * runs the named .lua file; the `:6464–6494` epilogue (link_doors_rooms,
+ * remove_boundary_syms, check_inaccessibles → ensure_way_out, map_cleanup,
+ * !corrmaze → wallification, allow_flips → flip_level_rnd,
+ * count_level_features, solidify → solidify_map, fixup_special,
+ * premapped → premap_detect) finalizes; `give_up` frees + NULLs the coder
+ * (`:6497–6499`) and the boolean reports success.
+ * Split in JS: nhlua `load_lua` file IO has no scored analogue (by-design —
+ * Constitution §7; Rule #2 forbids runtime disk reads), so the Lua half is
+ * the `load_special_proto_body` dispatch to the per-level JS ports, each of
+ * which runs its own .lua's epilogue steps inline (the shared whole-epilogue
+ * form is `lspo_finalize_level`, C `:6014–6064`). Entry/exit + dispatch live
+ * in `load_special_proto` below, reused here. Callers pass the name with
+ * LEV_EXT (mkmaze.c `:1186`, wiz_load_splua `:384–386`); the stem dispatches.
+ * Named omissions: `load_lua` bare-file IO; wizcmds.c `:389`
+ * `wiz_load_splua` caller (unported wizard-debug — no JS site).
+ */
+export async function load_special(name) {
+    let stem = String(name ?? '');
+    if (stem.toLowerCase().endsWith('.lua')) stem = stem.slice(0, -4); // C LEV_EXT on entry, stem dispatch
+    return load_special_proto(stem);
 }
 
 /**
@@ -18696,6 +18722,140 @@ function set_door_orientation(x, y) {
 }
 
 /**
+ * C ref: sp_lev.c sel_set_door `:4647–4662` — point door setter in C order:
+ * typ write (`:4653–4654`, SDOOR iff D_SECRET), D_SECRET strip + D_CLOSED
+ * promotion (`:4655–4658`), set_door_orientation (`:4659`), doormask
+ * (`:4660`), SpLev_Map mark (`:4661`).
+ * C is staticfn taking `(genericptr_t) &typ`; JS takes the int. The caller
+ * guarantees isok (lspo_door checks, like C's committed-out iterate path);
+ * the loc guard is the JS null-map equivalent of C's direct levl index.
+ * The 58 coord-form des.door closures (D-2695/D-2697) predate this home and
+ * keep their inlined typ/orientation/doormask — established split, not
+ * rewired here.
+ */
+function sel_set_door(x, y, typ) {
+    const loc = game.level.at(x, y); // C levl[x][y]
+    if (!loc) return; // isok is the caller's contract
+    if (!IS_DOOR(loc.typ) && loc.typ !== SDOOR) // C :4653
+        loc.typ = (typ & D_SECRET) ? SDOOR : DOOR; // C :4654
+    if (typ & D_SECRET) { // C :4655
+        typ &= ~D_SECRET; // C :4656
+        if (typ < D_CLOSED) typ = D_CLOSED; // C :4657-4658
+    }
+    set_door_orientation(x, y); // C :4659
+    loc.doormask = typ; // C :4660
+    if (game.SpLev_Map) game.SpLev_Map.add(`${x},${y}`); // C :4661 SpLev_Map[x][y] = 1
+}
+
+/**
+ * C ref: sp_lev.c lspo_door `:4671–4734` — des.door entry in C order.
+ * JS takes unpacked args like lspo_gold: (state, x, y) triple or (opts?)
+ * table form (state/x/y/coord/wall/pos fields); anything else throws like
+ * the C param check. create_des_coder runs on both arms (`:4686`); the
+ * triple arm reads state/x/y positionally (`:4688–4691`, luaL_checkoption /
+ * luaL_checkinteger stand-ins), the table arm reads x/y-or-coord plus the
+ * state option (`:4693–4700`). msk -1 rolls rnddoor (`:4702`); x=y=-1 takes
+ * the wall form via create_door (`:4704–4721`, mask stays msk so -1 still
+ * rolls inside create_door), else the coord arm resolves, isok-gates
+ * (`:4724–4729`, nhl_error throw — C NOTREACHED) and calls sel_set_door
+ * (`:4730`). The commented-out selection_iterate (`:4723`) is C's own.
+ * Named omissions: lcheck_param_table (by-design nhlua); des dispatch
+ * (nhl_functions[] Lua table — no scored analogue until the Lua VM,
+ * Constitution §7); exported for that caller.
+ */
+export function lspo_door(a, b, c) {
+    const doorstates = ['random', 'open', 'closed', 'locked', 'nodoor', 'broken', 'secret']; // C :4674-4677
+    const doorstates2i = [-1, D_ISOPEN, D_CLOSED, D_LOCKED, D_NODOOR, D_BROKEN, D_SECRET]; // C :4678-4680
+    const walldirs = ['all', 'random', 'north', 'west', 'east', 'south']; // C :4706-4708
+    const walldirs2i = [W_ANY, W_ANY, W_NORTH, W_WEST, W_EAST, W_SOUTH]; // C :4711-4713
+    const argc = arguments.length;
+    create_des_coder(); // C :4686
+    let msk, x, y, o;
+    if (argc === 3) { // C :4688-4691
+        o = null;
+        msk = doorstates2i[splev_opt_index(a, 'random', doorstates)]; // C :4689 luaL_checkoption
+        x = luaL_checkinteger_unpacked(b); // C :4690
+        y = luaL_checkinteger_unpacked(c); // C :4691
+    } else if (argc === 0 || (argc === 1 && (a == null || typeof a === 'object'))) { // C :4693-4700 table form
+        o = a ?? {}; // C :4695 lcheck_param_table
+        const xy = get_table_xy_or_coord(o); // C :4697
+        x = xy.x;
+        y = xy.y;
+        msk = doorstates2i[splev_opt_index(o.state, 'random', doorstates)]; // C :4698-4699
+    } else {
+        nhl_error('lspo_door: Wrong parameters'); // C param-table failure
+    }
+    const typ = (msk === -1) ? rnddoor() : msk; // C :4702
+    if (x === -1 && y === -1) { // C :4704 wall form
+        const tmpd = {
+            secret: (typ === D_SECRET) ? 1 : 0, // C :4715
+            mask: msk, // C :4716 (unresolved — create_door rolls -1 itself)
+            pos: splev_opt_int(o?.pos, -1), // C :4717 (3-arg form reads defaults, like C's field read)
+            wall: walldirs2i[splev_opt_index(o?.wall, 'all', walldirs)], // C :4718
+        };
+        create_door(tmpd, game.gc?.coder?.croom ?? null); // C :4720
+    } else {
+        /* C :4723 selection_iterate — commented out in C, no JS. */
+        const pos = get_location_coord(ANY_LOC, game.gc?.coder?.croom ?? null, x, y); // C :4724-4725
+        x = pos.x;
+        y = pos.y;
+        if (!isok(x, y)) nhl_error('door coord not ok'); // C :4726-4729
+        sel_set_door(x, y, typ); // C :4730
+    }
+    return 0; // C :4732
+}
+
+/**
+ * C ref: sp_lev.c lspo_wallify `:5965–5989` — des.wallify entry in C order.
+ * Table form only with one table arg (`:5978` lua_gettop == 1); the bare
+ * call wallifies the level region. gx/gy bounds ≡ game.splev_* (C
+ * reset_xystart_size ↔ JS reset_xystart_size). get_table_int is
+ * required-key (throws when missing, via luaL_checkinteger_unpacked),
+ * unlike the _opt helpers. C's TODOs (clamp, two-table coords) are C's
+ * own — not implemented here.
+ * Named omissions: des dispatch (nhl_functions[] — no scored analogue until
+ * the Lua VM, Constitution §7); exported for that caller.
+ */
+export function lspo_wallify(o) {
+    let dx1 = -1, dy1 = -1, dx2 = -1, dy2 = -1; // C :5969
+    create_des_coder(); // C :5976
+    if (arguments.length === 1 && o != null && typeof o === 'object') { // C :5978
+        dx1 = luaL_checkinteger_unpacked(o.x1); // C :5979 get_table_int
+        dy1 = luaL_checkinteger_unpacked(o.y1); // C :5980
+        dx2 = luaL_checkinteger_unpacked(o.x2); // C :5981
+        dy2 = luaL_checkinteger_unpacked(o.y2); // C :5982
+    }
+    wallify_map( // C :5984-5987
+        dx1 < 0 ? ((game.splev_xstart | 0) - 1) : dx1,
+        dy1 < 0 ? ((game.splev_ystart | 0) - 1) : dy1,
+        dx2 < 0 ? ((game.splev_xstart | 0) + (game.splev_xsize | 0) + 1) : dx2,
+        dy2 < 0 ? ((game.splev_ystart | 0) + (game.splev_ysize | 0) + 1) : dy2,
+    );
+    return 0; // C :5988
+}
+
+/**
+ * C ref: sp_lev.c lspo_mineralize `:3939–3955` — des.mineralize entry in C
+ * order: create_des_coder (`:3944`), -1-defaulted prob reads (`:3946–3951`,
+ * splev_opt_int ≡ get_table_int_opt), then the live mineralize
+ * (`:3953`). -1 keeps mineralize's default behavior (C's own comment).
+ * mineralize itself is untouched (phase-2 park — callee only).
+ * Named omissions: lcheck_param_table (by-design nhlua); des dispatch
+ * (nhl_functions[] — no scored analogue until the Lua VM, Constitution
+ * §7); exported for that caller.
+ */
+export function lspo_mineralize(o) {
+    create_des_coder(); // C :3944
+    const t = o ?? {}; // C :3946 lcheck_param_table
+    const gem_prob = splev_opt_int(t.gem_prob, -1); // C :3948
+    const gold_prob = splev_opt_int(t.gold_prob, -1); // C :3949
+    const kelp_moat = splev_opt_int(t.kelp_moat, -1); // C :3950
+    const kelp_pool = splev_opt_int(t.kelp_pool, -1); // C :3951
+    mineralize(kelp_pool, kelp_moat, gold_prob, gem_prob, true); // C :3953
+    return 0; // C :3954
+}
+
+/**
  * C ref: sp_lev.c shared_with_room — door cell adjacent to room interior.
  */
 function shared_with_room(x, y, droom) {
@@ -28113,6 +28273,39 @@ function mk_knox_portal(x, y) {
     place_branch(br, x, y);
 }
 
+// C ref: hack.h:427-431 enum lua_theme_group — free_luathemes selector.
+export const all_themes = 1; // for end of game
+export const most_themes = 2; // for entering endgame
+export const tut_themes = 3; // for leaving tutorial
+
+/**
+ * C ref: mklev.c:344-364 free_luathemes(theme_group) — whole-body port in
+ * C order. `gl.luathemes[i]` is `game._luathemes_loaded[i]` (truthy once
+ * makelevel_ordinary/makerooms has loaded that branch; the lua state
+ * itself is compiled in). tut_themes frees the tutorial branch only,
+ * most_themes frees every branch but astral, all_themes frees all.
+ */
+export function free_luathemes(theme_group) {
+    const g = game;
+    // C :348-353 — which group(s) to release.
+    const tut_dnum = g.tutorial_dnum | 0;
+    const astral_dnum = g.astral_level ? (g.astral_level.dnum | 0) : -1;
+    const loaded = g._luathemes_loaded;
+    if (!loaded) return; // no branch ever loaded: every slot is NULL
+    for (let i = 0, n = g.n_dgns | 0; i < n; ++i) {
+        // C :356-358.
+        if ((theme_group === tut_themes && i !== tut_dnum)
+            || (theme_group === most_themes && i === astral_dnum))
+            continue;
+        // C :359-362 — nhl_done(lua_State) then slot = NULL. nhl_done is a
+        // by-design omit (nhlua.c has no scored analogue); releasing the
+        // branch marker is the whole free step.
+        if (loaded[i]) {
+            delete loaded[i];
+        }
+    }
+}
+
 // C ref: mklev.c:366-436 makerooms() — whole-body port in C order.
 // C :373 gl.luathemes[dnum] ⇔ g._luathemes_loaded[dnum] (marked once per
 // branch by makelevel_ordinary above); the lua state itself is compiled
@@ -28863,12 +29056,9 @@ function selection_rndcoord(sel, removeit) {
     return null;
 }
 
-// C ref: mkobj.c unbless — clear blessed only
-function unbless(otmp) {
-    if (otmp) otmp.blessed = false;
-}
-
 // C ref: sp_lev.c create_object — id/class + not-blessed (curse_state 6) at abs coord
+// unbless is the canonical mkobj.js export (C mkobj.c:1766–1780, full body:
+// luck/bag/light arms); the former file-local clone cleared blessed only.
 function create_object_themed(opts, x, y) {
     let otmp = null;
     const named = false;

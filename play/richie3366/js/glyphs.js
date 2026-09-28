@@ -20,7 +20,7 @@
  */
 
 import {
-    MAX_GLYPH, MAXPCHARS, S_sw_tl, altar_other,
+    MAX_GLYPH, MAXPCHARS, altar_other,
     GLYPH_CMAP_OFF, GLYPH_CMAP_MAIN_OFF, GLYPH_CMAP_MINES_OFF,
     GLYPH_CMAP_GEH_OFF, GLYPH_CMAP_KNOX_OFF, GLYPH_CMAP_SOKO_OFF,
     GLYPH_CMAP_A_OFF, GLYPH_ALTAR_OFF, GLYPH_CMAP_B_OFF, GLYPH_ZAP_OFF,
@@ -50,6 +50,7 @@ import {
 import {
     S_stone, S_vwall, S_ndoor, S_altar, S_grave, S_digbeam, S_vbeam,
     S_goodpos, S_expl_tl, S_expl_br,
+    H_UTF8, NH_BASIC_COLOR,
 } from './const.js';
 import { monsterNames, mlets, NUMMONS } from './generated/monsters_data.js';
 import {
@@ -57,7 +58,12 @@ import {
 } from './generated/objects_data.js';
 import { dupstr } from './dungeon.js';
 import { game } from './gstate.js';
-import { NO_COLOR } from './terminal.js';
+import { NO_COLOR, CLR_BLACK } from './terminal.js';
+import { config_error_add } from './botl.js';
+import { unicodeval_to_utf8str } from './hacklib.js';
+import {
+    rgbstr_to_int32, set_map_u, set_map_customcolor, unicode_val,
+} from './options.js';
 import {
     LOADSYMS, SYM_MON, SYM_OC, SYM_PCHAR,
 } from './generated/glyphsyms_data.js';
@@ -68,8 +74,9 @@ const QBUFSZ = 128;
 const RES_NOTHING = 0, RES_DUMP_GLYPHIDS = 1, RES_FILL_CACHE = 2;
 /* C glyphs.c:15 — `enum things_to_find`. */
 const FIND_NOTHING = 0, FIND_PM = 1, FIND_OC = 2, FIND_CMAP = 3, FIND_GLYPH = 4;
-/* C defsym.h — 8 swallow cells S_sw_tl..S_sw_br (cf. display.js S_sw_tl). */
-const S_sw_br = S_sw_tl + 7;
+/* C defsym.h — 8 swallow cells S_sw_tl..S_sw_br. Read at call time, not
+   here: this module joins the import cycle via options.js, so its
+   top level must not read display.js bindings (TDZ). */
 
 /* C objects.h otyp ids (apply.js:239 / mklev.js:303 indexOf idiom). */
 const SCR_STINKING_CLOUD = objectNames.indexOf('SCR_STINKING_CLOUD');
@@ -460,7 +467,8 @@ export function parse_id(id, findwhat) {
                     } else if (glyph_is_swallow(glyph)) {
                         const j = glyph - GLYPH_SWALLOW_OFF;
                         cmap = glyph_to_swallow(glyph);
-                        const mnum = Math.trunc(j / ((S_sw_br - S_sw_tl) + 1));
+                        /* (S_sw_br - S_sw_tl) + 1 = 8 swallow cells (defsym.h). */
+                        const mnum = Math.trunc(j / 8);
                         b3 = 'swallow ' + monsterNames[mnum].slice(3)
                             + ' ' + PARSE_SWALLOW_TEXTS[cmap];
                         skip_base = true;
@@ -602,6 +610,129 @@ export function glyph_find_core(id, findwhat) {
     return 0;
 }
 
+/* C sym.h:132–136 — `enum do_customizations` (bitmask over the
+   apply_customizations arms). */
+const DO_CUSTOM_NONE = 0, DO_CUSTOM_COLORS = 1, DO_CUSTOM_SYMBOLS = 2;
+/* C glyphs.c:35 — `static const long nonzero_black` (CLR_BLACK is 0, so
+   this is NH_BASIC_COLOR: the "valid color 0" marker bit). */
+const NONZERO_BLACK = CLR_BLACK | NH_BASIC_COLOR;
+/* C glyphs.c:33 — `static struct find_struct to_custom_symbol_find`
+   (BSS-zero; reset from zero_find on every glyphrep call). */
+let toCustomSymbolFind = zero_find();
+/* C glyphs.c:84/97 — function-static config-error nags. */
+let glyphNag = 0, colorNag = 0;
+
+/**
+ * C glyphs.c to_custom_symset_entry_callback `:53–104` (staticfn) —
+ * glyph_find_core callback for customization writes: record the glyph
+ * number through extraval, then file the U+ entry (unicode_val +
+ * unicodeval_to_utf8str gate) and/or the color entry under the current
+ * symset name. The ENHANCED_SYMBOLS unicode arm is live (config.h:368).
+ * `String.fromCodePoint(uval)` is the character the accepted utf8 bytes
+ * encode (the encoder rejects surrogates and >U+10FFFF, so it cannot
+ * throw); urep utf8str is write-only in JS (shuffle_customizations
+ * round-trips it as a string via dupstr). Module-local like C.
+ */
+function to_custom_symset_entry_callback(glyph, findwhat) {
+    const idx = game.gs?.symset_which_set | 0; // C :57 (BSS 0; no JS writers yet)
+    const utf8str = [0, 0, 0, 0, 0, 0]; // C :59 uint8[6] = {0}
+    let uval = 0; // C :60
+    if (findwhat.extraval) // C :63–64
+        findwhat.extraval.v = glyph | 0;
+    /* C :66 assert(idx range) — elided (BSS-range by construction). */
+    if (findwhat.unicode_val) // C :68
+        uval = unicode_val(findwhat.unicode_val); // C :69
+    if (uval && unicodeval_to_utf8str(uval, utf8str, utf8str.length)) { // C :70
+        /* C :71–79 symset-context guard (FIXME preserved in the nag arm). */
+        const symName = game.gs?.symset?.[idx]?.name ?? null;
+        if (symName) { // C :80
+            add_custom_urep_entry(symName, glyph, uval, // C :81–82
+                String.fromCodePoint(uval), game.gs?.symset_which_set | 0);
+        } else {
+            if (!glyphNag++) // C :84–86 static nag
+                config_error_add('Unimplemented customization feature,' // C :87–88
+                    + ' ignoring for now');
+        }
+    }
+    if (findwhat.color !== 0) { // C :92
+        const symName = game.gs?.symset?.[idx]?.name ?? null;
+        if (symName) { // C :93
+            add_custom_nhcolor_entry(symName, glyph, // C :94–95
+                findwhat.color, game.gs?.symset_which_set | 0);
+        } else {
+            if (!colorNag++) // C :97–99 static nag
+                config_error_add('Unimplemented customization feature,' // C :100–101
+                    + ' ignoring for now');
+        }
+    }
+}
+
+/**
+ * C glyphs.c glyphrep_to_custom_map_entries `:112–181` (global;
+ * extern.h:1160) — parse one `glyphid[:U+xxxx][/rrr-ggg-bbb]` spec into
+ * the shared to_custom_symbol_find record and run glyph_find_core over
+ * it (matches land via to_custom_symset_entry_callback above).
+ * The `:`/`/` cuts land after the LAST separator of each kind, and each
+ * value runs to the next cut of either kind (the C `:129–149` pointer
+ * trace); a lone leading space is skipped once for the id and color, all
+ * spaces for the codepoint, and an emptied codepoint is dropped
+ * (`:150–161`). Color 0 keeps a nonzero_black marker bit so "set" differs
+ * from "unset" (`:165–173`). `glyphptr` is a `{ v }` out-box (the
+ * closest_color/options.js precedent) or null — the live parsesymbols
+ * `:837` caller (options.js) passes none because C never reads `glyph`
+ * after. Other C callers: glyphrep `:477`, optfn_glyph options.c:1836,
+ * parse_sym_line symbols.c:641/648 (all unported — map-named).
+ * The `:122–124` no-cache `reslt = 1` is dead (overwritten by the
+ * glyph_find_core return below); parse_id's no-cache arm still applies.
+ */
+export function glyphrep_to_custom_map_entries(op, glyphptr) {
+    toCustomSymbolFind = zero_find(); // C :116
+    const raw = String(op ?? ''); // C :126 Snprintf(buf, "%s", op)
+    const nz = raw.indexOf('\0');
+    const buf = nz < 0 ? raw : raw.slice(0, nz);
+    let rgb = 0; // C :119 long
+    /* C :129–149 colon/slash scan with NUL cuts. */
+    const cuts = [];
+    for (let i = 0; i < buf.length; i++) {
+        if (buf[i] === ':' || buf[i] === '/') cuts.push(i); // C :130–139
+    }
+    const firstCut = cuts.length ? cuts[0] : buf.length;
+    let cGlyphid = buf.slice(0, firstCut); // C :128 c_glyphid
+    let cUnicode = null, cColorval = null; // C :127
+    const lastColon = buf.lastIndexOf(':'); // C :141–144 (last ':' wins)
+    if (lastColon >= 0) {
+        let end = buf.length;
+        for (const c of cuts) { if (c > lastColon) { end = c; break; } }
+        cUnicode = buf.slice(lastColon + 1, end);
+    }
+    const lastSlash = buf.lastIndexOf('/'); // C :145–148 (last '/' wins)
+    if (lastSlash >= 0) {
+        let end = buf.length;
+        for (const c of cuts) { if (c > lastSlash) { end = c; break; } }
+        cColorval = buf.slice(lastSlash + 1, end);
+    }
+    /* C :150–161 sanity checks. */
+    if (cGlyphid.startsWith(' ')) cGlyphid = cGlyphid.slice(1); // C :151–152
+    if (cColorval !== null && cColorval.startsWith(' ')) // C :153–154
+        cColorval = cColorval.slice(1);
+    if (cUnicode !== null) { // C :155–159
+        while (cUnicode.startsWith(' ')) cUnicode = cUnicode.slice(1);
+    }
+    if (cUnicode !== null && cUnicode.length === 0) cUnicode = null; // C :160–161
+    if ((cColorval !== null && (rgb = rgbstr_to_int32(cColorval)) !== -1) // C :163
+        || cColorval === null) { // C :164
+        /* C :165–170 nonzero_black marker for valid color 0. */
+        toCustomSymbolFind.color = (rgb === -1 || cColorval === null) ? 0 // C :171–173
+            : (rgb === 0) ? NONZERO_BLACK
+            : rgb;
+    }
+    if (cUnicode !== null) // C :175
+        toCustomSymbolFind.unicode_val = cUnicode; // C :176
+    toCustomSymbolFind.extraval = glyphptr ?? null; // C :177 int* (box or null)
+    toCustomSymbolFind.callback = to_custom_symset_entry_callback; // C :178
+    return glyph_find_core(cGlyphid, toCustomSymbolFind); // C :179–180
+}
+
 /**
  * C glyphs.c fill_glyphid_cache `:303–319` (global) — build the cache by
  * running parse_id in fill mode (options.c:4227/7155, symbols.c:1073,
@@ -683,7 +814,7 @@ export function find_matching_customization(customization_name, custtype, which_
  * existing detail for glyphidx, else append a new detail. Returns 1.
  * `dupstr` ≡ String assignment (JS strings are immutable); `alloc` ≡ object
  * literal (JS GC frees, cf. free_glyphid_cache above). Sole C caller is the
- * unported to_custom_symset_entry_callback (glyphs.c:94, map-named).
+ * live to_custom_symset_entry_callback above (glyphs.c:94).
  */
 export function add_custom_nhcolor_entry(customization_name, glyphidx, nhcolor, which_set) {
     const gdc = sym_customizations[which_set | 0][CUSTOM_NHCOLOR];
@@ -724,6 +855,123 @@ export function add_custom_nhcolor_entry(customization_name, glyphidx, nhcolor, 
     gdc.details_end = newdetails;
     gdc.count++;
     return 1;
+}
+
+/**
+ * C utf8map.c add_custom_urep_entry `:148–207` (#ifdef ENHANCED_SYMBOLS,
+ * live; extern.h) — record a unicode-rep customization for one glyph of
+ * one symset: refresh the existing detail for glyphidx (clearing the old
+ * utf8str, then setting or clearing the pair on utf32ch, `:170–181`),
+ * else append a new detail (`:186–206`). Mirrors add_custom_nhcolor_entry
+ * above (same grid, same FIXME on the find_matching call, `:166–167`).
+ * `utf8str` is the JS string for the bytes (dupstr ≡ String assignment,
+ * immutable strings). Sole C caller is the live
+ * to_custom_symset_entry_callback above (glyphs.c:81).
+ */
+export function add_custom_urep_entry(customization_name, glyphidx, utf32ch, utf8str, which_set) {
+    const gdc = sym_customizations[which_set | 0][CUSTOM_UREPS]; // C :155–156
+    const glyph = glyphidx | 0; // C :150 int
+    const uch = (utf32ch ?? 0) >>> 0; // C :151 uint32
+    let details, newdetails = null; // C :157 (= 0)
+
+    if (!gdc.details) { // C :160
+        gdc.customization_name = String(customization_name); // C :161 dupstr
+        gdc.custtype = CUSTOM_UREPS; // C :162
+        gdc.details = null; // C :163–164
+        gdc.details_end = null;
+    }
+    details = find_matching_customization( // C :166–167 (FIXME kept)
+        customization_name, CUSTOM_UREPS, which_set);
+    if (details) { // C :168
+        while (details) { // C :169
+            if (details.content.urep.glyphidx === glyph) { // C :170
+                if (details.content.urep.u.utf8str) // C :171–172 free
+                    details.content.urep.u.utf8str = null;
+                if (uch) { // C :173
+                    details.content.urep.u.utf8str = // C :174–175 dupstr
+                        dupstr(utf8str);
+                    details.content.urep.u.utf32ch = uch; // C :176
+                } else { // C :177
+                    details.content.urep.u.utf8str = null; // C :178
+                    details.content.urep.u.utf32ch = 0; // C :179
+                }
+                return 1; // C :181
+            }
+            details = details.next; // C :183
+        }
+    }
+    /* create new details entry */ // C :186
+    newdetails = { // C :187–188 alloc
+        content: {
+            urep: {
+                glyphidx: glyph, // C :189
+                u: {
+                    utf8str: (utf8str && String(utf8str).length) // C :190–196
+                        ? dupstr(utf8str) : null,
+                    utf32ch: uch, // C :197
+                },
+            },
+        },
+        next: null, // C :198
+    };
+    if (gdc.details === null) { // C :199
+        gdc.details = newdetails; // C :200
+    } else { // C :201
+        gdc.details_end.next = newdetails; // C :202
+    }
+    gdc.details_end = newdetails; // C :204
+    gdc.count++; // C :205
+    return 1; // C :206
+}
+
+/**
+ * C glyphs.c apply_customizations `:531–574` (global; extern.h:1181) —
+ * stamp one set's customization details onto the glyphmap array (not the
+ * symset entries, `:547–548`): urep details via set_map_u under the
+ * H_UTF8 handling gate (`:552–560`, ENHANCED_SYMBOLS live), nhcolor
+ * details via set_map_customcolor (`:562–568`). Any surviving cell sets
+ * iflags.pending_customizations for maybe_shuffle_customizations above.
+ * C callers: reset_customcolors `:1182`, initoptions_finish
+ * options.c:7379, load_symset symbols.c:683, do_symset symbols.c:1095,
+ * reset_customsymbols utf8map.c:215 (all unported — map-named).
+ */
+export function apply_customizations(which_set, docustomize) {
+    const set = which_set | 0; // C :532 enum graphics_sets
+    const cust = docustomize | 0; // C :533 enum do_customizations
+    let atLeastOne = false; // C :538
+    const doColors = (cust & DO_CUSTOM_COLORS) !== 0; // C :539
+    const doSymbols = (cust & DO_CUSTOM_SYMBOLS) !== 0; // C :540
+    const iflags = game.iflags || (game.iflags = {}); // C iflags (BSS-true reads below)
+    const gm = ensure_glyphmap(); // C glyphmap[MAX_GLYPH]
+
+    for (let custs = 0; custs < CUSTOM_COUNT; ++custs) { // C :543 custom_count
+        const sc = sym_customizations[set][custs]; // C :544
+        if (sc.count !== 0 && sc.details !== null) { // C :545
+            atLeastOne = true; // C :546
+            /* C :547–548 glyphmap array, not symset entries. */
+            let details = sc.details; // C :549
+            while (details) { // C :550
+                if (iflags.customsymbols && doSymbols) { // C :552
+                    if (sc.custtype === CUSTOM_UREPS) { // C :553
+                        const gmap = gm[details.content.urep.glyphidx]; // C :554
+                        if (game.gs?.symset?.[set]?.handling === H_UTF8) // C :555
+                            set_map_u(gmap, // C :556–558 (void)
+                                details.content.urep.u.utf32ch,
+                                details.content.urep.u.utf8str);
+                    }
+                }
+                if (iflags.customcolors && doColors) { // C :562
+                    if (sc.custtype === CUSTOM_NHCOLOR) { // C :563
+                        const gmap = gm[details.content.ccolor.glyphidx]; // C :564
+                        set_map_customcolor(gmap, // C :565–566 (void)
+                            details.content.ccolor.nhcolor);
+                    }
+                }
+                details = details.next; // C :569
+            }
+        }
+    }
+    iflags.pending_customizations = atLeastOne; // C :573
 }
 
 /**

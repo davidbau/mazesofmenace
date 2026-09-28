@@ -4835,9 +4835,9 @@ export function unset_seenv(lev, x0, y0, x1, y1) {
 
 /**
  * C engrave.c engr_can_be_felt `:296–315` — ENGRAVE/HEADSTONE/BURN only.
- * Local: engrave.js imports newsym from this module.
+ * Exported for engrave.js feel_engraving (lazy read; no top-level TDZ).
  */
-function engr_can_be_felt(ep) {
+export function engr_can_be_felt(ep) {
     if (!ep) return false;
     const t = ep.engr_type | 0;
     return t === ENGRAVE || t === HEADSTONE || t === BURN;

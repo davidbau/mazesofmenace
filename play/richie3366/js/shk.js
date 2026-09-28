@@ -95,7 +95,7 @@ import { se_mutter_imprecations, se_mutter_incantation } from './generated/seffe
 import { Hello } from './roles.js';
 import { shtypes, shkname, Shknam, saleable, is_izchak } from './shknam.js';
 import {
-    splitobj, next_ident, obj_extract_self, objects_at, place_object, sobj_at,
+    splitobj, next_ident, nextoid, obj_extract_self, objects_at, place_object, sobj_at,
     mksobj, weight, newomid, free_omid, copy_oextra, obj_stop_timers,
     dealloc_obj,
 } from './mkobj.js';
@@ -1089,8 +1089,8 @@ function sgn(n) {
     return n > 0 ? 1 : n < 0 ? -1 : 0;
 }
 
-/** C shk.c oid_price_adjustment — no RNG. */
-function oid_price_adjustment(obj, oid) {
+/** C shk.c oid_price_adjustment `:2863–2875` — no RNG. */
+export function oid_price_adjustment(obj, oid) {
     const otyp = obj?.otyp | 0;
     const oc = objects()?.[otyp];
     if ((obj?.dknown && oc?.oc_name_known)
@@ -1289,9 +1289,9 @@ function carried_shop(obj) {
 }
 
 /**
- * C ref: mkobj.c bill_dummy_object — charge for fully used unpaid item.
- * Dummy lands on billobjs via add_one_tobill (D-1714). Named: nextoid
- * price-matched oid (uses next_ident).
+ * C ref: mkobj.c bill_dummy_object `:711–738` — charge for fully used unpaid
+ * item. Dummy lands on billobjs via add_one_tobill (D-1714).
+ * o_id via nextoid `:725` (price-matched; one rnd(2) through next_ident).
  */
 export async function bill_dummy_object(otmp) {
     if (!otmp) return;
@@ -1307,7 +1307,7 @@ export async function bill_dummy_object(otmp) {
     const dummy = { ...otmp };
     dummy.oextra = null;
     dummy.where = OBJ_FREE;
-    dummy.o_id = next_ident();
+    dummy.o_id = nextoid(otmp, dummy);
     dummy.timed = 0;
     copy_oextra(dummy, otmp);
     if (has_omid(dummy)) free_omid(dummy); // only one association with m_id

@@ -72,14 +72,15 @@ export function visctrl(c) {
     return out;
 }
 
-/** C ref: cmd.c key2txt */
+/** C ref: cmd.c key2txt `:3225–3240` — short label for one-byte key. */
 export function key2txt(c) {
     c = c & 0xff;
-    if (c === 32) return '<space>';
-    if (c === 27) return '<esc>';
-    if (c === 10 || c === 13) return '<enter>';
-    if (c === 127) return '<del>';
-    return visctrl(c);
+    if (c === 32) return '<space>'; // C `:3229` ' '
+    if (c === 27) return '<esc>'; // C `:3231` '\033'
+    // C `:3233` maps '\n' only; '\r' falls through to visctrl ("^M", C `:3237`).
+    if (c === 10) return '<enter>';
+    if (c === 127) return '<del>'; // C `:3235` '\177'
+    return visctrl(c); // C `:3237` visctrl((char) c)
 }
 
 export const MISC_KEYS = [

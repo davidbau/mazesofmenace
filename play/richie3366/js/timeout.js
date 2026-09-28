@@ -49,7 +49,7 @@ import { hurtle } from './dothrow.js';
 import { make_confused, make_deaf, make_hallucinated, make_sick, make_slimed, make_stoned, make_stunned, make_vomiting, set_itimeout } from './potion.js';
 import { make_blinded } from './do.js';
 import { Fumbling, Fast, Very_fast, acurr, adjattrib, exercise, stone_luck, A_STR, A_DEX, A_CON } from './attrib.js';
-import { pline, You, You_feel, You_see, newsym, canseemon, verbalize, Norep, see_monsters, impossible, urgent_pline, Hallucination } from './display.js';
+import { pline, You, Your, You_feel, You_see, newsym, canseemon, verbalize, Norep, see_monsters, impossible, urgent_pline, Hallucination } from './display.js';
 import { inv_weight, update_inventory, useup, useupall } from './invent.js';
 import { doname, makeplural, xname, an, The, the, vtense } from './objnam.js';
 import { rn2, rnd, rn1, d } from './rng.js';
@@ -75,7 +75,7 @@ import { new_light_source, del_light_source, emits_light } from './light.js';
 import { cansee } from './vision.js';
 import { is_art } from './artifact.js';
 import { ART_SUNSWORD } from './generated/artifacts_data.js';
-import { Monnam, x_monnam, hcolor, rndmonnam, hliquid, type_is_pname, pmname } from './do_name.js';
+import { Monnam, s_suffix, x_monnam, hcolor, rndmonnam, hliquid, type_is_pname, pmname } from './do_name.js';
 import { find_ac } from './u_init.js';
 import { any_visible_region, visible_region_summary, region_danger } from './region.js';
 import { done, find_delayed_killer, dealloc_killer } from './end.js';
@@ -1862,6 +1862,44 @@ export function obj_merge_light_sources(src, dest) {
 }
 
 /**
+ * C ref: timeout.c see_lamp_flicker `:1345–1357` — flicker message with
+ * tailer for oil lamps at fuel milestones. Only called if seen (C comment;
+ * the canseeit gate lives in burn_object). C staticfn → file-local.
+ */
+async function see_lamp_flicker(obj, tailer) {
+    switch (obj.where) {
+    case OBJ_INVENT:
+    case OBJ_MINVENT:
+        await pline('%s flickers%s.', Yname2(obj), tailer);
+        break;
+    case OBJ_FLOOR:
+        await You_see('%s flicker%s.', an(xname(obj)), tailer);
+        break;
+    }
+}
+
+/**
+ * C ref: timeout.c lantern_message `:1360–1376` — dimming message for brass
+ * lanterns (from adventure). Only called if seen; the canseeit gate lives
+ * in burn_object. C staticfn → file-local.
+ */
+async function lantern_message(obj) {
+    switch (obj.where) {
+    case OBJ_INVENT:
+        await Your('lantern is getting dim.');
+        if (Hallucination())
+            await pline('Batteries have not been invented yet.');
+        break;
+    case OBJ_FLOOR:
+        await You_see('a lantern getting dim.');
+        break;
+    case OBJ_MINVENT:
+        await pline('%s lantern is getting dim.', s_suffix(Monnam(obj.ocarry)));
+        break;
+    }
+}
+
+/**
  * C ref: timeout.c burn_object — BURN_OBJECT timer callback.
  * Envelope: fuel milestones + burn-out useup; away-timeout catch-up.
  * Away-timeout candle/oil and age-0 candle call maybe_unhide_at
@@ -1929,37 +1967,17 @@ export async function burn_object(obj, timeout) {
         const age = obj.age | 0;
         if (age === 150 || age === 100 || age === 50) {
             if (canseeit) {
-                if ((obj.otyp | 0) === BRASS_LANTERN) {
-                    if (obj.where === OBJ_INVENT) {
-                        await pline('Your lantern is getting dim.');
-                    } else if (obj.where === OBJ_FLOOR) {
-                        await You_see('a lantern getting dim.');
-                    } else if (obj.where === OBJ_MINVENT && obj.ocarry) {
-                        await pline(
-                            `${Monnam(obj.ocarry)}'s lantern is getting dim.`,
-                        );
-                    }
-                } else {
-                    const considerably = age === 50 ? ' considerably' : '';
-                    if (obj.where === OBJ_INVENT || obj.where === OBJ_MINVENT) {
-                        await pline(
-                            `${Yname2(obj)} flickers${considerably}.`,
-                        );
-                    } else if (obj.where === OBJ_FLOOR) {
-                        await You_see(
-                            '%s flicker%s.', an(xname(obj)), considerably,
-                        );
-                    }
-                }
+                if ((obj.otyp | 0) === BRASS_LANTERN)
+                    await lantern_message(obj);
+                else
+                    await see_lamp_flicker(
+                        obj, age === 50 ? ' considerably' : '',
+                    );
             }
         } else if (age === 25) {
             if (canseeit) {
                 if ((obj.otyp | 0) === BRASS_LANTERN) {
-                    if (obj.where === OBJ_INVENT) {
-                        await pline('Your lantern is getting dim.');
-                    } else if (obj.where === OBJ_FLOOR) {
-                        await You_see('a lantern getting dim.');
-                    }
+                    await lantern_message(obj);
                 } else if (obj.where === OBJ_INVENT
                     || obj.where === OBJ_MINVENT) {
                     await pline(`${Yname2(obj)} seems about to go out.`);

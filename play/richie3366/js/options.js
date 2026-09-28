@@ -113,6 +113,7 @@ import {
     WC2_URGENT_MESG,
     WC2_SUPPRESS_HIST,
     WC2_EXTRASTATUS,
+    STONE,
     MSGTYP_NORMAL,
     MSGTYP_NOREP,
     MSGTYP_NOSHOW,
@@ -131,6 +132,7 @@ import {
     HL_INVERSE,
     BUFSZ,
     CLR_MAX,
+    NH_BASIC_COLOR,
     QBUFSZ,
     PARANOID_CONFIRM,
     PARANOID_QUIT,
@@ -189,6 +191,9 @@ import {
 } from './objects.js';
 import { EXTCMDLIST, INTERNALCMD } from './generated/extcmdlist_data.js';
 import { LOADSYMS, SYM_CONTROL } from './generated/glyphsyms_data.js';
+import { COLORTABLE } from './generated/colortable_data.js';
+import { dupstr } from './dungeon.js';
+import { glyphrep_to_custom_map_entries } from './glyphs.js';
 import { yyyymmddhhmmss } from './calendar.js';
 import { getlin, mungspaces } from './getline.js';
 import { makesingular, fruit_from_name, makeplural } from './objnam.js';
@@ -200,12 +205,14 @@ import {
     config_error_add, status_initialize,
 } from './botl.js';
 import { classify_terrain } from './hack.js';
+import { vision_recalc } from './vision.js';
 import {
     get_changed_key_binds, handler_rebind_keys, count_bind_keys,
     reset_commands, update_rest_on_space,
 } from './cmd.js';
 import { cmd_from_func, cmdname_from_func, visctrl } from './dokeylist.js';
 import {
+    Is_rogue_level,
     ROLE_NONE, ROLE_RANDOM, PL_NSIZ,
     RS_ROLE, RS_RACE, RS_GENDER, RS_ALGNMNT, RS_filter,
 } from './const.js';
@@ -1055,6 +1062,16 @@ export const wc2_options = [
     { wc_name: 'windowborders', wc_bit: WC2_WINDOWBORDERS },
     { wc_name: 'wraptext', wc_bit: WC2_WRAPTEXT },
 ];
+
+/** C options.c is_wc2_option `:9952–9963` (staticfn) — name membership in
+ * wc2_options[]; support is tested separately via wc2_supported, mirroring
+ * the is_wc_option/wc_supported pair above. */
+function is_wc2_option(optnam) {
+    for (let k = 0; k < wc2_options.length; k++) {
+        if (wc2_options[k].wc_name === optnam) return true;
+    }
+    return false;
+}
 
 /** C botl.h:213 VIA_WINDOWPORT(). Message bits do not set this. */
 function via_windowport() {
@@ -4608,7 +4625,7 @@ export function color_distance(rgb1, rgb2) {
  * 256-color table, else the redmean-closest entry. Out-params use the
  * `{ v }` box convention (botl.js s_to_anything precedent); null boxes
  * mean FALSE with no write (C `:1015`). Sole C caller is
- * set_map_customcolor `:878` (unported — map-named).
+ * set_map_customcolor `:878` (live above).
  */
 export function closest_color(lcolor, closecolor, clridx) {
     const lcol = (lcolor ?? 0) >>> 0; // C uint32 lcolor
@@ -4633,6 +4650,262 @@ export function closest_color(lcolor, closecolor, clridx) {
         retbool = true; // C :1018
     }
     return retbool; // C :1020
+}
+
+/* C color.h:61 — `enum nhcolortype` (lowercase in C; unrelated to the
+   color.h:22 NO_COLOR = 8 slot carried by terminal.js). */
+const NHCOLORTYPE_NO = 0, NHCOLORTYPE_NH = 1, NHCOLORTYPE_RGB = 2;
+
+/**
+ * C ref: coloratt.c colortable_to_int32 `:237–246` — fold one colortable
+ * row (generated/colortable_data.js) into an int32: rgb rows pack r/g/b,
+ * nh rows return tableindex | NH_BASIC_COLOR, the no_color row falls
+ * through to NO_COLOR | NH_BASIC_COLOR. Sole C caller is
+ * check_enhanced_colors `:752` (live below).
+ */
+export function colortable_to_int32(cte) {
+    let clr = NO_COLOR | NH_BASIC_COLOR; // C :239
+    if (cte.colortyp === NHCOLORTYPE_RGB) { // C :241 rgb_color
+        clr = (cte.r << 16) | (cte.g << 8) | cte.b; // C :242
+    } else if (cte.colortyp === NHCOLORTYPE_NH) { // C :243 nh_color
+        clr = cte.tableindex | NH_BASIC_COLOR; // C :244
+    }
+    return clr; // C :245
+}
+
+/* C sscanf(buf, "#%02x%02x%02x%c") arm of check_enhanced_colors `:731` —
+   literal '#', then three width-2 hex conversions (%x skips whitespace
+   and takes an optional 0x prefix inside the width), then the %c junk
+   catcher. Returns the conversion count (0–4) plus r/g/b and xtra
+   ('\\0' when the string ends, as C's `char xtra = '\\0'`). */
+function scanHashRgb(s) {
+    const out = { count: 0, r: 0, g: 0, b: 0, xtra: '\0' };
+    if (s[0] !== '#') return out;
+    let p = 1;
+    const vals = [];
+    for (let k = 0; k < 3; k++) {
+        while (p < s.length && (s[p] === ' ' || s[p] === '\t' || s[p] === '\n'
+            || s[p] === '\v' || s[p] === '\f' || s[p] === '\r')) p++;
+        let w = 0, v = 0, ndig = 0;
+        if (s[p] === '0' && (s[p + 1] === 'x' || s[p + 1] === 'X') && w + 2 <= 2) {
+            p += 2; w += 2;
+        }
+        while (w < 2 && p < s.length) {
+            const h = hexdd.indexOf(s[p]);
+            if (h === -1) break;
+            v = (v * 16) + (h >> 1);
+            ndig++; w++; p++;
+        }
+        if (ndig === 0) return out;
+        vals.push(v);
+        out.count++;
+    }
+    out.r = vals[0]; out.g = vals[1]; out.b = vals[2];
+    if (p < s.length) { out.xtra = s[p]; out.count++; }
+    return out;
+}
+
+/**
+ * C ref: coloratt.c check_enhanced_colors `:723–760` — resolve a color
+ * name to int32, -1 on no match: basic name via match_str2clr (`:729`),
+ * `#rrggbb` hex triplet with trailing-junk rejection (`:731`), else a
+ * case-blind fuzzymatch over colortable (`:748–755`) with a grey→gray
+ * alias buffer (`:739–747`). C callers: rgbstr_to_int32 `:860` (live
+ * below) and wc_set_window_colors options.c:10088/10094, `:10023`
+ * (unported — map-named; only the optlist row exists in JS).
+ * C `char *buf` is never mutated below, so no copy is kept; the input is
+ * cut at the first NUL (the C string model).
+ */
+export function check_enhanced_colors(buf) {
+    const raw = String(buf ?? '');
+    const nz = raw.indexOf('\0');
+    const s = nz < 0 ? raw : raw.slice(0, nz);
+    let retcolor = -1, color; // C :727
+    if ((color = match_str2clr(s, true)) !== CLR_MAX) { // C :729
+        retcolor = color | NH_BASIC_COLOR;
+    } else {
+        const t = scanHashRgb(s); // C :731 sscanf >= 3
+        if (t.count >= 3) {
+            retcolor = !t.xtra || t.xtra === '\0'
+                ? ((t.r << 16) | (t.g << 8) | t.b) : -1; // C :732
+        } else {
+            /* C :734–738 grey→gray altbuf (fuzzymatch ignores ' -_';
+               caller splits at spaces so none arrive here). */
+            let altbuf = null; // C :739
+            const grey = strstri(s, 'grey');
+            const greyoffset = grey === null ? -1 : s.length - grey.length; // C :740
+            if (greyoffset >= 0) { // C :742
+                altbuf = s.slice(0, greyoffset) + 'gray' // C :743–746 memcpy 4
+                    + s.slice(greyoffset + 4);
+            }
+            for (color = 0; color < COLORTABLE.length; ++color) { // C :748 SIZE
+                if (fuzzymatch(s, COLORTABLE[color].name, ' -_', true) // C :749
+                    || (altbuf !== null && fuzzymatch(altbuf, // C :750–751
+                        COLORTABLE[color].name, ' -_', true))) {
+                    retcolor = colortable_to_int32(COLORTABLE[color]); // C :752
+                    break; // C :753
+                }
+            }
+            /* C :756–757 free(altbuf) — GC. */
+        }
+    }
+    return retcolor; // C :759
+}
+
+/**
+ * C ref: coloratt.c onlyhexdigits `:801–810` — every char is a hex digit
+ * (hexdd, decl.c:74 — the local const above) or '-'. Empty input is TRUE
+ * (the C loop never runs). Sole C caller is rgbstr_to_int32 `:825`
+ * (live below).
+ */
+export function onlyhexdigits(buf) {
+    const raw = String(buf ?? '');
+    const nz = raw.indexOf('\0');
+    const s = nz < 0 ? raw : raw.slice(0, nz);
+    for (let i = 0; i < s.length; ++i) { // C :805
+        if (hexdd.indexOf(s[i]) === -1 && s[i] !== '-') return false; // C :806
+    }
+    return true; // C :809
+}
+
+/**
+ * C ref: coloratt.c rgbstr_to_int32 `:813–865` — parse `rrr-ggg-bbb`
+ * decimal triples (1–3 digits per cell, `:848–856`; no 0–255 clamp in C)
+ * or fall back to check_enhanced_colors for names (`:858–863`); -1 when
+ * neither matches. The dash-cut walk (`:828–846`) records the cells after
+ * the first (c_g) and last (c_b, overwritten past the second) dashes, so
+ * `1-2-3-4` reads r=1/g=2/b=4 like C. C callers:
+ * glyphrep_to_custom_map_entries glyphs.c:163 (live in glyphs.js) and
+ * alternative_palette `:1083` (#ifdef CHANGE_COLOR, which the contest
+ * unix build does not define — dead C, no JS function).
+ */
+export function rgbstr_to_int32(rgbstr) {
+    let milestone = 0; // C :815
+    let dash = false; // C :819
+    let rgb = 0; // C :817 int32_t
+    const raw = String(rgbstr ?? ''); // C :822–823 Snprintf "%s"
+    const nz = raw.indexOf('\0');
+    const s = nz < 0 ? raw : raw.slice(0, nz);
+    if (s.length !== 0 && onlyhexdigits(s)) { // C :825
+        let cG = -1, cB = -1; // C :826 c_g/c_b cells (-1 ≡ NULL)
+        let p = 0; // C :827 cp
+        let bad = false;
+        while (p < s.length) { // C :828
+            const ch = s[p];
+            if ((ch >= '0' && ch <= '9') || ch === '-') { // C :829 digit||'-'
+                if (ch === '-') { // C :830
+                    milestone++; // C :832 (*cp='\0' cut :831 is the slice below)
+                    dash = true; // C :833
+                }
+                p++; // C :835 cp++
+                if (dash) { // C :836
+                    if (milestone < 2) cG = p; // C :837–838
+                    else cB = p; // C :839–840
+                    dash = false; // C :841
+                }
+            } else {
+                bad = true; // C :844 return -1L
+                break;
+            }
+        }
+        if (!bad) {
+            const d1 = s.indexOf('-');
+            const segR = d1 < 0 ? s : s.slice(0, d1);
+            let segG = '', segB = '';
+            if (cG >= 0) {
+                const d2 = s.indexOf('-', cG);
+                segG = d2 < 0 ? s.slice(cG) : s.slice(cG, d2);
+            }
+            if (cB >= 0) segB = s.slice(cB);
+            if (cG >= 0 && cB >= 0 // C :848 c_r/c_g/c_b non-null (c_r never is)
+                && segR.length > 0 && segR.length < 4 // C :849
+                && segG.length > 0 && segG.length < 4 // C :850
+                && segB.length > 0 && segB.length < 4) { // C :851
+                const r = parseInt(segR, 10); // C :852–854 atoi (pure digits)
+                const g = parseInt(segG, 10);
+                const b = parseInt(segB, 10);
+                rgb = (r << 16) | (g << 8) | (b << 0); // C :855
+                return rgb; // C :856
+            }
+        } else {
+            return -1; // C :844
+        }
+    } else if (s.length !== 0) { // C :858
+        /* C :859–862 enhanced name instead of an rgb triple. */
+        if ((rgb = check_enhanced_colors(s)) !== -1) {
+            return rgb;
+        }
+    }
+    return -1; // C :864
+}
+
+/**
+ * C ref: coloratt.c set_map_customcolor `:868–883` — stamp an nhcolor on
+ * a glyph_map cell and resolve its 256-color index via closest_color
+ * (out-params use the `{ v }` box convention; a miss clears the index).
+ * Sole C caller is apply_customizations glyphs.c:565 (live in glyphs.js).
+ */
+export function set_map_customcolor(gmap, nhcolor) {
+    const tmpgm = gmap ?? null; // C :870–872
+    if (!tmpgm) return 0; // C :874–875
+    gmap.customcolor = (nhcolor ?? 0) >>> 0; // C :877 uint32
+    const closecolor = { v: 0 }, clridx = { v: 0 }; // C :871–872
+    if (closest_color(gmap.customcolor, closecolor, clridx)) // C :878
+        gmap.color256idx = clridx.v & 0xffff; // C :879 uint16
+    else
+        gmap.color256idx = 0; // C :880–881
+    return 1; // C :882
+}
+
+/**
+ * C ref: utf8map.c unicode_val `:18–34` (#ifdef ENHANCED_SYMBOLS, live —
+ * config.h:368) — parse `U+NNNN` hex (up to 8 digits: the first plus
+ * dcount < 7 more, `:30`) via the hexdd pair table (`(dp - hexdd) / 2`,
+ * cf. alt_color_spec below). 0 when the prefix or first digit mismatches.
+ * C callers: to_custom_symset_entry_callback glyphs.c:69 (live in
+ * glyphs.js) and to_unicode_callback glyphs.c:1291 (unported staticfn —
+ * map-named).
+ */
+export function unicode_val(cp) {
+    const s = cp == null ? '' : String(cp); // C :20–21 dp/cval (NUL stops the walk)
+    let cval = 0; // C :21
+    if (s.length !== 0) { // C :23
+        let dcount = 0; // C :24
+        if ((s[0] === 'U' || s[0] === 'u') // C :25–26
+            && s[1] === '+' && s.length > 2 && hexdd.indexOf(s[2]) !== -1) {
+            let p = 2; // C :27 cp += 2 past 'U+'
+            for (;;) { // C :28–30 do/while
+                cval = (cval * 16) + (hexdd.indexOf(s[p]) >> 1); // C :29
+                p++; // C :30 *++cp
+                if (p >= s.length || hexdd.indexOf(s[p]) === -1) break; // C :30
+                dcount++; // C :30 ++dcount < 7
+                if (dcount >= 7) break;
+            }
+        }
+    }
+    return cval; // C :33
+}
+
+/**
+ * C ref: utf8map.c set_map_u `:37–56` (#ifdef ENHANCED_SYMBOLS, live) —
+ * attach a { utf8str, utf32ch } unicode representation to a glyph_map
+ * cell, allocating the cell record on first use; 0 on a null cell or a
+ * zero codepoint. C callers: apply_customizations glyphs.c:556 (live in
+ * glyphs.js) and to_unicode_callback glyphs.c:1294 (#ifdef
+ * NO_PARSING_SYMSET — caller unported, map-named).
+ */
+export function set_map_u(gmap, utf32ch, utf8str) {
+    const tmpgm = gmap ?? null; // C :39
+    if (!tmpgm || !utf32ch) return 0; // C :41–42
+    if (gmap.u == null) { // C :44
+        gmap.u = { utf8str: null, utf32ch: 0 }; // C :45–47 alloc + utf8str = 0
+    }
+    if (gmap.u.utf8str != null) { // C :49
+        gmap.u.utf8str = null; // C :50–51 free (GC)
+    }
+    gmap.u.utf8str = dupstr(utf8str); // C :53
+    gmap.u.utf32ch = (utf32ch ?? 0) >>> 0; // C :54
+    return 1; // C :55
 }
 
 /**
@@ -6667,18 +6940,32 @@ async function doset_compound_via_getlin(opt) {
             reslt = await handler_sortloot(); // C `:3952`
         } else if (name === 'runmode') {
             reslt = await handler_runmode(); // C `:3663`
+        } else if (name === 'autounlock') {
+            reslt = await handler_autounlock(allopt_idx(name)); // C optfn_autounlock do_handler `:1165` (doset precedent)
+        } else if (name === 'status condition fields') {
+            // C optfn_o_status_cond do_handler `:8436–8439` cond_menu (doset precedent); boolean result → optn.
+            reslt = (await cond_menu()) ? OPTN_OK : OPTN_ERR;
+        } else if (name === 'status highlight rules') {
+            // C optfn_o_status_hilites do_handler `:8464–8471` status_hilite_menu (doset precedent); TRUE → optn_ok.
+            reslt = (await status_hilite_menu()) ? OPTN_OK : OPTN_ERR;
+        } else if (name === 'symset') {
+            // Named omission: handler_symset `:6320–6328` → symbols.c
+            // do_symset (no live JS port; symset-file IO under Rule #2).
+            reslt = OPTN_ERR;
         }
+        // C `:8668–8670`: optn_ok marks the row (no simple-menu option is
+        // pfx_cond_, so no `:8669` guard).
         if (reslt === OPTN_OK) opt_set_in_config[allopt_idx(name)] = true;
-        // Other hasHandler compounds deferred (symset/…).
-        return;
+        return '';
     }
+    // C `:8672–8681`: no handler → getlin "Set %s to what?", then pass the
+    // buck via parseoptions("name:abuf"); ESC still counts as picked.
+    // Returns the getlin buffer for the caller's `:8688` ESC gate.
     const abuf = await getlin(`Set ${name} to what?`);
-    if (abuf === '\x1b' || (abuf && abuf.charCodeAt(0) === 0x1b)) {
-        // C: ESC still counts as pickedone — caller returns 1
-        return;
-    }
-    // C: parseoptions("%s:%s") — fruit via optfn_fruit; other Comp deferred.
-    // In-game: !opt_initial so fruitadd runs. doset has give_opt_msg false.
+    if (abuf === '\x1b') return '\x1b'; // C `:8677` ESC
+    // C `:8678–8684` Sprintf "name:" + copynchars(abuf) → parseoptions.
+    // fruit/suppress_alert keep their live direct-optfn arms (same effect,
+    // awaited in order); every other name goes the C route.
     if (name === 'fruit') {
         optfn_fruit(allopt_idx('fruit'), REQ_DO_SET, false, `fruit:${abuf}`, abuf, false);
     } else if (name === 'suppress_alert') {
@@ -6689,8 +6976,10 @@ async function doset_compound_via_getlin(opt) {
         const saReslt = await optfn_suppress_alert(
             allopt_idx(name), REQ_DO_SET, false, `${name}:${saVal}`, saVal);
         if (saReslt === OPTN_OK) opt_set_in_config[allopt_idx(name)] = true; // C `:639–640`
+    } else {
+        parseoptions(`${name}:${abuf}`, false, false);
     }
-    // Named omission: remaining Comp/Othr getlin → parseoptions arms
+    return abuf;
 }
 
 /** C ref: options.c n_currently_set / count_apes — ape list deferred. */
@@ -6790,18 +7079,19 @@ function simple_bool_toggle(opt) {
     }
 }
 
-function format_simple_opt_line(opt, nameWidth) {
-    const name = opt.name;
+function format_simple_opt_line(opt, nameWidth, tabSep = false, dispName = null) {
+    const name = dispName ?? opt.name;
     let val;
     if (opt.opttyp === 'Bool') {
         val = simple_bool_value(opt) ? 'X' : ' ';
-    } else {
+    } else if (opt.opttyp === 'Comp' || opt.opttyp === 'Othr') {
         val = simple_opt_get_val(opt);
+    } else {
+        val = 'ERROR';
     }
-    // C: Sprintf(fmtstr, "%%-%us [%%s]", longest_option_name(...))
-    let line = `${name.padEnd(nameWidth)} [${val}]`;
-    if (opt.autopickupSuffix) line += '  (for autopickup)';
-    return line;
+    // C: Sprintf(fmtstr, "%%-%us [%%s]", longest_option_name(...)) / tab form
+    const line = tabSep ? `${name}\t[${val}]` : `${name.padEnd(nameWidth)} [${val}]`;
+    return opt.autopickupSuffix ? `${line}  (for autopickup)` : line;
 }
 
 /**
@@ -6956,11 +7246,51 @@ export async function select_menu_pick_one(rawItems) {
 }
 
 /**
+/**
+ * C options.c longest_option_name `:8507–8532` (staticfn) — widest allopt
+ * name with setwhere in [startpass, endpass]; pass 0 counts BoolOpt rows
+ * with an addr, pass 1 counts every row; wc-gated names count only when
+ * supported. Option names are ASCII, so length is C Strlen.
+ */
+function longest_option_name(startpass, endpass) {
+    let longest = 0; // C `:8511`
+    for (let pass = 0; pass < 2; pass++) { // C `:8515`
+        // C `:8516`: (name = allopt[i].name) != 0.
+        for (let i = 0; i < allopt.length && allopt[i].name; i++) {
+            const row = allopt[i];
+            if (pass === 0 // C `:8517–8519`
+                && (row.opttyp !== BoolOpt || !row.addr)) continue;
+            const where = row.setwhere; // C `:8520`
+            if (where < startpass || where > endpass) continue; // C `:8521–8522`
+            // C `:8523–8525` wc/wc2 gate is outcome-dead on contest tty (all
+            // gated in-range names are supported; the runtime wincap2 stays
+            // minimal for the status subsystem — see doset_simple_menu).
+            if (row.name.length > longest) longest = row.name.length; // C `:8527–8529`
+        }
+    }
+    return longest; // C `:8531`
+}
+
+/**
+ * C windows.c genl_preference_update `:461–469` — the generic windowport
+ * preference hook just returns (ports provide their own; tty has none).
+ * Defined so the doset_simple_menu `:8688` gate stays C-order.
+ */
+function preference_update(_pref) {
+}
+
+/**
  * C ref: options.c doset_simple_menu — NHW_MENU from allopt[] OptS_General
  * …Status, title "Options", PICK_ONE. Returns pick_cnt (0 = done).
  */
 async function doset_simple_menu() {
-    const nameWidth = dosetSimpleNameWidth;
+    // C `:8555–8559`: menu width from longest_option_name(set_gameview,
+    // set_in_game), recomputed per call like C (wc-gated names join or
+    // leave with wincap); menu_tab_sep selects the tab-separated form.
+    const tabSep = !!game.iflags?.menu_tab_sep;
+    const nameWidth = tabSep ? 0 : longest_option_name(SET_GAMEVIEW, SET_IN_GAME);
+
+    let toggled_help = false; // C `:8550`
 
     for (;;) {
         // C: tty_end_menu prepends prompt then blank (via reverse+prepend)
@@ -6983,45 +7313,77 @@ async function doset_simple_menu() {
             opt: { kind: 'help' },
         });
 
-        for (const section of dosetSimpleSections) {
-            raw.push({ text: '', attr: 0, selectable: false });
-            // C: Sprintf(buf, " %-30s ", OptS_type[section])
-            const heading = ` ${section.padEnd(30)} `;
-            raw.push({ text: heading, attr: ATR_INVERSE, selectable: false });
-            for (const opt of dosetSimpleOpts) {
-                if (opt.section !== section) continue;
+        for (const section of dosetSimpleSections) { // C `:8580`
+            raw.push({ text: '', attr: 0, selectable: false }); // C `:8582`
+            // C `:8583` Sprintf(buf, " %-30s ", OptS_type[section]).
+            raw.push({ text: ` ${section.padEnd(30)} `, attr: ATR_INVERSE, selectable: false });
+            for (const opt of dosetSimpleOpts) { // C `:8585`
+                if (opt.section !== section) continue; // C `:8586–8587`
+                // C `:8588–8590` wc/wc2 gate is outcome-dead on contest tty:
+                // every gated name in dosetSimpleOpts is statically kept by
+                // the extractor (ok_wc over the true tty sets), while the
+                // runtime wincap2 stays minimal for the status subsystem
+                // (display.js `:8223`, polyself.js `:731`) and must not leak
+                // into the menu — it would wrongly drop hitpointbar and
+                // statuslines, whose bits C tty sets (wintty.c `:116–120`).
+                // C `:8592` any.a_int = i + 1 — identity carried by opt ref.
+                if (opt.opttyp === 'Bool') { // C `:8594–8599`
+                    if (!opt.addr) continue; // C `:8595–8596` !bool_p
+                    // C `:8597`: tiled-map hides color.
+                    if (game.iflags?.wc_tiled_map && allopt_idx(opt.name) === allopt_idx('color')) continue;
+                }
+                // C `:8602–8607`: on a rogue level the symset row shows the
+                // roguesymset entry (same optfn_symset get_val).
+                const dispName = (opt.name === 'symset' && Is_rogue_level()) ? 'roguesymset' : opt.name;
                 raw.push({
-                    text: format_simple_opt_line(opt, nameWidth),
+                    text: format_simple_opt_line(opt, nameWidth, tabSep, dispName),
                     attr: 0,
                     selectable: true,
                     opt,
                 });
+                if (game.simple_options_help && opt.descr) { // C `:8627–8631`
+                    raw.push({ text: `    ${opt.descr}`, attr: 0, selectable: false });
+                    raw.push({ text: '', attr: 0, selectable: false });
+                }
             }
         }
 
         if (!game.go) game.go = {};
-        game.go.opt_need_redraw = false;
-        game.go.opt_need_glyph_reset = false;
+        game.go.opt_need_redraw = false; // C `:8635`
+        game.go.opt_need_glyph_reset = false; // C `:8636`
+        game.go.opt_reset_customcolors = false; // C `:8637`
+        game.go.opt_reset_customsymbols = false; // C `:8638`
+        game.go.opt_update_basic_palette = false; // C `:8639`
+        // C `:8640`: PICK_ONE without preselect; >0 implies exactly 1.
         const res = await select_menu_pick_one(raw);
         if (res.kind !== 'pick') return 0;
 
         const opt = res.item.opt;
-        if (opt?.kind === 'help') {
+        let abuf = ''; // C `:8646` abuf[0] = '\0'
+        let pickName = null;
+        if (opt?.kind === 'help') { // C `:8647–8650` k == -2
             game.simple_options_help = !game.simple_options_help;
-            // C: goto redo_opt_help — rebuild without returning to doset_simple
+            toggled_help = true; // C: goto redo_opt_help — rebuild in place
+        } else if (opt?.opttyp === 'Bool') { // C `:8651–8657`
+            // C `:8654–8656` parseoptions("!name"|"name", FALSE, FALSE).
+            // JS parseoptions is a bool no-op (allopt bool rows carry
+            // optfn:null vs C &optfn_boolean, `:635` guard) — the live
+            // bag write below is the named-omission stand-in.
+            simple_bool_toggle(opt);
+            pickName = opt.name;
+        } else if (opt?.opttyp === 'Comp' || opt?.opttyp === 'Othr') { // C `:8658–8686`
+            abuf = await doset_compound_via_getlin(opt);
+            pickName = opt.name;
+        }
+        // Unknown opttyp still counts as picked (C returns pick_cnt).
+        if (pickName && abuf !== '\x1b' // C `:8688–8691`
+            && (wc_supported(pickName) || wc2_supported(pickName))) preference_update(pickName);
+        // C `:8692–8693`: free pick_list + destroy_nhwindow — GC / helper.
+        if (toggled_help) { // C `:8694–8697`
+            toggled_help = false;
             continue;
         }
-        if (opt?.opttyp === 'Bool') {
-            simple_bool_toggle(opt);
-            return 1;
-        }
-        // C: compound/othr — has_handler → optfn(do_handler); else getlin
-        if (opt?.opttyp === 'Comp' || opt?.opttyp === 'Othr') {
-            await doset_compound_via_getlin(opt);
-            return 1;
-        }
-        // Unknown row — still count as a pick (C loops)
-        return 1;
+        return 1; // C `:8699` pick_cnt
     }
 }
 
@@ -7344,7 +7706,7 @@ const DOSET_BOOL_ADDR = {
     dropped_nopick: { obj: 'flags', key: 'nopick_dropped' },
     eight_bit_tty: { obj: 'iflags', key: 'eight_bit_tty' },
     extmenu: { obj: 'iflags', key: 'extmenu' },
-    fireassist: { obj: 'flags', key: 'fireassist' }, // C: iflags.fireassist
+    fireassist: { obj: 'iflags', key: 'fireassist' }, // C optlist.h:310 &iflags.fireassist
     fixinv: { obj: 'flags', key: 'invlet_constant' }, // C: flags.invlet_constant
     force_invmenu: { obj: 'flags', key: 'force_invmenu' },
     goldX: { obj: 'flags', key: 'goldX' },
@@ -7486,6 +7848,196 @@ function doset_bool_value(name) {
     const v = bag[addr.key];
     if (v === undefined) return DOSET_BOOL_DEFAULT_ON.has(name);
     return !!v;
+}
+
+/**
+ * C optlist.h NHOPTB `v` (valok) field — every unix-tty boolean rejects a
+ * `:value` with "'%s' is not valid for a boolean" except these.
+ */
+const OPT_BOOL_VALOK = new Set(['menucolors']);
+
+/**
+ * C options.c optfn_boolean `:5192–5449` — boolean option handler (every
+ * NHOPTB row carries it; optlist.h NHOPT_PARSE `:75–77`). Async only for
+ * the two C pline arms (idlecheckpoint notice, toggled message); the body
+ * otherwise runs synchronously in C order. Word parse reuses
+ * optfn_boolean_word (same true/yes/on/1 : false/no/off/0 mapping);
+ * config_error_add is the no-op map sink (return values kept).
+ * @param {number} optidx C optidx (allopt row index)
+ * @param {number} req REQ_DO_INIT / REQ_DO_SET / REQ_GET_VAL / REQ_GET_CNF_VAL
+ * @param {boolean} negated
+ * @param {string} opts option head (value recomputed via string_for_opt)
+ * @returns {Promise<number>} OPTN_* result
+ */
+export async function optfn_boolean(optidx, req, negated, opts) {
+    if (req === REQ_DO_INIT) { // C do_init arm
+        return OPTN_OK;
+    }
+    if (req === REQ_DO_SET) { // C do_set arm
+        const row = allopt[optidx];
+        const name = row.name;
+        let noSexChange = false; // C `nosexchange`
+        let ln = 0; // C `ln`
+        if (!row.addr) return OPTN_OK; // C silent retreat
+        // C option that must come from config file / must NOT come from it
+        if (!game.go?.opt_initial && row.setwhere === SET_IN_CONFIG)
+            return OPTN_ERR;
+        if (game.go?.opt_initial && row.setwhere === SET_WIZNOFUZ)
+            return OPTN_ERR;
+        const op = string_for_opt(String(opts), true); // C `op = string_for_opt(opts, TRUE)`
+        if (op !== EMPTY_OPTSTR) {
+            if (negated) {
+                config_error_add(
+                    "Negated boolean '%s' should not have a parameter", name);
+                return OPTN_SILENTERR;
+            }
+            // C length is greater than 0 or we wouldn't have gotten here
+            ln = op.length;
+            const parsed = optfn_boolean_word(op);
+            if (parsed !== null) {
+                negated = !parsed;
+            } else if (!OPT_BOOL_VALOK.has(name)) {
+                config_error_add("'%s' is not valid for a boolean", opts);
+                return OPTN_SILENTERR;
+            }
+        }
+        if (game.iflags?.debug_fuzzer && !game.go?.opt_initial // C fuzzer gate
+            && (name === 'silent' || name === 'perm_invent')) {
+            return OPTN_OK;
+        }
+        // Before the change
+        if (name === 'female') { // C `case opt_female`
+            if (optStrncasecmp(String(opts), 'female', Math.max(ln, 3)) === 0) {
+                if (!game.go?.opt_initial && !!game.flags?.female === negated) {
+                    noSexChange = true;
+                } else {
+                    if (!game.flags) game.flags = {};
+                    game.flags.initgend = game.flags.female = !negated;
+                    return OPTN_OK;
+                }
+            }
+            if (optStrncasecmp(String(opts), 'male', Math.max(ln, 3)) === 0) {
+                if (!game.go?.opt_initial && !!game.flags?.female !== negated) {
+                    noSexChange = true;
+                } else {
+                    if (!game.flags) game.flags = {};
+                    game.flags.initgend = game.flags.female = negated;
+                    return OPTN_OK;
+                }
+            }
+        } else if (name === 'perm_invent') { // C `case opt_perm_invent`
+            if (!negated && !game.go?.opt_initial
+                && !can_set_perm_invent(undefined, game.go?.opt_initial)) {
+                return OPTN_SILENTERR;
+            }
+        }
+        if (noSexChange) { // C `nosexchange`
+            config_error_add("'%s' is not anatomically possible.", opts);
+            return OPTN_SILENTERR;
+        }
+        // C `*(allopt[optidx].addr) = !negated` — SET IT HERE
+        if (!game[row.addr.obj] || typeof game[row.addr.obj] !== 'object')
+            game[row.addr.obj] = {};
+        game[row.addr.obj][row.addr.key] = !negated;
+        // After the change
+        if (name === 'pauper') { // C `case opt_pauper` (pauper implies nudist)
+            // C copies `u.uroleplay`; the JS live fields are flags.* (row addrs).
+            game.flags.nudist = game.flags.pauper;
+        } else if (name === 'ascii_map') { // C `case opt_ascii_map`
+            if (!game.iflags) game.iflags = {};
+            game.iflags.wc_tiled_map = negated;
+        } else if (name === 'tiled_map') { // C `case opt_tiled_map`
+            if (!game.iflags) game.iflags = {};
+            game.iflags.wc_ascii_map = negated;
+        } else if (name === 'hilite_pet') { // C `case opt_hilite_pet`
+            // C `#if defined(TTY_GRAPHICS) || defined(CURSES_GRAPHICS)` with
+            // `WINDOWPORT(tty) || WINDOWPORT(curses)`; scored build is tty.
+            if (windowport_tty() || windowport_curses()) {
+                if (!game.iflags) game.iflags = {};
+                if (game.iflags.hilite_pet && !game.iflags.wc2_petattr)
+                    game.iflags.wc2_petattr = ATR_INVERSE;
+            }
+            mark_opt_need_redraw(); // C `go.opt_need_redraw = TRUE`
+        } else if (name === 'idlecheckpoint') {
+            // C `#ifndef IDLECHECKPOINT` — compiles (config.h leaves it undefined).
+            await pline("There is no underlying support for 'idlecheckpoint' compiled in.");
+            if (!game.iflags) game.iflags = {};
+            game.iflags.idlecheckpoint = false;
+            game.give_opt_msg = false;
+        }
+        // C only do processing below if setting with doset()
+        if (game.go?.opt_initial) return OPTN_OK;
+        if (name === 'terrainstatus') {
+            classify_terrain(); // C `:5332` (falls through below)
+        }
+        if (name === 'terrainstatus' || name === 'weaponstatus'
+            || name === 'armorstatus') { // C `:5334–5336`
+            if (!wc2_supported(name)) { // C `:5337`
+                // C `:5338–5342` not actually an error; the return skips pline
+                config_error_add("'%s' is not supported.", name);
+                return OPTN_OK;
+            }
+            // C `:5350–5351` via fallthrough into the showscore arm
+            if (via_windowport()) status_initialize(REASSESS_ONLY);
+            if (!game.flags) game.flags = {};
+            game.flags.botl = true; // C `disp.botl` (optfn_boolean_do_set precedent)
+        } else if (name === 'showexp' || name === 'time' // C showscore arm
+            || name === 'showscore' || name === 'showvers') {
+            if (via_windowport()) status_initialize(REASSESS_ONLY); // C `:5350`
+            if (!game.flags) game.flags = {};
+            game.flags.botl = true; // C `:5351`
+        } else if (name === 'fixinv' || name === 'price_quotes' // C `:5353–5361`
+            || name === 'sortpack' || name === 'implicit_uncursed'
+            || name === 'wizweight') {
+            if (!invlet_constant()) reassign();
+            update_inventory();
+        } else if (name === 'lit_corridor' || name === 'dark_room') {
+            vision_recalc(2); // C shut down vision
+            game.vision_full_recalc = 1; // C `gv.vision_full_recalc` (vision.js:270)
+            if (game.iflags?.use_color) mark_opt_need_redraw(); // C darkroom refresh
+        } else if (OPT_GLYPH_RESET.has(name)) { // C `:5376–5385`
+            mark_opt_need_redraw();
+            mark_opt_need_glyph_reset();
+        } else if (name === 'hitpointbar') { // C `:5387–5394`
+            // C `#ifdef QT_GRAPHICS` arm is build-gated out (no Qt target).
+            if (via_windowport()) {
+                status_initialize(REASSESS_ONLY); // C `:5389`
+                mark_opt_need_redraw(); // C `:5390`
+            }
+        } else if (name === 'color') {
+            // C `#ifdef TOS` arm is build-gated out.
+            mark_opt_need_redraw();
+            mark_opt_need_glyph_reset();
+        } else if (name === 'customcolors') {
+            if (!game.go) game.go = {};
+            game.go.opt_reset_customcolors = true;
+        } else if (name === 'customsymbols') {
+            if (!game.go) game.go = {};
+            game.go.opt_reset_customsymbols = true;
+        } else if (name === 'menucolors' || name === 'guicolor') {
+            update_inventory();
+            if (!game.go) game.go = {};
+            game.go.opt_need_promptstyle = true;
+        } else if (name === 'mention_decor') {
+            if (!game.iflags) game.iflags = {};
+            game.iflags.prev_decor = STONE;
+        } else if (name === 'rest_on_space') { // C `:5426`
+            update_rest_on_space();
+        } else if (name === 'accessiblemsg') { // C `:5428–5430`
+            if (!game.a11y) game.a11y = {};
+            if (!game.a11y.msg_loc) game.a11y.msg_loc = { x: 0, y: 0 };
+            game.a11y.msg_loc.x = 0;
+            game.a11y.msg_loc.y = 0;
+        }
+        if (game.give_opt_msg !== false)
+            await pline(`'${name}' option toggled ${!negated ? 'on' : 'off'}.`);
+        return OPTN_OK;
+    }
+    if (req === REQ_GET_VAL || req === REQ_GET_CNF_VAL) {
+        set_optbuf(opts, ''); // C `opts[0] = '\0'`
+        return OPTN_OK;
+    }
+    return OPTN_OK;
 }
 
 /**
@@ -8306,7 +8858,7 @@ const allopt = [
     // optlist.h:306 NHOPTB(female)
     { name: 'female', opttyp: BoolOpt, idx: 52, setwhere: SET_IN_CONFIG, initval: false, addr: { obj: 'flags', key: 'female' } /* C: &flags.female */, optfn: null },
     // optlist.h:309 NHOPTB(fireassist)
-    { name: 'fireassist', opttyp: BoolOpt, idx: 53, setwhere: SET_IN_GAME, initval: true, addr: { obj: 'flags', key: 'fireassist' }, optfn: null },
+    { name: 'fireassist', opttyp: BoolOpt, idx: 53, setwhere: SET_IN_GAME, initval: true, addr: { obj: 'iflags', key: 'fireassist' } /* C optlist.h:310 &iflags.fireassist */, optfn: null },
     // optlist.h:312 NHOPTB(fixinv)
     { name: 'fixinv', opttyp: BoolOpt, idx: 54, setwhere: SET_IN_GAME, initval: true, addr: { obj: 'flags', key: 'invlet_constant' }, optfn: null },
     // optlist.h:315 NHOPTC(font_map)
@@ -8634,6 +9186,18 @@ const allopt = [
     // optlist.h:906 NHOPTP(font)
     { name: 'font', opttyp: CompOpt, idx: 216, setwhere: SET_HIDDEN, initval: false, addr: null, optfn: null },
 ];
+
+/* C optlist.h NHOPT_PARSE `:75–77` — every NHOPTB row carries
+ * `&optfn_boolean` with no exceptions. All 113 unix-tty BoolOpt rows above
+ * declare `optfn: null`, so point them at the port: the parseoptions
+ * `:9506–9508` and allopt_array_init `:9329` dispatch sites then call it
+ * exactly where C calls through the table. Named: both sites consume the
+ * result synchronously, so a non-OK return still reads as failure there
+ * (toggle_bool_option keeps ECMD_FAIL; opt_set_in_config stays unmarked —
+ * same as the null-optfn baseline); only the live-flag side effects land. */
+for (const row of allopt) {
+    if (row.opttyp === BoolOpt && row.optfn == null) row.optfn = optfn_boolean;
+}
 
 /* C ref: options.c `:111` static boolean opt_set_in_config[OPTCOUNT],
  * zero-init. Writers come with config/doset rows (named): `:640`
@@ -9464,8 +10028,8 @@ function parsesymbolsSeg(buf, start, which_set) {
         if (symp.range && symp.range !== SYM_CONTROL) { // C `:830`
             if (game.gs?.symset?.[which_set]?.handling === H_UTF8 // C `:833–835`
                 || (lowc(strval[0]) === 'u' && strval[1] === '+')) {
-                // C `:837` Snprintf + custom-map entries (bare: glyphs.c:112,
-                // named omit — the customization-write subsystem).
+                // C `:837` Snprintf + custom-map entries (glyphs.js; the
+                // C `&glyph` out-param is never read after, so no box).
                 glyphrep_to_custom_map_entries(`${symname}:${strval}`);
             } else { // C `:839–844`
                 const val = sym_val(strval);
@@ -9482,9 +10046,9 @@ function parsesymbolsSeg(buf, start, which_set) {
  * C ref: symbols.c parsesymbols `:773–848` [campaign 5/7] — parse one
  * SYMBOLS/ROGUESYMBOLS value (or OPTIONS S_ item) into the override tables
  * + the savedSymbols registry, in C order. Exported (C extern,
- * extern.h:3180). Named omissions (map): match_glyph + the
- * glyphrep_to_custom_map_entries customization path (G_ names, H_UTF8
- * handling, u+ values) and the switch_symbols application step at the
+ * extern.h:3180). The `:837` glyphrep_to_custom_map_entries arm (H_UTF8
+ * handling, u+ values) is wired to glyphs.js. Named omissions (map):
+ * match_glyph (G_ names) and the switch_symbols application step at the
  * wired callers (JS reads ov_* lazily at render; reset_glyphmap stays
  * untouched per the fortress guard).
  */

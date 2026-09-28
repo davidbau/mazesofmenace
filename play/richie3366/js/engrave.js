@@ -46,7 +46,7 @@ import { game } from './gstate.js';
 import { surface } from './sit.js';
 import { sanitize_name } from './bones.js';
 import { rn1, rn2, rnd } from './rng.js';
-import { pline, You, You_cant, You_see, newsym, impossible, Hallucination } from './display.js';
+import { pline, You, You_cant, You_see, newsym, map_engraving, engr_can_be_felt, impossible, Hallucination } from './display.js';
 import { getlin, yn_function } from './getline.js';
 import { getobj, useup, hold_another_object, prinv, update_inventory, Blind, near_capacity } from './invent.js';
 import { splitobj, obj_extract_self } from './mkobj.js';
@@ -152,6 +152,146 @@ export function sanitize_engravings() {
             ep.engr_txt.actual_text = sanitize_name(
                 String(ep.engr_txt.actual_text ?? ''));
         }
+    }
+}
+
+/**
+ * C ref: engrave.c forget_engravings `:1509–1521` — bones-save setup
+ * (sole C caller bones.c:449): mark every engraving unread/unrevealed so
+ * the next hero starts fresh. The three text states keep their original
+ * text (C note `:1515–1520`).
+ */
+export function forget_engravings() {
+    // C `:1514`: `ep->erevealed = ep->eread = 0` (eread assigned first).
+    for (let ep = game.head_engr; ep; ep = ep.nxt_engr) {
+        ep.eread = 0;
+        ep.erevealed = 0;
+    }
+}
+
+/**
+ * C ref: engrave.c save_engravings `:1551–1580` — savelev writer (sole C
+ * caller save.c:548): snapshot the chain head-first (C file order) as
+ * plain records. Skips allocation-less or empty-text records (`:1559–
+ * 1560` gate). Sfo_* binary encode ⇔ plain-record copy (JS saves JSON
+ * per Constitution §1.6 — the binary format stays a named omission,
+ * rest_regions precedent); the release_data arm (`:1572–1579` free +
+ * head=0) already lives at the callers (goto_level teardown nulls
+ * head_engr; dosave snapshots keep the game going).
+ * @returns {object[]} head-first plain engraving records.
+ */
+export function save_engravings() {
+    const out = [];
+    // C `:1556–1557`: walk head-first (ep2 taken before any dealloc).
+    for (let ep = game.head_engr; ep; ep = ep.nxt_engr) {
+        // C `:1559–1560`: engr_alloc && actual[0] && update_file (always).
+        if (!(ep.engr_alloc | 0)) continue;
+        const t = (ep.engr_txt && typeof ep.engr_txt === 'object') ? ep.engr_txt : {};
+        const actual = (typeof ep.engr_txt === 'string')
+            ? ep.engr_txt
+            : String(t.actual_text ?? '');
+        if (!actual) continue;
+        out.push({
+            engr_x: ep.engr_x | 0,
+            engr_y: ep.engr_y | 0,
+            engr_txt: {
+                actual_text: actual,
+                remembered_text: String(t.remembered_text ?? actual),
+                pristine_text: String(t.pristine_text ?? actual),
+            },
+            engr_time: ep.engr_time | 0,
+            engr_type: ep.engr_type | 0,
+            eread: ep.eread | 0,
+            erevealed: ep.erevealed | 0,
+            guardobjects: ep.guardobjects | 0,
+            nowipeout: ep.nowipeout | 0,
+            engr_szeach: ep.engr_szeach | 0,
+            engr_alloc: ep.engr_alloc | 0,
+        });
+    }
+    return out;
+}
+
+/**
+ * C ref: engrave.c rest_engravings `:1584–1619` — getlev reader (sole C
+ * caller restore.c:1174): drop the live chain (`:1590`), rebuild each
+ * stored record head-first with prepend (`:1597–1599` — live order ends
+ * reversed vs stored, so back-to-back round trips flip like C), re-slice
+ * leading blanks off actual/remembered (`:1610–1613` pointer bumps ⇔
+ * slice; pristine keeps them), stamp every engraving finished (`:1617`
+ * engr_time = svm.moves ⇔ game.moves — safe for bones: the player must
+ * have finished engraving to move again). Sfi_* binary decode ⇔ record
+ * copy; newengr/engr_text_space arena ⇔ fresh literal (GC; sizes stay on
+ * the record, make_engr_at precedent). Accepts a save_engravings() array
+ * or a legacy nxt_engr-chained snapshot; null ⇒ null head (C `:1593–
+ * 1594` lth==0 arm). Sets game.head_engr (C global) and returns it (JS
+ * extension for one-expression installers).
+ */
+export function rest_engravings(stored) {
+    game.head_engr = null; // C `:1590`
+    const moves = game.moves | 0;
+    const recs = Array.isArray(stored) ? stored : chainToArray(stored);
+    for (const s of recs) {
+        if (!s) continue;
+        const rawT = s.engr_txt;
+        const t = (rawT && typeof rawT === 'object') ? rawT : {};
+        const fallback = (typeof rawT === 'string') ? rawT : '';
+        const ep = {
+            // C `:1597–1599`: prepend to the cleared head.
+            nxt_engr: game.head_engr,
+            engr_x: s.engr_x | 0,
+            engr_y: s.engr_y | 0,
+            engr_txt: {
+                // C `:1610–1613`: skip leading blanks (actual, remembered).
+                actual_text: String(t.actual_text ?? fallback).replace(/^ +/, ''),
+                remembered_text: String(t.remembered_text ?? t.actual_text ?? fallback).replace(/^ +/, ''),
+                pristine_text: String(t.pristine_text ?? fallback),
+            },
+            // C `:1617`: finished at restore time (stored time ignored).
+            engr_time: moves,
+            engr_type: s.engr_type | 0,
+            eread: s.eread | 0,
+            erevealed: s.erevealed | 0,
+            guardobjects: s.guardobjects | 0,
+            nowipeout: s.nowipeout | 0,
+            engr_szeach: s.engr_szeach | 0,
+            engr_alloc: s.engr_alloc | 0,
+        };
+        game.head_engr = ep;
+    }
+    return game.head_engr;
+}
+
+/** Head-first walk of a legacy nxt_engr-chained snapshot (null ⇒ []). */
+function chainToArray(head) {
+    const out = [];
+    for (let ep = head; ep; ep = ep.nxt_engr) out.push(ep);
+    return out;
+}
+
+/**
+ * C ref: engrave.c see_engraving `:1724–1727` — repaint the engraving's
+ * cell. newsym is the live display.js export. No live C call sites.
+ */
+export function see_engraving(ep) {
+    newsym(ep.engr_x, ep.engr_y);
+}
+
+/**
+ * C ref: engrave.c feel_engraving `:1732–1741` — blind-feel override for
+ * felt types only (`:1735` engr_can_be_felt gate): mark read + revealed,
+ * paint via map_engraving show, then newsym the cell in case something
+ * lies above it (`:1739–1740`). All three callees are the live
+ * display.js exports (no clone — brief). No live C call sites (C note
+ * `:1730–1731` "isn't actually used anywhere?").
+ */
+export function feel_engraving(ep) {
+    if (engr_can_be_felt(ep)) {
+        ep.eread = 1;
+        ep.erevealed = 1;
+        map_engraving(ep, 1);
+        /* in case it's beneath something, redisplay the something */
+        newsym(ep.engr_x, ep.engr_y);
     }
 }
 

@@ -113,7 +113,7 @@ import {
     NHKF_GETPOS_INTERESTING_NEXT, NHKF_GETPOS_INTERESTING_PREV,
     NHKF_GETPOS_HELP, NHKF_GETPOS_LIMITVIEW, NHKF_GETPOS_MOVESKIP,
     NHKF_GETPOS_MENU,
-    NHCB_CMD_BEFORE, NUM_NHCB,
+    NHCB_CMD_BEFORE, NUM_NHCB, NUM_MOUSE_BUTTONS,
 } from './const.js';
 import { config_error_add } from './botl.js';
 import { an, doname, makeplural, ansimpleoname, the } from './objnam.js';
@@ -1005,6 +1005,32 @@ export function click_to_cmd(x, y, mod) {
     const entry = game.Cmd?.mousebtn?.[(mod | 0) - 1];
     if (entry)
         cmdq_add_ec(CQ_CANNED, entry.run ?? entry, entry);
+}
+
+/**
+ * C ref: cmd.c lock_mouse_buttons `:3326–3340` in C order — stash the
+ * `game.Cmd.mousebtn` bindings while getpos runs (so map clicks cannot
+ * fire bound commands mid-targeting) and restore them after. The stash
+ * is function-static in C (`:3329`); here it is module-local. When no
+ * binding table exists (bind_mousebtn `:2624` unported, so
+ * `game.Cmd.mousebtn` stays undefined and the click_to_cmd queue arm is
+ * inert), both arms are no-ops and the stash keeps nulls.
+ * Callers getpos.c:858 → js/getpos.js getpos() loop entry (TRUE);
+ * getpos.c:1155 exitgetpos → the same function's finally (FALSE).
+ * @param {boolean|number} savebtns nonzero to stash + clear, zero to restore
+ */
+const _locked_mousebtn = new Array(NUM_MOUSE_BUTTONS).fill(null);
+export function lock_mouse_buttons(savebtns) {
+    const btns = game.Cmd?.mousebtn;
+    if (savebtns) {
+        for (let i = 0; i < NUM_MOUSE_BUTTONS; i++) { /* C `:3333–3337` */
+            _locked_mousebtn[i] = btns?.[i] ?? null;
+            if (btns) btns[i] = null;
+        }
+    } else if (btns) { /* C `:3338–3340` */
+        for (let i = 0; i < NUM_MOUSE_BUTTONS; i++)
+            btns[i] = _locked_mousebtn[i];
+    }
 }
 
 /**

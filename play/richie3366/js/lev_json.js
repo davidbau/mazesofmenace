@@ -23,6 +23,7 @@ import { restmon } from './restore.js';
 import { savecemetery, restcemetery, save_exclusions } from './dungeon.js';
 import { forget_temple_entry } from './priest.js';
 import { peek_track } from './track.js';
+import { save_engravings } from './engrave.js';
 import { timer_is_local, light_is_local } from './mkobj.js';
 import { write_ls } from './light.js';
 
@@ -717,7 +718,7 @@ export function serLevel(src) {
         ? (lvl?.damagelist || null)
         : (src.damagelist ?? lvl?.damagelist ?? null);
     const stairs = live ? game.stairs : src.stairs;
-    const head_engr = live ? game.head_engr : src.head_engr;
+    const head_engr = live ? save_engravings() : src.head_engr; // C save.c:548 (stash re-serializes as-is).
     const bonesinfo = live ? lvl?.bonesinfo : (src.level?.bonesinfo ?? src.bonesinfo);
 
     const monsOut = [];
