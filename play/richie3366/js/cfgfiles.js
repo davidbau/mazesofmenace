@@ -8,9 +8,12 @@
 import { game } from './gstate.js';
 import {
     BUFSZ, ECMD_OK, PL_NSIZ, PL_PSIZ, WIZKIT_MAX,
-    PRIMARYSET, ROGUESET,
+    PRIMARYSET, ROGUESET, SYM_BOULDER, WARNCOUNT,
 } from './const.js';
-import { pline, tty_wait_synch, raw_printf } from './display.js';
+import {
+    pline, tty_wait_synch, raw_printf, MAXPCHARS, SYM_OFF_X,
+    update_ov_primary_symset,
+} from './display.js';
 import { trimspaces } from './hacklib.js';
 import { config_error_add, parse_status_hl1 } from './botl.js';
 import { mungspaces, paranoid_query } from './getline.js';
@@ -36,12 +39,16 @@ import {
     disregard_this_option,
     heed_all_options,
     heed_this_option,
+    parsebindings,
+    assign_warnings,
     ENVIRON_OPT,
     RC_FILE_OPT,
     set_ignore_errors_on_unmatched,
     clear_ignore_errors_on_unmatched,
 } from './options.js';
 import { vfsReadFile, vfsWriteFile } from './storage.js';
+import { parseautocomplete } from './cmd.js';
+import { sysopt_seduce_set } from './sys.js';
 
 /** C ref: hack.h `:1504–1506` FEATURE_NOTICE_VER(3, 7, 0). */
 const FEATURE_NOTICE_VER_3_7_0 = (3 << 24) | (7 << 16);
@@ -428,6 +435,53 @@ function cnf_store_str(key, bufp) {
     return true;
 }
 
+/**
+ * C ref: cfgfiles.c get_uchars `:380–437` (staticfn → file-local).
+ * C callers: cnf_line_BOULDER `:1158`, cnf_line_WARNINGS `:1185` (both wired
+ * below). list is a number array; the C `uchar` store narrows (`& 0xFF`).
+ * Named omission: wait_synch `:433` (windowed input boundary — game build
+ * blocks in tty_wait_synch, wintty.c:3624–3631; the `:120` empty `#define`
+ * is `#ifdef SFCTOOL`-only, :116–120 — the config parser stays sync,
+ * parseautocomplete js/cmd.js precedent).
+ * @param {string} bufp
+ * @param {number[]} list
+ * @param {boolean} modlist
+ * @param {number} size
+ * @param {string} name
+ * @returns {number}
+ */
+function get_uchars(bufp, list, modlist, size, name) {
+    const s = String(bufp ?? '');
+    let num = 0; // C `:388`
+    let count = 0; // C `:389`
+    let havenum = false; // C `:390`
+    let i = 0;
+    for (;;) { // C `:392` while (1)
+        const c = i < s.length ? s[i] : '\0'; // C `*bufp`
+        if (c === ' ' || c === '\0' || c === '\t' || c === '\n') { // C `:394–397`
+            if (havenum) { // C `:398`
+                /* if modifying in place, don't insert zeros */ // C `:399`
+                if (num || !modlist) // C `:400`
+                    list[count] = num & 0xFF; // C `:401` uchar narrow
+                count++; // C `:402`
+                num = 0; // C `:403`
+                havenum = false; // C `:404`
+            }
+            if (count === size || c === '\0') // C `:406`
+                return count;
+            i++; // C `:408` bufp++
+        } else if (c >= '0' && c <= '9') { // C `:412–421`
+            havenum = true; // C `:422`
+            num = num * 10 + (c.charCodeAt(0) - 48); // C `:423`
+            i++; // C `:424`
+        } else { // C `:427–435` case '\\' goto gi_error + default
+            raw_printf('Syntax error in %s', name); // C `:432`
+            // C `:433` wait_synch — named omission (see doc comment).
+            return count; // C `:434`
+        }
+    }
+}
+
 /* --- cnf_line_* (cfgfiles.c). Unported callees return TRUE and are named. --- */
 
 function cnf_line_OPTIONS(origbuf) {
@@ -471,12 +525,56 @@ function cnf_line_MSGTYPE(bufp) {
     return !!msgtype_parse_add(bufp); // C `:634`
 }
 
+/** C ref: cfgfiles.c cnf_line_AUTOCOMPLETE `:624–628`. */
+function cnf_line_AUTOCOMPLETE(bufp) {
+    parseautocomplete(bufp, true); // C `:626`
+    return true; // C `:627`
+}
+
+/**
+ * C ref: cfgfiles.c cnf_line_BINDINGS `:617–622` (staticfn → file-local).
+ * C parsebindings writes the live keymap via bind_key; the live JS export
+ * takes the overlay map, so pass game.Cmd.binds (cmd.js live store).
+ */
+function cnf_line_BINDINGS(bufp) {
+    if (!game.Cmd) game.Cmd = {};
+    if (!(game.Cmd.binds instanceof Map)) game.Cmd.binds = new Map();
+    return !!parsebindings(bufp, game.Cmd.binds); // C `:621`
+}
+
 function cnf_line_MENUCOLOR(bufp) {
     return !!add_menu_coloring(bufp); // C `:1166`
 }
 
 function cnf_line_HILITE_STATUS(bufp) {
     return !!parse_status_hl1(bufp, true); // C `:1173` STATUS_HILITES on
+}
+
+/**
+ * C ref: cfgfiles.c cnf_line_BOULDER `:1154–1161` (staticfn → file-local).
+ * In-place (modlist TRUE): seed the slot with the live override so a
+ * zero value keeps it, per get_uchars `:399–401`.
+ */
+function cnf_line_BOULDER(bufp) {
+    const idx = SYM_BOULDER + SYM_OFF_X; // C `:1158`
+    const cur = game.go?.ov_primary_syms?.[idx];
+    const slot = [typeof cur === 'string' && cur.length ? cur.charCodeAt(0) & 0xFF : 0];
+    get_uchars(bufp, slot, true, 1, 'BOULDER'); // C `:1158–1159`
+    update_ov_primary_symset(idx, slot[0]);
+    return true; // C `:1160`
+}
+
+/**
+ * C ref: cfgfiles.c cnf_line_WARNINGS `:1180–1188` (staticfn → file-local).
+ * C `translate[MAXPCHARS]` is uninitialized stack; entries past the parsed
+ * count are indeterminate there — JS zero-fills (0 = no override, skipped
+ * by assign_warnings options.c `:7546`).
+ */
+function cnf_line_WARNINGS(bufp) {
+    const translate = new Array(MAXPCHARS).fill(0); // C `:1183`
+    get_uchars(bufp, translate, false, WARNCOUNT, 'WARNINGS'); // C `:1185`
+    assign_warnings(translate); // C `:1186`
+    return true; // C `:1187`
 }
 
 function cnf_line_SYMBOLS(bufp) {
@@ -505,6 +603,78 @@ function cnf_line_WIZKIT(bufp) {
 /** UNIX !NOCWD_ASSUMPTIONS: HACKDIR…TROUBLEDIR are nhUse + TRUE (`:638–758`). */
 function cnf_line_nhUse(_bufp) {
     return true;
+}
+
+/** C ref: cfgfiles.c cnf_line_CHECK_SAVE_UID `:905–912` (staticfn → file-local). */
+function cnf_line_CHECK_SAVE_UID(bufp) {
+    let n = parseInt(bufp, 10); // C atoi `:908`
+    if (!Number.isFinite(n)) n = 0;
+    sysoptBag().check_save_uid = n; // C `:910` sys.h int
+    return true; // C `:911`
+}
+
+/** C ref: cfgfiles.c cnf_line_CHECK_PLNAME `:914–921` (staticfn → file-local). */
+function cnf_line_CHECK_PLNAME(bufp) {
+    let n = parseInt(bufp, 10); // C atoi `:917`
+    if (!Number.isFinite(n)) n = 0;
+    sysoptBag().check_plname = n; // C `:919` sys.h int
+    return true; // C `:920`
+}
+
+/**
+ * C ref: cfgfiles.c cnf_line_SEDUCE `:923–943` (staticfn → file-local).
+ * SYSCF on (table comment): in_sysconf from parse_config_file_src, like
+ * parse_config_line `:1395–1396`.
+ */
+function cnf_line_SEDUCE(bufp) {
+    let n = parseInt(bufp, 10); // C atoi `:925`
+    if (!Number.isFinite(n)) n = 0;
+    n = n ? 1 : 0; // C `:925` !!atoi
+    const src = game.iflags?.parse_config_file_src | 0; // C `:927`
+    const inSysconf = src === SET_IN_SYSCONF; // C `:928`
+    /* allow anyone to disable it but can only enable it in sysconf
+       or as a no-op for the user when sysconf hasn't disabled it */ // C `:932–933`
+    if (!inSysconf && !sysoptBag().seduce && n !== 0) { // C `:934`
+        cnf_error('Illegal value in SEDUCE'); // C `:935`
+        n = 0; // C `:936`
+    }
+    sysoptBag().seduce = n; // C `:938` sys.h int
+    sysopt_seduce_set(sysoptBag().seduce); // C `:939`
+    return true; // C `:940`
+}
+
+/** C ref: cfgfiles.c cnf_line_HIDEUSAGE `:945–952` (staticfn → file-local). */
+function cnf_line_HIDEUSAGE(bufp) {
+    let n = parseInt(bufp, 10); // C atoi `:948`
+    if (!Number.isFinite(n)) n = 0;
+    n = n ? 1 : 0; // C `:948` !!atoi
+    sysoptBag().hideusage = n; // C `:950` sys.h int
+    return true; // C `:951`
+}
+
+/** C ref: cfgfiles.c cnf_line_MAXPLAYERS `:954–966` (staticfn → file-local). */
+function cnf_line_MAXPLAYERS(bufp) {
+    let n = parseInt(bufp, 10); // C atoi `:956`
+    if (!Number.isFinite(n)) n = 0;
+    /* XXX to get more than 25, need to rewrite all lock code */ // C `:958`
+    if (n < 0 || n > 25) { // C `:959`
+        cnf_error('Illegal value in MAXPLAYERS (maximum is 25)'); // C `:960`
+        n = 5; // C `:961`
+    }
+    sysoptBag().maxplayers = n; // C `:963` sys.h int
+    return true; // C `:964`
+}
+
+/** C ref: cfgfiles.c cnf_line_PERSMAX `:968–979` (staticfn → file-local). */
+function cnf_line_PERSMAX(bufp) {
+    let n = parseInt(bufp, 10); // C atoi `:970`
+    if (!Number.isFinite(n)) n = 0;
+    if (n < 1) { // C `:972`
+        cnf_error('Illegal value in PERSMAX (minimum is 1)'); // C `:973`
+        n = 0; // C `:974`
+    }
+    sysoptBag().persmax = n; // C `:976` sys.h int
+    return true; // C `:977`
 }
 
 function cnf_line_PERS_IS_UID(bufp) {
@@ -613,8 +783,8 @@ function cnf_line_named_true(_bufp) {
 const configLineStmt = [
     { name: 'OPTIONS', len: 4, syscnf: false, origbuf: true, fn: cnf_line_OPTIONS },
     { name: 'AUTOPICKUP_EXCEPTION', len: 5, syscnf: false, origbuf: false, fn: cnf_line_AUTOPICKUP_EXCEPTION },
-    { name: 'BINDINGS', len: 4, syscnf: false, origbuf: false, fn: cnf_line_named_true },
-    { name: 'AUTOCOMPLETE', len: 5, syscnf: false, origbuf: false, fn: cnf_line_named_true },
+    { name: 'BINDINGS', len: 4, syscnf: false, origbuf: false, fn: cnf_line_BINDINGS },
+    { name: 'AUTOCOMPLETE', len: 5, syscnf: false, origbuf: false, fn: cnf_line_AUTOCOMPLETE },
     { name: 'MSGTYPE', len: 7, syscnf: false, origbuf: false, fn: cnf_line_MSGTYPE },
     { name: 'HACKDIR', len: 4, syscnf: false, origbuf: false, fn: cnf_line_nhUse },
     { name: 'LEVELDIR', len: 4, syscnf: false, origbuf: false, fn: cnf_line_nhUse },
@@ -641,12 +811,12 @@ const configLineStmt = [
     { name: 'BONES_POOLS', len: 10, syscnf: true, origbuf: false, fn: (b) => cnf_store_str('bones_pools', b) },
     { name: 'SUPPORT', len: 7, syscnf: true, origbuf: false, fn: (b) => cnf_store_str('support', b) },
     { name: 'RECOVER', len: 7, syscnf: true, origbuf: false, fn: (b) => cnf_store_str('recover', b) },
-    { name: 'CHECK_SAVE_UID', len: 14, syscnf: true, origbuf: false, fn: cnf_line_named_true },
-    { name: 'CHECK_PLNAME', len: 12, syscnf: true, origbuf: false, fn: cnf_line_named_true },
-    { name: 'SEDUCE', len: 6, syscnf: true, origbuf: false, fn: cnf_line_named_true },
-    { name: 'HIDEUSAGE', len: 9, syscnf: true, origbuf: false, fn: cnf_line_named_true },
-    { name: 'MAXPLAYERS', len: 10, syscnf: true, origbuf: false, fn: cnf_line_named_true },
-    { name: 'PERSMAX', len: 7, syscnf: true, origbuf: false, fn: cnf_line_named_true },
+    { name: 'CHECK_SAVE_UID', len: 14, syscnf: true, origbuf: false, fn: cnf_line_CHECK_SAVE_UID },
+    { name: 'CHECK_PLNAME', len: 12, syscnf: true, origbuf: false, fn: cnf_line_CHECK_PLNAME },
+    { name: 'SEDUCE', len: 6, syscnf: true, origbuf: false, fn: cnf_line_SEDUCE },
+    { name: 'HIDEUSAGE', len: 9, syscnf: true, origbuf: false, fn: cnf_line_HIDEUSAGE },
+    { name: 'MAXPLAYERS', len: 10, syscnf: true, origbuf: false, fn: cnf_line_MAXPLAYERS },
+    { name: 'PERSMAX', len: 7, syscnf: true, origbuf: false, fn: cnf_line_PERSMAX },
     { name: 'PERS_IS_UID', len: 11, syscnf: true, origbuf: false, fn: cnf_line_PERS_IS_UID },
     { name: 'ENTRYMAX', len: 8, syscnf: true, origbuf: false, fn: cnf_line_ENTRYMAX },
     { name: 'POINTSMIN', len: 9, syscnf: true, origbuf: false, fn: cnf_line_POINTSMIN },
@@ -659,10 +829,10 @@ const configLineStmt = [
     { name: 'GREPPATH', len: 7, syscnf: true, origbuf: false, fn: (b) => cnf_store_str('greppath', b) },
     { name: 'ACCESSIBILITY', len: 13, syscnf: true, origbuf: false, fn: cnf_line_ACCESSIBILITY },
     { name: 'PORTABLE_DEVICE_PATHS', len: 8, syscnf: true, origbuf: false, fn: cnf_line_PORTABLE_DEVICE_PATHS },
-    { name: 'BOULDER', len: 3, syscnf: false, origbuf: false, fn: cnf_line_named_true },
+    { name: 'BOULDER', len: 3, syscnf: false, origbuf: false, fn: cnf_line_BOULDER },
     { name: 'MENUCOLOR', len: 9, syscnf: false, origbuf: false, fn: cnf_line_MENUCOLOR },
     { name: 'HILITE_STATUS', len: 6, syscnf: false, origbuf: false, fn: cnf_line_HILITE_STATUS },
-    { name: 'WARNINGS', len: 5, syscnf: false, origbuf: false, fn: cnf_line_named_true },
+    { name: 'WARNINGS', len: 5, syscnf: false, origbuf: false, fn: cnf_line_WARNINGS },
     { name: 'ROGUESYMBOLS', len: 4, syscnf: false, origbuf: false, fn: cnf_line_ROGUESYMBOLS },
     { name: 'SYMBOLS', len: 4, syscnf: false, origbuf: false, fn: cnf_line_SYMBOLS },
     { name: 'WIZKIT', len: 6, syscnf: false, origbuf: false, fn: cnf_line_WIZKIT },

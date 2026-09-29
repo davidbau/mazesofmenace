@@ -1342,8 +1342,10 @@ async function mquaffmsg(mtmp, otmp) {
     }
 }
 
-/** C ref: mon.c flash_mon `:6066` — viz pulse + flash_glyph_at. */
-async function flash_mon(mtmp) {
+/** C ref: mon.c flash_mon `:6066` — viz pulse + flash_glyph_at. Exported for
+ * read.c create_particular_creation `:3347` (no muse↔read cycle; read calls it
+ * lazily inside the creation loop). */
+export async function flash_mon(mtmp) {
     const mx = mtmp.mx | 0, my = mtmp.my | 0;
     let count = couldsee(mx, my) ? 8 : 4;
     if (!game.flags?.sparkle) count = (count / 2) | 0;

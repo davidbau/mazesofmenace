@@ -749,6 +749,17 @@ const EXT_CMDS = [
         },
     },
     {
+        // C: cmd.c "wizborn" IFBURIED|WIZMODECMD (no AUTOCOMPLETE)
+        // → insight.c doborn.
+        name: 'wizborn',
+        wiz: true,
+        autocomplete: false,
+        run: async () => {
+            const { doborn } = await import('./insight.js');
+            return doborn();
+        },
+    },
+    {
         // C: cmd.c "wizmap" IFBURIED|WIZMODECMD (no AUTOCOMPLETE) — ^F / #wizmap
         name: 'wizmap',
         wiz: true,

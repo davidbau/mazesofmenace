@@ -1308,6 +1308,28 @@ function clear_conjoined_pits(trap) {
 }
 
 /**
+ * C ref: trap.c join_adjacent_pits (staticfn :6621–6641) — set this pit's
+ * conjoined bit toward each neighbouring pit (clearing the rest) and
+ * recurse into the neighbour. No C callers (only the :6636 self-call).
+ */
+function join_adjacent_pits(trap) {
+    if (!trap) return; /* C :6628–6629 */
+    for (let diridx = 0; diridx < N_DIRS; ++diridx) { /* C :6630 */
+        const x = (trap.tx | 0) + xdir[diridx]; /* C :6631–6632 */
+        const y = (trap.ty | 0) + ydir[diridx];
+        if (isok(x, y)) { /* C :6633 */
+            const t = t_at(x, y);
+            if (t && is_pit(t.ttyp)) { /* C :6634 */
+                trap.conjoined = (trap.conjoined | 0) | (1 << diridx); /* C :6635 */
+                join_adjacent_pits(t); /* C :6636 */
+            } else {
+                trap.conjoined = (trap.conjoined | 0) & ~(1 << diridx); /* C :6637–6638 */
+            }
+        }
+    }
+}
+
+/**
  * C ref: trap.h:42 — `#define dealloc_trap(trap) free((genericptr_t)(trap))`.
  * JS has no heap free. After the trap is off the chain, drop `ntrap` so a
  * retained reference is not a live successor. Callers: `deltrap` only in
@@ -5765,15 +5787,45 @@ async function trapeffect_poly_trap(mtmp, trap, trflags) {
 let recursive_mine = false;
 
 /**
+ * C ref: trap.c keep_saddle_with_steedcorpse (staticfn :938–967) — after a
+ * landmine kills the steed, move the floor saddle onto the steed's corpse
+ * so it stays with the body. Depth-first walk of objchn via cobj/nobj.
+ */
+function keep_saddle_with_steedcorpse(steed_mid, objchn, saddle) {
+    const CORPSE = objectNames.indexOf('CORPSE');
+    if (!saddle) return false; /* C :944–945 */
+    let chain = objchn;
+    while (chain) { /* C :946 */
+        if ((chain.otyp | 0) === CORPSE && has_omonst(chain)) { /* C :947 */
+            const mtmp = OMONST(chain); /* C :948 */
+            if ((mtmp?.m_id | 0) === (steed_mid | 0)) { /* C :950 */
+                /* move saddle — C :951–958 */
+                const loc = get_obj_location(chain, 0); /* C :953 */
+                if (loc) {
+                    obj_extract_self(saddle); /* C :954 */
+                    place_object(saddle, loc.x, loc.y); /* C :955 */
+                    stackobj(saddle); /* C :956 */
+                }
+                return true; /* C :958 */
+            }
+        }
+        if (chain.cobj /* Has_contents — C :961–962 */
+            && keep_saddle_with_steedcorpse(steed_mid, chain.cobj, saddle)) {
+            return true; /* C :963 */
+        }
+        chain = chain.nobj; /* C :964 */
+    }
+    return false; /* C :966 */
+}
+
+/**
  * C ref: trap.c trapeffect_landmine `:2527–2657` — hero + monster.
  * Monster: rnd(16) damage, iron-shoes quarter via live wearing_iron_shoes
  * (trap.c:1097 which_armor(W_ARMF)+IRON), weight gate rn2(cwt+1) vs
  * WT_ELF/2, m_in_air rn2(3), blow_up, thitm, recursive mintrap, fill_pit,
  * unconscious awaken. Hero: Lev/Fly discovery arms + live steedintrap
  * under the recursive_mine guard + wounded legs + losehp + blow_up +
- * recursive dotrap + fill_pit.
- * Named omission: keep_saddle_with_steedcorpse(steed_mid, fobj, saddle)
- * (C `:2591–2592`) — no JS counterpart anywhere in `js/`.
+ * keep_saddle_with_steedcorpse + recursive dotrap + fill_pit.
  */
 async function trapeffect_landmine(mtmp, trap, trflags) {
     let damage = rnd(16);
@@ -5789,6 +5841,9 @@ async function trapeffect_landmine(mtmp, trap, trflags) {
             || (trflags & FAILEDUNTRAP) !== 0);
         const forcebungle = (trflags & FORCEBUNGLE) !== 0;
         const a_your = ['a', 'your'];
+        /* C :2545–2546 — stashed across the blast for the :2591 saddle move */
+        let steed_mid = 0;
+        let saddle = null;
 
         if ((u.Levitation || u.Flying) && !forcetrap) {
             if (!already_seen && rn2(3)) return Trap_Effect_Finished;
@@ -5818,15 +5873,11 @@ async function trapeffect_landmine(mtmp, trap, trflags) {
                 `KAABLAMM!!!  You triggered ${a_your[trap.madeby_u ? 1 : 0]}`
                 + ` land mine!`,
             );
-            const steed_mid = u.usteed ? (u.usteed.m_id | 0) : 0;
+            if (u.usteed) steed_mid = u.usteed.m_id | 0; /* C :2575–2576 */
             recursive_mine = true;
             void (await steedintrap(trap, null));
             recursive_mine = false;
-            const saddle = sobj_at(SADDLE, u.ux, u.uy);
-            /* Named omission: keep_saddle_with_steedcorpse(steed_mid, fobj,
-               saddle) (C `:2591–2592`) — no live importer; floor saddle stays. */
-            void steed_mid;
-            void saddle;
+            saddle = sobj_at(SADDLE, u.ux, u.uy); /* C :2580 */
             await set_wounded_legs(LEFT_SIDE, rn1(35, 41));
             await set_wounded_legs(RIGHT_SIDE, rn1(35, 41));
             exercise(A_DEX, false);
@@ -5835,6 +5886,8 @@ async function trapeffect_landmine(mtmp, trap, trflags) {
         trap.madeby_u = false;
         await losehp(maybe_half_phys(damage), 'land mine', KILLED_BY_AN);
         await blow_up_landmine(trap);
+        if (steed_mid && saddle && !u.usteed) /* C :2591–2592 */
+            void keep_saddle_with_steedcorpse(steed_mid, game.fobj, saddle);
         newsym(u.ux, u.uy);
         const pit = t_at(u.ux, u.uy);
         if (pit) await dotrap(pit, RECURSIVETRAP);

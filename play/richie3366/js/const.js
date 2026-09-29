@@ -1809,6 +1809,8 @@ export const WRITING = 0x02;
 export const FREEING = 0x04;
 export const CONVERTING = 0x08;
 export const UNCONVERTING = 0x10;
+/** C sfbase.c:15 `#define TURN_OFF_LOGGING (UNCONVERTING << 1)`. */
+export const TURN_OFF_LOGGING = 0x20;
 export const HACKPREFIX = 0;
 export const LEVELPREFIX = 1;
 export const SAVEPREFIX = 2;
@@ -2874,6 +2876,9 @@ export const decgraphics = [
 // Note: init functions lost array indices in autotranslation; showsyms/primary_syms/rogue_syms
 // are scalars here (last-write-wins) rather than arrays. Functional but imprecise.
 export const gs = { showsyms: null, symset: [{ name: null, handling: 0, nocolor: 0 }, { name: null, handling: 0, nocolor: 0 }] };
+// C ref: symbols.c known_handling `:376–384` — symset "handling" names at
+// the H_XXX offsets (H_UNK..H_UTF8); index 6 is the NUL terminator.
+export const KNOWN_HANDLING = ['UNKNOWN', 'IBM', 'DEC', 'CURS', 'MAC', 'UTF8', null];
 export const gp = {
     primary_syms: null,
     pl_race: null,

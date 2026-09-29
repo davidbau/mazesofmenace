@@ -2,9 +2,9 @@
 // C ref: wizcmds.c
 
 import { game } from './gstate.js';
-import { cmd_from_func } from './dokeylist.js';
-import { pline, You, docrt, impossible, flush_topl_more, Warn_of_mon, glyph_at, glyph_is_monster, glyph_is_invisible_id, map_invisible, unmap_invisible, glyph_is_cmap, glyph_to_cmap, glyph_is_cmap_zap, glyph_to_mon, glyph_is_object, glyph_to_obj, NO_GLYPH, MAX_GLYPH, MAXPCHARS } from './display.js';
-import { getlin, yn_function } from './getline.js';
+import { cmd_from_func, ecname_from_fn, UNAVAILCMD } from './dokeylist.js';
+import { pline, You, There, docrt, impossible, flush_topl_more, Warn_of_mon, glyph_at, glyph_is_monster, glyph_is_invisible_id, map_invisible, unmap_invisible, canspotmon, glyph_is_cmap, glyph_to_cmap, glyph_is_cmap_zap, glyph_to_mon, glyph_is_object, glyph_to_obj, NO_GLYPH, MAX_GLYPH, MAXPCHARS } from './display.js';
+import { getlin, yn_function, ynq, paranoid_query } from './getline.js';
 import { pluslvl, losexp } from './exper.js';
 import { makewish } from './zap.js';
 import { create_particular } from './read.js';
@@ -24,9 +24,12 @@ import {
     ENERGY_REGENERATION, PROTECTION, PROT_FROM_SHAPE_CHANGERS,
     POLYMORPH_CONTROL, UNCHANGING, REFLECTING, FREE_ACTION, FIXED_ABIL,
     LIFESAVED, Upolyd, COLNO, ROWNO, STONE, S_sink, S_fountain, S_vbeam, S_rslant,
+    COULD_SEE, IN_SIGHT, TEMP_LIT, NEUTRAL,
     In_sokoban, Is_knox, In_endgame, ARM, u_at,
     Is_stronghold, Is_botlevel, has_mgivenname, MGIVENNAME,
     MIGR_EXACT_XY, MIGR_RANDOM, MM_NOMSG,
+    DIED, XKILL_NOMSG, SUPPRESS_IT, SUPPRESS_HALLUCINATION, SUPPRESS_SADDLE,
+    ARTICLE_YOUR, ARTICLE_THE, ARTICLE_A, PRIMARYSET, KNOWN_HANDLING,
 } from './const.js';
 import { ATR_INVERSE } from './terminal.js';
 import { make_blinded, save_currentstate } from './do.js';
@@ -35,11 +38,11 @@ import { dobjsfree } from './mkobj.js';
 /* C lock.c maybe_reset_pick — hoisted fn, called only from
    makemap_prepost (`imports.mjs --can wizcmds.js lock.js` SAFE). */
 import { maybe_reset_pick } from './lock.js';
-import { minimal_monnam } from './do_name.js';
-import { strsubst, depth, mungspaces, strncmpi } from './hacklib.js';
+import { minimal_monnam, mon_nam, x_monnam } from './do_name.js';
+import { strsubst, depth, mungspaces, strncmpi, upstart, dist2 } from './hacklib.js';
 import { getpos } from './getpos.js';
 import { usmellmon, makemon, rndmonst } from './makemon.js';
-import { check_invent_gold } from './invent.js';
+import { check_invent_gold, select_menu_pick_none } from './invent.js';
 /* C worn.c check_wornmask_slots — hoisted async fn, called only from
    you_sanity_check (imports.mjs --can wizcmds.js worn.js cycle-safe
    once the export is a function declaration). */
@@ -47,23 +50,37 @@ import { check_wornmask_slots } from './worn.js';
 import { rn2 } from './rng.js';
 import { float_vs_flight, body_part } from './polyself.js';
 import { pooleffects } from './pickup.js';
-import { mons, olfaction, NUMMONS } from './monsters.js';
-import { PM_GRID_BUG } from './generated/monsters_data.js';
+import { mons, olfaction, NUMMONS, nonliving } from './monsters.js';
+import { PM_GRID_BUG, PM_SAMURAI, pmnames } from './generated/monsters_data.js';
+/* C mondata.c mstrength — hoisted fn (`imports.mjs --can wizcmds.js mondata.js mstrength` SAFE). */
+import { mstrength } from './mondata.js';
 import { NUM_OBJECTS } from './objects.js';
 /* C dungeon.c overview_stats — hoisted fn
    (`imports.mjs --can wizcmds.js dungeon.js overview_stats` SAFE). */
-import { overview_stats } from './dungeon.js';
+import { overview_stats, on_level } from './dungeon.js';
 /* C worm.c size_wseg — hoisted fn
    (`imports.mjs --can wizcmds.js worm.js size_wseg` SAFE). */
 import { size_wseg } from './worm.js';
 /* C glyphs.c glyphmap[MAX_GLYPH] accessor for wizcustom_callback below
    (`imports.mjs --can wizcmds.js glyphs.js` IN-SCC, function declaration,
    called only at runtime — no top-level read). */
-import { ensure_glyphmap } from './glyphs.js';
+import { ensure_glyphmap, glyphid_cache_status, fill_glyphid_cache, wizcustom_glyphids, free_glyphid_cache } from './glyphs.js';
 /* C timeout.c property_by_index — #wizintrinsic menu order + reverse
    lookup (`imports.mjs --can wizcmds.js timeout.js` IN-SCC, called only
    at runtime — no top-level read). */
 import { property_by_index } from './timeout.js';
+/* C uhitm.c xkilled — #wizkill hero-credited kill
+   (`imports.mjs --can wizcmds.js uhitm.js xkilled` SAFE). */
+import { xkilled } from './uhitm.js';
+/* C mon.c monkilled — #wizkill 'm'-prefix kill
+   (`imports.mjs --can wizcmds.js mhitm.js monkilled` SAFE). */
+import { monkilled } from './mhitm.js';
+/* C end.c done — #wizkill seppuku arm
+   (`imports.mjs --can wizcmds.js end.js done` SAFE). */
+import { done } from './end.js';
+/* C uhis — #wizkill killer-name possessive
+   (`imports.mjs --can wizcmds.js roles.js uhis` SAFE). */
+import { uhis } from './roles.js';
 
 const DEFAULT_TIMEOUT_INCR = 30;
 
@@ -1984,4 +2001,228 @@ export async function wiz_show_seenv() {
     // C `:614–615` — display_nhwindow(win, TRUE); destroy_nhwindow(win).
     await show_text_pages(lines);
     return ECMD_OK; // C `:616`.
+}
+
+// ── wiz_mon_diff / wiz_show_vision ──
+/**
+ * C ref: wizcmds.c wiz_mon_diff `:1789–1828` — wizard review of monster
+ * difficulty ratings: one line per monster whose hardcoded `difficulty`
+ * differs from the calculated `mstrength()`, else the no-discrepancies
+ * line. NHW_TEXT via show_text_pages (file idiom): each C putstr is one
+ * collected line; display_nhwindow/destroy_nhwindow subsume into the
+ * page wait. C has no callers (0 references; debug review command) —
+ * no JS caller to wire.
+ */
+export async function wiz_mon_diff() {
+    // C `:1792–1795` — static title const; trouble/cnt/mdiff ints.
+    const window_title = 'Review of monster difficulty ratings [index:level]:';
+    let trouble = 0;
+    const lines = [];
+    // C `:1804` — for (ptr = &mons[0]; ptr->mlet; ptr++, cnt++). NUMMONS
+    // bounds the walk; the !mlet sentinel break is verbatim (C's table
+    // carries the sentinel, so the bound never fires first).
+    for (let i = 0, cnt = 0; i < NUMMONS; i++, cnt++) {
+        const ptr = mons(i);
+        if (!ptr || !ptr.mlet) break; // C `:1804` ptr->mlet
+        const mcalculated = mstrength(ptr); // C `:1805`
+        const mhardcoded = ptr.difficulty | 0; // C `:1806` (int)
+        const mdiff = mhardcoded - mcalculated; // C `:1807`
+        if (mdiff) { // C `:1808`
+            if (!trouble++) lines.push(window_title); // C `:1809–1810` (post-incr)
+            let mlev = ptr.mlevel | 0; // C `:1811`
+            if (mlev > 50) mlev = 50; // C `:1812–1813` named-demon hack
+            // C `:1814–1818` — "%-18s [%3d:%2d]: calculated: %2d,
+            // hardcoded: %2d (%+d)". Names live in the generated pmnames
+            // table (ptr carries no names in JS); padEnd/padStart match
+            // printf widths (no truncation either side).
+            const name = pmnames[i]?.[NEUTRAL] ?? '';
+            lines.push(
+                `${name.padEnd(18)} [${String(cnt).padStart(3)}:${String(mlev).padStart(2)}]: ` +
+                `calculated: ${String(mcalculated).padStart(2)}, ` +
+                `hardcoded: ${String(mhardcoded).padStart(2)} (${mdiff < 0 ? '' : '+'}${mdiff})`,
+            );
+        }
+    }
+    if (!trouble) // C `:1822`
+        lines.push('No monster difficulty discrepancies were detected.');
+    // C `:1823–1824` — display_nhwindow(win, FALSE); destroy_nhwindow(win).
+    await show_text_pages(lines);
+    return ECMD_OK; // C `:1826`
+}
+
+/**
+ * C ref: wizcmds.c wiz_show_vision `:620–653` — wizard `#vision` dump of
+ * gv.viz_array as flag characters ('@' at the hero, ' ' for 0, '0'+v
+ * else), trailing spaces trimmed per row. NHW_TEXT via show_text_pages
+ * (file idiom). C has no callers (0 references) — no JS caller to wire.
+ */
+export async function wiz_show_vision() {
+    const lines = [];
+    // C `:625–627` — "Flags: 0x%x could see, 0x%x in sight, 0x%x temp
+    // lit" (%x: lowercase hex, no pad).
+    lines.push(
+        `Flags: 0x${COULD_SEE.toString(16)} could see, ` +
+        `0x${IN_SIGHT.toString(16)} in sight, 0x${TEMP_LIT.toString(16)} temp lit`,
+    );
+    lines.push(''); // C `:628` putstr(win, 0, "")
+    // C `:629` — for (y = 0; y < ROWNO; y++).
+    for (let y = 0; y < ROWNO; y++) {
+        // C `:630–638` — row[1..COLNO): '@' at the hero else the viz
+        // char. (C indexes row[x] for x in 1..COLNO-1; JS builds the
+        // same run 0-based.)
+        let row = '';
+        for (let x = 1; x < COLNO; x++) {
+            if (u_at(x, y)) { // C `:631`
+                row += '@';
+            } else {
+                const v = game.viz_array?.[y]?.[x] | 0; // C `:634` gv.viz_array[y][x]
+                row += (v === 0) ? ' ' : String.fromCharCode(48 + v); // C `:635` '0'+v
+            }
+        }
+        // C `:640–644` — remove trailing spaces (terminate after the
+        // last non-space; an all-space row becomes the empty string).
+        let end = row.length;
+        while (end > 0 && row[end - 1] === ' ')
+            end--;
+        lines.push(row.slice(0, end)); // C `:646` putstr(win, 0, &row[1])
+    }
+    // C `:648–649` — display_nhwindow(win, TRUE); destroy_nhwindow(win).
+    await show_text_pages(lines);
+    return ECMD_OK; // C `:651`
+}
+
+/* C monattk.h AD_PHYS `:42` — ordinary physical (monkilled dtype). */
+const AD_PHYS = 0;
+
+/**
+ * C ref: wizcmds.c wiz_custom `:1934–1984` (#wizcustom) — show customized
+ * glyphs. The JS menu layer has no create/end/select/destroy (windows.c
+ * by-design), so win is the raw menu array the wizcustom_callback port
+ * pushes {text, selectable:false, a_int} into, and
+ * end_menu+select_menu(PICK_NONE)+destroy is select_menu_pick_none
+ * (invent.js), whose entries already include the prompt after the items
+ * as after tty_end_menu. Symbol state (gs.symset name/handling,
+ * gc.currentgraphics, iflags.colorcount) has no JS writers yet — reads
+ * default to the C default-game output ("default", no ", active", no
+ * handler, count 0).
+ */
+export async function wiz_custom() {
+    // C `:1938` if (wizard) — sibling gate (wiz_where/wiz_identify).
+    if (!(game.flags?.debug || game.flags?.wizard)) {
+        // C `:1982` pline(unavailcmd, ecname_from_fn(wiz_custom)).
+        await pline(UNAVAILCMD, ecname_from_fn('wizcustom'));
+        return ECMD_OK;
+    }
+    // C `:1946–1947` — fill the glyphid cache when down.
+    if (!glyphid_cache_status()) fill_glyphid_cache();
+    const win = []; // C `:1951–1952` create_nhwindow(NHW_MENU) + start_menu
+    // C `:1953–1955` add_menu_heading (adjacent literals ≡ one string).
+    win.push('    glyph  glyph identifier                        '
+        + '     sym   clr customcolor unicode utf8');
+    // C `:1956–1958` Sprintf(bufa, "%s: colorcount=%ld %s", ...).
+    const symName = game.gs?.symset?.[PRIMARYSET]?.name ?? null;
+    let bufa = `#wizcustom: colorcount=${game.iflags?.colorcount | 0} ${symName ?? 'default'}`;
+    // C `:1959–1960` — currentgraphics is BSS 0 (|0 ≡), PRIMARYSET-gated.
+    if ((game.gc?.currentgraphics | 0) === PRIMARYSET && symName) bufa += ', active';
+    // C `:1961–1964` — Sprintf(eos(bufa), ", handler=%s", known_handling[…]).
+    const handling = game.gs?.symset?.[PRIMARYSET]?.handling | 0;
+    if (handling) bufa += `, handler=${KNOWN_HANDLING[handling]}`;
+    // C `:1965` Sprintf(buf, "%s", bufa) — dead copy (buf never read); dropped.
+    wizcustom_glyphids(win); // C `:1967`
+    win.push(bufa); // C `:1968` end_menu(win, bufa) — prompt last
+    await select_menu_pick_none(win); // C `:1969–1970` select + destroy
+    // C `:1974–1975` free(pick_list) — no JS analogue (raw array, nothing allocated).
+    // C `:1976–1977` — drop the cache when up.
+    if (glyphid_cache_status()) free_glyphid_cache();
+    await docrt(); // C `:1978`
+    return ECMD_OK; // C `:1983`
+}
+
+/**
+ * C ref: wizcmds.c wiz_kill `:243–347` (#wizkill) — slay picked monsters,
+ * no game time. No `if (wizard)` gate in C (WIZMODECMD dispatch gates it).
+ * Every callee is live: getpos/m_at/unmap_invisible/xkilled/monkilled/
+ * dmonsfree/on_level (position/kill), mon_nam/x_monnam/uhis (names),
+ * ynq/paranoid_query (asks), pline/You/There/upstart (messages),
+ * done (seppuku), dist2 (next2u macro), u_at/has_mgivenname (const).
+ */
+export async function wiz_kill() {
+    const u = game.u || {};
+    const cc = { x: u.ux | 0, y: u.uy | 0 }; // C `:253`
+    let prompt = 'Pick first monster to slay'; // C `:249`
+    const save_verbose = game.flags?.verbose; // C `:251`
+    const save_autodescribe = game.iflags?.autodescribe;
+    const uarehere = { ...(u.uz || {}) }; // C `:252` d_level copy
+    for (;;) {
+        await pline('%s:', prompt); // C `:256`
+        prompt = 'Next monster'; // C `:257`
+        if (!game.flags) game.flags = {};
+        if (!game.iflags) game.iflags = {};
+        game.flags.verbose = false; // C `:259` FALSE
+        game.iflags.autodescribe = true; // C `:260` TRUE
+        const ans = await getpos(cc, true, 'a monster'); // C `:261`
+        game.flags.verbose = save_verbose; // C `:262`
+        game.iflags.autodescribe = save_autodescribe; // C `:263`
+        if (ans < 0 || cc.x < 1) break; // C `:264–265`
+        let mtmp = null; // C `:267` mtmp = 0
+        if (u_at(cc.x, cc.y)) { // C `:268`
+            if (u.usteed) { // C `:269`
+                // C `:270` Sprintf(qbuf, "Kill %.110s?", mon_nam(...)).
+                const qbuf = `Kill ${mon_nam(u.usteed).slice(0, 110)}?`;
+                const c = await ynq(qbuf); // C `:271` (JS ynq returns a promise)
+                if (c === 'q') break; // C `:271–272`
+                if (c === 'y') mtmp = u.usteed; // C `:273–274`
+            }
+            if (!mtmp) { // C `:276`
+                // C `:277–278` — Role_if macro (you.h:247) ≡ gu.urole.mnum.
+                const qbuf = `${(game.urole?.mnum | 0) === PM_SAMURAI ? 'Perform seppuku' : 'Commit suicide'}?`;
+                if (await paranoid_query(true, qbuf)) { // C `:279` TRUE
+                    // C `:280–281` — svk.killer ≡ game.killer (dothrow/eat idiom).
+                    if (!game.killer) game.killer = {};
+                    game.killer.name = `${uhis()} own player`;
+                    game.killer.format = KILLED_BY;
+                    await done(DIED); // C `:282`
+                }
+                break; // C `:284`
+            }
+        } else if (u.uswallow) { // C `:286`
+            // C `:287` — next2u macro (you.h:558) ≡ distu ≤ 2 ≡ dist2 ≤ 2.
+            mtmp = dist2(cc.x, cc.y, u.ux | 0, u.uy | 0) <= 2 ? u.ustuck : null;
+        } else { // C `:288–289`
+            mtmp = m_at(cc.x, cc.y);
+        }
+        // C `:295` — (void) unmap_invisible: the attempt teaches the square.
+        unmap_invisible(cc.x, cc.y);
+        if (mtmp) { // C `:297`
+            const tame = !!mtmp.mtame; // C `:301`
+            // C `:302` — mtmp == u.ustuck is pointer identity (===).
+            const seen = canspotmon(mtmp) || (u.uswallow && mtmp === u.ustuck);
+            // C `:303–305`.
+            const flgs = SUPPRESS_IT | SUPPRESS_HALLUCINATION
+                | ((tame && has_mgivenname(mtmp)) ? SUPPRESS_SADDLE : 0);
+            const articl = tame ? ARTICLE_YOUR : seen ? ARTICLE_THE : ARTICLE_A; // C `:306`
+            // C `:307–308` — null ≡ (const char *) 0.
+            const adjs = tame ? (!seen ? 'poor, unseen' : 'poor') : (!seen ? 'unseen' : null);
+            const Mn = x_monnam(mtmp, articl, adjs, flgs, false); // C `:309`
+            if (!game.iflags.menu_requested) { // C `:311`
+                // C `:313` — hero credited/blamed.
+                await You('%s %s!', nonliving(mtmp.data) ? 'destroy' : 'kill', Mn);
+                await xkilled(mtmp, XKILL_NOMSG); // C `:314`
+            } else { // C `:315` — 'm'-prefix: no credit/blame
+                if (!game.context) game.context = {};
+                game.context.mon_moving = true; // C `:320`
+                // C `:321–322`.
+                await pline('%s is %s.', upstart(Mn), nonliving(mtmp.data) ? 'destroyed' : 'killed');
+                await monkilled(mtmp, null, AD_PHYS); // C `:324–326` (null ≡ (char *) 0)
+                game.context.mon_moving = false; // C `:327`
+            }
+            // C `:330–331` — engulfer dropped the hero onto a level-changer.
+            if (u.utotype || !on_level(u.uz, uarehere)) break;
+        } else { // C `:332–335`
+            await There('is no monster there.');
+            break;
+        }
+    }
+    await dmonsfree(); // C `:343` — force dead-monster cleanup
+    return ECMD_OK; // C `:345` — no time elapses
 }

@@ -15,9 +15,9 @@ import {
     DRAWBRIDGE_UP, DRAWBRIDGE_DOWN,
     P_DAGGER, P_FLAIL, P_LANCE, P_PICK_AXE, P_SABER, P_NONE,
     AUTOUNLOCK_APPLY_KEY, AUTOUNLOCK_UNTRAP, STRAT_WAITMASK, TT_PIT, M_AP_TYPE,
-    M_AP_FURNITURE, M_AP_OBJECT, Something, FINGER, S_hcdoor, S_vcdoor,
+    M_AP_FURNITURE, M_AP_OBJECT, Something, Never_mind, FINGER, S_hcdoor, S_vcdoor,
     CMDQ_DIR, CMDQ_KEY, CQ_CANNED, CQ_REPEAT,
-    xytodir, getdirInp, u_at,
+    xytodir, getdirInp, u_at, isok,
     CLICK_1, CLICK_2, N_DIRS, xdir, ydir, zdir,
     NHKF_ESC, NHKF_GETDIR_SELF, NHKF_GETDIR_SELF2, NHKF_GETDIR_HELP,
     NHKF_GETDIR_MOUSE, NHKF_GETPOS_PICK, NHKF_GETPOS_PICK_Q,
@@ -752,21 +752,30 @@ export async function getdir(prompt) {
     }
 }
 
-/** C ref: cmd.c get_adjacent_loc — getdir then adjacent cell. */
+/**
+ * C ref: cmd.c get_adjacent_loc `:3931–3953` — getdir, then the cell
+ * adjacent to (x, y). JS keeps the (prompt, emsg) → {x,y}|null shape:
+ * every C call site passes x=u.ux, y=u.uy (apply.c:793, lock.c:424,
+ * lock.c:804, pickup.c:2298), so the params collapse to u.ux/u.uy and
+ * the cc out-param is the return (null ≡ C return 0). pline1 ≡ pline:
+ * neither Never_mind nor any call-site emsg contains % (spell.js :767
+ * precedent). Callers: doopen_indir + pick_lock below (unchanged);
+ * pickup.js lootmon (unchanged); apply.c:793 doleash via the leash
+ * clone get_adjacent_loc_leash (apply.js, pre-existing).
+ */
 export async function get_adjacent_loc(prompt, emsg) {
-    // C: getdir(prompt) — invalid key → help_dir cmdassist then fail
-    if (!(await getdir(prompt))) {
-        await pline('Never mind.');
-        return null;
+    if (!(await getdir(prompt))) { // C `:3937–3940`
+        await pline(Never_mind); // C `:3938` pline1(Never_mind)
+        return null; // C `:3939` return 0
     }
     const u = game.u || {};
-    const x = (u.ux || 0) + (u.dx || 0);
-    const y = (u.uy || 0) + (u.dy || 0);
-    if (x < 1 || x >= COLNO || y < 0 || y >= ROWNO) {
-        if (emsg) await pline(emsg);
-        return null;
+    const new_x = (u.ux | 0) + (u.dx | 0); // C `:3941` x + u.dx
+    const new_y = (u.uy | 0) + (u.dy | 0); // C `:3942` y + u.dy
+    if (!isok(new_x, new_y)) { // C `:3943` cc && isok (cc always set here)
+        if (emsg) await pline(emsg); // C `:3947–3948` pline1(emsg)
+        return null; // C `:3949` return 0
     }
-    return { x, y };
+    return { x: new_x, y: new_y }; // C `:3944–3945` cc->x/y; `:3952` return 1
 }
 
 /**

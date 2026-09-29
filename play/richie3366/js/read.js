@@ -48,8 +48,9 @@
 // costly_alteration; Punished/unpunish; buried_ball_to_freedom; steed saddle
 // Yobjnam2 glow; update_inventory; enchant-weapon confused erodeproof
 // Yobjnam2/hcolor polish; twoweapon secondary; shop costly_alteration on
-// proof strip; create_particular class-letter / * random /
-// tame|peaceful|hostile|saddled|sleeping|invisible|hidden prefixes /
+// proof strip; create_particular_parse whole (class-letter / * random /
+// tame|peaceful|hostile|saddled|sleeping|invisible|hidden prefixes live;
+// creation whole: class mkclass / `*` rndmonst + post-flags live) /
 // create_particular → makemon_appear_msg (makemon in-body still deferred;
 // mimic mhidden_description / set_msg_xy / dochugw omit); cant_revive
 // force prompt + doppelganger newcham fixup live (D-2004);
@@ -82,8 +83,9 @@
 // Yobjnam2 glow; update_inventory; enchant-weapon confused erodeproof
 // Yobjnam2/hcolor polish; twoweapon secondary; shop costly_alteration on
 // proof strip; enchant-armor adj_abon (maybe_adjust_light wired D-2244);
-// mail readmail (mail.js D-1958); create_particular class-letter / * random /
-// tame|peaceful|hostile|saddled|sleeping|invisible|hidden prefixes /
+// mail readmail (mail.js D-1958); create_particular_parse whole (class-letter /
+// * random / tame|peaceful|hostile|saddled|sleeping|invisible|hidden live;
+// creation whole: class mkclass / `*` rndmonst + post-flags live) /
 // create_particular → makemon_appear_msg (makemon in-body still deferred;
 // mimic mhidden_description / set_msg_xy / dochugw omit); cant_revive
 // force prompt + doppelganger newcham fixup live (D-2004);
@@ -119,9 +121,9 @@ import { placebc, set_bc, move_bc } from './ball.js';
 import { rn2, rnd, rn1, d } from './rng.js';
 import {
     COLNO, ROWNO, SDOOR, CORR, ROOMOFFSET, Is_rogue_level, Is_waterlevel,
-    HEAD, HAND, STOMACH, isok, ACCESSIBLE,
+    HEAD, HAND, STOMACH, isok, ACCESSIBLE, ismnum,
     W_BALL, W_CHAIN, W_ART, W_ARTI, W_SADDLE, W_ARM, W_ARMH, P_SLING, SPE_LIM, MM_NOEXCLAM,
-    MM_MALE, MM_FEMALE, MM_EDOG, G_GONE,
+    MM_MALE, MM_FEMALE, MM_EDOG, MM_MINVIS, G_GONE,
     NO_MM_FLAGS, NO_NC_FLAGS, WT_IRON_BALL_INCR, thats_enough_tries, EXT_ENCUMBER,
     GENOCIDED, KILLED_BY, KILLED_BY_AN, LL_CONDUCT, LL_GENOCIDE, NO_MINVENT, MM_NOMSG, Upolyd,
     nothing_happens, G_GENOD, G_EXTINCT, UNCHANGING,
@@ -130,18 +132,18 @@ import {
     LEFT_RING, RIGHT_RING, COST_UNCHRG, COST_DECHNT, COST_DEGRD, NOTELL, TIMEOUT,
     ALL_SPELLS, DISP_BEAM, DISP_END, S_goodpos, Never_mind,
     In_endgame, Is_earthlevel, IS_OBSTRUCTED, IS_AIR,
-    EXPL_FIERY, PLNMSG_TOWER_OF_FLAME, M_SEEN_FIRE, u_at,
+    EXPL_FIERY, PLNMSG_TOWER_OF_FLAME, M_SEEN_FIRE, u_at, OBJ_AT,
 } from './const.js';
 import { vision_recalc, do_clear_area, cansee } from './vision.js';
 import { valid_cloud_pos, create_gas_cloud } from './region.js';
 import { getpos, getpos_sethilite } from './getpos.js';
 import { bcsign, BY_COOKIE, outrumor } from './rumors.js';
-import { dist2, mungspaces } from './hacklib.js';
-import { You_hear, closed_door, maybe_half_phys } from './hack.js';
+import { dist2, mungspaces, strstri, strncmpi } from './hacklib.js';
+import { You_hear, closed_door, maybe_half_phys, is_pool } from './hack.js';
 import { Soundeffect } from './sndprocs.js';
 import { se_maniacal_laughter, se_sad_wailing } from './generated/seffects_data.js';
 import { resist, cant_revive, Fire_resistance } from './zap.js';
-import { initedog } from './dog.js';
+import { initedog, tamedog } from './dog.js';
 import { monflee } from './monmove.js';
 import { which_armor, is_elven_armor, is_shield } from './worn.js';
 import { alter_cost, costly_alteration, obfree } from './shk.js';
@@ -154,9 +156,10 @@ import { mons, NON_PM, LOW_PM, NUMMONS, amorphous, passes_walls, noncorporeal, i
     G_GENO, G_UNIQ, G_NOCORPSE, is_human, is_demon, pmnames, NEUTRAL,
     MALE, FEMALE, is_male, is_female,
     M2_PNAME, monsterNames, nonliving, weirdnonliving, PM_ACID_BLOB,
-    hates_light,
+    hates_light, is_hider, hides_under,
 } from './monsters.js';
-import { makemon, makemon_appear_msg, rndmonst, create_critters, newcham, Is_dragon_scales } from './makemon.js';
+import { monster_census } from './minion.js';
+import { makemon, makemon_appear_msg, rndmonst, create_critters, newcham, Is_dragon_scales, mkclass, set_malign } from './makemon.js';
 import { kill_genocided_monsters, mongone, m_at, setmangry, wake_nearto, wakeup } from './mon.js';
 import { killed, light_hits_gremlin } from './uhitm.js';
 import { digests } from './mhitu.js';
@@ -167,6 +170,8 @@ import { losehp } from './hack.js';
 import { done } from './end.js';
 import { livelog_printf } from './pline.js';
 import { uhis } from './roles.js';
+import { can_saddle, put_saddle_on_mon } from './steed.js';
+import { flash_mon } from './muse.js';
 import { ART_SUNSWORD } from './generated/artifacts_data.js';
 import { readmail } from './mail.js';
 import { has_ceiling, avoid_ceiling } from './dungeon.js';
@@ -216,6 +221,8 @@ const PM_WIZARD = monsterNames.indexOf('PM_WIZARD');
 const PM_YELLOW_LIGHT = monsterNames.indexOf('PM_YELLOW_LIGHT');
 const PM_BLACK_LIGHT = monsterNames.indexOf('PM_BLACK_LIGHT');
 const PM_LONG_WORM_TAIL = monsterNames.indexOf('PM_LONG_WORM_TAIL');
+const PM_LONG_WORM = monsterNames.indexOf('PM_LONG_WORM');
+const PM_STALKER = monsterNames.indexOf('PM_STALKER');
 const NH_RED = 'red', NH_GOLDEN = 'golden', NH_SILVER = 'silver', NH_PURPLE = 'purple';
 const WAN_WISHING = _on('WAN_WISHING'), WAN_CANCELLATION = _on('WAN_CANCELLATION');
 const WAN_DEATH = _on('WAN_DEATH'), WAN_POLYMORPH = _on('WAN_POLYMORPH');
@@ -2724,109 +2731,179 @@ export async function do_genocide(how) {
 }
 
 /**
- * C ref: read.c create_particular_parse — named-monster subset with the
- * 5.0 gender half (`:3186–3195` explicit "female "/"male " terms blanked
- * before `mungspaces`, `:3212` `name_to_mon` gendered-name out-param,
- * `:3220–3229` explicit-vs-name merge into `fem`/`genderconf`).
- * Deferred: quan digit prefix, saddled/sleeping/invisible/hidden,
- * tame/peaceful/hostile, * / random, name_to_monclass class letters.
- * @returns {object|null}
+ * C ref: read.c create_particular_parse `:3137–3249` (staticfn) — whole body
+ * in C order: `d` defaults (`:3145–3152`), quan digit prefix (`:3155–3160`),
+ * QUAN_LIMIT clamp (`:3161–3167`), gear/state/gender terms blanked in place
+ * (`:3169–3194`, "female" before "male"), `mungspaces` (`:3195`),
+ * tame/peaceful/hostile disposition (`:3197–3205`), wizard `*`/`random`
+ * (`:3207–3210`), `name_to_mon` + 5.0 explicit-vs-name gender merge
+ * (`:3212–3229`), `ismnum` accept (`:3230–3231`), `name_to_monclass` arms
+ * (`:3232–3248`: species, S_invisible → stalker, S_WORM_TAIL → long worm,
+ * class → urole.mnum reset). Fills the caller's `d` (C `&d`), returns
+ * boolean. `monclass` uses -1 for C MAXMCLASSES (no JS const; the thin
+ * body's convention); `d.which` starts at `gu.urole.mnum` per `:3147`.
  */
-function create_particular_parse(str) {
-    let bufp = mungspaces(str);
-    if (!bufp) return null;
-    // C: read.c:3149 d->fem = -1 (gender not specified),
-    // d->genderconf = -1 (no confusion on which gender to assign).
-    let fem = -1;
-    // C: read.c:3186 — check "female" before "male" to avoid a false
-    // hit mid-word ("female" itself contains "male"). Bare strstri: no
-    // leading boundary, so "shemale " hits "male " in C too. ASCII-only
-    // lower: C strstri is byte-based, so indices stay aligned with bufp.
-    // The literal trailing space means a trailing word ("dwarf female")
-    // does NOT hit in C either.
-    const asciiLow = (s) => s.replace(/[A-Z]/g, (c) => c.toLowerCase());
-    let hit = asciiLow(bufp).indexOf('female ');
-    if (hit >= 0) {
-        fem = FEMALE; // C: read.c:3188 d->fem = 1
-        // C: read.c:3189 memset(tmpp, ' ', sizeof "female " - 1): blank
-        // exactly the 7 hit chars in place (length-preserving, like C).
-        bufp = `${bufp.slice(0, hit)}       ${bufp.slice(hit + 7)}`;
+function create_particular_parse(str, d) {
+    let gender_name_var = NEUTRAL; // C `:3141`
+    let bufp = str; // C `:3142 char *bufp = str` (caller mungspaces'd; NONNULL)
+    // C `:3145–3152` — every field assigned, so the caller's d is reusable.
+    d.quan = 1 + ((game.multi > 0) ? (game.multi | 0) : 0);
+    d.monclass = -1; // C `:3146` MAXMCLASSES
+    d.which = game.urole?.mnum; // C `:3147` gu.urole.mnum, arbitrary mons[] index
+    d.fem = -1; // C `:3148` gender not specified
+    d.genderconf = -1; // C `:3149` no confusion on which gender to assign
+    d.randmonst = false; // C `:3150`
+    d.maketame = d.makepeaceful = d.makehostile = false; // C `:3151`
+    d.sleeping = d.saddled = d.invisible = d.hidden = false; // C `:3152`
+    // C `:3155–3160` quantity: leading digit run, then spaces.
+    // C hacklib.c digit(): '0' <= c && c <= '9' (no JS export; 1-line pred).
+    const isDigit = (c) => c >= '0' && c <= '9';
+    if (isDigit(bufp[0])) {
+        d.quan = parseInt(bufp, 10); // C `:3156` atoi — bufp[0] is a digit
+        let i = 0;
+        while (isDigit(bufp[i])) i++; // C `:3157–3158`
+        while (bufp[i] === ' ') i++; // C `:3159` spaces only, not tabs
+        bufp = bufp.slice(i);
     }
-    hit = asciiLow(bufp).indexOf('male ');
-    if (hit >= 0) {
-        fem = MALE; // C: read.c:3192 d->fem = 0
-        // C: read.c:3193 memset(tmpp, ' ', sizeof "male " - 1): 5 blanks.
-        bufp = `${bufp.slice(0, hit)}     ${bufp.slice(hit + 5)}`;
+    // C `:3161–3167` QUAN_LIMIT (ROWNO * (COLNO - 1)) clamp.
+    const QUAN_LIMIT = ROWNO * (COLNO - 1);
+    if (d.quan < 1 || d.quan > QUAN_LIMIT) {
+        d.quan = QUAN_LIMIT - monster_census(false);
     }
-    bufp = mungspaces(bufp); // C: read.c:3195 after potential memset(' ')
-    if (!bufp) return null;
-    // C: read.c:3141 int gender_name_var = NEUTRAL; :3212 name_to_mon().
-    const gender_name_var = { gender: NEUTRAL };
-    const which = name_to_mon(bufp, gender_name_var);
-    if (which === NON_PM || which < 0) return null;
-    // C: read.c:3220–3229 — preserve an explicitly expressed gender term;
+    // C `:3169–3194` — bare live strstri (D-2003: no leading pad, so
+    // "shemale " hits "male "); the trailing space means a trailing word
+    // ("dwarf female") does NOT hit. memset ≡ length-preserving blanks.
+    const blankTerm = (term) => {
+        const tail = strstri(bufp, term);
+        if (tail === null) return false;
+        const hit = bufp.length - tail.length;
+        bufp = bufp.slice(0, hit) + ' '.repeat(term.length)
+            + bufp.slice(hit + term.length);
+        return true;
+    };
+    if (blankTerm('saddled ')) d.saddled = true; // C `:3170–3173`
+    if (blankTerm('sleeping ')) d.sleeping = true; // C `:3175–3178`
+    if (blankTerm('invisible ')) d.invisible = true; // C `:3179–3182`
+    if (blankTerm('hidden ')) d.hidden = true; // C `:3183–3185`
+    // C `:3186` check "female" before "male" to avoid false hit mid-word.
+    if (blankTerm('female ')) d.fem = FEMALE; // C `:3187–3190`
+    if (blankTerm('male ')) d.fem = MALE; // C `:3191–3194`
+    bufp = mungspaces(bufp); // C `:3195` after potential memset(' ')
+    // C `:3197–3205` disposition prefix (strncmpi 0 ≡ match).
+    if (!strncmpi(bufp, 'tame ', 5)) {
+        bufp = bufp.slice(5);
+        d.maketame = true;
+    } else if (!strncmpi(bufp, 'peaceful ', 9)) {
+        bufp = bufp.slice(9);
+        d.makepeaceful = true;
+    } else if (!strncmpi(bufp, 'hostile ', 8)) {
+        bufp = bufp.slice(8);
+        d.makehostile = true;
+    }
+    // C `:3207–3210` wizard `*` / `random` (wizard ≡ flags.debug; the port
+    // also sets flags.wizard — wizard_mode() is the file's convention).
+    if (wizard_mode() && (bufp === '*' || bufp === 'random')) {
+        d.randmonst = true;
+        return true;
+    }
+    const genderBox = { gender: NEUTRAL };
+    d.which = name_to_mon(bufp, genderBox); // C `:3212`
+    gender_name_var = genderBox.gender;
+    // C `:3220–3229` — an explicitly expressed gender term is preserved;
     // a conflicting gendered name goes to genderconf (resolved at creation).
-    let genderconf = -1;
-    if (fem === MALE || fem === FEMALE) {
-        if (gender_name_var.gender !== NEUTRAL && fem !== gender_name_var.gender) {
-            genderconf = gender_name_var.gender;
+    if (d.fem === MALE || d.fem === FEMALE) {
+        if (gender_name_var !== NEUTRAL && d.fem !== gender_name_var) {
+            d.genderconf = gender_name_var;
         }
     } else {
-        fem = gender_name_var.gender;
+        d.fem = gender_name_var;
     }
-    return {
-        quan: 1 + ((game.multi > 0) ? (game.multi | 0) : 0),
-        which,
-        fem,
-        genderconf,
-        randmonst: false,
-        monclass: -1, // C MAXMCLASSES — named path
-    };
+    if (ismnum(d.which)) return true; // C `:3230–3231` got one
+    const mndxBox = { mndx: NON_PM };
+    d.monclass = name_to_monclass(bufp, mndxBox); // C `:3232` &d->which
+    d.which = mndxBox.mndx;
+    if (ismnum(d.which)) { // C `:3234–3237` species via class path
+        d.monclass = -1; // C MAXMCLASSES — matters below
+        return true;
+    } else if (d.monclass === 'S_invisible') { // C `:3238–3241` not a real class
+        d.which = PM_STALKER;
+        d.monclass = -1;
+        return true;
+    } else if (d.monclass === 'S_WORM_TAIL') { // C `:3242–3245` empty class
+        d.which = PM_LONG_WORM;
+        d.monclass = -1;
+        return true;
+    } else if (typeof d.monclass === 'string') { // C `:3246` monclass > 0
+        d.which = game.urole?.mnum; // C `:3247` reset from NON_PM
+        return true;
+    }
+    return false;
 }
 
 /**
- * C ref: read.c create_particular_creation — named-monster gender flags
- * (`:3284–3305`: `MM_FEMALE`/`MM_MALE` from `fem` when the type is not
- * gender-fixed, `MM_NOEXCLAM` only when there is no gender conflict).
- * Without the flag `makemon` falls through to its `rn2(2)` gender roll,
- * drawing a spurious RNG and misnaming e.g. ^G "elf-lord" as "elf-lady".
- * Plus the `:3260–3274` `cant_revive` uniqueness gate (guard/cleric/angel
- * → zombie, worm tail → worm, unique → doppelganger) with the
- * `Creating %s instead; force %s?` y_n override, and the `:3350–3354`
- * doppelganger `newcham` fixup so it starts out looking like the request.
+ * C ref: read.c create_particular_creation `:3252–3357` (staticfn) — whole
+ * body in C order: named-path `cant_revive` uniqueness gate
+ * (`:3261–3273`, guard/cleric/angel → zombie, worm tail → worm, unique →
+ * doppelganger) with the `Creating %s instead; force %s?` y_n override,
+ * then per-iteration (`d.quan`): class-letter `mkclass(d.monclass, 0)`
+ * (`:3279`) / `*` `rndmonst()` (`:3281`) whichpm select, gender flags
+ * (`:3282–3312`: `MM_FEMALE`/`MM_MALE` from `fem` when the type is not
+ * gender-fixed, `MM_NOEXCLAM` only when there is no gender conflict —
+ * without the flag `makemon` falls through to its `rn2(2)` gender roll,
+ * drawing a spurious RNG and misnaming e.g. ^G "elf-lord" as "elf-lady"),
+ * `MM_MINVIS` (`:3313`), `makemon` with break-if-named / continue-if-class
+ * on failure (`:3315–3322`), tame (`:3324–3325`) / peaceful|hostile
+ * (`:3326–3329`), saddled (`:3331–3334`), hidden (`:3335–3340`), sleeping
+ * (`:3341–3342`), hidden|invisible `flash_mon` when unspottable
+ * (`:3343–3347`), and the doppelganger `newcham` fixup (`:3349–3354`) so
+ * it starts out looking like the request. `d.monclass` is -1 for C
+ * MAXMCLASSES (parse convention); `d.which` starts at `gu.urole.mnum`.
  * C has no caller pline; appear is makemon.c !MM_NOMSG Norep. Sync
  * makemon + await makemon_appear_msg (async pline boundary); the force
- * prompt is the second async boundary (y_n → nhgetch).
- * Deferred: quan-limit, randmonst/monclass,
- * invisible/saddled/sleeping/hidden post-flags, tame/peaceful/hostile.
+ * prompt, tamedog and flash_mon are the other async boundaries (y_n /
+ * pline → nhgetch).
  */
 async function create_particular_creation(d) {
-    if (!d || d.randmonst) return false;
-    // C: read.c:3260–3261 firstchoice = d->which (named, non-random path).
-    const firstchoice = d.which;
-    // C: read.c:3262–3272 — cant_revive(&d->which, FALSE, NULL) remaps;
-    // unless the request was long worm tail, wizard mode may force the
-    // original via y_n. d.which is rewritten like C's *mtype out-param.
-    const whichBox = { mtype: d.which };
-    if (cant_revive(whichBox, false, null) && firstchoice !== PM_LONG_WORM_TAIL) {
-        // C: read.c:3267–3269 Sprintf "Creating %s instead; force %s?".
-        const instead = pmnames[whichBox.mtype]?.[NEUTRAL] || 'monster';
-        const asked = pmnames[firstchoice]?.[NEUTRAL] || 'monster';
-        if ((await y_n(`Creating ${instead} instead; force ${asked}?`)) === 'y') {
-            whichBox.mtype = firstchoice;
-        }
-    }
-    d.which = whichBox.mtype;
-    const whichpm = mons(d.which);
-    if (!whichpm) return false;
+    if (!d) return false;
+    // C: read.c:3255–3258 — whichpm starts NULL; firstchoice NON_PM unless
+    // the named path below assigns it; madeany FALSE.
+    let whichpm = null;
+    let firstchoice = NON_PM;
     let madeany = false;
+    if (!d.randmonst) {
+        // C: read.c:3261 firstchoice = d->which (named, non-random path).
+        firstchoice = d.which;
+        // C: read.c:3262–3272 — cant_revive(&d->which, FALSE, NULL) remaps;
+        // unless the request was long worm tail, wizard mode may force the
+        // original via y_n. d.which is rewritten like C's *mtype out-param.
+        const whichBox = { mtype: d.which };
+        if (cant_revive(whichBox, false, null) && firstchoice !== PM_LONG_WORM_TAIL) {
+            // C: read.c:3267–3269 Sprintf "Creating %s instead; force %s?".
+            const instead = pmnames[whichBox.mtype]?.[NEUTRAL] || 'monster';
+            const asked = pmnames[firstchoice]?.[NEUTRAL] || 'monster';
+            if ((await y_n(`Creating ${instead} instead; force ${asked}?`)) === 'y') {
+                whichBox.mtype = firstchoice;
+            }
+        }
+        d.which = whichBox.mtype;
+        // C: read.c:3273 whichpm = &mons[d->which].
+        whichpm = mons(d.which);
+    }
     const ux = game.u.ux | 0;
     const uy = game.u.uy | 0;
     for (let i = 0; i < d.quan; i++) {
-        // C: read.c:3282 mmflags_nht mmflags = NO_MM_FLAGS.
+        // C: read.c:3276 mmflags_nht mmflags = NO_MM_FLAGS.
         let mmflags = NO_MM_FLAGS;
+        // C: read.c:3278–3281 — a class letter re-picks a random class
+        // member every iteration; `*` re-rolls a random monster. A named
+        // request keeps the :3273 whichpm.
+        if (d.monclass !== -1) {
+            whichpm = mkclass(d.monclass, 0);
+        } else if (d.randmonst) {
+            whichpm = rndmonst();
+        }
         if (d.genderconf === -1) {
-            // C: read.c:3284–3290 — no conflict between an explicit
+            // C: read.c:3282–3289 — no conflict between an explicit
             // gender term and the specified monster name.
             if (d.fem !== -1 && (!whichpm || (!is_male(whichpm) && !is_female(whichpm)))) {
                 mmflags |= (d.fem === FEMALE) ? MM_FEMALE
@@ -2834,20 +2911,62 @@ async function create_particular_creation(d) {
             }
             mmflags |= MM_NOEXCLAM;
         } else {
-            // C: read.c:3291–3305 — conundrum: the explicit gender term
+            // C: read.c:3290–3312 — conundrum: the explicit gender term
             // wins over the gender-tied naming term (and no NOEXCLAM).
             mmflags |= (d.fem === FEMALE) ? MM_FEMALE
                 : (d.fem === MALE) ? MM_MALE : 0;
         }
+        // C: read.c:3313 — invisible prefix.
+        if (d.invisible) mmflags |= MM_MINVIS;
+        // C: read.c:3315 mtmp = makemon(whichpm, u.ux, u.uy, mmflags).
         const mtmp = makemon(whichpm, ux, uy, mmflags);
-        if (!mtmp) break;
+        if (!mtmp) {
+            // C: read.c:3316–3322 — quit trying if creation failed and is
+            // going to repeat (a named request); a class / `*` request
+            // re-rolls and tries again.
+            if (d.monclass === -1 && !d.randmonst) break;
+            continue;
+        }
         /* C: the appear Norep is inside makemon, using post-enexto x,y
          * (makemon.c:1491-1499); requested ux,uy would force "next to you"
          * for every genesis placement (D-2096). */
         await makemon_appear_msg(mtmp, mtmp.mx | 0, mtmp.my | 0, mmflags);
+        // C: read.c:3323 mx = mtmp->mx, my = mtmp->my.
+        const mx = mtmp.mx | 0, my = mtmp.my | 0;
+        // C: read.c:3324–3329 — tame, else peaceful|hostile (mtame = 0 is
+        // C's sanity precaution; malign follows peaceful).
+        if (d.maketame) {
+            await tamedog(mtmp, null, false);
+        } else if (d.makepeaceful || d.makehostile) {
+            mtmp.mtame = 0; /* sanity precaution */
+            mtmp.mpeaceful = d.makepeaceful ? 1 : 0;
+            set_malign(mtmp);
+        }
+        // C: read.c:3331–3334 — NULL obj arg means put_saddle_on_mon()
+        // will create the saddle itself.
+        if (d.saddled && can_saddle(mtmp) && !which_armor(mtmp, W_SADDLE)) {
+            put_saddle_on_mon(null, mtmp);
+        }
+        // C: read.c:3335–3340 — hidden hiders (non-mimic), concealers
+        // over an object, eels in water.
+        if (d.hidden
+            && ((is_hider(mtmp.data) && mtmp.data?.mlet !== 'S_MIMIC')
+                || (hides_under(mtmp.data) && OBJ_AT(mx, my))
+                || (mtmp.data?.mlet === 'S_EEL' && is_pool(mx, my)))) {
+            mtmp.mundetected = 1;
+        }
+        // C: read.c:3341–3342 — sleeping prefix.
+        if (d.sleeping) mtmp.msleeping = 1;
+        /* C: read.c:3343–3347 — if asking for 'hidden', show location of
+         * every created monster that can't be seen — whether that's due
+         * to successfully hiding or vision issues (line-of-sight,
+         * invisibility, blindness). */
+        if ((d.hidden || d.invisible) && !canspotmon(mtmp)) {
+            await flash_mon(mtmp);
+        }
         madeany = true;
-        // C: read.c:3350–3354 — a doppelganger created instead of what was
-        // asked for starts out looking like what was asked for.
+        // C: read.c:3349–3354 — in case we got a doppelganger instead of
+        // what was asked for, make it start out looking like the request.
         if (mtmp.cham !== NON_PM && firstchoice !== NON_PM
             && mtmp.cham !== firstchoice) {
             await newcham(mtmp, mons(firstchoice), NO_NC_FLAGS);
@@ -2865,14 +2984,13 @@ export async function create_particular() {
     let tryct = CP_TRYLIM;
     let altmsg = 0;
     let prompt = 'Create what kind of monster?';
-    let d = null;
+    const d = {}; // C `:3375` struct _create_particular_data d (parse fills all fields)
     do {
         const buf = await getlin(prompt);
         if (buf === '\x1b') return false;
         const bufp = mungspaces(buf);
         if (bufp === '\x1b') return false;
-        d = create_particular_parse(bufp);
-        if (d) break;
+        if (create_particular_parse(bufp, d)) break; // C `:3387` (bufp, &d)
         if (bufp || altmsg || tryct < 2) {
             await pline("I've never heard of such monsters.");
         } else {

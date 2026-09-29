@@ -12,9 +12,15 @@ import { prscore, nh_terminate_capture } from './topten.js';
 import { BUFSZ } from './const.js';
 import { match_optname } from './options.js';
 import { dupstr } from './dungeon.js';
-import { raw_printf } from './display.js';
+import { raw_printf, MAX_GLYPH, MAXPCHARS, MAXMCLASSES } from './display.js';
 import { strncmpi, strstri } from './hacklib.js';
 import { getversionstring } from './version.js';
+import { monsterNames, NUMMONS, NON_PM, LOW_PM, SPECIAL_PM } from './generated/monsters_data.js';
+import { objectNames, NUM_OBJECTS, LAST_GENERIC, FIRST_OBJECT, FIRST_REAL_GEM, LAST_REAL_GEM, MAXOCLASSES } from './generated/objects_data.js';
+import { NROFARTIFACTS, artilistRaw } from './generated/artifacts_data.js';
+import { ENUMDUMP_CMAP, ENUMDUMP_MON_SYMS, ENUMDUMP_MON_DEFCHARS, ENUMDUMP_OC_DEFCHARS, ENUMDUMP_OC_CLASSES, ENUMDUMP_OC_SYMS } from './generated/enumdumps_data.js';
+import { MCASTU_SPELL_DEFS } from './mcastu.js';
+import { MAXSPELL } from './spell.js';
 // imports.mjs --can: earlyarg.js has no importers, so these edges cannot
 // close a cycle. version.js stays a leaf (const.js reads it at load);
 // early_version_info lives here so it can call raw_printf.
@@ -269,7 +275,7 @@ export function argcheck(argc, argv, eArg) {
     case ARG_SHOWPATHS: // C `:525–526`
         return 2;
     case ARG_DUMPENUMS: // C `:528–530`
-        // Named omission: earlyarg.c:705 dump_enums (%*s enum tables).
+        dump_enums();
         return 2;
     case ARG_DUMPGLYPHIDS: // C `:532–534`
         // Named omission: earlyarg.c:806 dump_glyphids → dump_all_glyphids(stdout).
@@ -287,4 +293,119 @@ export function argcheck(argc, argv, eArg) {
         break;
     }
     return 0;
+}
+
+/**
+ * C ref: earlyarg.c dump_enums `:706–801` static tables (`monsdump`,
+ * `objdump`, `omdump`, the six `defsym.h` dumps, `arti_enum_dump`,
+ * `mcastu_enum_dump`, `ed[]` + `edmp[]`) — JS-only assembly from the live
+ * generated tables, so the dump can never drift from the game data.
+ * Exported although C has no such function: the `--dumpenums` oracle
+ * probe diffs all eleven tables byte-exact against the C binary.
+ * Each row is `[val, nm]` ≡ `enum_dump {val, nm}` in C order, fenceposts
+ * included; `prefix`/`unprefixed`/`comment` are the `edmp` columns.
+ * @returns {{title: string, prefix: string, unprefixed: number, comment: boolean, rows: [number, string][]}[]}
+ */
+export function dump_enums_tables() {
+    // C `:628–635` monsdump — `{ PM_bn, "bn" }` per MON (nm WITHOUT the
+    // `PM_` prefix; the loop prints it) + the 5 unprefixed fenceposts.
+    // HIGH_PM is permonst.h:22 (`NUMMONS - 1`).
+    const mons = monsterNames.map((nm, i) => [i, nm.slice(3)]);
+    mons.push(
+        [NUMMONS, 'NUMMONS'], [NON_PM, 'NON_PM'], [LOW_PM, 'LOW_PM'],
+        [NUMMONS - 1, 'HIGH_PM'], [SPECIAL_PM, 'SPECIAL_PM'],
+    );
+    // C `:636–640` objdump — `{ sn, "sn" }` full enum names + NUM_OBJECTS.
+    const objs = objectNames.map((nm, i) => [i, nm]);
+    objs.push([NUM_OBJECTS, 'NUM_OBJECTS']);
+    // C `:724–740` omdump — local `dump_om` `{ val, "name" }` rows in C
+    // order. MARKER anchors are objects.h (:107–111, :837, :875, :1295,
+    // :1431, :1528–1591); gem counts are objclass.h:180–181.
+    const firstAmulet = objectNames.indexOf('AMULET_OF_ESP');
+    const lastAmulet = objectNames.indexOf('AMULET_OF_YENDOR');
+    const firstSpell = objectNames.indexOf('SPE_DIG');
+    const lastSpell = objectNames.indexOf('SPE_BLANK_PAPER');
+    const firstGlass = objectNames.indexOf('WORTHLESS_WHITE_GLASS');
+    const lastGlass = objectNames.indexOf('WORTHLESS_VIOLET_GLASS');
+    const misc = [
+        [LAST_GENERIC, 'LAST_GENERIC'],
+        [FIRST_OBJECT - 1, 'OBJCLASS_HACK'],
+        [FIRST_OBJECT, 'FIRST_OBJECT'],
+        [firstAmulet, 'FIRST_AMULET'],
+        [lastAmulet, 'LAST_AMULET'],
+        [firstSpell, 'FIRST_SPELL'],
+        [lastSpell, 'LAST_SPELL'],
+        [MAXSPELL, 'MAXSPELL'],
+        [FIRST_REAL_GEM, 'FIRST_REAL_GEM'],
+        [LAST_REAL_GEM, 'LAST_REAL_GEM'],
+        [firstGlass, 'FIRST_GLASS_GEM'],
+        [lastGlass, 'LAST_GLASS_GEM'],
+        [LAST_REAL_GEM - FIRST_REAL_GEM + 1, 'NUM_REAL_GEMS'],
+        [lastGlass - firstGlass + 1, 'NUM_GLASS_GEMS'],
+        [MAX_GLYPH, 'MAX_GLYPH'],
+    ];
+    // C `:681–686` arti_enum_dump — `{ ART_bn, "ART_bn" }` full names for
+    // the NONARTIFACT zero entry + all 33 artifacts, then
+    // AFTER_LAST_ARTIFACT (hack.h:102, `NROFARTIFACTS + 1` per :106).
+    const arti = artilistRaw.map((raw, i) => [i, `ART_${raw.bn}`]);
+    arti.push([NROFARTIFACTS + 1, 'AFTER_LAST_ARTIFACT']);
+    // C `:689–697` mcastu_enum_dump — `{ MCAST_DUMPENUM_def, "def" }`
+    // bare defs; index i ≡ the dump-enum value (sequential 0–19 like
+    // MCASTU_ENUM).
+    const mcast = MCASTU_SPELL_DEFS.map((def, i) => [i, def]);
+    // C `:743–773` ed[] + edmp[] in `enum_dumps` order (titles, prefixes,
+    // unprefixed counts, `dumpflgs` ≡ comment). The C trailing fenceposts
+    // ride on the rows (SIZE ≡ rows.length).
+    return [
+        { title: 'monnums', prefix: 'PM_', unprefixed: 5, comment: false, rows: mons },
+        { title: 'objects_nums', prefix: '', unprefixed: 1, comment: false, rows: objs },
+        { title: 'misc_object_nums', prefix: '', unprefixed: 1, comment: false, rows: misc },
+        { title: 'cmap_symbols', prefix: '', unprefixed: 1, comment: false, rows: [...ENUMDUMP_CMAP, [MAXPCHARS, 'MAXPCHARS']] },
+        { title: 'mon_syms', prefix: '', unprefixed: 1, comment: false, rows: [...ENUMDUMP_MON_SYMS, [MAXMCLASSES, 'MAXMCLASSES']] },
+        { title: 'mon_defchars', prefix: '', unprefixed: 1, comment: true, rows: ENUMDUMP_MON_DEFCHARS },
+        { title: 'objclass_defchars', prefix: '', unprefixed: 1, comment: true, rows: ENUMDUMP_OC_DEFCHARS },
+        { title: 'objclass_classes', prefix: '', unprefixed: 1, comment: false, rows: [...ENUMDUMP_OC_CLASSES, [MAXOCLASSES, 'MAXOCLASSES']] },
+        { title: 'objclass_syms', prefix: '', unprefixed: 1, comment: false, rows: ENUMDUMP_OC_SYMS },
+        { title: 'artifacts_nums', prefix: '', unprefixed: 1, comment: false, rows: arti },
+        { title: 'mcast_spells', prefix: 'MCAST_', unprefixed: 0, comment: false, rows: mcast },
+    ];
+}
+
+/**
+ * C ref: earlyarg.c dump_enums `:706–801` (staticfn → file-local; sole
+ * caller argcheck ARG_DUMPENUMS above). Whole body in C order.
+ *
+ * Each `    %s%*s = %3d,%s` row is pre-formatted (`padEnd` ≡ negative-width
+ * left-justify, `padStart(3)` ≡ `%3d` — exact for these ASCII names) and
+ * passed as `%s`: `vpline_expand` strips width/precision (D-2573 named
+ * gap), so routing `%*s` through it would misalign the text
+ * (`early_version_info` above precedes). The `raw_print` `:797–798`/`:800`
+ * lines have no pre-window stdout channel in dual-runtime ESM
+ * (`vraw_printf` `:577` sink-omit precedent): dropped — and named in the
+ * D-log — while `raw_printf` call counts stay 1:1 with C.
+ */
+function dump_enums() {
+    const tables = dump_enums_tables(); // C `:724–773` omdump/ed/edmp
+    for (let i = 0; i < tables.length; i++) { // C `:777` NUM_ENUM_DUMPS
+        const t = tables[i];
+        raw_printf('%s', `enum ${t.title} = {`); // C `:778`
+        const szd = t.rows.length; // C SIZE()
+        for (let j = 0; j < szd; j++) { // C `:779`
+            // C `:780–782` — the last unprefixed_count rows drop the prefix.
+            const nmprefix = j >= szd - t.unprefixed ? '' : t.prefix;
+            const nmwidth = 27 - nmprefix.length; // C `:783`
+            const [val, nm] = t.rows[j];
+            let comment = ''; // C `:784–791` dumpflgs char comment
+            if (t.comment) {
+                const ch = val >= 32 && val <= 126 ? String.fromCharCode(val) : ' ';
+                comment = `    /* '${ch}' */`;
+            }
+            // C `:792–795` — `    %s%*s = %3d,%s`, negative width ≡ padEnd.
+            raw_printf('%s', `    ${nmprefix}${nm.padEnd(nmwidth)} = ${String(val).padStart(3, ' ')},${comment}`);
+        }
+        // C `:797–798` raw_print("};")/"" — sink omit (see doc): no JS
+        // channel, and raw_printf here would invent +2 early_raw_messages
+        // counts per line that C raw_print never records.
+    }
+    // C `:800` final raw_print("") — same sink omit.
 }

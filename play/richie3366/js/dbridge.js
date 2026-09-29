@@ -313,8 +313,8 @@ export function hero_Passes_walls() {
         || (p?.intrinsic | 0) || (p?.extrinsic | 0));
 }
 
-/** C ref: youprop.h Wwalking — (HW||EW) && !Is_waterlevel (D-1967 local). */
-function hero_Wwalking() {
+/** C ref: youprop.h Wwalking — (HW||EW) && !Is_waterlevel (D-1967 local; invent.js walking_on_water imports it). */
+export function hero_Wwalking() {
     const u = game.u || {};
     const p = u.uprops?.[WWALKING];
     const he = ((u.HWwalking | 0) || (u.EWwalking | 0)

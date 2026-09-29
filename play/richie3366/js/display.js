@@ -680,6 +680,8 @@ export function cmap_to_glyph(cmap_idx) {
 export const S_sw_tl = S_goodpos + 1;
 /* C sym.h enum cmap_symbols fencepost after S_expl_br. */
 export const MAXPCHARS = S_expl_br + 1;
+/* C sym.h:24 enum mon_syms tail after the MONSYM S_ entries (idx 1..60). */
+export const MAXMCLASSES = 61;
 
 /** C display.h glyph_is_cmap_main — wall bank at GLYPH_CMAP_MAIN_OFF. */
 export function glyph_is_cmap_main(glyph) {

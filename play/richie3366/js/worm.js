@@ -13,7 +13,7 @@ import { game } from './gstate.js';
 import { rn2, rnd, rn1, d, rn2_on_display_rng } from './rng.js';
 import {
     MAX_NUM_WORMS, N_DIRS, xdir, ydir, MHPMAX, MSLOW, MFAST, NORMAL_SPEED,
-    MON_OFFMAP, has_mcorpsenm,
+    MON_OFFMAP, has_mcorpsenm, COLNO, ROWNO,
 } from './const.js';
 import { goodpos } from './teleport.js';
 import { distmin } from './hacklib.js';
@@ -657,6 +657,28 @@ export function place_worm_tail_randomly(worm, x, y) {
             curr = null;
         }
     }
+}
+
+/**
+ * C ref: worm.c random_dir `:802–822` (staticfn; no C callers — decl `:22`
+ * only). One random step to a neighbouring cell: C `int *nx, *ny`
+ * out-params ≡ `out.nx`/`out.ny` fields. Each axis draws exactly once;
+ * ternary order preserves C short-circuit (edge checks before the draw).
+ */
+function random_dir(x, y, out) {
+    x |= 0; y |= 0;
+    // C `:805–809`: x step — interior rn2(3)-1, right edge -rn2(2), left edge rn2(2).
+    const nx = x + (x > 1 ? (x < COLNO - 1 ? (rn2(3) - 1) : -rn2(2)) : rn2(2));
+    let ny;
+    if (nx !== x) {
+        // C `:810–815`: x changed, so step y the same way (y==0 is ok, x==0 is not).
+        ny = y + (y > 0 ? (y < ROWNO - 1 ? (rn2(3) - 1) : -rn2(2)) : rn2(2));
+    } else {
+        // C `:816–821`: x unchanged, so force y to change.
+        ny = y + (y > 0 ? (y < ROWNO - 1 ? (rn2(2) ? 1 : -1) : -1) : 1);
+    }
+    out.nx = nx;
+    out.ny = ny;
 }
 
 /** Clear per-level worm tables — call from clear_level_structures. */

@@ -635,6 +635,31 @@ export function cmdname_from_func(fn, fullname) {
 }
 
 /**
+ * C ref: cmd.c unavailcmd `:157` — "Unavailable command '%s'." format for
+ * wizard-only commands run by a non-wizard (wizcmds.c else arms).
+ */
+export const UNAVAILCMD = "Unavailable command '%s'.";
+
+/**
+ * C ref: cmd.c ecname_from_fn `:3091–3102` — scan extcmdlist[] for
+ * ef_funct == fn, return ef_txt (null ≡ (char *) 0 when absent). The
+ * generated table carries key/txt/desc/flags only (no funct pointers),
+ * so the match is on the extcmd txt (efTxt idiom — cmdname_from_func
+ * above maps `ef_funct == fn` the same way).
+ * @param {string|{txt?: string}|null|undefined} fn
+ * @returns {string|null}
+ */
+export function ecname_from_fn(fn) {
+    const want = efTxt(fn);
+    for (let i = 0; i < EXTCMDLIST.length; i++) { // C `extcmd->ef_txt`
+        const extcmd = EXTCMDLIST[i];
+        if (!extcmd.txt) break;
+        if (extcmd.txt === want) return extcmd.txt; // C `ef_funct == fn`
+    }
+    return null;
+}
+
+/**
  * C ref: cmd.c cmd_from_dir `:3029–3032` — key bound to the movement
  * command for DIR_ dir + MV_ mode, i.e. cmd_from_func of
  * move_funcs[dir][mode] (cmd.c:2070–2083), whose columns are

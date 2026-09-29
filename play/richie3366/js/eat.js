@@ -43,6 +43,7 @@ import { yn_function, paranoid_query, y_n } from './getline.js';
 import {
     FOOD_CLASS, COIN_CLASS, WEAPON_CLASS, BALL_CLASS, CHAIN_CLASS,
     SCROLL_CLASS, POTION_CLASS, RING_CLASS, AMULET_CLASS,
+    GEM_CLASS,
     objectNames, objects, objectDescrs,
 } from './objects.js';
 import {
@@ -327,13 +328,26 @@ const foodwords = [
     'plastic', 'glass', 'rich food', 'stone',
 ];
 
-/** C ref: eat.c foodword — material word; coins → "gold". */
+/** C ref: objclass.h material order — GLASS == 19 (cf. dothrow.js). */
+const GLASS = 19;
+
+/**
+ * C ref: eat.c foodword `:2498–2506` (staticfn) — FOOD_CLASS reads "food";
+ * seen glass gem is made known; else the foodwords[oc_material] word.
+ * (No coins arm in C: coins are GOLD material → foodwords gives "gold".)
+ */
 function foodword(otmp) {
-    if (!otmp) return 'meal';
-    if (otmp.oclass === COIN_CLASS) return 'gold';
+    if (!otmp) return 'meal'; // defensive; C dereferences (non-null)
+    if (otmp.oclass === FOOD_CLASS) return 'food'; // C `:2500–2501`
+    if (otmp.oclass === GEM_CLASS // C `:2502–2504`
+        && (game.objects?.[otmp.otyp]?.oc_material ?? 0) === GLASS
+        && otmp.dknown) {
+        makeknown(otmp.otyp);
+    }
     const mat = game.objects?.[otmp.otyp]?.oc_material ?? 0;
     return foodwords[mat] ?? 'meal';
 }
+
 
 /**
  * C ref: eat.c tintxts[] — tin variety adjectives + nutrition / flags.
@@ -878,6 +892,24 @@ export async function vomit() {
 }
 
 /**
+ * C ref: eat.c food_substitution `:409–419` — reseat victual/tin pointers
+ * after an object substitution, so start/open, interrupt, name, resume
+ * restarts from scratch. No call sites in pinned C (extern decl only).
+ */
+export function food_substitution(old_obj, new_obj) {
+    const v = game.context?.victual;
+    if (v && old_obj === v.piece) { // C `:411–414`
+        v.piece = new_obj;
+        v.o_id = new_obj.o_id | 0;
+    }
+    const t = game.context?.tin;
+    if (t && old_obj === t.tin) { // C `:415–418`
+        t.tin = new_obj;
+        t.o_id = new_obj.o_id | 0;
+    }
+}
+
+/**
  * C ref: eat.c reset_eat — flag only; do_reset_eat runs on the next bite.
  */
 function reset_eat() {
@@ -886,27 +918,63 @@ function reset_eat() {
 }
 
 /**
- * C ref: eat.c recalc_wt — piece->owt = weight(piece) after a bite.
+ * C ref: eat.c recalc_wt `:292–305` — piece->owt = weight(piece) after a
+ * bite; impossible() with no piece (debugpline compiled out).
  */
 function recalc_wt() {
     const piece = game.context?.victual?.piece;
-    if (!piece) return;
-    piece.owt = weight(piece);
+    if (!piece) { // C `:296–299`
+        impossible('recalc_wt without piece');
+        return;
+    }
+    piece.owt = weight(piece); // C `:303`
 }
 
 /**
- * C ref: eat.c do_reset_eat — clear eating flags, stop occupation, newuhs.
- * Named omit: touchfood + o_id rewrite (leftover weight on interrupt).
+ * C ref: eat.c do_reset_eat `:422–447` — touchfood reseat + o_id rewrite
+ * and recalc_wt when a piece is in progress, then clear eating flags,
+ * stop occupation, newuhs. canchoke intentionally untouched (C comment).
  */
 async function do_reset_eat() {
     const v = game.context?.victual;
-    if (v) {
+    if (v?.piece) { // C `:425`
+        v.o_id = 0; // C `:428`
+        const otmp = await touchfood(v.piece); // C `:429–430`
+        v.piece = otmp;
+        if (otmp) { // C `:431`
+            v.o_id = otmp.o_id | 0; // C `:432`
+            recalc_wt(); // C `:433`
+        }
+    }
+    if (v) { // C `:436–439`
         v.fullwarn = 0;
         v.eating = 0;
         v.doreset = 0;
     }
-    await stop_occupation();
-    await newuhs(false);
+    /* Do not set canchoke to FALSE (C `:440–444`); recalculated anyway. */
+    await stop_occupation(); // C `:445`
+    await newuhs(false); // C `:446`
+}
+
+/**
+ * C ref: eat.c temp_resist `:453–469` — intrinsic-only timeout (no form,
+ * worn-gear or blocked cover); enlightenment "temporarily " prefix.
+ * Replaces the js/invent.js enl_temp_resist clone (body verbatim).
+ */
+export function temp_resist(prop) {
+    const p = game.u?.uprops?.[prop] || {};
+    const intr = p.intrinsic | 0;
+    const timeout = intr & TIMEOUT; // C `:456`
+    if (timeout // C `:458–466`
+        /* and if not also protected by polymorph form */
+        && (intr & ~TIMEOUT) === 0
+        /* and not by worn gear (dragon armor) */
+        && !(p.extrinsic | 0)
+        /* and property is not blocked */
+        && !(p.blocked | 0)) {
+        return timeout;
+    }
+    return 0;
 }
 
 /**
@@ -917,8 +985,7 @@ async function do_reset_eat() {
  * else choke(opentin?tin:0); else ≥1500 && !Hunger && (!eating ||
  * !fullwarn) pline + nomovemsg; !eating multi=-2 else fullwarn +
  * paranoid Continue when canchoke && bites remain.
- * Named omissions: adj_victual_nutrition (lembas/cram race); do_reset_eat
- * touchfood/recalc_wt.
+ * Named omissions: adj_victual_nutrition (lembas/cram race).
  */
 export async function lesshungry(num) {
     if (!game.u) return;
@@ -2363,11 +2430,17 @@ async function start_eating(otmp, already_partly_eaten) {
         }
     }
 
+    // C `:2048–2060` — old_nomovemsg dance: done_eating must not issue a
+    // nomovemsg that bite()'s vomit() installed (debugpline `:2027–2036` out).
+    const old_nomovemsg = game.nomovemsg;
     if (await bite()) {
         game.context.victual.usedtime = (game.context.victual.usedtime | 0) + 1;
         if ((game.context.victual.usedtime | 0)
             >= (game.context.victual.reqtime | 0)) {
+            const save_nomovemsg = game.nomovemsg;
+            if (!old_nomovemsg) game.nomovemsg = null;
             await done_eating(false);
+            if (!old_nomovemsg) game.nomovemsg = save_nomovemsg;
         }
         return;
     }

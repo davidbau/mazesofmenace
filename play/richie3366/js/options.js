@@ -208,7 +208,7 @@ import { classify_terrain } from './hack.js';
 import { vision_recalc } from './vision.js';
 import {
     get_changed_key_binds, handler_rebind_keys, count_bind_keys,
-    reset_commands, update_rest_on_space,
+    reset_commands, update_rest_on_space, handler_change_autocompletions,
 } from './cmd.js';
 import { cmd_from_func, cmdname_from_func, visctrl } from './dokeylist.js';
 import {
@@ -8946,6 +8946,12 @@ export async function doset() {
         // C options.c:8340 optfn_o_bind_keys do_handler.
         if (name === 'bind keys') {
             await handler_rebind_keys();
+        } else if (name === 'autocompletions') {
+            // C options.c:8362 optfn_o_autocomplete do_handler; the optfn
+            // returns optn_ok, so doset `:8939` marks the row for a later
+            // options save.
+            await handler_change_autocompletions();
+            opt_set_in_config[allopt_idx(name)] = true;
         } else if (name === 'autopickup exceptions') {
             const reslt = await handler_autopickup_exception(); // C `:8318`
             if (reslt === OPTN_OK) opt_set_in_config[allopt_idx(name)] = true;

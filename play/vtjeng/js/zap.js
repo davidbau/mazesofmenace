@@ -88,6 +88,7 @@ import {
     IS_TREE,
     IS_WALL,
     IS_WATERWALL,
+    IS_DOOR,
     In_mines,
     TEST_MOVE,
     is_hole,
@@ -245,6 +246,7 @@ import {
     glyph_is_warning,
     newsym,
     obj_to_glyph,
+    shieldeff,
     tmp_at,
     unmap_invisible,
     unmap_object,
@@ -669,7 +671,7 @@ import { note_unported } from './unported.js';
 import { livelog_printf } from './pline.js';
 import { waterbody_name } from './pager.js';
 import { fix_wall_spines } from './mklev.js';
-import { boxlock, picking_at, reset_pick } from './lock.js';
+import { boxlock, doorlock, picking_at, reset_pick } from './lock.js';
 import { breaks, breakobj, hero_breaks, mhurtle } from './dothrow.js';
 
 // Thrown where zap.c reaches a wand effect this port has not ported.
@@ -1355,7 +1357,7 @@ export async function zapyourself(obj, ordinary, state = game) {
     case SPE_FORCE_BOLT:
         learn_it = true;
         if (heroHasProperty(state, ANTIMAGIC)) {
-            note_unported('display.c shieldeff');
+            await shieldeff(state.u.ux, state.u.uy, state);
             await ttyPline('Boing!', state);
             monstseesu(M_SEEN_MAGR, state);
         } else {
@@ -1380,7 +1382,7 @@ export async function zapyourself(obj, ordinary, state = game) {
             });
             monstunseesu(M_SEEN_ELEC, state);
         } else {
-            note_unported('display.c shieldeff');
+            await shieldeff(state.u.ux, state.u.uy, state);
             await ttyPline('You zap yourself, but seem unharmed.', state);
             monstseesu(M_SEEN_ELEC, state);
             await ugolemeffects(AD_ELEC, orig_dmg, state);
@@ -1401,7 +1403,7 @@ export async function zapyourself(obj, ordinary, state = game) {
         learn_it = true;
         orig_dmg = d(12, 6);
         if (heroHasProperty(state, FIRE_RES)) {
-            note_unported('display.c shieldeff');
+            await shieldeff(state.u.ux, state.u.uy, state);
             await ttyPline('You feel rather warm.', state);
             monstseesu(M_SEEN_FIRE, state);
             await ugolemeffects(AD_FIRE, orig_dmg, state);
@@ -1422,7 +1424,7 @@ export async function zapyourself(obj, ordinary, state = game) {
         learn_it = true;
         orig_dmg = d(12, 6);
         if (heroHasProperty(state, COLD_RES)) {
-            note_unported('display.c shieldeff');
+            await shieldeff(state.u.ux, state.u.uy, state);
             await ttyPline('You feel a little chill.', state);
             monstseesu(M_SEEN_COLD, state);
             await ugolemeffects(AD_COLD, orig_dmg, state);
@@ -1438,7 +1440,7 @@ export async function zapyourself(obj, ordinary, state = game) {
     case SPE_MAGIC_MISSILE:
         learn_it = true;
         if (heroHasProperty(state, ANTIMAGIC)) {
-            note_unported('display.c shieldeff');
+            await shieldeff(state.u.ux, state.u.uy, state);
             await ttyPline('The missiles bounce!', state);
             monstseesu(M_SEEN_MAGR, state);
         } else {
@@ -1506,7 +1508,7 @@ export async function zapyourself(obj, ordinary, state = game) {
     case SPE_SLEEP:
         learn_it = true;
         if (heroResistsSleep(state)) {
-            note_unported('display.c shieldeff');
+            await shieldeff(state.u.ux, state.u.uy, state);
             await ttyPline("You don't feel sleepy!", state);
             monstseesu(M_SEEN_SLEEP, state);
         } else {
@@ -1991,10 +1993,7 @@ export async function zhitm(
     }
 
     if (sho_shieldeff) {
-        // C's shieldeff() is a visual animation with no resistance message;
-        // keep the display.c gap explicit without borrowing shieldeff_mon(),
-        // whose separate mon.c owner prints a visible "resists!" line.
-        note_unported('display.c shieldeff');
+        await shieldeff(mon.mx, mon.my, state);
     }
     // is_hero_spell(type) && Role_if(PM_KNIGHT) && u.uhave.questart => 2x.
     // For wand zaps (type 0-9), is_hero_spell is false so this never fires.
@@ -3470,6 +3469,7 @@ export async function bhit(
     let skiprange_end = 0;
     let in_skip = false;
     let skipcount = 0;
+    let shopdoor = false;
 
     const tetheredWeapon = weapon === THROWN_TETHERED_WEAPON && Boolean(obj);
     const zapped = weapon === ZAPPED_WAND;
@@ -3702,6 +3702,34 @@ export async function bhit(
         if (fhito && await bhitpile(obj, x, y, state, random, rawEnv))
             range--;
 
+        // zap.c:4125-4146. The lock effect's Boolean controls wand discovery,
+        // shop billing, and whether the ray is stopped by the updated door.
+        if (zapped && (IS_DOOR(typ) || typ === SDOOR)) {
+            switch (obj.otyp) {
+            case WAN_OPENING:
+            case WAN_LOCKING:
+            case WAN_STRIKING:
+            case SPE_KNOCK:
+            case SPE_WIZARD_LOCK:
+            case SPE_FORCE_BOLT:
+                if (await doorlock(obj, x, y, state, rawEnv)) {
+                    if (cansee(x, y, state)
+                        || (obj.otyp === WAN_STRIKING
+                            && !heroIsDeaf(state))) {
+                        learnwand(obj, state);
+                    }
+                    const hitDoor = state.level.at(x, y);
+                    if ((hitDoor.doormask === D_BROKEN
+                        || hitDoor.flags === D_BROKEN)
+                        && in_rooms(x, y, SHOPBASE, state).length) {
+                        shopdoor = true;
+                        note_unported('shk.c add_damage');
+                    }
+                }
+                break;
+            }
+        }
+
         if (!ZAP_POS(typ) || closed_door(x, y, state)) {
             state.gb.bhitpos.x -= ddx;
             state.gb.bhitpos.y -= ddy;
@@ -3766,6 +3794,7 @@ export async function bhit(
     await bhitTransientLightCleanup(
         weapon, tetheredWeapon, state, random, rawEnv,
     );
+    if (shopdoor) note_unported('shk.c pay_for_damage');
     //
     // The return value is the monster the missile hit. Reaching the tail means
     // the flight ended on terrain or on its own range instead, so it is null.
@@ -4740,7 +4769,7 @@ export async function flashburn(duration, viaLightning, state, env = {}) {
         return true;
     }
     if (!viaLightning && resists_blnd_by_arti(state.youmonst, state)) {
-        note_unported('zap.c shieldeff');
+        await shieldeff(state.u.ux, state.u.uy, state);
         return true;
     }
     return false;
@@ -4785,8 +4814,9 @@ async function buzzmonst(
         if (seen) {
             await hit(flash_str(fltyp, false, state, random), mon,
                 exclam(0), state, env);
-            // shieldeff(mon.mx, mon.my) is a visual animation with no game
-            // state or RNG effect, so the shared owner has no call here.
+            // C zap.c:4876 animates the visible reflecting monster between
+            // the hit marker and mon_reflects()'s message.
+            await shieldeff(mon.mx, mon.my, state);
             await mon_reflects(mon, 'But it reflects from %s %s!', state, env);
         }
         return { hit: true, reflected: true, clearGas: seen, stop: false };
@@ -5097,8 +5127,9 @@ export async function dobuzz(
                         monstseesu(M_SEEN_REFL, state);
                         dx = negate(dx);
                         dy = negate(dy);
-                        // shieldeff(sx, sy) is a visual animation;
-                        // skipped because it has no game-state or RNG effect.
+                        // C zap.c:4975 animates the hero after reversing the
+                        // bolt and before clearing the deferred gas trail.
+                        await shieldeff(sx, sy, state);
                         gas_hit = false;
                     } else {
                         /* flash_str here only used for killer; suppress

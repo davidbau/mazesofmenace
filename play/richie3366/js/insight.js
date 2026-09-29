@@ -1570,6 +1570,35 @@ export async function dogenocided() {
 }
 
 /**
+ * C ref: insight.c doborn `:3145–3176` (#wizborn, cmd.c:1943 WIZMODECMD).
+ * C order: "died born" header; one `"%4i %4i %c %-30s"` row per
+ * LOW_PM..NUMMONS type with born/died/G_GONE (E extinct, G genocided,
+ * X other gone, blank); blank; totals row; NHW_TEXT display.
+ */
+export async function doborn() {
+    const doborn_fmt = (died, born, flag, name) =>
+        `${String(died).padStart(4, ' ')} ${String(born).padStart(4, ' ')} ${flag} ${name.padEnd(30, ' ')}`;
+    const lines = ['died born'];
+    let nborn = 0, ndied = 0;
+    for (let i = LOW_PM; i < NUMMONS; i++) {
+        const mv = game.mvitals?.[i] || {};
+        const born = mv.born | 0, died = mv.died | 0;
+        const gone = (mv.mvflags | 0) & G_GONE;
+        if (!born && !died && !gone) continue;
+        const flag = gone === G_EXTINCT ? 'E'
+            : gone === G_GENOD ? 'G'
+                : gone ? 'X' : ' ';
+        lines.push(doborn_fmt(died, born, flag, pmname_neutral(i)));
+        nborn += born;
+        ndied += died;
+    }
+    lines.push('');
+    lines.push(doborn_fmt(ndied, nborn, ' ', ''));
+    await show_text_pages(lines, { moreAtEnd: true });
+    return ECMD_OK;
+}
+
+/**
  * C ref: insight.c piousness — alignment fervor adverb for ustatusline.
  * showneg=false path used by stethoscope/self-probe.
  */

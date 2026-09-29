@@ -182,6 +182,16 @@ export const MCAST_SUMMON_MONS = 17;
 export const MCAST_CLONE_WIZ = 18;
 export const MCAST_DEATH_TOUCH = 19;
 
+// C ref: mcastu.h MONSPELL def tokens in enum order — DUMP_MCASTU_ENUM2
+// `#def` (unprefixed; earlyarg.c dump_enums prints the `MCAST_` prefix).
+// Index i ≡ MCAST_* value i (MCASTU_ENUM and the dump enum agree).
+export const MCASTU_SPELL_DEFS = [
+    'PSI_BOLT', 'OPEN_WOUNDS', 'CURE_SELF', 'HASTE_SELF', 'CONFUSE_YOU',
+    'STUN_YOU', 'DISAPPEAR', 'PARALYZE', 'BLIND_YOU', 'WEAKEN_YOU',
+    'DESTRY_ARMR', 'INSECTS', 'CURSE_ITEMS', 'LIGHTNING', 'FIRE_PILLAR',
+    'GEYSER', 'AGGRAVATION', 'SUMMON_MONS', 'CLONE_WIZ', 'DEATH_TOUCH',
+];
+
 // C ref: mcastu.c mcast_data[] from mcastu.h
 const mcast_data = [
     { level: 0, flags: MCF_HOSTILE | MCF_SIGHT }, // PSI_BOLT

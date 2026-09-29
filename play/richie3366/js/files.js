@@ -34,7 +34,8 @@ import {
     SF_DM_ILP32LL64_ON_IL32LLP64, SF_DM_I32LP64_ON_IL32LLP64,
     SF_DM_IL32LLP64_ON_I32LP64, SF_DM_MISMATCH, UTD_CHECKSIZES,
     UTD_CHECKFIELDCOUNTS, UTD_SKIP_SANITY1, UTD_WITHOUT_WAITSYNCH_PERFILE,
-    UTD_QUIETLY, WIN_ERR, SFCTOOL_BIT, OBJ_FLOOR,
+    UTD_QUIETLY, WIN_ERR, SFCTOOL_BIT, OBJ_FLOOR, CONVERTING,
+    UNCONVERTING, TURN_OFF_LOGGING,
 } from './const.js';
 import { shop_keeper, inhishop, inside_shop } from './shk.js';
 import { datamodel, what_datamodel_is_this } from './version.js';
@@ -1053,8 +1054,9 @@ function charBytes(d_char, cnt) {
 }
 
 /**
- * C ref: sfbase.c sfo_char `:249–262`. `fplog` `sf_log` is a named omit
- * (stdio). `structlevel` dispatches `sfoprocs[fnidx]`; `sf_init`
+ * C ref: sfbase.c sfo_char `:249–262`. The `fplog` arm calls live
+ * sf_log + sfvalue_char (the fprintf sink stays a Rule #2 omit inside
+ * sf_log). `structlevel` dispatches `sfoprocs[fnidx]`; `sf_init`
  * (`sfbase.c:651`) installs historical only. The fieldlevel arm saves
  * and clears `fplog` around `sfoflprocs[fnidx]`, which `sf_init:653`
  * leaves zero (`sf_setflprocs` has no caller).
@@ -1065,8 +1067,8 @@ function charBytes(d_char, cnt) {
  */
 export function sfo_char(nhfp, d_char, myname, cnt) {
     const n = cnt | 0;
-    if (nhfp.fplog) {
-        /* C sfbase.c:251 sf_log — named omit (Rule #2, no stdio log). */
+    if (nhfp.fplog) { // `:251`
+        sf_log(nhfp, myname, 1, n, sfvalue_char(d_char, n)); // `:251–252`
     }
     if (nhfp.structlevel) {
         if ((nhfp.fnidx | 0) === FNIDX_HISTORICAL) {
@@ -1084,14 +1086,15 @@ export function sfo_char(nhfp, d_char, myname, cnt) {
 /**
  * C ref: sfbase.c `SF_A(uchar)` `:119–133` `sfo_uchar`. Same dispatch as
  * `sfo_char`. Historical writes one byte; fieldlevel proc is not installed.
+ * The `fplog` arm is live sf_log + sfvalue_uchar (sink omitted in sf_log).
  * @param {object} nhfp
  * @param {number} d_uchar
  * @param {string} myname
  */
 export function sfo_uchar(nhfp, d_uchar, myname) {
     const byte = (d_uchar | 0) & 0xff;
-    if (nhfp.fplog) {
-        /* C sf_log — named omit (Rule #2, no stdio log). */
+    if (nhfp.fplog) { // `:122`
+        sf_log(nhfp, myname, 1, 1, sfvalue_uchar(byte)); // `:122–123`
     }
     if (nhfp.structlevel) {
         if ((nhfp.fnidx | 0) === FNIDX_HISTORICAL) {
@@ -1115,8 +1118,9 @@ export function sfo_uchar(nhfp, d_uchar, myname) {
  * @param {string} myname
  */
 export function sfo_version_info(nhfp, d_version_info, myname) {
-    if (nhfp.fplog) {
-        /* C `:333` sf_log + complex_dump — named omit (stdio). */
+    if (nhfp.fplog) { // `:333`
+        sf_log(nhfp, myname, 24, 1, // `:334–335` (sizeof: 3 LP64 longs)
+               complex_dump(version_info_bytes(d_version_info)));
     }
     if (nhfp.structlevel) {
         if ((nhfp.fnidx | 0) === FNIDX_HISTORICAL) {
@@ -1132,6 +1136,232 @@ export function sfo_version_info(nhfp, d_version_info, myname) {
         /* C fieldlevel sfo_version_info — empty body, proc not installed. */
         nhfp.fplog = saveFplog;
     }
+}
+
+/**
+ * C ref: sfbase.c sfi_char `:264–287`. The structlevel/fieldlevel proc
+ * dispatches are named omits (the installed historical_sfi_char is
+ * mread, sfstruct.c:113–119 — binary NHFILE by design; flprocs never
+ * installed, sf_init leaves zero) but the fieldlevel mode
+ * save/fiddle/restore, the CONVERTING convert-back via live sfo_char,
+ * and the fplog arm (live sf_log + sfvalue_char) run in C order.
+ * @param {object} nhfp
+ * @param {string|number} d_char
+ * @param {string} myname
+ * @param {number} cnt
+ */
+export function sfi_char(nhfp, d_char, myname, cnt) {
+    const n = cnt | 0;
+    if (nhfp.structlevel) { // `:267`
+        /* C `:268` (*sfiprocs[fnidx].fn.sf_char) — named omit above. */
+    } else {
+        const save_mode = (nhfp.mode | 0); // `:270`
+        nhfp.mode = save_mode & ~(CONVERTING | UNCONVERTING); // `:272`
+        nhfp.mode |= TURN_OFF_LOGGING; // `:273`
+        /* C `:274` (*sfiflprocs[fnidx].fn_x.sf_char) — null proc. */
+        nhfp.mode = save_mode; // `:275`
+    }
+    if (!nhfp.eof) { // `:277`
+        const mode = (nhfp.mode | 0);
+        if ((((mode & CONVERTING) !== 0) // `:278–280`
+             || ((mode & UNCONVERTING) !== 0))
+            && nhfp.nhfpconvert) {
+            sfo_char(nhfp.nhfpconvert, d_char, myname, n); // `:281`
+        }
+        if (nhfp.fplog) { // `:283`
+            sf_log(nhfp, myname, 1, n, sfvalue_char(d_char, n)); // `:284–285`
+        }
+    }
+}
+
+/**
+ * C ref: sfbase.c sfo_genericptr `:289–304`. The fplog arm is live
+ * (sf_log + sfvalue_genericptr); `sizeof *d_genericptr` is 8 (LP64
+ * pointer, store_critical_bytes precedent). The structlevel proc is a
+ * named omit: historical writes the pointer image via bwrite
+ * (sfstruct.c:130–134) — binary NHFILE by design, and a pointer value
+ * has no JSON-save analogue. Fieldlevel proc is the null sfoflprocs
+ * slot (sf_init leaves zero).
+ * @param {object} nhfp
+ * @param {*} d_genericptr
+ * @param {string} myname
+ */
+export function sfo_genericptr(nhfp, d_genericptr, myname) {
+    if (nhfp.fplog) { // `:292`
+        sf_log(nhfp, myname, 8, 1, sfvalue_genericptr(d_genericptr)); // `:293–294`
+    }
+    if (nhfp.structlevel) { // `:295`
+        /* C `:296` (*sfoprocs[fnidx].fn.sf_genericptr) — named omit above. */
+    } else {
+        const saveFplog = nhfp.fplog; // `:298`
+        nhfp.fplog = null; // `:299` (C 0)
+        /* C `:300–301` (*sfoflprocs[fnidx].fn_x.sf_genericptr) — null proc. */
+        nhfp.fplog = saveFplog; // `:302`
+    }
+}
+
+/**
+ * C ref: sfbase.c sfi_genericptr `:305–327`. Same shape as sfi_char:
+ * proc dispatches are named omits (historical mread,
+ * sfstruct.c:136–145; binary NHFILE by design; flprocs never
+ * installed); mode save/fiddle/restore, the convert-back via live
+ * sfo_genericptr, and the fplog arm are live in C order.
+ * @param {object} nhfp
+ * @param {*} d_genericptr
+ * @param {string} myname
+ */
+export function sfi_genericptr(nhfp, d_genericptr, myname) {
+    if (nhfp.structlevel) { // `:308`
+        /* C `:309` (*sfiprocs[fnidx].fn.sf_genericptr) — named omit above. */
+    } else {
+        const save_mode = (nhfp.mode | 0); // `:311`
+        nhfp.mode = save_mode & ~(CONVERTING | UNCONVERTING); // `:312`
+        nhfp.mode |= TURN_OFF_LOGGING; // `:313`
+        /* C `:314–315` (*sfiflprocs[fnidx].fn_x.sf_genericptr) — null proc. */
+        nhfp.mode = save_mode; // `:316`
+    }
+    if (!nhfp.eof) { // `:318`
+        const mode = (nhfp.mode | 0);
+        if ((((mode & CONVERTING) !== 0) // `:319–320`
+             || ((mode & UNCONVERTING) !== 0))
+            && nhfp.nhfpconvert) {
+            sfo_genericptr(nhfp.nhfpconvert, d_genericptr, myname); // `:321`
+        }
+        if (nhfp.fplog) { // `:323`
+            sf_log(nhfp, myname, 8, 1, sfvalue_genericptr(d_genericptr)); // `:324–325`
+        }
+    }
+}
+
+/**
+ * C ref: sfbase.c sfi_version_info `:347–372`. Same shape as the other
+ * sfi_ ports: proc dispatches are named omits (historical mread of the
+ * 24-byte image — binary NHFILE by design; flprocs never installed);
+ * the convert-back arm is live, including the `:365` SFCTOOL_BIT set
+ * before the sfo_version_info call.
+ * @param {object} nhfp
+ * @param {{ incarnation: number, feature_set: number, entity_count: number }} d_version_info
+ * @param {string} myname
+ */
+export function sfi_version_info(nhfp, d_version_info, myname) {
+    if (nhfp.structlevel) { // `:351`
+        /* C `:352–353` (*sfiprocs[fnidx].fn.sf_version_info) — named omit. */
+    } else {
+        const save_mode = (nhfp.mode | 0); // `:355`
+        nhfp.mode = save_mode & ~(CONVERTING | UNCONVERTING); // `:356`
+        nhfp.mode |= TURN_OFF_LOGGING; // `:357`
+        /* C `:358–359` (*sfiflprocs[fnidx].fn_x.sf_version_info) — null proc. */
+        nhfp.mode = save_mode; // `:360`
+    }
+    if (!nhfp.eof) { // `:362`
+        const mode = (nhfp.mode | 0);
+        if ((((mode & CONVERTING) !== 0) // `:363–364`
+             || ((mode & UNCONVERTING) !== 0))
+            && nhfp.nhfpconvert) {
+            d_version_info.feature_set = // `:365`
+                (((d_version_info.feature_set | 0) | SFCTOOL_BIT) >>> 0);
+            sfo_version_info(nhfp.nhfpconvert, d_version_info, myname); // `:366`
+        }
+        if (nhfp.fplog) { // `:368`
+            sf_log(nhfp, myname, 24, 1, // `:369–370`
+                   complex_dump(version_info_bytes(d_version_info)));
+        }
+    }
+}
+
+/**
+ * C ref: sfbase.c sf_log `:376–404` — one log line to `fplog`: the
+ * read counter (`rcount`) unless `WRITING` (`wcount`), skipped when
+ * `TURN_OFF_LOGGING` is set. The `:399–401` increment stays commented
+ * out like C, and the VMS `%lu` shape is compiled out (contest UNIX
+ * build). The `:385–398` fprintf + `:402` fflush are a named omit
+ * (Rule #2, no fs log; viable_nhfile precedent).
+ * @param {object} nhfp
+ * @param {string} t1
+ * @param {number} sz
+ * @param {number} cnt
+ * @param {string} txtvalue
+ */
+export function sf_log(nhfp, t1, sz, cnt, txtvalue) {
+    const fp = nhfp.fplog; // `:379`
+    const dolog = (((nhfp.mode | 0) & TURN_OFF_LOGGING) === 0); // `:381`
+    if (fp && dolog) { // `:383`
+        const iocount = (((nhfp.mode | 0) & WRITING) === 0) // `:384`
+            ? (nhfp.rcount | 0)
+            : (nhfp.wcount | 0);
+        /* C `:385–398` fprintf(fp, "%08ld %s sz=%zu cnt=%d |%s|\n") +
+           `:402` fflush — named omit above. */
+        void iocount; void t1; void sz; void cnt; void txtvalue;
+    }
+}
+
+/**
+ * C ref: sfbase.c sfvalue_char `:406–421` — first `n` bytes as text.
+ * `charBytes` is the `:417–418` copy; the 119 cap is the `buf[120]`
+ * bound (past it C overruns, so the cap documents intent, not UB).
+ * @param {string|number} d_char
+ * @param {number} n
+ * @returns {string}
+ */
+export function sfvalue_char(d_char, n) {
+    return charBytes(d_char, n).slice(0, 119);
+}
+
+/**
+ * C ref: sfbase.c sfvalue_genericptr `:460–467` — `"0"` for NULL,
+ * `"glorkum"` otherwise (verbatim C strings).
+ * @param {*} a
+ * @returns {string}
+ */
+export function sfvalue_genericptr(a) {
+    return (a === 0 || a == null) ? '0' : 'glorkum'; // `:465`
+}
+
+/**
+ * C ref: sfbase.c sfvalue_uchar `:492–500` — `%03u` of the
+ * dereferenced byte. The C pointer flattens to the value (sfo_uchar
+ * precedent: JS callers hold the byte, not its address).
+ * @param {number} a
+ * @returns {string}
+ */
+export function sfvalue_uchar(a) {
+    const x = (a | 0) & 0xff; // `:497`
+    return String(x).padStart(3, '0'); // `:498`
+}
+
+/**
+ * First-10-bytes LE image of the JS `version_info` record for the
+ * `complex_dump` log arms (`sfo_version_info :335`, `sfi_version_info
+ * :370`): incarnation u64 LE, then the low 2 bytes of feature_set. JS
+ * keeps the LP64 longs as `>>> 0`, so high bytes read 0.
+ * @param {{ incarnation: number, feature_set: number }} d_version_info
+ * @returns {number[]}
+ */
+function version_info_bytes(d_version_info) {
+    const inc = d_version_info.incarnation >>> 0;
+    const feat = d_version_info.feature_set >>> 0;
+    return [
+        inc & 0xff, (inc >>> 8) & 0xff,
+        (inc >>> 16) & 0xff, (inc >>> 24) & 0xff,
+        0, 0, 0, 0,
+        feat & 0xff, (feat >>> 8) & 0xff,
+    ];
+}
+
+/**
+ * C ref: sfbase.c complex_dump `:624–639` — ten `%03x` groups of the
+ * first 10 bytes plus separator spaces (40 chars; `:637` `buf[40] =
+ * '\0'` lands on the Snprintf terminator). Callers pass a byte
+ * array-like; only indices 0–9 are read, like the C `*uc++` walk.
+ * @param {ArrayLike<number>} a
+ * @returns {string}
+ */
+export function complex_dump(a) {
+    const x = [];
+    for (let i = 0; i < 10; i++) { // `:632–634`
+        x.push((a[i] | 0) & 0xff);
+    }
+    return x.map((v) => v.toString(16).padStart(3, '0')).join(' ') + ' ';
 }
 
 /**
@@ -1313,8 +1543,9 @@ export function compare_critical_bytes(nhfp, idx_1st_mismatch, utdflags) {
  * `:854` (ported below).
  * Named omits: `:725` Sfi_char indicate-format feed (indicator is
  * write-never-read in C); `:730–732` raw_printf mismatch message is live
- * (display.js export, D-2573); `:735` Sfi_version_info (sfbase.c:348 sfiprocs/fnidx
- * binary dispatch — no JS home); `:740` wait_synch (winprocs.h:140 →
+ * (display.js export, D-2573); `:736` Sfi_version_info is a live call (the
+ * proc fill stays a binary-mread omit inside sfi_version_info);
+ * `:740` wait_synch (winprocs.h:140 →
  * tty_wait_synch, no live JS port).
  * @param {object} nhfp JS NHFILE handle
  * @param {string|null} name
@@ -1343,7 +1574,7 @@ export async function uptodate(nhfp, name, utdflags) {
             }
         }
     }
-    // `:735` — Sfi_version_info feed (named omit above)
+    sfi_version_info(nhfp, vers_info, 'version_info'); // `:736`
     if (!(await check_version(vers_info, name, verbose, // `:737`
                               utdflags | 0))) {
         if (verbose) { // `:738`

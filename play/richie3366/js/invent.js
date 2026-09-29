@@ -64,6 +64,7 @@ import { hidden_gold } from './vault.js';
 import { setnotworn, dropy } from './do.js';
 import { s_suffix, a_monnam, pmname, x_monnam, hliquid } from './do_name.js';
 import { inv_cnt } from './steal.js';
+import { temp_resist } from './eat.js'; // C eat.c:453 — enlightenment "temporarily " prefix; call-time use only (same-SCC edge)
 import { assigninvlet, find_ac, addinv_core2 } from './u_init.js';
 import { cansee } from './vision.js';
 import {
@@ -214,6 +215,9 @@ import {
     FUMBLING,
     INFRAVISION,
     HUNGER,
+    HALF_PHDAM,
+    HALF_SPDAM,
+    WWALKING,
     POISON_RES,
     COLD_RES,
     DISINT_RES,
@@ -324,7 +328,8 @@ import { magic_negation_you } from './mhitm.js';
 import { t_at, trapname, ice_descr } from './trap.js';
 import { is_pool, is_lava } from './hack.js';
 import { is_ice } from './zap.js';
-import { is_drawbridge_wall } from './dbridge.js';
+import { is_drawbridge_wall, hero_Wwalking } from './dbridge.js';
+import { Levitation, Flying } from './mhitu.js';
 import { a_gname_at } from './pray.js';
 import { sticks } from './engrave.js';
 import { surface } from './sit.js';
@@ -5322,21 +5327,48 @@ function status_encumbrance_attr(final = 0) {
 }
 
 /**
- * C ref: insight.c cause_known(SLEEPY) — worn item with oc_oprop SLEEPY
- * when name known + dknown. oc_oprop not in objects table; RESTFUL_SLEEP
- * is the only SLEEPY conveyer in practice.
+ * C ref: insight.c cause_known `:267–283` — worn item (armor/amulet/ring/
+ * tool slot) whose oc_oprop conveys propindx, type name known + dknown.
+ * Artifacts unhandled and wielded items ignored, like C. Callers wired:
+ * status_enlightenment Fumbling/Sleepy/Hunger (`:1178/:1182/:1191`).
  */
-function cause_known_sleepy() {
-    const AMULET_OF_RESTFUL_SLEEP = objectNames.indexOf('AMULET_OF_RESTFUL_SLEEP');
+function cause_known(propindx) {
     const mask = W_ARMOR | W_AMUL | W_RING | W_TOOL;
     const objs = objects();
     for (const o of game.invent || []) {
-        if (!((o.owornmask || 0) & mask)) continue;
-        if (o.otyp !== AMULET_OF_RESTFUL_SLEEP) continue;
+        if (!((o.owornmask | 0) & mask)) continue;
         const oc = objs?.[o.otyp];
-        if (oc?.oc_name_known && o.dknown) return true;
+        if (((oc?.oc_oprop | 0) === (propindx | 0))
+            && oc?.oc_name_known && o.dknown) return true;
     }
     return false;
+}
+
+/** C ref: youprop.h Half_physical_damage — H || E HALF_PHDAM (allmain.js shape). */
+function Half_physical_damage(u = game.u || {}) {
+    const e = u.uprops?.[HALF_PHDAM];
+    return !!((u.HHalf_physical_damage | 0) || (u.EHalf_physical_damage | 0)
+        || (e?.intrinsic | 0) || (e?.extrinsic | 0));
+}
+
+/** C ref: youprop.h Half_spell_damage — H || E HALF_SPDAM (allmain.js shape). */
+function Half_spell_damage(u = game.u || {}) {
+    const e = u.uprops?.[HALF_SPDAM];
+    return !!((u.HHalf_spell_damage | 0) || (u.EHalf_spell_damage | 0)
+        || (e?.intrinsic | 0) || (e?.extrinsic | 0));
+}
+
+/**
+ * C ref: insight.c walking_on_water `:224–229` — Wwalking on pool/lava,
+ * never while uinwater/Levitating/Flying. is_pool||is_lava is
+ * dbridge.c is_pool_or_lava. Callers wired: status_enlightenment `:994`,
+ * attributes_enlightenment `:1755` (disclosure + overlay copies).
+ */
+function walking_on_water() {
+    const u = game.u || {};
+    if (u.uinwater || Levitation() || Flying()) return false;
+    return !!(hero_Wwalking()
+        && (is_pool(u.ux | 0, u.uy | 0) || is_lava(u.ux | 0, u.uy | 0)));
 }
 
 /** C ref: youprop.h Sleepy — HSleepy || ESleepy. */
@@ -5618,24 +5650,6 @@ function item_what(dmgtyp) {
 }
 
 /**
- * C ref: eat.c temp_resist `:450–469` — intrinsic timeout with no form,
- * worn-gear or blocked cover; used by enlightenment for the Acid/Stone
- * "temporarily " prefix.
- */
-function enl_temp_resist(prop) {
-    const p = game.u?.uprops?.[prop] || {};
-    const intr = p.intrinsic | 0;
-    const timeout = intr & TIMEOUT;
-    if (timeout
-        && (intr & ~TIMEOUT) === 0
-        && !(p.extrinsic | 0)
-        && !(p.blocked | 0)) {
-        return timeout;
-    }
-    return 0;
-}
-
-/**
  * C ref: insight.c item_resistance_message — "Your items are [somewhat]
  * protected from …" + item_what.
  */
@@ -5648,6 +5662,32 @@ function item_resistance_message_lines(adtyp, prot_message, final, o = (t) => t)
         : (somewhat ? 'are somewhat' : 'are');
     return [o(enlght_line_txt(
         'Your items ', mid, prot_message, item_what(adtyp),
+    ))];
+}
+
+/**
+ * C ref: insight.c enlght_halfdmg `:201–220` — "You take/took half|reduced
+ * <physical|spell|unknown> damage" + from_what(category). "half" when
+ * final||wizard, else "reduced". Callers wired: `:1811/:1813`
+ * (disclosure + overlay copies, Half_*_damage guards at the sites).
+ */
+function enlght_halfdmg_lines(category, final, o = (t) => t) {
+    let category_name;
+    switch (category | 0) {
+    case HALF_PHDAM:
+        category_name = 'physical';
+        break;
+    case HALF_SPDAM:
+        category_name = 'spell';
+        break;
+    default:
+        category_name = 'unknown';
+        break;
+    }
+    const wizard = !!(game.flags?.wizard || game.flags?.debug);
+    const buf = ` ${(final || wizard) ? 'half' : 'reduced'} ${category_name} damage`;
+    return [o(enlght_line_txt(
+        'You ', final ? 'took' : 'take', buf, from_what(category),
     ))];
 }
 
@@ -5747,10 +5787,20 @@ async function status_core_lines(final = 0, opts = {}) {
         }
         out.push(wrap(tbuf));
     }
+    // C insight.c:994–999 — walking_on_water (Riding / Levitation /
+    // Flying / Underwater arms still absent; the predicate is FALSE while
+    // uinwater so this standalone `if` matches the elif).
+    if (walking_on_water()) {
+        const wbuf = `walking on ${
+            is_pool(u.ux | 0, u.uy | 0) ? 'water'
+                : is_lava(u.ux | 0, u.uy | 0) ? 'lava'
+                    : surface(u.ux | 0, u.uy | 0)}`;
+        out.push(wrap(wbuf, from_what(WWALKING)));
+    }
     // C insight.c:1002–1003 — poly'd and hiding. Riding / Levitation /
-    // Flying / Underwater / walking_on_water of status_enlightenment are
-    // still absent; this call sits immediately before Stoned, the next
-    // live arm. youhiding owns you_are; overlay adds the ^X space.
+    // Flying / Underwater of status_enlightenment are still absent; this
+    // call sits immediately before Stoned, the next live arm. youhiding
+    // owns you_are; overlay adds the ^X space.
     if (Upolyd(u) && (u.uundetected
         || M_AP_TYPE(game.youmonst) !== M_AP_NOTHING)) {
         const line = await youhiding(true, final);
@@ -5908,8 +5958,8 @@ async function status_core_lines(final = 0, opts = {}) {
         }
         out.push(wrap_have(`${article}wounded ${leftright}${bp}`));
     }
-    // C insight.c:1177-1180 — Fumbling (cause_known deferred; magic exact).
-    if (Fumbling() && magic) {
+    // C insight.c:1177-1180 — Fumbling (magic || cause_known).
+    if (Fumbling() && (magic || cause_known(FUMBLING))) {
         const line = enlght_line_txt(
             You_,
             final ? 'fumbled' : 'fumble',
@@ -5919,7 +5969,7 @@ async function status_core_lines(final = 0, opts = {}) {
         out.push(overlay ? ` ${line}` : line);
     }
     // C insight.c:1181-1188 — Sleepy (from_what + wizard HSleepy timeout).
-    if (hero_Sleepy() && (magic || cause_known_sleepy())) {
+    if (hero_Sleepy() && (magic || cause_known(SLEEPY))) {
         let ps = from_what(SLEEPY);
         if (wizard) ps += ` (${(u.HSleepy | 0) & TIMEOUT})`;
         const line = enlght_line_txt(
@@ -5930,8 +5980,8 @@ async function status_core_lines(final = 0, opts = {}) {
         );
         out.push(overlay ? ` ${line}` : line);
     }
-    // C insight.c:1190-1194 — Hunger rapid (cause_known deferred; magic exact).
-    if (((u.HHunger | 0) || (u.EHunger | 0)) && magic) {
+    // C insight.c:1190-1194 — Hunger rapid (magic || cause_known).
+    if (((u.HHunger | 0) || (u.EHunger | 0)) && (magic || cause_known(HUNGER))) {
         const line = enlght_line_txt(
             You_,
             final ? 'hungered' : 'hunger',
@@ -6329,7 +6379,7 @@ export async function enlightenment(mode, final = 0) {
         }
         // C insight.c:1542-1548 — Acid (+ "temporarily ") + item-acid.
         if (hero_Acid_resistance(u)) {
-            const acidPre = enl_temp_resist(ACID_RES) ? 'temporarily ' : '';
+            const acidPre = temp_resist(ACID_RES) ? 'temporarily ' : '';
             lines.push(you_are(`${acidPre}acid resistant`, from_what(ACID_RES)));
         }
         lines.push(...item_resistance_message_lines(
@@ -6344,7 +6394,7 @@ export async function enlightenment(mode, final = 0) {
         }
         // C insight.c:1553-1557 — Stone (+ "temporarily ").
         if (hero_Stone_resistance(u)) {
-            const stonePre = enl_temp_resist(STONE_RES) ? 'temporarily ' : '';
+            const stonePre = temp_resist(STONE_RES) ? 'temporarily ' : '';
             lines.push(you_are(
                 `${stonePre}petrification resistant`, from_what(STONE_RES),
             ));
@@ -6462,9 +6512,16 @@ export async function enlightenment(mode, final = 0) {
         if (hero_Teleport_control(u)) {
             lines.push(you_have('teleport control', from_what(TELEPORT_CONTROL)));
         }
+        // C insight.c:1755-1757 — potential Wwalking (the active case is
+        // the status_enlightenment arm).
+        if (hero_Wwalking() && !walking_on_water()) {
+            lines.push(enlght_line_txt(
+                You_, final ? 'could ' : 'can ', 'walk on water',
+                from_what(WWALKING),
+            ));
+        }
         // C insight.c:1758-1765 — Swimming, Breathless/Amphibious,
-        // Passes_walls after Teleport_control, before Regeneration
-        // (Wwalking deferred above: walking_on_water has no js/ export).
+        // Passes_walls after Teleport_control, before Regeneration.
         {
             const {
                 hero_Swimming, hero_Breathless, hero_Amphibious,
@@ -6510,8 +6567,17 @@ export async function enlightenment(mode, final = 0) {
             const idx = Math.min(armpro, mc_types.length - 1);
             lines.push(you_are(mc_types[idx]));
         }
-        // C insight.c:1816-1832 — spell casting suit/robe (halfdmg deferred
-        // between; final disclosure → "was"). Skipped with no spells known.
+        // C insight.c:1810-1815 — half physical/spell damage after
+        // magic_negation (the Half_gas_damage arm stays with
+        // attributes_enlightenment).
+        if (Half_physical_damage(u)) {
+            lines.push(...enlght_halfdmg_lines(HALF_PHDAM, final));
+        }
+        if (Half_spell_damage(u)) {
+            lines.push(...enlght_halfdmg_lines(HALF_SPDAM, final));
+        }
+        // C insight.c:1816-1832 — spell casting suit/robe (final
+        // disclosure → "was"). Skipped with no spells known.
         {
             const { spellid, NO_SPELL } = await import('./spell.js');
             const { is_metallic } = await import('./mkobj.js');
@@ -7052,7 +7118,7 @@ export async function doattributes(enl_mode = null) {
             )));
         }
         if (hero_Acid_resistance(u)) {
-            const acidPre = enl_temp_resist(ACID_RES) ? 'temporarily ' : '';
+            const acidPre = temp_resist(ACID_RES) ? 'temporarily ' : '';
             lines.push(o(enlght_line_txt(
                 'You ', 'are ', `${acidPre}acid resistant`,
                 from_what(ACID_RES),
@@ -7073,7 +7139,7 @@ export async function doattributes(enl_mode = null) {
             )));
         }
         if (hero_Stone_resistance(u)) {
-            const stonePre = enl_temp_resist(STONE_RES) ? 'temporarily ' : '';
+            const stonePre = temp_resist(STONE_RES) ? 'temporarily ' : '';
             lines.push(o(enlght_line_txt(
                 'You ', 'are ', `${stonePre}petrification resistant`,
                 from_what(STONE_RES),
@@ -7188,9 +7254,15 @@ export async function doattributes(enl_mode = null) {
                 'You ', 'have ', 'teleport control', from_what(TELEPORT_CONTROL),
             )));
         }
+        // C insight.c:1755-1757 — potential Wwalking (^X final=0 → "can").
+        if (hero_Wwalking() && !walking_on_water()) {
+            lines.push(o(enlght_line_txt(
+                'You ', 'can ', 'walk on water', from_what(WWALKING),
+            )));
+        }
         // C insight.c:1758-1765 — Swimming, Breathless/Amphibious,
         // Passes_walls after Teleport_control, before Regeneration
-        // (^X final=0 → "can"; Wwalking deferred: no walking_on_water).
+        // (^X final=0 → "can").
         {
             const {
                 hero_Swimming, hero_Breathless, hero_Amphibious,
@@ -7233,8 +7305,17 @@ export async function doattributes(enl_mode = null) {
             const idx = Math.min(armpro, mc_types.length - 1);
             lines.push(o(enlght_line_txt('You ', 'are ', mc_types[idx], '')));
         }
-        // C insight.c:1816-1832 — spell casting suit/robe (halfdmg deferred
-        // between; ^X final=0 → "is"). Skipped when no spells known yet.
+        // C insight.c:1810-1815 — half physical/spell damage after
+        // magic_negation (the Half_gas_damage arm stays with
+        // attributes_enlightenment; ^X final=0 → "take").
+        if (Half_physical_damage(u)) {
+            lines.push(...enlght_halfdmg_lines(HALF_PHDAM, 0, o));
+        }
+        if (Half_spell_damage(u)) {
+            lines.push(...enlght_halfdmg_lines(HALF_SPDAM, 0, o));
+        }
+        // C insight.c:1816-1832 — spell casting suit/robe (^X final=0 →
+        // "is"). Skipped when no spells known yet.
         {
             const { spellid, NO_SPELL } = await import('./spell.js');
             const { is_metallic } = await import('./mkobj.js');

@@ -241,7 +241,7 @@ import {
 } from './invent.js';
 import { mstatusline, ustatusline } from './insight.js';
 import { setnotworn, boulder_hits_pool } from './do.js';
-import { doname, xname, yname, Yname2, distant_name, cxname_singular, vtense, The, the, an, An, aobjnam, killer_xname, ansimpleoname, makeplural } from './objnam.js';
+import { doname, xname, yname, Yname2, distant_name, cxname_singular, vtense, The, the, an, An, aobjnam, killer_xname, ansimpleoname, makeplural, simple_typename } from './objnam.js';
 import { uhim, uhis } from './roles.js';
 import { str_start_is, upstart, mungspaces, strncmpi } from './hacklib.js';
 import { Soundeffect } from './sndprocs.js';
@@ -3865,18 +3865,30 @@ const C_OBJ_COLORS_ZAP = [
 
 /**
  * C ref: mon.c mimic_hit_msg :5776–5793 — object-mimic hit by
- * SPE_HEALING/SPE_EXTRA_HEALING prints a more vivid color.
+ * SPE_HEALING/SPE_EXTRA_HEALING prints a more vivid color; all other
+ * M_AP_TYPE arms are no-ops. Name via live simple_typename + The
+ * (objnam.js), color via decl.c c_obj_colors[] (C_OBJ_COLORS_ZAP).
+ * Async: sole C caller zap.c bhitm :456 awaits pline_mon.
  * Caller: zap.c bhitm (D-1469).
  */
 async function mimic_hit_msg(mtmp, otyp) {
-    if (M_AP_TYPE(mtmp) !== M_AP_OBJECT) return;
-    if (otyp !== SPE_HEALING && otyp !== SPE_EXTRA_HEALING) return;
     const ap = mtmp.mappearance | 0;
-    const oc = game.objects?.[ap];
-    const color = C_OBJ_COLORS_ZAP[oc?.oc_color | 0] || 'colorless';
-    const raw = objectNames[ap] || 'object';
-    const name = String(raw).toLowerCase().replace(/_/g, ' ');
-    await pline_mon(mtmp, `${The(name)} seems a more vivid ${color} than before.`);
+    switch (M_AP_TYPE(mtmp)) {
+    case M_AP_NOTHING:
+    case M_AP_FURNITURE:
+    case M_AP_MONSTER:
+        break;
+    case M_AP_OBJECT:
+        if (otyp === SPE_HEALING || otyp === SPE_EXTRA_HEALING) {
+            await pline_mon(
+                mtmp,
+                `${The(simple_typename(ap))} seems a more vivid ${
+                    C_OBJ_COLORS_ZAP[game.objects?.[ap]?.oc_color | 0]
+                } than before.`,
+            );
+        }
+        break;
+    }
 }
 
 /**
