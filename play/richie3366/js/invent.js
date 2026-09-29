@@ -55,7 +55,7 @@ import {
     clear_committed_status,
     docorner, dxdy_to_dist_descr,
 } from './display.js';
-import { xprname, an, the, vtense, doname, distant_name, Japanese_item_name, xname, cxname_singular, set_xname_observe, set_distant_cansee, ansimpleoname, simpleonames, set_not_fully_identified, makeplural, makesingular, body_part_latebound, corpse_xname, killer_xname, maybereleaseobuf } from './objnam.js';
+import { xprname, an, the, vtense, doname, distant_name, Japanese_item_name, xname, cxname_singular, set_xname_observe, set_distant_cansee, ansimpleoname, simpleonames, gloves_simple_name, set_not_fully_identified, makeplural, makesingular, body_part_latebound, corpse_xname, killer_xname, maybereleaseobuf } from './objnam.js';
 import { yn_function, y_n, getlin, mungspaces } from './getline.js';
 import { get_count, pmatchi, cmdq_pop, cmdq_clear } from './cmd.js';
 import { mergable, merged, is_damageable, stop_timer, splitobj, unsplitobj, clear_splitobjs, unknwn_contnr_contents, weight, delobj, curse } from './mkobj.js';
@@ -267,7 +267,7 @@ import {
     P_BARE_HANDED_COMBAT, P_TWO_WEAPON_COMBAT, P_RIDING,
     P_ISRESTRICTED, P_UNSKILLED, P_BASIC, P_SKILLED,
     P_EXPERT, P_MASTER, P_GRAND_MASTER,
-    W_ARMOR, W_AMUL, W_RING, W_TOOL, W_SADDLE,
+    W_ARMOR, W_AMUL, W_RING, W_RINGL, W_TOOL, W_SADDLE,
     W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU,
     W_WEP, W_SWAPWEP, W_QUIVER, W_WEAPONS, W_ART, W_ACCESSORY,
     WORN_SHIRT, WORN_BOOTS, WORN_GLOVES, WORN_HELMET, WORN_SHIELD,
@@ -341,7 +341,7 @@ import {
 } from './pickup.js';
 import { is_ammo, is_pole } from './wield.js';
 import { is_wet_towel, can_advance } from './weapon.js';
-import { shield_simple_name, Boots_on, helm_simple_name, cloak_simple_name } from './do_wear.js';
+import { shield_simple_name, Boots_on, helm_simple_name, cloak_simple_name, shirt_simple_name, suit_simple_name, boots_simple_name } from './do_wear.js';
 import { float_vs_flight, youhiding } from './polyself.js';
 import { learn_egg_type } from './timeout.js';
 
@@ -5587,55 +5587,34 @@ export function inventory_resistance_check(dmgtyp) {
 }
 
 /**
- * C ref: objnam.c suit_simple_name — dragon mail/scales + mail/jacket.
- * Local copy for item_what (do_wear.js suit_simple_name still defers dragon).
- */
-function enl_suit_simple_name(suit) {
-    if (!suit) return 'suit';
-    const otyp = suit.otyp | 0;
-    const grayMail = objectNames.indexOf('GRAY_DRAGON_SCALE_MAIL');
-    const yellowMail = objectNames.indexOf('YELLOW_DRAGON_SCALE_MAIL');
-    const grayScales = objectNames.indexOf('GRAY_DRAGON_SCALES');
-    const yellowScales = objectNames.indexOf('YELLOW_DRAGON_SCALES');
-    if (grayMail >= 0 && otyp >= grayMail && otyp <= yellowMail) {
-        return 'dragon mail';
-    }
-    if (grayScales >= 0 && otyp >= grayScales && otyp <= yellowScales) {
-        return 'dragon scales';
-    }
-    const suitnm = objectNameStrs[otyp] || '';
-    if (suitnm.length > 5 && suitnm.endsWith(' mail')) return 'mail';
-    if (suitnm.length > 7 && suitnm.endsWith(' jacket')) return 'jacket';
-    return 'suit';
-}
-
-/**
- * C ref: zap.c item_what — wizard suffix " by your <slot simple name>".
- * Ported: W_ARMC → cloak_simple_name (zap.c:5734); W_ARM →
- * suit_simple_name (dragon mail); W_ARMH → helm_simple_name
- * (zap.c:5740). Other slots stay the short noun.
+ * C ref: zap.c item_what `:5722–5763` — wizard suffix " by your <slot
+ * simple name>" for the item-resistance enlightenment line. Every slot
+ * arm uses the live export (no local nouns).
  */
 function item_what(dmgtyp) {
+    const prop = adtyp_to_prop(dmgtyp); // C :5726
+    const x = game.u?.uprops?.[prop]?.extrinsic | 0; // C :5727
     const wizard = !!(game.flags?.wizard || game.flags?.debug);
-    if (!wizard) return '';
-    const prop = adtyp_to_prop(dmgtyp);
-    const x = game.u?.uprops?.[prop]?.extrinsic | 0;
-    if (!prop || !x) return '';
+    if (!wizard) return ''; // C :5730 — whatbuf stays empty
     const u = game.u || {};
     let what = null;
-    if (x & W_ARMC) what = cloak_simple_name(u.uarmc); /* C zap.c:5733–5734 */
-    else if (x & W_ARM) what = enl_suit_simple_name(u.uarm);
-    else if (x & W_ARMU) what = 'shirt';
-    else if (x & W_ARMH) what = helm_simple_name(u.uarmh);
-    else if (x & W_ARMG) what = 'gloves';
-    else if (x & W_ARMF) what = 'boots';
-    else if (x & W_ARMS) what = 'shield';
-    else if (x & (W_AMUL | W_TOOL)) {
-        const o = (x & W_AMUL) ? u.uamul : u.ublindf;
-        what = o ? (objectNameStrs[o.otyp] || 'item').toLowerCase().replace(/_/g, ' ') : null;
-    } else if (x & W_RING) what = 'ring';
-    else if (x & W_WEP) what = 'weapon';
-    return what ? ` by your ${what}` : '';
+    if (!prop || !x) {
+        /* C :5731–5732 — 'what' stays Null */
+    } else if (x & W_ARMC) what = cloak_simple_name(u.uarmc); // C :5734
+    else if (x & W_ARM) what = suit_simple_name(u.uarm); // C :5736
+    else if (x & W_ARMU) what = shirt_simple_name(u.uarmu); // C :5738
+    else if (x & W_ARMH) what = helm_simple_name(u.uarmh); // C :5740
+    else if (x & W_ARMG) what = gloves_simple_name(u.uarmg); // C :5742
+    else if (x & W_ARMF) what = boots_simple_name(u.uarmf); // C :5744
+    else if (x & W_ARMS) what = shield_simple_name(u.uarms); // C :5746
+    else if (x & (W_AMUL | W_TOOL)) what = simpleonames((x & W_AMUL) ? u.uamul : u.ublindf); // C :5748
+    else if (x & W_RING) {
+        // C :5750–5753 — both rings read "rings", one reads its name
+        what = (x & W_RING) === W_RING
+            ? 'rings'
+            : simpleonames((x & W_RINGL) ? u.uleft : u.uright);
+    } else if (x & W_WEP) what = simpleonames(u.uwep); // C :5755
+    return what ? ` by your ${what}` : ''; // C :5759–5760
 }
 
 /**

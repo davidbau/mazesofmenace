@@ -26,6 +26,7 @@ import {
     HALF_SPDAM,
     HAND,
     HEAD,
+    LEG,
     IS_AIR,
     IS_OBSTRUCTED,
     KILLED_BY_AN,
@@ -42,6 +43,7 @@ import {
     CORR,
     COST_DEGRD,
     COST_DECHNT,
+    COST_UNCURS,
     COST_UNCHRG,
     PLNMSG_TOWER_OF_FLAME,
     GETOBJ_ALLOWCNT,
@@ -54,6 +56,7 @@ import {
     G_EXTINCT,
     G_GENOD,
     HALLUC,
+    HALLUC_RES,
     MALE,
     MM_FEMALE,
     MM_EDOG,
@@ -77,9 +80,15 @@ import {
     nothing_happens,
     STOMACH,
     W_BALL,
+    W_ART,
+    W_ARTI,
     W_CHAIN,
     W_ARMH,
     W_ARM,
+    STUNNED,
+    TIMEOUT,
+    W_SADDLE,
+    TT_BURIEDBALL,
     WT_IRON_BALL_INCR,
     Is_rogue_level,
     Is_waterlevel,
@@ -219,6 +228,10 @@ import {
     BELL_OF_OPENING,
     CANDY_BAR,
     COIN_CLASS,
+    GEM_CLASS,
+    LEASH,
+    LOADSTONE,
+    POT_WATER,
     CORNUTHAUM,
     CREDIT_CARD,
     DUNCE_CAP,
@@ -281,6 +294,7 @@ import {
     WAN_FIRE,
     WAN_LIGHTNING,
     WAN_MAGIC_MISSILE,
+    WEAPON_CLASS,
     NODIR,
     SCR_IDENTIFY,
     SCR_LIGHT,
@@ -306,10 +320,10 @@ import {
     bcsign,
     greatest_erosion,
     Is_dragon_scales,
-    is_flammable,
     is_shield,
     is_weptool,
     bless,
+    blessorcurse,
     curse,
     uncurse,
     costly_alteration,
@@ -317,6 +331,7 @@ import {
     mkobj,
     mksobj,
     objectType,
+    uslinging,
     place_object,
     weight,
 } from './obj.js';
@@ -348,6 +363,9 @@ import {
     Ring_off,
     Ring_on,
     adj_abon,
+    any_worn_armor_ok,
+    count_worn_armor,
+    disintegrate_arm,
     destroy_arm,
     some_armor,
     setwornEnv,
@@ -379,7 +397,7 @@ import { closed_door, monflee, youHear } from './monmove.js';
 import {
     avoid_ceiling, ceiling, has_ceiling, on_level,
 } from './dungeon.js';
-import { livelog_printf, verbalize } from './pline.js';
+import { heroUnaware, livelog_printf, verbalize } from './pline.js';
 import {
     an,
     simpleonames,
@@ -394,6 +412,7 @@ import {
     vtense,
     Yobjnam2,
     xnameFresh,
+    actualoname,
 } from './objnam.js';
 import { alter_cost, shk_your } from './shk.js';
 import { pmname } from './do_name.js';
@@ -1104,22 +1123,6 @@ export async function seffect_scare_monster(sobj, state = game) {
     }
 }
 
-// The existing destroy-armor helper covers only an ordinary, unknown scroll
-// with exactly one worn, flammable armor object. seffects() records a gap on
-// its other source arms until that effect family is ported whole.
-function oneWornFlammableArmor(state) {
-    const worn = [
-        state.uarm,
-        state.uarmc,
-        state.uarmh,
-        state.uarms,
-        state.uarmg,
-        state.uarmf,
-        state.uarmu,
-    ].filter(Boolean);
-    return worn.length === 1 && is_flammable(worn[0], state);
-}
-
 // C ref: read.c maybe_tame() (1044-1063). Its signed result is consumed by
 // seffect_taming(): a cursed scroll can return -1 for a peaceful target that
 // became hostile, while ordinary taming returns 1 only when disposition or
@@ -1798,61 +1801,239 @@ export async function seffect_enchant_armor(scroll, state = game, env = {}) {
     return false;
 }
 
-// C ref: read.c seffect_destroy_armor() (1324-1396). Covers the ordinary,
-// uncursed and unblessed fallback that calls do_wear.c destroy_arm().
-// some_armor() is deliberately called before destroy_arm(), as in C; the
-// single worn suit in this slice means that selection has no random draw.
-export async function seffect_destroy_armor(scroll, state = game) {
-    if (scroll.otyp !== SCR_DESTROY_ARMOR
-        || scroll.oclass !== SCROLL_CLASS
-        || scroll.blessed || scroll.cursed
-        || objectType(scroll, state).oc_name_known
-        || propertyActive(CONFUSION, state)
-        || propertyActive(BLINDED, state)
-        || !can_chant(state.youmonst, state)
-        || !oneWornFlammableArmor(state)) {
-        throw new UnsupportedReadError(
-            'the selected destroy-armor fallback branch',
-        );
-    }
-    if (!some_armor(state.youmonst, state, { rn2 })) {
-        throw new UnsupportedReadError(
-            'destroy-armor with no selected armor',
-        );
-    }
-    if (!await destroy_arm(state, { rn2, rnl })) {
-        throw new UnsupportedReadError(
-            'destroy-armor with no effective erosion',
-        );
-    }
-    state.gk.known = true;
+// C ref: read.c disintegrate_cursed_armor() (1294-1322). Preserve the
+// source's cursed-slot array order before selecting exactly one target.
+async function disintegrate_cursed_armor(state = game, random = { rn2 }) {
+    const armors = [
+        state.uarm,
+        state.uarmc,
+        state.uarmh,
+        state.uarms,
+        state.uarmg,
+        state.uarmf,
+        state.uarmu,
+    ].filter((armor) => armor?.cursed);
+    if (!armors.length) return false;
+    return Boolean(await disintegrate_arm(
+        armors[random.rn2(armors.length)],
+        { state, random },
+    ));
 }
 
-// C ref: read.c seffect_remove_curse() (1489-1605). Only the cursed-scroll
-// branch (lines 1505-1506) is ported: it prints the You_feel message and
-// "The scroll disintegrates." and skips the uncursed/blessed invent-traversal
-// loop. The function never nulls sobjp, so seffects() returns 0 and the
-// caller handles useup.
-export async function seffect_remove_curse(scroll, state = game) {
-    if (scroll.otyp !== SCR_REMOVE_CURSE || !scroll.cursed) {
-        throw new UnsupportedReadError(
-            'the selected remove-curse branch',
-        );
-    }
+// C ref: read.c seffect_destroy_armor() (1324-1396). The some_armor() draw
+// comes before the confused/cursed/blessed branches; the returned boolean is
+// C's `sobjp` consumption channel for strange_feeling().
+export async function seffect_destroy_armor(
+    scroll,
+    state = game,
+    rawEnv = {},
+) {
+    if (scroll?.otyp !== SCR_DESTROY_ARMOR || scroll.oclass !== SCROLL_CLASS)
+        throw new UnsupportedReadError('the selected destroy-armor branch');
+
+    state.gk ??= {};
+    const random = rawEnv.random ?? { rn1, rn2, rnd, rnl };
+    const otmp = some_armor(state.youmonst, state, random);
+    const scursed = Boolean(scroll.cursed);
     const confused = propertyActive(CONFUSION, state);
-    const halluc = propertyActive(HALLUC, state);
-    // C ref: pline.c You_feel() prepends "You feel " (or "You dream that
-    // you feel " when Unaware, which cannot happen while reading).
+
+    if (confused) {
+        if (!otmp) {
+            await strange_feeling(scroll, 'Your bones itch.', state);
+            await exercise(A_STR, false, state, random);
+            await exercise(A_CON, false, state, random);
+            return true;
+        }
+        const oldErodeproof = Boolean(otmp.oerodeproof);
+        const newErodeproof = scursed;
+        otmp.oerodeproof = false;
+        await p_glow2(otmp, 'purple', state);
+        if (oldErodeproof && !newErodeproof) {
+            // Restore before shop billing, in source order.
+            otmp.oerodeproof = true;
+            sourceCostlyAlteration(otmp, COST_DEGRD, state);
+        }
+        otmp.oerodeproof = newErodeproof;
+        return false;
+    }
+
+    if (scursed) {
+        if (otmp?.cursed) {
+            await ttyPline(`${Yobjnam2(otmp, 'vibrate', state)}.`, state);
+            if (otmp.spe >= -6) {
+                otmp.spe--;
+                adj_abon(otmp, -1, state, { random });
+            }
+            const stun = (state.u.uprops[STUNNED]?.intrinsic ?? 0) & TIMEOUT;
+            const duration = stun + random.rn1(10, 10);
+            note_unported('timeout.c make_stunned');
+            // `duration` is evaluated before the discarded make_stunned()
+            // call, even while timeout.c itself remains outside this task.
+            void duration;
+        } else if (await disintegrate_arm(otmp, { state, random })) {
+            state.gk.known = true;
+            return false;
+        }
+    } else {
+        const getsChoice = Boolean(
+            otmp && scroll.blessed && count_worn_armor(state) > 1,
+        );
+
+        if (getsChoice) {
+            if (!objectType(scroll, state).oc_name_known)
+                await ttyPline(
+                    `This is ${an(actualoname(scroll, state), state)}!`, state,
+                );
+            state.gk.known = true;
+            const armor = await getobj(
+                'destroy', any_worn_armor_ok, GETOBJ_PROMPT, state,
+            );
+            // C keeps the previously selected armor for a canceled or invalid
+            // choice, and accepts any valid worn armor, including covered gear.
+            const selected = any_worn_armor_ok(armor) === GETOBJ_SUGGEST
+                ? armor : otmp;
+            await disintegrate_arm(selected, { state, random });
+            return false;
+        }
+
+        if (scroll.blessed
+            && await disintegrate_cursed_armor(state, random)) {
+            state.gk.known = true;
+            return false;
+        }
+
+        if (!await destroy_arm(state, random)) {
+            await strange_feeling(scroll, 'Your skin itches.', state);
+            await exercise(A_STR, false, state, random);
+            await exercise(A_CON, false, state, random);
+            return true;
+        }
+        state.gk.known = true;
+    }
+    return false;
+}
+
+// C ref: read.c seffect_remove_curse() (1489-1605). Inventory traversal saves
+// each next pointer before changing BUC because curse() can drop the active
+// secondary weapon from that chain. Source uses HConfusion and Hallucination
+// (intrinsic timeout, unless resisted), and always leaves the scroll pointer
+// intact for doread() to consume it.
+export async function seffect_remove_curse(scroll, state = game, env = {}) {
+    const otyp = scroll.otyp;
+    const sblessed = Boolean(scroll.blessed);
+    const scursed = Boolean(scroll.cursed);
+    const confused = Boolean(state.u?.uprops?.[CONFUSION]?.intrinsic);
+    const hallucination = Boolean(state.u?.uprops?.[HALLUC]?.intrinsic)
+        && !(state.u?.uprops?.[HALLUC_RES]?.intrinsic
+            || state.u?.uprops?.[HALLUC_RES]?.extrinsic);
+    const random = {
+        rn1, rn2, rnd, rne,
+        ...(env.random ?? {}),
+    };
+
+    // pline.c:You_feel() chooses its prefix from youprop.h:Unaware before
+    // formatting this source's text. Keep that boundary ahead of all effects.
+    const feeling = !hallucination
+        ? (!confused ? 'like someone is helping you.'
+            : 'like you need some help.')
+        : (!confused ? 'in touch with the Universal Oneness.'
+            : 'the power of the Force against you!');
     await ttyPline(
-        'You feel '
-        + (!halluc
-            ? (!confused ? 'like someone is helping you.'
-                : 'like you need some help.')
-            : (!confused ? 'in touch with the Universal Oneness.'
-                : 'the power of the Force against you!')),
+        `${heroUnaware(state) ? 'You dream that you feel' : 'You feel'} ${feeling}`,
         state,
     );
-    await ttyPline('The scroll disintegrates.', state);
+
+    if (scursed) {
+        await ttyPline('The scroll disintegrates.', state);
+    } else {
+        for (let obj = state.invent; obj;) {
+            // C caches obj->nobj before any BUC operation that can move obj.
+            const next = obj.nobj;
+            if (obj.oclass === COIN_CLASS) {
+                obj = next;
+                continue;
+            }
+            // The single object pointer is the same scroll/fake spellbook.
+            // Do not clear its BUC-known bit before doread()/spelleffects.
+            if (obj === scroll && obj.quan === 1) {
+                obj = next;
+                continue;
+            }
+
+            let wornmask = (obj.owornmask ?? 0) & ~(W_BALL | W_ART | W_ARTI);
+            if (wornmask && !sblessed) {
+                // These auxiliary slots count as worn only when they are in
+                // active use, matching read.c's slot-specific exclusions.
+                if (obj === state.uswapwep) {
+                    if (!state.u?.twoweap) wornmask = 0;
+                } else if (obj === state.uquiver) {
+                    if (obj.oclass === WEAPON_CLASS) {
+                        if (!objectType(obj, state).oc_merge) wornmask = 0;
+                    } else if (obj.oclass === GEM_CLASS) {
+                        if (!uslinging(state)) wornmask = 0;
+                    } else {
+                        wornmask = 0;
+                    }
+                }
+            }
+
+            if (sblessed || wornmask || obj.otyp === LOADSTONE
+                || (obj.otyp === LEASH && obj.leashmon)) {
+                const shopWater = Boolean(obj.unpaid)
+                    && obj.otyp === POT_WATER;
+                if (confused) {
+                    await blessorcurse(obj, 2, { ...env, state, random });
+                    // C explicitly forgets the BUC state even on a failed
+                    // blessorcurse roll, before any shop-price adjustment.
+                    obj.bknown = 0;
+                    if (shopWater && (obj.cursed || obj.blessed))
+                        alter_cost(obj, 0, state);
+                } else if (obj.cursed) {
+                    if (shopWater)
+                        sourceCostlyAlteration(obj, COST_UNCURS, state);
+                    await uncurse(obj, { ...env, state });
+                    if (obj.bknown && otyp === SCR_REMOVE_CURSE)
+                        learnscrolltyp(SCR_REMOVE_CURSE, state);
+                }
+            }
+            obj = next;
+        }
+
+        // read.c treats a worn steed saddle as part of the hero's inventory,
+        // after the carried-object chain, but applies different feedback.
+        const saddle = state.u?.usteed
+            ? which_armor(state.u.usteed, W_SADDLE, state) : null;
+        if (saddle) {
+            if (confused) {
+                await blessorcurse(saddle, 2, { ...env, state, random });
+                saddle.bknown = 0;
+            } else if (saddle.cursed) {
+                await uncurse(saddle, { ...env, state });
+                if (!propertyActive(BLINDED, state)) {
+                    await ttyPline(
+                        `${Yobjnam2(saddle, 'glow', state)} ${hcolor('amber', state)}.`,
+                        state,
+                    );
+                    saddle.bknown = hallucination ? 0 : 1;
+                } else {
+                    saddle.bknown = 0;
+                }
+            }
+        }
+    }
+
+    // These C callees have void results; their separate object/chain teardown
+    // source remains unported, so keep the gap and continue following C's
+    // unconditional later message and final inventory refresh.
+    if (Boolean(state.uball) && !confused)
+        note_unported('read.c unpunish');
+    if (state.u?.utrap && state.u.utraptype === TT_BURIEDBALL) {
+        note_unported('dig.c buried_ball_to_freedom');
+        await ttyPline(
+            `The clasp on your ${body_part(LEG, state.youmonst)} vanishes.`,
+            state,
+        );
+    }
     update_inventory({ state });
 }
 
@@ -3078,15 +3259,9 @@ export async function seffects(scroll, state = game, env = {}) {
             scroll = null;
         break;
     case SCR_DESTROY_ARMOR:
-        if (!scroll.blessed && !scroll.cursed
-            && !objectType(scroll, state).oc_name_known && !confused
-            && !propertyActive(BLINDED, state)
-            && can_chant(state.youmonst, state)
-            && oneWornFlammableArmor(state)) {
-            await seffect_destroy_armor(scroll, state);
-        } else {
-            note_unported('read.c seffect_destroy_armor');
-        }
+        if (await seffect_destroy_armor(
+            scroll, state, { ...env, random },
+        )) scroll = null;
         break;
     case SCR_CONFUSE_MONSTER:
     case SPE_CONFUSE_MONSTER:
@@ -3109,10 +3284,7 @@ export async function seffects(scroll, state = game, env = {}) {
         break;
     case SCR_REMOVE_CURSE:
     case SPE_REMOVE_CURSE:
-        if (scroll.otyp === SCR_REMOVE_CURSE && scroll.cursed)
-            await seffect_remove_curse(scroll, state);
-        else
-            note_unported('read.c seffect_remove_curse');
+        await seffect_remove_curse(scroll, state, { ...env, random });
         break;
     case SCR_CREATE_MONSTER:
     case SPE_CREATE_MONSTER:

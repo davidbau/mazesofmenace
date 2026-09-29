@@ -603,6 +603,16 @@ export function __setPopulateNomakedefs(fn) {
     populateNomakedefsHook = fn;
 }
 
+// C ref: mdlib.c release_runtime_info `:871` free_nomakedefs(). Same
+// late-binding as the populate hook above (D-1881: no static
+// version.js→date.js edge); js/date.js registers the C-order call at its
+// evaluation. Unset in graphs that never import js/date.js — then the
+// free stays the pre-port omission.
+let freeNomakedefsHook = null;
+export function __setFreeNomakedefs(fn) {
+    freeNomakedefsHook = fn;
+}
+
 /**
  * C ref: mdlib.c runtime_info_init `:834–846` — one-shot init; calls
  * build_options (`:844`, the row's C caller — wired here). `:841`
@@ -643,8 +653,8 @@ export function do_runtime_info(rtcontext) {
 /**
  * C ref: mdlib.c release_runtime_info `:863–872` — free every stored line
  * (`:866–869`, GC here) and reset the one-shot flag (`:870`); `:871`
- * free_nomakedefs stays a named omission (date.c remainder; populate is
- * live in js/date.js since D-2653).
+ * free_nomakedefs runs via the hook above (live in js/date.js; unset in
+ * graphs that never import it).
  */
 export function release_runtime_info() {
     while (idxopttext > 0) {
@@ -652,4 +662,5 @@ export function release_runtime_info() {
         opttext[idxopttext] = undefined;
     }
     done_runtime_opt_init_once = false;
+    if (freeNomakedefsHook) freeNomakedefsHook(); // `:871`
 }

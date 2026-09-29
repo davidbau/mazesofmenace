@@ -171,9 +171,9 @@ import { rnd } from './rng.js';
 import { str_end_is, str_start_is, highc, lowc, strstri, strsubst, strNsubst, strkitten, fuzzymatch, trimspaces } from './hacklib.js';
 import { name_to_mon } from './mondata.js';
 import { nhgetch } from './input.js';
-import { flush_screen, pline, You_cant, docrt, bot, check_gold_symbol, clear_committed_status, set_bot_disabled, tty_wait_synch, update_ov_primary_symset, update_ov_rogue_symset, impossible, SYM_OFF_X, reglyph_darkroom, raw_printf } from './display.js';
+import { flush_screen, pline, You_cant, docrt, bot, check_gold_symbol, clear_committed_status, set_bot_disabled, tty_wait_synch, update_ov_primary_symset, update_ov_rogue_symset, impossible, SYM_OFF_X, reglyph_darkroom, raw_printf, init_ov_primary_symbols, init_ov_rogue_symbols } from './display.js';
 import { get_feature_notice_ver, get_current_feature_ver } from './version.js';
-import { paint_corner_nhw_menu, dismiss_nhw_menu, collect_menu_gacc, process_menu_search, toggle_menu_curr, menu_digit_is_gacc, reassign, update_inventory, invlet_constant, perm_invent_toggled, select_menu_pick_none } from './invent.js';
+import { paint_corner_nhw_menu, dismiss_nhw_menu, collect_menu_gacc, process_menu_search, toggle_menu_curr, menu_digit_is_gacc, reassign, update_inventory, invlet_constant, perm_invent_toggled, select_menu_pick_none, DEF_INV_ORDER } from './invent.js';
 import {
     ATR_INVERSE,
     ATR_NONE,
@@ -193,7 +193,7 @@ import { EXTCMDLIST, INTERNALCMD } from './generated/extcmdlist_data.js';
 import { LOADSYMS, SYM_CONTROL } from './generated/glyphsyms_data.js';
 import { COLORTABLE } from './generated/colortable_data.js';
 import { dupstr } from './dungeon.js';
-import { glyphrep_to_custom_map_entries, free_glyphid_cache, glyphid_cache_status, apply_customizations } from './glyphs.js';
+import { glyphrep_to_custom_map_entries, free_glyphid_cache, glyphid_cache_status, fill_glyphid_cache, apply_customizations, reset_customcolors, reset_customsymbols } from './glyphs.js';
 import { yyyymmddhhmmss } from './calendar.js';
 import { getlin, mungspaces } from './getline.js';
 import { makesingular, fruit_from_name, makeplural } from './objnam.js';
@@ -229,6 +229,9 @@ import { nh_terminate } from './end.js';
 
 /** C ref: global.h PL_FSIZ — fruit name buffer. */
 const PL_FSIZ = 32;
+
+/** C ref: options.c PILE_LIMIT_DFLT (`:71`) — default pile limit. */
+const PILE_LIMIT_DFLT = 5;
 
 /** C ref: decl.c disclosure_options — invent/attribs/vanq/geno/conduct/overview */
 const DISCLOSURE_OPTIONS = 'iavgco';
@@ -4491,6 +4494,27 @@ export function free_one_menu_coloring(idx) {
 }
 
 /**
+ * C ref: coloratt.c free_menu_coloring `:664–680` — free the
+ * gm.menu_colorings chain, then the gc.color_colorings chain (the do-loop
+ * iterates at most twice, `:666–667`). regex_free per node (live, same
+ * file); C `free(origstr)`/`free(tmp)` `:674–675` ≡ unlink, GC collects
+ * (free_all_glyphmap_u precedent). Sole C caller is save.c
+ * freedynamicdata `:1084` (save-freeing teardown, no JS counterpart —
+ * named).
+ */
+export function free_menu_coloring() {
+    do { // C :668
+        for (let tmp = menuColorings; tmp;) { // C :671
+            const tmp2 = tmp.next; // C :672
+            regex_free(tmp.match); // C :673
+            tmp = tmp2; // C :674–675 free origstr/tmp ≡ unlink (GC)
+        }
+        menuColorings = colorColorings; // C :677
+        colorColorings = null; // C :678
+    } while (menuColorings); // C :679
+}
+
+/**
  * C ref: coloratt.c add_menu_coloring_parsed `:585–613` — validated
  * callers only (test_regex_pattern ran first); recompile can still fail,
  * then FALSE. config_error_add paths named (msgtype_add precedent).
@@ -4816,6 +4840,46 @@ export function check_enhanced_colors(buf) {
 }
 
 /**
+ * C ref: coloratt.c wc_color_name `:763–797` (extern.h:369) — render an
+ * int32 color as its name: basic colors (NH_BASIC_COLOR bit set, `:774`)
+ * read colortable[basicindx].name (`:776`); rgb values format `#rrggbb`
+ * (`:783–784`) unless a named row matches (`:787–793`); negative input
+ * stays "no-color" (`:767`). C returns a static buffer (`:766`) that
+ * callers dupstr immediately, so JS returns a fresh string. C callers:
+ * wc_set_window_colors options.c:10089/10095 (wired below).
+ * @param {number} colorindx int32 color
+ * @returns {string}
+ */
+export function wc_color_name(colorindx) {
+    colorindx |= 0; // C `:764` int32 param
+    let result = 'no-color'; // C `:767`
+    if (colorindx >= 0) { // C `:769`
+        const basicindx = colorindx & ~NH_BASIC_COLOR; // C `:770`
+        /* C `:772–773` differing implies a basic color. */
+        if (basicindx !== colorindx) { // C `:774`
+            /* C `:775` assert(basicindx < 16) — no JS assert layer. */
+            result = COLORTABLE[basicindx].name; // C `:776`
+        } else {
+            const r = (colorindx >> 16) & 0xff; // C `:779`
+            const g = (colorindx >> 8) & 0xff; // C `:780`
+            const b = colorindx & 0xff; // C `:781`
+            const hex2 = (v) => v.toString(16).padStart(2, '0');
+            result = `#${hex2(r)}${hex2(g)}${hex2(b)}`; // C `:783–785` Snprintf #%02x%02x%02x
+            /* C `:786` override hex value if this is a named color. */
+            for (let indx = 16; indx < COLORTABLE.length; ++indx) { // C `:787` SIZE(colortable)
+                if (COLORTABLE[indx].r === r // C `:788`
+                    && COLORTABLE[indx].g === g // C `:789`
+                    && COLORTABLE[indx].b === b) { // C `:790`
+                    result = COLORTABLE[indx].name; // C `:791`
+                    break; // C `:792`
+                }
+            }
+        }
+    }
+    return result; // C `:796`
+}
+
+/**
  * C ref: coloratt.c onlyhexdigits `:801–810` — every char is a hex digit
  * (hexdd, decl.c:74 — the local const above) or '-'. Empty input is TRUE
  * (the C loop never runs). Sole C caller is rgbstr_to_int32 `:825`
@@ -5131,9 +5195,15 @@ export function basic_menu_colors(load_colors) {
 
 /**
  * C ref: coloratt.c query_color `:475–518` — basic_menu_colors around a
- * PICK_ONE over colornames (dflt_color preselected), -1 on ESC. The C
- * pick_cnt==2 arm (preselected NO_COLOR + explicit pick) collapses: the
- * helper returns the explicit pick directly, Enter-with-preselected
+ * PICK_ONE over colornames (dflt_color preselected), -1 on ESC. A tty
+ * letter-press toggles the explicit row on and finishes with the
+ * preselected row still selected (wintty.c:1755–1759, no PICK_ONE
+ * deselect), and picks come back in menu order (`:2808–2817`) — so the
+ * C pick_cnt==2 arm (`:505–508`) returns menu-earlier(preselected,
+ * explicit). The `:507` i==NO_COLOR redirect is dead ("no color" sorts
+ * last) but that implies menu-earlier, not the explicit pick
+ * (review 2031, correcting D-3071). The helper returns the explicit
+ * pick directly, so index-compare below; Enter-with-preselected
  * returns the preselected entry (pick_cnt==0 → dflt_color, same value).
  */
 export async function query_color(prompt, dflt_color) {
@@ -5147,8 +5217,14 @@ export async function query_color(prompt, dflt_color) {
     }
     const res = await select_menu_pick_one(raw);
     basic_menu_colors(false);
-    if (res.kind !== 'pick') return -1;
-    return res.item.color | 0;
+    if (res.kind !== 'pick') return -1; // C `:517` pick_cnt < 0 (ESC)
+    const y = res.item.color | 0;
+    if (dflt !== NO_COLOR) { // C `:505–508` pick_cnt==2 menu-earlier arm
+        const idxD = MENU_COLORNAMES.findIndex((row) => (row[1] | 0) === dflt);
+        const idxY = MENU_COLORNAMES.findIndex((row) => (row[1] | 0) === y);
+        if (idxD >= 0 && idxY > idxD) return dflt;
+    }
+    return y;
 }
 
 /**
@@ -6763,21 +6839,125 @@ export function freeroleoptvals() {
    stays in roleoptvals above; JSON save has no optvals chunk. */
 
 /**
+ * C options.c initoptions_init `:7119–7305` — builtin defaults before any
+ * config pass, in C order: opt_phase, sf_init, allopt_array_init, cmdline
+ * windowtype, glyphid cache, reset_commands, RNG init, allopt initvals,
+ * flags/iflags defaults, ov symbols, warnsyms, inv_order, pickup/sortloot,
+ * disclosure, rogue symbols, TERM/symset probes, menu/wc defaults,
+ * menuinvertmode, SLIME_MOLD/pl_fruit partial init, SYSCF pass. Sync:
+ * every live callee is sync (reset_commands cmd.js:1990,
+ * fill_glyphid_cache glyphs.js:755, init_ov_* display.js:3974/3978).
+ * Sole C caller options.c:7088 (initoptions); wired there below.
+ * Named omissions: sf_init `:7129` (NHFILE save proc tables — JS saves
+ * JSON via storage.js, no scored analogue); init_random ×2 `:7161–7162`
+ * (JS seeds both ISAAC streams once via initRng in jsmain.js start();
+ * no per-stream init entry); choose_windows `:7136` (seed by-design: no
+ * scored analogue); init_symbols `:7199`, switch_symbols `:7212`,
+ * init_rogue_symbols `:7213` (seed by-design symbols.c: no scored
+ * analogue); TERM `AT` `:7223–7230` + `vt` `:7235–7242` probes (live-C
+ * unix+TTY; guards read POSIX TERM/termcap AS/AE with no Rule-#2
+ * analogue and bodies drive by-design symsets; use_color stays unset =
+ * C's non-AT FALSE); MSDOS/WIN32 `:7246–7252` + MAC `:7253–7257`
+ * (compiled out on unix); assure_syscf_file `:7289` (POSIX open + exit;
+ * the VFS read_config_file below handles absence).
+ */
+export function initoptions_init() {
+    const have_branch = !!(game.nomakedefs?.git_branch); // C `:7125`
+    if (!game.go) game.go = {};
+    if (!game.flags) game.flags = {};
+    if (!game.iflags) game.iflags = {};
+    const flags = game.flags;
+    const iflags = game.iflags;
+    game.go.opt_phase = BUILTIN_OPT; // C `:7127`
+    /* C `:7129` sf_init() — named omit, see doc above. */
+    allopt_array_init(); // C `:7130`
+    if (game.gc?.cmdline_windowsys) { // C `:7133`
+        game.gc.chosen_windowtype = nmcpy(game.gc.cmdline_windowsys, WINTYPELEN); // C `:7134`
+        config_error_init(false, 'command line', false); // C `:7135`
+        /* C `:7136` choose_windows() — named omit, see doc above. */
+        config_error_done(); // C `:7137`
+        if (game.windowprocs?.name // C `:7144–7147`
+            && disclose_strcmpi(game.windowprocs.name, game.gc.cmdline_windowsys) === 0)
+            iflags.windowtype_locked = true;
+        game.gc.cmdline_windowsys = null; // C `:7149–7150` (free N/A — JS strings unowned)
+    }
+    if (!glyphid_cache_status()) // C `:7154–7155`
+        fill_glyphid_cache();
+    reset_commands(true); // C `:7158` init
+    /* C `:7161–7162` init_random(rn2) + init_random(rn2_on_display_rng) — named omit. */
+    game.go.opt_phase = BUILTIN_OPT; // C `:7164`
+    for (let i = 0; allopt[i] && allopt[i].name; i++) { // C `:7165–7168`
+        if (allopt[i].addr) { // C `:7166`
+            const addr = allopt[i].addr;
+            if (!game[addr.obj] || typeof game[addr.obj] !== 'object')
+                game[addr.obj] = {};
+            game[addr.obj][addr.key] = allopt[i].initval; // C `:7167`
+        }
+    }
+    flags.end_own = false; // C `:7170`
+    flags.end_top = 3; // C `:7171`
+    flags.end_around = 2; // C `:7172`
+    flags.paranoia_bits = PARANOID_PRAY | PARANOID_SWIM | PARANOID_TRAP; // C `:7173`
+    flags.versinfo = have_branch ? VI_BRANCH : VI_NUMBER; // C `:7174` (4/1)
+    flags.pile_limit = PILE_LIMIT_DFLT; // C `:7175` (5)
+    flags.runmode = RUN_LEAP; // C `:7176`
+    iflags.msg_history = 20; // C `:7177`
+    iflags.prevmsg_window = 's'; // C `:7181` TTY_GRAPHICS (`:7184` CURSES 'r' compiled out)
+    iflags.menu_headings = { attr: ATR_INVERSE, color: NO_COLOR }; // C `:7188–7189`
+    iflags.getpos_coords = GPCOORDS_NONE; // C `:7190`
+    flags.initrole = flags.initrace = flags.initgend = flags.initalign = ROLE_NONE; // C `:7193–7194`
+    init_ov_primary_symbols(); // C `:7196`
+    init_ov_rogue_symbols(); // C `:7197`
+    /* C `:7199` init_symbols() — named omit (seed by-design symbols.c). */
+    if (!game.gw) game.gw = {};
+    game.gw.warnsyms = [];
+    for (let i = 0; i < WARNCOUNT; i++) // C `:7200–7201`
+        game.gw.warnsyms[i] = def_warnsyms[i].ch.charCodeAt(0);
+    flags.inv_order = [...DEF_INV_ORDER]; // C `:7204–7205` memcpy (DEF_INV_ORDER ≡ def_inv_order `:118–121` minus NUL)
+    flags.pickup_types = ''; // C `:7206` first byte NUL
+    flags.pickup_burden = MOD_ENCUMBER; // C `:7207`
+    flags.sortloot = 'l'; // C `:7208`
+    flags.end_disclose = DISCLOSE_PROMPT_DEFAULT_NO.repeat(NUM_DISCLOSURE_OPTIONS); // C `:7210–7211`
+    /* C `:7212` switch_symbols(FALSE) + `:7213` init_rogue_symbols() — named omits. */
+    /* C `:7214–7244` TERM probes + `:7246–7257` MSDOS/WIN32/MAC — named omits, see doc. */
+    flags.menu_style = MENU_FULL; // C `:7258`
+    iflags.wc_align_message = ALIGN_TOP; // C `:7260`
+    iflags.wc_align_status = ALIGN_BOTTOM; // C `:7261`
+    iflags.wc2_statuslines = 2; // C `:7263`
+    iflags.wc2_petattr = ATR_INVERSE; // C `:7264`
+    iflags.wc2_windowborders = 2; // C `:7266` 'Auto'
+    iflags.menuinvertmode = 1; // C `:7279`
+    const slime = objectNames.indexOf('SLIME_MOLD');
+    const objs = objects();
+    if (objs && objs[slime]) objs[slime].oc_name_idx = slime; // C `:7282` (extractor already ≡otyp)
+    // C `:7283` OBJ_NAME(objects[SLIME_MOLD]) is "slime mold"; the literal
+    // stands in because init_fruit_chain overwrote objectNameStrs there
+    // with "fruit" (D-1511).
+    game.pl_fruit = nmcpy('slime mold', PL_FSIZ);
+    /* C `:7289` assure_syscf_file() — named omit, see doc above. */
+    config_error_init(true, SYSCF_FILE, false); // C `:7290`
+    game.go.opt_phase = SYSCF_OPT; // C `:7293`
+    if (!read_config_file(SYSCF_FILE, SET_IN_SYSCONF)) { // C `:7294`
+        if (config_error_done() && !iflags.initoptions_noterminate) // C `:7295`
+            nh_terminate(EXIT_FAILURE); // C `:7296`
+    }
+    config_error_done(); // C `:7298`
+}
+
+/**
  * C options.c initoptions `:7078–7115` — sysconf pass + finish.
  * No live JS caller yet (C callers: earlyarg.c scores_only `:419`,
  * unixmain.c `:150`; restore.c:716 and wintty.c:523 cite it in
  * comments): JS startup resolves options in-process (rcfile +
- * init_fruit_chain run there directly), and the initoptions_init half
- * is unported — calling this now would run the finish half without it.
- * Named omits: initoptions_init (186-line MISSING closure, own row);
- * assure_syscf_file (no scored port — POSIX open + exit, Rule #2);
+ * init_fruit_chain run there directly); initoptions_init is live (same
+ * file). Named omits: assure_syscf_file (no scored port — POSIX open +
+ * exit, Rule #2);
  * do_deferred_showpaths (ATTRNORETURN exit; reveal_paths 117-line
  * MISSING, freedynamicdata/dlb_cleanup/l_nhcore_done by-design).
  */
 export function initoptions() {
-    if ((game.go?.opt_phase | 0) !== BUILTIN_OPT) { // C `:7087–7088`
-        /* Named omit: initoptions_init() — see doc above. */
-    }
+    if ((game.go?.opt_phase | 0) !== BUILTIN_OPT) // C `:7087–7088`
+        initoptions_init();
     /* C `:7090–7108` SYSCF (config.h:233) + SYSCF_FILE (config.h:234)
        both live on this build. */
     /* C `:7093` assure_syscf_file() — named omit, see doc above. */
@@ -8333,28 +8513,210 @@ export function optfn_boolean_do_set(name, negated, initial = false) {
     }
 }
 
+/* C options.c wcnames/wcshortnames `:4885–4890` + flag.h
+   windowcolors_windows `:210–213` (wcolor_menu..wcolor_text, WC_COUNT).
+   WC_COUNT is module-local: js/const.js exports an unused WC_COUNT=0
+   that is not this enum. fgp/bgp (`:10012–10019`) point into
+   iflags.wcolors[j].fg/.bg — JS indexes the table directly. */
+const WC_COUNT = 4;
+const WCNAMES = ['menu', 'message', 'status', 'text'];
+const WCSHORTNAMES = ['mnu', 'msg', 'sts', 'txt'];
+/* C options.c defbrief `:126`. */
+const DEFBRIEF = 'def';
+
+/* C flag.h windowcolors_struct `:215–218` — game.iflags.wcolors,
+   BSS-NULL ({fg:null,bg:null}) when absent. */
+function wcolors_table() {
+    const ifl = game.iflags || (game.iflags = {});
+    if (!Array.isArray(ifl.wcolors) || ifl.wcolors.length !== WC_COUNT)
+        ifl.wcolors = Array.from({ length: WC_COUNT }, () => ({ fg: null, bg: null }));
+    return ifl.wcolors;
+}
+
+/* C options.c wcolors_opt `:4891` — BSS-zero when absent. */
+function wcolors_opt_table() {
+    if (!Array.isArray(game.wcolors_opt) || game.wcolors_opt.length !== WC_COUNT)
+        game.wcolors_opt = [0, 0, 0, 0];
+    return game.wcolors_opt;
+}
+
 /**
- * C options.c reset_needed_visuals `:8979–9014`.
- * Named omit: full `reset_glyphmap(gm_optionchange)` MAX_GLYPH table
- * (CURRENT ban); `reglyph_darkroom`; customcolors / customsymbols /
- * palette. Glyph-reset + redraw still `check_gold_symbol` + `docrt`
- * so tty attrs (MG_FEMALE / pile) recompute from live iflags.
+ * C options.c wc_set_window_colors `:10022–10113` (staticfn) — parse a
+ * munged "menu fg/bg ..." spec into iflags.wcolors (`:10083–10105`),
+ * storing canonical names via check_enhanced_colors + wc_color_name
+ * (`:10088–10095`); duplicate/unknown window types go to
+ * config_error_add (`:10097–10109`). C walks newop with in-place NUL
+ * writes; JS strings are immutable so the walk is index-based over the
+ * mungspaces result with the same accept/reject points. Sole C caller:
+ * optfn_windowcolors `:4913` (wired below).
+ * @param {string} op
+ * @returns {number} 1 on success, 0 on parse failure
+ */
+function wc_set_window_colors(op) {
+    /* C `:10030–10033` decls; buf[BUFSZ] + Strcpy are the copy below. */
+    const s = mungspaces(String(op ?? '')); // C `:10035–10036`
+    let newop = 0; // C `:10033` char *newop (index; NUL writes become slices)
+    const at = () => (newop < s.length ? s[newop] : '\0');
+    while (at() !== '\0') { // C `:10037`
+        let wn = null, tfg = null, tbg = null; // C `:10038`
+        /* C `:10040–10041` until first non-space - before colorname. */
+        if (at() === ' ') newop++; // C `:10042–10043`
+        if (at() === '\0') return 0; // C `:10044–10045`
+        const wnStart = newop; // C `:10046` wn = newop
+        /* C `:10048` until first space - colorname. */
+        while (at() !== '\0' && at() !== ' ') newop++; // C `:10049–10050`
+        if (at() === '\0') return 0; // C `:10051–10052`
+        wn = s.slice(wnStart, newop); newop++; // C `:10053` *newop++ = '\0'
+        /* C `:10055` until first non-space - before foreground. */
+        if (at() === ' ') newop++; // C `:10056–10057`
+        if (at() === '\0') return 0; // C `:10058–10059`
+        const fgStart = newop; // C `:10060` tfg = newop
+        /* C `:10062` until slash - foreground. */
+        while (at() !== '\0' && at() !== '/') newop++; // C `:10063–10064`
+        if (at() === '\0') return 0; // C `:10065–10066`
+        tfg = s.slice(fgStart, newop); newop++; // C `:10067` *newop++ = '\0'
+        /* C `:10069–10070` until first non-space - before background. */
+        if (at() === ' ') newop++; // C `:10071–10072`
+        if (at() === '\0') return 0; // C `:10073–10074`
+        const bgStart = newop; // C `:10075` tbg = newop
+        /* C `:10077` until first space - background. */
+        while (at() !== '\0' && at() !== ' ') newop++; // C `:10078–10079`
+        tbg = s.slice(bgStart, newop);
+        if (at() !== '\0') newop++; // C `:10080–10081` *newop++ = '\0'
+        const wct = wcolors_table();
+        const wco = wcolors_opt_table();
+        let j = 0; // C `:10030`
+        for (; j < WC_COUNT; ++j) { // C `:10083`
+            if (disclose_strcmpi(wn, WCNAMES[j]) === 0 // C `:10084` (same-file C strcmpi)
+                || disclose_strcmpi(wn, WCSHORTNAMES[j]) === 0) {
+                if (!strstri(tfg, ' ')) { // C `:10085`
+                    /* C `:10086–10087` free (GC). */
+                    const fclr = check_enhanced_colors(tfg); // C `:10088`
+                    wct[j].fg = dupstr(fclr >= 0 ? wc_color_name(fclr) : tfg); // C `:10089`
+                }
+                if (!strstri(tbg, ' ')) { // C `:10091`
+                    /* C `:10092–10093` free (GC). */
+                    const bclr = check_enhanced_colors(tbg); // C `:10094`
+                    wct[j].bg = dupstr(bclr >= 0 ? wc_color_name(bclr) : tbg); // C `:10095`
+                }
+                if (wco[j] !== 0) { // C `:10097`
+                    config_error_add( // C `:10098–10100` (sink)
+                        'windowcolors for %s windows specified multiple times',
+                        WCNAMES[j]);
+                }
+                wco[j]++; // C `:10102`
+                break; // C `:10103`
+            }
+        }
+        if (j === WC_COUNT) { // C `:10106`
+            config_error_add('windowcolors for unrecognized window type: %s', // C `:10107–10108` (sink)
+                wn);
+        }
+    }
+    game.options_set_window_colors_flag = 1; // C `:10111`
+    return 1; // C `:10112`
+}
+
+/**
+ * C options.c optfn_windowcolors `:4893–4940` (staticfn; the C allopt row
+ * wires it for NHOPTC windowcolors) — do_init zeroes wcolors_opt
+ * (`:4901–4905`); do_set parses via wc_set_window_colors (`:4912–4913`),
+ * optn_err when it rejects (`:4914–4916`); get_val/get_cnf_val spell
+ * "menu fg/bg ..." with defbrief fallbacks (`:4921–4937`). Wired into
+ * the JS optlist windowcolors row (idx 211) like its C allopt row.
+ * @param {number} optidx
+ * @param {number} req
+ * @param {boolean} negated (C UNUSED)
+ * @param {string|{buf:string}} opts full option text, or the get_val holder
+ * @param {string} op
+ * @returns {number} OPTN_OK / OPTN_ERR
+ */
+export function optfn_windowcolors(optidx, req, negated, opts, op) {
+    if (req === REQ_DO_INIT) { // C `:4901`
+        const wco = wcolors_opt_table();
+        for (let wccount = 0; wccount < WC_COUNT; ++wccount) // C `:4902`
+            wco[wccount] = 0; // C `:4903`
+        return OPTN_OK; // C `:4905`
+    }
+    if (req === REQ_DO_SET) { // C `:4907`
+        /* C `:4908–4911` WINCAP syntax comment. */
+        const optstr = typeof opts === 'string' ? opts : '';
+        if ((op = string_for_opt(optstr, false)) !== EMPTY_OPTSTR) { // C `:4912`
+            if (!wc_set_window_colors(op)) { // C `:4913`
+                config_error_add("Could not set %s '%s'", allopt_name(optidx), // C `:4914–4915` (sink)
+                    op);
+                return OPTN_ERR; // C `:4916`
+            }
+        }
+        return OPTN_OK; // C `:4919`
+    }
+    if (req === REQ_GET_VAL || req === REQ_GET_CNF_VAL) { // C `:4921`
+        /* C `:4924` TODO: wide get_val may need menu-display wrapping. */
+        let out = ''; // C `:4925` opts[0] = '\0'
+        const wct = wcolors_table();
+        for (let wccount = 0; wccount < WC_COUNT; ++wccount) { // C `:4926`
+            let fg = wct[wccount].fg; // C `:4927`
+            let bg = wct[wccount].bg; // C `:4928`
+            if (fg != null && (fg === '' || fg === DEFBRIEF)) // C `:4929`
+                fg = null; // C `:4930`
+            if (bg != null && (bg === '' || bg === DEFBRIEF)) // C `:4931`
+                bg = null; // C `:4932`
+            out += `${wccount === 0 ? '' : ' '}${(fg != null || bg != null) ? WCNAMES[wccount] : WCSHORTNAMES[wccount]} ${fg != null ? fg : DEFBRIEF}/${bg != null ? bg : DEFBRIEF}`; // C `:4933–4935` Sprintf(eos(opts), ...)
+        }
+        if (opts != null && typeof opts === 'object') opts.buf = out;
+        return OPTN_OK; // C `:4937`
+    }
+    return OPTN_OK; // C `:4939`
+}
+
+/**
+ * C options.c reset_needed_visuals `:8979–9014` (staticfn) — run the
+ * deferred visual updates after an option change: glyph-reset (`:8982`),
+ * the combined customcolors/palette/customsymbols/redraw gate with its
+ * docrt (`:8985–9002`), promptstyle (`:9003`), botl (`:9006`), then the
+ * five flag clears (`:9009–9013`). Async only because docrt/bot are.
+ * Named omissions: reset_glyphmap(gm_optionchange) `:8983` (CURRENT
+ * ban); change_palette() `:8989` (`#ifdef CHANGE_COLOR` — windconf.h:29
+ * leaves it commented out and only Amiga amiconf.h:165 defines it, so
+ * the arm is not compiled); adjust_menu_promptstyle `:9004`
+ * (by-design, no scored analogue). C callers: doset_simple `:8727`,
+ * doset `:8973`, toggle_bool_option `:9294` (all wired in this file).
  */
 async function reset_needed_visuals() {
     if (!game.go) game.go = {};
     const go = game.go;
-    const needRedraw = !!go.opt_need_redraw;
-    if (needRedraw) {
-        check_gold_symbol();
-        await docrt();
+    if (go.opt_need_glyph_reset) { // C `:8982`
+        /* Named omission (doc): reset_glyphmap(gm_optionchange) `:8983`. */
     }
-    // C options.c:9006–9008 — after docrt may have set disp.botlx.
+    if (go.opt_reset_customcolors || go.opt_update_basic_palette // C `:8985–8986`
+        || go.opt_reset_customsymbols || go.opt_need_redraw) {
+        if (go.opt_update_basic_palette) { // C `:8987`
+            /* C `:8988–8990` change_palette() — not compiled (see doc). */
+            go.opt_update_basic_palette = false; // C `:8991`
+        }
+        if (go.opt_reset_customcolors) // C `:8993`
+            reset_customcolors(); // C `:8994`
+        if (go.opt_reset_customsymbols) // C `:8995`
+            reset_customsymbols(); // C `:8996`
+        if (go.opt_need_redraw) { // C `:8997`
+            check_gold_symbol(); // C `:8998`
+            reglyph_darkroom(); // C `:8999`
+        }
+        await docrt(); // C `:9001`
+    }
+    if (go.opt_need_promptstyle) { // C `:9003`
+        /* Named omission (doc): adjust_menu_promptstyle `:9004`. */
+    }
+    // C `:9006–9008` — after docrt may have set disp.botlx.
     if (game.flags?.botl || game.flags?.botlx
         || game.disp?.botl || game.disp?.botlx) {
         await bot();
     }
-    go.opt_need_redraw = false;
-    go.opt_need_glyph_reset = false;
+    go.opt_need_redraw = false; // C `:9009`
+    go.opt_need_glyph_reset = false; // C `:9010`
+    go.opt_reset_customcolors = false; // C `:9011`
+    go.opt_reset_customsymbols = false; // C `:9012`
+    go.opt_update_basic_palette = false; // C `:9013`
 }
 
 function doset_bool_term(name) {
@@ -9399,7 +9761,7 @@ const allopt = [
     // optlist.h:880 NHOPTC(windowborders)
     { name: 'windowborders', opttyp: CompOpt, idx: 210, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: optfn_windowborders },
     // optlist.h:886 NHOPTC(windowcolors)
-    { name: 'windowcolors', opttyp: CompOpt, idx: 211, setwhere: SET_GAMEVIEW, initval: false, addr: null, optfn: null },
+    { name: 'windowcolors', opttyp: CompOpt, idx: 211, setwhere: SET_GAMEVIEW, initval: false, addr: null, optfn: optfn_windowcolors },
     // optlist.h:890 NHOPTB(wizmgender)
     { name: 'wizmgender', opttyp: BoolOpt, idx: 212, setwhere: SET_WIZONLY, initval: false, addr: { obj: 'iflags', key: 'wizmgender' }, optfn: null },
     // optlist.h:893 NHOPTB(wizweight)
@@ -9626,8 +9988,8 @@ export function disregard_this_option(optidx) {
 /* C options.c allopt_array_init `:7404–7433`. One-shot: copy is the live
  * table (no separate allopt_init image), then initval writes, ambiguity
  * scan, heed, and every optfn(do_init). Caller options.c:7130 is
- * initoptions_init — not a JS function (map-named); do not call from the
- * partial optfn do_init list at `:2187`. */
+ * initoptions_init (live, same file); do not call from the partial
+ * optfn do_init list at `:2187`. */
 let optionsArrayInited = false;
 export function allopt_array_init() {
     if (optionsArrayInited) return; // C `:7410`

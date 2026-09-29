@@ -29,8 +29,10 @@ import {
     ARM,
     BEAR_TRAP,
     BOLT_LIM,
+    CONFUSION,
     DART_TRAP,
     DEAF,
+    DRAIN_RES,
     DISP_END,
     DISP_FLASH,
     D_CLOSED,
@@ -49,6 +51,7 @@ import {
     FUMBLING,
     HEAD,
     HALF_PHDAM,
+    HALF_SPDAM,
     HALLUC,
     HALLUC_RES,
     HOLE,
@@ -70,7 +73,9 @@ import {
     MAGIC_TRAP,
     INVIS,
     NOWEBMSG,
+    M_SEEN_FIRE,
     PIT,
+    PASSES_WALLS,
     POLY_TRAP,
     RIGHT_SIDE,
     RECURSIVETRAP,
@@ -79,6 +84,7 @@ import {
     ROLL,
     ROLLING_BOULDER_TRAP,
     RUST_TRAP,
+    SLIMED,
     SLEEP_RES,
     SEE_INVIS,
     M_SEEN_SLEEP,
@@ -126,7 +132,9 @@ import {
 } from './const.js';
 import { stop_occupation } from './allmain.js';
 import { placebc, unplacebc } from './ball.js';
-import { acurr, exercise, poisoned } from './attrib.js';
+import {
+    acurr, exercise, minuhpmax, poisoned, setuhpmax,
+} from './attrib.js';
 import { map_trap, newsym, obj_to_glyph, tmp_at } from './display.js';
 import { flooreffects, set_wounded_legs } from './do.js';
 import { del_engr_at } from './engrave.js';
@@ -144,6 +152,7 @@ import {
     x_monnam,
 } from './do_name.js';
 import { game } from './gstate.js';
+import { losexp } from './exper.js';
 import { youHear as plineYouHear } from './pline.js';
 import { setmangry } from './mon.js';
 import { dist2, distmin, s_suffix, sgn, upstart } from './hacklib.js';
@@ -175,6 +184,7 @@ import {
     defends_when_carried,
     is_art,
 } from './artifacts.js';
+import { is_quest_artifact } from './questpgr.js';
 import { count_wsegs } from './makemon_create.js';
 import {
     maybe_unhide_at,
@@ -262,6 +272,7 @@ import {
     carried,
     isCandle,
     mksobj,
+    newObject,
     objectType,
     place_object,
     remove_object,
@@ -289,6 +300,8 @@ import {
     ROCK,
     SADDLE,
     WAND_CLASS,
+    SPE_REMOVE_CURSE,
+    SPBOOK_CLASS,
 } from './objects.js';
 import {
     an,
@@ -299,7 +312,9 @@ import {
     just_an,
     otense,
     suit_simple_name,
+    the,
     Yname2,
+    yname,
     xnameFresh,
 } from './objnam.js';
 import { encumber_msg } from './pickup.js';
@@ -325,16 +340,17 @@ import {
     set_utrap,
     t_at,
     trapname,
+    is_pool,
 } from './trap.js';
 import { mlevel_tele_trap, mtele_trap, tele_trap } from './teleport.js';
-import { poly_obj, resist } from './zap.js';
+import { Fire_resistance, poly_obj, resist } from './zap.js';
 import { Punished } from './steed.js';
 import { ttyPline } from './tty_message.js';
 import { burnarmor } from './trap_erode_obj.js';
 import { burn_floor_objects, destroy_items } from './zap_destroy_items.js';
 import { ignite_items } from './apply_catch_lit.js';
 import { is_ice } from './terrain.js';
-import { end_burn, fall_asleep } from './timeout.js';
+import { burn_away_slime, end_burn, fall_asleep } from './timeout.js';
 import { self_invis_message, split_mon } from './potion.js';
 import { note_unported } from './unported.js';
 import { dmgval } from './weapon.js';
@@ -1579,10 +1595,10 @@ function Hallucination(state) {
 //     make_blinded, incr_itimeout, Soundeffect, makemon, wake_nearto).
 //   fate 10: no-op.
 //   fate 11: toggle HInvis, including self_invis_message() and redraw.
-//   fate 12: dofiretrap() -- refused (not ported).
+//   fate 12: dofiretrap() -- the hero-only tower-of-flame effect.
 //   fate 13-18: odd-feelings messages, fully ported.
 //   fate 19: tame nearby monsters -- refused (needs adjattrib, tamedog).
-//   fate 20: uncurse items -- refused (needs seffects with SPE_REMOVE_CURSE).
+//   fate 20: uncurse items through read.c:seffects(SPE_REMOVE_CURSE).
 
 // C ref: youprop.h:198 Invis, the intrinsic or extrinsic invisibility source
 // minus its block; :152 See_invisible has no block term. Each C file spells
@@ -1659,9 +1675,8 @@ async function domagictrap(env) {
             );
             break;
         case 12: /* a flash of fire */
-            // Needs dofiretrap(), which is not ported.
-            unsupported('magic trap fire');
-            break; // unreachable
+            await dofiretrap(null, env);
+            break;
         /* odd feelings */
         case 13:
             await message(
@@ -1714,10 +1729,26 @@ async function domagictrap(env) {
             // Needs adjattrib() and tamedog().
             unsupported('magic trap tame monsters');
             break; // unreachable
-        case 20: /* uncurse stuff */
-            // Needs seffects() with SPE_REMOVE_CURSE.
-            unsupported('magic trap uncurse');
-            break; // unreachable
+        case 20: { /* uncurse stuff */
+            const confusion = state.u.uprops?.[CONFUSION];
+            const savedConfusion = confusion?.intrinsic ?? 0;
+            const confusionProperty = (state.u.uprops ??= {})[CONFUSION]
+                ??= { intrinsic: 0, extrinsic: 0 };
+            const pseudo = newObject({
+                otyp: SPE_REMOVE_CURSE,
+                oclass: SPBOOK_CLASS,
+            });
+            // trap.c:domagictrap() temporarily clears HConfusion, applies the
+            // unblessed pseudo-spellbook effect, and restores the old value.
+            confusionProperty.intrinsic = 0;
+            try {
+                const { seffects } = await import('./read.js');
+                await seffects(pseudo, state, { ...env, state, random });
+            } finally {
+                confusionProperty.intrinsic = savedConfusion;
+            }
+            break;
+        }
         default:
             break;
         }
@@ -1879,20 +1910,143 @@ async function trapeffect_magic_portal(mtmp, trap, trflags, env) {
     return trapeffect_level_telep(mtmp, trap, trflags, env);
 }
 
-// C ref: trap.c trapeffect_fire_trap() (1729-1821), monster arm
-// (1738-1819). The hero arm still stops at dofiretrap(), because dotrap()'s
-// preflight rejects FIRE_TRAP. The monster arm is live through mintrap() and
-// is also the return-valued callee of trapeffect_magic_trap().
+// C ref: trap.c dofiretrap() (4233-4314). The object argument is null for a
+// floor fire trap and non-null for a trapped chest. Keep its damage, max-HP,
+// armor, inventory, floor-object and ice effects in C order.
+export async function dofiretrap(box, rawEnv = {}) {
+    const state = rawEnv.state ?? game;
+    const random = rawEnv.random ?? { d, rn1, rn2, rnd, rne, rnl };
+    const message = rawEnv.message ?? ttyPline;
+    const env = { ...rawEnv, state, random, message };
+    const u = state.u;
+    const seeIt = !heroIsBlind(state);
+    const origDmg = random.d(2, 4);
+    let num = origDmg;
+    const towerOfFlame = 'tower of flame'; // trap.c:79 static const.
+    const boxOnFloor = Boolean(box && !carried(box));
+    const x = box ? box.ox : u.ux;
+    const y = box ? box.oy : u.uy;
+
+    if ((boxOnFloor && is_pool(box.ox, box.oy, state))
+        || (!boxOnFloor && u.uinwater)) {
+        const source = box ? xnameFresh(box, state) : surface(u.ux, u.uy, state);
+        await message(
+            `A cascade of steamy bubbles erupts from ${the(source, state)}!`,
+            state,
+            env,
+        );
+        if (Fire_resistance(state)) {
+            await message('You are uninjured.', state, env);
+        } else {
+            await losehp(random.rnd(3), 'boiling water', KILLED_BY, state, env);
+        }
+        return;
+    }
+
+    const source = box ? xnameFresh(box, state) : surface(u.ux, u.uy, state);
+    await message(
+        `A ${towerOfFlame} ${box ? 'bursts' : 'erupts'} from ${the(source, state)}!`,
+        state,
+        env,
+    );
+
+    if (Fire_resistance(state)) {
+        // display.c:shieldeff() is void and changes presentation only. Keep
+        // its source position before monstseesu() and the half-damage roll.
+        note_unported('display.c shieldeff');
+        monstseesu(M_SEEN_FIRE, state);
+        num = random.rn2(2);
+    } else if (Upolyd(u)) {
+        let alt = 0;
+        switch (u.umonnum) {
+        case PM_PAPER_GOLEM:
+            alt = u.mhmax;
+            break;
+        case PM_STRAW_GOLEM:
+            alt = Math.trunc(u.mhmax / 2);
+            break;
+        case PM_WOOD_GOLEM:
+            alt = Math.trunc(u.mhmax / 4);
+            break;
+        case PM_LEATHER_GOLEM:
+            alt = Math.trunc(u.mhmax / 8);
+            break;
+        default:
+            break;
+        }
+        if (alt > num) num = alt;
+        if (u.mhmax > state.mons[u.umonnum].mlevel) {
+            u.mhmax -= random.rn2(Math.min(u.mhmax, num + 1));
+            state.disp.botl = true;
+        }
+        if (u.mh > u.mhmax) {
+            u.mh = u.mhmax;
+            state.disp.botl = true;
+        }
+        monstunseesu(M_SEEN_FIRE, state);
+    } else {
+        const uhpmin = minuhpmax(1, state);
+        const oldUhpmax = u.uhpmax;
+
+        num = random.d(2, 4);
+        if (u.uhpmax > uhpmin) {
+            u.uhpmax -= random.rn2(Math.min(u.uhpmax, num + 1));
+            state.disp.botl = true;
+        }
+        if (u.uhpmax < uhpmin) {
+            setuhpmax(Math.min(oldUhpmax, uhpmin), false, state);
+            const drainResistance = u.uprops?.[DRAIN_RES];
+            if (!drainResistance?.intrinsic && !drainResistance?.extrinsic)
+                await losexp(null, state, env);
+        }
+        if (u.uhp > u.uhpmax) {
+            u.uhp = u.uhpmax;
+            state.disp.botl = true;
+        }
+        monstunseesu(M_SEEN_FIRE, state);
+    }
+
+    if (!num)
+        await message('You are uninjured.', state, env);
+    else
+        await losehp(num, towerOfFlame, KILLED_BY_AN, state, env);
+
+    // timeout.c:burn_away_slime() is a void helper. Its ordinary path is a
+    // no-op; the active make_slimed() branch remains a named source gap.
+    if (u.uprops?.[SLIMED]?.intrinsic)
+        note_unported('timeout.c burn_away_slime');
+    else
+        burn_away_slime(state);
+
+    if (await burnarmor(state.youmonst, env)
+        || random.rn2(3)) {
+        await destroy_items(state.youmonst, AD_FIRE, origDmg, env);
+        await ignite_items(state.invent, env);
+    }
+    if (!box && await burn_floor_objects(u.ux, u.uy, seeIt, true, {
+        ...env,
+        igniteItems: ignite_items,
+    }) && !seeIt) {
+        await message('You smell paper burning.', state, env);
+    }
+    // C's final ice check and melt_ice() use the hero's coordinates even
+    // when dofiretrap() was entered from a trapped chest elsewhere.
+    if (is_ice(u.ux, u.uy))
+        note_unported('zap.c melt_ice()');
+}
+
+// C ref: trap.c trapeffect_fire_trap() (1729-1821). The monster arm
+// (1738-1819) is also the return-valued callee of trapeffect_magic_trap(); its
+// hero arm delegates to dofiretrap() and returns Trap_Effect_Finished.
 async function trapeffect_fire_trap(mtmp, trap, _trflags, env) {
     const { state } = env;
     const random = env.random;
     const message = requireTrapOperation(env, 'message');
-    const unsupported = requireTrapOperation(env, 'unsupported');
 
     if (mtmp === state.youmonst) {
         seetrap(trap, env);
-        unsupported('dofiretrap()');
-        return Trap_Effect_Finished; // unreachable
+        await dofiretrap(null, env);
+        return Trap_Effect_Finished;
     }
 
     const tx = trap.tx;
@@ -2045,17 +2199,84 @@ async function trapeffect_magic_trap(mtmp, trap, _trflags, env) {
     return Trap_Effect_Finished;
 }
 
-// C ref: trap.c trapeffect_anti_magic() (2323-2452), monster arm only.
-// The hero arm remains behind preflight_dotrap(); callers that reach this
-// selector with the hero still get an explicit boundary rather than silently
-// taking the monster path.
+// C ref: trap.c trapeffect_anti_magic() (2323-2452), both hero and monster
+// arms. The hero arm drains energy through trap.c:drain_en() after resolving
+// any antimagic damage and the additional maximum-energy drain.
 async function trapeffect_anti_magic(mtmp, trap, _trflags, env) {
-    const { state } = env;
+    const { state, random } = env;
 
     if (mtmp === state.youmonst) {
-        const unsupported = requireTrapOperation(env, 'unsupported');
-        unsupported('anti-magic trap hero activation');
-        return Trap_Effect_Finished; // unreachable
+        const message = requireTrapOperation(env, 'message');
+        if (wearing_iron_shoes(mtmp, state)) {
+            const shoes = which_armor(mtmp, W_ARMF, state);
+            if (shoes.spe > 0) {
+                seetrap(trap, env);
+                await message(
+                    `A lethargic aura surrounds ${yname(shoes, state)}.`,
+                    state,
+                    env,
+                );
+                // C's costly_alteration() result is discarded; its source
+                // implementation remains a named void-call gap.
+                note_unported('mkobj.c costly_alteration');
+                shoes.spe -= 1;
+                update_inventory({ state });
+                return Trap_Effect_Finished;
+            }
+        }
+
+        seetrap(trap, env);
+        if (antimagicTrapHero(state)) {
+            let damage = random.rnd(4);
+            const hp = Upolyd(state.u) ? state.u.mh : state.u.uhp;
+            const halfPhysical = state.u?.uprops?.[HALF_PHDAM];
+            const halfSpell = state.u?.uprops?.[HALF_SPDAM];
+            if (halfPhysical?.intrinsic || halfPhysical?.extrinsic
+                || halfSpell?.intrinsic || halfSpell?.extrinsic) {
+                damage += random.rnd(4);
+            }
+            if (state.uwep && is_art(state.uwep, ART_MAGICBANE))
+                damage += random.rnd(4);
+
+            let object = state.invent;
+            for (; object; object = object.nobj) {
+                if (object.oartifact && !is_quest_artifact(object, state)
+                    && defends_when_carried(AD_MAGM, object, state)) {
+                    break;
+                }
+            }
+            if (object) damage += random.rnd(4);
+
+            const passesWalls = state.u?.uprops?.[PASSES_WALLS];
+            if (passesWalls?.intrinsic || passesWalls?.extrinsic)
+                damage = Math.trunc((damage + 3) / 4);
+
+            await message(
+                damage >= hp ? 'You feel unbearably torpid!'
+                    : damage >= Math.trunc(hp / 4) ? 'You feel very lethargic.'
+                        : 'You feel sluggish.',
+                state,
+                env,
+            );
+            await losehp(
+                damage,
+                'anti-magic implosion',
+                KILLED_BY_AN,
+                state,
+                env,
+            );
+        }
+
+        let drain = random.d(2, 6);
+        const halfDrain = random.rnd(Math.trunc(drain / 2));
+        let maxAlreadyDrained = false;
+        if (state.u.uenmax > drain) {
+            state.u.uenmax -= halfDrain;
+            drain -= halfDrain;
+            maxAlreadyDrained = true;
+        }
+        await drain_en(drain, maxAlreadyDrained, state, env);
+        return Trap_Effect_Finished;
     }
 
     // Iron shoes protect against an anti-magic trap only while positively
@@ -2070,7 +2291,6 @@ async function trapeffect_anti_magic(mtmp, trap, _trflags, env) {
         }
     }
 
-    const random = env.random;
     const message = requireTrapOperation(env, 'message');
     const inSight = canSeeMonster(mtmp, state)
         || mtmp === state.u?.usteed;
@@ -3183,8 +3403,8 @@ export async function blow_up_landmine(trap, rawEnv = {}) {
     }
 
     fill_pit(x, y, state);
-    // C discards maybe_dunk_boulders(); the helper remains unported.
-    note_unported('apply.c maybe_dunk_boulders');
+    const { maybe_dunk_boulders } = await import('./apply.js');
+    await maybe_dunk_boulders(x, y, state, { ...env, random });
     recalc_block_point(x, y, state);
     spot_checks(x, y, oldTyp, state, env);
 }
@@ -3467,7 +3687,8 @@ export async function trapeffect_selector(monster, trap, trflags, env) {
 // that arrives another way.
 //
 // The stops, and what each of them needs:
-//   every type but BEAR_TRAP, DART_TRAP, MAGIC_TRAP, SLP_GAS_TRAP, RUST_TRAP,
+//   every type but BEAR_TRAP, DART_TRAP, MAGIC_TRAP, ANTI_MAGIC, FIRE_TRAP,
+//     SLP_GAS_TRAP, RUST_TRAP,
 //     LANDMINE, PIT, SPIKED_PIT, TELEP_TRAP, WEB and ROLLING_BOULDER_TRAP --
 //     its own trapeffect_*() arm;
 //   a magic-resistant hero on a teleport trap -- shieldeff(), a tmp_at()
@@ -3480,12 +3701,14 @@ export async function trapeffect_selector(monster, trap, trflags, env) {
 //     :3039 are outside those effects;
 //   a mounted hero -- s_suffix(mon_nam()) and mbodypart() at trap.c:1508-1509
 //     (bear trap), while steedintrap() handles the dart, gas, magic, landmine
-//     and pit arms admitted below;
+//     and pit arms admitted below; ANTI_MAGIC acts directly on the hero;
 //   iron shoes -- Yname2(uarmf), at trap.c:1518 (bear trap only).
 export function preflight_dotrap(trap, state = game, trflags = 0) {
     const pitTrap = is_pit(trap.ttyp);
     if (trap.ttyp !== BEAR_TRAP && trap.ttyp !== DART_TRAP
-        && trap.ttyp !== MAGIC_TRAP && trap.ttyp !== SLP_GAS_TRAP
+        && trap.ttyp !== MAGIC_TRAP && trap.ttyp !== FIRE_TRAP
+        && trap.ttyp !== SLP_GAS_TRAP
+        && trap.ttyp !== ANTI_MAGIC
         && trap.ttyp !== RUST_TRAP && trap.ttyp !== TELEP_TRAP
         && trap.ttyp !== LANDMINE && !pitTrap
         && trap.ttyp !== WEB
@@ -3509,7 +3732,7 @@ export function preflight_dotrap(trap, state = game, trflags = 0) {
         }
     }
     if (trap.tseen && trap.ttyp !== WEB && trap.ttyp !== LANDMINE
-        && !pitTrap && !is_hole(trap.ttyp)) {
+        && trap.ttyp !== ANTI_MAGIC && !pitTrap && !is_hole(trap.ttyp)) {
         throw new UnsupportedHeroMoveBoundaryError(
             'a trap the hero has already seen',
         );
@@ -3517,6 +3740,7 @@ export function preflight_dotrap(trap, state = game, trflags = 0) {
     if (state.u.usteed && trap.ttyp !== WEB
         && trap.ttyp !== LANDMINE && trap.ttyp !== DART_TRAP
         && trap.ttyp !== SLP_GAS_TRAP && trap.ttyp !== MAGIC_TRAP
+        && trap.ttyp !== ANTI_MAGIC
         && !pitTrap) {
         // trap.c:1507-1511 names a bear-trap steed through
         // s_suffix(mon_nam()) and mbodypart(); the other mounted arms call
@@ -3813,4 +4037,49 @@ export async function mintrap(monster, mintrapflags, rawEnv = {}) {
         }
     }
     return result;
+}
+
+// C ref: trap.c drain_en() (5202-5243). This shared helper updates the
+// canonical hero energy fields (`u.uen`, `u.uenmax`) and bottom-line flag
+// before printing through You_feel(), whose prefix reflects Unaware.
+export async function drain_en(n, maxAlreadyDrained, state = game, env = {}) {
+    const random = env.random ?? { rnd };
+    const message = env.message ?? ttyPline;
+    const punctuation = maxAlreadyDrained ? '!' : '.';
+    let ending = punctuation;
+    let text;
+
+    if (state.u.uenmax < 1) {
+        if (state.u.uen || state.u.uenmax) {
+            state.u.uen = 0;
+            state.u.uenmax = 0;
+            state.disp ??= {};
+            state.disp.botl = true;
+        }
+        text = 'momentarily lethargic';
+    } else {
+        // C int division truncates toward zero; these energy values are ints.
+        if (n > Math.trunc((state.u.uen + state.u.uenmax) / 3))
+            n = random.rnd(n);
+
+        text = 'your magical energy drain away';
+        if (n > state.u.uen) ending = '!';
+
+        state.u.uen -= n;
+        if (state.u.uen < 0) {
+            state.u.uenmax -= random.rnd(-state.u.uen);
+            if (state.u.uenmax < 0) state.u.uenmax = 0;
+            state.u.uen = 0;
+        } else if (state.u.uen > state.u.uenmax) {
+            // The caller may have lowered uenmax before drain_en() throttles
+            // the current-energy loss.
+            state.u.uen = state.u.uenmax;
+        }
+        state.disp ??= {};
+        state.disp.botl = true;
+    }
+
+    const prefix = heroUnaware(state)
+        ? 'You dream that you feel' : 'You feel';
+    await message(`${prefix} ${text}${ending}`, state);
 }

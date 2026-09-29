@@ -1967,8 +1967,9 @@ export function update_rest_on_space() {
     if (!game.Cmd) game.Cmd = {};
     // The clone is a distinct object from extcmd '.' / "wait". Without the
     // slot array, overlay lookup collapses them and turning the option off
-    // cannot see `&restonspace`. The boot is options.c:7158 (no JS
-    // initoptions_init); its !num_pad result matches build_default_cmdbinds.
+    // cannot see `&restonspace`. The boot is options.c:7158
+    // (initoptions_init live but startup-unwired); its !num_pad result
+    // matches build_default_cmdbinds.
     if (!game.Cmd._layoutSlots) reset_commands(true);
     const bind = layout_bind(32); // C `:3494` cmdbind_get(' ')
     if (bind.exists && bind.cmd !== REST_ON_SPACE) { // C `:3499`
@@ -1981,8 +1982,8 @@ export function update_rest_on_space() {
 
 /**
  * C ref: cmd.c reset_commands `:3344–3476`.
- * `initial` is the `options.c:7158` boot (`initoptions_init` is not a
- * JS function). The first non-initial call runs that boot once so the
+ * `initial` is the `options.c:7158` boot (`initoptions_init` live but
+ * startup-unwired). The first non-initial call runs that boot once so the
  * static backup matches a process that already executed it: the default
  * table in `build_default_cmdbinds` is that boot's !num_pad result.
  * @param {boolean} initial

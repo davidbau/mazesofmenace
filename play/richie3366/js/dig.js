@@ -34,7 +34,7 @@ import {
 import {
     in_rooms, in_town, stop_occupation, is_pool, is_lava, is_moat,
     confdir, losehp, maybe_half_phys, nomul, switch_terrain, On_stairs,
-    Passes_walls_prop,
+    Passes_walls_prop, spot_checks,
 } from './hack.js';
 import { currency, cmdq_add_key } from './invent.js';
 import { objectNames } from './generated/objects_data.js';
@@ -2105,6 +2105,9 @@ export async function dighole(pit_only, by_magic, cc) {
         await pline(
             `The ${surface(dig_x, dig_y)} ${th}here is too hard to dig in.`,
         );
+        // C dig.c:1022 — C falls through to spot_checks on every path but
+        // the :902 isok early return; each JS early return carries the call.
+        spot_checks(dig_x, dig_y, old_typ);
         return false;
     }
     // C: dig.c dighole — digging into a magical trap detonates it.
@@ -2112,6 +2115,7 @@ export async function dighole(pit_only, by_magic, cc) {
         await explode(dig_x, dig_y, 0, 20 + d(3, 6), TRAP_EXPLODE, EXPL_MAGICAL);
         deltrap(ttmp);
         newsym(dig_x, dig_y);
+        spot_checks(dig_x, dig_y, old_typ);
         return false;
     }
     if (is_pool_or_lava(dig_x, dig_y)) {
@@ -2120,16 +2124,19 @@ export async function dighole(pit_only, by_magic, cc) {
             + 'sloshes furiously for a moment, then subsides.',
         );
         wake_nearby(false);
+        spot_checks(dig_x, dig_y, old_typ);
         return false;
     }
     if (old_typ === DRAWBRIDGE_DOWN || is_drawbridge_wall(dig_x, dig_y) >= 0) {
         if (pit_only) {
             await pline('The drawbridge seems too hard to dig through.');
+            spot_checks(dig_x, dig_y, old_typ);
             return false;
         }
         const xy = { x: dig_x | 0, y: dig_y | 0 };
         find_drawbridge(xy);
         await destroy_drawbridge(xy.x, xy.y);
+        spot_checks(dig_x, dig_y, old_typ);
         return true;
     }
     // C: dig.c dighole boulder settles into pit or fills hole (D-0962).
@@ -2147,11 +2154,13 @@ export async function dighole(pit_only, by_magic, cc) {
             delfloortrap(ttmp);
         }
         delobj(boulder_here);
+        spot_checks(dig_x, dig_y, old_typ);
         return false;
     }
     if (IS_GRAVE(old_typ)) {
         await digactualhole(dig_x, dig_y, game.youmonst, PIT);
         await dig_up_grave(cc);
+        spot_checks(dig_x, dig_y, old_typ);
         return true;
     }
     // C: dig.c dighole DRAWBRIDGE_UP — must be floor or ice, other cases
@@ -2165,6 +2174,7 @@ export async function dighole(pit_only, by_magic, cc) {
             await pline(
                 `The ${surface(dig_x, dig_y)} ${th}here is too hard to dig in.`,
             );
+            spot_checks(dig_x, dig_y, old_typ);
             return false;
         }
         lev.drawbridgemask = (lev.drawbridgemask | 0) & ~DB_UNDER;
@@ -2173,14 +2183,17 @@ export async function dighole(pit_only, by_magic, cc) {
             dig_x, dig_y, holetyp, ttmp,
             'As you dig, the hole fills with %s!',
         );
+        spot_checks(dig_x, dig_y, old_typ);
         return true;
     }
     if (IS_THRONE(old_typ)) {
         await pline('The throne is too hard to break apart.');
+        spot_checks(dig_x, dig_y, old_typ);
         return false;
     }
     if (IS_ALTAR(old_typ)) {
         await pline('The altar is too hard to break apart.');
+        spot_checks(dig_x, dig_y, old_typ);
         return false;
     }
 
@@ -2194,6 +2207,7 @@ export async function dighole(pit_only, by_magic, cc) {
                 'As you dig, the hole fills with %s!',
             );
         }
+        spot_checks(dig_x, dig_y, old_typ);
         return true;
     }
     ttmp = t_at(dig_x, dig_y);
@@ -2210,6 +2224,7 @@ export async function dighole(pit_only, by_magic, cc) {
     } else {
         await digactualhole(dig_x, dig_y, game.youmonst, HOLE);
     }
+    spot_checks(dig_x, dig_y, old_typ); // C dig.c:1022
     return true;
 }
 

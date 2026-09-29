@@ -707,6 +707,17 @@ const EXT_CMDS = [
         },
     },
     {
+        // C: cmd.c "lightsources" IFBURIED|AUTOCOMPLETE|WIZMODECMD
+        // → light.c wiz_light_sources (D-3060)
+        name: 'lightsources',
+        wiz: true,
+        autocomplete: true,
+        run: async () => {
+            const { wiz_light_sources } = await import('./light.js');
+            return wiz_light_sources();
+        },
+    },
+    {
         // C: cmd.c "wizintrinsic" IFBURIED|AUTOCOMPLETE|WIZMODECMD
         name: 'wizintrinsic',
         wiz: true,

@@ -79,6 +79,8 @@ import { is_home_elemental } from './makemon.js';
 import { mon_leave } from './dog.js';
 /* monmove.js back-edge (same SCC; hoisted function, call-time use only). */
 import { get_iter_mons } from './monmove.js';
+/* mondata.js (same SCC; hoisted function, call-time use only — imports.mjs SAFE). */
+import { set_mon_data } from './mondata.js';
 const AMULET_OF_YENDOR = objectNames.indexOf('AMULET_OF_YENDOR');
 const WAN_TELEPORTATION = objectNames.indexOf('WAN_TELEPORTATION');
 const SPE_TELEPORT_AWAY = objectNames.indexOf('SPE_TELEPORT_AWAY');
@@ -625,11 +627,19 @@ export function collect_coords(ccc, cx, cy, maxradius, cc_flags, filter) {
     return result;
 }
 
-// C ref: teleport.c enexto_core (NEW_ENEXTO)
+// C ref: teleport.c enexto_core (NEW_ENEXTO) — teleport.c:219-276.
 export function enexto_core(cc, xx, yy, mdat, entflags) {
     const candy = [];
+    /* C :227-229 — GP_ALLOW_XY is kept for goodpos(), not masked off. */
     const allow_xx_yy = (entflags & GP_ALLOW_XY) !== 0;
-    const fakemon = { data: mdat, mx: 0, my: 0, wormno: 0 };
+    /* C :231-235 — null mdat (makemon ptr=NULL under rndmongen reaches
+     * makemon.c:1180/:1196 via the :1168 gate) defaults to the player's
+     * original monster type. :232 debugpline0 is D_DEBUG-only. */
+    if (!mdat) mdat = mons(game.u?.umonster);
+    /* C :236-237 — zeromonst + live set_mon_data set up the dummy for
+     * goodpos(); mx/my/wormno stay 0 (C struct zeroes). */
+    const fakemon = { mx: 0, my: 0, wormno: 0 };
+    set_mon_data(fakemon, mdat);
 
     const nearcandyct = collect_coords(candy, xx, yy, 3, CC_NO_FLAGS, null);
     for (let i = 0; i < nearcandyct; ++i) {
@@ -653,6 +663,7 @@ export function enexto_core(cc, xx, yy, mdat, entflags) {
     cc.x = xx;
     cc.y = yy;
     if (allow_xx_yy && goodpos(cc.x, cc.y, fakemon, entflags)) return true;
+    /* C :274-276 — :274 debugpline4 is D_DEBUG-only; return FALSE. */
     return false;
 }
 

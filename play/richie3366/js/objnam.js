@@ -931,7 +931,7 @@ function pretty_base(obj) {
     // C ref: objnam.c xname_flags ARMOR_CLASS —
     // dragon scales → "set of <actualn>"; boots|gloves → "pair of " + fallthru;
     // shield !dknown → elven…orcish "shield" / reflection "smooth shield";
-    // nn → actualn; un → "<simple> called …" (armor_simple_name deferred → dn);
+    // nn → actualn; un → "<simple> called …" (C `:741` armor_simple_name);
     // else → dn (OBJ_DESCR). Shared descrs need !oc_name_known (orcish helm).
     if (obj.oclass === ARMOR_CLASS) {
         const ocl = game.objects?.[obj.otyp];
@@ -959,7 +959,7 @@ function pretty_base(obj) {
             if (typ === SHIELD_OF_REFLECTION) return 'smooth shield';
         }
         if (nn) buf += actual;
-        else if (un) buf = xcalled_xname(buf, dn, un); // named omit: armor_simple_name
+        else if (un) buf = xcalled_xname(buf, _armor_simple_name_fn ? _armor_simple_name_fn(obj) : dn, un); // C `:741`
         else buf += dn;
         return buf;
     }
@@ -2566,6 +2566,19 @@ var _doffing_fn, _donning_fn;
 export function set_doffing_predicates(doffingFn, donningFn) {
     _doffing_fn = doffingFn;
     _donning_fn = donningFn;
+}
+
+/**
+ * Late-bound from do_wear.js — C objnam.c xname_flags ARMOR_CLASS `un`
+ * arm calls armor_simple_name (`:741`). do_wear already imports objnam,
+ * so a static back-edge TDZs `_body_part` (measured 2026-09-28: the new
+ * edge reordered eval onto polyself's top-level set_body_part).
+ * `var` (not `let`): hoisted so the early write is kept (doffing idiom).
+ * Unset → dn (pre-existing behavior when do_wear is not loaded).
+ */
+var _armor_simple_name_fn;
+export function set_armor_simple_name(fn) {
+    _armor_simple_name_fn = fn;
 }
 
 /**

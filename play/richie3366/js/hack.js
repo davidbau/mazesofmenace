@@ -37,26 +37,28 @@ import {
     ARTICLE_NONE, ARTICLE_A, ARTICLE_THE, ARTICLE_YOUR, SUPPRESS_SADDLE,
     LL_CONDUCT,
     has_mgivenname, RUN_TPORT, RUN_LEAP, RUN_STEP, RUN_CRAWL,
-    DO_MOVE, TEST_MOVE, TEST_TRAV, TEST_TRAP, S_stone, ESHK,
+    DO_MOVE, TEST_MOVE, TEST_TRAV, TEST_TRAP, S_stone, ESHK, MELT_ICE_AWAY,
+    NEUTRAL,
 } from './const.js';
 import {
     pline, vpline, You, There, Norep, newsym, canspotmon, canseemon, map_invisible, You_feel,
     set_msg_xy, feel_location, map_object, unmap_object, verbalize, curs_on_u,
     nh_delay_output, back_to_glyph, glyph_to_cmap, glyph_is_cmap, pline_dir,
-    impossible,
+    impossible, raw_printf,
 } from './display.js';
 import { gethungry, morehungry, is_fainted, maybe_finished_meal } from './eat.js';
 import { unconscious, enexto, goodpos, rloc_to, rloco, random_teleport_level } from './teleport.js';
 import { m_at, hideunder, seemimic, bad_rock, may_passwall, cant_squeeze_thru, minliquid, onscary } from './mon.js';
 import { recalc_block_point, cansee } from './vision.js';
-import { is_hider, hides_under, throws_rocks, noncorporeal, metallivorous, mons, is_flyer, is_swimmer, verysmall, bigmonst, passes_bars, dmgtype, is_rider, amorphous, tunnels, needspick, is_floater, is_clinger, is_whirly } from './monsters.js';
+import { is_hider, hides_under, throws_rocks, noncorporeal, metallivorous, mons, is_flyer, is_swimmer, verysmall, bigmonst, passes_bars, dmgtype, is_rider, amorphous, tunnels, needspick, is_floater, is_clinger, is_whirly, G_UNIQ } from './monsters.js';
 import {
     objects_at, sobj_at, obj_extract_self, place_object, remove_object, delobj,
     add_to_migration, peek_timer, stop_timer, start_timer, splitobj,
+    spot_time_left, spot_stop_timers, obj_ice_effects,
 } from './mkobj.js';
-import { objectNames } from './generated/objects_data.js';
-import { WEAPON_CLASS, TOOL_CLASS, COIN_CLASS, is_blade, is_pick } from './objects.js';
-import { xname, the, The, Tobjnam, otense, makeplural, an, just_an } from './objnam.js';
+import { objectNames, objectNameStrs } from './generated/objects_data.js';
+import { WEAPON_CLASS, TOOL_CLASS, COIN_CLASS, is_blade, is_pick, objects } from './objects.js';
+import { xname, the, The, Tobjnam, otense, makeplural, an, just_an, simple_typename, CapitalMon } from './objnam.js';
 import { A_STR, A_CON, A_DEX, acurr, acurrstr, exercise, Fumbling, adjalign } from './attrib.js';
 import { objdescr_is } from './apply.js';
 import { rn2, rnd, rn1 } from './rng.js';
@@ -65,10 +67,13 @@ import { visible_region_at, reg_damg } from './region.js';
 import { midnight } from './calendar.js';
 import {
     PM_GRID_BUG, PM_WIZARD, PM_ELF, PM_VALKYRIE, PM_SAMURAI,
-    monsterNames,
+    PM_LONG_WORM_TAIL,
+    monsterNames, pmnames,
 } from './generated/monsters_data.js';
 import { ART_STING } from './generated/artifacts_data.js';
 import { hliquid, Hallucination, y_monnam, x_monnam, type_is_pname, YMonnam } from './do_name.js';
+import { decl_globals_init } from './decl.js';
+import { init_objects } from './o_init.js';
 import { get_level } from './dungeon.js';
 import { costly_spot, shop_keeper, addtobill, subfrombill, onshopbill, find_objowner, stolen_value, block_entry, block_door } from './shk.js';
 import { se_monster_behind_boulder, se_kerplunk_boulder_gone } from './generated/seffects_data.js';
@@ -3822,4 +3827,132 @@ export async function dosinkfall() {
     u.HLevitation = (u.HLevitation | 0) - 1;
     const { float_vs_flight } = await import('./polyself.js');
     float_vs_flight();
+}
+
+/**
+ * C ref: hack.c spot_checks `:4525–4547` — after a dig or landmine blast
+ * reshapes <x,y>, drop any MELT_ICE_AWAY timer and recheck floor-object
+ * timers when the ice is gone. The DRAWBRIDGE_UP arm falls through into
+ * ICE (C `:4534–4535`) and fires on `!db_ice_now` even when the type is
+ * unchanged (C `:4538`). Sync: all three callees are sync.
+ */
+export function spot_checks(x, y, old_typ) {
+    const lev = game.level?.locations?.[x | 0]?.[y | 0];
+    // C levl[x][y] is always valid; the guard is JS headless-robustness.
+    if (!lev) return;
+    const new_typ = lev.typ | 0; // C `:4528`
+    let db_ice_now = false; // C `:4529`
+    switch (old_typ) { // C `:4531`
+      case DRAWBRIDGE_UP: // C `:4532`
+        db_ice_now = (((lev.drawbridgemask | 0) & DB_UNDER) === DB_ICE); // C `:4533`
+        /* FALLTHROUGH */ // C `:4534–4535`
+      case ICE: // C `:4536`
+        if ((new_typ !== old_typ) // C `:4537`
+            || (old_typ === DRAWBRIDGE_UP && !db_ice_now)) { // C `:4538`
+            /* make sure there's no MELT_ICE_AWAY timer */ // C `:4539`
+            if (spot_time_left(x, y, MELT_ICE_AWAY)) { // C `:4540`
+                spot_stop_timers(x, y, MELT_ICE_AWAY); // C `:4541`
+            }
+            /* adjust things affected by the ice */ // C `:4543`
+            obj_ice_effects(x, y, false); // C `:4544`
+        }
+        break; // C `:4546`
+    }
+}
+
+/**
+ * C ref: hack.c cmp_weights `:4486–4493` (staticfn → file-local) — qsort
+ * comparator for the dump_weights table: strcmp on the `%07u`-prefixed
+ * name (the `wt - wt` subtraction stays commented out in C).
+ */
+function cmp_weights(a, b) {
+    if (a.nm < b.nm) return -1; // C `:4492` strcmp
+    if (a.nm > b.nm) return 1;
+    return 0;
+}
+
+/**
+ * C ref: hack.c dump_weights `:4421–4483` — `--dumpweights` table lines
+ * (D-3060 lines()/emitter split: this builder is pinned by
+ * scripts/spot-checks.test.mjs; `dump_weights()` below owns the C-order
+ * re-init + raw_printf emission). C order: monster loop (skip
+ * LONG_WORM_TAIL, `%07u` + "the body of " + the/unique/an nest), object
+ * loop (`wt && oc_name` gate, `oc_name_known = 1`, `%07u` + the/an
+ * nest), strcmp sort, `    %7u%s \/* %*s *\/` rows (C `:4472–4475`; the
+ * `%*s` width is JS padEnd — vraw_printf strips widths per D-2573).
+ * C `weightlist` is hack.c-local (no outside refs); JS keeps it a local
+ * (alloc/free N/A). qsort-vs-sort stability differs only on exact-`nm`
+ * ties, whose C order is unspecified.
+ * @returns {string[]} header + entry rows + `};` + blank (C `:4470–4479`).
+ */
+export function dump_weights_lines() {
+    const mcount = pmnames.length; // C `:4424` NUMMONS
+    const ocount = objectNames.length; // C `:4424` NUM_OBJECTS
+    const slime = objectNames.indexOf('SLIME_MOLD'); // D-3061 `:7283` convention
+    const weightlist = []; // C `:4428–4429` alloc
+    const objs = objects() || []; // C `objects[]`
+    for (let i = 0; i < mcount; ++i) { // C `:4434`
+        if (i !== PM_LONG_WORM_TAIL) { // C `:4435`
+            const pm = mons(i); // C `mons[i]`
+            const wt = pm.cwt | 0; // C `:4439` (int)
+            const unique = (((pm.geno | 0) & G_UNIQ) !== 0); // C `:4442`
+            const mname = pmnames[i][NEUTRAL]; // C `mons[i].pmnames[NEUTRAL]`
+            const cm = CapitalMon(mname); // C `:4444`
+            const nm = String(wt).padStart(7, '0') // C `:4443` %07u
+                + 'the body of ' // C `:4446`
+                + (cm ? the(mname) // C `:4447`
+                    : unique ? mname // C `:4448`
+                    : an(mname)); // C `:4449`
+            weightlist.push({ wt, idx: i, wtyp: 1, unique, nm }); // C `:4439–4451`
+        }
+    }
+    for (let i = 0; i < ocount; ++i) { // C `:4454`
+        const oc_name = (i === slime) ? 'slime mold' // C `:4455–4456`
+            : objectNameStrs[objs[i]?.oc_name_idx];
+        const wt = objs[i] ? (objs[i].oc_weight | 0) : 0; // C `:4457` (int)
+        if (wt && oc_name) { // C `:4459`
+            const unique = ((objs[i].oc_unique | 0) !== 0); // C `:4462`
+            objs[i].oc_name_known = 1; // C `:4463`
+            const nmbufbase = simple_typename(i); // C `:4464`
+            const nm = String(wt).padStart(7, '0') // C `:4465–4467` %07u%s
+                + (unique ? the(nmbufbase) : an(nmbufbase));
+            weightlist.push({ wt, idx: i, wtyp: 2, unique, nm }); // C `:4460–4470`
+        }
+    }
+    weightlist.sort(cmp_weights); // C `:4468–4469` qsort
+    const lines = ['int all_weights[] = {']; // C `:4470`
+    const nmwidth = 49; // C `:4423`
+    for (let i = 0; i < weightlist.length; ++i) { // C `:4471`
+        const e = weightlist[i];
+        if (e.nm) { // C `:4472` (dupstr never null; free N/A)
+            lines.push('    ' + String(e.wt).padStart(7, ' ') // C `:4473–4475` %7u
+                + (i === weightlist.length - 1 ? ' ' : ',')
+                + ' /* ' + e.nm.slice(7).padEnd(nmwidth, ' ') + ' */'); // %*s -49
+        }
+    }
+    lines.push('};'); // C `:4478` raw_print
+    lines.push(''); // C `:4479` raw_print
+    return lines;
+}
+
+/**
+ * C ref: hack.c dump_weights `:4421–4483` — `--dumpweights`
+ * (earlyarg.c:539): re-init, build the table, raw_printf it. Sync like C.
+ * Named omission: freedynamicdata `:4482` (seed by-design save-freeing,
+ * CURRENT.md Do not). C caller earlyarg.c:539 → Named (JS earlyarg.js:281
+ * ARG_DUMPWEIGHTS arm is a named omit like its dump siblings; wiring it
+ * is earlyarg.c's row). Footer uses raw_printf: JS raw_print is unported
+ * (display.js vraw_printf omit).
+ */
+export function dump_weights() {
+    decl_globals_init(); // C `:4431`
+    init_objects(); // C `:4432`
+    for (const line of dump_weights_lines()) { // C `:4470–4479`
+        // C `:4470–4477` raw_printf / `:4478–4479` raw_print — `%s`
+        // verbatim when the line holds a `%` (names never do today;
+        // vpline_expand would otherwise rescan it).
+        if (line.includes('%')) raw_printf('%s', line);
+        else raw_printf(line);
+    }
+    /* C `:4482` freedynamicdata() — named omit, see doc above. */
 }

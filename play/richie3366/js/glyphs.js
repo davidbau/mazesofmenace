@@ -945,8 +945,9 @@ export function add_custom_urep_entry(customization_name, glyphidx, utf32ch, utf
  * details via set_map_customcolor (`:562–568`). Any surviving cell sets
  * iflags.pending_customizations for maybe_shuffle_customizations above.
  * C callers: reset_customcolors `:1182`, initoptions_finish
- * options.c:7379, load_symset symbols.c:683, do_symset symbols.c:1095,
- * reset_customsymbols utf8map.c:215 (all unported — map-named).
+ * options.c:7379, load_symset symbols.c:683, do_symset symbols.c:1095
+ * (all unported — map-named), reset_customsymbols utf8map.c:215
+ * (live below).
  */
 export function apply_customizations(which_set, docustomize) {
     const set = which_set | 0; // C :532 enum graphics_sets
@@ -985,6 +986,75 @@ export function apply_customizations(which_set, docustomize) {
         }
     }
     iflags.pending_customizations = atLeastOne; // C :573
+}
+
+/**
+ * C utf8map.c free_all_glyphmap_u `:59–80` (#ifdef ENHANCED_SYMBOLS, live —
+ * config.h:368) — drop every glyphmap cell's unicode_representation
+ * (utf8str first, then the record; C `free` ≡ null, JS GC collects) so a
+ * later apply_customizations restamps from a clean table. C callers:
+ * reset_customsymbols utf8map.c:214 (wired below) + clear_symsetentry
+ * symbols.c:345 (unported — map-named).
+ * Named: the `:74–79` gg.gbuf glyphinfo.gm.u NULL sweep — JS keeps no
+ * per-cell glyph_map copies (map_glyphinfo builds fresh records, D-1983;
+ * the only `.u` readers walk the live array), so no dangling `.u`
+ * references exist to clear.
+ */
+export function free_all_glyphmap_u() {
+    const gm = game.glyphmap; // C glyphmap[MAX_GLYPH] (lazy in JS — absent ≡ all-NULL BSS)
+    if (gm && gm.length === MAX_GLYPH) { // C :64 loop over the table
+        for (let glyph = 0; glyph < MAX_GLYPH; ++glyph) { // C :64
+            if (gm[glyph].u != null) { // C :65
+                if (gm[glyph].u.utf8str != null) { // C :66
+                    gm[glyph].u.utf8str = null; // C :67–68 free (GC)
+                }
+                gm[glyph].u = null; // C :70–71 free (GC)
+            }
+        }
+    }
+    /* C :74–79 gbuf sweep — named omit (see doc above): no JS gbuf holds gm copies. */
+}
+
+/**
+ * C utf8map.c reset_customsymbols `:211–217` (#ifdef ENHANCED_SYMBOLS,
+ * live) — drop all glyphmap unicode data, then restamp the active set's
+ * symbol customizations. Sole C caller: reset_needed_visuals
+ * options.c:8996 (wired in js/options.js).
+ */
+export function reset_customsymbols() {
+    free_all_glyphmap_u(); // C :214
+    apply_customizations(game.currentgraphics | 0, DO_CUSTOM_SYMBOLS); // C :215 (sym.h do_custom_symbols = 2; gc.currentgraphics ≡ game.currentgraphics)
+}
+
+/**
+ * C glyphs.c clear_all_glyphmap_colors `:1166–1176` (global) — zero every
+ * glyph's customcolor (guarded, `:1172–1173`) and color256idx (`:1174`).
+ * JS keeps glyphmap lazy (absent/short ≡ all-NULL BSS, already zeros),
+ * so an absent table is already clear and nothing is ensured here
+ * (free_all_glyphmap_u guard precedent). C callers: reset_customcolors
+ * `:1181` (wired below) + clear_symsetentry (symbols.c:348, unported —
+ * named in the D-log).
+ */
+export function clear_all_glyphmap_colors() {
+    const gm = game.glyphmap; // C glyphmap[MAX_GLYPH] (lazy in JS — absent ≡ all-NULL BSS)
+    if (gm && gm.length === MAX_GLYPH) {
+        for (let glyph = 0; glyph < MAX_GLYPH; ++glyph) { // C `:1171`
+            if (gm[glyph].customcolor) // C `:1172`
+                gm[glyph].customcolor = 0; // C `:1173`
+            gm[glyph].color256idx = 0; // C `:1174`
+        }
+    }
+}
+
+/**
+ * C glyphs.c reset_customcolors `:1178–1183` (global) — drop all glyphmap
+ * color data, then restamp the active set's color customizations.
+ * C caller: reset_needed_visuals options.c:8994 (wired in js/options.js).
+ * Mirrors reset_customsymbols above (D-3065).
+ */
+export function reset_customcolors() {
+    clear_all_glyphmap_colors(); // C `:1181`
+    apply_customizations(game.currentgraphics | 0, DO_CUSTOM_COLORS); // C `:1182` (sym.h do_custom_colors = 1; gc.currentgraphics ≡ game.currentgraphics)
 }
 
 /**

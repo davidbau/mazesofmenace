@@ -56,7 +56,7 @@ import { m_at, wake_nearto } from './mon.js';
 // mon_learns_traps TRAPPED_DOOR); hoisted fn, cycle-safe per imports.mjs.
 import { mb_trapped } from './monmove.js';
 import { b_trapped, t_at, could_untrap, untrap } from './trap.js';
-import { currency, cmdq_add_key } from './invent.js';
+import { currency, cmdq_add_key, update_inventory } from './invent.js';
 import { show_text_pages, dowhatdoes_core } from './pager.js';
 import { visctrl, cmdbind_get, show_direction_keys } from './dokeylist.js';
 import { getpos } from './getpos.js';
@@ -1464,14 +1464,20 @@ export async function boxlock(obj, otmp) {
 }
 
 /**
- * C ref: zap.c boxlock_invent — (un)lock all carried boxes.
- * Named omit: update_inventory UI refresh (lknown may change).
+ * C ref: zap.c boxlock_invent `:2687–2702` — (un)lock all carried boxes;
+ * update_inventory when any box was hit (box->lknown may change).
  */
 export async function boxlock_invent(obj) {
     if (!obj) return;
+    let boxing = false; // C :2691
+    /* (un)lock carried boxes — snapshot ≡ C nextobj pre-fetch (:2695) */
     for (const otmp of [...(game.invent || [])]) {
-        if (Is_box(otmp)) await boxlock(otmp, obj);
+        if (Is_box(otmp)) {
+            await boxlock(otmp, obj);
+            boxing = true;
+        }
     }
+    if (boxing) update_inventory(); // C :2700–2701
 }
 
 /**

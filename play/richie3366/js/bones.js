@@ -645,7 +645,9 @@ function getlev_bones(payload) {
     // C getlev ghostly: go.oldfruit = loadfruitchn before restobjchn
     // so ghostfruit can remap SLIME_MOLD spe (D-1541).
     game.oldfruit = loadfruitchn(payload.fruitchn);
-    const info = deserLevel(payload);
+    // C getlev ghostly — bones mons restore with ghostly TRUE (restshk
+    // re-homes shoplevel and pacifies an angry stranger).
+    const info = deserLevel(payload, { ghostly: true });
     const map = info.level;
     for (const col of map.locations || []) {
         for (const cell of col || []) {

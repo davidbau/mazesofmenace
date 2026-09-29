@@ -237,6 +237,7 @@ import {
     hold_another_object, makeknown, encumber_msg, enlightenment, freeinv_core,
     observe_object, display_minventory, display_binventory, display_cinventory,
     update_inventory, set_cknown_lknown, getobj, useupall, useup,
+    inventory_resistance_check,
 } from './invent.js';
 import { mstatusline, ustatusline } from './insight.js';
 import { setnotworn, boulder_hits_pool } from './do.js';
@@ -247,7 +248,7 @@ import { Soundeffect } from './sndprocs.js';
 import { se_crumbling_sound } from './generated/seffects_data.js';
 import { fix_wall_spines } from './mklev.js';
 import {
-    A_WIS, A_STR, A_CON, A_DEX, A_INT, A_CHA, exercise, acurr, adjalign,
+    A_WIS, A_STR, A_CON, A_DEX, A_INT, A_CHA, exercise, acurr, adjalign, poisoned,
 } from './attrib.js';
 import { findit, cvt_sdoor_to_door, show_map_spot } from './detect.js';
 import {
@@ -308,7 +309,7 @@ import { unpunish, litroom } from './read.js';
 import { engr_at, del_engr, make_engr_at, wipe_engr_at, random_engraving, rloc_engr } from './engrave.js';
 import { bare_artifactname, defends, defends_when_carried, artifact_origin, revoke_invoked_property } from './artifact.js';
 import {
-    Ring_gone, Ring_off, Ring_on, setworn, set_wear, hard_helmet,
+    Ring_gone, Ring_off, Ring_on, setworn, set_wear, hard_helmet, disintegrate_arm,
 } from './do_wear.js';
 import { which_armor, mon_set_minvis, check_gear_next_turn, wearslot, wearmask_to_obj, extract_from_minvent, bypass_objlist, nxt_unbypassed_obj } from './worn.js';
 import { mhurtle, hero_breaks, breaks } from './dothrow.js';
@@ -358,7 +359,7 @@ import {
     def_warnsyms, S_flashbeam,
     W_RING, W_ARMG, W_ARMH, W_ARMOR, W_SADDLE, W_ART, W_ARTI,
     W_WEP, W_SWAPWEP, W_QUIVER, W_WEAPONS,
-    REFLECTING, ANTIMAGIC, SHOCK_RES, POISON_RES, DRAIN_RES, TELEPORT_CONTROL, STUNNED, M_SEEN_MAGR, M_SEEN_REFL, LEVITATION, FLYING,
+    REFLECTING, ANTIMAGIC, SHOCK_RES, POISON_RES, DRAIN_RES, TELEPORT_CONTROL, STUNNED, M_SEEN_MAGR, M_SEEN_REFL, M_SEEN_FIRE, M_SEEN_COLD, M_SEEN_SLEEP, M_SEEN_DISINT, M_SEEN_ELEC, M_SEEN_ACID, LEVITATION, FLYING,
     NO_MINVENT, MM_NOWAIT, MM_NOMSG, MM_NOCOUNTBIRTH, MM_MALE, MM_FEMALE,
     IS_POOL, CONTAINED_TOO, BURIED_TOO, ROOM, CORR, GRAVE,
     CORPSTAT_GENDER, CORPSTAT_MALE, CORPSTAT_FEMALE, MFAST,
@@ -561,6 +562,7 @@ const MAGIC_COOKIE = 1000; // zap.c local #define
 const AD_MAGM = 1; // C ref: monattk.h AD_MAGM (magic missiles)
 const AD_COLD = 3;
 const AD_FIRE = 2;
+const AD_DISN = 5; // C ref: monattk.h AD_DISN (disintegration)
 const AD_ELEC = 6;
 const AD_ACID = 8; // C ref: monattk.h AD_ACID (acid damage)
 const AD_DRLI = 15;
@@ -605,6 +607,12 @@ export function Shock_resistance() {
 function Acid_resistance() {
     const u = game.u || {};
     return !!(u.Acid_resistance || u.HAcid_resistance || u.EAcid_resistance);
+}
+
+/** C ref: youprop.h Disint_resistance */
+function Disint_resistance() {
+    const u = game.u || {};
+    return !!(u.Disint_resistance || u.HDisint_resistance || u.EDisint_resistance);
 }
 
 /**
@@ -2028,22 +2036,18 @@ export async function zhitm(mon, type, nd, ootmp) {
 }
 
 /**
- * C ref: zap.c zhitu — hero hit by ray (wand/spell/breath).
- * Envelope: ZT_MAGIC_MISSILE..ZT_LIGHTNING damage + ZT_FIRE burnarmor/
- * destroy_items/ignite gate + ZT_COLD/ELEC destroy_items + losehp;
- * ZT_ACID Acid_resistance + hliquid + d(nd,6) (D-1127).
- * ZT_DEATH non-breath arm: no "You die..." pline — killer = beam text,
- * ugrave_arise = NON_PM, monstunseesu(M_SEEN_MAGR), done(DIED)
- * (C zap.c:4502–4509).
- * Named omissions: shieldeff (FIRE/COLD resist arms), monstseesu/
- * monstunseesu (FIRE/COLD arms). ugolemeffects is live on the resist
- * arms (FIRE/COLD/LIGHTNING). MM-Antimagic shieldeff +
- * monstseesu and MM-hit monstunseesu live (C zap.c:4410–4419).
- * ZT_DEATH disintegration-breath arm (C zap.c:4465–4490); poison;
- * killer buzzer verb polish.
- * ZT_ACID weapon/armor erosion live (D-2232): trap.js acid_damage +
- * grease_protect under the C twoweap rn2 gates, mhitm.js erode_armor
- * ERODE_CORRODE under rn2(6) (C zap.c:4528–4546).
+ * C ref: zap.c zhitu `:4401–4591` — hero hit by ray (wand/spell/breath).
+ * Every arm in C order: MM shieldeff + bounce; FIRE/COLD/LIGHTNING
+ * resist shieldeff + monstseen + ugolemeffects, burnarmor/
+ * destroy_items/ignite gates; SLEEP shieldeff + fall_asleep; DEATH
+ * disintegration-breath strip, nonliving/demon and Antimagic shieldeff
+ * arms, ugrave_arise breath conditional, done(DIED) (C :4503–4509);
+ * POISON_GAS poisoned; ACID hliquid + erosion gates (D-2232);
+ * killer verb + "by self" arm, Half_spell_damage halve, losehp (D-0737).
+ * Named omissions: death_inflicted_by monster-name render + strsubst
+ * (C :4574–4577; mcastu-local, zap↔mcastu cycle) — with no buzzer C
+ * keeps fltxt, kept. losehp keeps the `if (dam)` gate (C losehp(0)
+ * moves no HP/killer/death; JS losehp writes botl/run state anyway).
  */
 async function zhitu(type, nd, fltxt, sx, sy) {
     let dam = 0;
@@ -2064,37 +2068,43 @@ async function zhitu(type, nd, fltxt, sx, sy) {
             monstunseesu(M_SEEN_MAGR);
         }
         break;
-    case ZT_FIRE:
-        orig_dam = d(nd, 6);
+    case ZT_FIRE: // C :4421–4438
+        orig_dam = d(nd, 6); // C :4422
         if (Fire_resistance()) {
-            await pline("You don't feel hot!");
+            await shieldeff(sx, sy); // C :4424
+            await pline("You don't feel hot!"); // C :4425
+            monstseesu(M_SEEN_FIRE); // C :4426
             // C zap.c:4427 — after the resist message, before burn_away_slime.
             await ugolemeffects(AD_FIRE, orig_dam);
         } else {
             dam = orig_dam;
+            monstunseesu(M_SEEN_FIRE); // C :4430
         }
-        await burn_away_slime();
-        if (await burnarmor(game.youmonst || { _youmonst: true })) {
-            if (!rn2(3)) {
+        await burn_away_slime(); // C :4432
+        if (await burnarmor(game.youmonst || { _youmonst: true })) { // C :4433
+            if (!rn2(3)) { // C :4434
                 await destroy_items(
                     game.youmonst || { _youmonst: true },
                     AD_FIRE,
                     orig_dam,
                 );
             }
-            if (!rn2(3)) await ignite_items(game.invent);
+            if (!rn2(3)) await ignite_items(game.invent); // C :4436
         }
         break;
-    case ZT_COLD:
-        orig_dam = d(nd, 6);
+    case ZT_COLD: // C :4440–4453
+        orig_dam = d(nd, 6); // C :4441
         if (Cold_resistance()) {
-            await pline("You don't feel cold.");
+            await shieldeff(sx, sy); // C :4443
+            await pline("You don't feel cold."); // C :4444
+            monstseesu(M_SEEN_COLD); // C :4445
             // C zap.c:4446
             await ugolemeffects(AD_COLD, orig_dam);
         } else {
             dam = orig_dam;
+            monstunseesu(M_SEEN_COLD); // C :4449
         }
-        if (!rn2(3)) {
+        if (!rn2(3)) { // C :4451
             await destroy_items(
                 game.youmonst || { _youmonst: true },
                 AD_COLD,
@@ -2102,49 +2112,78 @@ async function zhitu(type, nd, fltxt, sx, sy) {
             );
         }
         break;
-    case ZT_SLEEP:
+    case ZT_SLEEP: // C :4454–4463
         if (Sleep_resistance()) {
-            await pline("You don't feel sleepy.");
+            const su = game.u || {};
+            await shieldeff(su.ux, su.uy); // C :4456 — hero spot, not sx/sy
+            await pline("You don't feel sleepy."); // C :4457
+            monstseesu(M_SEEN_SLEEP); // C :4458
         } else {
+            monstunseesu(M_SEEN_SLEEP); // C :4460
             /* C zap.c:4461 — fall_asleep(-d(nd, 25), TRUE). */
             await fall_asleep(-d(nd, 25), true);
         }
         break;
-    case ZT_DEATH:
-        // Disintegration-breath arm (C zap.c:4465–4490: Disint_resistance,
-        // inventory_resistance_check, uarms/uarm destroy) deferred — named
-        // omission (see header); breath never reaches this arm today.
-        if (nonliving(game.youmonst?.data) || is_demon(game.youmonst?.data)) {
-            await pline('You seem unaffected.');
+    case ZT_DEATH: { // C :4464–4509
+        const du = game.u || {};
+        if (abstyp === ZT_BREATH_0 + ZT_DEATH) { // C :4465
+            // C :4466 — drawn before the resistance checks, in C order
+            const disn_prot = inventory_resistance_check(AD_DISN);
+            if (Disint_resistance()) { // C :4468
+                await pline('You are not disintegrated.'); // C :4469
+                monstseesu(M_SEEN_DISINT); // C :4470
+                break;
+            } else if (disn_prot) { // C :4472
+                break;
+            }
+            monstunseesu(M_SEEN_DISINT); // C :4475
+            if (du.uarms) { // C :4476 — shield; other possessions safe
+                await disintegrate_arm(du.uarms); // C :4478
+                break;
+            } else if (du.uarm) { // C :4480 — suit; cloak goes too
+                if (du.uarmc) await disintegrate_arm(du.uarmc); // C :4483
+                await disintegrate_arm(du.uarm); // C :4484
+                break;
+            }
+            /* C :4487–4492 — no shield or suit, you're dead; wipe cloak
+               and/or shirt in case of life-saving or bones */
+            if (du.uarmc) await disintegrate_arm(du.uarmc); // C :4490
+            if (du.uarmu) await disintegrate_arm(du.uarmu); // C :4492
+        } else if (nonliving(game.youmonst?.data) || is_demon(game.youmonst?.data)) { // C :4493
+            await shieldeff(sx, sy); // C :4494
+            await pline('You seem unaffected.'); // C :4495
+            break;
+        } else if (Antimagic()) { // C :4497
+            await shieldeff(sx, sy); // C :4498
+            monstseesu(M_SEEN_MAGR); // C :4499
+            await pline("You aren't affected."); // C :4500
             break;
         }
-        if (Antimagic()) {
-            await pline("You aren't affected.");
-            break;
-        }
-        {
-            // C zap.c:4502–4509 — death ray on the hero prints no
-            // "You die..."; killer is the beam text, arise resets to
-            // NON_PM, then done(DIED) (returns only when lifesaved).
-            monstunseesu(M_SEEN_MAGR);
-            if (!game.killer) game.killer = { name: '', format: 0 };
-            game.killer.format = KILLED_BY_AN;
-            game.killer.name = fltxt || '';
-            (game.u || (game.u = {})).ugrave_arise = NON_PM;
-            await done(DIED);
-            return; // lifesaved
-        }
-    case ZT_LIGHTNING:
-        orig_dam = d(nd, 6);
+        // C :4503–4509 — death ray on the hero prints no "You die...";
+        // killer is the beam text, then done(DIED) (returns iff lifesaved).
+        monstunseesu(M_SEEN_MAGR); // C :4503
+        if (!game.killer) game.killer = { name: '', format: 0 };
+        game.killer.format = KILLED_BY_AN; // C :4504
+        game.killer.name = fltxt || ''; // C :4505
+        /* C :4507 — disintegration breath leaves no corpse */
+        (game.u || (game.u = {})).ugrave_arise = (type === -(ZT_BREATH_0 + ZT_DEATH)) ? -3 : NON_PM;
+        await done(DIED); // C :4508
+        return; // lifesaved
+    }
+    case ZT_LIGHTNING: // C :4510–4524
+        orig_dam = d(nd, 6); // C :4511
         if (Shock_resistance()) {
-            await pline("You aren't affected.");
+            await shieldeff(sx, sy); // C :4513
+            await pline("You aren't affected."); // C :4514
+            monstseesu(M_SEEN_ELEC); // C :4515
             // C zap.c:4516
             await ugolemeffects(AD_ELEC, orig_dam);
         } else {
             dam = orig_dam;
-            exercise(A_CON, false);
+            exercise(A_CON, false); // C :4519
+            monstunseesu(M_SEEN_ELEC); // C :4520
         }
-        if (!rn2(3)) {
+        if (!rn2(3)) { // C :4522
             await destroy_items(
                 game.youmonst || { _youmonst: true },
                 AD_ELEC,
@@ -2152,20 +2191,22 @@ async function zhitu(type, nd, fltxt, sx, sy) {
             );
         }
         break;
-    case ZT_POISON_GAS:
-        // poisoned("blast", A_DEX, ...) deferred
+    case ZT_POISON_GAS: // C :4525–4527
+        await poisoned('blast', A_DEX, 'poisoned blast', 15, false); // C :4526
         break;
     case ZT_ACID: {
         // C zap.c:4528–4546 — resist message + d(nd,6)/exercise on the burn
         // arm, then two-weapon acid_damage gates and erode_armor corrode.
         const u = game.u || {};
         if (Acid_resistance()) {
-            await pline(`The ${hliquid('acid')} doesn't hurt.`);
-            dam = 0;
+            await pline(`The ${hliquid('acid')} doesn't hurt.`); // C :4530
+            monstseesu(M_SEEN_ACID); // C :4531
+            dam = 0; // C :4532
         } else {
-            await pline(`The ${hliquid('acid')} burns!`);
-            dam = d(nd, 6);
-            exercise(A_STR, false);
+            await pline(`The ${hliquid('acid')} burns!`); // C :4534
+            dam = d(nd, 6); // C :4535
+            exercise(A_STR, false); // C :4536
+            monstunseesu(M_SEEN_ACID); // C :4537
         }
         // using two weapons at once makes both of them more vulnerable
         if (!rn2(u.twoweap ? 3 : 6)) await acid_damage(u.uwep);
@@ -2182,14 +2223,31 @@ async function zhitu(type, nd, fltxt, sx, sy) {
     // C: destroy_items losehp→done noreturn skips bolt losehp
     if (game.program_state?.gameover) return;
 
-    if (dam && Half_spell_damage() && abstyp < 20) {
-        dam = Math.trunc((dam + 1) / 2);
+    // C :4563–4570 — killer verb by source kind; fire/frost horn are
+    // TOOL_CLASS ("played"), handled as wands by the caller.
+    const wand = game.current_wand; // C :4563
+    const verb = abstyp < 10
+        ? ((wand && wand.oclass === TOOL_CLASS) ? 'played' : 'zapped')
+        : abstyp < 20 ? 'cast'
+            : abstyp < 30 ? 'exhaled'
+                : 'imagined'; // should never happen
+    let kbuf;
+    if (type < 0 || (type === 0 && game._buzzer)) { // C :4572
+        /* C :4574–4577 — death_inflicted_by + "inflicted"→verb is a named
+           omission (mcastu-local, zap↔mcastu cycle); with no buzzer C
+           keeps fltxt (:4573), which is what we keep. */
+        kbuf = fltxt || 'ray';
+    } else {
+        // C :4579–4582 — FIXME kept: "by herself" even on explicit self-target
+        kbuf = `${fltxt || 'ray'} ${verb} by ${uhim()}self`;
+    }
+    if (dam && Half_spell_damage() && abstyp < 20) { // C :4586
+        dam = Math.trunc((dam + 1) / 2); // C :4587
     }
     if (dam) {
-        const kbuf = fltxt || 'ray';
         // C hack.c losehp → done(DIED) noreturn — must not resume weffects
         // learnwand (D-0737; same contract as thitu/mbhitm D-0255/D-0323).
-        losehp(dam, kbuf, KILLED_BY_AN);
+        losehp(dam, kbuf, KILLED_BY_AN); // C :4588
         if (game._losehp_needs_done || game.program_state?.gameover) {
             await finish_losehp_done();
         }

@@ -4,7 +4,7 @@
 //         nasty / pick_nasty (pick_nasty lives in makemon.js for newcham).
 
 import { game } from './gstate.js';
-import { makemon, makemon_appear_msg, set_malign, pick_nasty, mpickobj } from './makemon.js';
+import { makemon, makemon_appear_msg, set_malign, pick_nasty, mpickobj, unmakemon } from './makemon.js';
 import {
     mons, is_covetous, is_minion, M3_WANTSAMUL, M3_WANTSBELL, M3_WANTSBOOK,
     M3_WANTSCAND, M3_WANTSARTI,
@@ -150,9 +150,8 @@ export async function nasty(summoner) {
                                 && attacktype(mtmp.data, AT_MAGC))
                             || (s_cls === 'S_DEMON' && m_cls === 'S_ANGEL')
                             || (s_cls === 'S_ANGEL' && m_cls === 'S_DEMON')) {
-                            // Named omission: unmakemon — mark dead for census
-                            mtmp.mhp = 0;
-                            mtmp = null;
+                            // C wizard.c:677 — rejected substitute is unmade
+                            mtmp = await unmakemon(mtmp, NO_MM_FLAGS);
                         }
                     }
                 }

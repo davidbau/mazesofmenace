@@ -94,7 +94,7 @@ import {
     resists_ston,
     M3_CLOSE, M3_WAITFORU, M3_WAITMASK, M3_COVETOUS,
 } from './monsters.js';
-import { big_to_little, set_mon_data, name_to_mon, name_to_monclass } from './mondata.js';
+import { big_to_little, set_mon_data, name_to_mon, name_to_monclass, monsndx } from './mondata.js';
 import {
     NO_MINVENT, NO_MM_FLAGS, MM_NOGRP, MM_ASLEEP, MM_NONAME, MM_ESHK, MM_EGD,
     MM_EMIN, MM_EPRI, MM_EDOG, MM_ANGRY, MM_ADJACENTOK, MM_NOTAIL, MM_NOWAIT,
@@ -179,7 +179,7 @@ import {
     worm_mon_at, wormgone,
 } from './worm.js';
 import { deliver_obj_to_mon } from './dokick.js';
-import { can_be_hatched, m_at, seemimic, hideunder, onscary, monnear } from './mon.js';
+import { can_be_hatched, m_at, seemimic, hideunder, onscary, monnear, discard_minvent, mongone } from './mon.js';
 /* C mon.c newcham arms — all SAFE per imports.mjs (hoisted declarations). */
 import { expels, unstuck, digests } from './mhitu.js';
 import { mselftouch } from './trap.js';
@@ -3644,6 +3644,39 @@ export function makemon(mdat, x, y, mmflags = 0) {
     }
 
     return mtmp;
+}
+
+/**
+ * C ref: makemon.c unmakemon `:1514–1539` — undo a makemon: untally the
+ * birth, un-extinct a unique, then discard_minvent(TRUE) + mongone.
+ * Sole C caller: wizard.c:677 `nasty` (geno-substitute rejected).
+ * Async only because JS `mongone` awaits (unstuck, mdrop_special_objs).
+ * @returns {null} C returns (struct monst *) 0.
+ */
+export async function unmakemon(mon, mmflags = 0) {
+    const countbirth = ((mmflags | 0) & MM_NOCOUNTBIRTH) === 0; /* C :1519 */
+    const mndx = monsndx(mon.data); /* C :1520 */
+    /* C svm.mvitals[] is always present; JS entries are on-demand. */
+    const g = game;
+    if (!g.mvitals) g.mvitals = [];
+    if (!g.mvitals[mndx]) g.mvitals[mndx] = { mvflags: 0, born: 0, died: 0 };
+    const mv = g.mvitals[mndx];
+
+    /* C :1525–1528 — born at the 255 cap stays (threshold already hit). */
+    if (countbirth && (mv.born | 0) > 0 && (mv.born | 0) < 255) {
+        mv.born = (mv.born | 0) - 1;
+    }
+    /* C :1529–1530 */
+    if ((((mon.data.geno | 0)) & G_UNIQ) !== 0) {
+        mv.mvflags = (mv.mvflags | 0) & ~G_EXTINCT;
+    }
+
+    mon.mhp = 0; /* C :1532 — mon isn't being kept */
+    /* C :1536 — unlike mongone, no Amulet-style protection; caller handles. */
+    discard_minvent(mon, true);
+
+    await mongone(mon); /* C :1538 */
+    return null; /* C :1539 */
 }
 
 /**

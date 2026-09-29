@@ -88,7 +88,7 @@ import { set_tin_variety, eating_glob } from './eat.js';
 import { set_moreluck } from './attrib.js';
 import { recalc_block_point, cansee } from './vision.js';
 import { del_light_source, discard_flashes, obj_sheds_light, obj_adjust_light_radius } from './light.js';
-import { arti_light_radius, get_obj_location, obj_split_light_source, Is_candle, obj_merge_light_sources, kind_name } from './timeout.js';
+import { arti_light_radius, get_obj_location, obj_split_light_source, Is_candle, obj_merge_light_sources, kind_name, cleanup_burn } from './timeout.js';
 import { obfree, splitbill, same_price, globby_bill_fixup, costly_spot, costly_adjacent, find_objowner, costly_alteration, oid_price_adjustment } from './shk.js';
 /* C lock.c maybe_reset_pick — hoisted fn, called only from
    add_to_migration (`imports.mjs --can mkobj.js lock.js` SAFE). */
@@ -1332,7 +1332,9 @@ export function obj_stop_timers(obj) {
         if (curr.kind === TIMER_OBJECT && curr.obj === obj) {
             if (prev) prev.next = next;
             else g._timer_base = next;
-            // cleanup_burn deferred
+            /* C `:2389–2390` — timeout_funcs[func_index].cleanup(&curr->arg,
+               timeout); only BURN_OBJECT has one (cleanup_burn). */
+            if (timeout_func_index(curr.action) === BURN_OBJECT) cleanup_burn(curr.obj, curr.timeout);
         } else {
             prev = curr;
         }
@@ -1407,13 +1409,11 @@ export function stop_timer(action, obj) {
         const expire = doomed.timeout | 0;
         if ((doomed.kind | 0) === TIMER_OBJECT) {
             obj.timed = Math.max(0, (obj.timed | 0) - 1);
-            // C: timeout_funcs[BURN_OBJECT].cleanup = cleanup_burn
-            if (action === BURN_OBJECT && obj.lamplit) {
-                del_light_source(LS_OBJECT, obj);
-                obj.age = (obj.age | 0) + (expire - moves);
-                obj.lamplit = 0;
-            }
         }
+        /* C `:2311–2312` — timeout_funcs[doomed->func_index].cleanup;
+           only BURN_OBJECT has one (cleanup_burn, `:1984`). C passes the
+           caller's arg; remove_timer matched its a_void to obj. */
+        if (timeout_func_index(doomed.action) === BURN_OBJECT) cleanup_burn(obj, expire);
         return expire - moves;
     }
     return 0;
@@ -1449,7 +1449,7 @@ export function obj_has_timer(obj, action) {
  * defined (`:1963`), so a duplicate timer names the function, not
  * "kind (index)". Order is enum timeout_types.
  */
-const TIMEOUT_FUNC_NAMES = [
+export const TIMEOUT_FUNC_NAMES = [
     'rot_organic',
     'rot_corpse',
     'revive_mon',
@@ -1643,6 +1643,10 @@ export function spot_stop_timers(x, y, action) {
             && (curr.a_long | 0) === where) {
             if (prev) prev.next = next;
             else g._timer_base = next;
+            /* C `:2430–2431` — cleanup dispatch, dead in practice: only
+               BURN_OBJECT has a cleanup and level timers are MELT_ICE_AWAY;
+               start_timer callers never pair BURN_OBJECT with TIMER_LEVEL. */
+            if (timeout_func_index(curr.action) === BURN_OBJECT) cleanup_burn(curr.obj, curr.timeout);
         } else {
             prev = curr;
         }

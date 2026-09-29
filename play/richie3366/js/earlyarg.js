@@ -47,10 +47,10 @@ export async function scores_only(argc, argv, dir) {
     /* C `:417–422` — SYSCF gate (config.h:233 live): wrap initoptions()
        in iflags.initoptions_noterminate (sysconf options affect whether
        panictrace is enabled). Named omit of the call: initoptions() is
-       live (js/options.js) but its initoptions_init half is unported and
-       JS options resolve in-process at startup (VFS/storage) — calling
-       it here would run the finish half (rcfile re-read) without the
-       init half; the signal-trace enablement it gates is omitted below. */
+       live (js/options.js) but startup-unwired (JS options resolve
+       in-process at startup (VFS/storage)) — calling it here would
+       re-run the config passes outside the boot order; the signal-trace
+       enablement it gates is omitted below. */
     /* C `:423–427` — PANICTRACE ARGV0 save + panictrace_setsignals(TRUE)
        (live via CRASHREPORT on linux, config.h:244–276). Platform omit:
        no signal/stack-trace setup in scored JS. */

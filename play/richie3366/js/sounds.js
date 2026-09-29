@@ -312,6 +312,27 @@ export function add_sound_mapping(mapping) {
 }
 
 /**
+ * C ref: sounds.c release_sound_mappings `:1675–1690` in C order (live
+ * export of the USER_SOUNDS source-level body — see the note above; sole
+ * C caller freedynamicdata, save.c `:1161` under FREE_ALL_MEMORY, has no
+ * JS counterpart and is not wired — map-named save-freeing precedent).
+ * C `free` ≡ unlink (GC collects); `sounddir = 0` is null.
+ */
+export function release_sound_mappings() {
+    // C `:1678` — nextsound pre-NULL.
+    let nextsound = null;
+    // C `:1680–1686` — while (soundmap).
+    while (soundmap) {
+        nextsound = soundmap.next; // C `:1681`
+        regex_free(soundmap.regex); // C `:1682` — live options.js export.
+        // C `:1683–1684` — the filename/struct frees are GC no-ops.
+        soundmap = nextsound; // C `:1685`
+    }
+    // C `:1688–1689` — free + sounddir = 0 under the if.
+    if (sounddir) sounddir = null;
+}
+
+/**
  * C ref: sounds.c base_soundname_to_filename `:2084–2152` in C order.
  * Unconditionally compiled (outside the `:1539–1691` USER_SOUNDS and
  * `:1959–2081` SND_SOUNDEFFECTS_AUTOMAP guards); only C callers are the

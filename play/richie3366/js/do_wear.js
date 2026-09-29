@@ -12,7 +12,7 @@ import {
     hero_Invisible, hero_Blind_telepat, hero_Unblind_telepat, Detect_monsters,
 } from './display.js';
 import { yn_function, paranoid_ynq } from './getline.js';
-import { an, doname, the, xname, xprname, ansimpleoname, vtense, makeplural, makesingular, otense, gloves_simple_name, simpleonames, body_part_latebound, Tobjnam, Yname2, corpse_xname, killer_xname, arti_light_description, set_doffing_predicates, safe_typename } from './objnam.js';
+import { an, doname, the, xname, xprname, ansimpleoname, vtense, makeplural, makesingular, otense, gloves_simple_name, simpleonames, body_part_latebound, Tobjnam, Yname2, corpse_xname, killer_xname, arti_light_description, set_doffing_predicates, set_armor_simple_name, safe_typename } from './objnam.js';
 import { find_ac } from './u_init.js';
 import {
     A_STR, A_INT, A_WIS, A_CON, A_CHA, A_DEX, acurr, extremeattr, change_luck, Fast, Very_fast,
@@ -1776,8 +1776,9 @@ export function helm_simple_name(helmet) {
 /**
  * C ref: objnam.c boots_simple_name `:5550–5566` — dknown "shoes"
  * (descr match, else actual match once the type is known), else boots.
+ * Exported for zap.c item_what W_ARMF.
  */
-function boots_simple_name(boots) {
+export function boots_simple_name(boots) {
     if (boots && boots.dknown) {
         const otyp = boots.otyp | 0;
         const ocl = game.objects?.[otyp];
@@ -1805,12 +1806,25 @@ export function shield_simple_name(shield) {
 }
 
 /**
+ * C ref: objnam.c shirt_simple_name `:5599–5603` — always "shirt"
+ * (C param is UNUSED). Lives with the sibling *_simple_name family
+ * in this module; C home is objnam.c.
+ */
+export function shirt_simple_name(shirt) {
+    void shirt;
+    return 'shirt';
+}
+
+/**
  * C ref: objnam.c armor_simple_name `:5434–5468` — per-category simple
  * noun for the itemactions "already wearing …" row. Suit reuses
  * suit_simple_name (incl. dragon mail/scales); gloves reuse
  * the canonical objnam.js gloves_simple_name; helm keys off
- * hard_helmet like C (`:5512–5528`); shirt is C `:5599–5603`.
- * Default is simpleonames + impossible, as in C.
+ * hard_helmet like C (`:5512–5528`); shirt calls shirt_simple_name
+ * (C `:5599–5603`, always "shirt"). armcat reads oc_skill, which is
+ * oc_armcat under this port's object-table convention (is_shirt).
+ * Default is simpleonames + impossible, as in C (sync, so the
+ * async impossible is fire-and-forget like other sync callers).
  */
 export function armor_simple_name(armor) {
     switch (armcat(armor)) {
@@ -1827,7 +1841,7 @@ export function armor_simple_name(armor) {
     case ARM_SHIELD:
         return shield_simple_name(armor);
     case ARM_SHIRT:
-        return 'shirt';
+        return shirt_simple_name(armor); /* C `:5460` */
     default:
         break;
     }
@@ -1850,7 +1864,7 @@ function armor_doff_simple_name(otmp) {
         case ARM_GLOVES: return gloves_simple_name(otmp);
         case ARM_BOOTS: return boots_simple_name(otmp);
         case ARM_CLOAK: return cloak_simple_name(otmp);
-        case ARM_SHIRT: return 'shirt';
+        case ARM_SHIRT: return shirt_simple_name(otmp); /* C do_wear.c:1959 */
         default: return 'armor';
     }
 }
@@ -3946,6 +3960,8 @@ export function donning(otmp) {
 // Late-bound into objnam.js doname_base ARMOR arm (top-level runs after the
 // objnam import above is complete, so the assignment never hits a TDZ).
 set_doffing_predicates(doffing, donning);
+// Late-bound into objnam.js xname_flags ARMOR `un` arm (C objnam.c:741).
+set_armor_simple_name(armor_simple_name);
 
 /**
  * C ref: do_wear.c stop_donning — interrupt multi-turn armor don/doff.
@@ -4072,7 +4088,7 @@ export async function disintegrate_arm(atmp) {
     } else if (!resistedc.v && !resistedsuit.v
         && (otmp = maybe_destroy_armor(u.uarmu, atmp, resisted))) {
         await urgent_pline(
-            'Your shirt crumbles into tiny threads and falls apart!',
+            `Your ${shirt_simple_name(otmp)} crumbles into tiny threads and falls apart!`,
         );
     } else if ((otmp = maybe_destroy_armor(u.uarmh, atmp, resisted))) {
         await urgent_pline(

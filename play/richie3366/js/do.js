@@ -1334,7 +1334,8 @@ function Is_valley(lev) {
     return on_level(lev, game.valley_level);
 }
 
-function assign_level(dest, src) {
+/** C ref: dungeon.c assign_level — struct copy of dnum/dlevel. */
+export function assign_level(dest, src) {
     dest.dnum = src.dnum | 0;
     dest.dlevel = src.dlevel | 0;
 }

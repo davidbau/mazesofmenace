@@ -14,6 +14,7 @@ import {
     mdlib_version_string,
     version_id_string,
     __setPopulateNomakedefs,
+    __setFreeNomakedefs,
 } from './version.js';
 import { SFCTOOL_BIT } from './const.js';
 import { NUMMONS } from './generated/monsters_data.js';
@@ -63,8 +64,8 @@ function bannerc_string(build_date) {
 }
 
 // C ref: date.c nomakedefs_populated `:23` — file-static in C,
-// module-local here. Guards free_nomakedefs (date.c remainder, named
-// omission — no JS reader yet).
+// module-local here. Set by populate_nomakedefs (`:129`), tested and
+// cleared by free_nomakedefs (`:139` / `:171`).
 let nomakedefs_populated = 0;
 
 // C ref: mdlib.c make_version `:248–296` interim. The wired caller
@@ -185,3 +186,40 @@ export function populate_nomakedefs(version) {
 // this module registers the C-order call. The hook forwards an explicit
 // version when make_version lands; until then the interim above applies.
 __setPopulateNomakedefs((version) => populate_nomakedefs(version ?? interimVersionInfo()));
+
+/**
+ * C ref: date.c free_nomakedefs `:134–173` — whole body in C order with
+ * per-arm `:line` cites. C `free()`s each strdup'd string populate wrote
+ * and NULLs the field; JS nulls the same `game.nomakedefs` fields (GC
+ * owns the memory — no clone). The numeric fields (version_number,
+ * version_features, ignored_features, version_sanity1, build_time) are
+ * untouched: C never clears them. The NETHACK_GIT_SHA/BRANCH/PREFIX
+ * arms are compiled out in the contest build (same as
+ * populate_nomakedefs `:119–127`). Sole C caller: mdlib.c:871
+ * release_runtime_info (wired via the hook below).
+ */
+export function free_nomakedefs() {
+    // `:136–140` — the statics are compile-time strings until populate
+    // runs, so an unpopulated struct has nothing dynamic to free.
+    if (!nomakedefs_populated) // `:139`
+        return; // `:140`
+    const nm = game.nomakedefs ?? {};
+    if (nm.build_date) // `:142`
+        nm.build_date = null; // `:143–144` free + NULL
+    if (nm.version_string) // `:145`
+        nm.version_string = null; // `:146–147` free + NULL
+    if (nm.version_id) // `:148`
+        nm.version_id = null; // `:149–150` free + NULL
+    if (nm.copyright_banner_c) // `:151`
+        nm.copyright_banner_c = null; // `:152–153` free + NULL
+    // `:154–168` NETHACK_GIT_SHA (`:154–158`), NETHACK_GIT_BRANCH
+    // (`:159–163`), NETHACK_GIT_PREFIX (`:164–168`) — all compiled out.
+    game.nomakedefs = nm;
+    // `:170` values are Null now; dynamic vs static no longer matters.
+    nomakedefs_populated = 0; // `:171`
+}
+
+// C ref: mdlib.c release_runtime_info `:871` free_nomakedefs(). Same
+// hook pattern as populate above: version.js calls the hook in C order,
+// so graphs that never import js/date.js keep the pre-port omission.
+__setFreeNomakedefs(free_nomakedefs);

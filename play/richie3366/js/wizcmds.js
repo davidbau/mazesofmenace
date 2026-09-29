@@ -60,78 +60,10 @@ import { size_wseg } from './worm.js';
    (`imports.mjs --can wizcmds.js glyphs.js` IN-SCC, function declaration,
    called only at runtime — no top-level read). */
 import { ensure_glyphmap } from './glyphs.js';
-
-/** C timeout.c propertynames[] — wizard #wizintrinsic menu order. */
-const PROPERTYNAMES = [
-    [INVULNERABLE, 'invulnerable'],
-    [STONED, 'petrifying'],
-    [SLIMED, 'becoming slime'],
-    [STRANGLED, 'strangling'],
-    [SICK, 'fatally sick'],
-    [STUNNED, 'stunned'],
-    [CONFUSION, 'confused'],
-    [HALLUC, 'hallucinating'],
-    [BLINDED, 'blinded'],
-    [DEAF, 'deafness'],
-    [VOMITING, 'vomiting'],
-    [GLIB, 'slippery fingers'],
-    [WOUNDED_LEGS, 'wounded legs'],
-    [SLEEPY, 'sleepy'],
-    [TELEPORT, 'teleporting'],
-    [POLYMORPH, 'polymorphing'],
-    [LEVITATION, 'levitating'],
-    [FAST, 'very fast'],
-    [CLAIRVOYANT, 'clairvoyant'],
-    [DETECT_MONSTERS, 'monster detection'],
-    [SEE_INVIS, 'see invisible'],
-    [INVIS, 'invisible'],
-    [ACID_RES, 'acid resistance'],
-    [STONE_RES, 'stoning resistance'],
-    [DISPLACED, 'displaced'],
-    [PASSES_WALLS, 'pass thru walls'],
-    [MAGICAL_BREATHING, 'magical breathing'],
-    [WWALKING, 'water walking'],
-    [FIRE_RES, 'fire resistance'],
-    [COLD_RES, 'cold resistance'],
-    [SLEEP_RES, 'sleep resistance'],
-    [DISINT_RES, 'disintegration resistance'],
-    [SHOCK_RES, 'shock resistance'],
-    [POISON_RES, 'poison resistance'],
-    [DRAIN_RES, 'drain resistance'],
-    [SICK_RES, 'sickness resistance'],
-    [ANTIMAGIC, 'magic resistance'],
-    [HALLUC_RES, 'hallucination resistance'],
-    [BLND_RES, 'light-induced blindness resistance'],
-    [FUMBLING, 'fumbling'],
-    [HUNGER, 'voracious hunger'],
-    [TELEPAT, 'telepathic'],
-    [WARNING, 'warning'],
-    [WARN_OF_MON, 'warn: monster type or class'],
-    [WARN_UNDEAD, 'warn: undead'],
-    [SEARCHING, 'searching'],
-    [INFRAVISION, 'infravision'],
-    [ADORNED, 'adorned (+/- Cha)'],
-    [STEALTH, 'stealthy'],
-    [AGGRAVATE_MONSTER, 'monster aggravation'],
-    [CONFLICT, 'conflict'],
-    [JUMPING, 'jumping'],
-    [TELEPORT_CONTROL, 'teleport control'],
-    [FLYING, 'flying'],
-    [SWIMMING, 'swimming'],
-    [SLOW_DIGESTION, 'slow digestion'],
-    [HALF_SPDAM, 'half spell damage'],
-    [HALF_PHDAM, 'half physical damage'],
-    [REGENERATION, 'HP regeneration'],
-    [ENERGY_REGENERATION, 'energy regeneration'],
-    [PROTECTION, 'extra protection'],
-    [PROT_FROM_SHAPE_CHANGERS, 'protection from shape changers'],
-    [POLYMORPH_CONTROL, 'polymorph control'],
-    [UNCHANGING, 'unchanging'],
-    [REFLECTING, 'reflecting'],
-    [FREE_ACTION, 'free action'],
-    [FIXED_ABIL, 'fixed abilities'],
-    [LIFESAVED, 'life will be saved'],
-];
+/* C timeout.c property_by_index — #wizintrinsic menu order + reverse
+   lookup (`imports.mjs --can wizcmds.js timeout.js` IN-SCC, called only
+   at runtime — no top-level read). */
+import { property_by_index } from './timeout.js';
 
 const DEFAULT_TIMEOUT_INCR = 30;
 
@@ -235,7 +167,13 @@ export async function wiz_intrinsic() {
             selectable: false,
         });
     }
-    for (const [p, name] of PROPERTYNAMES) {
+    /* C wizcmds.c:973 — `property_by_index(i, &p) != 0`; HALLUC_RES keeps
+       its table index (continue skips the row, not the count). */
+    const pbOut = { p: 0 };
+    for (let i = 0; ; i++) {
+        const name = property_by_index(i, pbOut);
+        if (name == null) break;
+        const p = pbOut.p;
         if (p === HALLUC_RES) continue;
         if (p === FIRE_RES) {
             raw.push({ text: '--', selectable: false });
@@ -244,13 +182,14 @@ export async function wiz_intrinsic() {
         const text = oldtimeout
             ? `${name.padEnd(27)} [${oldtimeout}]`
             : name;
-        raw.push({ text, selectable: true, prop: p, propname: name });
+        raw.push({ text, selectable: true, idx: i });
     }
 
     const selected = await select_menu_pick_any(raw);
     for (const it of selected) {
-        const p = it.prop;
-        const propname = it.propname;
+        /* C wizcmds.c:1001–1002 — reverse the menu id to the table index. */
+        const propname = property_by_index(it.idx | 0, pbOut);
+        const p = pbOut.p;
         const oldtimeout = prop_old_timeout(p);
         // C wizcmds.c:1004–1008 — menu count prefix; count -1 (no count)
         // takes DEFAULT_TIMEOUT_INCR; amt <= 0 is paranoia-skipped.

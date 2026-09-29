@@ -48,7 +48,7 @@
 
 import { game } from './gstate.js';
 import { rn2, rn1, rnd } from './rng.js';
-import { dist2, highc, online2, upstart, depth } from './hacklib.js';
+import { dist2, highc, online2, upstart, depth, strncmpi } from './hacklib.js';
 import { choose_stairs } from './wizard.js';
 import { in_rooms, stop_occupation, You_hear } from './hack.js';
 import {
@@ -87,7 +87,7 @@ import {
     map_invisible, nh_delay_output,
 } from './display.js';
 import { cansee, recalc_block_point } from './vision.js';
-import { mbodypart } from './polyself.js';
+import { mbodypart, poly_gender } from './polyself.js';
 import { objectNames } from './generated/objects_data.js';
 import { mattacku } from './mhitu.js';
 import { PM_GRID_BUG, PM_TOURIST, PM_KNIGHT, PM_ROGUE, PM_ELF } from './generated/monsters_data.js';
@@ -131,7 +131,7 @@ import { addinv } from './u_init.js';
 import { SchroedingersBox } from './pickup.js';
 import { arti_cost } from './artifact.js';
 import { o_unleash } from './apply.js';
-import { setnotworn, dropy } from './do.js';
+import { setnotworn, dropy, assign_level } from './do.js';
 import { findgold, inv_cnt } from './steal.js';
 import { merge_choice } from './files.js';
 import { maybe_reset_pick } from './lock.js';
@@ -224,7 +224,7 @@ function plur(n) {
  * C: muteshk — helpless or msound <= MS_ANIMAL.
  * Generated tables often omit msound; isshk → MS_SELL.
  */
-function muteshk(shkp) {
+export function muteshk(shkp) {
     if (helpless(shkp)) return true;
     let ms = shkp?.data?.msound;
     if (ms == null) ms = shkp?.isshk ? MS_SELL : 0;
@@ -241,14 +241,45 @@ function s_suffix(s) {
     return `${buf}'s`;
 }
 
-/** C ref: shk.c pacify_shk — peaceful + optional surcharge undo (bill deferred). */
+/** C ref: shk.c pacify_shk `:1344–1358` — peaceful + optional surcharge undo. */
 function pacify_shk(shkp, clear_surcharge) {
     if (!shkp) return;
-    shkp.mpeaceful = 1;
+    shkp.mpeaceful = 1; // C `:1346` NOTANGRY
     const eshk = ESHK(shkp);
-    if (clear_surcharge && eshk?.surcharge) {
+    if (clear_surcharge && eshk?.surcharge) { // C `:1347`
         eshk.surcharge = false;
-        // bill price undo deferred (no bill_p walk yet)
+        // C `:1351–1354` — undo the 33% increase on every billed item.
+        const bill = eshk.bill_p || eshk.bill;
+        const ct = eshk.billct | 0;
+        if (bill) {
+            for (let i = 0; i < ct; i++) {
+                const bp = bill[i];
+                if (!bp) continue;
+                const reduction = Math.floor(((bp.price | 0) + 3) / 4);
+                bp.price = (bp.price | 0) - reduction;
+            }
+        }
+    }
+}
+
+/**
+ * C ref: shk.c restshk `:290–305` — restore-time shopkeeper fixup.
+ * Re-alias bill_p to bill unless poisoned (-1000); ghostly (bones)
+ * re-homes shoplevel and pacifies an angry stranger's surcharge.
+ * Caller: lev_json.js deserMon (C restore.c:447 restmonchn).
+ */
+export function restshk(shkp, ghostly) {
+    if (!((game.u?.uz?.dlevel) | 0)) return; // C `:292`
+    const eshkp = ESHK(shkp);
+    if (!eshkp) return;
+    if (eshkp.bill_p !== -1000) eshkp.bill_p = eshkp.bill || []; // C `:295–296`
+    // C `:299–304` — shoplevel can change as dungeons move around.
+    if (ghostly) {
+        if (!eshkp.shoplevel) eshkp.shoplevel = { dnum: 0, dlevel: 0 };
+        assign_level(eshkp.shoplevel, game.u.uz); // C `:303`
+        if (ANGRY(shkp) && strncmpi(eshkp.customer, game.plname, PL_NSIZ)) {
+            pacify_shk(shkp, true);
+        }
     }
 }
 
@@ -436,7 +467,7 @@ async function call_kops(shkp, nearshop) {
 async function rob_shop(shkp) {
     const eshkp = ESHK(shkp);
     if (!eshkp) return false;
-    rouse_shk(shkp, true);
+    await rouse_shk(shkp, true);
     let total = addupbill(shkp) + (eshkp.debit | 0);
     if ((eshkp.credit | 0) >= total) {
         await pline(
@@ -1781,11 +1812,6 @@ function mdistu_mon(mtmp) {
     return distu_xy(mtmp.mx | 0, mtmp.my | 0);
 }
 
-/** C polyself.c poly_gender — 0 male / 1 female / 2 none (neuter omit). */
-function poly_gender_shk() {
-    return game.flags?.female ? 1 : 0;
-}
-
 /**
  * C ref: shk.c clear_no_charge_obj — clear no_charge (+ contents).
  * When shkp is null, clear all; else clear when not in a rival shop.
@@ -1846,23 +1872,31 @@ function clear_no_charge_pets(shkp) {
 }
 
 /**
- * C ref: shk.c cad — insult noun; altusage → "\"Cad!  ".
- * Named omission: impossible unknown gender; mon_nam buffer reuse.
+ * C ref: shk.c cad `:5908–5941` — insult noun; altusage → "\"Cad!  ".
+ * Named omission: mon_nam output-buffer reuse (JS builds the string).
  */
 function cad(altusage) {
-    let res = 'cad';
-    const youData = game.youmonst?.data;
-    if (is_demon(youData)) {
+    let res;
+    switch (is_demon(game.youmonst?.data) ? 3 : poly_gender()) { // C `:5915`
+    case 0:
+        res = 'cad';
+        break;
+    case 1:
+        res = 'minx';
+        break;
+    case 2:
+        res = 'beast';
+        break;
+    case 3:
         res = 'fiend';
-    } else {
-        switch (poly_gender_shk()) {
-        case 0: res = 'cad'; break;
-        case 1: res = 'minx'; break;
-        case 2: res = 'beast'; break;
-        default: res = 'thing'; break;
-        }
+        break;
+    default:
+        impossible('cad: unknown gender'); // C `:5930–5931` (fire-and-forget)
+        res = 'thing';
+        break;
     }
-    if (!altusage) return res;
+    if (!altusage) return res; // C `:5934`
+    // C `:5935–5940`: snag mon_nam buffer, Sprintf "\"%s!  ", highc [1].
     const capped = res.charAt(0).toUpperCase() + res.slice(1);
     return `"${capped}!  `;
 }
@@ -2925,7 +2959,7 @@ export async function sellobj(obj, x, y) {
     if (!isgold && !obj.unpaid && saleitem) ltmp = set_cost(obj, shkp);
     let offer = ltmp + cltmp;
 
-    rouse_shk(shkp, true);
+    await rouse_shk(shkp, true);
     const eshkp = ESHK(shkp);
     if (!eshkp) return;
 
@@ -3728,16 +3762,28 @@ export async function check_unpaid(otmp) {
     await check_unpaid_usage(otmp, false);
 }
 
-/** C shk.c onbill — find bill entry by o_id. */
-function onbill(obj, shkp, _silent) {
-    const eshkp = ESHK(shkp);
-    if (!eshkp || !obj) return null;
-    const bill = eshkp.bill_p || eshkp.bill;
-    if (!bill) return null;
-    const id = obj.o_id | 0;
-    const n = eshkp.billct | 0;
-    for (let i = 0; i < n; i++) {
-        if ((bill[i]?.bo_id | 0) === id) return bill[i];
+/**
+ * C shk.c onbill `:1136–1155` — find bill entry by o_id.
+ * Sync like C; impossible() is fire-and-forget (same_price precedent).
+ */
+function onbill(obj, shkp, silent) {
+    if (shkp) { // C `:1140`
+        const eshkp = ESHK(shkp);
+        const bill = eshkp?.bill_p || eshkp?.bill;
+        if (eshkp && bill) {
+            const id = obj?.o_id | 0;
+            const n = eshkp.billct | 0;
+            for (let i = 0; i < n; i++) {
+                if ((bill[i]?.bo_id | 0) === id) {
+                    if (!obj?.unpaid) impossible('onbill: paid obj on bill?'); // C `:1147–1148`
+                    return bill[i];
+                }
+            }
+        }
+    }
+    if (obj?.unpaid && !silent) { // C `:1152–1154`
+        impossible('onbill: unpaid obj %s?',
+            !shkp ? 'without shopkeeper' : "not on shk's bill");
     }
     return null;
 }
@@ -4899,12 +4945,14 @@ export async function shopper_financial_report() {
 }
 
 /**
- * C ref: shk.c rouse_shk — wake/unfreeze; verbosely pline deferred here
- * (inherits passes FALSE).
+ * C ref: shk.c rouse_shk `:1381–1392` — wake/unfreeze; verbosely pline.
  */
-function rouse_shk(shkp, _verbosely) {
-    if (!helpless(shkp)) return;
-    shkp.msleeping = 0;
+async function rouse_shk(shkp, verbosely) {
+    if (!helpless(shkp)) return; // C `:1384`
+    if (verbosely && canspotmon(shkp)) { // C `:1386–1388`
+        await pline(`${Shknam(shkp)} ${shkp?.msleeping ? 'wakes up' : 'can move again'}.`);
+    }
+    shkp.msleeping = 0; // C `:1389–1391`
     shkp.mfrozen = 0;
     shkp.mcanmove = 1;
 }
@@ -5017,7 +5065,7 @@ async function inherits(shkp, numsk, croaked, silently) {
         }
         taken = uinshop;
         // skip → rouse/home below
-        rouse_shk(shkp, false);
+        await rouse_shk(shkp, false);
         if (!inhishop(shkp)) await home_shk(shkp, false);
         setpaid(shkp);
         if (taken) set_repo_loc(shkp);
@@ -5050,7 +5098,7 @@ async function inherits(shkp, numsk, croaked, silently) {
 
     if (eshkp.following || ANGRY(shkp) || take) {
         if (!(game.invent && game.invent.length)) {
-            rouse_shk(shkp, false);
+            await rouse_shk(shkp, false);
             if (!inhishop(shkp)) await home_shk(shkp, false);
             setpaid(shkp);
             return false;
@@ -5089,7 +5137,7 @@ async function inherits(shkp, numsk, croaked, silently) {
             eshkp.following = 0;
             eshkp.robbed = 0;
         }
-        rouse_shk(shkp, false);
+        await rouse_shk(shkp, false);
         if (!inhishop(shkp)) await home_shk(shkp, false);
     }
     setpaid(shkp);
@@ -6054,7 +6102,7 @@ export async function dopay() {
     // C proceed: wake sleeping shk when someone who owes money offers payment
     let ltmp = eshkp.robbed | 0;
     if (ltmp || (eshkp.billct | 0) || (eshkp.debit | 0)) {
-        rouse_shk(shkp, true);
+        await rouse_shk(shkp, true);
     }
 
     if (helpless(shkp)) {

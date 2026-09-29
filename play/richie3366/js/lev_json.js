@@ -16,7 +16,7 @@ import {
     OBJ_FLOOR, OBJ_MINVENT, OBJ_BURIED, OBJ_CONTAINED,
     TIMER_LEVEL, TIMER_GLOBAL, TIMER_OBJECT, TIMER_MONSTER,
     RANGE_LEVEL, RANGE_GLOBAL,
-    LS_OBJECT, LS_MONSTER, ESHK,
+    LS_OBJECT, LS_MONSTER,
 } from './const.js';
 import { mons } from './monsters.js';
 import { savemon_edog } from './makemon.js';
@@ -29,6 +29,7 @@ import { save_worm } from './worm.js';
 import { save_rooms, save_rooms_from } from './mkroom.js';
 import { light_is_local, write_timer, maybe_write_timer } from './mkobj.js';
 import { write_ls } from './light.js';
+import { restshk } from './shk.js';
 
 /**
  * C ref: save.c savetrapchn / restore.c getlev trap loop `:1149–1163`.
@@ -191,7 +192,7 @@ export function serMon(mtmp) {
     return out;
 }
 
-function deserMon(raw) {
+function deserMon(raw, ghostly = false) {
     const mtmp = { ...raw };
     delete mtmp.minvent;
     delete mtmp.mtrack;
@@ -206,10 +207,9 @@ function deserMon(raw) {
     // C restmonchn `:393` restmon(mtmp) after newmonst — full mextra
     // rebuild in C order (covers the old restmon_edog arm).
     restmon(mtmp);
-    // C restshk: bill_p aliases bill (js/shk.js:361). JSON.stringify
-    // duplicated the array; -1000 sentinel stays.
-    const eshk = ESHK(mtmp);
-    if (eshk && eshk.bill_p !== -1000) eshk.bill_p = eshk.bill || [];
+    // C restore.c:446–447 restmonchn — isshk → restshk (bill_p re-alias;
+    // ghostly re-home + pacify). JSON duplicated bill; -1000 sentinel stays.
+    if (mtmp.isshk) restshk(mtmp, ghostly);
     return mtmp;
 }
 
@@ -764,7 +764,7 @@ export function serLevel(src) {
  * `light_base` (caller installs current; other ledgers stay on the
  * stash — M2).
  * @param {object|null|undefined} blob
- * @param {{ skipRelink?: boolean }} [opts]
+ * @param {{ skipRelink?: boolean, ghostly?: boolean }} [opts]
  * @returns {object}
  */
 export function deserLevel(blob, opts) {
@@ -796,7 +796,7 @@ export function deserLevel(blob, opts) {
     const fmon = [];
     for (const rawM of src.fmon || []) {
         if (!rawM) continue;
-        fmon.push(deserMon(rawM));
+        fmon.push(deserMon(rawM, !!opts?.ghostly));
     }
 
     const info = {

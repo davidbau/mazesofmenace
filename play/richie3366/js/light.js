@@ -7,15 +7,15 @@ import { game } from './gstate.js';
 import {
     COLNO, ROWNO, MAX_RADIUS, LS_NONE, LS_MONSTER, LS_OBJECT, TEMP_LIT,
     OBJ_INVENT, OBJ_FLOOR, OBJ_MINVENT, OBJ_FREE, FM_EVERYWHERE,
-    FM_YOU, FM_FMON, FM_MIGRATE, FM_MYDOGS,
+    FM_YOU, FM_FMON, FM_MIGRATE, FM_MYDOGS, RANGE_LEVEL, ECMD_OK,
 } from './const.js';
 import { circle_ptr, clear_path, vision_recalc } from './vision.js';
 import {
     canseemon, canspotmon, map_invisible, flush_screen, nh_delay_output,
-    impossible,
+    impossible, pline,
 } from './display.js';
 import { dist2 } from './hacklib.js';
-import { place_object, obj_extract_self, fmt_ptr } from './mkobj.js';
+import { place_object, obj_extract_self, fmt_ptr, obj_is_local } from './mkobj.js';
 import { simpleonames, otense, xname } from './objnam.js';
 import { monsterNames } from './monsters.js';
 import { ignitable, artifact_light, end_burn, get_mon_location } from './timeout.js';
@@ -396,6 +396,55 @@ export function light_sources_sanity_check() {
 }
 
 /**
+ * C ref: light.c maybe_write_ls `:571–603` (staticfn) — count (+
+ * optionally write) the light_base entries selected by range. C's only
+ * callers are save_light_sources (`:434` count pass, `:436` write pass);
+ * the C `NHFILE` argument has no JS layer (JSON VFS), so the per-entry
+ * writer is a callback — the maybe_write_timer precedent (mkobj.js).
+ * Locality is the light.c `:373` `mon_is_local` macro (`mx > 0`), NOT
+ * timeout.c mon_is_local (mkobj.js docstring; D-1708); LS_OBJECT uses
+ * live timeout.c obj_is_local. Sync like C; the impossible arms stay
+ * fire-and-forget `void` (write_ls precedent — impossible can reach
+ * --More--). Returns the count (C `:602`).
+ * Named: C callers save_light_sources `:434`/`:436` — the JS save path
+ * (mkobj.js save_light_sources peel + lev_json.js snapshots) predates
+ * with inline equivalents and keeps its silent null-id skip (camera
+ * flashes can sit on light_base at snapshot time; C runs
+ * discard_flashes first in the same function, `:427–432`).
+ * @param {number} range RANGE_GLOBAL or RANGE_LEVEL
+ * @param {(ls: object) => void} [write_it] per-entry writer (C write_ls)
+ * @returns {number} entries selected (C count)
+ */
+export function maybe_write_ls(range, write_it) {
+    let count = 0; // C :573.
+    for (const ls of game.light_base || []) { // C :575.
+        if (!ls || !ls.id) { // C :576 — `!ls->id.a_monst` (`!ls` JS-only).
+            // C :577.
+            void impossible('maybe_write_ls: no id! [range=%d]', range | 0);
+            continue; // C :578.
+        }
+        let is_global = 0; // C :573.
+        const t = ls.type | 0; // C :580.
+        if (t === LS_OBJECT) { // C :581.
+            is_global = obj_is_local(ls.id) ? 0 : 1; // C :582.
+        } else if (t === LS_MONSTER) { // C :584.
+            // C :585 — light.c `:373` macro, not timeout.c mon_is_local.
+            is_global = (((ls.id && ls.id.mx) | 0) > 0) ? 0 : 1;
+        } else { // C :587.
+            is_global = 0; // C :588.
+            // C :589–590.
+            void impossible('maybe_write_ls: bad type (%d) [range=%d]', t, range | 0);
+        }
+        // C :593–597 — `is_global ^ (range == RANGE_LEVEL)`.
+        if (is_global ^ (((range | 0) === RANGE_LEVEL) ? 1 : 0)) {
+            count++; // C :594.
+            if (write_it) write_it(ls); // C :595–596 — C write_ls(nhfp, ls).
+        }
+    }
+    return count; // C :602.
+}
+
+/**
  * C ref: light.c write_ls `:633–702` — serialize one light source for the
  * save file: swap the live id pointer for its numeric o_id/m_id (verified
  * against the object/monster chains), write the struct, put the pointer
@@ -490,6 +539,79 @@ export function write_ls(ls) {
  */
 export function any_light_source() {
     return !!((game.light_base || []).length);
+}
+
+/**
+ * C ref: light.c obj_move_light_source `:706–715` — retarget every
+ * LS_OBJECT entry pointing at src to dest (split/merge), then move the
+ * lamplit bit. Sync. No live C caller (extern.h:1422 only); exported
+ * for the merge/split paths.
+ */
+export function obj_move_light_source(src, dest) {
+    for (const ls of game.light_base || []) { // C :710.
+        // C :711 (`ls &&` JS-only sparse guard).
+        if (ls && (ls.type | 0) === LS_OBJECT && ls.id === src)
+            ls.id = dest; // C :712.
+    }
+    src.lamplit = 0; // C :713.
+    dest.lamplit = 1; // C :714.
+}
+
+/**
+ * C ref: light.c wiz_light_sources putstr body (`:941–969`, winid →
+ * string[]). Type word nests in C `:955–966` order; `mon_is_local` is
+ * the light.c `:373` macro (`mx > 0`), not timeout.c mon_is_local
+ * (mkobj.js docstring; D-1708). C `:945` WIN_ERR arm collapses (no JS
+ * window-allocation failure layer; the wiz gate lives in the async
+ * caller, cmd.c:157 unavailcmd). C `:951` NULL test is length
+ * (any_light_source precedent — JS light_base is an array).
+ * A Null LS_MONSTER id renders `<m>` (C would deref the macro — dead
+ * in practice: new_light_core only nulls LS_OBJECT flashes).
+ */
+export function wiz_light_sources_lines() {
+    const lines = [];
+    const u = game.u || {}; // C :947 — u.ux/u.uy.
+    // C :947 — `Mobile light sources: hero @ (%2d,%2d)`.
+    lines.push(`Mobile light sources: hero @ (${String(u.ux | 0).padStart(2, ' ')},${String(u.uy | 0).padStart(2, ' ')})`);
+    lines.push(''); // C :949.
+    const base = game.light_base || []; // C :951 — gl.light_base.
+    if (base.length) {
+        lines.push('location range flags  type    id'); // C :952.
+        lines.push('-------- ----- ------ ----  -------'); // C :953.
+        for (const ls of base) { // C :954.
+            if (!ls) continue; // JS-only sparse guard.
+            const t = ls.type | 0; // C :957.
+            // C :957–966.
+            const typeWord = t === LS_OBJECT ? 'obj' // C :957–958.
+                : t === LS_MONSTER // C :959.
+                    ? ((ls.id && (ls.id.mx | 0) > 0) ? 'mon' // C :960–961.
+                        : ls.id === game.youmonst ? 'you' // C :962.
+                        : '<m>') // C :964.
+                    : '???'; // C :966.
+            // C :955–956 — `  %2d,%2d   %2d   0x%04x  %s  %s`.
+            lines.push(`  ${String(ls.x | 0).padStart(2, ' ')},${String(ls.y | 0).padStart(2, ' ')}   ${String(ls.range | 0).padStart(2, ' ')}   0x${((ls.flags | 0) >>> 0).toString(16).padStart(4, '0')}  ${typeWord}  ${fmt_ptr(ls.id)}`);
+        }
+    } else {
+        lines.push('<none>'); // C :970.
+    }
+    return lines;
+}
+
+/**
+ * C ref: light.c wiz_light_sources `:935–975` — wizard #lightsources
+ * (cmd.c:1756–1757 `IFBURIED|AUTOCOMPLETE|WIZMODECMD`). NHW_MENU text
+ * window via show_nhw_menu_text (wiz_timeout_queue precedent);
+ * display_nhwindow(FALSE) + destroy collapse into the await; returns
+ * ECMD_OK (C `:945`/`:974`). The wiz gate renders cmd.c:157 unavailcmd.
+ */
+export async function wiz_light_sources() {
+    if (!(game.flags?.debug || game.flags?.wizard)) {
+        await pline("Unavailable command 'lightsources'.");
+        return ECMD_OK;
+    }
+    const { show_nhw_menu_text } = await import('./pager.js');
+    await show_nhw_menu_text(wiz_light_sources_lines());
+    return ECMD_OK;
 }
 
 /**

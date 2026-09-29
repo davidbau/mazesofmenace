@@ -99,7 +99,7 @@ import { yn_function, paranoid_query } from './getline.js';
 import { cmdq_add_ec } from './cmd.js';
 import {
     costly_alteration, costly_spot, add_damage, bill_dummy_object, shop_keeper,
-    check_unpaid_usage, check_unpaid, obfree,
+    check_unpaid_usage, check_unpaid, obfree, find_objowner, muteshk,
 } from './shk.js';
 import { zappable, release_hold, revive } from './zap.js';
 import { explode } from './explode.js';
@@ -4896,11 +4896,19 @@ function trapinfo() {
 }
 
 /**
- * C ref: shk.c use_unpaid_trapobj — bill dummy if unpaid.
- * Named omit: Deaf / find_objowner / SetVoice "You set it, you buy it!".
+ * C ref: shk.c use_unpaid_trapobj `:6101–6114` — verbalize + bill dummy.
+ * Caller: set_trap below (C apply.c:2909).
  */
-async function use_unpaid_trapobj(otmp, _x, _y) {
-    if (otmp?.unpaid) await bill_dummy_object(otmp);
+async function use_unpaid_trapobj(otmp, x, y) {
+    if (!otmp?.unpaid) return; // C `:6104`
+    if (!Deaf_hero()) { // C `:6105`
+        const shkp = find_objowner(otmp, x, y);
+        if (shkp && !muteshk(shkp)) { // C `:6108`
+            SetVoice(shkp, 0, 80, 0);
+            await verbalize('You set it, you buy it!');
+        }
+    }
+    await bill_dummy_object(otmp); // C `:6112`
 }
 
 /**

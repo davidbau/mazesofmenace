@@ -121,7 +121,7 @@ import {
 import {
     is_pool, is_lava, waterbody_name, crawl_destination, SURFACE_AT,
     maybe_half_phys, nomul, unmul, losehp, finish_maybe_wail, stop_occupation,
-    in_rooms, set_uinwater, test_move, fall_asleep, You_hear,
+    in_rooms, set_uinwater, test_move, fall_asleep, You_hear, spot_checks,
 } from './hack.js';
 import { goodpos, mlevel_tele_trap, mtele_trap, tele_trap, level_tele_trap, domagicportal, rloco, random_teleport_level, teleds, safe_teleds, noteleport_level, dotele, unconscious } from './teleport.js';
 import { get_level, on_level, at_dgn_entrance, update_lastseentyp } from './dungeon.js';
@@ -5486,9 +5486,7 @@ async function trapeffect_web(mtmp, trap, trflags) {
  * C ref: trap.c blow_up_landmine `:3172–3219` — shared hero/mon landmine
  * detonation. C order: scatter(4, MAY_DESTROY|MAY_HIT|MAY_FRACTURE|
  * VIS_EFFECTS) first, then del_engr_at/wake_nearto/door/drawbridge/
- * pit/fill_pit/maybe_dunk_boulders/recalc/spot_checks.
- * Named omission: spot_checks(x, y, old_typ) — no JS counterpart anywhere
- * in `js/` (own future row when it lands).
+ * pit/fill_pit/maybe_dunk_boulders/recalc/spot_checks (`:3218` wired below).
  */
 export async function blow_up_landmine(trap) {
     if (!trap) return;
@@ -5538,9 +5536,7 @@ export async function blow_up_landmine(trap) {
     fill_pit(x, y);
     await maybe_dunk_boulders(x, y);
     recalc_block_point(x, y);
-    /* C `:3218` spot_checks(x, y, old_typ) — no JS counterpart; old_typ
-       captured above for that call when it lands. */
-    void old_typ;
+    spot_checks(x, y, old_typ); // C `:3218`
 }
 
 /**

@@ -41,7 +41,7 @@ import { stop_occupation, nomul, is_pool, is_lava, carrying, You_hear, monst_to_
 import { run_timers, start_timer, stop_timer, weight,
     obj_extract_self, delobj, objects_at, attach_egg_hatch_timeout,
     obj_has_timer, rider_revival_time, rot_corpse, set_corpsenm,
-    free_omid, free_omonst, sobj_at,
+    free_omid, free_omonst, sobj_at, TIMEOUT_FUNC_NAMES,
 } from './mkobj.js';
 import { which_armor } from './worn.js';
 import { dismount_steed } from './steed.js';
@@ -1816,6 +1816,28 @@ export function end_burn(obj, timer_attached) {
 }
 
 /**
+ * C ref: timeout.c cleanup_burn `:1828–1844` (staticfn) — burn_object's
+ * timeout_funcs cleanup (`:1984`; every other slot is null): !lamplit
+ * is impossible + return; else del_light_source LS_OBJECT, restore the
+ * unused time (expire − moves) to age, clear lamplit, and
+ * update_inventory for carried objects. Sync while JS impossible() is
+ * async: fire-and-forget (end_burn precedent above).
+ * C call sites: stop_timer `:2311–2312`, obj_stop_timers `:2389–2390`,
+ * spot_stop_timers `:2430–2431` (dead: level timers are MELT_ICE_AWAY).
+ */
+export function cleanup_burn(obj, expire_time) {
+    if (!obj?.lamplit) {
+        void impossible('cleanup_burn: obj %s not lit', obj ? xname(obj) : '(null)');
+        return;
+    }
+    del_light_source(LS_OBJECT, obj_to_any(obj));
+    /* restore unused time */
+    obj.age = (obj.age | 0) + ((expire_time | 0) - (game.moves | 0));
+    obj.lamplit = 0;
+    if ((obj.where | 0) === OBJ_INVENT) update_inventory();
+}
+
+/**
  * C ref: light.c obj_split_light_source `:779–803` — copy the light
  * source(s) attached to src onto dest (splitobj `:500–501`, gated by
  * `obj_sheds_light`). Struct copy per LS_OBJECT match on src; candle
@@ -2500,6 +2522,20 @@ const PROPERTYNAMES = [
 ];
 
 /**
+ * C ref: timeout.c property_by_index `:117–125` — propertynames[idx]
+ * with the IndexOkT clamp: OOB on either side reads the `{ 0, 0 }`
+ * sentinel (`:113`), i.e. prop 0 / null name. JS PROPERTYNAMES omits
+ * the sentinel; the clamp synthesizes it. `propertynum` mirrors C's
+ * `int *` out-param (may be null — C NO_NNARGS). Callers test `!= 0`.
+ */
+export function property_by_index(idx, propertynum) {
+    const i = idx | 0;
+    const e = (i < 0 || i >= PROPERTYNAMES.length) ? undefined : PROPERTYNAMES[i];
+    if (propertynum) propertynum.p = e ? e[0] : 0;
+    return e ? e[1] : null;
+}
+
+/**
  * C ref: timeout.c kind_name `:1994–2011` — TIMER_* label.
  * TIMER_NONE calls impossible("no timer type") then returns "none".
  * start_timer rejects kind <= TIMER_NONE before a node is queued, so
@@ -2525,20 +2561,29 @@ export function kind_name(kind) {
 }
 
 /**
- * C ref: alloc.c fmt_ptr — %p / 0x hex. TIMER_OBJECT uses o_id (C is
- * the heap pointer); TIMER_LEVEL uses packed a_long bit pattern.
+ * C ref: alloc.c fmt_ptr — %p / 0x hex of arg.a_void. JS has no heap
+ * pointers: TIMER_OBJECT renders o_id, TIMER_MONSTER m_id (no monster
+ * timers exist yet — C `:1990`), level/global the packed a_long bits.
  */
 function fmt_timer_arg(curr) {
     if ((curr.kind | 0) === TIMER_OBJECT) {
         const id = curr.obj?.o_id | 0;
         return `0x${id.toString(16)}`;
     }
+    if ((curr.kind | 0) === TIMER_MONSTER) {
+        const id = curr.mon?.m_id | 0;
+        return `0x${id.toString(16)}`;
+    }
     return `0x${((curr.a_long | 0) >>> 0).toString(16)}`;
 }
 
 /**
- * C ref: timeout.c print_queue — empty line or header + one row per
- * timer_element. !VERBOSE_TIMER: "#%d(%s)" func_index + fmt_ptr.
+ * C ref: timeout.c print_queue `:2014–2037` (staticfn) — empty line or
+ * header + one row per timer_element. VERBOSE_TIMER is defined (`:1963`)
+ * so the live arm prints `name(ptr)` (`:2024–2028`); the `#else`
+ * `#%d(%s)` arm is not compiled. `action` is the stored func_index
+ * short (start_timer normalizes at queue time); names are C
+ * timeout_funcs order (`:1978–1990`, shared TIMEOUT_FUNC_NAMES).
  * @param {string[]} lines
  * @param {object | null} base  game._timer_base
  */
@@ -2552,8 +2597,8 @@ function print_queue(lines, base) {
         const timeout = String(curr.timeout | 0).padStart(4, ' ');
         const tid = String(curr.tid | 0).padStart(4, ' ');
         const kind = kind_name(curr.kind).padEnd(6, ' ');
-        const fi = curr.action | 0;
-        lines.push(` ${timeout}   ${tid}  ${kind} #${fi}(${fmt_timer_arg(curr)})`);
+        const name = TIMEOUT_FUNC_NAMES[curr.action | 0];
+        lines.push(` ${timeout}   ${tid}  ${kind} ${name}(${fmt_timer_arg(curr)})`);
     }
 }
 
@@ -2562,7 +2607,7 @@ function print_queue(lines, base) {
  * Envelope: moves; print_queue(gt.timer_base); timed uprops TIMEOUT
  * (COLD_RES+ banner once); uswldtim; uinvault; any_visible_region →
  * visible_region_summary; stasis_until. display_nhwindow is the
- * async caller. Named: VERBOSE_TIMER names; save/rest timer_id;
+ * async caller. Named: save/rest timer_id;
  * fmt_ptr heap vs o_id; light.c wiz_light_sources; timer_sanity_check.
  */
 export function wiz_timeout_queue_lines() {
