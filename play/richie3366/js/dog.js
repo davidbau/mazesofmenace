@@ -23,7 +23,7 @@ import {
     DF_ALL, COLNO, ROWNO, ROOMOFFSET, IS_WALL,
     DISMOUNT_THROWN, DISMOUNT_GENERIC, NO_TRAP_FLAGS,
     ESHK, EPRI, EGD,
-    LS_MONSTER, OBJ_FREE, MAX_NUM_WORMS,
+    LS_MONSTER, OBJ_FREE, MAX_NUM_WORMS, Has_contents,
 } from './const.js';
 import { SCROLL_CLASS, SPBOOK_CLASS } from './objects.js';
 import { is_pool, in_rooms } from './hack.js';
@@ -52,7 +52,7 @@ import {
     impossible,
 } from './display.js';
 import { redraw_worm, count_wsegs, wormgone, get_wormno, initworm } from './worm.js';
-import { set_residency, make_happy_shoppers } from './shk.js';
+import { set_residency, make_happy_shoppers, is_fshk, picked_container } from './shk.js';
 import { Is_qstart } from './quest.js';
 import { builds_up } from './hacklib.js';
 import { hero_conflict } from './mondata.js';
@@ -340,15 +340,17 @@ export async function makedog() {
 }
 
 /**
- * C ref: mondata.c levl_follower — pets / wiz / following-shk / M2_STALK.
- * Named omissions: mon_has_amulet short-circuit for iswiz; is_fshk.
+ * C ref: mondata.c levl_follower `:1211–1226` — steed / pets / wiz /
+ * following shopkeeper / M2_STALK stalkers.
  */
 export function levl_follower(mtmp) {
     if (mtmp === game.u?.usteed) return true;
-    // C: iswiz && mon_has_amulet → FALSE (mon_has_amulet deferred)
-    if (mtmp.mtame || mtmp.iswiz) return true;
-    // C: is_fshk(mtmp) deferred
-    // C: (mflags2 & M2_STALK) && (!mflee || u.uhave.amulet)
+    /* Wizard with Amulet won't bother trying to follow across levels */
+    if (mtmp.iswiz && mon_has_amulet(mtmp)) return false;
+    /* some monsters will follow even while intending to flee from you */
+    if (mtmp.mtame || mtmp.iswiz || is_fshk(mtmp)) return true;
+    /* stalking types follow, but won't when fleeing unless you hold
+       the Amulet */
     return !!((mtmp.data?.mflags2 | 0) & M2_STALK)
         && (!mtmp.mflee || !!(game.u?.uhave?.amulet));
 }
@@ -392,18 +394,26 @@ function keep_mon_accessible(mon) {
 
 /**
  * C ref: dog.c mon_leave `:728–763` — bookkeeping when mtmp leaves the
- * level; shared by keepdogs (follower arm) and migrate_to_level. Returns
- * the worm-segment count the caller stores in wormno for the migration.
- * Long-worm arm verbatim: count_wsegs, truncate to MAX_NUM_WORMS-1
- * (wormno doubles as the count during migration), wormgone, then the
- * head back via place_monster when mx (mtmp can be off-map on a failed
- * migrate to this level). Sync like C (wormgone/place_monster are sync;
- * impossible inside them is fire-and-forget).
- * Named omissions: minvent no_charge / picked_container loop; isshk
- * set_residency (set back by mon_arrive on return).
+ * level; shared by keepdogs (follower arm, `:861`) and migrate_to_level
+ * (`:904`). Returns the worm-segment count the caller stores in wormno
+ * for the migration. In C order: minvent `no_charge` reset (containers
+ * via picked_container first, `:735–740`), isshk residency clear (set
+ * back by mon_arrive on return, `:744–745`), then the long-worm arm
+ * (D-2296): count_wsegs, truncate to MAX_NUM_WORMS-1 (wormno doubles as
+ * the count during migration, `:753–758`), wormgone, then the head back
+ * via place_monster when mx (mtmp can be off-map on a failed migrate to
+ * this level). Sync like C (all callees sync; impossible inside them is
+ * fire-and-forget).
  */
 export function mon_leave(mtmp) {
     let numSegs = 0;
+    /* C `:735–740` — minvent's unpaid flags die with the level stay. */
+    for (let obj = mtmp.minvent; obj; obj = obj.nobj) {
+        if (Has_contents(obj)) picked_container(obj); /* nested non-gold */
+        obj.no_charge = 0;
+    }
+    /* C `:744–745` — clear the shop's resident; mon_arrive sets it back. */
+    if (mtmp.isshk) set_residency(mtmp, true);
     if (mtmp.wormno) {
         const cnt = count_wsegs(mtmp), mx = mtmp.mx | 0, my = mtmp.my | 0;
         numSegs = Math.min(cnt, MAX_NUM_WORMS - 1);
@@ -435,9 +445,9 @@ export function mon_leave(mtmp) {
  * `mtmp2` saved first: both departure arms unlink `mtmp` from `fmon`
  * while the walk is still running (D-1789).
  *
- * `mon_leave` (`:725–763`) is live above (worm-seg count rides in
- * `wormno`; its minvent `no_charge` / `picked_container` loop and shk
- * `set_residency` stay named there).
+ * `mon_leave` (`:725–763`) is live above (minvent `no_charge` /
+ * `picked_container` loop, shk `set_residency`, worm-seg count riding in
+ * `wormno`).
  * Named omissions: `relmon` `mon.c:2561` itself, so the follower arm
  * splices `fmon` inline and never runs `mon_leaving_level`'s
  * take-off-map (`remove_monster` / `seemimic` / `fill_pit` / `newsym`).

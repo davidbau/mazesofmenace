@@ -171,7 +171,7 @@ import { rnd } from './rng.js';
 import { str_end_is, str_start_is, highc, lowc, strstri, strsubst, strNsubst, strkitten, fuzzymatch, trimspaces } from './hacklib.js';
 import { name_to_mon } from './mondata.js';
 import { nhgetch } from './input.js';
-import { flush_screen, pline, You_cant, docrt, bot, check_gold_symbol, clear_committed_status, set_bot_disabled, tty_wait_synch, update_ov_primary_symset, update_ov_rogue_symset, impossible, SYM_OFF_X, reglyph_darkroom, raw_printf, init_ov_primary_symbols, init_ov_rogue_symbols } from './display.js';
+import { flush_screen, pline, You_cant, docrt, bot, check_gold_symbol, clear_committed_status, set_bot_disabled, tty_wait_synch, update_ov_primary_symset, update_ov_rogue_symset, impossible, SYM_OFF_X, reglyph_darkroom, raw_printf, init_ov_primary_symbols, init_ov_rogue_symbols, assign_graphics } from './display.js';
 import { get_feature_notice_ver, get_current_feature_ver } from './version.js';
 import { paint_corner_nhw_menu, dismiss_nhw_menu, collect_menu_gacc, process_menu_search, toggle_menu_curr, menu_digit_is_gacc, reassign, update_inventory, invlet_constant, perm_invent_toggled, select_menu_pick_none, DEF_INV_ORDER } from './invent.js';
 import {
@@ -225,8 +225,9 @@ import {
 import {
     clearrolefilter, setrolefilter, rolefilterstring,
 } from './player_selection.js';
-import { rcfile, read_config_file, config_error_init, config_error_done } from './cfgfiles.js';
+import { rcfile, read_config_file, config_error_init, config_error_done, assure_syscf_file } from './cfgfiles.js';
 import { nh_terminate } from './end.js';
+import { do_deferred_showpaths } from './files.js'; // C initoptions `:7112` (imports.mjs: hoisted fn, lazy reads only)
 
 /** C ref: global.h PL_FSIZ — fruit name buffer. */
 const PL_FSIZ = 32;
@@ -495,7 +496,7 @@ function posix_class_pat(s) {
 
 /** Exported for sounds.js add_sound_mapping (sounds.c `:1590`). */
 export function regex_init() {
-    return { jsre: null, err: 0 };
+    return { jsre: null, err: 0, errdesc: '' };
 }
 
 /** Exported for sounds.js add_sound_mapping (sounds.c `:1596`). */
@@ -504,10 +505,14 @@ export function regex_compile(s, re) {
     try {
         re.jsre = new RegExp(posix_class_pat(s));
         re.err = 0;
+        re.errdesc = '';
         return true;
-    } catch {
+    } catch (e) {
         re.jsre = null;
         re.err = 1;
+        // C posixregex.c `:70` stores the regcomp code for regerror; the
+        // JS engine's SyntaxError text is captured for regex_error_desc.
+        re.errdesc = (e && e.message) || '';
         return false;
     }
 }
@@ -528,7 +533,27 @@ export function regex_free(re) {
     if (re) {
         re.jsre = null;
         re.err = 0;
+        re.errdesc = '';
     }
+}
+
+/**
+ * C ref: sys/share/posixregex.c regex_error_desc `:76–89` in C order —
+ * describe why the last regex_compile/regex_match on `re` failed. `re`
+ * is `{ jsre, err, errdesc }` (regex_init above); the C `errbuf`
+ * out-param collapses to the return (every C caller uses the return
+ * only). C `:84` regerror(3) over the stored code ≡ the SyntaxError
+ * text regex_compile captured (V8 RegExp is the POSIX engine here);
+ * C `:85–86` empty-message fallback kept. Wired at all five C call
+ * sites: test_regex_pattern (same file), msgtype_add (same file),
+ * add_autopickup_exception (same file), coloratt.c
+ * add_menu_coloring_parsed (same file), sounds.c add_sound_mapping
+ * (value computed there; raw_print sink still named).
+ */
+export function regex_error_desc(re) {
+    if (!re) return 'no regexp'; // C `:78–79`
+    if (!re.err) return 'no explanation'; // C `:80–81`
+    return re.errdesc || 'unspecified regexp error'; // C `:83–86`
 }
 
 /**
@@ -557,22 +582,30 @@ async function query_msgtype() {
 }
 
 /**
- * C ref: options.c msgtype_add `:7730–7754` — prepend onto
- * gp.plinemsg_types. Compile fail → FALSE (config_error_add named).
+ * C ref: options.c msgtype_add `:7730–7754` in C order — prepend onto
+ * gp.plinemsg_types. C `:7733` static re_error kept; the compile-fail
+ * arm describes via the live regex_error_desc, frees first (OOM
+ * ordering — the unlinked tmp is GC), then the config_error_add call
+ * (no-op sink, test_regex_pattern precedent).
  */
 export function msgtype_add(typ, pattern) {
+    const re_error = 'MSGTYPE regex error'; // C `:7733`
     const tmp = {
-        msgtype: typ | 0,
-        regex: regex_init(),
-        pattern: String(pattern ?? ''),
-        next: gp.plinemsg_types,
+        msgtype: typ | 0, // C `:7736`
+        regex: regex_init(), // C `:7737`
+        pattern: '',
+        next: null,
     };
-    if (!regex_compile(tmp.pattern, tmp.regex)) {
-        regex_free(tmp.regex);
-        return false;
+    if (!regex_compile(String(pattern ?? ''), tmp.regex)) { // C `:7740`
+        const re_error_desc = regex_error_desc(tmp.regex); // C `:7742`
+        regex_free(tmp.regex); // C `:7745`
+        config_error_add('%s: %s', re_error, re_error_desc); // C `:7747`
+        return false; // C `:7748`
     }
-    gp.plinemsg_types = tmp;
-    return true;
+    tmp.pattern = String(pattern ?? ''); // C `:7750` dupstr
+    tmp.next = gp.plinemsg_types; // C `:7751`
+    gp.plinemsg_types = tmp; // C `:7752`
+    return true; // C `:7753`
 }
 
 /**
@@ -826,36 +859,57 @@ export function set_playmode() {
 }
 
 /**
- * C ref: options.c txt2key — key token in BIND=key:command.
- * Covers single char, <enter>/<space>/<esc>, ^X/C-x, M-x, 3-digit
- * decimal. Named omissions: escapes() \\b/\\7 paths; quoted chars.
+ * C ref: options.c txt2key `:6971–7067` in C order — key token in
+ * BIND=key:command (sole C callers `:5462` menu-cmd keys, `:7645`
+ * bind_key; wired at spcfn_misc_menu_cmd + parsebindings below).
+ * trimspaces/highc are the live hacklib.js imports (space/tab only —
+ * not String.trim; ASCII-upper only), escapes the file-local port.
+ * M(c) ≡ 0x80|c (global.h `:480`; NHSTDC undefined on unix),
+ * C(c) ≡ 0x1f&c (`:487`). No named omissions: the `:7048–7051`
+ * single-quote FIXME is unimplemented in C too.
  */
 export function txt2key(txt) {
-    if (txt == null) return 0;
-    txt = String(txt).trim();
-    if (!txt) return 0;
-    if (txt.length === 1) return txt.charCodeAt(0) & 0xff;
-    const low = txt.toLowerCase();
-    if (low === '<enter>') return 10;
-    if (low === '<space>') return 32;
-    if (low === '<esc>') return 27;
-    // ^X or C-x / C-X
-    if (txt[0] === '^' || ((txt[0] === 'C' || txt[0] === 'c') && txt[1] === '-')) {
-        let rest = txt[0] === '^' ? txt.slice(1) : txt.slice(2);
-        if (rest.startsWith('-')) rest = rest.slice(1);
-        if (!rest) return txt[0] === '^' ? '^'.charCodeAt(0) : 'C'.charCodeAt(0);
-        if (rest === '?') return 0x7f;
-        return (rest.charCodeAt(0) & 0x1f);
+    let makemeta = false; // C `:6974`
+    txt = trimspaces(txt); // C `:6976`
+    if (!txt.length) return 0; // C `:6977–6978` !*txt
+    if (txt.length === 1) return txt.charCodeAt(0) & 0xff; // C `:6981–6982`
+    if (txt === '<enter>') return 10; // C `:6985–6986` strcmp, case-sensitive
+    if (txt === '<space>') return 32; // C `:6987–6988`
+    if (txt === '<esc>') return 27; // C `:6989–6990` \033
+    if (txt[0] === '\\') { // C `:6993`
+        // C `:6996–6997` — clip to QBUFSZ-1 before decoding.
+        const clipped = txt.length >= QBUFSZ ? txt.slice(0, QBUFSZ - 1) : txt;
+        const tbuf = escapes(clipped); // C `:6998` (single-arg, returns decoded)
+        return tbuf.length ? tbuf.charCodeAt(0) & 0xff : 0; // C `:6999` *tbuf
     }
-    // M-x / M-X
-    if ((txt[0] === 'M' || txt[0] === 'm') && (txt[1] === '-' || txt.length > 1)) {
-        let rest = txt.slice(1);
-        if (rest.startsWith('-')) rest = rest.slice(1);
-        if (!rest) return 'M'.charCodeAt(0);
-        if (rest.length === 1) return (0x80 | rest.charCodeAt(0)) & 0xff;
+    if (highc(txt[0]) === 'M') { // C `:7003`
+        if (txt.length === 1) return txt.charCodeAt(0) & 0xff; // C `:7012–7013`
+        txt = txt.slice(1); // C `:7015` past 'M'/'m'
+        if (txt[0] === '-' && txt.length > 1) txt = txt.slice(1); // C `:7016–7017`
+        if (txt.length === 1) return (0x80 | txt.charCodeAt(0)) & 0xff; // C `:7018–7019`
+        makemeta = true; // C `:7020` — pending through ^/C- processing
     }
-    if (/^\d{3}$/.test(txt)) return parseInt(txt, 10) & 0xff;
-    return 0;
+    if (txt[0] === '^' || highc(txt[0]) === 'C') { // C `:7022`
+        let uc = txt.charCodeAt(0) & 0xff; // C `:7030`
+        if (txt.length === 1) return makemeta ? (0x80 | uc) & 0xff : uc; // C `:7031–7032`
+        txt = txt.slice(1); // C `:7033`
+        if (txt[0] === '-' && txt.length > 1) txt = txt.slice(1); // C `:7037–7038`
+        if (txt[0] === '?') return makemeta ? 0xff : 0x7f; // C `:7040–7041` \377/\177
+        uc = txt.charCodeAt(0) & 0x1f; // C `:7042` C()
+        return makemeta ? (0x80 | uc) & 0xff : uc; // C `:7043`
+    }
+    if (makemeta && txt.length) return (0x80 | txt.charCodeAt(0)) & 0xff; // C `:7045–7046`
+    // C `:7048–7051` FIXME — single-quote forms: unimplemented in C; fall through.
+    if (txt[0] >= '0' && txt[0] <= '9') { // C `:7054`
+        let key = 0; // C `:7055` uchar
+        for (let i = 0; i < 3; i++) { // C `:7058`
+            const ch = i < txt.length ? txt[i] : '\0'; // C `:7059` NUL past end
+            if (ch < '0' || ch > '9') return 0; // C `:7059–7060`
+            key = (10 * key + (ch.charCodeAt(0) - 48)) & 0xff; // C `:7061` uchar wrap
+        }
+        return key; // C `:7063` (no txt[3] check — "1234" → 123)
+    }
+    return 0; // C `:7066`
 }
 
 /**
@@ -1302,7 +1356,7 @@ function spcfn_misc_menu_cmd(midx, req, negated, opts, op) {
             bad_negation(default_menu_cmd_info[midx].name, false); // C `:5459–5460`
             return OPTN_ERR; // C `:5461`
         } else if ((op = string_for_opt(opts, false)) !== EMPTY_OPTSTR) { // C `:5462`
-            const c = txt2key(op); // C `:5463`
+            const c = txt2key(op); // C `:5462`
 
             if (illegal_menu_cmd_key(c)) // C `:5465`
                 return OPTN_ERR; // C `:5466`
@@ -2990,6 +3044,64 @@ function doset_compopt_get_val(optfn, name) {
 }
 
 /**
+ * C options.c optfn_roguesymset `:3545–3586` (staticfn; NHOPT_PARSE wires
+ * &optfn_roguesymset into the roguesymset allopt row, optlist.h `:626`).
+ * do_set stores the name (flat + gs ROGUESET slot mirror, optfn_symset
+ * `:3068–3071` precedent); the `:3558–3563` read_sym_file failure arm
+ * (clear_symsetentry + "Unable to load" sink) is named with the sibling's
+ * `:3072–3075`; the rogue-level assign_graphics (`:3565–3566`) is live;
+ * the `:3567–3568` flags are gated like the sibling's `:3076` (no JS
+ * startup consumer); get_val/get_cnf_val stay combined per C (`:3574` —
+ * no ', handler=' tail, symset-only `:4211–4214`); do_handler (`:3582`)
+ * is named (handler_symset → do_symset by-design, sibling `:3049`).
+ * No do_handler branch here (optfn_perminv_mode precedent).
+ * @param {number} _optidx C optidx (unused: only feeds the named do_handler)
+ * @param {number} req REQ_DO_INIT / REQ_DO_SET / REQ_GET_VAL / REQ_GET_CNF_VAL
+ * @param {boolean} _negated C UNUSED — even "!roguesymset:foo" stores
+ * @param {{buf:string}|string} opts get_val holder / do_set option string (read-only)
+ * @param {string} op value tail (EMPTY_OPTSTR when valueless)
+ * @param {object|null} [store] name home (rc result at parse; game in game)
+ * @param {boolean} [optInitial] C go.opt_initial — skip redraw flags at init
+ */
+export function optfn_roguesymset(_optidx, req, _negated, opts, op, store, optInitial) {
+    const st = store || game;
+    if (req === REQ_DO_INIT) { // C `:3549–3551`
+        return OPTN_OK;
+    }
+    if (req === REQ_DO_SET) { // C `:3552`
+        if (op !== EMPTY_OPTSTR) { // C `:3553`
+            // C `:3554–3557` free old name + dupstr(op) (GC: overwrite).
+            st.roguesymset = String(op);
+            const slot = st.gs?.symset?.[ROGUESET]; // C-mirror home (no live .name readers yet)
+            if (slot) slot.name = String(op);
+            /* Named (map): read_sym_file `:3558` (SYMBOLS file IO under
+               Rule #2), clear_symsetentry + "Unable to load" sink
+               `:3559–3563` (optfn_symset `:3072–3075` precedent). */
+            if (!optInitial) { // C `:3567–3568` unconditional; gated: JS startup has no consumer (sibling `:3076` precedent)
+                if (Is_rogue_level(game.u?.uz)) assign_graphics(ROGUESET); // C `:3565–3566`
+                mark_opt_need_redraw(); // C `:3567`
+                mark_opt_need_glyph_reset(); // C `:3567`
+                if (!game.go) game.go = {};
+                game.go.opt_symset_changed = true; // C `:3568`
+            }
+        } else {
+            return OPTN_ERR; // C `:3570–3571`
+        }
+        return OPTN_OK; // C `:3572`
+    }
+    if (req === REQ_GET_VAL || req === REQ_GET_CNF_VAL) { // C `:3574` combined
+        const gsname = st.gs?.symset?.[ROGUESET]?.name || null;
+        const nm = gsname || st.roguesymset || game._parsed_rc?.roguesymset || game.flags?.roguesymset;
+        let s = nm ? String(nm) : 'default'; // C `:3575–3577`
+        // C `:3578–3579` tests the gs home; the union matches C once homes unify (mirror is write-only today).
+        if ((game.currentgraphics | 0) === ROGUESET && (gsname || st.roguesymset)) s += ', active';
+        set_optbuf(opts, s);
+        return OPTN_OK; // C `:3580`
+    }
+    return OPTN_OK; // C `:3585`
+}
+
+/**
  * C options.c optfn_symset `:4166–4236` (staticfn; NHOPT_PARSE wires
  * &optfn_symset into the symset allopt row, optlist.h `:743`).
  * do_handler (`:4223–4233`) is handler_symset (`:6320–6328`) around the
@@ -4516,18 +4628,24 @@ export function free_menu_coloring() {
 }
 
 /**
- * C ref: coloratt.c add_menu_coloring_parsed `:585–613` — validated
- * callers only (test_regex_pattern ran first); recompile can still fail,
- * then FALSE. config_error_add paths named (msgtype_add precedent).
- * C `:595` guards NULL only: an empty pattern compiles (match-everything),
- * reachable from add_menu_coloring's `MENUCOLOR==color` / `""` arms.
+ * C ref: coloratt.c add_menu_coloring_parsed `:585–613` in C order —
+ * validated callers only (test_regex_pattern ran first); recompile can
+ * still fail, then FALSE. C `:587` static re_error kept; the fail arm
+ * describes via the live regex_error_desc, frees first (OOM ordering),
+ * then the config_error_add call (no-op sink, msgtype_add precedent).
+ * C `:590` guards NULL only: an empty pattern compiles
+ * (match-everything), reachable from add_menu_coloring's
+ * `MENUCOLOR==color` / `""` arms.
  */
 export function add_menu_coloring_parsed(str, c, a) {
-    if (str === null || str === undefined) return false; // C :595 !str (NULL only)
-    const match = regex_init();
-    if (!regex_compile(String(str), match)) {
-        regex_free(match);
-        return false;
+    const re_error = 'Menucolor regex error'; // C `:587`
+    if (str === null || str === undefined) return false; // C `:590–591` !str (NULL only)
+    const match = regex_init(); // C `:593`
+    if (!regex_compile(String(str), match)) { // C `:596`
+        const re_error_desc = regex_error_desc(match); // C `:598`
+        regex_free(match); // C `:601`
+        config_error_add('%s: %s', re_error, re_error_desc); // C `:603`
+        return false; // C `:604`
     }
     menuColorings = {
         match,
@@ -5291,18 +5409,72 @@ export async function query_color_attr(ca, prompt) {
 }
 
 /**
- * C ref: options.c test_regex_pattern `:7871–7900` — validate only, the
- * compiled regexp is discarded. config_error_add paths named
- * (msgtype_add precedent); regex_error_desc has no JS counterpart.
+ * C ref: options.c test_regex_pattern `:7869–7901` — validate only, the
+ * compiled regexp is discarded. Staticfn → file-local. Both C callers
+ * (:6438 menucolors, :6520 msgtype) already call this site.
+ * regex_error_desc is the live sys/share/posixregex.c port (same file).
  */
 function test_regex_pattern(str, errmsg) {
-    void errmsg;
-    if (!str) return false;
-    const match = regex_init();
-    if (!match) return false;
-    const retval = regex_compile(String(str), match);
-    regex_free(match);
-    return retval;
+    if (str == null) return false; // C `:7878–7879` — NULL only; "" compiles below
+    if (errmsg == null) errmsg = 'NHregex error'; // C `:7880–7881` def_errmsg
+    const match = regex_init(); // C `:7883`
+    if (!match) { // C `:7884–7887` — allocation failure
+        config_error_add('%s', errmsg);
+        return false;
+    }
+    const retval = regex_compile(String(str), match); // C `:7889`
+    // C `:7893` — describe before freeing (message delivery may alloc).
+    const re_error_desc = !retval ? regex_error_desc(match) : null;
+    regex_free(match); // C `:7895` — free before message (OOM ordering)
+    if (!retval) // C `:7897–7898` — failure → sink
+        config_error_add('%s: %s', errmsg, re_error_desc);
+    return retval; // C `:7900`
+}
+
+/**
+ * C ref: options.c change_inv_order `:7465–7510` — parse a packorder
+ * display-char string into flags.inv_order (class indices). Staticfn →
+ * file-local. JS models inv_order as a number array (C: index bytes),
+ * so buf.push is C's strkitten and includes() is strchr. Sole C caller
+ * :2680 (optfn_packorder do_set) has no JS symbol yet — named omission
+ * (the packorder option row carries optfn:null).
+ */
+function change_inv_order(op) {
+    // C `:7472–7474` — prepend COIN_CLASS unless GOLD_SYM ('$') present.
+    const buf = [];
+    if (!op.includes('$')) buf.push(COIN_CLASS);
+    let retval = 1;
+    const inv = game.flags.inv_order; // C flags.inv_order (index bytes)
+    for (let k = 0; k < op.length; k++) { // C `:7476`
+        const ch = op[k];
+        let fail = false; // C `:7477`
+        const oc_sym = def_char_to_objclass(ch); // C `:7478`
+        if (oc_sym === MAXOCLASSES) { // C `:7480–7484` — not a class char
+            config_error_add("Not an object class '%c'", ch);
+            retval = 0;
+            fail = true;
+        } else if (!inv.includes(oc_sym)) { // C `:7484–7490` — VENOM/RANDOM/ILLOBJ never in inv_order
+            config_error_add("Object class '%c' not allowed", ch);
+            retval = 0;
+            fail = true;
+        } else if (op.indexOf(ch, k + 1) !== -1) { // C `:7491–7495` — char dup later in op
+            config_error_add("Duplicate object class '%c'", ch);
+            retval = 0;
+            fail = true;
+        }
+        if (!fail) buf.push(oc_sym); // C `:7497–7498` — retain good ones
+    }
+    // C `:7500` NUL has no array analogue; `:7503–7505` fill omitted
+    // classes in previous order (strkitten ≡ push).
+    for (const c of inv) {
+        if (!buf.includes(c)) buf.push(c);
+    }
+    // C `:7506` — buf[MAXOCLASSES - 1] = '\0' (truncate).
+    if (buf.length > MAXOCLASSES - 1) buf.length = MAXOCLASSES - 1;
+    // C `:7508` — Strcpy(flags.inv_order, buf): same-buffer replace.
+    inv.length = 0;
+    for (const c of buf) inv.push(c);
+    return retval; // C `:7509`
 }
 
 /**
@@ -5391,7 +5563,7 @@ export function add_autopickup_exception(mapping) {
     const APE_syntax_error = 'syntax error in AUTOPICKUP_EXCEPTION';
     let grab = false;
     let text = '';
-    // C `:9318–9328`
+    // C `:9317–9322`
     let r = ape_sscanf_quoted(mapping, '<');
     if (r.n === 1 || (r.n === 2 && r.end === '#')) {
         grab = true;
@@ -5407,26 +5579,26 @@ export function add_autopickup_exception(mapping) {
                 grab = false;
                 text = r2.text;
             } else {
-                config_error_add('%s', APE_syntax_error); // C `:9330`
+                config_error_add('%s', APE_syntax_error); // C `:9325`
                 return 0;
             }
         }
     }
     const ape = {
-        regex: regex_init(), // C `:9334`
+        regex: regex_init(), // C `:9330`
         pattern: '',
         grab,
     };
-    if (!regex_compile(text, ape.regex)) { // C `:9335`
-        regex_free(ape.regex); // C `:9340`
-        // regex_error_desc (posixregex.c) has no JS body.
-        config_error_add('%s: %s', APE_regex_error, 'invalid regular expression'); // C `:9342`
+    if (!regex_compile(text, ape.regex)) { // C `:9331`
+        const re_error_desc = regex_error_desc(ape.regex); // C `:9333`
+        regex_free(ape.regex); // C `:9336`
+        config_error_add('%s: %s', APE_regex_error, re_error_desc); // C `:9338`
         return 0;
     }
-    ape.pattern = text; // C `:9344` dupstr
+    ape.pattern = text; // C `:9341` dupstr
     ape.grab = grab;
     if (!Array.isArray(game.apelist)) game.apelist = [];
-    game.apelist.unshift(ape); // C `:9345–9346` prepend
+    game.apelist.unshift(ape); // C `:9343–9344` prepend
     return 1;
 }
 
@@ -6595,9 +6767,20 @@ export function optfn_sortvanquished(optidx, req, negated, opts, _op, optInitial
  * Lives here, not `js/sounds.js`: that module already imports this file.
  */
 const SOUNDLIB_NOSOUND = 0;
+// C sounds.c nosound_procs `:1726–1739` in struct order (sndprocs.h:43):
+// SOUNDID(nosound) name+id, sound_triggers 0L, all eight hooks NULL.
 const nosound_procs = {
     soundname: 'nosound',
     soundlib_id: SOUNDLIB_NOSOUND,
+    sound_triggers: 0,
+    sound_init_nhsound: null,
+    sound_exit_nhsound: null,
+    sound_achievement: null,
+    sound_soundeffect: null,
+    sound_hero_playnotes: null,
+    sound_play_usersound: null,
+    sound_ambience: null,
+    sound_verbal: null,
 };
 const soundlib_choices = [
     { sndprocs: nosound_procs },
@@ -6621,6 +6804,36 @@ export function assign_soundlib(idx) {
     if (!game.gc) game.gc = {};
     game.gc.chosen_soundlib = // C `:1803–1804` (uint32_t)
         soundlib_choices[i].sndprocs.soundlib_id >>> 0;
+}
+
+/**
+ * C sounds.c activate_chosen_soundlib `:1779–1795`. `chosen_soundlib`
+ * doubles as the index into `soundlib_choices` (same id/index conflation
+ * as C optfn_soundlib `:3848–3849`, where only id 0 exists); a bad index
+ * panics (NORETURN). Exits the outgoing library when either side is
+ * non-nosound, struct-copies the chosen row into the live procs, inits
+ * it, then publishes active_soundlib (= the row id) back into
+ * chosen_soundlib. C `soundprocs` (BSS-zero global, sounds.c:1693) lives
+ * at game.soundprocs (cmd.js end_of_input reads its exit hook); the
+ * contest build compiles only the nosound row, so both hooks stay null
+ * and the call is a state publish.
+ */
+export function activate_chosen_soundlib() {
+    const idx = (game.gc?.chosen_soundlib ?? 0) | 0; // C `:1781` int (BSS 0)
+    if (!soundlibIndexOk(idx)) // C `:1783`
+        throw new Error(`activate_chosen_soundlib: invalid soundlib (${idx})`); // C `:1784`
+    const active = (game.ga?.active_soundlib ?? SOUNDLIB_NOSOUND) | 0; // C `:1786` BSS 0
+    if (active !== SOUNDLIB_NOSOUND || idx !== SOUNDLIB_NOSOUND) { // C `:1786`
+        const exit = game.soundprocs?.sound_exit_nhsound; // C `:1787`
+        if (typeof exit === 'function') exit('assigning a new sound library'); // C `:1788`
+    }
+    game.soundprocs = { ...soundlib_choices[idx].sndprocs }; // C `:1790` struct copy
+    const init = game.soundprocs.sound_init_nhsound; // C `:1791`
+    if (typeof init === 'function') init(); // C `:1792`
+    if (!game.ga) game.ga = {};
+    game.ga.active_soundlib = game.soundprocs.soundlib_id; // C `:1793`
+    if (!game.gc) game.gc = {};
+    game.gc.chosen_soundlib = game.ga.active_soundlib >>> 0; // C `:1794` (uint32_t)
 }
 
 /**
@@ -6859,8 +7072,8 @@ export function freeroleoptvals() {
  * unix+TTY; guards read POSIX TERM/termcap AS/AE with no Rule-#2
  * analogue and bodies drive by-design symsets; use_color stays unset =
  * C's non-AT FALSE); MSDOS/WIN32 `:7246–7252` + MAC `:7253–7257`
- * (compiled out on unix); assure_syscf_file `:7289` (POSIX open + exit;
- * the VFS read_config_file below handles absence).
+ * (compiled out on unix). assure_syscf_file `:7289` is wired
+ * (cfgfiles.js; VFS readability stands in for the POSIX open).
  */
 export function initoptions_init() {
     const have_branch = !!(game.nomakedefs?.git_branch); // C `:7125`
@@ -6935,7 +7148,7 @@ export function initoptions_init() {
     // stands in because init_fruit_chain overwrote objectNameStrs there
     // with "fruit" (D-1511).
     game.pl_fruit = nmcpy('slime mold', PL_FSIZ);
-    /* C `:7289` assure_syscf_file() — named omit, see doc above. */
+    assure_syscf_file(); // C `:7289`
     config_error_init(true, SYSCF_FILE, false); // C `:7290`
     game.go.opt_phase = SYSCF_OPT; // C `:7293`
     if (!read_config_file(SYSCF_FILE, SET_IN_SYSCONF)) { // C `:7294`
@@ -6951,17 +7164,16 @@ export function initoptions_init() {
  * unixmain.c `:150`; restore.c:716 and wintty.c:523 cite it in
  * comments): JS startup resolves options in-process (rcfile +
  * init_fruit_chain run there directly); initoptions_init is live (same
- * file). Named omits: assure_syscf_file (no scored port — POSIX open +
- * exit, Rule #2);
- * do_deferred_showpaths (ATTRNORETURN exit; reveal_paths 117-line
- * MISSING, freedynamicdata/dlb_cleanup/l_nhcore_done by-design).
+ * file). assure_syscf_file `:7093` (cfgfiles.js) and
+ * do_deferred_showpaths `:7112` (files.js; reveal_paths named there)
+ * are wired; no named omits remain in this body.
  */
 export function initoptions() {
     if ((game.go?.opt_phase | 0) !== BUILTIN_OPT) // C `:7087–7088`
         initoptions_init();
     /* C `:7090–7108` SYSCF (config.h:233) + SYSCF_FILE (config.h:234)
        both live on this build. */
-    /* C `:7093` assure_syscf_file() — named omit, see doc above. */
+    assure_syscf_file(); // C `:7093`
     config_error_init(true, SYSCF_FILE, false); // C `:7094`
     if (!game.go) game.go = {};
     game.go.opt_phase = SYSCF_OPT; // C `:7097`
@@ -6970,11 +7182,11 @@ export function initoptions() {
             nh_terminate(EXIT_FAILURE); // C `:7100`
     }
     config_error_done(); // C `:7102`
-    /* C `:7111–7112` deferred --showpaths exit. C-gd fields live flat on
-       game in JS (game.dogname precedent); deferred_showpaths has no JS
-       writer, so this stays false like C's default. */
+    /* C `:7111–7112` deferred --showpaths exit. C-gd fields live on
+       game.gd in JS (decl.js:51; earlyarg.js:343 writes
+       deferred_showpaths for --showpaths). */
     if (game.gd?.deferred_showpaths) { // C `:7111`
-        /* Named omit: do_deferred_showpaths(0) — see doc above. */
+        do_deferred_showpaths(0); // C `:7112` — does not return
     }
     initoptions_finish(); // C `:7114`
 }
@@ -8192,9 +8404,18 @@ function format_doset_opt_line(name, value, indent = '') {
 }
 
 /**
- * C options.c doset_add_menu `:9016–9065`.
- * indexoffset 0 → non-selectable (indent replaces "a - ").
- * Caller supplies get_val text (optfn get_val / empty_optstr).
+ * C options.c doset_add_menu `:9017–9065` (staticfn) — one doset row for a
+ * compound/other option, split across the fold: the `:9036–9044` get_val
+ * dispatch (optfn get_val into buf2, "unknown" unless optn_ok + non-empty)
+ * lives in the callers (doset_compopt_get_val, or a literal like
+ * crash_email's 'unknown' where C's optfn is itself unported); this helper
+ * is the `:9060–9064` tail (indent `"    "` ⟺ a_int 0 ⟺ indexoffset 0,
+ * Sprintf fmt, add_menu SKIPINVERT → row object). The `:9045–9058`
+ * invalid-idx else arm (PREFIXES_IN_USE fqn_prefix loop `:9050–9054`,
+ * "unknown" default `:9055–9057`) follows doset's named PREFIXES omission
+ * — no JS caller passes an invalid row. Callers: `:8875` (Compounds),
+ * `:8892` (Other settings), `:8901` (Variable playground locations —
+ * named omission with the section, doset docblock).
  */
 function doset_add_menu(name, value, indexoffset, extra = {}) {
     const indent = indexoffset === 0 ? '    ' : '';
@@ -8720,12 +8941,43 @@ async function reset_needed_visuals() {
     go.opt_update_basic_palette = false; // C `:9013`
 }
 
+/* C optlist.h `:27` enum menu_terminology_preference + num_terms. */
+const Term_False = 0, Term_Off = 1, Term_Disabled = 2, Term_Excluded = 3,
+    num_terms = 4;
+
+/* C options.c term_for_boolean `:8738–8752` (staticfn) — doset value
+ * column for a boolean row (`:8854`). booleanterms is C's function-static
+ * table (`:8742–8745`); termpref rides the allopt row (optlist.h `:42`;
+ * rows without one read Term_False via `| 0`). Non-False rows on this
+ * build: bgcolors/idlecheckpoint/perm_invent/sounds → Term_Off
+ * (optlist.h `:197`/`:391`/`:563`/`:698,702`), voices → Term_Excluded
+ * (`:842`; the Term_Off row `:838` needs SND_SPEECH, multisnd-only).
+ * Exported (C staticfn, sibling optfn_* precedent) for the doset term. */
+export function term_for_boolean(idx, b) {
+    const f_t = b ? 1 : 0; // C `:8740`
+    const booleanterms = [ // C `:8742–8745`
+        ['false', 'off', 'disabled', 'excluded from build'],
+        ['true', 'on', 'enabled', 'included'],
+    ];
+    let boolean_term = booleanterms[f_t][0]; // C `:8747`
+    const i = allopt[idx]?.termpref | 0; // C `:8748`
+    if (i > Term_False && i < num_terms && i < booleanterms[0].length) // C `:8749`
+        boolean_term = booleanterms[f_t][i]; // C `:8750`
+    return boolean_term; // C `:8751`
+}
+
+/* C options.c enhance_menu_text `:10154–10180` (staticfn) — pass-0
+ * bool row tweak (`:8856`). Live body is a no-op: null guard
+ * (`:10164–10165`), size arithmetic (`:10166–10167`), then `#if 0`
+ * TTY_PERM_INVENT arm (`:10169–10173`, compiled out) with nhUse
+ * (`:10175–10177`). */
+function enhance_menu_text(buf, _sz, _whichpass, _bool_p, _thisopt) {
+    if (buf == null) return; // C `:10164–10165`
+    /* C `:10166–10167` nowsz/availsz feed only the compiled-out arm. */
+}
+
 function doset_bool_term(name) {
-    if (name === 'bgcolors' || name === 'idlecheckpoint' || name === 'sounds') {
-        return doset_bool_value(name) ? 'on' : 'off';
-    }
-    if (name === 'voices') return 'excluded from build';
-    return doset_bool_value(name) ? 'true' : 'false';
+    return term_for_boolean(allopt_idx(name), doset_bool_value(name)); // C `:8854`
 }
 
 /**
@@ -8780,8 +9032,12 @@ export async function doset() {
     });
     for (const name of DOSET_BOOL_NONMOD) {
         if (doset_skip_unsupported(name)) continue;
+        const line = format_doset_opt_line(name, doset_bool_term(name), '    ');
+        // C `:8855–8857` pass-0 enhance_menu_text (live no-op, wired for order).
+        enhance_menu_text(line, line.length + 1, 0,
+            doset_bool_value(name), allopt[allopt_idx(name)]);
         raw.push({
-            text: format_doset_opt_line(name, doset_bool_term(name), '    '),
+            text: line,
             selectable: false,
         });
     }
@@ -8856,7 +9112,7 @@ export async function doset() {
         { name: 'pickup_burden', get_val: () => doset_compopt_get_val(optfn_pickup_burden, 'pickup_burden'), handler: true },
         { name: 'pickup_types', get_val: () => doset_compopt_get_val(optfn_pickup_types, 'pickup_types'), handler: true },
         { name: 'pile_limit', val: '5' },
-        { name: 'roguesymset', val: 'default' },
+        { name: 'roguesymset', get_val: () => doset_compopt_get_val(optfn_roguesymset, 'roguesymset') },
         { name: 'runmode', get_val: () => doset_compopt_get_val(optfn_runmode, 'runmode'), handler: true },
         { name: 'scores', get_val: () => doset_compopt_get_val(optfn_scores, 'scores') },
         { name: 'sortdiscoveries', get_val: () => doset_compopt_get_val(optfn_sortdiscoveries, 'sortdiscoveries'), handler: true },
@@ -8891,12 +9147,9 @@ export async function doset() {
         { name: 'status condition fields', val: '(16 currently set)' },
         { name: 'status highlight rules', val: '(0 currently set)' },
     ]) {
-        raw.push({
-            text: format_doset_opt_line(t.name, t.val, ''),
-            selectable: true,
-            kind: 'othr',
-            name: t.name,
-        });
+        // C `:8892` doset_add_menu (OthrOpt; all 7 rows set_in_game so
+        // indexoffset is nonzero — optlist.h NHOPTO rows are selectable).
+        raw.push(doset_add_menu(t.name, t.val, 1, { kind: 'othr' }));
     }
 
     if (!game.go) game.go = {};
@@ -9202,7 +9455,7 @@ export function pfxfn_font(optidx, req, negated, opts, op) {
                     allopt_name(optidx), opts);
                 return OPTN_ERR; // C `:5078`
             }
-            if (duplicateOpt) complain_about_duplicate(optidx); // C `:5080–5081` (stub: sink named)
+            if (duplicateOpt) complain_about_duplicate(optidx); // C `:5080–5081` (sink: botl.js no-op)
             if (opttype > 0 && !negated // C `:5082–5083`
                 && (op = string_for_opt(opts, false)) !== EMPTY_OPTSTR) {
                 switch (opttype) { // C `:5084`
@@ -9451,7 +9704,7 @@ const allopt = [
     // optlist.h:193 NHOPTC(autounlock)
     { name: 'autounlock', opttyp: CompOpt, idx: 22, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: optfn_autounlock },
     // optlist.h:196 NHOPTB(bgcolors)
-    { name: 'bgcolors', opttyp: BoolOpt, idx: 23, setwhere: SET_IN_GAME, initval: true, addr: { obj: 'iflags', key: 'bgcolors' }, optfn: null },
+    { name: 'bgcolors', opttyp: BoolOpt, idx: 23, setwhere: SET_IN_GAME, initval: true, addr: { obj: 'iflags', key: 'bgcolors' }, optfn: null, termpref: Term_Off },
     // optlist.h:199 NHOPTO("bind keys")
     { name: 'bind keys', opttyp: OthrOpt, idx: 24, setwhere: SET_IN_GAME, initval: true, addr: null, optfn: null },
     // optlist.h:206 NHOPTB(BIOS)
@@ -9563,7 +9816,7 @@ const allopt = [
     // optlist.h:386 NHOPTC(IBMgraphics)
     { name: 'IBMgraphics', opttyp: CompOpt, idx: 78, setwhere: SET_IN_CONFIG, initval: false, addr: null, optfn: null },
     // optlist.h:390 NHOPTB(idlecheckpoint)
-    { name: 'idlecheckpoint', opttyp: BoolOpt, idx: 79, setwhere: SET_IN_GAME, initval: false, addr: { obj: 'iflags', key: 'idlecheckpoint' }, optfn: null },
+    { name: 'idlecheckpoint', opttyp: BoolOpt, idx: 79, setwhere: SET_IN_GAME, initval: false, addr: { obj: 'iflags', key: 'idlecheckpoint' }, optfn: null, termpref: Term_Off },
     // optlist.h:394 NHOPTB(ignintr)
     { name: 'ignintr', opttyp: BoolOpt, idx: 80, setwhere: SET_IN_GAME, initval: false, addr: { obj: 'flags', key: 'ignintr' }, optfn: null },
     // optlist.h:402 NHOPTB(implicit_uncursed)
@@ -9659,7 +9912,7 @@ const allopt = [
     // optlist.h:559 NHOPTB(pauper)
     { name: 'pauper', opttyp: BoolOpt, idx: 126, setwhere: SET_IN_CONFIG, initval: false, addr: { obj: 'flags', key: 'pauper' }, optfn: null },
     // optlist.h:562 NHOPTB(perm_invent)
-    { name: 'perm_invent', opttyp: BoolOpt, idx: 127, setwhere: SET_IN_GAME, initval: false, addr: { obj: 'iflags', key: 'perm_invent' } /* C: &iflags.perm_invent */, optfn: null },
+    { name: 'perm_invent', opttyp: BoolOpt, idx: 127, setwhere: SET_IN_GAME, initval: false, addr: { obj: 'iflags', key: 'perm_invent' } /* C: &iflags.perm_invent */, optfn: null, termpref: Term_Off },
     // optlist.h:565 NHOPTC(perminv_mode)
     { name: 'perminv_mode', opttyp: CompOpt, idx: 128, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: null },
     // optlist.h:568 NHOPTC(petattr)
@@ -9697,7 +9950,7 @@ const allopt = [
     // optlist.h:623 NHOPTB(rest_on_space)
     { name: 'rest_on_space', opttyp: BoolOpt, idx: 145, setwhere: SET_IN_GAME, initval: false, addr: { obj: 'flags', key: 'rest_on_space' }, optfn: null },
     // optlist.h:626 NHOPTC(roguesymset)
-    { name: 'roguesymset', opttyp: CompOpt, idx: 146, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: null },
+    { name: 'roguesymset', opttyp: CompOpt, idx: 146, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: optfn_roguesymset },
     // optlist.h:630 NHOPTC(runmode)
     { name: 'runmode', opttyp: CompOpt, idx: 147, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: optfn_runmode },
     // optlist.h:633 NHOPTB(safe_pet)
@@ -9739,7 +9992,7 @@ const allopt = [
     // optlist.h:693 NHOPTC(soundlib)
     { name: 'soundlib', opttyp: CompOpt, idx: 166, setwhere: SET_GAMEVIEW, initval: false, addr: null, optfn: optfn_soundlib },
     // optlist.h:701 NHOPTB(sounds)
-    { name: 'sounds', opttyp: BoolOpt, idx: 167, setwhere: SET_IN_GAME, initval: false, addr: { obj: 'flags', key: 'sounds' }, optfn: null },
+    { name: 'sounds', opttyp: BoolOpt, idx: 167, setwhere: SET_IN_GAME, initval: false, addr: { obj: 'flags', key: 'sounds' }, optfn: null, termpref: Term_Off },
     // optlist.h:705 NHOPTB(sparkle)
     { name: 'sparkle', opttyp: BoolOpt, idx: 168, setwhere: SET_IN_GAME, initval: true, addr: { obj: 'flags', key: 'sparkle' }, optfn: null },
     // optlist.h:708 NHOPTB(spot_monsters)
@@ -9807,7 +10060,7 @@ const allopt = [
     // optlist.h:816 NHOPTC(versinfo)
     { name: 'versinfo', opttyp: CompOpt, idx: 200, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: optfn_versinfo },
     // optlist.h:841 NHOPTB(voices)
-    { name: 'voices', opttyp: BoolOpt, idx: 201, setwhere: SET_GAMEVIEW, initval: false, addr: null /* C: &iflags.voices, no live field (no SND_LIB) */, optfn: null },
+    { name: 'voices', opttyp: BoolOpt, idx: 201, setwhere: SET_GAMEVIEW, initval: false, addr: null /* C: &iflags.voices, no live field (no SND_LIB) */, optfn: null, termpref: Term_Excluded },
     // optlist.h:850 NHOPTB(vt_tiledata)
     { name: 'vt_tiledata', opttyp: BoolOpt, idx: 202, setwhere: SET_IN_CONFIG, initval: false, addr: null, optfn: null },
     // optlist.h:859 NHOPTB(vt_sounddata)
@@ -9971,18 +10224,19 @@ export function match_optname(userString, optName, minLength, valAllowed) {
         && optStrncasecmp(optName, userString, len) === 0;
 }
 
-/* C options.c `string_for_opt` `:6665–6684` (staticfn) — value tail after
+/* C options.c `string_for_opt` `:6664–6680` (staticfn) — value tail after
  * the first ':' (or '=' when it comes first); EMPTY_OPTSTR stands in for C's
- * `empty_optstr`. The `:6678–6681` "Missing parameter" config_error_add is a
- * named omission (map: no JS config-error sink). */
+ * `empty_optstr`. The `:6675–6677` "Missing parameter" arm calls the live
+ * config_error_add (botl.js no-op sink — text discarded there, not here). */
 function string_for_opt(opts, valOptional) {
     let colon = opts.indexOf(':'); // C `:6669`
     const equals = opts.indexOf('=');
     if (colon < 0 || (equals >= 0 && equals < colon)) colon = equals; // C `:6671–6672`
     if (colon < 0 || colon + 1 >= opts.length) { // C `:6674 !colon || !*++colon`
+        if (!valOptional) config_error_add("Missing parameter for '%s'", opts); // C `:6675–6677`
         return EMPTY_OPTSTR;
     }
-    return opts.slice(colon + 1); // C `:6683`
+    return opts.slice(colon + 1); // C `:6679`
 }
 
 /* C options.c `bad_negation` `:6693–6700` (staticfn) — body is one
@@ -10089,13 +10343,18 @@ function duplicate_opt_detection(optidx) {
     return false; // C `:6787`
 }
 
-/* C options.c `complain_about_duplicate` `:6790–6807` (staticfn) — the
- * MACOS9 early return is compiled out on unix; the body is one
- * config_error_add ("%s option specified multiple times: %s%s" with
- * "compound"/"boolean" folded exactly like C's `opttyp == CompOpt` ternary
- * plus the " (via alias: %s)" tail); named omission (map). */
-function complain_about_duplicate(_optidx) {
-    // Named omission (map): config_error_add sink.
+/* C options.c `complain_about_duplicate` `:6789–6809` (staticfn) — the
+ * MACOS9 early return (`:6794–6798`) is compiled out on unix; the body is
+ * one config_error_add call (live botl.js no-op sink). using_alias is
+ * usingAliasOpt; allopt[optidx].alias reads OPT_ALIAS (C optlist.h `:45`,
+ * NoAlias rows never take the arm — C only sets using_alias on an alias
+ * match). */
+function complain_about_duplicate(optidx) {
+    let buf = ''; // C `:6800` buf[0] = '\0'
+    if (usingAliasOpt) buf = ` (via alias: ${OPT_ALIAS[allopt[optidx].name] ?? ''})`; // C `:6801–6802`
+    config_error_add('%s option specified multiple times: %s%s', // C `:6803–6806`
+        allopt[optidx].opttyp === CompOpt ? 'compound' : 'boolean',
+        allopt[optidx].name, buf);
 }
 
 /**

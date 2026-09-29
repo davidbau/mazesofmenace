@@ -29253,10 +29253,15 @@ export function selection_new() {
     };
 }
 
-// C ref: selvar.c selection_getpoint
+// C ref: selvar.c selection_getpoint `:168-178` — whole body in C order:
+// NULL/map guard (`:172-173`; pts is the JS store for C sel->map —
+// hand-built shapes may lack it, cf. selection_clear/clone), sel-scoped
+// bounds (`:174-175`; wid/hei default like selection_new, cf.
+// selection_recalc_bounds), map-1 membership (`:177`; Set-backed).
 export function selection_getpoint(x, y, sel) {
-    if (!sel || x < 0 || y < 0 || x >= COLNO || y >= ROWNO) return 0;
-    return sel.pts.has(`${x},${y}`) ? 1 : 0;
+    if (!sel || !sel.pts) return 0; // C `:172-173`
+    if (x < 0 || y < 0 || x >= (sel.wid ?? COLNO) || y >= (sel.hei ?? ROWNO)) return 0; // C `:174-175`
+    return sel.pts.has(`${x},${y}`) ? 1 : 0; // C `:177`
 }
 
 // C ref: selvar.c selection_setpoint `:181-208` — set/clear. A set onto
@@ -29266,7 +29271,8 @@ export function selection_getpoint(x, y, sel) {
 // any 0-write sets bounds_dirty — including 0-writes onto fresh cells,
 // which is what makes the recalc load-bearing in l_selection_sub/xor).
 export function selection_setpoint(x, y, sel, c) {
-    if (!sel || x < 0 || y < 0 || x >= COLNO || y >= ROWNO) return;
+    if (!sel || !sel.pts) return; // C `:186-187`
+    if (x < 0 || y < 0 || x >= (sel.wid ?? COLNO) || y >= (sel.hei ?? ROWNO)) return; // C `:188-189`
     const key = `${x},${y}`;
     if (c) {
         if (!sel.bounds_dirty) { // C `:191`
@@ -30566,29 +30572,47 @@ function themeroom_fill_ghost(croom) {
 // C ref: themerms.lua postprocess queue (Teleportation hub / garden / dig)
 const themerms_postprocess = [];
 
-// C ref: selvar.c selection_filter_mapchar — lit default -2 (no lit RNG)
-function selection_filter_mapchar(sel, typ) {
-    const pts = new Set();
-    let lx = COLNO, ly = ROWNO, hx = 0, hy = 0;
-    if (!sel || !sel.pts.size) return { pts, lx: 0, ly: 0, hx: -1, hy: -1 };
+/**
+ * C ref: selvar.c selection_filter_mapchar `:248-281` — whole-body restart
+ * in C order: NULL guard (`:254-255`), fresh ret (`:257`), getbounds rect
+ * (`:259`), x-outer/y-inner scan gated on getpoint + match_maptyps
+ * (`:261-265`), lit switch (`:266-278`: default/-2 set, -1 rn2(2), 0/1 on
+ * levl.lit match). typ keeps MATCH_WALL/MAX_TYPE wildcards via the live
+ * match_maptyps (the old clone compared ROOM-only equality and dropped
+ * lit); levl.lit normalizes JS bool/0/1 via |0. Default lit -2 mirrors
+ * the Lua binding's luaL_optinteger(L, 3, -2) (nhlsel.c
+ * l_selection_filter_mapchar `:663`); the in-file themerms callers pass
+ * no lit (C Lua `filter_mapchar('.')` shape). Exported: C declares it in
+ * extern.h and the selection_* siblings are exported.
+ */
+export function selection_filter_mapchar(ov, typ, lit = -2) {
+    if (!ov) return null; // C `:254-255`
+    const ret = selection_new(); // C `:257`
     const rect = {}; // C `:252` NhRect rect
-    selection_getbounds(sel, rect); // C `:259`
-    for (let x = rect.lx; x <= rect.hx; x++) {
-        for (let y = rect.ly; y <= rect.hy; y++) {
-            const key = `${x},${y}`;
-            if (!sel.pts.has(key)) continue;
+    selection_getbounds(ov, rect); // C `:259`
+    for (let x = rect.lx; x <= rect.hx; x++) { // C `:261`
+        for (let y = rect.ly; y <= rect.hy; y++) { // C `:262`
+            if (!selection_getpoint(x, y, ov)) continue; // C `:263`
             const loc = game.level.at(x, y);
-            // match_maptyps(typ, levl.typ) for ROOM (".")
-            if (!loc || loc.typ !== typ) continue;
-            pts.add(key);
-            if (x < lx) lx = x;
-            if (y < ly) ly = y;
-            if (x > hx) hx = x;
-            if (y > hy) hy = y;
+            if (!loc) continue; // JS-only null guard; C indexes levl direct
+            if (!match_maptyps(typ, loc.typ)) continue; // C `:264`
+            switch (lit) { // C `:266-278`
+            default:
+            case -2:
+                selection_setpoint(x, y, ret, 1);
+                break;
+            case -1:
+                selection_setpoint(x, y, ret, rn2(2));
+                break;
+            case 0:
+            case 1:
+                if ((loc.lit | 0) === lit)
+                    selection_setpoint(x, y, ret, 1);
+                break;
+            }
         }
     }
-    if (pts.size === 0) return { pts, lx: 0, ly: 0, hx: -1, hy: -1 };
-    return { pts, lx, ly, hx, hy };
+    return ret;
 }
 
 // C ref: selection.negate() with no args → all cells set, then filter_mapchar(".")

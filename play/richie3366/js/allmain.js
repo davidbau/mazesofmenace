@@ -16,6 +16,7 @@ import { vision_recalc, vision_reset, init_vision_globals } from './vision.js';
 import { initrack, settrack } from './track.js';
 import { fastforward_pre_mklev } from './fastforward.js';
 import { init_objects } from './o_init.js';
+import { activate_chosen_soundlib } from './options.js';
 import { init_artifacts, mkot_trap_warn } from './artifact.js';
 import { init_dungeons, find_level, print_level_annotation } from './dungeon.js';
 import { depth } from './hacklib.js';
@@ -165,10 +166,9 @@ async function maybe_tele_poly_were() {
  * the same sentinel-id stand-in pattern as `invent.js` `WIN_INVEN_ID = 20`
  * for `create_nhwindow(NHW_MENU)` (not `WIN_ERR`). No RNG draws in C, so
  * this stays sync — `display_nhwindow(..., FALSE)` never blocks.
- * Named omissions: `activate_chosen_soundlib` (`sounds.c:1779–1796`, no
- * SND_LIB in the scored port — cf. `exper.js`/`insight.js` SoundAchievement
- * debt); both `SoundAchievement` arms (`sndprocs.h:232–241` no-op without
- * `iflags.sounds` + achievement procs); `#ifdef CHANGE_COLOR`
+ * Named omissions: both `SoundAchievement` arms (`sndprocs.h:232–241`
+ * no-op without `iflags.sounds` + achievement procs — cf.
+ * `exper.js`/`insight.js` SoundAchievement debt); `#ifdef CHANGE_COLOR`
  * `change_palette` (`coloratt.c:1098–1108`, compiled out — `windconf.h`
  * leaves `CHANGE_COLOR` commented); `adjust_menu_promptstyle` ctrl relay
  * (`windows.c:1769–1778`, JS menus read `iflags.menu_headings` directly);
@@ -185,8 +185,7 @@ async function maybe_tele_poly_were() {
 export function init_sound_disp_gamewindows() {
     let menu_behavior = MENU_BEHAVE_STANDARD | 0;
 
-    // C `:703` activate_chosen_soundlib() — soundlib table switch + init;
-    // scored port has no SND_LIB (named above), so no state to switch.
+    activate_chosen_soundlib(); // C `:703` — soundlib table switch + init.
     // C `:705–710` if (iflags.wc_splash_screen && !flags.randomall)
     // SoundAchievement(0, sa2_splashscreen, 0) else SoundAchievement(0,
     // sa2_newgame_nosplash, 0) — both arms no-op without sound procs, but

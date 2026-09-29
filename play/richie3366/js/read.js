@@ -55,7 +55,7 @@
 // mimic mhidden_description / set_msg_xy / dochugw omit); cant_revive
 // force prompt + doppelganger newcham fixup live (D-2004);
 // punish Blind set_bc is D-1769; flooreffects on placebc; HEAVY_IRON_BALL reuse
-// from angrygods; do_genocide livelog / Hallucination names /
+// from angrygods; do_genocide Hallucination names /
 // vampshifted POLY_REVERT / chameleon newcham; update_inventory.
 //
 // Branch envelope: getobj read loop (scrolls/spellbooks + ?/* pickinv) +
@@ -2675,6 +2675,15 @@ export async function do_genocide(how) {
     }
 
     if (how & GENO_REALLY) {
+        // C read.c:2956–2961 — first/subsequent genocide livelog; the
+        // num_genocides() read precedes the G_GENOD set below (dynamic
+        // import: same cycle-avoidance as do_class_genocide `:2508`).
+        const { num_genocides } = await import('./insight.js');
+        if (!num_genocides())
+            livelog_printf(LL_CONDUCT | LL_GENOCIDE,
+                'performed %s first genocide (%s)', uhis(), makeplural(realbuf));
+        else
+            livelog_printf(LL_GENOCIDE, 'genocided %s', makeplural(realbuf));
         if (!game.mvitals) game.mvitals = [];
         if (!game.mvitals[mndx]) {
             game.mvitals[mndx] = { mvflags: 0, born: 0, died: 0 };

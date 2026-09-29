@@ -36,6 +36,7 @@ import {
     UTD_CHECKFIELDCOUNTS, UTD_SKIP_SANITY1, UTD_WITHOUT_WAITSYNCH_PERFILE,
     UTD_QUIETLY, WIN_ERR, SFCTOOL_BIT, OBJ_FLOOR, CONVERTING,
     UNCONVERTING, TURN_OFF_LOGGING,
+    COPYRIGHT_BANNER_A, COPYRIGHT_BANNER_B, COPYRIGHT_BANNER_D,
 } from './const.js';
 import { shop_keeper, inhishop, inside_shop } from './shk.js';
 import { datamodel, what_datamodel_is_this } from './version.js';
@@ -47,6 +48,7 @@ import { TRIBUTE_TEXT } from './generated/tribute_data.js';
 import { maxledgerno } from './dungeon.js';
 import { pmatch } from './cmd.js';
 import { wish_history_add } from './zap.js';
+import { after_opt_showpaths } from './earlyarg.js'; // C do_deferred_showpaths `:3101` (imports.mjs SAFE: hoisted fn)
 
 const INVLET_BASIC = 52;
 const SCR_SCARE_MONSTER = objectNames.indexOf('SCR_SCARE_MONSTER');
@@ -1388,6 +1390,42 @@ export function store_critical_bytes(nhfp) {
 }
 
 /**
+ * C ref: version.c get_critical_size_count `:669–672` — `SIZE` of the
+ * `critical_sizes` table, i.e. `CRITICAL_SIZES.length` here. Lives next
+ * to the table's readers (store/compare above/below), like the rest of
+ * the version.c save-validation family in this module. Sole in-tree C
+ * caller files.c:2869 `recover_savefile` is compiled out (`SELF_RECOVER`
+ * commented out in unixconf.h:126).
+ * @returns {number}
+ */
+export function get_critical_size_count() {
+    return CRITICAL_SIZES.length; // `:671`
+}
+
+/**
+ * C ref: version.c copyright_banner_line `:471–490` — banner line `indx`
+ * 1–4, `""` otherwise. All four `#ifdef` arms are live in the contest
+ * build (patchlevel.h:39–44); A/B/D are the live const.js pins, line 3
+ * is the runtime `game.nomakedefs.copyright_banner_c` (js/date.js:167
+ * `bannerc_string`, populated by `runtime_info_init`). Lives here —
+ * not js/version.js — because that module stays import-free (D-1881:
+ * const.js reads `COMMIT_NUMBER` at top level), and this module already
+ * hosts the version.c save-validation family with live const.js + game
+ * imports. C NONNULL: pre-populate readers get `""` (the C static
+ * dummies are deliberately not copied — js/date.js:98–103).
+ * @param {number} indx 1-based banner line
+ * @returns {string}
+ */
+export function copyright_banner_line(indx) {
+    const i = indx | 0; // C `int` param
+    if (i === 1) return COPYRIGHT_BANNER_A; // `:473–475`
+    if (i === 2) return COPYRIGHT_BANNER_B; // `:477–479`
+    if (i === 3) return game.nomakedefs?.copyright_banner_c ?? ''; // `:482–483`
+    if (i === 4) return COPYRIGHT_BANNER_D; // `:485–487`
+    return ''; // `:488`
+}
+
+/**
  * C ref: version.c store_version `:512–537`. Zero `version_info`, then
  * incarnation / feature_set / entity_count from nomakedefs. `structlevel`
  * turns buffering off around the header (`bufoff` / `bufon`,
@@ -1778,5 +1816,26 @@ export function debugcore(filename, wildcards) {
         if (prevOk && nextOk) return true; // `:3163`
     }
     return false; // `:3165`
+}
+
+/**
+ * C ref: files.c do_deferred_showpaths `:3089–3114` — ATTRNORETURN.
+ * Deferred `--showpaths` exit: clear the flag, reveal the paths, run the
+ * pre-exit cleanup, then tail back through the showpaths dir and
+ * terminate (unix `:3101`; `:3105` chdirx + `:3109`/`:3111` exits are
+ * the non-unix tail, not this build). C callers: cfgfiles.c:2064
+ * (assure_syscf_file — wired) and options.c:7112 (initoptions — wired).
+ * @param {number} code C int (1 = sysconf-missing path, 0 = options path)
+ */
+export function do_deferred_showpaths(code) {
+    void code; // consumed only by the omitted `:3093` reveal_paths
+    if (!game.gd) game.gd = {}; // gd lives on game (decl.js:51)
+    game.gd.deferred_showpaths = false; // C `:3092`
+    /* C `:3093` reveal_paths(code) — named omit (files.c:3175, 117 code
+       lines, no scored port; surfaces as its own coverage row). */
+    /* C `:3096–3098` freedynamicdata + dlb_cleanup + l_nhcore_done —
+       named omits (seed by-design: save-freeing, dlb teardown, Lua). */
+    after_opt_showpaths(game.gd.deferred_showpaths_dir); // C `:3101`; does not return
+    /*NOTREACHED*/
 }
 

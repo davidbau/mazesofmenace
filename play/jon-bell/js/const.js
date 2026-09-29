@@ -1,6 +1,7 @@
-// const.js — game constants imported from upstream NetHack 5.0 headers.
-// Edit freely; the contest only freezes isaac64.js and terminal.js.
+// DO NOT EDIT — This file is part of the contest's fixed infrastructure.
+// The judge overwrites it from frozen/ on every scoring run.
 const MAXPCHARS = 105; // from symbols.js
+// const.js -- Game constants and configuration
 // Mirrors constants from include/hack.h, include/global.h, include/rm.h
 //
 // Constant file DAG (must remain acyclic for initialization order):
@@ -21,6 +22,8 @@ const MAXPCHARS = 105; // from symbols.js
 import { COMMIT_NUMBER, TELEPORT_BUILD_DATE } from './version.js';
 // No imports from non-constant files — const.js is a leaf in the DAG
 import { game } from './gstate.js';
+import { registerStaticReset } from './statics.js';
+import { NUMMONS } from './pm.generated.js';
 import { CLR_BLACK, CLR_BLUE, CLR_BRIGHT_BLUE, CLR_BRIGHT_CYAN, CLR_BRIGHT_GREEN, CLR_BRIGHT_MAGENTA, CLR_BROWN, CLR_CYAN, CLR_GRAY, CLR_GREEN, CLR_MAGENTA, CLR_ORANGE, CLR_RED, CLR_WHITE, CLR_YELLOW, NO_COLOR } from './terminal.js';
 
 // C macro: SIZE(arr) = sizeof(arr)/sizeof(arr[0]) → JS: arr.length
@@ -465,14 +468,22 @@ export const DUNGEON_ALIGN_BY_DNUM = {
 
 // Build-specific constants: hand-pinned for deterministic replay.
 // These come from date.h and change every C rebuild, so the generator skips them.
-export const BUILD_DATE = "Sun May  3 01:27:17 2026";
-export const BUILD_TIME = (1777786037);
-// nomakedefs.copyright_banner_c — build-specific version string
-export const COPYRIGHT_BANNER_C = "         Version 5.0.0 MacOS, built Sun May  3 01:27:17 2026.";
+export const BUILD_DATE = "Sun Mar 29 16:29:46 2026";
+export const BUILD_TIME = (1774816186);
+// nomakedefs.copyright_banner_c — build-specific version string.
+//
+// DEAD AND WRONG — nothing imports this, and it is a 3.7 migration leftover.
+// The live chargen banner is js/chargen_ui.js's own COPYRIGHT_BANNER_C, which
+// takes its PORT_ID from js/platform_identity.js.  Likewise the auto-imported
+// PORT_ID/PORT_SUB_ID further down this file ("Amiga"/"djgpp") are artefacts of
+// the header scanner taking the FIRST #define in global.h's PORT_ID cascade;
+// they are not this build's values and must not be used.  The one switch for
+// platform identity is js/platform_identity.js.
+export const COPYRIGHT_BANNER_C = "         Version 3.7.0-134 MacOS Work-in-progress, built Mar 31 2026 04:36:25.";
 
 // AUTO-IMPORT-BEGIN: CONST_ALL_HEADERS
 // Auto-imported header constants (pre-symbol pass)
-// Source dir: nethack-c/upstream/include
+// Source dir: /Users/davidbau/git/mazesofmenace/teleport/maud/scripts/generators/../../nethack-c/patched/include
 //
 // Rules:
 // - include object-like #define macros (not function-like) and enum constants
@@ -1128,6 +1139,21 @@ export const LOST_DROPPED = 2;
 export const LOST_STOLEN = 3;
 export const LOSTOVERRIDEMASK = 0x3;
 export const LOST_EXPLODING = 4;
+/* C obj.h:139 `#define opoisoned otrapped` — ONE bitfield with TWO spellings.
+ * C's `struct obj` has a single `otrapped` bit that means "this box/door is
+ * trapped" for containers and "this weapon is coated with poison" for missiles,
+ * and the macro exists only so the source reads naturally at each use.  This
+ * port stores the two spellings as TWO DISTINCT JS PROPERTIES — the poison
+ * writers (mksobj_init, potion.c dip, trap.c dart/arrow traps) set `.opoisoned`
+ * while the trap writers (mksobj_init's box roll, sp_lev, trap.c's boulder
+ * flag) set `.otrapped` — so every site that reads the C FIELD is blind to half
+ * of it unless it reads BOTH.  js/struct_reconstructor.js already records the
+ * alias for the capture-replay sweep (DERIVED_ALIASES 'struct obj *').  Read
+ * the field through here rather than adding a sixth hand-mirrored spelling. */
+export function otrapped_of(o) {
+    return (o && ((o.otrapped | 0) || (o.opoisoned | 0))) ? 1 : 0;
+}
+
 export const NAMED_PLAIN = 0;
 export const NAMED_KEEP = 1;
 
@@ -1203,6 +1229,16 @@ export const BURN_OBJECT = (ZOMBIFY_MON + 1);
 export const HATCH_EGG = (BURN_OBJECT + 1);
 export const FIG_TRANSFORM = (HATCH_EGG + 1);
 export const SHRINK_GLOB = (FIG_TRANSFORM + 1);
+/* C include/timeout.h:46 — MELT_ICE_AWAY is the LAST member of
+ * `enum timeout_types`, i.e. SHRINK_GLOB + 1 == 8, and it is used as an INDEX
+ * into timeout_funcs[] (js/timeout.js) by spot_stop_timers/spot_time_left.
+ * It used to be exported below as the STRING 'MELT_ICE_AWAY' (from the
+ * TIMER_FUNC name map), which made `NUM_TIME_FUNCS = MELT_ICE_AWAY + 1` the
+ * string "MELT_ICE_AWAY1" and every spot_stop_timers(x, y, MELT_ICE_AWAY) a
+ * lookup that could never match a numeric func_index.  js/trap.js:1416 had
+ * already worked around it by passing a hand-written `0 /* MELT_ICE_AWAY *\/`,
+ * which is ROT_ORGANIC — the wrong timer type. */
+export const MELT_ICE_AWAY = (SHRINK_GLOB + 1);
 export const RANGE_LEVEL = 0;
 export const RANGE_GLOBAL = 1;
 
@@ -1900,25 +1936,34 @@ export const EXPL_MAGICAL = 4;
 export const EXPL_FIERY = 5;
 export const EXPL_FROSTY = 6;
 export const EXPL_MAX = 7;
-export const MON_EXPLODE = -1;
-export const BURNING_OIL = -2;
-export const TRAP_EXPLODE = -3;
-export const MAY_HITMON = 0x1;
-export const MAY_HITYOU = 0x2;
-export const MAY_HIT = (0x1 | 0x2);
-export const MAY_DESTROY = 0x4;
-export const MAY_FRACTURE = 0x8;
+// C objclass.h:154-156 — the three non-oclass `olet` sentinels explode() takes,
+// defined relative to MAXOCLASSES (18, the objclass_classes enum terminator).
+// These were -1/-2/-3, a fabricated set with no call sites; explode() passes
+// `olet` straight into resist() as an object class, so the sign matters.
+export const BURNING_OIL = 19;  /* MAXOCLASSES + 1 */
+export const MON_EXPLODE = 20;  /* MAXOCLASSES + 2 */
+export const TRAP_EXPLODE = 21; /* MAXOCLASSES + 3 */
+/* C hack.h:1339-1344 explode.c scflags — these four were all off by one bit
+ * (MAY_HITMON=0x1 collided with VIS_EFFECTS=0x1 above, MAY_HITYOU=0x2,
+ * MAY_DESTROY=0x4, MAY_FRACTURE=0x8), a bug with no observable effect only
+ * because zero call sites existed anywhere in js/ (grep, 2026-09-05) before
+ * js/dokick.js's scatter() port became the first real consumer. */
+export const MAY_HITMON = 0x02;
+export const MAY_HITYOU = 0x04;
+export const MAY_HIT = (0x02 | 0x04);
+export const MAY_DESTROY = 0x08;
+export const MAY_FRACTURE = 0x10;
 
 // Steed dismount reason enum (src/steed.c)
 // Runtime fields: dismount_steed(reason) reason selector.
-export const DISMOUNT_BYCHOICE = 0;
-export const DISMOUNT_THROWN = 1;
-export const DISMOUNT_KNOCKED = 2;
-export const DISMOUNT_FELL = 3;
+export const DISMOUNT_BYCHOICE = 7;
+export const DISMOUNT_THROWN = 2;
+export const DISMOUNT_KNOCKED = 3;
+export const DISMOUNT_FELL = 1;
 export const DISMOUNT_POLY = 4;
 export const DISMOUNT_ENGULFED = 5;
 export const DISMOUNT_BONES = 6;
-export const DISMOUNT_GENERIC = 7;
+export const DISMOUNT_GENERIC = 0;
 
 // Vault guard constants (src/vault.c)
 // Runtime fields: guard timers and guard activity/witness bits.
@@ -1968,8 +2013,8 @@ export const XL_RIGHT = 8;
 
 // Light-source type tags (src/light.c)
 // Runtime fields: light_base[] entry type and routing for object/monster lookups.
-export const LS_OBJECT = 0;
-export const LS_MONSTER = 1;
+export const LS_OBJECT = 1;
+export const LS_MONSTER = 2;
 
 // Timeout timer-kind and timer-function enums (src/timeout.c)
 // Runtime fields: timer queue kind/func selectors and timer dispatch.
@@ -1989,7 +2034,8 @@ export const TIMER_FUNC = Object.freeze({
     ROT_CORPSE: 'ROT_CORPSE',
     MELT_ICE_AWAY: 'MELT_ICE_AWAY',
 });
-export const MELT_ICE_AWAY = TIMER_FUNC.MELT_ICE_AWAY;
+/* MELT_ICE_AWAY is the numeric enum member, declared with the rest of
+ * `enum timeout_types` above.  TIMER_FUNC is a name map, not the enum. */
 
 // Corpse taint/revival age window (src/mkobj.c)
 // Runtime fields: rot/revive scheduling bound for corpse timers.
@@ -2149,10 +2195,10 @@ export const GP_AVOID_MONPOS = 0x01000000;
 // Monster relocation flags (include/hack.h; src/teleport.c rloc/rloc_to)
 // Runtime fields: rloc/rloc_to rlocflags args
 export const RLOC_NONE = 0x0000;
-export const RLOC_NOMSG = 0x0001;
+export const RLOC_NOMSG = 0x0004;
 export const RLOC_MSG = 0x0002;
 export const RLOC_TELE = 0x0004;
-export const RLOC_ERR = 0x0100;
+export const RLOC_ERR = 0x0001;
 
 // Hero teleport placement flags (include/hack.h; src/teleport.c teleds)
 // Runtime fields: teleds/safe_teleds flags args
@@ -2390,7 +2436,7 @@ export const SICK_NONVOMITABLE = 0x02; // illness (from corpse, etc.)
 
 
 /**
- * const.js - NetHack 5.0 symbol and color definitions
+ * const.js - NetHack 3.7 symbol and color definitions
  *
  * Ported from the following C source files:
  *   - include/color.h      (color constants)
@@ -2591,6 +2637,39 @@ export const gs = { showsyms: null, symset: [{ name: null, handling: 0, nocolor:
 export const gp = { primary_syms: null, pl_race: null, plinemsg_types: null };
 const gr = { rogue_syms: null };
 
+/* C ref: decl.c:1103 `gs = g_init_s;` inside decl_globals_init(), where
+ * g_init_s gives `{ DUMMY }` for symset[] (decl.c:687) — every field zero,
+ * every name NULL — on every new process.
+ *
+ * js/jsmain.js:266 sets symset[PRIMARYSET].handling unconditionally from the
+ * rc, but it sets .name only `if (opts.symset)`, so the NAME of the last
+ * rc that had one survived into every later game in the process.  6 of the
+ * 44 public sessions run with no symset line, and the 'O' menu renders this
+ * field verbatim ("<name>, active, handler=<H>" — options.c:4180), so they
+ * reported a symset they had not chosen.  Convicted, not assumed:
+ * tools/module-state-leak.mjs --mode bisect, poisoner seed0105 (DECgraphics)
+ * victim seed0108 (no symset), both controls behaved, ddmin over 13 sticky
+ * bindings reduced to this one; restoring it alone took 293/303 -> 303/303.
+ *
+ * Restoring the FIELDS rather than replacing the entry objects: js/display.js,
+ * js/glyphs.js and js/doset_data.js all read `gs.symset[PRIMARYSET]` and some
+ * hold the row, so a fresh object would be invisible to them (the same
+ * live-binding trap js/gstate.js:60 documents).
+ *
+ * Deliberately NOT resetting gs.showsyms / gp.primary_syms / gr.rogue_syms
+ * here.  They are the same class in C — zeroed by the same assignment — but
+ * js/symbols.js rebuilds all three during each game's option pass, they are
+ * not convicted by the bisect, and nulling them would expose every reader
+ * that runs before that pass to a state this port has never been in.  Left
+ * as a measured residual rather than a speculative change. */
+registerStaticReset('const.js: gs.symset[] (decl.c g_init_s)', () => {
+    for (const entry of gs.symset) {
+        entry.name = null;
+        entry.handling = 0;
+        entry.nocolor = 0;
+    }
+});
+
 // init_symbols, init_showsyms, init_primary_symbols, init_rogue_symbols:
 // Canonical versions in drawing.js. These were autotranslated duplicates
 // that used defsyms (from symbols.js), creating a const→symbols→monsters→const
@@ -2700,7 +2779,7 @@ export const AKLYS_LIM = BOLT_LIM / 2;
 // AUTO-IMPORT-END: CONST_WEAPON_SKILLS
 // AUTO-IMPORT-BEGIN: CONST_ALL_HEADERS_POST
 // Auto-imported header constants (post-symbol pass)
-// Source dir: nethack-c/upstream/include
+// Source dir: /Users/davidbau/git/mazesofmenace/teleport/maud/scripts/generators/../../nethack-c/patched/include
 //
 // Rules:
 // - include object-like #define macros (not function-like) and enum constants
@@ -2874,12 +2953,47 @@ export function has_ebones(mtmp) { return !!mtmp?.mextra?.ebones; }
 export function ONAME(obj) { return obj?.oextra?.oname || ''; }
 export function has_oname(obj) { return !!obj?.oextra?.oname; }
 export function OMONST(obj) { return obj?.oextra?.omonst; }
-export function MGIVENNAME(mtmp) { return mtmp?.mextra?.mgivenname || mtmp?.mgivenname || ''; }
-export function has_mgivenname(mtmp) { return !!(mtmp?.mextra?.mgivenname || mtmp?.mgivenname); }
+/* C: #define MGIVENNAME(mon) ((mon)->mextra->mgivenname)
+ *    #define has_mgivenname(mon) ((mon)->mextra && MGIVENNAME(mon))
+ * Both read ONLY through mextra (mextra.h) -- C short-circuits on a NULL
+ * mextra and never touches a flat field. A flat mtmp.mgivenname fallback
+ * here tripped the capture-replay reconstructor ("field 'mgivenname' was
+ * not captured") on every monst whose mextra is NULL. */
+export function MGIVENNAME(mtmp) { return mtmp?.mextra?.mgivenname || ''; }
+export function has_mgivenname(mtmp) { return !!(mtmp?.mextra && mtmp.mextra.mgivenname); }
 
-// C: you.h — #define Upolyd (u.mtimedone != 0)
+/* C ref: you.h:554 — #define Upolyd (u.umonnum != u.umonster)
+ *
+ * This used to read `player.mtimedone > 0` under a comment claiming that WAS
+ * the macro.  It is not: u.mtimedone (you.h:422) is "no. of turns until
+ * polymorph times out", a separate field, and C uses the two together rather
+ * than interchangeably — potion.c:1326 reads
+ * `if (u.mtimedone && u.umonnum != u.umonster)`, which would be redundant if
+ * they were one predicate.  They come apart in C wherever a form change does
+ * not touch the timer: were.c:226-227 tops up a zero mtimedone on an already
+ * were-formed hero, and polyself.c:293 rehumanize()'s `if (!Upolyd)` guard is
+ * evaluated before polyman() clears mtimedone at polyself.c:216.
+ *
+ * MEASURED over the public 44 (2026-09-06, temporary probe on every call, 19
+ * distinct hero states observed): the two predicates AGREE on every one, so
+ * this correction is behaviour-neutral on today's corpus and structural.  Both
+ * u.umonnum and u.umonster are live and correct on the scored path —
+ * js/u_init.js:376 seeds them per u_init.c:991 and js/polyself.js maintains
+ * u.umonnum — which is why js/trap.js:1231 _gp_Upolyd, js/zap.js:6229
+ * _cm_Upolyd and js/teleport.js:1529 Upolyd_hero already spell it this way.
+ *
+ * C's macro takes no argument; it always reads the global `u`.  The `player`
+ * parameter is this port's convention and every live call site passes game.u
+ * (or an alias of it), so it is honoured when given and falls back to game.u
+ * when it is not.
+ *
+ * Capture-replay note: the `hero.upolyd` mapstate slot
+ * (js/mapstate_game_bridge.js) seeds the inputs THIS predicate reads; it was
+ * written against the mtimedone spelling and moved with this change. */
 export function Upolyd(player) {
-    return !!(player && player.mtimedone && player.mtimedone > 0);
+    const u = player || ((typeof game !== 'undefined' && game) ? game.u : null);
+    if (!u) return false;
+    return (u.umonnum | 0) !== (u.umonster | 0);
 }
 
 // Canonical macros — previously duplicated as local stubs in 15+ files
@@ -2888,10 +3002,17 @@ export function OBJ_AT(x, y) { return game?.level?.objects?.some(o => o.ox === x
 export function Has_contents(obj) { return obj?.cobj != null; }
 export function M_AP_TYPE(mon) { return mon?.m_ap_type ?? 0; }
 export function engulfing_u(mon) { const g = (typeof game !== 'undefined' ? game : null); return g?.u?.uswallow && g?.u?.ustuck === mon; }
-// C ref: permonst.h — ismnum(x) means x is a valid monster index.
-// JS call sites pass integer indices (for example u.ulycn, corpsenm, cham).
+// C ref: monst.h:285 `#define ismnum(x) ((x) >= LOW_PM && (x) < NUMMONS)`.
+// JS call sites pass integer indices (for example u.ulycn, corpsenm, cham),
+// each initialized to NON_PM (-1) rather than left undefined, so the plain
+// comparisons below (both false against undefined/NaN) need no extra type
+// guard — a Number.isInteger() check here would be invented behaviour C's
+// macro does not have. Previously missing the `< NUMMONS` upper bound, which
+// several call sites (js/weight.js, js/dogmove.js, js/eat.js, js/sp_lev.js,
+// js/cmd.js) worked around with their own local re-implementations rather
+// than importing this one — see js/weight.js:40-44 for the discovery.
 export function ismnum(pm) {
-    return Number.isInteger(pm) && pm >= LOW_PM;
+    return pm >= LOW_PM && pm < NUMMONS;
 }
 
 // ── Level classification predicates (C: dungeon.h macros) ──
@@ -2917,4 +3038,9 @@ export function Is_botlevel(uz) {
 export function Is_rogue_level(uz) { const g = game; return g?.rogue_level && (uz ?? g?.u?.uz)?.dnum === g.rogue_level.dnum && (uz ?? g?.u?.uz)?.dlevel === g.rogue_level.dlevel; }
 export function Is_oracle_level(uz) { const g = game; return g?.oracle_level && (uz ?? g?.u?.uz)?.dnum === g.oracle_level.dnum && (uz ?? g?.u?.uz)?.dlevel === g.oracle_level.dlevel; }
 export function Is_knox_level(uz) { const g = game; return g?.knox_level && (uz ?? g?.u?.uz)?.dnum === g.knox_level.dnum && (uz ?? g?.u?.uz)?.dlevel === g.knox_level.dlevel; }
-export function Is_juiblex_level(uz) { return false; /* TODO */ }
+export function Is_juiblex_level(uz) {
+    const g = game;
+    const jl = g?.juiblex_level;
+    const lev = uz ?? g?.u?.uz;
+    return !!jl && !!lev && lev.dnum === jl.dnum && lev.dlevel === jl.dlevel;
+}

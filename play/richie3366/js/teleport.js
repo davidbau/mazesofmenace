@@ -2870,11 +2870,12 @@ function ledger_to_dlev(tolev) {
  * D-1198: xyflags bit 2 when In_W_tower(mx,my,&u.uz) using pre-relmon
  * coords (C dog.c:913–915). Arrival copies flags into my (D-1199).
  * Named omissions: leash (`:898–901` mtame--/m_unleash); light sources
- * (`:928–931` vision_recalc); mon_leave's no_charge/residency (named on
- * mon_leave); relmon's mon_leaving_level take-off-map (C `:906` →
+ * (`:928–931` vision_recalc); relmon's mon_leaving_level take-off-map
+ * (C `:906` →
  * mon.c:2696–2732 mtrapped/unstuck/remove_monster/seemimic/fill_pit/
  * newsym/mundetected/polearm-forget — sync caller, cannot await the
- * async live export). Worm-seg wormno arm live via mon_leave (D-2296).
+ * async live export). Whole mon_leave live (D-2296 worm arm + no_charge
+ * loop + residency clear).
  */
 export function migrate_to_level(mtmp, tolev, xyloc, cc) {
     if (!mtmp) return;

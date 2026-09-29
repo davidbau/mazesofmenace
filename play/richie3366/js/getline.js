@@ -1118,6 +1118,12 @@ const EXT_CMDS = [
         run: async () => (await import('./options.js')).dotogglepickup(),
     },
     {
+        // C: cmd.c "bugreport" GENERALCMD|NOFUZZERCMD (no AUTOCOMPLETE)
+        // → dobugreport (report.c:461).
+        name: 'bugreport', wiz: false, autocomplete: false,
+        run: async () => (await import('./report.js')).dobugreport(),
+    },
+    {
         name: 'cast', wiz: false, autocomplete: false,
         run: async () => (await import('./spell.js')).docast(),
     },

@@ -10,6 +10,14 @@
 // __DATE__ " " __TIME__). RUNTIME_PORT_ID is not defined, and the
 // NETHACK_GIT_* strings are unset, so the live getversionstring
 // result is version_id with its trailing dot restored.
+//
+// Generated-data imports for make_version only: all three are import-free
+// leaf modules (no TDZ/cycle risk — the D-1881 edge ban is version.js →
+// date.js/const.js, still absent; generated/ is outside imports.mjs's
+// index, verified by reading the modules).
+import { NUMMONS } from './generated/monsters_data.js';
+import { NUM_OBJECTS } from './generated/objects_data.js';
+import { artilistRaw } from './generated/artifacts_data.js';
 export const VERSION = '0.1.0';
 export const BUILD_DATE = '2026-04-18';
 export const COMMIT = 'contest-skeleton';
@@ -20,6 +28,8 @@ export const TELEPORT_BUILD_DATE = '2026-04-18';
 const VERSION_MAJOR = 5;
 const VERSION_MINOR = 0;
 const PATCHLEVEL = 0;
+// C ref: patchlevel.h EDITLEVEL `:20` (0 — bones/save compat epoch).
+const EDITLEVEL = 0;
 
 // C ref: global.h PORT_ID under __APPLE__ ("MacOS"). No PORT_SUB_ID
 // on this port (only MSDOS defines one).
@@ -80,7 +90,7 @@ export function version_string() {
         : mdlib_version_string('.');
 }
 
-// C ref: global.h:389 BUFSZ. File-local: version.js stays import-free
+// C ref: global.h:389 BUFSZ. File-local: no version.js → const.js edge
 // (D-1881 — const.js:21 reads COMMIT_NUMBER at load).
 const VERSION_BUFSZ = 256;
 
@@ -266,14 +276,15 @@ export function getversionstring(_buf, bufsz) {
 // C ref: global.h COLNO (`:382`) = 80, the wrap width for opt_out_words.
 // Local, not imported from const.js: const.js:21 reads this module's
 // COMMIT_NUMBER at top level, so any version.js → const.js edge is a TDZ
-// cycle for version-first entries (D-1881 keeps this module import-free).
+// cycle for version-first entries (D-1881: no version.js → const.js /
+// hacklib.js / date.js edge; generated-data leaves only).
 const OPT_COLNO = 80;
 
 // C ref: hacklib.c dm[] `:964–979` + datamodel `:981–997`. C home is
 // hacklib.c (extern; also read at version.c:784), but it lives here as a
 // file-local export — its sole JS consumer is build_options below, and
-// importing hacklib.js would break this module's import-free invariant
-// (see OPT_COLNO note). Move to js/hacklib.js if a second consumer ports.
+// importing hacklib.js would close the const.js TDZ cycle (see OPT_COLNO
+// note). Move to js/hacklib.js if a second consumer ports.
 // dm[0] is the live `{ sizeof(short/int/long/ll/ptr) }`; contest LP64
 // sizes measured with gcc (cf. D-2530): 2,4,8,8,8 → row `I32LP64`.
 const DATAMODEL_LIVE_SZ = [2, 4, 8, 8, 8];
@@ -594,8 +605,8 @@ export function build_options() {
 let done_runtime_opt_init_once = false;
 
 // C ref: mdlib.c runtime_info_init `:842` populate_nomakedefs(&version).
-// version.js stays import-free (D-1881: const.js:21 reads COMMIT_NUMBER at
-// top level, so no static version.js→date.js edge); js/date.js registers
+// version.js holds no static version.js→date.js edge (D-1881:
+// const.js:21 reads COMMIT_NUMBER at top level); js/date.js registers
 // the C-order call here at its evaluation. Unset in graphs that never
 // import js/date.js — then populate stays the pre-port omission.
 let populateNomakedefsHook = null;
@@ -613,18 +624,56 @@ export function __setFreeNomakedefs(fn) {
     freeNomakedefsHook = fn;
 }
 
+// C ref: mdlib.c version `:103` — `static struct version_info` (global.h
+// `:348–352` shape), filled by make_version (`:841`), read by
+// populate_nomakedefs (`:842`, via the hook below). Module-local like C.
+const version = { incarnation: 0, feature_set: 0, entity_count: 0 };
+
 /**
- * C ref: mdlib.c runtime_info_init `:834–846` — one-shot init; calls
- * build_options (`:844`, the row's C caller — wired here). `:841`
- * make_version fills the static version struct (NOT YET PORTED — own row;
- * js/date.js interimVersionInfo stands in until then). `:842`
- * populate_nomakedefs(&version) runs via the hook above (wired here).
+ * C ref: mdlib.c make_version `:248–295` — whole body in C order. C is
+ * staticfn in game builds (`:244–246`: static unless SFCTOOL), so this
+ * stays module-local; sole game caller is runtime_info_init (`:841`,
+ * wired below — makedefs/sfctool callers are build tools, never ported).
+ * C `unsigned long` is 64-bit but every value here fits 32 bits, so the
+ * `>>> 0` normalizations are exact, not truncations.
+ */
+function make_version() {
+    // `:255–258` incarnation — (5<<24)|(0<<16)|(0<<8)|0 = 0x05000000.
+    version.incarnation = (
+        (VERSION_MAJOR << 24) | (VERSION_MINOR << 16)
+        | (PATCHLEVEL << 8) | EDITLEVEL
+    ) >>> 0;
+    // `:266–281` feature_set — MAIL_STRUCTURES bit 6 (global.h:430,
+    // unconditional) + color bit 17 ("always") + INSURANCE bit 18
+    // (config.h:435); SCORE_ON_BOTL bit 19 off (config.h:627 commented out).
+    version.feature_set = ((1 << 6) | (1 << 17) | (1 << 18)) >>> 0;
+    // `:286–292` entity_count — count artifact_names[1..] (artilist.h:12
+    // MDLIB_C view: [0] "" + 33 names + [34] NULL ⇒ 33; artilistRaw has
+    // no NULL terminator so its length is the fence), then
+    // (nart<<24)|(NUM_OBJECTS<<12)|NUMMONS in C shift order.
+    let i;
+    for (i = 1; i < artilistRaw.length && artilistRaw[i].name; i++) // `:286–287`
+        continue;
+    version.entity_count = (i - 1) >>> 0; // `:288`
+    i = NUM_OBJECTS; // `:289`
+    version.entity_count = ((version.entity_count << 12) | i) >>> 0; // `:290`
+    i = NUMMONS; // `:291`
+    version.entity_count = ((version.entity_count << 12) | i) >>> 0; // `:292`
+    return; // `:294`
+}
+
+/**
+ * C ref: mdlib.c runtime_info_init `:834–846` — one-shot init; `:841`
+ * make_version fills the static version struct (above); `:842`
+ * populate_nomakedefs(&version) runs via the hook above (wired here,
+ * struct forwarded); `:844` build_options (wired here).
  */
 export function runtime_info_init() {
     if (!done_runtime_opt_init_once) {
         done_runtime_opt_init_once = true;
         build_savebones_compat_string(); // `:839`
-        if (populateNomakedefsHook) populateNomakedefsHook(); // `:842`
+        make_version(); // `:841`
+        if (populateNomakedefsHook) populateNomakedefsHook(version); // `:842`
         idxopttext = 0; // `:843`
         build_options(); // `:844`
     }

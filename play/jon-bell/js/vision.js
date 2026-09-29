@@ -1,27 +1,81 @@
+// @ts-nocheck
 // vision.js — C ref: vision.c Algorithm C shadow-casting
-// Stripped-down port for the contest skeleton: no light sources, boulders,
-// mimics, underwater, blindness, or pit handling.
+// Stripped-down port for the contest skeleton: no boulders, mimics,
+// underwater, or rogue-level handling.  Blindness (vision.c:547-582) and the
+// pit arm (vision.c:608-623) have since been ported below, and so has the
+// light-source hook: vision.c:702 `do_light_sources(next_array)` plus the two
+// TEMP_LIT tests it feeds (vision.c:756 and vision.c:772).
 // Contestants should port the full vision.c for complete parity.
-
 import { game } from './gstate.js';
-import {
-    COLNO, ROWNO, DOOR, SDOOR, POOL,
-    D_CLOSED, D_LOCKED, D_TRAPPED,
-    SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7,
-    IS_WALL,
-} from './const.js';
-import { newsym } from './display.js';
-
+import { COLNO, ROWNO, DOOR, SDOOR, POOL, WATER, LAVAWALL, CLOUD, D_CLOSED, D_LOCKED, D_TRAPPED, SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7, SVALL, IS_WALL, isok, BLINDED, SEE_INVIS, DETECT_MONSTERS, MONSEEN_NORMAL, MONSEEN_SEEINVIS, MONSEEN_INFRAVIS, MONSEEN_TELEPAT, MONSEEN_XRAYVIS, MONSEEN_DETECT, MONSEEN_WARNMON } from './const.js';
+import { newsym, canseemon, mon_visible, see_with_infrared, tp_sensemon, MATCH_WARN_OF_MON } from './display.js';
+import { worm_known } from './worm.js';
+import { do_light_sources } from './light.js';
+import { pushRngLogEntry } from './rng.js';
+/* C vision.c:195 does_block()'s last clause reads region.c's
+ * visible_region_at().  Importing it closes a region.js <-> vision.js cycle
+ * (region.js already imports cansee/block_point/unblock_point from here), but
+ * neither module body calls the other at evaluation time, so the live ESM
+ * binding is resolved by the time _blocks() first runs. */
+import { visible_region_at } from './region.js';
 const COULD_SEE = 0x1;
 const IN_SIGHT = 0x2;
+let _visionTraceSeq = 0;
 
+function _visionTraceCells(array) {
+    if (typeof process === 'undefined' || process.env?.FF_VISION_TRACE !== '1')
+        return '';
+    const raw = process.env.FF_VISION_TRACE_CELLS || '40,3;41,3;42,3;39,4;40,4;42,4;43,4';
+    return raw.split(';').map((part) => {
+        const [xs, ys] = part.split(',');
+        const x = Number(xs), y = Number(ys);
+        if (!Number.isInteger(x) || !Number.isInteger(y) || x < 0 || x >= COLNO || y < 0 || y >= ROWNO)
+            return null;
+        const bits = array?.[y]?.[x] | 0;
+        const loc = game.level?.at(x, y);
+        return `${x},${y}:bits=${bits},couldSee=${bits & COULD_SEE ? 1 : 0}`
+            + `,inSight=${bits & IN_SIGHT ? 1 : 0},typ=${loc?.typ | 0}`
+            + `,lit=${loc?.lit ? 1 : 0},viz_clear=${viz_clear[y]?.[x] | 0}`;
+    }).filter(Boolean).join('|');
+}
+
+function _visionTrace(phase, control, u, array) {
+    if (typeof process === 'undefined' || process.env?.FF_VISION_TRACE !== '1')
+        return;
+    const marker = `^vision_recalc[seq=${++_visionTraceSeq} phase=${phase} control=${control | 0}`
+        + ` hero=${u?.ux | 0},${u?.uy | 0} cells=${_visionTraceCells(array)}]`;
+    pushRngLogEntry(marker);
+    // Diagnostic consumers which must preserve the order of display-RNG calls
+    // cannot reconstruct it from the core log: display calls themselves do not
+    // add entries there.  This opt-in side channel is intentionally inert in
+    // scored replays and is populated by tools/redraw-order-report.mjs only.
+    globalThis.__REDRAW_ORDER_TRACE?.push({ kind: 'vision', core: null, marker });
+}
+// C ref: vision.h:10 — location is temporarily lit (by a mobile light
+// source; see js/light.js do_light_sources).
+const TEMP_LIT = 0x4;
+// C ref: nethack-c/include/youprop.h:103
+//   Blind = ((HBlinded || EBlinded) && !BBlinded)
+// with HBlinded/EBlinded/BBlinded = u.uprops[BLINDED].{intrinsic,extrinsic,
+// blocked} (youprop.h:87-103).  Read with the SAME expression the botl "Blind"
+// condition (js/display.js:2406-2409) and see_with_infrared (js/display.js:3341)
+// already use — including the `u.ublind` alias those two accept — so the status
+// line, the infravision test and the vision recalc agree by construction rather
+// than by coincidence.  No RNG.
+export function Blind() {
+    const u = game.u;
+    if (!u)
+        return false;
+    const bp = u.uprops && u.uprops[BLINDED];
+    return !!bp && !!((bp.intrinsic | 0) || (bp.extrinsic | 0))
+            && !(bp.blocked | 0);
+}
 // C ref: vision.c seenv_matrix
 const seenv_matrix = [
     [SV2, SV1, SV0],
-    [SV3, 0,   SV7],
+    [SV3, SVALL, SV7],
     [SV4, SV5, SV6],
 ];
-
 // Circle data for range limits (C vision.c:27-70)
 const circle_data = [
     /*  0*/ 0,
@@ -43,47 +97,260 @@ const circle_data = [
     /*136*/ 16,
 ];
 const circle_start = [0, 1, 3, 6, 10, 15, 21, 28, 36, 45, 55, 66, 78, 91, 105, 120];
-
+/* C ref: vision.c:1596 `#define circle_ptr(x) (&circle_data[circle_start[x]])`
+ * — the row of per-dy column offsets for a circle of the given radius.  C
+ * hands back a pointer indexed from 0; the slice is that pointer.  Exported
+ * for js/light.js#do_light_sources, the other C caller of this table. */
+export function circle_ptr(range) { return circle_data.slice(circle_start[range]); }
 // Vision state arrays
 const viz_clear = Array.from({ length: ROWNO }, () => new Int8Array(COLNO));
 const left_ptrs = Array.from({ length: ROWNO }, () => new Int16Array(COLNO));
 const right_ptrs = Array.from({ length: ROWNO }, () => new Int16Array(COLNO));
-
 // Double-buffered COULD_SEE bitmap
 const cs_buf0 = Array.from({ length: ROWNO }, () => new Uint8Array(COLNO));
 const cs_buf1 = Array.from({ length: ROWNO }, () => new Uint8Array(COLNO));
 const cs_rmin0 = new Int16Array(ROWNO).fill(COLNO);
+
+/* C ref: vision.c:104-111 get_viz_clear() — "expose viz_clear[][] for sanity
+ * checking".  NOTE the C returns TRUE when the cell is NOT clear (the name
+ * reads backwards); Cardinal Rule 1 — port the C, not the name. */
+export function get_viz_clear(x, y) {
+    if (isok(x, y) && !viz_clear[y][x])
+        return true;
+    return false;
+}
 const cs_rmax0 = new Int16Array(ROWNO).fill(0);
 const cs_rmin1 = new Int16Array(ROWNO).fill(COLNO);
 const cs_rmax1 = new Int16Array(ROWNO).fill(0);
-
 function mark_visible_range(row, left, right) {
-    if (left > right) return;
+    if (left > right)
+        return;
+    // C ref: vision.c right_side/left_side/view_from — when vis_func is set
+    // (do_clear_area off-center path), call func(i, row, varg) per square
+    // INSTEAD of set_cs(rowp,i) + set_min/set_max.  Same column order (left..right).
+    if (game.vis_func) {
+        const fn = game.vis_func;
+        const arg = game.vis_varg;
+        for (let i = left; i <= right; i++)
+            fn(i, row, arg);
+        return;
+    }
     const rowp = game.cs_rows?.[row];
-    if (!rowp) return;
-    for (let i = left; i <= right; i++) rowp[i] = COULD_SEE;
-    if (game.cs_left[row] > left) game.cs_left[row] = left;
-    if (game.cs_right[row] < right) game.cs_right[row] = right;
+    if (!rowp)
+        return;
+    for (let i = left; i <= right; i++)
+        rowp[i] = COULD_SEE;
+    if (game.cs_left[row] > left)
+        game.cs_left[row] = left;
+    if (game.cs_right[row] < right)
+        game.cs_right[row] = right;
 }
-
 // Simplified blockage check: walls, closed doors, stone
 function _blocks(level, x, y) {
     const loc = level.at(x, y);
-    if (!loc) return true;
+    if (!loc)
+        return true;
     const typ = loc.typ ?? 0;
-    if (typ < POOL) return true;  // STONE, walls, SDOOR, SCORR
+    if (typ < POOL)
+        return true; // STONE, walls, SDOOR, SCORR
     if (typ === DOOR) {
         const mask = loc.doormask ?? 0;
-        if (mask & (D_CLOSED | D_LOCKED | D_TRAPPED)) return true;
+        if (mask & (D_CLOSED | D_LOCKED | D_TRAPPED))
+            return true;
     }
+    /* C vision.c:174 — the SECOND blocking clause, which this port had dropped
+     * entirely:
+     *     if (lev->typ == CLOUD || IS_WATERWALL(lev->typ) || lev->typ == LAVAWALL
+     *         || (Underwater && is_moat(x, y)))
+     *         return 1;
+     * `typ < POOL` above is C's IS_OBSTRUCTED (which also covers TREE at 13),
+     * but CLOUD (36), WATER (18) and LAVAWALL (21) all sit ABOVE POOL, so all
+     * three were transparent here.  LAVAWALL is what a Gehennom maze is built
+     * out of: hellfill.lua's maze variant 5 replaces the wall terrain with lava
+     * and then turns most of it into "Z" (LAVAWALL), so with this clause missing
+     * the hero saw straight through every wall of the level.  seed4500 step 326
+     * (level-teleport arrival on Dlvl:40) painted 551 lava cells C never shows —
+     * the whole maze instead of the corridor the hero stands in.
+     * The Underwater/is_moat arm is left out: this port does not model
+     * Underwater (see this file's header), and MOAT is already >= POOL. */
+    if (typ === CLOUD || typ === WATER || typ === LAVAWALL)
+        return true;
+    /* C vision.c does_block():
+     *     for (obj = svl.level.objects[x][y]; obj; obj = obj->nexthere)
+     *         if (obj->otyp == BOULDER) return 1;
+     * "Boulders block light."  Missing here, so every boulder was transparent
+     * and the hero saw straight through it: seed0009 step 40 kicks a door open
+     * and C's line of sight stops at the boulder directly below at (7,18),
+     * leaving (7,19) and (7,20) unlit, while this port lit the whole column.
+     * (The visible-region arm that used to be declared a KNOWN GAP here is now
+     * ported at the bottom of this function.) */
+    const _objs = game.level?.levelObjects?.[x]?.[y] ?? null;
+    for (let o = _objs; o; o = o.nexthere)
+        if ((o.otyp | 0) === BOULDER_OTYP_VIS)
+            return true;
+    /* C vision.c:186-189 —
+     *     if ((mon = m_at(x, y)) && (!mon->minvis || See_invisible)
+     *         && is_lightblocker_mappear(mon))
+     *         return 1;
+     * "Mimics mimicking a door or boulder or ... block light."
+     *
+     * This arm was documented as having "no live path in this corpus".  That is
+     * FALSE, measured on seed0116: soko1-1.lua places two `des.monster({ id =
+     * "giant mimic", appear_as = "obj:boulder" })`, and one of them lands at
+     * (33,12), one square past the wall gap the hero looks through on arrival.
+     * In C that mimic BLOCKS, so it terminates the clear run and the vision
+     * algorithm marks the blocker itself seen — which is what draws its boulder
+     * glyph.  Transparent here, it fell inside a longer clear run and outside
+     * the shadow cone, so it was never marked seen and never drawn: exactly one
+     * cell, and it was seed0116's FIRST screen miss (step 114, row 13 col 32).
+     *
+     * Revealing a blocking disguise goes through shared seemimic(), which
+     * rechecks remaining terrain/objects before unblocking this point. */
+    const mon = _m_at_vis(x, y);
+    if (mon && (!mon.minvis || _see_invisible()) && is_lightblocker_mappear(mon))
+        return true;
+    /* C vision.c:193-197 —
+     *     if (visible_region_at(x, y))
+     *         return 2;
+     * "Clouds (poisonous or not) block light."  This arm was documented above
+     * as a KNOWN GAP with "no live path in this corpus and it needs state this
+     * port does not carry".  Both halves are false: js/region.js carries the
+     * whole NhRegion list and exports visible_region_at, and seed4500 walks the
+     * hero onto Dlvl:24 with three live gas clouds on the map.  Two of them,
+     * at (45,8) and (46,9), sit exactly on the diagonal from the hero at (42,5)
+     * to a hostile at (47,10), so C's couldsee(47,10) is FALSE and this port's
+     * was TRUE.  That single bit forked m_move twice in the same call:
+     * linedup() took the couldsee arm instead of walking the boulder line (C
+     * drew rn2(2 + boulderspots), we drew nothing), and the shortsighted-level
+     * demotion `nidist > (couldsee(nix,niy) ? 144 : 36)` left appr at 1 instead
+     * of 0, so we ran the mtrack loop's rn2(4*(cnt-j)) where C ran the
+     * !appr && !rn2(++chcnt) loop.  First RNG divergence, seed4500 step 1003.
+     * C returns 2 rather than 1 here; every does_block() caller in 5.0 tests it
+     * as a boolean, so the distinction is not observable and this returns true.
+     */
+    if (visible_region_at(x, y))
+        return true;
     return false;
 }
 
-// C ref: vision_reset() — rebuild viz_clear and left/right ptrs
+/* C vision.c:153 does_block(x, y, lev) — exported so js/region.js can run the
+ * `if (!does_block(x, y, &levl[x][y])) unblock_point(x, y)` guard C uses at
+ * region.c:375 and region.c:1071.  Those two sites had been calling
+ * unblock_point() unconditionally on the argument that JS's unblock_point is a
+ * whole-grid vision_reset() and so cannot change the resulting viz state.  That
+ * was true only while the region arm above was missing: with it in place,
+ * expire_gas_cloud() runs while its own region is still in gr.regions[] with
+ * ttl 0 (remove_region is what sets ttl -2), so C's does_block() still returns
+ * 2 there and C does NOT unblock and does NOT set vision_full_recalc.  Calling
+ * unblock_point() anyway sets it, which schedules a vision_recalc C never
+ * runs. */
+export function does_block(x, y) {
+    return _blocks(game.level, x, y);
+}
+/* C rm.h:534 m_at(x,y).  js/uhitm.js exports the canonical body, but importing
+ * it here would close a vision.js -> uhitm.js -> ... -> vision.js cycle, so the
+ * same statement is repeated: the fmon chain, live monsters only, and a mounted
+ * steed (which C keeps off the monster grid) is not AT anywhere. */
+function _m_at_vis(x, y) {
+    const steed = game.u ? game.u.usteed : null;
+    for (let m = game.fmon; m; m = m.nmon) {
+        if (m === steed || m._mapRemoved)
+            continue;
+        if ((m.mhp | 0) > 0 && m.mx === x && m.my === y)
+            return m;
+    }
+    return null;
+}
+/* C youprop.h See_invisible. */
+function _see_invisible() {
+    const p = game.u?.uprops?.[SEE_INVIS];
+    return !!p && !!((p.intrinsic | 0) || (p.extrinsic | 0)) && !(p.blocked | 0);
+}
+/* C monst.h:233 is_lightblocker_mappear(mon) —
+ *     is_obj_mappear(mon, BOULDER)
+ *     || (M_AP_TYPE(mon) == M_AP_FURNITURE
+ *         && (mappearance == S_hcdoor || mappearance == S_vcdoor
+ *             || mappearance < S_ndoor  [= walls] || mappearance == S_tree))
+ * S_* indices are defsym.h's PCHAR ordering: S_ndoor 12, S_vcdoor 15,
+ * S_hcdoor 16, S_tree 18. */
+const _S_NDOOR_VIS = 12, _S_VCDOOR_VIS = 15, _S_HCDOOR_VIS = 16, _S_TREE_VIS = 18;
+export function is_lightblocker_mappear(mon) {
+    const apType = (mon.m_ap_type | 0) & M_AP_TYPMASK_VIS;
+    const app = mon.mappearance | 0;
+    if (apType === M_AP_OBJECT_VIS && app === BOULDER_OTYP_VIS)
+        return true;
+    return apType === M_AP_FURNITURE_VIS
+        && (app === _S_HCDOOR_VIS || app === _S_VCDOOR_VIS
+            || app < _S_NDOOR_VIS || app === _S_TREE_VIS);
+}
+/* C monst.h:60-73 — M_AP_TYPMASK and the M_AP_* appearance kinds. */
+const M_AP_TYPMASK_VIS = 0x7, M_AP_FURNITURE_VIS = 1, M_AP_OBJECT_VIS = 2;
+/* C objects.h BOULDER (js/dig.js:426, js/monmove.js:670, js/dogmove.js:1807). */
+const BOULDER_OTYP_VIS = 475;
+// C ref: vision.c:860-925 vision_reset() — rebuild viz_clear and left/right ptrs
 export function vision_reset() {
     const level = game.level;
-    if (!level) return;
+    if (!level)
+        return;
+    /* C vision.c:866-874, the FIRST thing vision_reset() does:
+     *     gv.viz_array = cs_rows0;
+     *     gv.viz_rmin  = cs_rmin0;
+     *     gv.viz_rmax  = cs_rmax0;
+     *     memset(could_see, 0, sizeof(could_see));
+     * `could_see` is the [2][ROWNO][COLNO] pair, so that memset clears BOTH
+     * buffers, not just the one being installed.  This port cleared NEITHER: it
+     * only nulled the rmin/rmax pointers at the tail, so the previous level's
+     * IN_SIGHT bits survived a level change.
+     *
+     * That matters because vision_recalc's update loop only repaints a cell
+     * `if (!(old_row[col] & IN_SIGHT) || oldseenv != lev->seenv)`.  On arrival
+     * at a PREMAPPED level (Sokoban: detect.c premap_detect sets seenv = SVALL
+     * and waslit on every square) the seenv half is already satisfied, so a
+     * cell that happened to be in sight at the SAME (x,y) on the level the hero
+     * just left is never newsym()ed at all — it keeps whatever premap_detect
+     * remembered, which is background + boulders ONLY (detect.c:2151-2152 maps
+     * sobj_at(BOULDER) and nothing else).
+     *
+     * MEASURED on seed0367-priest-quest-tour step 308, arrival on Sokoban 1:
+     * C paints the '%' of a food item at (46,18) that the hero can plainly see;
+     * this port painted the remembered floor, for the whole 16-frame tail of
+     * the session.  newsym(46,18) was never called once on that level.
+     *
+     * The clear CANNOT go in _vision_rebuild_grid() below: this port routes
+     * block_point()/unblock_point()/recalc_block_point() through vision_reset()
+     * as a wholesale stand-in for C's incremental fill_point()/dig_point(), and
+     * those run MID-LEVEL, many times per turn.  Wiping visibility there costs
+     * seed0367 25 step points and 12,140 RNG leaves (measured).  So the clear
+     * belongs to vision_reset() proper -- the level-change entry point, which
+     * is the only place C calls it from with a level swap underneath -- and the
+     * three block-point wrappers now call the grid rebuild alone. */
+    game.viz_array = cs_buf0;
+    game.active_buf = 0;
+    for (let i = 0; i < ROWNO; i++) {
+        cs_buf0[i].fill(0);
+        cs_buf1[i].fill(0);
+    }
+    _vision_rebuild_grid();
+    /* C vision.c:868-869 — gv.viz_rmin = cs_rmin0; gv.viz_rmax = cs_rmax0.  C
+     * does NOT clear these; they still hold the previous level's extents, which
+     * can only WIDEN vision_recalc's update range (start = min(old,new), stop =
+     * max(old,new)), never narrow it.  This port nulled them instead.  Measured
+     * both ways across all 44 sessions at this commit: identical, 10808/11405
+     * either way, so C's form is kept because it is C's form. */
+    game._viz_rmin = cs_rmin0;
+    game._viz_rmax = cs_rmax0;
+    // C vision.c:263 — the rebuilt vision state is ready for recalculation.
+    game.iflags.vision_inited = true;
+}
 
+/* C vision.c:876-921 — the viz_clear / left_ptrs / right_ptrs half of
+ * vision_reset(): a pure function of the level grid via _blocks() (C's
+ * does_block()).  Split out so the block-point wrappers can rebuild the grid
+ * WITHOUT clearing the could_see buffers (see the note above). */
+function _vision_rebuild_grid() {
+    const level = game.level;
+    if (!level)
+        return;
     for (let y = 0; y < ROWNO; y++) {
         viz_clear[y].fill(0);
         let dig_left = 0;
@@ -96,9 +363,11 @@ export function vision_reset() {
                         left_ptrs[y][i] = dig_left;
                         right_ptrs[y][i] = x - 1;
                     }
-                } else {
+                }
+                else {
                     let i = dig_left;
-                    if (dig_left) dig_left--;
+                    if (dig_left)
+                        dig_left--;
                     for (; i < x; i++) {
                         left_ptrs[y][i] = dig_left;
                         right_ptrs[y][i] = x;
@@ -110,17 +379,15 @@ export function vision_reset() {
             }
         }
         let i = dig_left;
-        if (!block && dig_left) dig_left--;
+        if (!block && dig_left)
+            dig_left--;
         for (; i < COLNO; i++) {
             left_ptrs[y][i] = dig_left;
             right_ptrs[y][i] = COLNO - 1;
             viz_clear[y][i] = block ? 0 : 1;
         }
     }
-    game._viz_rmin = null;
-    game._viz_rmax = null;
 }
-
 // Bresenham quadrant path functions (C ref: vision.c q1-q4_path)
 function q1_path(srow, scol, y2, x2) {
     let x = scol, y = srow;
@@ -129,23 +396,31 @@ function q1_path(srow, scol, y2, x2) {
     if (dy > dx) {
         let err = dxs - dy;
         for (let k = dy - 1; k; k--) {
-            if (err >= 0) { x++; err -= dys; }
+            if (err >= 0) {
+                x++;
+                err -= dys;
+            }
             y--;
             err += dxs;
-            if (!viz_clear[y][x]) return 0;
+            if (!viz_clear[y][x])
+                return 0;
         }
-    } else {
+    }
+    else {
         let err = dys - dx;
         for (let k = dx - 1; k; k--) {
-            if (err >= 0) { y--; err -= dxs; }
+            if (err >= 0) {
+                y--;
+                err -= dxs;
+            }
             x++;
             err += dys;
-            if (!viz_clear[y][x]) return 0;
+            if (!viz_clear[y][x])
+                return 0;
         }
     }
     return 1;
 }
-
 function q2_path(srow, scol, y2, x2) {
     let x = scol, y = srow;
     const dx = x - x2, dy = y - y2;
@@ -153,23 +428,31 @@ function q2_path(srow, scol, y2, x2) {
     if (dy > dx) {
         let err = dxs - dy;
         for (let k = dy - 1; k; k--) {
-            if (err >= 0) { x--; err -= dys; }
+            if (err >= 0) {
+                x--;
+                err -= dys;
+            }
             y--;
             err += dxs;
-            if (!viz_clear[y][x]) return 0;
+            if (!viz_clear[y][x])
+                return 0;
         }
-    } else {
+    }
+    else {
         let err = dys - dx;
         for (let k = dx - 1; k; k--) {
-            if (err >= 0) { y--; err -= dxs; }
+            if (err >= 0) {
+                y--;
+                err -= dxs;
+            }
             x--;
             err += dys;
-            if (!viz_clear[y][x]) return 0;
+            if (!viz_clear[y][x])
+                return 0;
         }
     }
     return 1;
 }
-
 function q3_path(srow, scol, y2, x2) {
     let x = scol, y = srow;
     const dx = x - x2, dy = y2 - y;
@@ -177,23 +460,31 @@ function q3_path(srow, scol, y2, x2) {
     if (dy > dx) {
         let err = dxs - dy;
         for (let k = dy - 1; k; k--) {
-            if (err >= 0) { x--; err -= dys; }
+            if (err >= 0) {
+                x--;
+                err -= dys;
+            }
             y++;
             err += dxs;
-            if (!viz_clear[y][x]) return 0;
+            if (!viz_clear[y][x])
+                return 0;
         }
-    } else {
+    }
+    else {
         let err = dys - dx;
         for (let k = dx - 1; k; k--) {
-            if (err >= 0) { y++; err -= dxs; }
+            if (err >= 0) {
+                y++;
+                err -= dxs;
+            }
             x--;
             err += dys;
-            if (!viz_clear[y][x]) return 0;
+            if (!viz_clear[y][x])
+                return 0;
         }
     }
     return 1;
 }
-
 function q4_path(srow, scol, y2, x2) {
     let x = scol, y = srow;
     const dx = x2 - x, dy = y2 - y;
@@ -201,23 +492,31 @@ function q4_path(srow, scol, y2, x2) {
     if (dy > dx) {
         let err = dxs - dy;
         for (let k = dy - 1; k; k--) {
-            if (err >= 0) { x++; err -= dys; }
+            if (err >= 0) {
+                x++;
+                err -= dys;
+            }
             y++;
             err += dxs;
-            if (!viz_clear[y][x]) return 0;
+            if (!viz_clear[y][x])
+                return 0;
         }
-    } else {
+    }
+    else {
         let err = dys - dx;
         for (let k = dx - 1; k; k--) {
-            if (err >= 0) { y++; err -= dxs; }
+            if (err >= 0) {
+                y++;
+                err -= dxs;
+            }
             x++;
             err += dys;
-            if (!viz_clear[y][x]) return 0;
+            if (!viz_clear[y][x])
+                return 0;
         }
     }
     return 1;
 }
-
 // C ref: vision.c right_side()
 function right_side(row, left, right_mark, limitsIdx) {
     const nrow = row + game.vis_step;
@@ -226,13 +525,13 @@ function right_side(row, left, right_mark, limitsIdx) {
     const lim_max = limitsIdx >= 0
         ? Math.min(COLNO - 1, game.vis_start_col + circle_data[limitsIdx])
         : COLNO - 1;
-    if (right_mark > lim_max) right_mark = lim_max;
+    if (right_mark > lim_max)
+        right_mark = lim_max;
     const nextLimIdx = limitsIdx >= 0 ? limitsIdx + 1 : -1;
-
     while (left <= right_mark) {
         let right_edge = right_ptrs[row][left];
-        if (right_edge > lim_max) right_edge = lim_max;
-
+        if (right_edge > lim_max)
+            right_edge = lim_max;
         if (!viz_clear[row][left]) {
             if (right_edge > right_mark) {
                 right_edge = (row - game.vis_step >= 0 && row - game.vis_step < ROWNO && viz_clear[row - game.vis_step][right_mark])
@@ -242,48 +541,53 @@ function right_side(row, left, right_mark, limitsIdx) {
             left = right_edge + 1;
             continue;
         }
-
         if (left !== game.vis_start_col) {
             for (; left <= right_edge; left++) {
                 const result = game.vis_step < 0
                     ? q1_path(game.vis_start_row, game.vis_start_col, row, left)
                     : q4_path(game.vis_start_row, game.vis_start_col, row, left);
-                if (result) break;
+                if (result)
+                    break;
             }
-            if (left > lim_max) return;
+            if (left > lim_max)
+                return;
             if (left === lim_max) {
                 mark_visible_range(row, lim_max, lim_max);
                 return;
             }
-            if (left >= right_edge) { left = right_edge; continue; }
+            if (left >= right_edge) {
+                left = right_edge;
+                continue;
+            }
         }
-
         let right;
         if (right_mark < right_edge) {
             for (right = right_mark; right <= right_edge; right++) {
                 const result = game.vis_step < 0
                     ? q1_path(game.vis_start_row, game.vis_start_col, row, right)
                     : q4_path(game.vis_start_row, game.vis_start_col, row, right);
-                if (!result) break;
+                if (!result)
+                    break;
             }
             right--;
-        } else {
+        }
+        else {
             right = right_edge;
         }
-
         if (left <= right) {
             if (left === right && left === game.vis_start_col && game.vis_start_col < COLNO - 1
                 && !viz_clear[row][game.vis_start_col + 1]) {
                 right = game.vis_start_col + 1;
             }
-            if (right > lim_max) right = lim_max;
+            if (right > lim_max)
+                right = lim_max;
             mark_visible_range(row, left, right);
-            if (deeper) right_side(nrow, left, right, nextLimIdx);
+            if (deeper)
+                right_side(nrow, left, right, nextLimIdx);
             left = right + 1;
         }
     }
 }
-
 // C ref: vision.c left_side()
 function left_side(row, left_mark, right, limitsIdx) {
     const nrow = row + game.vis_step;
@@ -292,13 +596,13 @@ function left_side(row, left_mark, right, limitsIdx) {
     const lim_min = limitsIdx >= 0
         ? Math.max(0, game.vis_start_col - circle_data[limitsIdx])
         : 0;
-    if (left_mark < lim_min) left_mark = lim_min;
+    if (left_mark < lim_min)
+        left_mark = lim_min;
     const nextLimIdx = limitsIdx >= 0 ? limitsIdx + 1 : -1;
-
     while (right >= left_mark) {
         let left_edge = left_ptrs[row][right];
-        if (left_edge < lim_min) left_edge = lim_min;
-
+        if (left_edge < lim_min)
+            left_edge = lim_min;
         if (!viz_clear[row][right]) {
             if (left_edge < left_mark) {
                 left_edge = (row - game.vis_step >= 0 && row - game.vis_step < ROWNO && viz_clear[row - game.vis_step][left_mark])
@@ -308,154 +612,356 @@ function left_side(row, left_mark, right, limitsIdx) {
             right = left_edge - 1;
             continue;
         }
-
         if (right !== game.vis_start_col) {
             for (; right >= left_edge; right--) {
                 const result = game.vis_step < 0
                     ? q2_path(game.vis_start_row, game.vis_start_col, row, right)
                     : q3_path(game.vis_start_row, game.vis_start_col, row, right);
-                if (result) break;
+                if (result)
+                    break;
             }
-            if (right < lim_min) return;
+            if (right < lim_min)
+                return;
             if (right === lim_min) {
                 mark_visible_range(row, lim_min, lim_min);
                 return;
             }
-            if (right <= left_edge) { right = left_edge; continue; }
+            if (right <= left_edge) {
+                right = left_edge;
+                continue;
+            }
         }
-
         let left;
         if (left_mark > left_edge) {
             for (left = left_mark; left >= left_edge; left--) {
                 const result = game.vis_step < 0
                     ? q2_path(game.vis_start_row, game.vis_start_col, row, left)
                     : q3_path(game.vis_start_row, game.vis_start_col, row, left);
-                if (!result) break;
+                if (!result)
+                    break;
             }
             left++;
-        } else {
+        }
+        else {
             left = left_edge;
         }
-
         if (left <= right) {
             if (left === right && right === game.vis_start_col && game.vis_start_col > 0
                 && !viz_clear[row][game.vis_start_col - 1]) {
                 left = game.vis_start_col - 1;
             }
-            if (left < lim_min) left = lim_min;
+            if (left < lim_min)
+                left = lim_min;
             mark_visible_range(row, left, right);
-            if (deeper) left_side(nrow, left, right, nextLimIdx);
+            if (deeper)
+                left_side(nrow, left, right, nextLimIdx);
             right = left - 1;
         }
     }
 }
-
 // C ref: vision.c view_from()
-function view_from(srow, scol, cs_rows, cs_left, cs_right, range = 0) {
+// func/arg: when func is non-null (do_clear_area off-center path), each visible
+// square is reported via func(col, row, arg) instead of being written into the
+// cs_rows could-see bitmap.  Mirrors C's vis_func/varg globals.
+function view_from(srow, scol, cs_rows, cs_left, cs_right, range = 0, func = null, arg = null) {
     game.vis_start_col = scol;
     game.vis_start_row = srow;
     game.cs_rows = cs_rows;
     game.cs_left = cs_left;
     game.cs_right = cs_right;
-
+    game.vis_func = func;
+    game.vis_varg = arg;
     let left, right;
     if (viz_clear[srow][scol]) {
         left = left_ptrs[srow][scol];
         right = right_ptrs[srow][scol];
-    } else {
+    }
+    else {
         left = !scol ? 0
             : (viz_clear[srow][scol - 1] ? left_ptrs[srow][scol - 1] : scol - 1);
         right = scol === COLNO - 1 ? COLNO - 1
             : (viz_clear[srow][scol + 1] ? right_ptrs[srow][scol + 1] : scol + 1);
     }
-
     let limitsIdx = -1;
     if (range) {
-        if (left < scol - range) left = scol - range;
-        if (right > scol + range) right = scol + range;
+        if (left < scol - range)
+            left = scol - range;
+        if (right > scol + range)
+            right = scol + range;
         limitsIdx = circle_start[range] + 1;
     }
-
     mark_visible_range(srow, left, right);
-
     const nrow_down = srow + 1;
     if (nrow_down < ROWNO) {
         game.vis_step = 1;
-        if (scol < COLNO - 1) right_side(nrow_down, scol, right, limitsIdx);
-        if (scol) left_side(nrow_down, left, scol, limitsIdx);
+        if (scol < COLNO - 1)
+            right_side(nrow_down, scol, right, limitsIdx);
+        if (scol)
+            left_side(nrow_down, left, scol, limitsIdx);
     }
     const nrow_up = srow - 1;
     if (nrow_up >= 0) {
         game.vis_step = -1;
-        if (scol < COLNO - 1) right_side(nrow_up, scol, right, limitsIdx);
-        if (scol) left_side(nrow_up, left, scol, limitsIdx);
+        if (scol < COLNO - 1)
+            right_side(nrow_up, scol, right, limitsIdx);
+        if (scol)
+            left_side(nrow_up, left, scol, limitsIdx);
+    }
+    // Don't leak the func callback into the next vision_recalc view_from call.
+    game.vis_func = null;
+    game.vis_varg = null;
+}
+// C ref: vision.c:2095 do_clear_area(scol, srow, range, func, arg)
+// Off-center (pet's-eye-view) branch: forward to view_from with the func.
+// Hero-centered branch: walk the circle and call func on each couldsee square.
+// NOTE: dog_goal calls do_clear_area(omx, omy, 9, wantdoor) — the off-center
+// branch is the one the FARAWAY goal computation depends on.
+export function do_clear_area(scol, srow, range, func, arg) {
+    const u = game.u;
+    if (scol !== (u?.ux | 0) || srow !== (u?.uy | 0)) {
+        // off-center: the hard work — full shadow-cast from (srow,scol)
+        view_from(srow, scol, null, null, null, range, func, arg);
+    } else {
+        // hero-centered: use the existing vision matrix.
+        // C ref: vision.c:2130-2131 — the matrix is only trustworthy if it is
+        // clean; C refreshes it first:
+        //     if (gv.vision_full_recalc) vision_recalc(0); /* recalc if dirty */
+        // Without this the couldsee() test below reads a STALE viz_array, so
+        // set_lit()/findone()/openone() get applied to the square set the hero
+        // could see at the last recalc rather than the one they can see now.
+        if (game.vision_full_recalc)
+            vision_recalc(0);
+        const limitsIdx = circle_start[range];
+        let max_y = srow + range;
+        if (max_y >= ROWNO)
+            max_y = ROWNO - 1;
+        let y = srow - range;
+        if (y < 0)
+            y = 0;
+        for (; y <= max_y; y++) {
+            const offset = circle_data[limitsIdx + Math.abs(y - srow)];
+            let min_x = scol - offset;
+            if (min_x < 1)
+                min_x = 1;
+            let max_x = scol + offset;
+            if (max_x >= COLNO)
+                max_x = COLNO - 1;
+            for (let x = min_x; x <= max_x; x++)
+                if (couldsee(x, y))
+                    func(x, y, arg);
+        }
     }
 }
 
+/* Async counterpart for callbacks whose C body performs a user-visible wait.
+ * The existing do_clear_area() deliberately remains synchronous because most
+ * callbacks are pure map mutations.  Bell of Opening's openone() is different:
+ * its trapped-door and falling-trap arms can await pline()/trap effects.  Keep
+ * the same hero-centered circle and vision refresh, but await each callback so
+ * those effects cannot run after the command has already returned. */
+export async function do_clear_area_async(scol, srow, range, func, arg) {
+    const u = game.u;
+    if (scol !== (u?.ux | 0) || srow !== (u?.uy | 0)) {
+        throw new Error('do_clear_area_async requires a hero-centered origin');
+    }
+    if (game.vision_full_recalc)
+        vision_recalc(0);
+    const limitsIdx = circle_start[range];
+    let max_y = srow + range;
+    if (max_y >= ROWNO)
+        max_y = ROWNO - 1;
+    let y = srow - range;
+    if (y < 0)
+        y = 0;
+    for (; y <= max_y; y++) {
+        const offset = circle_data[limitsIdx + Math.abs(y - srow)];
+        let min_x = scol - offset;
+        if (min_x < 1)
+            min_x = 1;
+        let max_x = scol + offset;
+        if (max_x >= COLNO)
+            max_x = COLNO - 1;
+        for (let x = min_x; x <= max_x; x++)
+            if (couldsee(x, y))
+                await func(x, y, arg);
+    }
+}
 // C ref: vision_recalc(control)
 export function vision_recalc(control = 0) {
     const u = game.u;
-    if (!u || !game.level) return;
+    if (!u || !game.level)
+        return;
+    _visionTrace('entry', control, u, game.viz_array);
     game.vision_full_recalc = 0;
-    if (game.in_mklev) return;
-
+    // C vision_recalc: level construction/restoration and end-game shutdown
+    // must not touch the visibility buffers after clearing the pending request.
+    if (game.in_mklev || game.program_state.in_getlev || !game.iflags.vision_inited)
+        return;
     // Swap to unused buffer
     const next = game.active_buf === 0 ? cs_buf1 : cs_buf0;
     const next_rmin = game.active_buf === 0 ? cs_rmin1 : cs_rmin0;
     const next_rmax = game.active_buf === 0 ? cs_rmax1 : cs_rmax0;
-
     for (let y = 0; y < ROWNO; y++) {
         next[y].fill(0);
         next_rmin[y] = COLNO;
         next_rmax[y] = 0;
     }
-
-    if (control !== 2) {
+    // ── C ref: vision.c:548-582, the `else if (Blind)` arm of vision_recalc ──
+    // This file's header still says it is a "stripped-down port … no blindness
+    // handling", and that gap was invisible for as long as nothing in js/ ever
+    // set the Blinded property.  js/zap.js's flashburn now does (the seed5500
+    // wand-explosion flash), so the arm has to exist or the hero goes blind
+    // with a fully-lit remembered map.
+    //
+    // C, verbatim in shape:
+    //     view_from(u.uy, u.ux, next_array, next_rmin, next_rmax, 0, NULL, NULL);
+    //     temp_array = gv.viz_array;  gv.viz_array = next_array;
+    //     for (row …) { start = min(gv.viz_rmin[row], next_rmin[row]);
+    //                   stop  = max(gv.viz_rmax[row], next_rmax[row]);
+    //                   for (col = start; col <= stop; col++)
+    //                       if (old_row[col] & IN_SIGHT) newsym(col, row); }
+    //     goto skip;
+    // The COULD_SEE raycast still runs — C's own comment says it is kept "even
+    // when blind so that monsters can see you" — but NOTHING sets IN_SIGHT, so
+    // cansee() is false everywhere from here on.  The update loop is C's own
+    // reduced version: only cells that WERE in sight need repainting, and each
+    // such newsym() falls into display.c:1116-1123's out-of-sight remembered
+    // branch, which demotes S_room → S_darkroom (js/display.js
+    // _darken_room_floor) and S_litcorr → S_corr.  That demotion is the entire
+    // COLOR class on seed5500: C paints the remembered room floor ESC[90m
+    // (CLR_BLACK) from step 842 on, the port painted ESC[0m.
+    // `goto skip` skips the normal IN_SIGHT/update loops but NOT the shared
+    // tail (newsym(u.ux,u.uy) + installing next_rmin/next_rmax), so both are
+    // reproduced below.  No RNG on any of it.
+    /* C vision.c:544-546 —
+     *     if (u.uswallow || control == 2) { / * do nothing * / ; }
+     *     else if (Blind) { ... }
+     * "You see nothing, nothing can see you --- if swallowed or refreshing."
+     * The control==2 half was here; the u.uswallow half was not, so a
+     * vision_recalc(0) raised while the hero was inside a stomach handed him
+     * the whole level back.  MEASURED on seed0383 leaf 10330: dog_goal's
+     * apport arm is gated on `in_masters_sight = couldsee(omx, omy)`, so C's
+     * swallowed hero never reaches its `edog->apport > rn2(8)` and this port
+     * drew that rn2(8) for the shield of shock resistance at <33,6>. */
+    const see_nothing = (control === 2) || !!(u.uswallow | 0);
+    if (!see_nothing && Blind()) {
         view_from(u.uy, u.ux, next, next_rmin, next_rmax);
+        const old_array = game.viz_array;
+        const old_rmin = game._viz_rmin;
+        const old_rmax = game._viz_rmax;
+        game.viz_array = next;
+        game.active_buf = game.active_buf === 0 ? 1 : 0;
+        if (old_array) {
+            for (let row = 0; row < ROWNO; row++) {
+                const old_row = old_array[row];
+                if (!old_row)
+                    continue;
+                const start = old_rmin
+                    ? Math.min(old_rmin[row], next_rmin[row]) : next_rmin[row];
+                const stop = old_rmax
+                    ? Math.max(old_rmax[row], next_rmax[row]) : next_rmax[row];
+                for (let col = start; col <= stop; col++)
+                    if (old_row[col] & IN_SIGHT)
+                        newsym(col, row);
+            }
+        }
+        /* C vision.c:838 `skip:` tail — "Make sure the hero shows up!" */
+        if ((u.ux | 0) > 0)
+            newsym(u.ux | 0, u.uy | 0);
+        game._viz_rmin = next_rmin;
+        game._viz_rmax = next_rmax;
+        _visionTrace('exit', control, u, game.viz_array);
+        return;
     }
+    if (!see_nothing) {
+        // C ref: vision.c:608-623 — if the hero is in a pit, vision is reduced to
+        // the immediate 3x3 box (each square IN_SIGHT|COULD_SEE) instead of the
+        // normal view_from raycast: a pit-trapped hero can only see adjacent
+        // locations.  TT_PIT = 2 (const.js).  Out-of-sight room squares then fall
+        // through to the remembered/dark-room glyph (display.c:243-248), so a dark
+        // room that was fully visible before the dig shows only its 3x3 lit core
+        // once the hero is pit-trapped.  Underwater / xray paths are out of corpus
+        // scope; keep the normal view_from for every non-pit hero.
+        if (u.utrap && (u.utraptype | 0) === 2 /* TT_PIT */) {
+            for (let row = (u.uy | 0) - 1; row <= (u.uy | 0) + 1; row++) {
+                if (row < 0) continue;
+                if (row >= ROWNO) break;
+                next_rmin[row] = Math.max(1, (u.ux | 0) - 1);
+                next_rmax[row] = Math.min(COLNO - 1, (u.ux | 0) + 1);
+                for (let col = next_rmin[row]; col <= next_rmax[row]; col++)
+                    next[row][col] = IN_SIGHT | COULD_SEE;
+            }
+        } else {
+            view_from(u.uy, u.ux, next, next_rmin, next_rmax);
+        }
+    }
+    /* C ref: vision.c:701-702 — "Set the correct bits for all light sources."
+     * Runs on the array still being BUILT, before it is installed as
+     * gv.viz_array, and after the Blind arm's `goto skip` (which is why the
+     * blind return above precedes it).  do_light_sources ORs TEMP_LIT into
+     * every square a mobile light source reaches. */
+    do_light_sources(next);
 
     // Compute IN_SIGHT from COULD_SEE + lighting
     const level = game.level;
     const ux = u.ux, uy = u.uy;
-
     for (let row = 0; row < ROWNO; row++) {
         const dy = Math.sign(uy - row);
         for (let col = next_rmin[row]; col <= next_rmax[row]; col++) {
-            if (!(next[row][col] & COULD_SEE)) continue;
+            if (!(next[row][col] & COULD_SEE))
+                continue;
             const loc = level?.at(col, row);
-            if (!loc) continue;
-
+            if (!loc)
+                continue;
             // Night vision: adjacent cells always IN_SIGHT
             if (Math.abs(col - ux) <= 1 && Math.abs(row - uy) <= 1) {
                 next[row][col] |= IN_SIGHT;
                 continue;
             }
-
-            // Lit cells
-            if (loc.lit) {
+            // Lit cells.  C ref: vision.c:755-756 — `lev->lit ||
+            // (next_row[col] & TEMP_LIT)`: a square lit by a mobile light
+            // source counts exactly as a permanently lit one.
+            if (loc.lit || (next[row][col] & TEMP_LIT)) {
                 if ((loc.typ === DOOR || loc.typ === SDOOR || IS_WALL(loc.typ))
                     && !viz_clear[row]?.[col]) {
                     // Walls/doors: only IN_SIGHT if adjacent cell toward hero is lit
                     const dx = Math.sign(ux - col);
                     const flev = level?.at(col + dx, row + dy);
-                    if (flev?.lit) {
+                    /* C vision.c:771-772 `flev->lit
+                     *     || next_array[row + dy][col + dx] & TEMP_LIT` */
+                    if (flev?.lit || (next[row + dy]?.[col + dx] & TEMP_LIT)) {
                         next[row][col] |= IN_SIGHT;
                     }
-                } else {
+                }
+                else {
                     next[row][col] |= IN_SIGHT;
                 }
             }
         }
     }
-
     // Swap viz_array and run newsym updates
     const old_array = game.viz_array;
     game.viz_array = next;
     game.active_buf = game.active_buf === 0 ? 1 : 0;
-
     const old_rmin = game._viz_rmin;
     const old_rmax = game._viz_rmax;
-    if (old_array && control !== 2 && game.level) {
+    /* C vision.c:436-440 — `if (u.uswallow || control == 2) { ; }` does NOTHING
+     * except leave the new work area zeroed, and then FALLS THROUGH to the main
+     * update loop below.  Only the Blind arm `goto skip`s it.  With every
+     * next_array bit clear, that loop walks the OLD row extents and takes the
+     * `not_in_sight:` arm at every square that WAS in sight, which is how C
+     * repaints a level the hero has just stopped being able to see.
+     *
+     * Skipping the loop for control == 2 (what this said before) is invisible
+     * on the scored RNG stream and on an ordinary screen, because the squares
+     * are about to be cls()'d anyway — but a HALLUCINATING hero's newsym draws
+     * on the DISPLAY stream at every monster square it repaints, and a monster
+     * the hero can no longer see but has Warning of draws
+     * rn2_on_display_rng(WARNCOUNT - 1).  MEASURED against the C recorder on
+     * seed0383: gulpmu's vision_recalc(2) makes EIGHT rn2(5) draws that this
+     * port made none of, so the stomach cage drawn immediately afterwards took
+     * its colours from eight draws too early. */
+    if (old_array && game.level) {
         for (let row = 0; row < ROWNO; row++) {
             const old_row = old_array[row];
             const next_row = next[row];
@@ -465,14 +971,15 @@ export function vision_recalc(control = 0) {
             const stop = old_rmax
                 ? Math.max(old_rmax[row], next_rmax[row])
                 : next_rmax[row];
-            if (start > stop) continue;
+            if (start > stop)
+                continue;
             const dy = Math.sign(uy - row);
             for (let col = start; col <= stop; col++) {
                 const nv = next_row[col];
                 const ov = old_row[col];
                 const loc = game.level.at(col, row);
-                if (!loc) continue;
-
+                if (!loc)
+                    continue;
                 if (nv & IN_SIGHT) {
                     const oldseenv = loc.seenv || 0;
                     const sv = seenv_matrix[dy + 1][(col < ux) ? 0 : (col > ux ? 2 : 1)];
@@ -480,12 +987,13 @@ export function vision_recalc(control = 0) {
                     if (!(ov & IN_SIGHT) || oldseenv !== loc.seenv) {
                         newsym(col, row);
                     }
-                } else if ((nv & COULD_SEE) && loc.lit) {
+                }
+                else if ((nv & COULD_SEE) && (loc.lit || (nv & TEMP_LIT))) {
                     if ((IS_WALL(loc.typ) || loc.typ === DOOR || loc.typ === SDOOR)
                         && !viz_clear[row][col]) {
                         const dx = Math.sign(ux - col);
                         const adjLoc = game.level.at(col + dx, row + dy);
-                        if (adjLoc?.lit) {
+                        if (adjLoc?.lit || (next[row + dy]?.[col + dx] & TEMP_LIT)) {
                             next_row[col] |= IN_SIGHT;
                             const oldseenv = loc.seenv || 0;
                             const sv = seenv_matrix[dy + 1][(col < ux) ? 0 : (col > ux ? 2 : 1)];
@@ -493,7 +1001,8 @@ export function vision_recalc(control = 0) {
                             if (!(ov & IN_SIGHT) || oldseenv !== loc.seenv)
                                 newsym(col, row);
                         }
-                    } else {
+                    }
+                    else {
                         next_row[col] |= IN_SIGHT;
                         const oldseenv = loc.seenv || 0;
                         const sv = seenv_matrix[dy + 1][(col < ux) ? 0 : (col > ux ? 2 : 1)];
@@ -501,36 +1010,179 @@ export function vision_recalc(control = 0) {
                         if (!(ov & IN_SIGHT) || oldseenv !== loc.seenv)
                             newsym(col, row);
                     }
-                } else if ((nv & COULD_SEE) && loc.waslit) {
+                }
+                else if ((nv & COULD_SEE) && loc.waslit) {
                     loc.waslit = 0;
                     newsym(col, row);
-                } else {
+                }
+                else {
                     if ((ov & IN_SIGHT)
                         || ((nv & COULD_SEE) ^ (ov & COULD_SEE))) {
-                        newsym(col, row);
+                        /* C vision.c:820-836, the `not_in_sight:` arm, has a
+                         * guard this port did not:
+                         *     / * TEMPORARY?  Sometimes we get here with col==0
+                         *       and newsym()'s impossible() for !isok() is being
+                         *       triggered, so avoid calling it for <0,y>; other
+                         *       bad coordinates will produce a panic() as they
+                         *       should. * /
+                         *     if (col != 0)
+                         *     newsym(col, row);
+                         * Column 0 is not isok() (hack.h: `x >= 1`), so every
+                         * one of these reached newsym's "should never happen"
+                         * arm.  MEASURED on the scored path: 59 such calls
+                         * (seed0367 x20, seed0373 x20, seed0360 x4 at the time
+                         * of writing), ALL of them from here and ALL at col 0.
+                         * They were harmless only because newsym's !isok arm
+                         * was silent; C's is an impossible() that PLINES, and
+                         * seed0012-monk-vault-escort's last unmatched frame is
+                         * exactly that pline's --More--.  Porting C's guard is
+                         * the prerequisite for letting that message speak. */
+                        if (col !== 0)
+                            newsym(col, row);
                     }
                 }
             }
         }
-        if (ux > 0) newsym(ux, uy);
+        if (ux > 0)
+            newsym(ux, uy);
     }
-
     game._viz_rmin = next_rmin;
     game._viz_rmax = next_rmax;
+    _visionTrace('exit', control, u, game.viz_array);
 }
-
+// C ref: vision.c:1602 clear_path(col1, row1, col2, row2)
+// m_cansee(mtmp, x2, y2) expands to clear_path(mtmp->mx, mtmp->my, x2, y2)
+// Parameters: col1/row1 = source (column, row); col2/row2 = target (column, row)
+export function clear_path(col1, row1, col2, row2) {
+    if (col1 < col2) {
+        if (row1 > row2) {
+            return q1_path(row1, col1, row2, col2);
+        } else {
+            return q4_path(row1, col1, row2, col2);
+        }
+    } else {
+        if (row1 > row2) {
+            return q2_path(row1, col1, row2, col2);
+        } else if (row1 === row2 && col1 === col2) {
+            return 1;
+        } else {
+            return q3_path(row1, col1, row2, col2);
+        }
+    }
+}
 // C ref: cansee(x, y)
 export function cansee(x, y) {
-    if (y < 0 || y >= ROWNO || x < 0 || x >= COLNO) return false;
+    if (y < 0 || y >= ROWNO || x < 0 || x >= COLNO)
+        return false;
     return !!(game.viz_array?.[y]?.[x] & IN_SIGHT);
 }
-
+// Read-only snapshot for optional input-boundary diagnostics. Coordinates are
+// map coordinates, including column zero; rows are indexed by map y.
+export function vision_debug_snapshot() {
+    const copy = (grid) => Array.from({ length: ROWNO }, (_, y) =>
+        Array.from({ length: COLNO }, (_, x) => grid?.[y]?.[x] ?? 0));
+    const cells = [];
+    if (typeof process !== 'undefined' && process.env?.FF_VISION_TRACE === '1') {
+        const spec = process.env.FF_VISION_TRACE_CELLS || '40,3;41,3;42,3;39,4;40,4;42,4;43,4';
+        for (const token of spec.split(';')) {
+            const m = token.match(/^(\d+),(\d+)$/);
+            if (!m) continue;
+            const x = Number(m[1]), y = Number(m[2]), loc = game.level?.at?.(x, y);
+            const bits = game.viz_array?.[y]?.[x] | 0;
+            cells.push({ x, y, bits, inSight: !!(bits & IN_SIGHT), couldSee: !!(bits & COULD_SEE),
+                typ: loc?.typ ?? null, flags: loc?.flags ?? null, seenv: loc?.seenv ?? null,
+                remembered: loc?.remembered_glyph?.ch ?? null,
+                newsym: (game.__vision_trace_newsym || []).filter((p) => p[0] === x && p[1] === y).length });
+        }
+    }
+    const nonzero = [];
+    for (let y = 0; y < ROWNO; y++) for (let x = 0; x < COLNO; x++)
+        if (game.viz_array?.[y]?.[x]) nonzero.push([x, y]);
+    const out = {
+        hero: [game.u?.ux ?? null, game.u?.uy ?? null],
+        rows: copy(game.viz_array).map((row) => row.map((v) => v.toString(16)).join('')),
+        clear: copy(viz_clear).map((row) => row.join('')),
+        left: copy(left_ptrs), right: copy(right_ptrs),
+        uinwater: !!game.u?.uinwater,
+        vizExtent: nonzero.length ? { minX: Math.min(...nonzero.map((p) => p[0])), maxX: Math.max(...nonzero.map((p) => p[0])), minY: Math.min(...nonzero.map((p) => p[1])), maxY: Math.max(...nonzero.map((p) => p[1])) } : null,
+        cells,
+    };
+    if (typeof process !== 'undefined' && process.env?.FF_VISION_TRACE === '1') game.__vision_trace_newsym = [];
+    return out;
+}
 // C ref: couldsee(x, y)
 export function couldsee(x, y) {
-    if (y < 0 || y >= ROWNO || x < 0 || x >= COLNO) return false;
+    if (y < 0 || y >= ROWNO || x < 0 || x >= COLNO)
+        return false;
     return !!(game.viz_array?.[y]?.[x] & COULD_SEE);
 }
 
+/* C vision.c howmonseen: independent sensing channels, using the same
+ * display predicates as map rendering. */
+export function howmonseen(mon) {
+    if (!mon) return 0;
+    const u = game.u || {};
+    const prop = (which) => u.uprops?.[which] || {};
+    const dist = ((mon.mx | 0) - (u.ux | 0)) ** 2 + ((mon.my | 0) - (u.uy | 0)) ** 2;
+    const canSeeMon = canseemon(mon);
+    const infra = see_with_infrared(mon);
+    let how = 0;
+    /* Normal sight requires both geometric visibility predicates; canseemon
+       alone also admits infravision and astral/xray visibility. */
+    if ((mon.wormno ? worm_known(mon)
+        : cansee(mon.mx | 0, mon.my | 0) && couldsee(mon.mx | 0, mon.my | 0))
+        && mon_visible(mon) && !mon.minvis)
+        how |= MONSEEN_NORMAL;
+    if (canSeeMon && mon.minvis)
+        how |= MONSEEN_SEEINVIS;
+    const seeP = prop(SEE_INVIS);
+    if ((!mon.minvis || seeP.intrinsic || seeP.extrinsic) && infra)
+        how |= MONSEEN_INFRAVIS;
+    if (tp_sensemon(mon))
+        how |= MONSEEN_TELEPAT;
+    const xr = u.xray_range == null ? -1 : (u.xray_range | 0);
+    if (canSeeMon && xr > 0 && dist <= xr * xr)
+        how |= MONSEEN_XRAYVIS;
+    const detectP = prop(DETECT_MONSTERS);
+    if ((detectP.intrinsic | 0) || (detectP.extrinsic | 0))
+        how |= MONSEEN_DETECT;
+    if (MATCH_WARN_OF_MON(mon))
+        how |= MONSEEN_WARNMON;
+    return how;
+}
+// C ref: vision.c:853 block_point(x, y) — make the location opaque to light.
+// C ref: vision.c:887 unblock_point(x, y) — make the location transparent.
+// In C these incrementally edit the viz_clear/left_ptrs/right_ptrs arrays via
+// fill_point()/dig_point().  Our JS viz_clear is a pure function of the level
+// grid (rebuilt wholesale by vision_reset from _blocks()), so a single
+// vision_reset() reproduces the same final block state as the incremental
+// C edit.  Both fns then set vision_full_recalc if the cell was could-see
+// (C: "if (viz_array[y][x]) vision_full_recalc = 1") so the next vision_recalc
+// re-derives visibility through the now-changed cell.
+function _block_or_unblock(x, y) {
+    _vision_rebuild_grid();
+    if (game.viz_array?.[y]?.[x]) {
+        game.vision_full_recalc = 1;
+        if (typeof process !== 'undefined' && process.env?.FF_DISPLAY_TRACE === '1') {
+            const frames = String(new Error().stack || '').split('\n').slice(2, 5)
+                .map((s) => s.trim().replace(/^at\s+/, '').replace(/\s+\([^)]*\)$/, '')).join('|');
+            pushRngLogEntry(`^vision_dirty[x=${x | 0} y=${y | 0} moves=${game.moves | 0} viz=1 stack=${frames}]`);
+        }
+    }
+}
+export function block_point(x, y) {
+    _block_or_unblock(x, y);
+}
+export function unblock_point(x, y) {
+    _block_or_unblock(x, y);
+}
+// C ref: vision.c:900 recalc_block_point — block or unblock per does_block().
+// _blocks() is JS's does_block(): walls/stone/closed doors block, open doors
+// and floor do not.  vision_reset() reads _blocks() for the whole grid so we
+// don't branch here; we just rebuild and flag.
+export function recalc_block_point(x, y) {
+    _block_or_unblock(x, y);
+}
 export function init_vision_globals() {
     game.viz_array = cs_buf0;
     game.active_buf = 0;
@@ -540,4 +1192,28 @@ export function init_vision_globals() {
     game.cs_rows = null;
     game.cs_left = null;
     game.cs_right = null;
+    game.vis_func = null;
+    game.vis_varg = null;
+}
+
+// C ref: vision_init() — one-time vision initialization
+export function vision_init() {
+    // Set up row pointers (C: cs_rows0[i] = could_see[0][i], etc.)
+    // In JS, we use buffers directly so row-pointer arrays are not needed.
+    // viz_clear_rows[i] = viz_clear[i] — also not needed in JS.
+
+    // Start out with cs0 as our current array
+    game.viz_array = cs_buf0;
+    game._viz_rmin = cs_rmin0;
+    game._viz_rmax = cs_rmax0;
+
+    game.vision_full_recalc = 0;
+
+    // memset could_see to 0
+    for (let i = 0; i < ROWNO; i++) {
+        cs_buf0[i].fill(0);
+        cs_buf1[i].fill(0);
+    }
+
+    // view_init() — no-op in C
 }

@@ -64,7 +64,7 @@ import { Invis } from './timeout.js';
 import { SetVoice, voice_death, Soundeffect } from './sndprocs.js';
 // add_sound_mapping `:1590–1611` — live options.js regex/msgtype ports
 // (imports.mjs --can sounds.js options.js: SAFE, hoisted functions).
-import { msgtype_parse_add, regex_init, regex_compile, regex_free } from './options.js';
+import { msgtype_parse_add, regex_init, regex_compile, regex_free, regex_error_desc } from './options.js';
 import {
     se_courtly_conversation, se_sceptor_pounding,
     se_low_buzzing, se_angry_drone, se_bees,
@@ -287,11 +287,14 @@ export function add_sound_mapping(mapping) {
         // C `:1596` — regex_* are the live options.js ports (posixregex.c
         // REG_EXTENDED|REG_NOSUB shape via JS RegExp + POSIX-class map).
         if (!regex_compile(text, new_map.regex)) {
-            // C `:1597–1605` — regex_error_desc (posixregex.c `:76`) has no
-            // JS counterpart (options.js test_regex_pattern precedent) and
-            // raw_print is named; the frees are GC no-ops; return live.
-            regex_free(new_map.regex);
-            return 0;
+            // C `:1598–1599` — live options.js regex_error_desc.
+            const re_error_desc = regex_error_desc(new_map.regex);
+            regex_free(new_map.regex); // C `:1601`
+            // C `:1602–1603` frees are GC no-ops; `:1604`
+            // raw_print(re_error_desc) stays named (no pre-window stdout
+            // channel, display.js vraw_printf precedent); return live.
+            void re_error_desc;
+            return 0; // C `:1605`
         }
         // C `:1607–1612` — *msgtyp set only by P2/P3 (above); Sprintf
         // "%.10s \"%.230s\"", then (void) msgtype_parse_add (options.c

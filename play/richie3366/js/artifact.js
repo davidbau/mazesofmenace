@@ -10,7 +10,7 @@ import {
 } from './generated/artifacts_data.js';
 import { objectNames, NUM_OBJECTS, objectDescrs, objects, WEAPON_CLASS, RING_CLASS, WAND_CLASS, TOOL_CLASS } from './objects.js';
 import { obj_shuffle_range } from './o_init.js';
-import { monsterNames, NON_PM, M2_UNDEAD, M2_WERE, is_demon, is_dprince, is_dlord, resists_ston, hates_silver, bigmonst, has_head, noncorporeal, amorphous, is_covetous, is_mplayer, nonliving, mons } from './monsters.js';
+import { monsterNames, NON_PM, M2_UNDEAD, M2_WERE, is_demon, is_dprince, is_dlord, resists_ston, hates_silver, bigmonst, has_head, noncorporeal, amorphous, is_covetous, is_mplayer, nonliving, mons, set_can_track_excalibur_hook } from './monsters.js';
 import { Fire_resistance, Cold_resistance, Shock_resistance, Drain_resistance, resists_fire, resists_cold, resists_elec, resists_poison, resists_drli, cancel_monst, resist, probe_monster, destroy_items } from './zap.js';
 import {
     A_NONE,
@@ -915,6 +915,9 @@ export function glow_verb(count, ingsfx) {
 export function u_wield_art(art) {
     return is_art(game.u?.uwep, art);
 }
+// Late-bind monsters.js can_track Excalibur arm (mondata.c:625); a static
+// monsters→artifact edge is a TDZ cycle (artifact.js reads M2_UNDEAD at eval).
+set_can_track_excalibur_hook(u_wield_art, ART_EXCALIBUR);
 
 /**
  * C ref: do.c maybe_lvltport_feedback `:2032–2039` — deliver pending

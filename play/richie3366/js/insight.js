@@ -479,12 +479,20 @@ export function background_enlightenment(unused_mode, final) {
     return lines;
 }
 
-/** C ref: insight.c num_genocides */
+/** C ref: insight.c num_genocides `:2953–2966` */
 export function num_genocides() {
     const mv = game.mvitals || [];
     let n = 0;
     for (let i = LOW_PM; i < NUMMONS; i++) {
-        if (((mv[i]?.mvflags ?? 0) & G_GENOD) !== 0) n++;
+        if (((mv[i]?.mvflags ?? 0) & G_GENOD) !== 0) {
+            n++;
+            // C `:2960–2962` — a genocided unique is C-impossible
+            // (UniqCritterIndx `:2777–2778` ≡ the local below);
+            // sync callers don't await (cf. record_achievement `:2419`).
+            if (UniqCritterIndx(i))
+                impossible("unique creature '%d: %s' genocided?",
+                    i, pmnames[i]?.[NEUTRAL] ?? 'monster');
+        }
     }
     return n;
 }

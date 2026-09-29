@@ -1698,17 +1698,22 @@ function has_ltgt_percentnumber(str) {
 /* C botl.c:2688-2727 splitsubfields() — in-place '+'/'&' split over a static
  * MAX_SUBFIELDS=16 shelf; maxsf 0 means the full shelf (C `:2700`). JS
  * strings are immutable so segments are returned; null is C -1, the
- * over-capacity arm (C `:2714-2715`); null input is C 0 (C `:2695-2696`),
- * which reads as [] here (both callers treat sf < 1 as failure). */
+ * over-capacity arm (C `:2716-2717`); null input is C 0 (C `:2695-2696`),
+ * which reads as [] here (sf < 1 fails the two ring callers; parse_condition
+ * loops zero times and the mask still lands, C `:3292` + `:3343`). C counts
+ * separators cut (sf at `:2716`), not stored segments, so the overflow
+ * test runs on the pre-pop cut count: cap-1 cuts fails even with a
+ * trailing separator, while cap-2 cuts plus trailing content succeeds. */
 function splitsubfields(str, maxsf) {
     const MAX_SUBFIELDS = 16; // C :2690 #define
     if (str === null || str === undefined) return []; // C :2695-2696
     const cap = (maxsf === 0) ? MAX_SUBFIELDS : Math.min(maxsf, MAX_SUBFIELDS); // C :2700
     const text = String(str);
-    if (!text.includes('+') && !text.includes('&')) return [text]; // C :2721-2724
-    const parts = text.split(/[+&]/); // C :2705-2713 separator cut
-    if (parts.length && parts[parts.length - 1] === '') parts.pop(); // C :2716-2717 no trailing empty
-    if (parts.length >= cap - 1) return null; // C :2714-2715
+    if (!text.includes('+') && !text.includes('&')) return [text]; // C :2720-2723
+    const parts = text.split(/[+&]/); // C :2705-2715 separator cut
+    const cuts = parts.length - 1; // separators cut == C sf at `:2716`
+    if (parts.length && parts[parts.length - 1] === '') parts.pop(); // C :2718-2719 no trailing empty
+    if (cuts >= cap - 1) return null; // C :2716-2717
     return parts;
 }
 
@@ -2099,7 +2104,7 @@ function parse_condition(s, sidx) {
             return false; // C :3290
         }
         // C :3291-3293 Strcpy(buf, how) folded; :3295-3312 representation note.
-        const subfields = splitsubfields(how, 0) ?? []; // -1 overflow: loop skips, mask still lands (C `:2714` + `:3343`)
+        const subfields = splitsubfields(how, 0) ?? []; // -1 overflow: loop skips, mask still lands (C `:2716-2717` + `:3343`)
         const condhilites = ensureCondHilites();
         for (i = 0; i < subfields.length; ++i) { // C :3314
             const a = match_str2attr(subfields[i], false); // C :3315
@@ -3152,6 +3157,117 @@ export async function status_hilite_menu_choose_updownboth(fld, str, ltok, gtok)
         // C `:3883` free(picks) — GC.
     }
     return ret; // C `:3886`
+}
+
+/**
+ * C ref: botl.c query_arrayvalue `:2747–2781` — PICK_ONE menu over
+ * arr[arrmin..arrmax) with a_int = i + adj (`:2756`: 1 when arrmin > 0,
+ * else arrmax); NULL slots are skipped (`:2763–2764`, the hutxt gap
+ * between Satiated and Hungry). Cancel keeps arrmin - 1 (`:2752`).
+ * create/start/end/select/destroy fold into one select_menu_pick_one
+ * (choose_updownboth precedent); nul_glyphinfo / NO_COLOR /
+ * MENU_ITEMFLAGS_NONE do not change the tty text row; cg.zeroany is
+ * the fresh a_int on each row.
+ *
+ * C callers are all inside status_hilite_menu_add (`:4135` enc_stat,
+ * `:4148` aligntxt, `:4161` hutxt, `:4199` rolelist), which has no JS
+ * body (named omission). This export is the call those sites make.
+ *
+ * @param {string} querystr end_menu prompt (`:2771`)
+ * @param {Array<string|null>} arr value strings (null = C NULL gap slot)
+ * @param {number} arrmin first index, inclusive
+ * @param {number} arrmax end index, exclusive
+ * @returns {Promise<number>} picked index, or arrmin - 1 on cancel
+ */
+export async function query_arrayvalue(querystr, arr, arrmin, arrmax) {
+    let ret = (arrmin | 0) - 1; // C `:2752`
+    const adj = (arrmin | 0) > 0 ? 1 : (arrmax | 0); // C `:2756`
+    const rows = [];
+    for (let i = (arrmin | 0); i < (arrmax | 0); i++) { // C `:2762`
+        if (arr[i] == null) continue; // C `:2763–2764` NULL gap; "" is shown
+        rows.push({ // C `:2765–2768`
+            text: arr[i], selectable: true, attr: ATR_NONE, a_int: i + adj,
+        });
+    }
+    // options.js statically imports this module (cond_menu precedent).
+    const { select_menu_pick_one } = await import('./options.js');
+    const res = await select_menu_pick_one(hiliteMenuRows(querystr, rows)); // C `:2771–2774`
+    if (res.kind === 'pick' && res.item) { // C `:2775` res > 0
+        ret = (res.item.a_int | 0) - adj; // C `:2776`
+        // C `:2777` free(picks) — GC.
+    }
+    return ret; // C `:2780`
+}
+
+/**
+ * C ref: botl.c query_conditions `:3109–3138` — PICK_ANY menu over
+ * conditions[] with a_ulong = mask (`:3123`) and text[0] (`:3125`);
+ * the return ORs every picked mask (`:3133–3134`), 0UL on cancel
+ * (`:3112`). create/start/end/select/destroy fold into one
+ * select_menu_pick_any (status_hilite_menu_fld precedent);
+ * nul_glyphinfo / NO_COLOR / MENU_ITEMFLAGS_NONE do not change the
+ * tty text row; cg.zeroany is the fresh a_ulong on each row.
+ *
+ * Sole C caller: status_hilite_menu_add `:4113` (named omission, no
+ * JS body). This export is the call that site makes.
+ *
+ * @returns {Promise<number>} OR of picked masks (C unsigned long), 0 on cancel
+ */
+export async function query_conditions() {
+    let ret = 0; // C `:3112` 0UL
+    const rows = [];
+    for (let i = 0; i < conditions.length; i++) { // C `:3121` SIZE(conditions)
+        rows.push({ // C `:3122–3125`
+            text: conditions[i].text[0], selectable: true, attr: ATR_NONE,
+            a_ulong: conditions[i].mask,
+        });
+    }
+    const { select_menu_pick_any } = await import('./options.js');
+    const picks = await select_menu_pick_any(hiliteMenuRows('Choose status conditions', rows)); // C `:3128–3131`
+    const res = Array.isArray(picks) ? picks.length : 0; // cancel and finish-empty are both <= 0
+    if (res > 0) { // C `:3132`
+        for (let i = 0; i < res; i++) // C `:3133–3134`
+            ret |= picks[i].a_ulong;
+        // C `:3135` free(picks) — GC.
+    }
+    return ret >>> 0; // C `:3137` unsigned long
+}
+
+/**
+ * C ref: botl.c status_hilite_menu_choose_field `:3672–3704` — PICK_ONE
+ * menu over initblstats[].fldname with a_int = i + 1 (`:3690`); the
+ * return is the picked blstats index (`:3700`), BL_FLUSH on cancel
+ * (`:3675`). SCORE_ON_BOTL is off (config.h:627), so the BL_SCORE arm
+ * (`:3684–3688`) is live: score is skipped while it has no thresholds.
+ * create/start/end/select/destroy fold into one select_menu_pick_one
+ * (choose_updownboth precedent); nul_glyphinfo / NO_COLOR /
+ * MENU_ITEMFLAGS_NONE do not change the tty text row; cg.zeroany is
+ * the fresh a_int on each row.
+ *
+ * Sole C caller: status_hilite_menu_add `:3905` (named omission, no
+ * JS body). This export is the call that site makes.
+ *
+ * @returns {Promise<number>} picked field index, or BL_FLUSH on cancel
+ */
+export async function status_hilite_menu_choose_field() {
+    let fld = BL_FLUSH; // C `:3675`
+    const rows = [];
+    for (let i = 0; i < MAXBLSTATS; i++) { // C `:3683`
+        // C `:3684–3688` #ifndef SCORE_ON_BOTL (off — config.h:627).
+        if (initblstats[i].fld === BL_SCORE
+            && !game.gb?.blstats?.[0]?.[BL_SCORE]?.thresholds)
+            continue;
+        rows.push({ // C `:3689–3692` fldname is JS `name`
+            text: blstatFldName(i), selectable: true, attr: ATR_NONE, a_int: i + 1,
+        });
+    }
+    const { select_menu_pick_one } = await import('./options.js');
+    const res = await select_menu_pick_one(hiliteMenuRows('Select a hilite field:', rows)); // C `:3695–3698`
+    if (res.kind === 'pick' && res.item) { // C `:3699` res > 0
+        fld = (res.item.a_int | 0) - 1; // C `:3700`
+        // C `:3701` free(picks) — GC.
+    }
+    return fld; // C `:3703`
 }
 
 /**

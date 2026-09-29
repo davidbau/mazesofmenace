@@ -389,9 +389,19 @@ export function haseyes(ptr) {
 }
 
 /**
- * C ref: mondata.c can_track — haseyes; ART_EXCALIBUR wield named omission.
+ * C ref: mondata.c can_track `:623–628` — Excalibur-wielding hero tracks
+ * anything; otherwise the tracker needs eyes. No static artifact.js edge
+ * (TDZ: artifact.js reads monsters.js consts at eval); artifact.js binds
+ * the Excalibur arm at its own eval (D-2349 late-bind precedent).
  */
+let _canTrackWieldArt = null;
+let _canTrackExcalibur = 0;
+export function set_can_track_excalibur_hook(uWieldArt, artExcalibur) {
+    _canTrackWieldArt = uWieldArt;
+    _canTrackExcalibur = artExcalibur;
+}
 export function can_track(ptr) {
+    if (_canTrackWieldArt !== null && _canTrackWieldArt(_canTrackExcalibur)) return true;
     return haseyes(ptr);
 }
 

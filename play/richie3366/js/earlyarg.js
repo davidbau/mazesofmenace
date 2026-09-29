@@ -19,7 +19,7 @@ import { strncmpi, strstri, eos } from './hacklib.js';
 import { config_error_init, config_error_done, config_erradd } from './cfgfiles.js';
 import { dump_all_glyphids } from './glyphs.js';
 import { nh_terminate } from './end.js';
-import { getversionstring } from './version.js';
+import { getversionstring, runtime_info_init, release_runtime_info } from './version.js';
 import { monsterNames, NUMMONS, NON_PM, LOW_PM, SPECIAL_PM } from './generated/monsters_data.js';
 import { objectNames, NUM_OBJECTS, LAST_GENERIC, FIRST_OBJECT, FIRST_REAL_GEM, LAST_REAL_GEM, MAXOCLASSES } from './generated/objects_data.js';
 import { NROFARTIFACTS, artilistRaw } from './generated/artifacts_data.js';
@@ -27,6 +27,7 @@ import { ENUMDUMP_CMAP, ENUMDUMP_MON_SYMS, ENUMDUMP_MON_DEFCHARS, ENUMDUMP_OC_DE
 import { MCASTU_SPELL_DEFS } from './mcastu.js';
 import { MAXSPELL } from './spell.js';
 import { dump_mongen } from './makemon.js';
+import { crashreport_bidshow } from './report.js';
 // imports.mjs --can: earlyarg.js has no importers, so these edges cannot
 // close a cycle. version.js stays a leaf (const.js reads it at load);
 // early_version_info lives here so it can call raw_printf.
@@ -453,8 +454,8 @@ function opt_usage(hackdir) {
 /**
  * C ref: earlyarg.c after_opt_showpaths `:391–400` — deferred-showpaths
  * tail: back to the showpaths dir, then terminate (no return in C).
- * Sole C caller files.c:3101 (do_deferred_showpaths, itself unported —
- * options.js:6976 names the omit); exported for that path.
+ * Sole C caller files.c:3101 (do_deferred_showpaths, files.js — wired);
+ * exported for that path.
  * @param {string} dir C gd.deferred_showpaths_dir (chdir arm only)
  */
 export function after_opt_showpaths(dir) {
@@ -577,6 +578,33 @@ export function early_version_info(pastebuf) {
 }
 
 /**
+ * C ref: version.c dump_version_info `:494–510` — the `--version:dump`
+ * line: program name plus version number, enabled features and sanity
+ * words save/bones validation compares against. Lives here next to
+ * `early_version_info` (same reason: needs the `raw_printf` channel,
+ * and its sole C caller is earlyarg.c:512). `nhStr` is the identity
+ * cast (lint.h:16); `gh.hname` is always unset in JS (botl.js:2322
+ * precedent) so the name is `"nethack"`. The `%-12.33s` field is the
+ * last-33 slice padded to 12; each `%08lx` word is 8 lowercase hex
+ * digits (`>>> 0` — all three nomakedefs words fit 32 bits). Output is
+ * at most 60 chars so the `BUFSZ` Snprintf cap never fires. C
+ * `raw_print` has no JS channel — `raw_printf('%s', …)` is the live
+ * early-output adaptation (argcheck `:dump`-error arm below).
+ */
+export function dump_version_info() {
+    let hname = game.gh?.hname ? String(game.gh.hname) : 'nethack'; // `:497`
+    if (hname.length > 33) hname = hname.slice(eos(hname) - 33); // `:499–500`
+    runtime_info_init(); // `:501`
+    const nm = game.nomakedefs ?? {};
+    const feat = ((nm.version_features ?? 0) & ~(nm.ignored_features ?? 0)) >>> 0; // `:505`
+    const hex8 = (v) => ((v ?? 0) >>> 0).toString(16).padStart(8, '0');
+    const buf = `${hname.slice(0, 33).padEnd(12, ' ')} ${hex8(nm.version_number)} ` +
+        `${hex8(feat)} ${hex8(nm.version_sanity1)}`; // `:502–506`
+    raw_printf('%s', buf); // `:507` (raw_print adaptation above)
+    release_runtime_info(); // `:508`
+}
+
+/**
  * C ref: earlyarg.c argcheck `:450–560`.
  * Returns 0 (no match), 1 (matched; caller skips this argument), or
  * 2 (matched; caller exits). Scans every `argv` slot, including a
@@ -642,8 +670,9 @@ export function argcheck(argc, argv, eArg) {
             } else if (match_optname(ext, 'copy', 4, false)) {
                 insertIntoPastebuf = true;
             } else if (match_optname(ext, 'dump', 4, false)) {
-                // Named omission: version.c:494 dump_version_info
-                // (runtime_info_init + raw_print of the feature words).
+                // C `:507–511` — version number plus enabled features
+                // and sanity values, compared against save/bones files.
+                dump_version_info(); // C `:512`
                 return 2;
             } else if (!match_optname(ext, 'show', 4, false)) {
                 raw_printf(
@@ -671,7 +700,7 @@ export function argcheck(argc, argv, eArg) {
         // Named omission: hack.c:4421 dump_weights.
         return 2;
     case ARG_BIDSHOW: // C `:542–544` under CRASHREPORT
-        // Named omission: report.c:189 crashreport_bidshow (hashes the binary).
+        crashreport_bidshow(); // C `:543` (report.c:189; js/report.js)
         return 2;
     default:
         break;

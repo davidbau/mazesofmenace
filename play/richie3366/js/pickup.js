@@ -4160,7 +4160,8 @@ async function do_loot_cont(cobj, cindex = 1, ccount = 1) {
  */
 export function container_at(x, y, countem) {
     let container_count = 0;
-    for (let cobj = objects_at(x, y); cobj; cobj = cobj.nexthere) {
+    for (let cobj = objects_at(x, y), nobj = null; cobj; cobj = nobj) {
+        nobj = cobj.nexthere; // C `:2030` — cache next before the predicate
         if (Is_container(cobj)) {
             container_count++;
             if (!countem) break;

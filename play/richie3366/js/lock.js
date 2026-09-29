@@ -815,7 +815,7 @@ export async function doopen() {
  * C ref: lock.c doopen_indir — open a CLOSED door at (x,y).
  * Autoopen callers pass door coordinates (x > 0). Interactive `o`
  * uses get_adjacent_loc → getdir ("In what direction?").
- * Named omissions: pit "Open where? [.>]" dirprompt + pit-reach gate;
+ * Named omissions: pit-reach gate (lock.c:815–818 You_cant);
  * set_msg_xy on the This-door arm; AUTOUNLOCK_KICK canned dokick;
  * trapped-shop-door SHOP_DOOR_COST add_damage (lock.c:911).
  * Returns true when C would return ECMD_TIME (open attempt / lock setup).
@@ -827,14 +827,22 @@ export async function doopen_indir(x, y) {
         return false;
     }
 
+    // C lock.c doopen_indir `:793–795` — trapped in a pit while standing
+    // on a container: getdir asks "Open where? [.>]" (`.`/self loots it).
+    const uu = game.u || {};
+    let dirprompt = null;
+    if (uu.utrap && (uu.utraptype | 0) === TT_PIT
+        && container_at(uu.ux, uu.uy, false)) {
+        dirprompt = 'Open where? [.>]';
+    }
+
     let cc;
     // C: x > 0 && y >= 0 → caller supplied coords (autoopen); else getdir
     if (x > 0 && y >= 0) {
         cc = { x, y };
     } else {
         // C: get_adjacent_loc(dirprompt, NULL, u.ux, u.uy, &cc)
-        // dirprompt NULL unless pit+container ("Open where? [.>]") — deferred
-        cc = await get_adjacent_loc(null, null);
+        cc = await get_adjacent_loc(dirprompt, null);
         if (!cc) return false; // Never mind. already plined
     }
 

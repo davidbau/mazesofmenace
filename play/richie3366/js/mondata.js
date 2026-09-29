@@ -1229,6 +1229,20 @@ function mstrength_ranged_attk(ptr) {
 }
 
 /**
+ * C ref: mondata.c ranged_attk `:402–410` — any SPIT/BREA/MAGC/GAZE
+ * attack (monattk.h DISTANCE_ATTK_TYPE). No C callers (extern.h only).
+ */
+export function ranged_attk(ptr) {
+    const mattk = ptr?.mattk || [];
+    for (let i = 0; i < NATTK; i++) {
+        const atyp = mattk[i]?.aatyp | 0;
+        if (atyp === AT_SPIT || atyp === AT_BREA
+            || atyp === AT_MAGC || atyp === AT_GAZE) return true;
+    }
+    return false;
+}
+
+/**
  * C ref: mondata.c mstrength :428–497 — integer approximation of monster
  * strength, same method family as experience() (js/exper.js). Ported
  * whole-body in C order. C takes NONNULLARG1; JS coerces missing fields

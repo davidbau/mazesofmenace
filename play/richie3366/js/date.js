@@ -17,9 +17,6 @@ import {
     __setFreeNomakedefs,
 } from './version.js';
 import { SFCTOOL_BIT } from './const.js';
-import { NUMMONS } from './generated/monsters_data.js';
-import { NUM_OBJECTS } from './generated/objects_data.js';
-import { NROFARTIFACTS } from './generated/artifacts_data.js';
 
 // C ref: date.c extract_field macro `:44–49` — copy `n` chars from `s[z..]`
 // into the caller's buffer with a NUL terminator. JS returns the slice
@@ -68,23 +65,10 @@ function bannerc_string(build_date) {
 // cleared by free_nomakedefs (`:139` / `:171`).
 let nomakedefs_populated = 0;
 
-// C ref: mdlib.c make_version `:248–296` interim. The wired caller
-// (runtime_info_init, mdlib.c:841–842) passes make_version's `version`
-// struct; make_version itself is its own unported row, so until it lands
-// the hook below supplies these pinned outputs: incarnation
-// `(5<<24)|(0<<16)|(0<<8)|EDITLEVEL` (`:255–258`, EDITLEVEL 0 — same value
-// js/files.js:849 pins); feature_set MAIL_STRUCTURES bit 6 (global.h,
-// unconditional) + color bit 17 ("always") + INSURANCE bit 18, SCORE_ON_BOTL
-// bit 19 off (`:266–281` — same value js/files.js:852 pins); entity_count
-// `(nartifacts<<24)|(NUM_OBJECTS<<12)|NUMMONS` (`:286–292` — same formula
-// js/files.js:858–859 computes from the same generated counts).
-function interimVersionInfo() {
-    return {
-        incarnation: 0x05000000,
-        feature_set: (1 << 6) | (1 << 17) | (1 << 18),
-        entity_count: (((NROFARTIFACTS << 24) | (NUM_OBJECTS << 12) | NUMMONS) >>> 0),
-    };
-}
+// make_version's `version` struct (mdlib.c:103 static, `:841`) now lives in
+// js/version.js next to its filler; runtime_info_init forwards it through
+// the hook below, so the interimVersionInfo stand-in is gone (its pinned
+// outputs agreed with the port bit-for-bit at collapse).
 
 /**
  * C ref: date.c populate_nomakedefs `:52–131` — whole body in C order with
@@ -181,11 +165,11 @@ export function populate_nomakedefs(version) {
 }
 
 // C ref: mdlib.c runtime_info_init `:842` populate_nomakedefs(&version).
-// version.js stays import-free (D-1881: const.js:21 reads COMMIT_NUMBER at
-// top level, so no static version.js→date.js edge); it exposes the hook and
-// this module registers the C-order call. The hook forwards an explicit
-// version when make_version lands; until then the interim above applies.
-__setPopulateNomakedefs((version) => populate_nomakedefs(version ?? interimVersionInfo()));
+// version.js holds no static version.js→date.js edge (D-1881:
+// const.js:21 reads COMMIT_NUMBER at top level); it exposes the hook and
+// this module registers the C-order call. The hook forwards make_version's
+// struct (`:841`, filled just before this call in runtime_info_init).
+__setPopulateNomakedefs((version) => populate_nomakedefs(version));
 
 /**
  * C ref: date.c free_nomakedefs `:134–173` — whole body in C order with

@@ -1,6 +1,6 @@
+// DO NOT EDIT — This file is part of the contest's fixed infrastructure.
+// The judge overwrites it from frozen/ on every scoring run.
 // game_display.js — NetHack-specific display wrapper around Terminal.
-// Edit freely; the contest only freezes isaac64.js and terminal.js.
-//
 // Adds game state properties (topMessage, toplines, toplin) and
 // message window handling. Delegates all terminal operations to
 // the wrapped Terminal instance.

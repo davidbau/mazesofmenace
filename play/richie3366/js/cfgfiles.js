@@ -7,8 +7,8 @@
 
 import { game } from './gstate.js';
 import {
-    BUFSZ, ECMD_OK, PL_NSIZ, PL_PSIZ, WIZKIT_MAX,
-    PRIMARYSET, ROGUESET, SYM_BOULDER, WARNCOUNT,
+    BUFSZ, ECMD_OK, EXIT_FAILURE, PL_NSIZ, PL_PSIZ, WIZKIT_MAX,
+    PRIMARYSET, ROGUESET, SYM_BOULDER, SYSCONFPREFIX, WARNCOUNT,
 } from './const.js';
 import {
     pline, tty_wait_synch, raw_printf, MAXPCHARS, SYM_OFF_X,
@@ -50,6 +50,8 @@ import { vfsReadFile, vfsWriteFile } from './storage.js';
 import { parseautocomplete } from './cmd.js';
 import { sysopt_seduce_set } from './sys.js';
 import { dupstr } from './dungeon.js'; // C config_erradd `:1572` (imports.mjs SAFE: hoisted fn)
+import { fqname, do_deferred_showpaths } from './files.js'; // C fopen `:234` + assure `:2064` (imports.mjs SAFE: hoisted fns)
+import { nh_terminate } from './end.js'; // C assure `:2067` (imports.mjs SAFE: hoisted fn)
 
 /** C ref: hack.h `:1504–1506` FEATURE_NOTICE_VER(3, 7, 0). */
 const FEATURE_NOTICE_VER_3_7_0 = (3 << 24) | (7 << 16);
@@ -339,6 +341,27 @@ export function config_error_done() {
     return n; // C `:1620`
 }
 
+/**
+ * C ref: cfgfiles.c assure_syscf_file `:2031–2068` — SYSCF_FILE must be
+ * readable or the game exits. Compiled arm is unix `:2052`
+ * open(SYSCF_FILE, O_RDONLY): the WIN32 `:2035–2038` prefix lock, the
+ * NOCWD/WIN32 `:2050` fqname open and the VMS `:2055` 3-arg open are
+ * not this build; SFCTOOL is off so `:2063–2064` is live. Rule #2: VFS
+ * readability stands in for the POSIX open (fopen_config_file below is
+ * the same VFS-for-fopen precedent); fd/close fold into the one read.
+ * C callers: options.c:7093 (initoptions) + options.c:7289
+ * (initoptions_init) — both wired; util/sfctool.c:680 is the sysconf
+ * tool, not the game (by-design, no scored caller).
+ */
+export function assure_syscf_file() {
+    if (vfsReadFile(SYSCF_FILE) != null) return; // C `:2057–2060` fd >= 0 → close, return
+    if (game.gd?.deferred_showpaths) { // C `:2063`
+        do_deferred_showpaths(1); // C `:2064` — does not return
+    }
+    raw_printf('Unable to open SYSCF_FILE.\n'); // C `:2066`
+    nh_terminate(EXIT_FAILURE); // C `:2067` exit()
+}
+
 /** C getenv without a node: import. Empty and missing are both "unset". */
 function c_getenv(name) {
     const env = (typeof globalThis !== 'undefined' && globalThis.process
@@ -353,12 +376,16 @@ function c_getenv(name) {
  * C ref: cfgfiles.c fopen_config_file `:222–372`, UNIX (+ __APPLE__) arms.
  * Rule #2: VFS stands in for fopen. A missing key is the access/ENOENT
  * failure. MICRO/WIN32/VMS arms are compiled out on this build.
+ * wait_synch (`:262`, `:273`) is a no-op macro in this TU
+ * (cfgfiles.c:117–120), so the message arms need no sync call; the
+ * `%d` errno has no VFS channel (0 stands in) and the errno-gated
+ * `:269–273` / `:356–369` arms never fire (cited in-body).
  * @returns {string|null} file text, or null when nothing opened
  */
 function fopen_config_file(filename, src) {
     if (src === SET_IN_SYSCONF) { // C `:231–238`
         if (filename && filename[0]) {
-            set_configfile_name(filename); // fqname named — bare SYSCF_FILE
+            set_configfile_name(fqname(filename, SYSCONFPREFIX, 0)); // C `:234`
             const text = vfsReadFile(get_configfile());
             return text;
         }
@@ -372,11 +399,14 @@ function fopen_config_file(filename, src) {
         }
         set_configfile_name(name);
         const text = vfsReadFile(get_configfile());
-        if (text == null) { // C `:254–262` access denied, fall through
+        if (text == null) { // C `:254–264` access denied, fall through
             raw_printf('Access to %s denied (%d).', get_configfile(), 0);
         } else {
             return text; // C `:266–267`
         }
+        /* C `:269–273` "Couldn't open requested config file" (access ok
+           but fopen failed) has no VFS shape: one read, one failure —
+           null already maps to the `:254` arm above. */
     }
     // C `:320–328` UNIX default ~/.nethackrc
     const home = c_getenv('HOME');
@@ -398,6 +428,9 @@ function fopen_config_file(filename, src) {
         text = vfsReadFile(get_configfile());
         if (text != null) return text;
     }
+    /* C `:356–369` "Couldn't open default config file" is errno-gated
+       (`errno != ENOENT`): every VFS miss is ENOENT-class (absent key;
+       no errno channel), so the arm never fires — straight to `:371`. */
     return null; // C `:371`
 }
 

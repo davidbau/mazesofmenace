@@ -1,0 +1,4185 @@
+// @ts-nocheck
+// js/monmove.js — Monster movement support: distfleeck + set_apparxy + m_move.
+// C ref: nethack-c/src/monmove.c
+// @ts-nocheck — js sibling imports.
+import { stop_occupation } from './allmain.js';
+import { rn2, rnd, rn1, d, pushRngLogEntry } from './rng.js';
+import { game } from './gstate.js';
+import { PM_LEPRECHAUN } from './pm.generated.js';
+import { acurr } from './attrib.js';
+import { money_cnt } from './com_pager.js';
+import { dist2, isok } from './hacklib.js';
+import { dog_move, mattackm, dogfood, mdisplacem } from './dogmove.js';
+import { dochug } from './dochug.js';
+import { gd_move } from './vault.js';
+import { findgold, noattacks, attacktype, noteleport_level, tele_restrict, permonstTemplate, splitobj, check_gear_next_turn, find_defensive, use_defensive, onscary } from './makemon.js';
+import monsPack from './makemon_mons.json' with { type: 'json' };
+import monMsizePack from './makemon_msize.json' with { type: 'json' };
+/* obj.h's is_cloak/is_gloves/is_shirt read objects[otyp].oc_armcat, which this
+ * port keeps in js/armor_data.js as ARMOR_DATA[otyp].armcat. */
+import { ARMOR_DATA } from './armor_data.js';
+import { t_at, mintrap, mon_knows_traps, mon_learns_traps, m_carrying, seetrap, m_has_launcher_and_ammo, linedup, count_traps, maketrap } from './trap.js';
+import { OBJ_FLOOR, OBJ_DELETED, is_pit, IS_STWALL, IS_TREE, Is_rogue_level, NEED_PICK_AXE, NEED_AXE, NEED_PICK_OR_AXE,
+         Upolyd, M_AP_TYPMASK, M_AP_NOTHING, M_AP_MONSTER, CONFLICT as CONFLICT_MAF, INVIS as INVIS_PROP, DISPLACED as DISPLACED_PROP, DEAF, A_STR,
+         NC_SHOW_MSG,
+         /* maybe_spin_web (monmove.c:1267) */ IS_OBSTRUCTED, STAIRS, LADDER, IRONBARS, WEB, In_sokoban } from './const.js';
+import { newsym, canspotmon, _topl_record_join, pline, canseemon,
+         topl_force_break_now } from './display.js';
+import { cansee, vision_recalc, recalc_block_point, clear_path, couldsee } from './vision.js';
+import { curr_mon_load, max_mon_load, can_carry, could_reach_item, dmgtype,
+         obj_extract_floor, distant_obj_name, Monnam_dm, finish_meating as finish_meating_real,
+         /* meatmetal (mon.c:1482) + delobj_core (invent.c:1446) */ obj_resists } from './dogmove.js';
+import { can_touch_safely, mfndpos, sobj_at, hideunder, maybe_unhide_at, mpickobj, stairway_at, stairway_find_dir, upstart, wake_nearto,
+         /* meatmetal (mon.c:1521) */ mksobj_at,
+         /* meatmetal (mon.c:1473) */ is_rustprone,
+         /* m_consume_obj (mon.c:1399).  ALIASED because this file EXPORTS a
+          * throwing `healmon` stub (js/monmove.js, below) that SHADOWS this
+          * real body (js/mklev.js:17762).  MEASURED: no js/ file imports
+          * healmon from './monmove.js' — every other consumer (dog.js,
+          * dochug.js, mcastu.js, mhitm.js, were.js) already takes it from
+          * './mklev.js'.  The stub's only caller is this file's own
+          * mon_regen(), which nothing imports either, so the shadow is dead
+          * today.  It is still left ALONE: deleting an export is a change to
+          * this file's public surface, which is outside this packet's
+         * one-file scope. */ healmon as healmon_real, meatobj as meatobj_real,
+         meatcorpse as meatcorpse_real, newcham } from './mklev.js';
+import { accessible, closed_door, may_dig } from './look.js';
+import { m_at, mon_nam, autoreturn_weapon } from './uhitm.js';
+import { gettrack } from './track.js';
+import { artifact_light } from './light.js';
+/* C monmove.c:1844/1846 — m_move's tengu teleport arm calls both.  Both are
+ * complete ports in js/teleport.js (which already imports this module; the
+ * cycle is fine, they are hoisted function declarations). */
+import { rloc, mnexto } from './teleport.js';
+import { RLOC_MSG, has_edog, SHOPBASE } from './const.js';
+import { can_track, resist_conflict, can_blow, y_monnam } from './mhitm.js';
+import { see_wsegs, worm_nomove } from './worm.js';
+import { ranged_attk_available } from './mhitu.js';
+import { mon_wield_item, sticks } from './dog.js';
+import { mwelded, is_pole } from './cmd.js';
+import { is_pick, mdig_tunnel, mb_trapped } from './dig.js';
+import { fracture_rock } from './zap.js';
+/* C monflag.h:37 — MZ_LARGE is the first monster size subject to the
+ * diagonal tight-squeeze rejection in mfndpos(). */
+const MZ_LARGE_MV = 3;
+/* C objects[].oc_material — read by mon_would_take_item's is_unicorn and
+ * likes_gems arms (monmove.c:1033, :1042). */
+import { MKOBJ_OC_MATERIAL } from './mkobj_erosion_meta.js';
+/* C objects[otyp].oc_weight — m_consume_obj (mon.c:1399) heals a non-pet by the
+ * RAW column, not by weight(obj) (which multiplies by quan).  Pure data module,
+ * no imports of its own. */
+import { OC_WEIGHT } from './oc_weight.generated.js';
+/* C monmove.c:1831 — m_move dispatches a shopkeeper to shk_move (shk.js →
+ * move_special in priest.js).  This forms a call-time cycle monmove→shk→
+ * priest→monmove; ES module live bindings resolve it because shk_move is only
+ * referenced inside m_move's body (never at module-init time). */
+import { shk_move, in_rooms, inhishop, add_damage, after_shk_move } from './shk.js';
+/* pri_move — same late-bound cycle as shk_move above (priest.js imports
+ * _allow_rock_mv from this file); it is only ever called at runtime. */
+import { pri_move } from './priest.js';
+/* C ref: region.c — create_gas_cloud/visible_region_at/m_in_out_region are
+ * region.c functions called from monmove.c:682-683, :702-704 and :2063. */
+import { create_gas_cloud, visible_region_at, m_in_out_region } from './region.js';
+/* C ref: hack.h:49 — BOLT_LIM = 8; BOLT_LIM*BOLT_LIM = 64 */
+const BOLT_LIM = 8;
+/* C ref: trap.h — SQKY_BOARD = 4 */
+const SQKY_BOARD_MV = 4;
+/* C ref: trap.c:3064-3067 trapnote names (12 musical notes) */
+const SQKY_NOTES_MV = [
+    'C note', 'D flat', 'D note', 'E flat', 'E note', 'F note',
+    'F sharp', 'G note', 'G sharp', 'A note', 'B flat', 'B note',
+];
+/* C ref: monflag.h — M1_SEE_INVIS = 0x01000000L (perceives(ptr) macro) */
+const M1_SEE_INVIS = 0x01000000;
+/* C ref: monflag.h:90-91 — M1_TUNNEL/M1_NEEDPICK (tunnels()/needspick() macros) */
+const M1_TUNNEL_MDW = 0x00000020;
+const M1_NEEDPICK_MDW = 0x00000040;
+/* C ref: objects.h — AXE otyp (dig.js's is_axe uses the same value, unexported) */
+const AXE_MDW = 12;
+/* C ref: hack.h — PM_GRID_BUG index (NODIAG); hack.h:1419 NODIAG(monnum)=((monnum)==PM_GRID_BUG) */
+const PM_GRID_BUG = 116; /* from pm.generated.js PM_GRID_BUG = 116 */
+/* C ref: pm.generated.js */
+const PM_GREMLIN = 40;
+/* C ref: pm.generated.js — for m_postmove_effect */
+const PM_HEZROU = 296;
+const PM_STEAM_VORTEX = 110;
+/* C ref: monmove.c:241-304 onscary(x,y,mtmp) — REAL now (js/makemon.js:5403,
+ * exported).  This file is the C-FAITHFUL HOME for onscary, and the caption
+ * that used to sit here asked for the shadows to be collapsed before a real
+ * port landed.  Three of the four have been: js/makemon.js carries the full
+ * body (Rodney / lawful-minion / Angel / Rider immunity, the human-and-unique
+ * magical-scare exemption, shopkeeper-in-shop and priest-in-temple, the <0,0>
+ * auditory-scare sentinel, the vampire-on-altar arm, sobj_at(SCR_SCARE_MONSTER),
+ * and the full Elbereth sengr_at + displacement + Gehennom/endgame gate);
+ * js/mklev.js's mfndpos copy re-points to it; and js/teleport.js keeps
+ * goodpos_onscary DELIBERATELY, because teleport.c:50 is a separate,
+ * permonst-only C function, not a shadow.  Only this one was still `false`.
+ *
+ * The old caption's warning holds and is why this is its own commit: omitting a
+ * negated deterrent is the PERMISSIVE direction, so re-pointing can only make
+ * these sites report "scared" MORE often, never less.  It is RNG-load-bearing
+ * at distfleeck — a true sawscary takes the monflee branch, which draws rn2(7)
+ * and rnd(10) or rnd(100) that a false one never draws — and RNG-free at the
+ * other two sites (searches_for_item, stop_occupation).
+ *
+ * onscary itself consumes NO RNG (C monmove.c:241-304). */
+const onscary_stub = onscary;
+/* C ref: mon.c:2462-2469 monnear — is the (x,y) square adjacent to monster?
+ * dist2(mon->mx, mon->my, x, y) < 3 (diagonal OK except PM_GRID_BUG). */
+function monnear(mon, x, y) {
+    const d2 = dist2(mon.mx | 0, mon.my | 0, x | 0, y | 0);
+    /* Replay monster records commonly carry mndx/data.pmidx rather than the
+     * legacy mnum field.  C's NODIAG test is against the species index, so
+     * preserve the grid bug's diagonal restriction across all shapes. */
+    const mndx = mon.mnum ?? mon.mndx ?? mon.data?.pmidx;
+    if (d2 === 2 && (mndx | 0) === PM_GRID_BUG)
+        return 0;
+    return d2 < 3 ? 1 : 0;
+}
+/* C ref: monmove.c:451-457 flees_light macro — gremlin fleeing artifact light.
+ * artifact_light() is the canonical light-property lookup; no RNG consumed. */
+function flees_light(mtmp) {
+    const mndx = (mtmp.mnum ?? mtmp.mndx ?? mtmp.data?.pmidx) | 0;
+    if (mndx !== PM_GREMLIN)
+        return false;
+    const u = game.u;
+    if (!u)
+        return false;
+    const uwep = u.uwep;
+    const uarm = u.uarm;
+    /* C: (uwep && uwep->lamplit && artifact_light(uwep)) || (uarm && ...) */
+    const wepLight = uwep && uwep.lamplit && artifact_light(uwep);
+    const armLight = uarm && uarm.lamplit && artifact_light(uarm);
+    if (!wepLight && !armLight)
+        return false;
+    /* C: mon->mcansee && couldsee(mon->mx, mon->my) */
+    /* couldsee stub: assume visible if mcansee is set; L15 refines */
+    return !!(mtmp.mcansee);
+}
+/* C ref: youprop.h:198 — #define Invis ((HInvis || EInvis) && !BInvis), a
+ * macro over the u.uprops[INVIS] triple.  This port stores that property in
+ * TWO places: the numeric uprops[] slot (the potion / worn-armor / mcastu
+ * writers) and a mirrored u.HInvis scalar — js/trap.js:3688 domagictrap's
+ * fate-11 arm writes BOTH and comments on why.  js/display.js:1672 hit the same
+ * hazard in canspotself() and settled it by reading both spellings, "because
+ * reading only one of them makes the predicate depend on which writer happened
+ * to land first"; this is that reader for monmove.c's three Invis macro sites.
+ *
+ * All three of them read ONLY the mirrored scalars.  Measured by
+ * tools/never-initialised-field-probe.mjs over all 44 public sessions,
+ * js/monmove.js:155 reads an absent u.HInvis 31,333 times in 43 sessions and
+ * js/monmove.js:1744 does so 8,727 times in 40 — so Invis was permanently
+ * false in distfleeck's seescary selection, in m_canseeu(), and in m_move's
+ * should_see arm, and m_move's `should_see && Invis && !perceives && rn2(11)`
+ * never drew.  js/priest.js:594-614 and set_apparxy below already carry this
+ * same repair for their own copies of the macro. */
+function _Invis_mv() {
+    const u = game.u;
+    if (!u) return false;
+    const p = u.uprops?.[INVIS_PROP];
+    const HInvis = (p?.intrinsic | 0) || (u.HInvis | 0);
+    const EInvis = p?.extrinsic | 0;
+    const BInvis = p?.blocked | 0;
+    return !!((HInvis || EInvis) && !BInvis);
+}
+/* C ref: monmove.c:534-585 distfleeck.
+ * Computes inrange/nearby/scared for monster mtmp relative to hero.
+ * Returns {inrange, nearby, scared} mirroring C's out-pointer signature.
+ *
+ * RNG: rn2(5) is consumed UNCONDITIONALLY at entry (bravegremlin).
+ * rn2(7) + rnd(10 or 100) are consumed only when scared=1 (monflee branch).
+ *
+ * Smoke tests (expected behavior):
+ * 1. tame mtmp: rn2(5) fires, bravegremlin computed; inrange/nearby from dist2;
+ *    scared=0 because onscary_stub returns false for tame peaceful monsters.
+ * 2. non-tame, !nearby: rn2(5) fires; scared=0 (nearby gate fails).
+ * 3. non-tame, nearby, !sawscary, !flees_light, !sanctuary: rn2(5) fires; scared=0.
+ * 4. non-tame, nearby, sawscary=true (stub always false, so never in current port).
+ */
+export function distfleeck(mtmp) {
+    const u = game.u;
+    if (!u || !mtmp)
+        return { inrange: 0, nearby: 0, scared: 0 };
+    /* C monmove.c:539 — rn2(5) is UNCONDITIONAL; do not gate it. */
+    const bravegremlin = (rn2(5) === 0) ? 1 : 0;
+    /* C monmove.c:542-543:
+     * *inrange = (dist2(mtmp->mx, mtmp->my, mtmp->mux, mtmp->muy) <= BOLT_LIM*BOLT_LIM)
+     * Uses mux/muy (perceived hero position), not actual u.ux/u.uy. */
+    const mx = mtmp.mx | 0;
+    const my = mtmp.my | 0;
+    const mux = (mtmp.mux !== undefined ? mtmp.mux : (u.ux | 0)) | 0;
+    const muy = (mtmp.muy !== undefined ? mtmp.muy : (u.uy | 0)) | 0;
+    const inrange = (dist2(mx, my, mux, muy) <= (BOLT_LIM * BOLT_LIM)) ? 1 : 0;
+    /* C monmove.c:544: *nearby = *inrange && monnear(mtmp, mtmp->mux, mtmp->muy) */
+    const nearby = (inrange && monnear(mtmp, mux, muy)) ? 1 : 0;
+    /* C monmove.c:553-558: seescaryx/seescaryy — where monster thinks Elbereth is.
+     * If mcansee=0 or (Invis && !perceives): use mux/muy; else u.ux/u.uy. */
+    let seescaryx, seescaryy;
+    const Invis = _Invis_mv();
+    const perceives_data = !!((mtmp.data.mflags1 || 0) & M1_SEE_INVIS);
+    if (!mtmp.mcansee || (Invis && !perceives_data)) {
+        seescaryx = mux;
+        seescaryy = muy;
+    }
+    else {
+        seescaryx = u.ux | 0;
+        seescaryy = u.uy | 0;
+    }
+    /* C monmove.c:561: sawscary = onscary(seescaryx, seescaryy, mtmp) */
+    const sawscary = onscary_stub(seescaryx, seescaryy, mtmp) ? 1 : 0;
+    let fleelight = 0;
+    let sanctuary = 0;
+    if (nearby) {
+        if (!sawscary) {
+            /* C monmove.c:564: fleelight = flees_light(mtmp) && !bravegremlin */
+            fleelight = (flees_light(mtmp) && !bravegremlin) ? 1 : 0;
+            if (!fleelight) {
+                /* C monmove.c:565-567: sanctuary = !mpeaceful && in_your_sanctuary(mtmp,0,0) */
+                /* in_your_sanctuary stub: false — altar/temple tracking not yet in JS */
+                sanctuary = 0;
+            }
+        }
+    }
+    let scared = 0;
+    if (nearby && (sawscary || fleelight || sanctuary)) {
+        scared = 1;
+        /* C monmove.c:572: monflee(mtmp, rnd(rn2(7) ? 10 : 100), TRUE, TRUE)
+         * rn2(7) and rnd() must fire even if monflee side-effects are skipped.
+         * Minimal port: consume the RNG; set mtmp.mflee=1 for state parity. */
+        const flee_rn2_7 = rn2(7);
+        const fleetime = rnd(flee_rn2_7 ? 10 : 100);
+        /* Partial monflee: set mflee and mfleetim on mtmp (no message/no vrock RNG). */
+        mtmp.mflee = 1;
+        /* C monflee: fleetime += mtmp->mfleetim; min(fleetime,127) */
+        const prev = (mtmp.mfleetim | 0);
+        let ft = fleetime + (mtmp.mflee && prev ? prev : 0);
+        if (ft === 1)
+            ft = 2;
+        mtmp.mfleetim = Math.min(ft, 127);
+    }
+    return { inrange, nearby, scared };
+}
+/* C ref: monmove.c:1739 m_move(struct monst *mtmp, int after)
+ * Monster movement dispatch. For tame pets, calls dog_move.
+ * For non-tame monsters, runs the normal movement AI.
+ * Returns MMOVE_* constants (0=nothing, 1=moved, 2=died, 3=done, 4=nomoves).
+ *
+ * C structure (monmove.c:1739-2099):
+ *  1. mintrap if mtrapped (no RNG in common case)
+ *  2. meating check (no RNG)
+ *  3. hides_under + rn2(10) (conditional)
+ *  4. set_apparxy
+ *  5. if mtame: return postmov(... dog_move(mtmp, after) ...)
+ *  6. is_covetous branch
+ *  7. shopkeeper/guard/priest branch
+ *  8. tengu teleport: rn2(5), rn2(2)
+ *  9. Normal movement: appr selection (rn2(11), rn2(3)), mfndpos, position loop
+ */
+const MMOVE_NOTHING_MV = 0;
+const MMOVE_MOVED_MV   = 1;
+const MMOVE_DIED_MV    = 2;
+/* C monattk.h M_ATTK_* — mattackm's return bits, and mon.h NORMAL_SPEED. */
+const M_ATTK_MISS_MV = 0x0;
+const M_ATTK_HIT_MV = 0x1;
+const M_ATTK_DEF_DIED_MV = 0x2;
+const M_ATTK_AGR_DIED_MV = 0x4;
+const NORMAL_SPEED_MV = 12;
+const MMOVE_DONE_MV    = 3;
+const MMOVE_NOMOVES_MV = 4;
+
+/* C trap.h trap_result enum — mintrap()'s return.  Trap_Killed_Mon / Trap_Moved_Mon
+ * both end the monster's turn (C monmove.c:1536 → return MMOVE_DIED). */
+const TRAP_CAUGHT_MON_MV = 1;
+const TRAP_KILLED_MON_MV = 2;
+const TRAP_MOVED_MON_MV  = 3;
+
+/* C trap.h: #define NO_TRAP_FLAGS 0L */
+const NO_TRAP_FLAGS_MV = 0;
+
+/* C ref: mfndpos.h */
+const ALLOW_U_MV      = 0x00040000;
+const ALLOW_M_MV      = 0x00080000;
+const ALLOW_TM_MV     = 0x00100000;  /* ALLOW_TM — can attack tame monsters */
+const ALLOW_MDISP_MV  = 0x00001000;
+const ALLOW_TRAPS_MV  = 0x00020000;
+const ALLOW_SANCT_MV  = 0x20000000;
+const ALLOW_SSM_MV    = 0x40000000;
+const NOTONL_MV       = 0x00200000;
+const OPENDOOR_MV     = 0x00400000;  /* mfndpos.h OPENDOOR — mover can open a closed door */
+const UNLOCKDOOR_MV   = 0x00800000;  /* mfndpos.h UNLOCKDOOR — mover can unlock a locked door */
+
+/* C mon.c mon_allowflags(): a monster grants itself OPENDOOR when it can_open,
+ * i.e. it has hands and isn't very small.  This is what lets a door-opening
+ * monster keep a closed door as a candidate square in mfndpos() (so the
+ * candidate count cnt — which bounds rn2(4*(cnt-j)) at monmove.c:1987 —
+ * matches C).  monflag.h M1_NOHANDS=0x2000; verysmall = (msize < MZ_SMALL). */
+const M1_NOHANDS_MV = 0x00002000;
+const MZ_SMALL_MV = 1;
+const _MONS_MV = /** @type {number[][]} */ (monsPack.mons);
+const _MONS_MSIZE_MV = monMsizePack.msize;
+
+/* C ref: trap.h — trap-type enum + count (subset used by m_harmless_trap). */
+const TRAPNUM_MV = 26;
+const T_ARROW_MV=1, T_DART_MV=2, T_ROCK_MV=3, T_SQKY_MV=4, T_BEAR_MV=5,
+      T_LANDMINE_MV=6, T_ROLLBOULDER_MV=7, T_SLPGAS_MV=8, T_RUST_MV=9,
+      T_FIRE_MV=10, T_PIT_MV=11, T_SPIKEDPIT_MV=12, T_HOLE_MV=13,
+      T_TRAPDOOR_MV=14, T_TELEP_MV=15, T_LEVTELEP_MV=16, T_MAGICPORTAL_MV=17,
+      T_WEB_MV=18, T_STATUE_MV=19, T_MAGIC_MV=20, T_ANTIMAGIC_MV=21,
+      T_POLY_MV=22, T_VIBSQ_MV=23;
+/* monflag.h flag1 bits used below. */
+const M1_FLY_MV = 0x00000001, M1_AMORPHOUS_MV = 0x00000004, M1_UNSOLID_MV = 0x00100000;
+/* C monsters.h:2594 MON(... IRON_GOLEM) → mons[] index 259 (js/pm.generated.js
+ * PM_IRON_GOLEM = 259).  Was 277, which is PM_SOLDIER — the rust-trap immunity
+ * test below then exempted the soldier and rusted the iron golem. */
+const PM_IRON_GOLEM_MV = 259;
+
+/* C ref: mfndpos.h ALLOW_ROCK + mondata.h passes_walls/throws_rocks.
+ * A boulder square is a candidate only for movers that have ALLOW_ROCK, set by
+ * mon_allowflags (mon.c:2080-2083) when the mover passes_walls, throws_rocks, or
+ * m_can_break_boulder.  BOULDER is otyp 475 everywhere (objects.h:1619); there is
+ * no separate "search-item" object numbering. */
+const ALLOW_ROCK_MV = 0x02000000;
+const M1_WALLWALK_MV = 0x00000008;   /* monflag.h M1_WALLWALK → passes_walls */
+const M2_ROCKTHROW_MV = 0x08000000;  /* monflag.h M2_ROCKTHROW → throws_rocks */
+const BOULDER_FLOOR_OTYP_MV = 475;   /* live BOULDER otyp (mklev.js:160) */
+/* C ref: monst.c — the Riders (Death/Pestilence/Famine).  is_rider() (mondata.h)
+ * tests those three mons[] indices.
+ * C monsters.h:3153/3163/3173 MON(... DEATH/PESTILENCE/FAMINE) → 311/312/313
+ * (js/pm.generated.js, and the already-correct duplicate PM_*_MCBB block below
+ * at line ~1751).  Was 318/319/320 = shark / giant eel / electric eel. */
+const PM_DEATH_MV = 311, PM_PESTILENCE_MV = 312, PM_FAMINE_MV = 313;
+function _is_rider_mv(mndx) {
+    return mndx === PM_DEATH_MV || mndx === PM_PESTILENCE_MV || mndx === PM_FAMINE_MV;
+}
+/* C ref: monmove.c:133 m_can_break_boulder(mtmp) =
+ *   is_rider(mtmp->data) || (!mtmp->mspec_used
+ *       && (mtmp->isshk || mtmp->ispriest || mtmp->data->msound == MS_LEADER)).
+ * msound is not in the packed monst row; MS_LEADER applies only to the Quest
+ * leader (unique, absent from the early corpus), so it is conservatively omitted
+ * — isshk/ispriest are read from the live monster, and is_rider from mnum. */
+function _m_can_break_boulder_mv(mtmp, mndx) {
+    if (_is_rider_mv(mndx))
+        return true;
+    if (mtmp.mspec_used | 0)
+        return false;
+    return !!(mtmp.isshk || mtmp.ispriest);
+}
+/* C ref: mon.c:2080-2083 — ALLOW_ROCK iff passes_walls || throws_rocks ||
+ * m_can_break_boulder.  (passes_walls also grants ALLOW_WALL, irrelevant to the
+ * boulder gate.)  Returns just the ALLOW_ROCK bit (0 if none). */
+export function _allow_rock_mv(mtmp) {
+    const mndx = (mtmp.mndx ?? mtmp.mnum ?? 0) | 0;
+    const mrow = (mndx >= 0 && mndx < _MONS_MV.length) ? _MONS_MV[mndx] : null;
+    const mf1 = mrow ? (mrow[6] >>> 0) : 0;
+    const mf2 = mrow ? (mrow[7] >>> 0) : 0;
+    const passes_walls = !!(mf1 & M1_WALLWALK_MV);
+    const throws_rocks = !!(mf2 & M2_ROCKTHROW_MV);
+    if (passes_walls || throws_rocks || _m_can_break_boulder_mv(mtmp, mndx))
+        return ALLOW_ROCK_MV;
+    return 0;
+}
+
+/* C ref: mon.c:2054-2055,2089 mon_allowflags(): can_open = !(nohands(mdat) ||
+ * verysmall(mdat)); if (can_open) allowflags |= OPENDOOR. Computed the SAME
+ * way js/monmove.js:mfndpos_nontame already computes it inline (established
+ * precedent) — factored out here so BOTH movemon-integration call sites
+ * (dog_move, m_move) can OR it into their allowflags without duplicating the
+ * mflags1/msize lookup a third time. UNLOCKDOOR is deliberately omitted, same
+ * documented simplification mfndpos_nontame already carries: it needs
+ * monhaskey/iswiz/is_rider (unported world state), so keyless hands-having
+ * movers correctly still reject locked doors — this only restores the
+ * closed-but-unlocked-door OPENDOOR case. Without this bit, mfndpos rejects
+ * every closed door a hands-having monster should be able to open, undercounting
+ * cnt by 1 whenever a candidate square is a closed door — the exact bug behind
+ * the m_move/site-2 regression on seed0013 turn 7 (mon mndx=59 at (9,3): C
+ * accepts the closed door at (10,3), cnt=6; without this fix mfndpos rejects
+ * it, cnt=5, and the mtrack-avoidance rn2(4*(cnt-j)) at monmove.c:1987 draws
+ * rn2(20) instead of C's rn2(24)). */
+export function _can_open_mv(mtmp) {
+    const mndx = (mtmp.mndx ?? mtmp.mnum ?? 0) | 0;
+    const mrow = (mndx >= 0 && mndx < _MONS_MV.length) ? _MONS_MV[mndx] : null;
+    const mf1 = mrow ? (mrow[6] >>> 0) : 0;
+    const msize = (mndx >= 0 && mndx < _MONS_MSIZE_MV.length) ? (_MONS_MSIZE_MV[mndx] | 0) : MZ_SMALL_MV;
+    const can_open = !((mf1 & M1_NOHANDS_MV) || (msize < MZ_SMALL_MV));
+    return can_open ? OPENDOOR_MV : 0;
+}
+
+const ALLOW_BARS_MV = 0x10000000;
+const AD_RUST_BARS_MV = 24, AD_CORR_BARS_MV = 42; /* attack.h AD_RUST/AD_CORR */
+const S_VORTEX_BARS_MV = 22; /* mondata.h mlet S_VORTEX (is_whirly) */
+
+/* C ref: mon.c:2078-2083 mon_allowflags(): ALLOW_BARS iff passes_bars(mdat)
+ * (mondata.c:554-562) — same call-site-factoring rationale as _can_open_mv
+ * above (mfndpos.info sees a caller-supplied flag, not something it derives
+ * itself). passes_bars = passes_walls || amorphous || unsolid || is_whirly
+ * || verysmall || dmgtype(RUST) || dmgtype(CORR) || metallivorous ||
+ * (slithy && !bigmonst). The last two (metallivorous, slithy&&!bigmonst)
+ * are deliberately omitted — same "port faithfully but expect little sweep
+ * coverage" carve-out the keystone spec §7 already uses for rare mondata.h
+ * predicates — this covers the common early-corpus case (verysmall grid
+ * bugs/rodents, amorphous oozes, rust/corrosion monsters). Confirmed
+ * load-bearing: seed3300 turn 3, a grid bug (mndx=116, verysmall) next to an
+ * IRONBARS square — without this bit mfndpos rejects it (cnt 4->3),
+ * flipping the mtrack rn2(4*(cnt-j)) at monmove.c:1987 from rn2(16) to
+ * rn2(12) and regressing a previously-passing session. */
+export function _passes_bars_mv(mtmp) {
+    const mndx = (mtmp.mndx ?? mtmp.mnum ?? 0) | 0;
+    const mrow = (mndx >= 0 && mndx < _MONS_MV.length) ? _MONS_MV[mndx] : null;
+    const mlet = mrow ? (mrow[0] | 0) : -1;
+    const mf1 = mrow ? (mrow[6] >>> 0) : 0;
+    const msize = (mndx >= 0 && mndx < _MONS_MSIZE_MV.length) ? (_MONS_MSIZE_MV[mndx] | 0) : MZ_SMALL_MV;
+    const passes_walls = !!(mf1 & M1_WALLWALK_MV);
+    const amorphous = !!(mf1 & M1_AMORPHOUS_MV);
+    const unsolid = !!(mf1 & M1_UNSOLID_MV);
+    const is_whirly = (mlet === S_VORTEX_BARS_MV);
+    const verysmall = (msize < MZ_SMALL_MV);
+    /* dmgtype()/dmgtype_fromattack() (js/makemon.js) index by ptr.pmidx, not
+     * mlet/mflags1 — a minimal pmidx-only shim is all it reads. */
+    const mdatShim = { pmidx: mndx };
+    const passes_bars = passes_walls || amorphous || unsolid || is_whirly || verysmall
+        || dmgtype(mdatShim, AD_RUST_BARS_MV) || dmgtype(mdatShim, AD_CORR_BARS_MV);
+    return passes_bars ? ALLOW_BARS_MV : 0;
+}
+
+/* C ref: mon.c:2064-2124 mon_allowflags(struct monst *) — the WHOLE function,
+ * replacing the three hand-rolled reductions that stood in for it.
+ *
+ * ── READ THIS BEFORE "deduplicating" against js/mklev.js:11113 ──────────────
+ * js/mklev.js ALSO exports a mon_allowflags(). It is sweep-green (500 records,
+ * 0 diverged, hi confidence) and it has NO live callers: it reads mtmp.data
+ * throughout, which only the capture-replay reconstructor populates, so the
+ * sweep is the only thing that has ever run it. Wiring m_move to it — even
+ * with a permonstTemplate()-materialized `.data` view, which is the idiom
+ * js/mklev.js:mfndpos itself uses — was tried here and drops
+ * seed4500-knight-coverage's rngPrefix from 8332 to 2786. So the sweep being
+ * green says nothing about the live path; the two are not interchangeable
+ * today. This copy reads the packed mons rows directly, the convention
+ * _allow_rock_mv / _can_open_mv / _passes_bars_mv in this file already follow,
+ * and it is the one measured against the corpus. Unifying them is real work
+ * (materialize `.data` on live monst objects, then re-measure), not a rename.
+ *
+ * Why this matters for the RNG stream and not just for "where a monster walks":
+ * the bits returned here are mfndpos()'s `flag`, and mfndpos()'s candidate
+ * count `cnt` bounds m_move's mtrack-avoidance draw `rn2(4 * (cnt - j))`
+ * (monmove.c:1963). Get one bit wrong for one monster and that rn2 is called
+ * with the wrong N, which is a Cardinal-Rule-2 divergence at that very leaf.
+ *
+ * Measured (seed4500-knight-coverage, leaf 7979, step 255): an earth elemental
+ * (mndx 156, M1_WALLWALK) at (40,8) is boxed in on its south side by two HWALL
+ * squares (39,9) and (41,9) and a door at (40,9) held by another monster. C
+ * gives it ALLOW_ROCK|ALLOW_WALL from passes_walls(), so may_passwall() keeps
+ * both wall squares as candidates: cnt = 7, and C draws rn2(28). The previous
+ * reduction here (`ALLOW_U | _allow_rock_mv | _can_open_mv | _passes_bars_mv`)
+ * had no ALLOW_WALL arm at all, so both wall squares were rejected: cnt = 5,
+ * and we drew rn2(20). That was the session's first divergence on every axis.
+ *
+ * Deliberate deviations, all of them "the supporting state is not ported yet"
+ * rather than reinterpretations of C:
+ *   - m_can_break_boulder's MS_LEADER arm (msound is not carried on the packed
+ *     mons row) — already the documented carve-out in _m_can_break_boulder_mv.
+ *   - passes_bars()'s metallivorous / (slithy && !bigmonst) arms — the
+ *     documented carve-out in _passes_bars_mv.
+ * Everything else is a literal transcription, in C's order, including the
+ * Conflict short-circuit: resist_conflict() draws rnd(20), so it MUST NOT be
+ * evaluated unless Conflict is set, exactly as C's `&&` does.
+ */
+export function mon_allowflags(mtmp) {
+    const mndx = (mtmp.mndx ?? mtmp.mnum ?? 0) | 0;
+    const mrow = (mndx >= 0 && mndx < _MONS_MV.length) ? _MONS_MV[mndx] : null;
+    const mlet = mrow ? (mrow[0] | 0) : -1;
+    const mf1 = mrow ? (mrow[6] >>> 0) : 0;
+    const mf2 = mrow ? (mrow[7] >>> 0) : 0;
+    const msize = (mndx >= 0 && mndx < _MONS_MSIZE_MV.length) ? (_MONS_MSIZE_MV[mndx] | 0) : MZ_SMALL_MV;
+
+    let allowflags = 0;
+    /* C: can_open = !(nohands(mtmp->data) || verysmall(mtmp->data)) */
+    const can_open = !((mf1 & M1_NOHANDS_MV) || (msize < MZ_SMALL_MV));
+    /* C: can_unlock = ((can_open && monhaskey(mtmp, TRUE)) || mtmp->iswiz
+                        || is_rider(mtmp->data)) */
+    const can_unlock = ((can_open && monhaskey(mtmp, true)) || !!mtmp.iswiz
+                        || _is_rider_mv(mndx));
+    /* C: doorbuster = is_giant(mtmp->data) */
+    const doorbuster = !!(mf2 & M2_GIANT_MAF);
+    /* C: can_tunnel = (tunnels(mtmp->data) && !Is_rogue_level(&u.uz)) */
+    let can_tunnel = !!(mf1 & M1_TUNNEL_MDW) && !Is_rogue_level(game.u?.uz);
+    /* C mon.c:2072-2076 — same criteria as m_move(): don't tunnel if hostile
+     * and close enough to prefer a weapon. */
+    if (can_tunnel && (mf1 & M1_NEEDPICK_MDW)
+        && ((!(mtmp.mpeaceful | 0) || _conflict_mv())
+            && dist2(mtmp.mx | 0, mtmp.my | 0, mtmp.mux | 0, mtmp.muy | 0) <= 8))
+        can_tunnel = false;
+
+    if (mtmp.mtame)
+        allowflags |= ALLOW_M_MV | ALLOW_TRAPS_MV | ALLOW_SANCT_MV | ALLOW_SSM_MV;
+    else if (mtmp.mpeaceful)
+        allowflags |= ALLOW_SANCT_MV | ALLOW_SSM_MV;
+    else
+        allowflags |= ALLOW_U_MV;
+    /* C: if (Conflict && !resist_conflict(mtmp)) — resist_conflict draws
+     * rnd(20), so the Conflict guard is load-bearing on the RNG axis. */
+    if (_conflict_mv() && !resist_conflict(mtmp))
+        allowflags |= ALLOW_U_MV;
+    if (mtmp.isshk)
+        allowflags |= ALLOW_SSM_MV;
+    if (mtmp.ispriest)
+        allowflags |= ALLOW_SSM_MV | ALLOW_SANCT_MV;
+    if (mf1 & M1_WALLWALK_MV)
+        allowflags |= (ALLOW_ROCK_MV | ALLOW_WALL_MAF);
+    if ((mf2 & M2_ROCKTHROW_MV) || _m_can_break_boulder_mv(mtmp, mndx))
+        allowflags |= ALLOW_ROCK_MV;
+    if (can_tunnel)
+        allowflags |= ALLOW_DIG_MAF;
+    if (doorbuster)
+        allowflags |= BUSTDOOR_MAF;
+    if (can_open)
+        allowflags |= OPENDOOR_MV;
+    if (can_unlock)
+        allowflags |= UNLOCKDOOR_MV;
+    /* C: passes_bars(mtmp->data) && (mtmp != u.ustuck || unsolid(youmonst)
+     *                                || verysmall(youmonst)) */
+    if (_passes_bars_mv(mtmp) && (mtmp !== (game.u?.ustuck ?? null) || _u_squeezable_mv()))
+        allowflags |= ALLOW_BARS_MV;
+    /* C mon.c:2110-2113: is_displacer → ALLOW_MDISP is #if 0'd out; mfndpos
+     * does it instead. Not ported here, matching C. */
+    if ((mf2 & M2_MINION_MAF) || _is_rider_mv(mndx))
+        allowflags |= ALLOW_SANCT_MV;
+    /* C: is_unicorn(mtmp->data) && !noteleport_level(mtmp) → NOTONL */
+    if (mlet === S_UNICORN_MAF && (mf2 & M2_JEWELS_MAF) && !_noteleport_level_mv(mtmp, mndx))
+        allowflags |= NOTONL_MV;
+    if ((mf2 & M2_HUMAN_MAF) || mndx === PM_MINOTAUR_MAF)
+        allowflags |= ALLOW_SSM_MV;
+    if (((mf2 & M2_UNDEAD_MAF) && mlet !== S_GHOST_MAF) || is_vampshifter(mtmp))
+        allowflags |= NOGARLIC_MAF;
+
+    return allowflags;
+}
+/* C ref: mfndpos.h — the bits mon_allowflags sets that had no local name yet. */
+const ALLOW_WALL_MAF = 0x04000000;
+const ALLOW_DIG_MAF  = 0x08000000;
+const BUSTDOOR_MAF   = 0x01000000;
+const NOGARLIC_MAF   = 0x80000000 | 0;   /* int32 — mfndpos never tests it */
+/* C ref: monflag.h / defsym.h — mondata predicates mon_allowflags calls. */
+const M2_GIANT_MAF  = 0x00002000;
+const M2_MINION_MAF = 0x00001000;
+const M2_HUMAN_MAF  = 0x00000008;
+const M2_UNDEAD_MAF = 0x00000002;
+const M2_JEWELS_MAF = 0x20000000;   /* likes_gems(), the is_unicorn() filter */
+const S_UNICORN_MAF = 21;
+const S_GHOST_MAF   = 54;
+const PM_MINOTAUR_MAF = 177;
+
+/* C macro Conflict (hack.h) — the hero's conflict property, read the same way
+ * js/mklev.js:11128 reads it. Kept as a helper so mon_allowflags' two uses
+ * cannot drift apart. */
+function _conflict_mv() {
+    const p = game.u?.uprops?.[CONFLICT_MAF];
+    return !!(p && (p.intrinsic || p.extrinsic));
+}
+/* C: unsolid(gy.youmonst.data) || verysmall(gy.youmonst.data) — only consulted
+ * when the monster IS u.ustuck, which our port never sets; a polymorphed hero's
+ * mons row would be needed to answer it, so the honest answer here is "no",
+ * which is what an unpolymorphed human hero answers in C too. */
+function _u_squeezable_mv() {
+    return false;
+}
+/* C: noteleport_level(mtmp) — js/makemon.js's port reads mon.data (the
+ * materialized permonst), which live monst objects do not carry, so hand it the
+ * same permonstTemplate() shim the rest of this file uses. Only reached for
+ * unicorns, which is why it is worth the shim rather than a second port. */
+function _noteleport_level_mv(mtmp, mndx) {
+    try {
+        return !!noteleport_level(mtmp.data ? mtmp : { ...mtmp, data: permonstTemplate(mndx) });
+    } catch {
+        return false;
+    }
+}
+
+/* C ref: monmove.c:1181-1222 m_balks_at_approaching(oldappr, mtmp, &pdistmin,
+ * &pdistmax) — a 5.0 addition that was carried here only as the comment
+ * "m_balks_at_approaching — stub: no change".
+ *
+ * A hostile that can hurt the hero from range does not walk up to them: within
+ * dist2 < 25 and in line of sight it turns its approach into a RETREAT
+ * (appr = -1), or, for a throw-and-return weapon, into a preferred-range band
+ * (appr = -2 with pdistmin/pdistmax). This is entirely RNG-free for every
+ * monster in the corpus, which is exactly why the stub was invisible on the RNG
+ * axis and cost SCREEN points instead.
+ *
+ * Measured (seed4500-knight-coverage, step 261, the session's first screen
+ * miss): a snake-class hostile at (37,8), hero at (34,10) — dist2 13, in sight,
+ * AT_SPIT in its mattk table, so C returns -1 and the monster backs off to
+ * (38,7). With the stub, appr stayed 1 and it closed to (36,8) instead. Every
+ * PRNG leaf around that step matched; only the map cell was wrong.
+ *
+ * get_atkdam_type() draws for AD_RBRE (random breath), so ranged_attk_available
+ * is on the RNG path for those monsters — the C call order below is preserved
+ * exactly rather than reordered for cheapness.
+ */
+function m_balks_at_approaching(oldappr, mtmp, prefrange) {
+    const mwep = mtmp.mw ?? null;
+    const x = mtmp.mx | 0, y = mtmp.my | 0;
+    const ux = mtmp.mux | 0, uy = mtmp.muy | 0;
+    const edist = dist2(x, y, ux, uy);
+
+    prefrange.min = 0;
+    prefrange.max = 0;
+
+    /* peaceful, far away, or can't see you */
+    if ((mtmp.mpeaceful | 0) || (edist >= 5 * 5) || !_m_canseeu_mv(mtmp))
+        return oldappr;
+
+    /* has ammo+launcher */
+    if (m_has_launcher_and_ammo(mtmp))
+        return -1;
+
+    /* is using a polearm and in range */
+    if (mwep && is_pole(mwep) && edist <= MON_POLE_DIST_MV)
+        return -1;
+
+    /* is using a throw-and-return weapon; provide min and max preferred range */
+    if (mwep) {
+        const arw = autoreturn_weapon(mwep);
+        if (arw) {
+            prefrange.min = 2 * 2;
+            prefrange.max = arw.range | 0;
+            return -2;
+        }
+    }
+
+    /* can attack from distance, and hp loss or attack not used */
+    if (ranged_attk_available(mtmp)
+        && (((mtmp.mhp | 0) < (((mtmp.mhpmax | 0) + 1) / 3))
+            || !(mtmp.mspec_used | 0)))
+        return -1;
+
+    return oldappr; /* leaves appr unchanged */
+}
+/* C ref: hack.h:1435 MON_POLE_DIST — how far monsters can use pole-weapons. */
+const MON_POLE_DIST_MV = 5;
+/* C ref: vision.h:50 m_canseeu(m) =
+ *   (!Invis || perceives(m->data)) && !Underwater && couldsee(m->mx, m->my)
+ * (the live variant; the #if 0 arm also tests u.uburied/m->mburied). */
+function _m_canseeu_mv(mtmp) {
+    const u = game.u;
+    const Invis = _Invis_mv();
+    const mndx = (mtmp.mndx ?? mtmp.mnum ?? 0) | 0;
+    const mf1 = (mtmp.data && mtmp.data.mflags1 != null)
+        ? (mtmp.data.mflags1 >>> 0)
+        : ((mndx >= 0 && mndx < _MONS_MV.length) ? (_MONS_MV[mndx][6] >>> 0) : 0);
+    const perceives = !!(mf1 & M1_SEE_INVIS);
+    return (!Invis || perceives) && !u?.uinwater && couldsee(mtmp.mx | 0, mtmp.my | 0);
+}
+
+/* C ref: trap.c:1063 floor_trigger — traps that only fire when the victim
+ * is on the ground (ttyp 1..TRAPDOOR). */
+function floor_trigger_mv(ttyp) {
+    return ttyp >= T_ARROW_MV && ttyp <= T_TRAPDOOR_MV;
+}
+
+/* C ref: trap.c:1108 m_harmless_trap(mtmp, ttmp) — TRUE if the trap won't hurt
+ * mtmp (so it needn't be avoided / marked in mfndpos info[]).  Faithful port;
+ * intrinsic resistance branches read the permonst mresists column; equipment
+ * resistance remains outside this compact movement helper.  Mirror of the proven pet-AI copy
+ * in dogmove.js:m_harmless_trap; kept local to avoid a cross-module export of a
+ * trap.c helper through dogmove.  check_in_air(mon) = is_floater || is_flyer
+ * (M1_FLY covers float+fly in this corpus). */
+function m_harmless_trap_mv(mtmp, ttmp) {
+    const ttyp = ttmp.ttyp | 0;
+    const mndx = (mtmp.mndx ?? mtmp.mnum ?? 0) | 0;
+    const mf1 = (mndx >= 0 && mndx < _MONS_MV.length) ? (_MONS_MV[mndx][6] | 0) : 0;
+    const isFlyer = !!(mf1 & M1_FLY_MV);
+    const amorphous = !!(mf1 & M1_AMORPHOUS_MV);
+    const unsolid = !!(mf1 & M1_UNSOLID_MV);
+    const msize = (mndx >= 0 && mndx < _MONS_MSIZE_MV.length) ? (_MONS_MSIZE_MV[mndx] | 0) : MZ_SMALL_MV;
+    /* C monst.h:272 `resists_sleep(mon)` -> Resists_Elem(mon, SLEEP_RES).
+     * mresists is MONS row column 5; sleep resistance is bit 0x04. */
+    const resistsSleep = (mndx >= 0 && mndx < _MONS_MV.length)
+        && (((_MONS_MV[mndx][5] | 0) & 0x04) !== 0);
+    /* C: if (!Sokoban && floor_trigger(ttyp) && check_in_air(mtmp,0)) return TRUE */
+    if (floor_trigger_mv(ttyp) && isFlyer)
+        return true;
+    switch (ttyp) {
+        case T_ARROW_MV: case T_DART_MV: case T_ROCK_MV: case T_SQKY_MV:
+        case T_LANDMINE_MV: case T_ROLLBOULDER_MV:
+            break;
+        case T_BEAR_MV:
+            if (msize <= MZ_SMALL_MV || amorphous || unsolid) return true;
+            break;
+        case T_SLPGAS_MV:
+            if (resistsSleep) return true;
+            break;
+        case T_RUST_MV:
+            if (mndx !== PM_IRON_GOLEM_MV) return true;
+            break;
+        case T_FIRE_MV: /* resists_fire — default no */ break;
+        case T_PIT_MV: case T_SPIKEDPIT_MV: case T_HOLE_MV: case T_TRAPDOOR_MV:
+            /* is_clinger — default no */ break;
+        case T_TELEP_MV: case T_LEVTELEP_MV: case T_MAGICPORTAL_MV: case T_POLY_MV:
+            break;
+        case T_WEB_MV:
+            if (amorphous || unsolid) return true;
+            break;
+        case T_STATUE_MV: return true;
+        case T_MAGIC_MV: return true;
+        case T_ANTIMAGIC_MV: /* resists_magm — default no */ break;
+        case T_VIBSQ_MV: return true;
+        default: break;
+    }
+    return false;
+}
+
+/* C ref: rm.h — tile types for wall/obstructed detection (enum levl_typ_types). */
+const POOL_TYP_MV = 16;  /* POOL — IS_OBSTRUCTED(typ) = (typ) < POOL */
+const TREE_TYP_MV = 13;  /* TREE */
+const DOOR_TYP_MV = 23;  /* DOOR — IS_DOOR(typ) = (typ) == DOOR */
+const WATER_TYP_MV = 18; /* WATER — IS_WATERWALL(typ) = (typ) == WATER */
+/* C ref: rm.h:220-224 — door bit-mask values. Was previously D_CLOSED=0x02,
+ * D_LOCKED=0x04 (shifted down one bit), which made mfndpos accept a locked
+ * door (doormask=D_LOCKED=0x08) instead of rejecting it: 0x08 & wrong-0x04 = 0
+ * and 0x08 & wrong-0x02 = 0, so the door-reject branch never fired, inflating
+ * the candidate count cnt by 1 and breaking the rn2(4*(cnt-j)) bound at
+ * monmove.c:1987 (seed1050: rn2(16) vs C rn2(12)). */
+const D_BROKEN_MV = 0x01;
+/* D_ISOPEN = 0x02 (passable; an open door is accepted because neither D_CLOSED
+ * nor D_LOCKED is set).  Referenced by the postmov door-open block below. */
+const D_ISOPEN_MV = 0x02;
+const D_CLOSED_MV = 0x04;
+const D_LOCKED_MV = 0x08;
+const D_TRAPPED_MV = 0x10; /* doormask trap flag (rm.h) */
+const D_NODOOR_MV = 0x00;  /* rm.h — no door at all; what a door trap leaves */
+/* artilist.h row 29 — The Master Key of Thievery (obj->oartifact index). */
+const ART_MASTER_KEY_MV = 29;
+const COLNO_MV = 80;
+/* C ref: global.h:385 — ROWNO = 21 (map proper is rows 0..20). The screen is
+ * 24 rows tall (status + 21 map + messages), but mfndpos clamps to ROWNO-1=20
+ * via maxy = min(y+1, ROWNO-1). Was erroneously 24 here; const.js/dogmove.js
+ * both use 21. Affects bottom-edge monsters' candidate-square count. */
+const ROWNO_MV = 21;
+const MTSZ_MV = 4;
+/* C ref: pm.generated.js — PM_GRID_BUG has NODIAG set (cannot move diagonally). */
+const PM_GRID_BUG_MV = 116; /* pm.generated.js PM_GRID_BUG = 116; was 102 (wrong) */
+
+/* C ref: pm.generated.js — monster indices */
+const PM_TENGU_MV        = 55;  /* PM_TENGU — from js/pm.generated.js */
+const PM_STALKER_MV      = 153; /* PM_STALKER — from js/pm.generated.js */
+/* C ref: defsym.h MONSYM() — mlet constants, in defsym.h's own order.
+ * These were 11 and 10, which are S_KOBOLD ('k') and S_JELLY ('j'): defsym.h
+ * (NetHack 5.0) numbers 'y' LIGHT 25 and 'B' BAT 28, and js/mhitm.js:84,
+ * js/dog.js:245 and js/eat.js:746 all already agree on S_LIGHT == 25. */
+const S_BAT_MV   = 28; /* defsym.h:327 MONSYM(28, 'B', BAT, S_BAT) */
+const S_LIGHT_MV = 25; /* defsym.h:324 MONSYM(25, 'y', LIGHT, S_LIGHT) */
+
+/* C ref: mon.c:2128 mfndpos — faithful candidate-square enumeration for a
+ * normal (non-tame, non-covetous, non-special) hostile monster, no RNG consumed.
+ * Returns array of { x, y, info } objects, ONE per accepted square, in C's
+ * iteration order (nx outer, ny inner). The returned length is the `cnt` that
+ * drives m_move's position-loop RNG bounds (rn2(4*(cnt-j)) at monmove.c:1987),
+ * so getting cnt exactly right is load-bearing.
+ *
+ * This ports the acceptance branches of mon.c:2195-2362 for the common early-
+ * game case: hero visible (not Invis/Displaced), no poison gas, no covetous
+ * digging, no boulders/garlic, onscary stub=false. Branches that require
+ * unported world state (poison-gas regions, sanctuary temples, traps the mon
+ * knows, MON_AT aggression) are conservatively skipped — they do not reject in
+ * the common case. Diagonal squeeze and door-diagonal restrictions ARE ported
+ * since they change cnt on rogue/door levels and for grid bugs.
+ *
+ * allowflags mirrors C `flag` (ALLOW_U for hostiles). */
+export function mfndpos_nontame(mtmp, allowflags) {
+    let flag = allowflags | 0;
+    const x = mtmp.mx | 0;
+    const y = mtmp.my | 0;
+    const u = game.u;
+    const nowloc = game.level?.locations?.[x]?.[y];
+    const nowtyp = nowloc ? (nowloc.typ | 0) : 0;
+    const nowIsDoor = (nowtyp === DOOR_TYP_MV);
+    const nowDoormask = nowloc ? (nowloc.doormask ?? 0) : 0;
+    /* C mon.c:2152 — nodiag = NODIAG(mdat - mons): grid bugs can't move diagonally. */
+    const mndx = (mtmp.mndx ?? mtmp.mnum ?? 0) | 0;
+    const nodiag = (mndx === PM_GRID_BUG_MV);
+    /* C mon.c:2187-2192 — mconf forces ALLOW_ALL & clears NOTONL; !mcansee adds ALLOW_SSM. */
+    if (mtmp.mconf | 0) {
+        /* C mon.c:2187-2189 — flag |= ALLOW_ALL; flag &= ~NOTONL.
+         * ALLOW_ALL = ALLOW_U | ALLOW_M | ALLOW_TM | ALLOW_TRAPS (mfndpos.h:15). */
+        flag |= (ALLOW_U_MV | ALLOW_M_MV | ALLOW_TM_MV | ALLOW_TRAPS_MV);
+        flag &= ~NOTONL_MV;
+    }
+    if (!(mtmp.mcansee | 0))
+        flag |= ALLOW_SSM_MV;
+    /* C mon.c:2055,2089 mon_allowflags(): can_open = !(nohands || verysmall);
+     * if (can_open) allowflags |= OPENDOOR.  Without this bit a door-opening
+     * monster's closed-door neighbour is wrongly dropped from mfndpos, lowering
+     * cnt by 1 and shrinking rn2(4*(cnt-j)) at monmove.c:1987 (seed0013: a
+     * mndx=59 mon at a closed door — C rn2(24)=17 vs JS rn2(20)).  UNLOCKDOOR
+     * requires monhaskey/iswiz/is_rider (unported world state) — keyless
+     * hands-having mons get can_unlock=false, so locked doors still reject. */
+    {
+        const mrow = (mndx >= 0 && mndx < _MONS_MV.length) ? _MONS_MV[mndx] : null;
+        const mf1 = mrow ? (mrow[6] | 0) : 0;
+        const msize = (mndx >= 0 && mndx < _MONS_MSIZE_MV.length) ? (_MONS_MSIZE_MV[mndx] | 0) : MZ_SMALL_MV;
+        const can_open = !((mf1 & M1_NOHANDS_MV) || (msize < MZ_SMALL_MV));
+        if (can_open)
+            flag |= OPENDOOR_MV;
+    }
+    const positions = [];
+    /* C mon.c:2193-2196 — maxx=min(x+1,COLNO-1), maxy=min(y+1,ROWNO-1);
+     * nx from max(1,x-1), ny from max(0,y-1). */
+    const minx = Math.max(1, x - 1);
+    const maxx = Math.min(x + 1, COLNO_MV - 1);
+    const miny = Math.max(0, y - 1);
+    const maxy = Math.min(y + 1, ROWNO_MV - 1);
+    for (let nx = minx; nx <= maxx; nx++) {
+        for (let ny = miny; ny <= maxy; ny++) {
+            if (nx === x && ny === y) continue;
+            const loc = game.level?.locations?.[nx]?.[ny];
+            if (!loc) continue; /* off-map / no data → unpassable */
+            const ntyp = loc.typ | 0;
+            const dm = loc.doormask ?? 0;
+            /* C mon.c:2200-2203 — IS_OBSTRUCTED(ntyp) = ntyp < POOL → reject
+             * (normal mons can't pass walls or dig). */
+            if (ntyp < POOL_TYP_MV) continue;
+            /* C mon.c:2210-2211 — IS_WATERWALL(ntyp) && !is_swimmer → reject.
+             * is_swimmer stub: false for common early mons. */
+            if (ntyp === WATER_TYP_MV) continue;
+            /* C mon.c:2219-2226 — closed/locked door rejection (no thrudoor,
+             * amorphous/fog stub=false).  A closed door is only rejected when
+             * the mover lacks OPENDOOR; a locked door only when it lacks
+             * UNLOCKDOOR. */
+            if (ntyp === DOOR_TYP_MV) {
+                if (((dm & D_CLOSED_MV) && !(flag & OPENDOOR_MV))
+                    || ((dm & D_LOCKED_MV) && !(flag & UNLOCKDOOR_MV))) continue;
+            }
+            /* C mon.c:2233-2243 — diagonal restrictions. */
+            if (nx !== x && ny !== y) {
+                /* C mon.c:2344-2347 — diagonal tight squeeze.  Large
+                 * non-amorphous/non-whirly/non-slithy monsters cannot pass
+                 * between two obstructed orthogonal squares.  The old port
+                 * handled diagonal door/grid restrictions but omitted this
+                 * load-bearing candidate rejection, which changes cnt and
+                 * therefore the mtrack rn2 bound. */
+                const sideA = game.level?.locations?.[x]?.[ny];
+                const sideB = game.level?.locations?.[nx]?.[y];
+                const sideAObstructed = !!sideA && ((sideA.typ | 0) < POOL_TYP_MV);
+                const sideBObstructed = !!sideB && ((sideB.typ | 0) < POOL_TYP_MV);
+                const mrowSqueeze = (mndx >= 0 && mndx < _MONS_MSIZE_MV.length)
+                    ? (_MONS_MSIZE_MV[mndx] | 0) : MZ_SMALL_MV;
+                const bigSqueeze = mrowSqueeze >= MZ_LARGE_MV;
+                if (bigSqueeze && sideAObstructed && sideBObstructed)
+                    continue;
+                const ntypIsDoor = (ntyp === DOOR_TYP_MV);
+                if (nodiag
+                    || (nowIsDoor && (nowDoormask & ~D_BROKEN_MV))
+                    || (ntypIsDoor && (dm & ~D_BROKEN_MV))) {
+                    continue;
+                }
+                /* rogue-level door diagonal + worm-cross checks: unported world
+                 * state; skipped (do not reject in common dungeon rooms). */
+            }
+            /* C mon.c:2246 — (poolok || is_pool==wantpool) && (lavaok || !is_lava).
+             * For a non-air, non-swimmer land mon: pools/lava already rejected
+             * above (POOL..DRAWBRIDGE_UP and LAVA types) — but most ARE >= POOL,
+             * so honor C: reject pools/lava for a normal walker. */
+            if (ntyp >= POOL_TYP_MV && ntyp <= 19 /* POOL..DRAWBRIDGE_UP */) continue;
+            if (ntyp === 20 || ntyp === 21 /* LAVAPOOL, LAVAWALL */) continue;
+            let info = 0;
+            /* C mon.c:2271-2317 — hero-at branch OR else { MON_AT branch }.
+             * The two are mutually exclusive (C `if (u_at||mux/muy) {...} else {...}`). */
+            if ((u && (u.ux | 0) === nx && (u.uy | 0) === ny)
+                || (nx === (mtmp.mux | 0) && ny === (mtmp.muy | 0))) {
+                if (u && (u.ux | 0) === nx && (u.uy | 0) === ny) {
+                    mtmp.mux = u.ux | 0;
+                    mtmp.muy = u.uy | 0;
+                }
+                if (!(flag & ALLOW_U_MV)) continue;
+                info |= ALLOW_U_MV;
+            } else {
+                /* C mon.c:2294-2317 — MON_AT(nx,ny): a monster (not hero) blocks
+                 * this square. C computes mm_aggression / mm_displacement to decide
+                 * whether the mover may attack/displace it; otherwise the square is
+                 * rejected (continue). For the common early-game hostile-vs-hostile
+                 * case mm_aggression()==0 and mm_displacement()==0 (those cover
+                 * purple-worm/shrieker, zombie-maker, W-tower pairings — none in the
+                 * early corpus), so:
+                 *   - if flag has ALLOW_M (set by mconf via ALLOW_ALL): accept, ALLOW_M;
+                 *     (mtame defender + !ALLOW_TM would reject, but flag-from-mconf
+                 *      includes ALLOW_TM so a tame defender is also accepted here)
+                 *   - else: !(mmflag & ALLOW_MDISP) → reject (continue).
+                 * This is the missing gate that over-counted candidates: a hostile
+                 * mon could not step onto a square another monster occupies. */
+                let mon_here = null;
+                for (let m = game.fmon; m; m = m.nmon) {
+                    if (m === mtmp) continue;
+                    if ((m.mhp | 0) > 0 && (m.mx | 0) === nx && (m.my | 0) === ny) {
+                        mon_here = m; break;
+                    }
+                }
+                if (mon_here) {
+                    /* mmflag = flag | mm_aggression(mon, mtmp2); aggression stub = 0 */
+                    if (flag & ALLOW_M_MV) {
+                        info |= ALLOW_M_MV;
+                        if (mon_here.mtame | 0) {
+                            if (!(flag & ALLOW_TM_MV)) continue;
+                            info |= ALLOW_TM_MV;
+                        }
+                    } else {
+                        /* flag &= ~ALLOW_MDISP; mmflag = flag | mm_displacement();
+                         * displacement stub = 0 → no ALLOW_MDISP → reject. */
+                        continue;
+                    }
+                }
+            }
+            /* sanctuary, garlic, NOTONL branches require unported world state;
+             * conservatively not applied (do not reject in the common empty-room
+             * early-game case). */
+            /* C mon.c:2322-2326 — boulder gate.  checkobj = OBJ_AT(nx,ny); if a
+             * boulder lies on the candidate square and the mover lacks ALLOW_ROCK,
+             * the square is rejected (continue), lowering cnt; otherwise the square
+             * keeps ALLOW_ROCK in info[].  This is the cnt-correcting gate for
+             * boulder squares (seed4200 leaf 14147: a gnome mummy next to a boulder
+             * at (71,12) — C cnt=1 not 2, so m_move's mtrack loop never fires
+             * rn2(8)).  Live boulders use otyp 475 (mklev.js). */
+            {
+                let hasBoulder = false;
+                for (let o = game.level?.levelObjects?.[nx]?.[ny]; o; o = o.nexthere) {
+                    if ((o.otyp | 0) === BOULDER_FLOOR_OTYP_MV) { hasBoulder = true; break; }
+                }
+                if (hasBoulder) {
+                    if (!(flag & ALLOW_ROCK_MV)) continue;
+                    info |= ALLOW_ROCK_MV;
+                }
+            }
+            /* C mon.c:2341-2358 — trap avoidance.  A non-pet hostile that lacks
+             * ALLOW_TRAPS rejects a candidate square holding a non-harmless trap it
+             * already knows (mon_knows_traps).  Without this a monster steps back
+             * onto a squeaky board / known trap it learned, over-counting cnt and
+             * inflating rn2(4*(cnt-j)) at monmove.c:1987 (seed0013 leaf 3970: a
+             * lichen that learned the SQKY_BOARD it stepped on rejects that square,
+             * cnt 4->3, C rn2(12) not fired).  fixed_tele_trap/hastrack ALLOW_TRAPS
+             * marking uses unported teledest/track state; the corpus trap here is a
+             * floor trap, so only the rejection gate is load-bearing. */
+            {
+                const ttmp = t_at(nx, ny);
+                if (ttmp) {
+                    const tt = ttmp.ttyp | 0;
+                    if (tt >= TRAPNUM_MV || tt === 0) {
+                        /* C: impossible(...) then continue — drop bogus trap square. */
+                        continue;
+                    }
+                    if (!m_harmless_trap_mv(mtmp, ttmp)) {
+                        if (!(flag & ALLOW_TRAPS_MV)) {
+                            if (mon_knows_traps(mtmp, tt)) continue;
+                        }
+                        info |= ALLOW_TRAPS_MV;
+                    }
+                }
+            }
+            positions.push({ x: nx, y: ny, info });
+        }
+    }
+    return positions;
+}
+
+/* C ref: monflag.h M2_* flags + mondata.h likes_* macros, used by
+ * mon_would_take_item.  _MONS_MV[mndx][7] is the monster's mflags2 column. */
+const M2_GREEDY_MV  = 0x10000000;
+const M2_JEWELS_MV  = 0x20000000;
+const M2_COLLECT_MV = 0x40000000;
+const M2_MAGIC_MV   = 0x80000000; /* read as >>> below (high bit) */
+const M2_ROCKTHROW_MV2 = 0x08000000;
+const M1_MINDLESS_MV = 0x00010000;
+const M1_ANIMAL_MV   = 0x00040000;
+const M1_NOEYES_MV   = 0x00001000;
+/* C ref: objclass.h:136 + defsym.h:466-484 oclass numeric values, each row
+ * carrying its own index: ILLOBJ=1 WEAPON=2 ARMOR=3 RING=4 AMULET=5 TOOL=6
+ * FOOD=7 POTION=8 SCROLL=9 SPBOOK=10 WAND=11 COIN=12 GEM=13 ROCK=14 BALL=15
+ * CHAIN=16 VENOM=17.  WEAPON_CLASS_MV was 1 (ILLOBJ). */
+const WEAPON_CLASS_MV = 2, ARMOR_CLASS_MV = 3, GEM_CLASS_MV = 13;
+const FOOD_CLASS_MV = 7, COIN_CLASS_MV = 12, ROCK_CLASS_MV = 14, BALL_CLASS_MV = 15;
+const TOOL_CLASS_MV = 6;      /* searches_for_item's TOOL_CLASS arm */
+/* C ref: const.js SQSRCHRADIUS = 5 (mon.c m_search_items search box). */
+const SQSRCHRADIUS_MV = 5;
+/* C ref: onames — otyps used by mon_would_take_item / m_search_items. */
+const GOLD_PIECE_MV = 438;    /* objects.h:1512 COIN("gold piece", ..., GOLD_PIECE) */
+/* C ref: objects.h — unlocking tools (monmove.c:96-105 monhaskey) */
+const SKELETON_KEY = 221;     /* objects.h:917 */
+const LOCK_PICK = 222;        /* objects.h:919 */
+const CREDIT_CARD = 223;      /* objects.h:921 */
+/* C mon.c:2030 `throws_rocks(mdat) && otyp == BOULDER` and monmove.c:1439
+ * `otmp->otyp == ROCK` use the SAME otyps as the rest of the game — there is no
+ * separate "search-item" numbering.  Was 262/261 (Candelabrum / unicorn horn). */
+const BOULDER_OTYP_MV = 475;  /* objects.h:1619 BOULDER */
+const ROCK_OTYP_MV = 474;     /* objects.h:1607 ROCK */
+const CORPSE_OTYP_MV = 265;   /* display.js CORPSE = 265 */
+const PM_GELATINOUS_CUBE_MV = 8;  /* monsters.h:166 MON(... GELATINOUS_CUBE);
+                                   * was 47 = PM_DWARF_RULER */
+/* NOTE: C has no PM_UNICORN.  mondata.h:149
+ *   #define is_unicorn(ptr) ((ptr)->mlet == S_UNICORN && likes_gems(ptr))
+ * is an mlet+flag test, not a mons[] index test, so no such constant exists to
+ * declare (a `PM_UNICORN_LO = 0` placeholder used to sit here; 0 is the giant
+ * ant, and nothing referenced it). */
+/* C objclass.h enum obj_material_types — GEMSTONE = 20 (the is_unicorn filter at
+ * monmove.c:1033) and MINERAL = 21 (the likes_gems arm at :1042).  Was 6, which
+ * is CLOTH.  Now both are live: see mon_would_take_item below. */
+const GEMSTONE_MAT_MV = 20, MINERAL_MAT_MV = 21;
+
+/* C ref: muse.c searches_for_item — every otyp / mons index / flag it names.
+ * Resolved against the 5.0 headers with `node tools/c-const-oracle.mjs` (the
+ * object and monster ids are X-macro enum members, so there is nothing in any
+ * header to grep and hand-counting the expansion is how a wrong index is
+ * written down confidently — see the SADDLE note in that tool). */
+const WAN_MAKE_INVISIBLE_MV = 418, WAN_SPEED_MONSTER_MV = 420;
+const WAN_DIGGING_MV = 428, WAN_POLYMORPH_MV = 422, WAN_UNDEAD_TURNING_MV = 421;
+const WAN_TELEPORTATION_MV = 424, WAN_CREATE_MONSTER_MV = 413;
+const WAN_MAGIC_MISSILE_MV = 429, WAN_FIRE_MV = 430, WAN_COLD_MV = 431;
+const WAN_SLEEP_MV = 432, WAN_DEATH_MV = 433, WAN_LIGHTNING_MV = 434;
+const POT_INVISIBILITY_MV = 305, POT_SPEED_MV = 302, POT_HEALING_MV = 307;
+const POT_EXTRA_HEALING_MV = 308, POT_FULL_HEALING_MV = 315, POT_POLYMORPH_MV = 316;
+const POT_GAIN_LEVEL_MV = 309, POT_PARALYSIS_MV = 301, POT_SLEEPING_MV = 314;
+const POT_ACID_MV = 320, POT_CONFUSION_MV = 299, POT_BLINDNESS_MV = 300;
+const SCR_TELEPORTATION_MV = 333, SCR_CREATE_MONSTER_MV = 329;
+const SCR_EARTH_MV = 340, SCR_FIRE_MV = 339;
+const AMULET_OF_LIFE_SAVING_MV = 202, AMULET_OF_REFLECTION_MV = 208;
+const AMULET_OF_GUARDING_MV = 210;
+const PICK_AXE_MV = 259, UNICORN_HORN_MV = 261, FROST_HORN_MV = 250;
+const FIRE_HORN_MV = 251, EXPENSIVE_CAMERA_MV = 229;
+const LARGE_BOX_MV = 214, BAG_OF_HOLDING_MV = 219, BAG_OF_TRICKS_MV = 220;
+const TIN_MV = 296, EGG_MV = 266;
+const PM_GHOST_MV = 287, PM_KI_RIN_MV = 124, PM_MANES_MV = 50;
+const LOW_PM_MV = 0, NUMMONS_MV = 383;
+/* monattk.h AT_GAZE = 15; monst.h MFAST = 2; objclass.h W_ARMG = 16 (obj.h
+ * worn-mask bit for gloves); defsym.h S_EYE = 5, S_UNICORN = 21. */
+const AT_GAZE_MV = 15, MFAST_MV = 2, W_ARMG_MV = 16;
+const S_EYE_MV = 5, S_UNICORN_MV = 21;
+/* defsym.h MONSYM rows — S_GOLEM / S_VORTEX (weirdnonliving), and monflag.h
+ * M2_UNDEAD for is_undead(). */
+const S_GOLEM_MV = 55, S_VORTEX_MV = 22;
+const M2_UNDEAD_MV = 0x00000002;
+/* monflag.h M2_MERC; mondata.h is_mercenary(ptr). */
+const M2_MERC_MV = 0x00000200;
+
+/* C ref: monmove.c:1017 `practical[]` = { WEAPON_CLASS, ARMOR_CLASS, GEM_CLASS,
+ * FOOD_CLASS, 0 } and `magical[]` (AMULET/POTION/SCROLL/WAND/RING/SPBOOK). */
+function _practical_mv(oclass) {
+    return oclass === WEAPON_CLASS_MV || oclass === ARMOR_CLASS_MV
+        || oclass === GEM_CLASS_MV || oclass === FOOD_CLASS_MV;
+}
+/* Same objclass.h space as above: the whole `magical[]` set sat one slot high
+ * (AMULET 8=POTION, POTION 9=SCROLL, SCROLL 10=SPBOOK) with RING at 5 (AMULET)
+ * and SPBOOK at 6 (TOOL) — so RING_CLASS was never magical and TOOL_CLASS
+ * spuriously was. */
+const AMULET_CLASS_MV = 5, POTION_CLASS_MV = 8, SCROLL_CLASS_MV = 9;
+const WAND_CLASS_MV = 11, RING_CLASS_MV = 4, SPBOOK_CLASS_MV = 10;
+function _magical_mv(oclass) {
+    return oclass === AMULET_CLASS_MV || oclass === POTION_CLASS_MV
+        || oclass === SCROLL_CLASS_MV || oclass === WAND_CLASS_MV
+        || oclass === RING_CLASS_MV || oclass === SPBOOK_CLASS_MV;
+}
+
+/* C ref: monmove.c:1024 mon_would_take_item(mtmp, otmp).
+ * Decides whether mtmp wants to pick up otmp (drives m_search_items goal
+ * redirection).  No RNG.  searches_for_item (muse.c:2705) returns TRUE only for
+ * specific useful otyps (offensive/defensive wands, healing potions, escape
+ * scrolls, reflection amulets, pick-axe/horn tools, and only CORPSE/TIN/EGG in
+ * FOOD_CLASS with petrify-cure conditions).  For the common early-game collector
+ * (goblin/orc/etc. with M2_COLLECT) the *likes_objs* + practical[] branch is the
+ * one that fires for ordinary weapons/armor/gems/food, so that branch is ported
+ * exactly; searches_for_item is ported faithfully for the cases it returns TRUE
+ * and FALSE for ordinary items (where likes_objs already decides). */
+export function mon_would_take_item(mtmp, otmp) {
+    const mndx = (mtmp.mndx ?? mtmp.mnum ?? 0) | 0;
+    const mrow = (mndx >= 0 && mndx < _MONS_MV.length) ? _MONS_MV[mndx] : null;
+    const mflags1 = mrow ? (mrow[6] | 0) : 0;
+    /* mflags2 is 32-bit; M2_MAGIC is the high bit, read unsigned via >>> 0. */
+    const mflags2 = mrow ? ((mrow[7] >>> 0)) : 0;
+    const mlet = mrow ? (mrow[0] | 0) : 0;
+    const otyp = otmp.otyp | 0;
+    const oclass = otmp.oclass | 0;
+
+    const cload = curr_mon_load(mtmp);
+    const mxload = max_mon_load(mtmp);
+    const pctload = mxload > 0 ? Math.trunc((cload * 100) / mxload) : 100;
+
+    /* C: uball/uchain check — JS uball/uchain not tracked for floor scan; skip. */
+    if (mtmp.mtame && (otmp.cursed | 0))
+        return false;
+    const mindless = !!(mflags1 & M1_MINDLESS_MV);
+    const is_animal = !!(mflags1 & M1_ANIMAL_MV);
+    const likes_objs = !!(mflags2 & M2_COLLECT_MV) || is_armed_mv(mndx);
+    const likes_gold = !!(mflags2 & M2_GREEDY_MV);
+    const likes_gems = !!(mflags2 & M2_JEWELS_MV);
+    const likes_magic = !!(mflags2 & M2_MAGIC_MV);
+
+    /* C monmove.c:1033 `if (is_unicorn(mtmp->data)
+     *                       && objects[otmp->otyp].oc_material != GEMSTONE)
+     *                       return FALSE;`
+     * mondata.h:149 is_unicorn(ptr) = (ptr->mlet == S_UNICORN && likes_gems(ptr)).
+     * The comment this replaces said "corpus collectors here are not unicorns",
+     * which is false: seed0399 has a hostile black unicorn that walked three
+     * squares to a bag, over a spider web, and picked it up — two plines
+     * ("...is caught in a spider web.", "...picks up a bag.") that C never
+     * emits, which put a --More-- on step 117's topline and cost the whole
+     * 415-step tail.  C's unicorn ignores everything that is not a gemstone,
+     * so m_search_items never redirects its goal to the bag at all. */
+    if (mlet === S_UNICORN_MV && likes_gems
+        && _oc_material_mv(otyp) !== GEMSTONE_MAT_MV)
+        return false;
+
+    if (!mindless && !is_animal && pctload < 75 && searches_for_item_mv(mtmp, otmp))
+        return true;
+    if (likes_gold && otyp === GOLD_PIECE_MV && pctload < 95)
+        return true;
+    /* C: objects[otyp].oc_material != MINERAL — now a real table read, so
+     * luckstone/loadstone/touchstone/flint/rock are excluded as C excludes
+     * them (the stub returned a constant 1, making this arm unconditional). */
+    if (likes_gems && oclass === GEM_CLASS_MV && _oc_material_mv(otyp) !== MINERAL_MAT_MV
+        && pctload < 85)
+        return true;
+    if (likes_objs && _practical_mv(oclass) && pctload < 75)
+        return true;
+    if (likes_magic && _magical_mv(oclass) && pctload < 85)
+        return true;
+    /* throws_rocks && BOULDER && pctload<50 && !Sokoban */
+    if (!!(mflags2 & M2_ROCKTHROW_MV2) && otyp === BOULDER_OTYP_MV && pctload < 50)
+        return true;
+    if (mndx === PM_GELATINOUS_CUBE_MV
+        && oclass !== ROCK_CLASS_MV && oclass !== BALL_CLASS_MV
+        && !(otyp === CORPSE_OTYP_MV /* && touch_petrifies — stub false */))
+        return true;
+    return false;
+}
+
+/* C ref: muse.c:2758 searches_for_item(mon, obj) — "will this monster go out of
+ * its way to fetch this object?".  It is the FIRST arm of mon_would_take_item()
+ * (monmove.c:1009), so for every non-animal, non-mindless monster it decides the
+ * m_search_items() goal redirect — RNG-free, and therefore invisible to every
+ * RNG oracle.
+ *
+ * The body used to be `return false;` under a comment asserting the TRUE cases
+ * "do not apply to ordinary corpus floor items".  Measured on
+ * seed0399-wizard-hallu-actions step 113 (the session's first screen miss, with
+ * 419 of its 532 step points behind it), that assertion is wrong twice over —
+ * both misses are ordinary floor items in an ordinary room:
+ *
+ *   - a quantum mechanic at (19,9) two squares from a POTION OF HEALING at
+ *     (17,10).  C takes the POTION_CLASS arm, m_search_items sets ggx,ggy =
+ *     (17,10), and the appr==1 loop walks it to (18,10).  With the stub the goal
+ *     stayed mux,muy = (47,9) and it walked to (20,9).
+ *   - two elf-lords at (57,11)/(58,11) two squares from a SACK at (58,13).  C
+ *     takes the TOOL_CLASS Is_container arm; the sack (distmin 2) beats the
+ *     tripe ration at (54,11) (distmin 3/4) that the likes_objs/practical[] arm
+ *     had found, so C moves them to (57,12)/(58,11).  With the stub they chased
+ *     the tripe to (56,11)/(57,10).
+ *
+ * All three monsters run the selection loop with appr == 1, which draws no RNG
+ * at all, so C and JS agreed on every rn2 in the turn and disagreed only about
+ * three glyphs on the map.
+ *
+ * Ported arm for arm against muse.c.  Two predicates need tables this module
+ * does not carry and are called out at their arm rather than dropped silently:
+ * resists_ston()/cures_stoning() in the CORPSE arm and mcould_eat_tin() in the
+ * TIN arm.  No RNG anywhere in C's body. */
+function searches_for_item_mv(mon, obj) {
+    const typ = obj.otyp | 0;
+    const mndx = (mon.mndx ?? mon.mnum ?? 0) | 0;
+    const mrow = (mndx >= 0 && mndx < _MONS_MV.length) ? _MONS_MV[mndx] : null;
+    const mflags1 = mrow ? (mrow[6] >>> 0) : 0;
+    const mlet = mrow ? (mrow[0] | 0) : -1;
+
+    /* C muse.c:2763-2768 — don't let monsters interact with protected items on
+     * the floor (an object lying on the monster's own scary square).  onscary is
+     * still this file's stub (see onscary_stub above); when it lands, this arm
+     * activates with no further edit.  Only reachable when the object is on the
+     * monster's own square, which m_search_items reaches at distmin 0. */
+    if ((obj.where | 0) === OBJ_FLOOR
+        && (obj.ox | 0) === (mon.mx | 0) && (obj.oy | 0) === (mon.my | 0)
+        && onscary_stub(obj.ox | 0, obj.oy | 0, mon))
+        return false;
+
+    /* C muse.c:2770-2773 — animals, mindless monsters and ghosts (which must not
+     * loot bones piles) never search. */
+    if ((mflags1 & M1_ANIMAL_MV) || (mflags1 & M1_MINDLESS_MV)
+        || mndx === PM_GHOST_MV)
+        return false;
+
+    /* C muse.c:2775-2778 */
+    if (typ === WAN_MAKE_INVISIBLE_MV || typ === POT_INVISIBILITY_MV)
+        return !(mon.minvis | 0) && !(mon.invis_blkd | 0)
+               && !attacktype({ pmidx: mndx }, AT_GAZE_MV);
+    if (typ === WAN_SPEED_MONSTER_MV || typ === POT_SPEED_MV)
+        return (mon.mspeed | 0) !== MFAST_MV;
+
+    switch (obj.oclass | 0) {
+    case WAND_CLASS_MV:
+        /* C muse.c:2781-2792 */
+        if ((obj.spe | 0) <= 0)
+            return false;
+        if (typ === WAN_DIGGING_MV)
+            return !(mlet === S_EYE_MV || mlet === S_LIGHT_MV); /* !is_floater */
+        if (typ === WAN_POLYMORPH_MV)
+            return (mrow ? (mrow[2] | 0) : 0) < 6; /* mons[].difficulty */
+        if (_wand_oc_dir_is_ray_mv(typ) || typ === WAN_STRIKING_MV
+            || typ === WAN_UNDEAD_TURNING_MV
+            || typ === WAN_TELEPORTATION_MV || typ === WAN_CREATE_MONSTER_MV)
+            return true;
+        break;
+    case POTION_CLASS_MV:
+        /* C muse.c:2793-2801 */
+        if (typ === POT_HEALING_MV || typ === POT_EXTRA_HEALING_MV
+            || typ === POT_FULL_HEALING_MV || typ === POT_POLYMORPH_MV
+            || typ === POT_GAIN_LEVEL_MV || typ === POT_PARALYSIS_MV
+            || typ === POT_SLEEPING_MV || typ === POT_ACID_MV
+            || typ === POT_CONFUSION_MV)
+            return true;
+        if (typ === POT_BLINDNESS_MV && !attacktype({ pmidx: mndx }, AT_GAZE_MV))
+            return true;
+        break;
+    case SCROLL_CLASS_MV:
+        /* C muse.c:2802-2806 */
+        if (typ === SCR_TELEPORTATION_MV || typ === SCR_CREATE_MONSTER_MV
+            || typ === SCR_EARTH_MV || typ === SCR_FIRE_MV)
+            return true;
+        break;
+    case AMULET_CLASS_MV:
+        /* C muse.c:2807-2813 */
+        if (typ === AMULET_OF_LIFE_SAVING_MV)
+            return !(_nonliving_mv(mndx) || is_vampshifter(mon));
+        if (typ === AMULET_OF_REFLECTION_MV || typ === AMULET_OF_GUARDING_MV)
+            return true;
+        break;
+    case TOOL_CLASS_MV:
+        /* C muse.c:2814-2827 */
+        if (typ === PICK_AXE_MV)
+            return (mflags1 & M1_NEEDPICK_MDW) !== 0; /* needspick */
+        if (typ === UNICORN_HORN_MV)
+            return !(obj.cursed | 0) && !_is_unicorn_mv(mndx)
+                   && mndx !== PM_KI_RIN_MV;
+        if (typ === FROST_HORN_MV || typ === FIRE_HORN_MV)
+            return (obj.spe | 0) > 0 && can_blow(mon);
+        if (typ >= LARGE_BOX_MV && typ <= BAG_OF_TRICKS_MV /* Is_container */
+            && !((typ === BAG_OF_HOLDING_MV || typ === BAG_OF_TRICKS_MV)
+                 && (obj.cursed | 0)) /* Is_mbag && cursed */
+            && !(obj.olocked | 0))
+            return true;
+        if (typ === EXPENSIVE_CAMERA_MV)
+            return (obj.spe | 0) > 0;
+        break;
+    case FOOD_CLASS_MV:
+        /* C muse.c:2828-2841 */
+        if (typ === CORPSE_OTYP_MV) {
+            /* C's second disjunct is
+             *     (!resists_ston(mon) && cures_stoning(mon, obj, FALSE))
+             * where cures_stoning() on a corpse is
+             *     corpsenm != NON_PM && (corpsenm == PM_LIZARD || acidic(...)).
+             * resists_ston(mon) is Resists_Elem(mon, STONE_RES) — the monster's
+             * live mextrinsics ORed with its mresists row, neither of which this
+             * module carries — so only the W_ARMG half is ported.  A
+             * stoning-resistant monster next to a lizard/acidic corpse is the
+             * one case this under-returns. */
+            return ((mon.misc_worn_check | 0) & W_ARMG_MV) !== 0
+                   && touch_petrifies_mv(obj.corpsenm | 0);
+        }
+        if (typ === TIN_MV) {
+            /* C: mcould_eat_tin(mon) && !resists_ston(mon)
+             *    && cures_stoning(mon, obj, TRUE).  mcould_eat_tin scans the
+             * monster's minvent for a TIN_OPENER or a P_DAGGER/P_KNIFE weapon,
+             * which needs objects[].oc_skill; not carried here. */
+            return false;
+        }
+        if (typ === EGG_MV && (obj.corpsenm | 0) >= LOW_PM_MV
+            && (obj.corpsenm | 0) < NUMMONS_MV /* ismnum */)
+            return touch_petrifies_mv(obj.corpsenm | 0);
+        break;
+    default:
+        break;
+    }
+
+    return false;
+}
+/* C ref: objects.h WAND() rows — objects[typ].oc_dir for the WAND_CLASS block.
+ * js/mhitu.js's MKOBJ_OC_DIR is WEAPON_CLASS-only (its own header says so), so
+ * it reads 0 for every wand and cannot answer this.  The RAY wands are the seven
+ * objects.h WAND() rows whose `dir` argument is RAY (objects.h:1486-1500):
+ * digging, magic missile, fire, cold, sleep, death, lightning.  WAN_DIGGING is
+ * consumed by its own arm above before this is reached; it is listed anyway so
+ * the predicate means what its name says. */
+function _wand_oc_dir_is_ray_mv(typ) {
+    return typ === WAN_DIGGING_MV || typ === WAN_MAGIC_MISSILE_MV
+        || typ === WAN_FIRE_MV || typ === WAN_COLD_MV || typ === WAN_SLEEP_MV
+        || typ === WAN_DEATH_MV || typ === WAN_LIGHTNING_MV;
+}
+/* C mondata.h:139 is_unicorn(ptr) = (ptr)->mlet == S_UNICORN && likes_gems(ptr).
+ * Not a mons[] index test — see the GEMSTONE_MAT_MV note above. */
+function _is_unicorn_mv(mndx) {
+    const row = (mndx >= 0 && mndx < _MONS_MV.length) ? _MONS_MV[mndx] : null;
+    if (!row) return false;
+    return (row[0] | 0) === S_UNICORN_MV && ((row[7] >>> 0) & M2_JEWELS_MV) !== 0;
+}
+/* C mondata.h nonliving(ptr) = is_undead(ptr) || ptr == &mons[PM_MANES]
+ *   || weirdnonliving(ptr), weirdnonliving = is_golem(ptr) || mlet == S_VORTEX.
+ * Same reading as js/makemon.js nonliving(), computed off the packed row so no
+ * permonst view has to be materialised. */
+function _nonliving_mv(mndx) {
+    const row = (mndx >= 0 && mndx < _MONS_MV.length) ? _MONS_MV[mndx] : null;
+    if (!row) return false;
+    const mlet = row[0] | 0;
+    return ((row[7] >>> 0) & M2_UNDEAD_MV) !== 0 || mndx === PM_MANES_MV
+           || mlet === S_GOLEM_MV || mlet === S_VORTEX_MV;
+}
+
+/* C include/mondata.h:243
+ *   #define corpse_eater(ptr)                 \
+ *       (ptr == &mons[PM_PURPLE_WORM]         \
+ *        || ptr == &mons[PM_BABY_PURPLE_WORM] \
+ *        || ptr == &mons[PM_GHOUL]            \
+ *        || ptr == &mons[PM_PIRANHA])
+ * Indices are js/pm.generated.js's active-list numbering (the same numbering
+ * _MONS_MV and mtmp.data.pmidx use); each is cross-checked against its mlet in
+ * js/makemon_mons.json — 23/S_WORM for the two purple worms, 52/S_ZOMBIE for
+ * the ghoul, 57/S_EEL for the piranha. */
+const PM_PURPLE_WORM_MWCI = 115, PM_BABY_PURPLE_WORM_MWCI = 113,
+      PM_GHOUL_MWCI = 246, PM_PIRANHA_MWCI = 317;
+function corpse_eater_mwci(ptr) {
+    const p = (ptr?.pmidx) | 0;
+    return p === PM_PURPLE_WORM_MWCI || p === PM_BABY_PURPLE_WORM_MWCI
+        || p === PM_GHOUL_MWCI || p === PM_PIRANHA_MWCI;
+}
+/* C include/mondata.h:200
+ *   #define touch_petrifies(ptr) \
+ *       ((ptr) == &mons[PM_COCKATRICE] || (ptr) == &mons[PM_CHICKATRICE])
+ * (Medusa deliberately does NOT pass this; that is flesh_petrifies.) */
+const PM_COCKATRICE_MWCI = 10, PM_CHICKATRICE_MWCI = 9;
+function touch_petrifies_mndx_mwci(mndx) {
+    return mndx === PM_COCKATRICE_MWCI || mndx === PM_CHICKATRICE_MWCI;
+}
+/* C include/mextra.h:161 enum dogfood_types */
+const ACCFOOD_MWCI = 2, MANFOOD_MWCI = 3;
+/* C ref: monmove.c:1035-1050 mon_would_consume_item(mtmp, otmp) — "monster mtmp
+ * would love to consume object otmp, WITHOUT picking it up".  Called from
+ * m_search_items (monmove.c:1425) as the second half of
+ *   (mon_would_take_item(...) && can_carry(...) > 0) || mon_would_consume_item(...)
+ *
+ *   if (otmp->otyp == CORPSE && !touch_petrifies(&mons[otmp->corpsenm])
+ *       && corpse_eater(mtmp->data))
+ *       return TRUE;
+ *   if (mtmp->mtame && has_edog(mtmp)
+ *       && (ftyp = dogfood(mtmp, otmp)) < MANFOOD
+ *       && (ftyp < ACCFOOD || EDOG(mtmp)->hungrytime <= svm.moves))
+ *       return TRUE;
+ *   return FALSE;
+ *
+ * The old body returned false with two reasons.  The DOGFOOD reason was CORRECT
+ * and is now measured: over 23,344 calls across 688 train sessions mtmp->mtame
+ * is true ZERO times here, because m_move dispatches a pet to dog_move long
+ * before m_search_items.  The CORPSE reason ("tables not available in this
+ * module") was a port gap, not a fact about C, and the tables are four integers.
+ *
+ * dogfood() DRAWS RNG (obj_resists' rn2(100), among others), so the C
+ * short-circuit order is load-bearing and reproduced exactly: dogfood is
+ * reached only behind mtmp->mtame && has_edog(mtmp), the same guard C puts in
+ * front of it.  The corpse arm is RNG-free.
+ *
+ * CAVEAT, stated because it is UNMEASURABLE from this corpus: svm.moves is
+ * spelled `game.moves` here, matching this file's other svm.moves read inside
+ * the same monster loop (monmove.js:3438, monmove.c:310).  js/dogmove.js:3823
+ * documents a place where game.moves runs one AHEAD of C's svm.moves; if the
+ * dogfood arm ever goes live, check that boundary first — the corpus cannot
+ * settle it, since mtmp->mtame is false on all 23,344 calls. */
+function mon_would_consume_item(mtmp, otmp) {
+    if ((otmp.otyp | 0) === CORPSE_OTYP_MV
+        && !touch_petrifies_mndx_mwci(otmp.corpsenm | 0)
+        && corpse_eater_mwci(mtmp.data))
+        return true;
+
+    if ((mtmp.mtame | 0) && has_edog(mtmp)) {
+        const ftyp = dogfood(mtmp, otmp);
+        if (ftyp < MANFOOD_MWCI
+            && (ftyp < ACCFOOD_MWCI
+                || (mtmp.mextra.edog.hungrytime | 0) <= (game.moves | 0)))
+            return true;
+    }
+
+    return false;
+}
+
+/* C mondata.h:87 — #define is_armed(ptr) attacktype(ptr, AT_WEAP)
+ * mondata.c:53-57 attacktype(ptr, atyp) = attacktype_fordmg(ptr, atyp, AD_ANY)
+ * != NULL, i.e. does any of ptr->mattk[0..NATTK) have aatyp == AT_WEAP.
+ * monattk.h:28 AT_WEAP = 254 (NOT 1 — the old comment here was wrong).
+ * makemon.js's attacktype() indexes the mattk table by ptr.pmidx, so pass a
+ * bare {pmidx} permonst view of the row index this file works in. */
+const AT_WEAP_MV = 254;
+function is_armed_mv(mndx) {
+    return attacktype({ pmidx: mndx | 0 }, AT_WEAP_MV);
+}
+
+/* C ref: objclass.h objects[otyp].oc_material.  Only used by the likes_gems gem
+ * branch (mineral filter).  A real material table isn't imported here; return a
+ * non-MINERAL (!= 21) sentinel so the gem branch fires for gem-class items —
+ * harmless for non-jewel-loving corpus collectors (likes_gems is false).
+ * KNOWN GAP: a jewel-lover standing near a luckstone/loadstone/touchstone/
+ * flint/rock (all MINERAL) will path to it here where C would not. */
+/* C objects[otyp].oc_material.  The generated objects.c column already in the
+ * tree (js/mkobj_erosion_meta.js, the same table js/mklev.js obj_oc_material
+ * and js/do_wear.js read); this was a constant-1 stub. */
+function _oc_material_mv(otyp) {
+    const i = otyp | 0;
+    return (i >= 0 && i < MKOBJ_OC_MATERIAL.length) ? (MKOBJ_OC_MATERIAL[i] | 0) : 0;
+}
+
+/* C ref: monmove.c:1355 m_search_items(mtmp, &ggx, &ggy, &mmoved, &appr).
+ * Scans floor objects within SQSRCHRADIUS of the monster; if it finds an object
+ * it would take/consume, redirects the goal (*ggx,*ggy) to that object's square
+ * (closest qualifying object wins).  Returns TRUE only when the wanted object is
+ * directly under the monster (sets *mmoved = MMOVE_DONE), telling m_move to stop.
+ * RNG: the in-shop `rn2(25)` skip (monmove.c:1381) — `if (*in_rooms(omx, omy,
+ * SHOPBASE) && (rn2(25) || mtmp->isshk)) goto finish_search;` — is now live via
+ * js/shk.js's real in_rooms(); previously this file treated every monster as
+ * not-in-a-shop and never drew, which is cfn-never-drawn-in-js (this rn2(25)
+ * had NO js/ call site at all).  All other gates remain RNG-neutral. Returns
+ * { redirected, ggx, ggy, appr, mmoved, done }. */
+async function m_search_items(mtmp, ggx, ggy, mmoved, appr) {
+    let minr = SQSRCHRADIUS_MV;
+    const omx = mtmp.mx | 0, omy = mtmp.my | 0;
+    const mux = mtmp.mux | 0, muy = mtmp.muy | 0;
+    let curAppr = appr;
+    let curGgx = ggx, curGgy = ggy;
+    let curMmoved = mmoved;
+
+    /* C: if (distmin(mux,muy,omx,omy) < SQSRCHRADIUS && !mpeaceful) minr-- */
+    if (distmin_mv(mux, muy, omx, omy) < SQSRCHRADIUS_MV && !(mtmp.mpeaceful | 0))
+        minr--;
+    /* C monmove.c:1351 — hostile mercenaries only get distracted by items in
+     * an adjacent square.  Their general M2_COLLECT behavior still applies;
+     * this only narrows m_search_items' scan radius. */
+    const mndx = (mtmp.mndx ?? mtmp.mnum ?? 0) | 0;
+    const mrow = (mndx >= 0 && mndx < _MONS_MV.length) ? _MONS_MV[mndx] : null;
+    if (!(mtmp.mpeaceful | 0) && mrow && ((mrow[7] >>> 0) & M2_MERC_MV))
+        minr = 1;
+
+    /* C: if (*in_rooms(omx, omy, SHOPBASE) && (rn2(25) || mtmp->isshk))
+     *         goto finish_search;
+     * `&&` short-circuits: rn2(25) is drawn only when the monster is actually
+     * standing in a shop room, and only then is mtmp->isshk consulted. */
+    const inShop = in_rooms(omx, omy, SHOPBASE).length > 0;
+    const skipShopScan = inShop && (rn2(25) || (mtmp.isshk | 0));
+
+    if (!skipShopScan) {
+        const hmx = Math.min(COLNO_MV - 1, omx + minr);
+        const hmy = Math.min(ROWNO_MV - 1, omy + minr);
+        const lmx = Math.max(1, omx - minr);
+        const lmy = Math.max(0, omy - minr);
+
+        for (let xx = lmx; xx <= hmx; xx++) {
+            for (let yy = lmy; yy <= hmy; yy++) {
+                /* OBJ_AT(xx,yy): first floor object at this square. */
+                const firstObj = game.level?.levelObjects?.[xx]?.[yy];
+                if (!firstObj) continue;
+                /* found an object closer already */
+                if (minr < distmin_mv(omx, omy, xx, yy)) continue;
+                if (!could_reach_item(mtmp, xx, yy)) continue;
+                /* hides_under(ptr) && cansee — stub: collectors here aren't hiders. */
+                /* C monmove.c:1369-1376 — don't chase an object hidden beneath
+                 * a monster which cannot expose or vacate it.  This is more than
+                 * a pathing nicety: m_search_items changes ggx/ggy without RNG,
+                 * so omitting the guard changes the deterministic candidate
+                 * selected by m_move while the random stream still matches.
+                 *
+                 * gen237 move 9: dwarf mummy m_id=140 at (63,9) sees a gem at
+                 * (63,7), but snake m_id=147 is concealed on top of it
+                 * (mundetected=1).  C skips that square and approaches the hero,
+                 * choosing (62,10); JS chased the concealed gem and chose
+                 * (62,8), making the next turn's mfndpos bound diverge. */
+                const mtoo = m_at(xx, yy);
+                if (mtoo
+                    && (helpless_mv(mtoo) || (mtoo.mundetected | 0)
+                        || ((mtoo.mappearance | 0) && !(mtoo.iswiz | 0))
+                        || !((mtoo.data?.mmove) | 0)))
+                    continue;
+                /* onscary — stub false. */
+                /* trap-known guard */
+                const ttmp = t_at(xx, yy);
+                if (ttmp && mon_knows_traps(mtmp, ttmp.ttyp | 0)) {
+                    if (curGgx === xx && curGgy === yy) { curGgx = mux; curGgy = muy; }
+                    continue;
+                }
+                /* C m_cansee is a pure clear_path query. Rebuilding blockers
+                 * here dirties vision and schedules an extra hero-square
+                 * repaint, consuming display RNG during hallucination.
+                 * Map mutations must update their blockers at the mutation. */
+                if (!clear_path(omx, omy, xx, yy)) continue;
+                /* costly_spot — shop check; treated as false (no SHOPBASE tracking). */
+                const costly = false;
+
+                for (let otmp = firstObj; otmp; otmp = otmp.nexthere) {
+                    const otyp = otmp.otyp | 0;
+                    if (otyp === ROCK_OTYP_MV) continue;
+                    /* mines/soko prize skip — stub false. */
+                    if (costly && !(otmp.no_charge | 0)) continue;
+                    if (((mon_would_take_item(mtmp, otmp) && can_carry(mtmp, otmp) > 0)
+                         || mon_would_consume_item(mtmp, otmp))
+                        && await can_touch_safely(mtmp, otmp)) {
+                        minr = distmin_mv(omx, omy, xx, yy);
+                        curGgx = (otmp.ox | 0);
+                        curGgy = (otmp.oy | 0);
+                        if (curGgx === omx && curGgy === omy) {
+                            curMmoved = MMOVE_DONE_MV;
+                            return { redirected: true, ggx: curGgx, ggy: curGgy,
+                                     appr: curAppr, mmoved: curMmoved, done: true };
+                        }
+                        break; /* skip rest of pile */
+                    }
+                }
+            }
+        }
+    }
+
+    /* C finish_search: if (minr < SQSRCHRADIUS && appr == -1) {...} */
+    if (minr < SQSRCHRADIUS_MV && curAppr === -1) {
+        if (distmin_mv(omx, omy, mux, muy) <= 3) { curGgx = mux; curGgy = muy; }
+        else curAppr = 1;
+    }
+    return { redirected: (minr < SQSRCHRADIUS_MV), ggx: curGgx, ggy: curGgy,
+             appr: curAppr, mmoved: curMmoved, done: false };
+}
+
+/* C ref: hacklib.c distmin — Chebyshev (king-move) distance. */
+function distmin_mv(x0, y0, x1, y1) {
+    const dx = Math.abs((x0 | 0) - (x1 | 0));
+    const dy = Math.abs((y0 | 0) - (y1 | 0));
+    return dx > dy ? dx : dy;
+}
+
+/* C ref: mthrowu.c:1329 linedup / 1375 m_lined_up / 1397 lined_up(mtmp).
+ * lined_up(mtmp) = is the monster geometrically lined up with its perceived hero
+ * (mux,muy)?  For a far/non-aligned monster this returns FALSE with no RNG (the
+ * orthogonal/diagonal + range test fails first).  The boulder-LoS rn2 branch is
+ * ported but only fires for an in-range aligned monster whose LoS is blocked
+ * solely by boulders (out of the early corpus). */
+function lined_up_mv(mtmp) {
+    const u = game.u;
+    if (!u) return false;
+    /* C mthrowu.c:1382-1386 — the FIRST thing m_lined_up() does, BEFORE any
+     * geometry test:
+     *     if (utarget && Upolyd && rn2(25)
+     *         && (u.uundetected || (U_AP_TYPE != M_AP_NOTHING
+     *                               && U_AP_TYPE != M_AP_MONSTER)))
+     *         return FALSE;
+     * `utarget` is always TRUE here (lined_up(mtmp) = m_lined_up(&gy.youmonst,
+     * mtmp), mthrowu.c:1397), so once the hero is polymorphed C draws rn2(25)
+     * on EVERY call — including the monmove.c:1916 in_line test that every
+     * hostile monster's m_move() runs, and including the far-away/unaligned
+     * monsters whose geometry test would fail with no RNG at all.  C evaluates
+     * rn2(25) before the u.uundetected/U_AP_TYPE test because && is
+     * left-to-right, so the draw happens even for a visible, non-mimicking
+     * hero; only the RESULT is discarded.  This arm was missing here, so from
+     * the moment seed5500's hero zapped himself into a warhorse (step 869) the
+     * JS monster loop was one rn2 short per monster per turn: C's rn2(25)=3 at
+     * m_lined_up vs this port's rn2(4*(cnt-j)) in the mfndpos mtrack loop
+     * below, the session's first RNG-value divergence at leaf 5411.
+     * C decl.c gy.youmonst is always live; this port has no global hero-monst
+     * record, so an absent one reads as m_ap_type 0 == M_AP_NOTHING, which is
+     * what a non-mimicking hero has (same reading as makemon.js m_lined_up). */
+    if (Upolyd(u) && rn2(25)) {
+        const _uap = ((game.youmonst?.m_ap_type | 0) & M_AP_TYPMASK);
+        if (u.uundetected
+            || (_uap !== M_AP_NOTHING && _uap !== M_AP_MONSTER))
+            return false;
+    }
+    /* C mthrowu.c:1387-1389 — the geometry + line-of-sight test is linedup()
+     * itself, called with the boulderhandling mode m_lined_up() picks:
+     *     boolean ignore_boulders = utarget && (throws_rocks(mtmp->data)
+     *                                    || m_carrying(mtmp, WAN_STRIKING));
+     *     return linedup(tx, ty, mtmp->mx, mtmp->my,
+     *                    utarget ? (ignore_boulders ? 1 : 2) : 0);
+     * `utarget` is always TRUE here (lined_up(mtmp) = m_lined_up(&gy.youmonst,
+     * mtmp), mthrowu.c:1397), so boulderhandling is 1 or 2 and NEVER 0.
+     *
+     * This used to be a hand-rolled copy of linedup()'s first half that stopped
+     * at `return !!couldsee(bx, by)` — a STAND-IN: it type-checks, it runs, and
+     * it silently drops C's whole boulderhandling tail, including the
+     * `rn2(2 + boulderspots)` at mthrowu.c:1369 that decides whether a sight
+     * line blocked SOLELY by boulders still counts as lined up.  The note above
+     * it claimed "the boulder-LoS rn2 branch is ported", which was true of
+     * js/trap.js linedup() and false of this call site — the only one m_move()
+     * uses.  seed0014 step 258: the hero has just pushed a boulder between
+     * itself and the jackal, C draws rn2(3)=1 @linedup(mthrowu.c:1369) and this
+     * port drew nothing, the session's first RNG-value divergence at leaf 12864. */
+    const ignore_boulders = ((mtmp.data?.mflags2 | 0) & M2_ROCKTHROW_MV) !== 0
+                            || !!m_carrying(mtmp, WAN_STRIKING_MV);
+    /* [no callers care about the 1 vs 2 situation any more] */
+    return !!linedup(mtmp.mux | 0, mtmp.muy | 0, mtmp.mx | 0, mtmp.my | 0,
+                     ignore_boulders ? 1 : 2);
+}
+/* C objects.h WAN_STRIKING — js/makemon.js:1685 uses the same literal. */
+const WAN_STRIKING_MV = 417;
+
+/* C ref: monmove.c:1391-1420 m_move_aggress(mtmp, x, y) — "attack this spot in
+ * preference to all others".  Reached from m_move's post-selection dispatch for
+ * the ALLOW_M case (the chosen square holds a monster this one may attack) and
+ * for the displaced-image case (the chosen square is <mux,muy>).
+ *
+ * This was a one-line stand-in (`return MMOVE_DONE`) that never attacked, so a
+ * confused or image-fooled monster walked past its target instead of swinging
+ * at it.  gb.bhitpos / gn.notonhead are set BEFORE mattackm because mattackm's
+ * i>0 target-still-there guard (mhitm.c:381) reads them back — the same
+ * ordering js/dogmove.js:3801 already documents for dog_move's copy.
+ *
+ * RNG: none when the square is empty (mstatus stays M_ATTK_MISS, so the
+ * return-attack block's rn2(4) is not reached).  Otherwise exactly what
+ * mattackm draws, plus the rn2(4) / rn2(NORMAL_SPEED) pair. */
+export async function m_move_aggress(mtmp, x, y) {
+    let mstatus = M_ATTK_MISS_MV;
+    const mtmp2 = m_at(x, y);
+    if (mtmp2) {
+        (game.gb ||= {}).bhitpos = { x: x | 0, y: y | 0 };
+        (game.gn ||= {}).notonhead =
+            ((x | 0) !== (mtmp2.mx | 0) || (y | 0) !== (mtmp2.my | 0));
+        mstatus = await mattackm(mtmp, mtmp2);
+    }
+
+    /* C:1403 — `if ((mstatus & M_ATTK_AGR_DIED) || DEADMONSTER(mtmp))` */
+    /* C mon.h DEADMONSTER(mon) := ((mon)->mhp < 1) — js/dogmove.js:3077's
+     * reading, kept identical. */
+    if ((mstatus & M_ATTK_AGR_DIED_MV) || !mtmp || (mtmp.mhp | 0) < 1)
+        return MMOVE_DIED_MV;
+
+    if ((mstatus & (M_ATTK_HIT_MV | M_ATTK_DEF_DIED_MV)) === M_ATTK_HIT_MV
+        && rn2(4) && (mtmp2.movement | 0) > rn2(NORMAL_SPEED_MV)) {
+        if ((mtmp2.movement | 0) > NORMAL_SPEED_MV)
+            mtmp2.movement = (mtmp2.movement | 0) - NORMAL_SPEED_MV;
+        else
+            mtmp2.movement = 0;
+        game.gb.bhitpos = { x: mtmp.mx | 0, y: mtmp.my | 0 };
+        game.gn.notonhead = false;
+        /* note: at this point, defender is the original (moving) aggressor */
+        mstatus = await mattackm(mtmp2, mtmp);
+        if (mstatus & M_ATTK_DEF_DIED_MV)
+            return MMOVE_DIED_MV;
+    }
+    return MMOVE_DONE_MV;
+}
+
+
+/* C trap.c:1402-1470 via monmove.c:1535 — apply SQKY_BOARD to a moved
+ * monster.  Both tame and hostile postmov paths call this shared leaf; C's
+ * postmov invokes mintrap uniformly for pets and non-pets. */
+function _handle_sqky_board_mon(mtmp, trap, nix, niy) {
+    /* C mintrap front-matter (trap.c:3770-3797), inlined here because the
+     * trapeffect_sqky_board leaf is open-coded below rather than reached
+     * through trapeffect_selector.  Faithful order:
+     *   - floor_trigger(SQKY) && check_in_air(mtmp) → step over (no RNG);
+     *     check_in_air = is_floater||is_flyer (M1_FLY), false for ground mons.
+     *   - already_seen && rn2(4) && !forcebungle → ignore (the trap was
+     *     learned on a prior step); first encounter has already_seen=false
+     *     so no rn2 fires (matches seed0013: the lichen's first squeak).
+     *   - mon_learns_traps(mtmp, SQKY): sets mtrapseen so mfndpos_nontame
+     *     rejects this square next turn (the cnt 4->3 fix at leaf 3970).
+     * trap->madeby_u setmangry(rnl(5)) is omitted: generated dungeon traps
+     * have madeby_u=0 in this path; the madeby_u anger/rnl(5) arm remains an
+     * explicit inherited gap outside this shared movement effect. */
+    const _mf1_sq = (mtmp.data.mflags1 | 0);
+    const _in_air_sq = (_mf1_sq & M1_FLY_MV) !== 0;
+    let _sqky_handled = false;
+    if (floor_trigger_mv(SQKY_BOARD_MV) && _in_air_sq) {
+        _sqky_handled = true; /* steps over: no learn, no squeak */
+    } else if (mon_knows_traps(mtmp, SQKY_BOARD_MV) && rn2(4)) {
+        _sqky_handled = true; /* already seen: ignores without re-squeaking */
+    }
+    if (!_sqky_handled) {
+        mon_learns_traps(mtmp, SQKY_BOARD_MV);
+        /* C trap.c:3796-3797 calls mons_see_trap() after the mover learns
+         * the trap.  Nearby sighted, non-animal monsters learn it too.  That
+         * state controls mfndpos's known-trap rejection and hence the mtrack
+         * rn2 bound on their following move. */
+        const tx = trap.tx | 0, ty = trap.ty | 0;
+        const loc = game.level?.at?.(tx, ty);
+        const maxdist = loc?.lit ? 49 : 2;
+        for (let watcher = game.fmon; watcher; watcher = watcher.nmon) {
+            const wf1 = (watcher.data?.mflags1 | 0);
+            if ((wf1 & (M1_ANIMAL_MV | M1_MINDLESS_MV | M1_NOEYES_MV))
+                || !(watcher.mcansee | 0)
+                || dist2(watcher.mx | 0, watcher.my | 0, tx, ty) > maxdist
+                || !clear_path(watcher.mx | 0, watcher.my | 0, tx, ty))
+                continue;
+            mon_learns_traps(watcher, SQKY_BOARD_MV);
+        }
+    }
+    const _u = game.u;
+    /* m_in_air check: grid bugs and most common monsters are on the ground. */
+    /* C canseemon(mtmp): visibility plus monster spotting, with steed exception. */
+    const _dist2 = _u ? dist2(nix, niy, (_u.ux | 0), (_u.uy | 0)) : 99999;
+    const _in_sight = canseemon(mtmp) || (mtmp === (_u ? _u.usteed : null));
+    if (!_sqky_handled) {
+        /* C trap.c:3064-3080 trapnote(trap, FALSE) — note name with
+         * just_an() article prefix.  just_an takes its SINGLE-LETTER
+         * branch (objnam.c:2113-2115): article = "an" iff the lowercased
+         * first char is in "aefhilmnosx", else "a" (letter-name test,
+         * e.g. "F" = "eff" → "an F note"). */
+        const _tnote = (trap.tnote | 0);
+        const _notename = SQKY_NOTES_MV[_tnote] || 'C note';
+        const _c0 = (_notename[0] || '').toLowerCase();
+        const _article = 'aefhilmnosx'.includes(_c0) ? 'an' : 'a';
+        const trapnote = `${_article} ${_notename}`;
+        /* C ref: youprop.h:125 Deaf = HDeaf || EDeaf || uroleplay.deaf. */
+        const _uu = game.u || {};
+        const _deaf = ((_uu.HDeaf | 0) !== 0) || ((_uu.EDeaf | 0) !== 0)
+            || !!(_uu.uroleplay && _uu.uroleplay.deaf);
+        let _msg = null;
+        let _mark_seen = false;
+        if (_in_sight) {
+            /* C trap.c:1443-1454 — in-sight monster stepped on a squeaky
+             * board.  When not Deaf, emit the squeak and mark the trap
+             * seen (seetrap); the Deaf branch cringes for non-mindless
+             * monsters.  Soundeffect is screen/audio only, no RNG. */
+            if (!_deaf) {
+                _msg = `A board beneath ${mon_nam(mtmp)} squeaks ${trapnote} loudly.`;
+                _mark_seen = true; /* C seetrap follows pline_mon */
+            } else if ((mtmp.data.mflags1 & M1_MINDLESS_MV) === 0) {
+                const _nm = mon_nam(mtmp);
+                _msg = `${_nm.charAt(0).toUpperCase()}${_nm.slice(1)} stops momentarily and appears to cringe.`;
+            }
+        } else {
+            /* C trap.c:1458-1469: out-of-sight monster — You_hear("...squeak...").
+             * range = couldsee(mx,my) ? BOLT_LIM+1 : BOLT_LIM-3
+             * couldsee is the live vision predicate used by C's range selection */
+            const _couldsee = !!couldsee(nix, niy);
+            const _range = _couldsee ? (BOLT_LIM + 1) : (BOLT_LIM - 3);
+            const _nearfar = (_dist2 <= _range * _range) ? 'nearby' : 'in the distance';
+            /* You_hear → pline("You hear %s.", ...) inline (sync pline equivalent) */
+            _msg = `You hear ${trapnote} squeak ${_nearfar}.`;
+        }
+        if (_msg) {
+            const _prev = game._pending_message;
+            if (_prev && _prev.length > 0) {
+                const _joined = _prev + '  ' + _msg;
+                _topl_record_join(_prev, _joined);
+                game._pending_message = _joined;
+            } else {
+                game._pending_message = _msg;
+            }
+        }
+        if (_mark_seen)
+            seetrap(trap); /* C marks the trap after pline_mon */
+        /* C trap.c trapeffect_sqky_board, monster branch TAIL
+         * (after both the in_sight pline arm and the You_hear arm):
+         *     wake_nearto(mtmp->mx, mtmp->my, 40);   [the
+         *     "wake up nearby monsters" tail]
+         * This call was absent, and it is the ONLY thing on the
+         * squeaky-board path that changes world state rather than
+         * the screen — so the message matched C while the sleepers
+         * around the board stayed asleep.  Those monsters are then
+         * skipped by dochug (`msleeping && !disturb` returns 0
+         * before distfleeck), so the NEXT turn's movemon pass runs
+         * fewer monster moves than C's and the whole RNG stream
+         * shears.  Measured on seed0360-wizard-world-tour: a hell
+         * hound (m_id 3522) steps on the board at (41,11) on turn
+         * 26 and C wakes five monsters inside dist2 < 40 of it
+         * (m_ids 3555/3538/3534/3531/3518, the last being the
+         * Wizard of Yendor); on turn 27 C runs 42 dochug passes to
+         * this port's 36 and the first RNG divergence lands at leaf
+         * 86078.  wake_nearto consumes NO rng (wake_nearto_core,
+         * mon.c:4364, has no rn2), so this cannot move the stream
+         * except through the monster set it corrects.
+         * Guarded by !_sqky_handled exactly as C is: the two
+         * step-over/ignore paths (m_in_air, already-seen && rn2(4))
+         * never reach trapeffect_sqky_board at all. */
+        wake_nearto(mtmp.mx | 0, mtmp.my | 0, 40);
+    }
+}
+
+/* C monmove.c:1172 leppie_avoidance: a leprechaun with more visible
+ * gold than the hero retreats rather than approaching to steal. */
+export function leppie_avoidance(mon) {
+    if ((mon?.data?.pmidx ?? mon?.mndx ?? mon?.mnum) !== PM_LEPRECHAUN)
+        return false;
+    const gold = findgold(mon.minvent);
+    return !!gold && gold.quan > (findgold(game.invent)?.quan ?? 0);
+}
+
+export async function m_move(mtmp, after) {
+    if (!mtmp) return MMOVE_NOTHING_MV;
+
+    /* C monmove.c:1755 `coordxy omx = mtmp->mx, omy = mtmp->my;` — a declaration
+     * initializer, so it is read at function ENTRY, before the mtrapped mintrap
+     * below can relocate the monster.  Only the pet branch needs it this early;
+     * the mainline path re-reads its own omx/omy further down. */
+    const _entry_omx = mtmp.mx | 0, _entry_omy = mtmp.my | 0;
+
+    /* C monmove.c:1757-1766 — the FIRST statement of m_move():
+     *     if (mtmp->mtrapped) {
+     *         int i = mintrap(mtmp, NO_TRAP_FLAGS);
+     *         if (i == Trap_Killed_Mon) { newsym(mtmp->mx, mtmp->my);
+     *                                     return MMOVE_DIED; }
+     *         if (i == Trap_Caught_Mon) return MMOVE_NOTHING;
+     *     }
+     * This runs BEFORE the mtame -> dog_move dispatch (monmove.c:1797), so an
+     * already-trapped PET pays mintrap's escape roll before any dog_move RNG.
+     *
+     * The old stub's justification ("no trap table in JS yet") is stale:
+     * mintrap() is ported in js/trap.js:2164 with the full mtrapped branch --
+     * `if (!rn2(40))` at trap.js:2176, C trap.c:3731 -- and the postmov path
+     * below already calls it after a move.  Only this HEAD call site was
+     * missing, so a monster that was ALREADY in a trap at the top of its turn
+     * silently skipped the rn2(40) struggle-to-escape draw every turn.
+     *
+     * seed0004: the pet pony is stuck in a trap at turn 30.  C draws
+     * rn2(40)=26 @mintrap(trap.c:3731); JS fell straight through to
+     * dog_move -> dogfood -> obj_resists rn2(100) (js/dogmove.js:435) at the
+     * same leaf index -- first RNG-value divergence @ leaf 4313. */
+    if (mtmp.mtrapped) {
+        const i = await mintrap(mtmp, NO_TRAP_FLAGS_MV);
+        if (i === TRAP_KILLED_MON_MV) {
+            newsym(mtmp.mx | 0, mtmp.my | 0);
+            return MMOVE_DIED_MV;
+        }
+        if (i === TRAP_CAUGHT_MON_MV)
+            return MMOVE_NOTHING_MV; /* still in trap, so didn't move */
+    }
+
+    /* C monmove.c:1769-1773: meating countdown */
+    if ((mtmp.meating | 0) > 0) {
+        mtmp.meating--;
+        if (mtmp.meating <= 0) {
+            mtmp.meating = 0;
+            /* C: finish_meating(mtmp) — no RNG */
+        }
+        return MMOVE_DONE_MV; /* still eating */
+    }
+
+    /* C monmove.c:1751-1754:
+     *   if (hides_under(ptr) && OBJ_AT(mtmp->mx, mtmp->my)
+     *       && can_hide_under_obj(svl.level.objects[mtmp->mx][mtmp->my])
+     *       && rn2(10))
+     *       return MMOVE_NOTHING;
+     * mondata.h:35 hides_under(ptr) = (ptr->mflags1 & M1_CONCEAL) != 0
+     * rm.h:500     OBJ_AT(x, y)     = svl.level.objects[x][y] != 0
+     * The && chain short-circuits, so rn2(10) fires ONLY for a concealing
+     * monster standing on a hideable pile — that ordering is the RNG
+     * contract, not an optimisation. */
+    /* C monmove.c:1749 `ptr = mtmp->data;` — re-read AFTER mintrap, which can
+     * change mtmp->data ("mintrap() can change mtmp->data -dlc"). */
+    const ptr = mtmp.data;
+    if (hides_under_mv(ptr)) {
+        const _topObj = game.level?.levelObjects?.[mtmp.mx | 0]?.[mtmp.my | 0];
+        if (_topObj && can_hide_under_obj(_topObj) && rn2(10))
+            return MMOVE_NOTHING_MV; /* do not leave hiding place */
+    }
+
+    /* C monmove.c:1778 — postmov needs the visibility state from before the
+     * move.  In particular, a vampshifter which passes under a closed door is
+     * temporarily put back on its old square while changing into fog, so its
+     * message is painted at the location where the hero last saw it. */
+    const seenflgs = (canseemon(mtmp) ? 1 : 0) | (canspotmon(mtmp) ? 2 : 0);
+
+    /* C monmove.c:1785: set_apparxy(mtmp) */
+    set_apparxy(mtmp);
+
+    /* C monmove.c:1793-1798: wormno goto not_special (worms skip tame/covetous check) */
+    /* C monmove.c:1796-1799: if (mtmp->mtame) → dog_move */
+    if (mtmp.mtame | 0) {
+        /* C: return postmov(mtmp, ptr, omx, omy, dog_move(mtmp, after), ...) */
+        const res = await dog_move(mtmp, after);
+        /* C postmov (monmove.c:1508) `newsym(omx, omy); /* update the old position *\/`
+         * — the FIRST half of the redraw pair, fired before mintrap.  dog_move()
+         * itself calls no newsym (C dogmove.c newdogpos has none); the pair lives
+         * here, straddling mintrap, and the gap between the two halves is
+         * observable: mintrap's "<pet> is caught in a bear trap!" pline raises a
+         * --More-- while the destination cell still shows its remembered object.
+         * seed0004 step 34: C paints the orc corpse '%' at <75,18> under the
+         * blocked --More--; drawing the pony there early cost 11 frames. */
+        if (res === MMOVE_MOVED_MV)
+            newsym(_entry_omx, _entry_omy);
+        /* C postmov (monmove.c:1498-1535): when the pet actually MOVED, fire
+         * mintrap at its new cell.  A pet stepping onto a dart/arrow/rock trap
+         * creates a missile via mksobj (next_ident) inside trapeffect_*; without
+         * this the pet's move never triggers the trap and the next_ident RNG that
+         * C fires here is missing (seed1500 step 13: dog → dart trap).  Routed
+         * through the same ported mintrap the hostile path uses (line 574 below). */
+        if (res === MMOVE_MOVED_MV) {
+            const _trap = t_at(mtmp.mx | 0, mtmp.my | 0);
+            if (_trap && _trap.ttyp !== SQKY_BOARD_MV) {
+                /* C postmov (monmove.c:1535-1540): trapret = mintrap(mtmp,0); if
+                 * the trap killed or moved the monster, newsym + return MMOVE_DIED
+                 * so dochug stops (no post-move distfleeck recalc for a dead pet). */
+                const trapret = await mintrap(mtmp, 0);
+                if (trapret === TRAP_KILLED_MON_MV || trapret === TRAP_MOVED_MON_MV) {
+                    if (mtmp.mx) newsym(mtmp.mx | 0, mtmp.my | 0);
+                    return MMOVE_DIED_MV;
+                }
+            } else if (_trap && _trap.ttyp === SQKY_BOARD_MV) {
+                _handle_sqky_board_mon(mtmp, _trap, mtmp.mx | 0, mtmp.my | 0);
+            }
+        }
+        /* C postmov (monmove.c:1656) `newsym(mtmp->mx, mtmp->my);` — the SECOND
+         * half of the pair, at the very end of the `mmoved == MMOVE_MOVED` block,
+         * i.e. after mintrap and after the door block.  This is what finally puts
+         * the pet's glyph on its destination cell. */
+        if (res === MMOVE_MOVED_MV)
+            newsym(mtmp.mx | 0, mtmp.my | 0);
+        /* C monmove.c:1773 — the pet path IS a `return postmov(...)`, so it runs
+         * postmov's trailing hides_under/S_EEL block too (a tame hider that just
+         * moved re-hides and draws its rn2(5) exactly like a hostile one). */
+        return postmov(mtmp, res);
+    }
+
+    /* C monmove.c:1802-1827: is_covetous branch — no RNG in stub (is_covetous=false for common monsters) */
+
+    /* C monmove.c:1830-1851: shopkeeper/guard/priest — dispatch to their own
+     * move fn (shk_move / gd_move / pri_move) and translate the return code.
+     *   int xm = isshk ? shk_move : isgd ? gd_move : pri_move;
+     *   switch (xm) { case -2: MMOVE_DIED; case -1: MMOVE_NOTHING; default/0/1:
+     *     postmov(... (xm!=1) ? MMOVE_NOTHING : MMOVE_MOVED ...) }
+     * shk_move is now ported (shk.js → move_special in priest.js); gd_move and
+     * pri_move remain unported and keep the no-RNG MMOVE_NOTHING stub so they do
+     * NOT fall through to the normal-movement rn2 path. */
+    if ((mtmp.isshk | 0)) {
+        const xm = await shk_move(mtmp);
+        if (xm === -2) return MMOVE_DIED_MV;
+        if (xm === -1) {
+            /* C case -1: "let m_move do it" — shk follows hero outside shop.
+             * C sets mmoved=MMOVE_NOTHING and breaks; the seed0116 shk is in his
+             * shop, far from hero, and never returns -1, so we conservatively
+             * treat -1 as no-move rather than port the unported isshk-in-
+             * not_special fall-through.  TODO: when a session exercises
+             * shk_move==-1, fall through to the not_special block below. */
+            return MMOVE_NOTHING_MV;
+        }
+        /* C default (impossible) and cases 0,1 → postmov with MMOVE_NOTHING/MOVED.
+         * The move itself (remove/place/newsym) already happened inside
+         * move_special; postmov's shk-on-trap mintrap is not yet needed. */
+        /* C monmove.c:1823 — `return postmov(..., (xm != 1) ? MMOVE_NOTHING
+         * : MMOVE_MOVED, ...)`; the tail runs for the MMOVE_MOVED case. */
+        return postmov(mtmp, (xm !== 1) ? MMOVE_NOTHING_MV : MMOVE_MOVED_MV);
+    }
+    if ((mtmp.ispriest | 0)) {
+        /* WIRED 2026-08-14.  Both blockers named below have cleared:
+         *   (1) it is no longer inert — js/sp_lev.js create_altar()'s
+         *       shrine/sanctum path calls the real priestini(), and with
+         *       'minetn' in mklev.js's LOADER_READY the corpus generates
+         *       Minetown's temple and its priest;
+         *   (2) it is no longer unsafe — js/priest.js histemple_at() is a full
+         *       port of priest.c:153-158 now that in_rooms() and on_level()
+         *       are real bodies, so C's no-RNG `return -1` arm is reachable
+         *       and pri_move() no longer over-draws rn1(3,-1) for a priest
+         *       standing outside his temple.
+         * Witness: seed0360-wizard-world-tour leaf 43154 — C
+         * `rn2(3) @pri_move(priest.c:194)` while JS ran the normal-movement
+         * path because ispriest fell into the no-op below. */
+        const xm = await pri_move(mtmp);
+        if (xm === -2) return MMOVE_DIED_MV;
+        if (xm === -1) return MMOVE_NOTHING_MV;
+        /* C monmove.c:1823 — postmov(..., (xm != 1) ? MMOVE_NOTHING
+         * : MMOVE_MOVED, ...) */
+        return postmov(mtmp, (xm !== 1) ? MMOVE_NOTHING_MV : MMOVE_MOVED_MV);
+    }
+    if ((mtmp.isgd | 0)) {
+        /* C monmove.c:1830-1851 — `xm = isgd ? gd_move(mtmp) : ...`, then
+         *     switch (xm) { case -2: MMOVE_DIED; case -1: MMOVE_NOTHING;
+         *       default: postmov(..., (xm != 1) ? MMOVE_NOTHING : MMOVE_MOVED) }
+         * This arm returned MMOVE_NOTHING with the comment "Stub: gd_move not
+         * ported", so the vault guard invault() creates stood on the breach it
+         * had just opened and never led the hero anywhere.  MEASURED on
+         * seed0012-monk-vault-escort step 285: the hero's next westward step
+         * walked into the stationary guard and became do_attack().
+         * gd_move is RNG-light -- its only draw is the `!rn2(10)` gate on
+         * "Move along!" (vault.c:1069) -- but the corridor it digs is the whole
+         * back half of that session's map. */
+        const _gdomx = mtmp.mx | 0, _gdomy = mtmp.my | 0;
+        const xm = await gd_move(mtmp);
+        if (xm === -2) return MMOVE_DIED_MV;
+        if (xm === -1) return MMOVE_NOTHING_MV;
+        /* C monmove.c:1508 — postmov()'s `newsym(omx, omy); /_ update the old
+         * position _/`, inside its `if (mmoved == MMOVE_MOVED)` block.  omx/omy
+         * are dochug's entry coordinates (monmove.c:1745), captured above.
+         * gd_move's own newsym (vault.c:1198) fires AFTER place_monster and so
+         * repaints the NEW square only; without this one the guard's glyph stays
+         * painted on the square he just left.  MEASURED on seed0012 step 284:
+         * the guard walks from <71,13> to <70,13> and the frame showed TWO '@'
+         * -- and stayed one square stale for the whole 23-turn escort.
+         * postmov() is this port's port of postmov's :1660 tail only; the
+         * shk and priest arms above go through the same tail and are equally
+         * missing this newsym, but neither move_special nor pri_move has a
+         * corpus witness for it, so this is scoped to the arm that does. */
+        if (xm === 1)
+            newsym(_gdomx, _gdomy);
+        /* C monmove.c:1649-1657 — the LAST statement of postmov()'s
+         * `if (mmoved == MMOVE_MOVED)` block:
+         *     if (engulfing_u(mtmp) && (mtmp->mx != omx || mtmp->my != omy)) {
+         *         ... swallowed(0);
+         *     } else {
+         *         newsym(mtmp->mx, mtmp->my);
+         *     }
+         * A vault guard never engulfs, so only the else arm is portable here.
+         * It reads as a redundant repaint of the square gd_move's own newsym
+         * (vault.c:1198) already painted -- EXCEPT on the turn gd_move_cleanup
+         * fires, where parkguard() has just moved the guard to <0,0> and this
+         * newsym is therefore newsym(0,0).  <0,0> is not isok(), so C takes
+         * newsym's impossible() arm and PLINES "newsym: attempting screen
+         * update for <0,0>" -- which pages the "Suddenly, the guard
+         * disappears." already on the topline.
+         * VERIFIED against a locally-built 5.0 recorder instrumented with
+         * backtrace(3): seed0012-monk-vault-escort raises exactly ONE bad
+         * newsym in the whole session, at moves=327, and its stack is
+         * newsym <- postmov(monmove.c:1658) <- m_move(monmove.c:1823) <-
+         * dochug <- dochugw <- movemon_singlemon <- iter_mons_safe <- movemon.
+         * The guard entered m_move at <65,6> alive with isgd=1, so
+         * movemon_singlemon's parked-guard branch (`isgd && !mx`) does NOT
+         * catch it -- gd_move parks it mid-call and postmov then reads the
+         * parked coordinates.  That --More-- is seed0012's last unmatched
+         * frame (307/308). */
+        if (xm === 1)
+            newsym(mtmp.mx | 0, mtmp.my | 0);
+        return postmov(mtmp, (xm !== 1) ? MMOVE_NOTHING_MV : MMOVE_MOVED_MV);
+    }
+
+    /* C monmove.c:1864-1872: tengu teleport: if (PM_TENGU && !rn2(5) && !mcan && !tele_restrict)
+     * teleport/mnexto and return MMOVE_MOVED. */
+    const mndx_mv = (mtmp.mndx ?? mtmp.mnum ?? 0) | 0;
+    /* C monmove.c:1841-1842 — the fourth conjunct is `!tele_restrict(mtmp)`,
+     * and it is REACHED: it only runs once the monster is a tengu, rn2(5)
+     * rolled 0 and mcan is clear, so short-circuiting cannot hide it.  This
+     * port had it commented out as a constant-FALSE stub, which made every
+     * tengu on a no-teleport level take the teleport arm and draw C's
+     * monmove.c:1843 rn2(2) where C falls through to `not_special:` and draws
+     * the mfndpos/mtrack rn2(4*(cnt-j)) at monmove.c:1963 instead.  MEASURED
+     * on seed0360-wizard-world-tour: at step 399 the hero is on the Wizard
+     * quest home level, and dat/Wiz-strt.lua opens with
+     * des.level_flags("mazelevel", "noteleport", "hardfloor") — so
+     * noteleport_level() is TRUE there and C never takes this arm.  That is
+     * the session's first RNG divergence (leaf 100823: C rn2(20)=7 @
+     * monmove.c:1963 vs JS rn2(2)=1 here). */
+    if (mndx_mv === PM_TENGU_MV && !rn2(5) && !(mtmp.mcan | 0)
+        && !tele_restrict(mtmp)) {
+        /* C monmove.c:1843-1846:
+         *     if (mtmp->mhp < 7 || mtmp->mpeaceful || rn2(2))
+         *         (void) rloc(mtmp, RLOC_MSG);
+         *     else
+         *         mnexto(mtmp, RLOC_MSG);
+         * Both arms stood here as "no movement (no level map)" / "mnexto stub"
+         * comments.  That premise is stale: rloc() (js/teleport.js:2023) and
+         * mnexto() (js/teleport.js:982) are both complete ports living next to
+         * collect_coords()/enexto_core() in the same file, and both are already
+         * called from js/dochug.js, js/shk.js and js/mhitu.js.  BOTH ARMS DRAW:
+         * rloc() does up to 50 rnd(COLNO-1)/rn2(ROWNO) tries and then a whole-map
+         * collect_coords() walk, and mnexto() runs enexto_out() -> collect_coords(),
+         * which shuffles rings 1..3 (rn2(8)..rn2(2), rn2(16)..rn2(2),
+         * rn2(24)..rn2(2)).  Standing here drawing NOTHING is what put the JS
+         * stream a whole teleport behind C.
+         *
+         * MEASURED on gen104-reseed-seed289322 (train): at session step 151 a
+         * tengu (mon #112 @ <71,5>) takes this arm — C draws rn2(5)=0
+         * @m_move(monmove.c:1841) and rn2(2)=0 @m_move(monmove.c:1843), both of
+         * which this port already reproduced, and then goes straight into
+         * rn2(8)=2 rn2(7)=2 rn2(6)=1 ... @collect_coords(teleport.c:700).  That
+         * rn2(8) is global leaf 8124 and it is the session's FIRST RNG-value
+         * divergence: JS returned from here having drawn nothing and went on to
+         * the next monster's distfleeck rn2(5). */
+        if ((mtmp.mhp | 0) < 7 || (mtmp.mpeaceful | 0) || rn2(2)) {
+            await rloc(mtmp, RLOC_MSG);
+        } else {
+            await mnexto(mtmp, RLOC_MSG);
+        }
+        /* C returns through postmov(mtmp, ptr, omx, omy, MMOVE_MOVED,
+         * seenflgs) here.  rloc()/mnexto() already repaints the relocation,
+         * but postmov deliberately repeats both ends: newsym(omx, omy) near
+         * its entry (monmove.c:1508), then newsym(mtmp->mx, mtmp->my) at the
+         * end of its MMOVE_MOVED block (monmove.c:1658).  postmov() below only
+         * ports C's trailing MMOVE_MOVED/MMOVE_DONE block, so this early-return
+         * arm skipped that redraw pair.
+         *
+         * Under hallucination the destination repaint is observable even when
+         * the cell is otherwise unchanged: it consumes another display-RNG
+         * random_monster draw.  gen002's tengu teleports to <49,14>; C paints
+         * it once in rloc_to_core and once here, while JS formerly painted it
+         * only once.  That shifted every later hallucinated warning/name and
+         * eventually changed --More-- input consumption. */
+        newsym(_entry_omx, _entry_omy);
+        newsym(mtmp.mx | 0, mtmp.my | 0);
+        /* C monmove.c:1847 — `return postmov(..., MMOVE_MOVED, ...)`. */
+        return postmov(mtmp, MMOVE_MOVED_MV);
+    }
+
+ /* not_special: normal monster movement (C monmove.c:1874-2099) */
+
+    /* C monmove.c:1875-1876, the first statement after `not_special:`:
+     *     if (u.uswallow && !mtmp->mflee && u.ustuck != mtmp)
+     *         return MMOVE_MOVED;
+     * While the hero is inside a stomach EVERY other non-fleeing monster's
+     * m_move() returns immediately: it does not move and it draws nothing.
+     * The line that used to stand here said `uswallow stub: false`, which was
+     * true only for as long as nothing in js/ could set u.uswallow; the
+     * AT_ENGL/gulpmu port made it a live gap.
+     *
+     * MEASURED on seed0383 at global leaf 10358: C's monster at <32,5>, whose
+     * mux/muy is the swallowed hero's own square, takes this return — two
+     * distfleeck rn2(5) back to back with nothing between them — while this
+     * port ran the whole movement AI down to m_move's lined_up() and drew
+     * `rn2(2 + boulderspots)` @linedup(mthrowu.c:1369) for a sight line the
+     * swallowed hero no longer has (vision_recalc(2) zeroes viz_array, so
+     * couldsee() is false everywhere and linedup falls through to its
+     * boulder walk).
+     *
+     * A previous pass measured this return as COSTING 15 screen points and
+     * parked it, because the next C behaviour it exposes was unported:
+     * movemon_singlemon's I_SPECIAL re-equip skip (mon.c:1269-1284), which
+     * needs m_dowear.  Both landed in this same commit — js/trap.js
+     * m_dowear_type was a no-op stub, and js/fastforward.js now reads the
+     * flag it has always been setting — so the return goes in with them.
+     * Ordering matters: this line alone is a regression. */
+    if ((game.u?.uswallow | 0) && !(mtmp.mflee | 0) && game.u.ustuck !== mtmp)
+        return MMOVE_MOVED_MV;
+
+    const omx = (mtmp.mx | 0);
+    const omy = (mtmp.my | 0);
+    const ggx_init = (mtmp.mux !== undefined ? mtmp.mux : (game.u?.ux ?? 0)) | 0;
+    const ggy_init = (mtmp.muy !== undefined ? mtmp.muy : (game.u?.uy ?? 0)) | 0;
+    let ggx = ggx_init, ggy = ggy_init;
+
+    /* C monmove.c:1881-1912: appr selection */
+    /* C monmove.c:1745 — `int preferredrange_min = 0, preferredrange_max = 0;`,
+     * filled in by m_balks_at_approaching() and read by the appr == -2 arm of
+     * the candidate-selection test below. */
+    const prefrange_mv = { min: 0, max: 0 };
+    let appr = (mtmp.mflee | 0) ? -1 : 1;
+    /* C monmove.c:1882 `if (mtmp->mconf || engulfing_u(mtmp))` — monst.h:250
+     * engulfing_u(mon) is `(u.uswallow && u.ustuck == (mon))`, i.e. the
+     * SWALLOWER itself wanders at random rather than approaching a hero it is
+     * already holding.  Was another `stub: false` from before u.uswallow could
+     * be set. */
+    if ((mtmp.mconf | 0)
+        || ((game.u?.uswallow | 0) && game.u.ustuck === mtmp)) {
+        appr = 0;
+    } else {
+        /* C monmove.c:1861-1863:
+         *   should_see = (couldsee(omx, omy)
+         *                 && (levl[ggx][ggy].lit || !levl[omx][omy].lit)
+         *                 && (dist2(omx, omy, ggx, ggy) <= 36));
+         * All three conjuncts are real here.  couldsee() is the hero's own
+         * COULD_SEE viz_array bit at the MONSTER's square (js/vision.js), not a
+         * monster-sight test — a monster standing in a room the hero cannot see
+         * into is !should_see even when it is well within 36, which is exactly
+         * the case that hands the goal over to the gettrack() footprint-trail
+         * arm below. */
+        const dist2_gg = dist2(omx, omy, ggx, ggy);
+        const _gg_loc = game.level?.at(ggx, ggy);
+        const _om_loc = game.level?.at(omx, omy);
+        const should_see = (couldsee(omx, omy)
+                            && (!!(_gg_loc && _gg_loc.lit) || !(_om_loc && _om_loc.lit))
+                            && dist2_gg <= 36);
+
+        const u = game.u;
+        const Invis = _Invis_mv();
+        /* C mondata.h:81 — #define perceives(ptr) ((ptr)->mflags1 & M1_SEE_INVIS)
+         * monflag.h:109 M1_SEE_INVIS = 0x01000000L ("can see invisible
+         * creatures").  Same read as this file already does at m_move's other
+         * two perceives() sites (js/monmove.js:123, :1508); prefer the live
+         * mon->data when the capture reconstructor materialized it, else the
+         * packed MONS row (row[6] = mflags1). */
+        const _mf1_perc = (mtmp.data && mtmp.data.mflags1 != null)
+            ? (mtmp.data.mflags1 >>> 0)
+            : ((mndx_mv >= 0 && mndx_mv < _MONS_MV.length)
+                ? (_MONS_MV[mndx_mv][6] >>> 0) : 0);
+        const perceives_data = !!(_mf1_perc & M1_SEE_INVIS);
+        /* C mondata.h ptr->mlet — same two-source lookup as _mf1_perc above:
+         * the reconstructed permonst when present, else column 0 of the packed
+         * MONS row. */
+        const mlet_mv = (mtmp.data && mtmp.data.mlet != null)
+            ? (mtmp.data.mlet | 0)
+            : ((mndx_mv >= 0 && mndx_mv < _MONS_MV.length)
+                ? (_MONS_MV[mndx_mv][0] | 0) : -1);
+
+        if (!(mtmp.mcansee | 0)
+            /* C: || (should_see && Invis && !perceives && rn2(11)) */
+            || (should_see && Invis && !perceives_data && rn2(11))
+            /* C: || is_obj_mappear(youmonst, STRANGE_OBJECT) stub: false */
+            /* C: || u.uundetected stub: false */
+            /* C: || (GOLD_PIECE && !likes_gold) stub: false */
+            || (mtmp.mpeaceful | 0) /* || ... && !mtmp->isshk */
+            /* C monmove.c:1870-1871:
+             *   || ((monsndx(ptr) == PM_STALKER || ptr->mlet == S_BAT
+             *        || ptr->mlet == S_LIGHT) && !rn2(3))
+             * The two mlet arms were skipped as "mlet not tracked for all mons",
+             * which is not so: the reconstructed permonst carries mlet and the
+             * packed MONS row carries it in column 0, exactly like mflags1 just
+             * above.  Dropping them dropped one rn2(3) per bat / yellow light per
+             * m_move, and with it the `!appr && !rn2(++chcnt)` reservoir sampling
+             * (monmove.c:1968) that only runs once this arm has forced appr to 0.
+             * seed0399-wizard-hallu-actions diverges on exactly that: at step 113
+             * C draws rn2(3) @m_move(monmove.c:1871) then rn2(1)..rn2(8) for a
+             * yellow light (mndx 118, mlet 25), where JS drew neither. */
+            || ((mndx_mv === PM_STALKER_MV
+                 || mlet_mv === S_BAT_MV || mlet_mv === S_LIGHT_MV) && !rn2(3))
+           ) {
+            appr = 0;
+        }
+
+        if (appr === 1 && leppie_avoidance(mtmp))
+            appr = -1;
+
+        /* C monmove.c:1878: hostiles with a ranged weapon or attack try to stay
+         * away.  Was "m_balks_at_approaching — stub: no change". */
+        appr = m_balks_at_approaching(appr, mtmp, prefrange_mv);
+
+        /* C monmove.c:1904-1911 — when the monster CANNOT currently see the hero
+         * (should_see false) but it can_track (has eyes / wields Excalibur), it
+         * follows the hero's footstep scent-trail instead of heading straight at
+         * the hero's (perceived) square:
+         *   if (!should_see && can_track(ptr)) {
+         *       cp = gettrack(omx, omy);
+         *       if (cp) { ggx = cp->x; ggy = cp->y; }
+         *   }
+         * gettrack() returns the newest utrack coord within distmin<=1 of the
+         * monster (the settrack ring buffer of the hero's last UTSZ positions,
+         * already maintained in js/track.js).  RNG-FREE.  Without this a
+         * far-from-hero wandering monster walks straight toward the hero's live
+         * square rather than backtracking along the trail the hero actually left,
+         * so it selects a different (RNG-free appr==1) candidate and later fires a
+         * different mtrack rn2(4*(cnt-j)) at monmove.c:1987 (seed0003 mon#71:
+         * C follows the trail west to (7,15), JS marched east to (9,15)). */
+        if (!should_see && can_track({ pmidx: mndx_mv })) {
+            const _cp = gettrack(omx, omy);
+            if (_cp) {
+                ggx = _cp.x | 0;
+                ggy = _cp.y | 0;
+            }
+        }
+    }
+
+    /* C monmove.c:1915-1928: if (!mpeaceful || !rn2(10)) && !rogue_level → getitems check */
+    /* rogue_level stub: false */
+    let getitems = false;
+    let mmoved_pre = MMOVE_NOTHING_MV; /* C: mmoved local, passed into m_search_items */
+    if (!(mtmp.mpeaceful | 0) || !rn2(10)) {
+        /* C: in_line = lined_up(mtmp) && distmin(mx,my,mux,muy) <= (throws_rocks?20:ACURRSTR/2+1) */
+        const _dmin = distmin_mv(mtmp.mx | 0, mtmp.my | 0, mtmp.mux | 0, mtmp.muy | 0);
+        /* ACURRSTR/2+1: typical early ACURRSTR ~11 → 6; throws_rocks rare here. */
+        const _mndx_il = (mtmp.mndx ?? mtmp.mnum ?? 0) | 0;
+        const _mrow_il = (_mndx_il >= 0 && _mndx_il < _MONS_MV.length) ? _MONS_MV[_mndx_il] : null;
+        const _throws = _mrow_il ? !!((_mrow_il[7] >>> 0) & M2_ROCKTHROW_MV2) : false;
+        const _acurrstr = acurr(game.u, A_STR) | 0;
+        const _range = _throws ? 20 : (Math.trunc(_acurrstr / 2) + 1);
+        const in_line = lined_up_mv(mtmp) && (_dmin <= _range);
+        if (appr !== 1 || !in_line)
+            getitems = true;
+    }
+
+    /* C monmove.c:1930-1932: if (getitems && m_search_items(...)) return postmov(...).
+     * m_search_items redirects the goal (ggx,ggy) toward a nearby item the monster
+     * wants, and returns done=true (mmoved=MMOVE_DONE) when the item is underfoot. */
+    if (getitems) {
+        const _si = await m_search_items(mtmp, ggx, ggy, mmoved_pre, appr);
+        ggx = _si.ggx;
+        ggy = _si.ggy;
+        appr = _si.appr;
+        mmoved_pre = _si.mmoved;
+        if (_si.done)
+            /* C monmove.c:1907 — `return postmov(..., mmoved, ...)` with mmoved
+             * already set to MMOVE_DONE by m_search_items. */
+            return postmov(mtmp, MMOVE_DONE_MV);
+    }
+
+    /* C monmove.c:1942: flag = mon_allowflags(mtmp)
+     * For hostile non-special non-tame: allowflags = ALLOW_U, plus ALLOW_ROCK
+     * for movers that can enter a boulder square (passes_walls / throws_rocks /
+     * m_can_break_boulder) — mon.c:2080-2083.  Without ALLOW_ROCK a boulder
+     * square is dropped from mfndpos, which is the cnt-correct C behaviour. */
+    /* C monmove.c:1764 + 1911-1914 — m_move's own can_tunnel, which postmov
+     * receives as an argument (monmove.c:1461) and uses for the dig arm at
+     * monmove.c:1644.  It MUST be evaluated here, before the move: the
+     * needspick downgrade tests dist2 from mtmp's CURRENT (pre-move) square to
+     * its remembered hero position.  Same expression mon_allowflags() computes
+     * internally for ALLOW_DIG (js/monmove.js:423-429). */
+    const _mrow_ct = (() => {
+        const i = (mtmp.mndx ?? mtmp.mnum ?? 0) | 0;
+        return (i >= 0 && i < _MONS_MV.length) ? _MONS_MV[i] : null;
+    })();
+    const _mf1_ct = _mrow_ct ? (_mrow_ct[6] >>> 0) : 0;
+    let can_tunnel_mv = !Is_rogue_level(game.u?.uz) && !!(_mf1_ct & M1_TUNNEL_MDW);
+    /* C monmove.c:1911-1914 — don't tunnel if hostile and close enough to
+     * prefer a weapon. */
+    if (can_tunnel_mv && (_mf1_ct & M1_NEEDPICK_MDW)
+        && ((!(mtmp.mpeaceful | 0) || _conflict_mv())
+            && dist2(mtmp.mx | 0, mtmp.my | 0, mtmp.mux | 0, mtmp.muy | 0) <= 8))
+        can_tunnel_mv = false;
+
+    const allowflags_mv = mon_allowflags(mtmp);
+
+    /* C monmove.c:1949: cnt = mfndpos(mtmp, &mfp, flag)
+     * WIRING: real mfndpos (js/mklev.js) replaces mfndpos_nontame. mfndpos
+     * writes parallel data.poss[]/data.info[] arrays; zip into the same
+     * {x,y,info} shape mfndpos_nontame returned so the rest of this
+     * function (unchanged below) keeps working. */
+    const mfp = { cnt: 0, poss: [], info: [] };
+    const real_cnt = mfndpos(mtmp, mfp, allowflags_mv);
+    const mfp_poss = [];
+    for (let i = 0; i < real_cnt; i++)
+        mfp_poss.push({ x: mfp.poss[i].x, y: mfp.poss[i].y, info: mfp.info[i] | 0 });
+    const cnt = mfp_poss.length;
+    if (process.env.FF_MFNDTRACE === '1') {
+        const tr = (mtmp.mtrack || []).map(t => `${t?.x | 0}:${t?.y | 0}`).join(';');
+        const ps = mfp_poss.map(p => {
+            const tt = t_at(p.x | 0, p.y | 0);
+            const loc = game.level?.at?.(p.x | 0, p.y | 0);
+            return `${p.x | 0}:${p.y | 0}:${p.info | 0}:${m_at(p.x | 0, p.y | 0)?.m_id ?? 0}:${tt?.ttyp ?? 0}:${loc?.typ ?? -1}:${sobj_at(475, p.x | 0, p.y | 0) ? 1 : 0}:${sobj_at(284, p.x | 0, p.y | 0) ? 1 : 0}`;
+        }).join(';');
+        const fm = [];
+        for (let mm = game.fmon, n = 0; mm && n++ < 128; mm = mm.nmon)
+            fm.push(`${mm.m_id ?? 0}:${mm.mx | 0},${mm.my | 0}`);
+        const fmSelf = (() => { for (let mm = game.fmon; mm; mm = mm.nmon) if ((mm.m_id | 0) === (mtmp.m_id | 0)) return mm === mtmp ? 1 : 0; return -1; })();
+        pushRngLogEntry(`^mdecision[id=${mtmp.m_id | 0} mnum=${mtmp.mndx ?? mtmp.data?.pmidx ?? -1}`
+            + ` moves=${game.moves | 0} xy=${mtmp.mx | 0},${mtmp.my | 0}`
+            + ` mux=${mtmp.mux | 0},${mtmp.muy | 0} appr=${appr | 0} cnt=${cnt | 0}`
+            + ` flee=${mtmp.mflee | 0} conf=${mtmp.mconf | 0} tame=${mtmp.mtame | 0}`
+            + ` peaceful=${mtmp.mpeaceful | 0} kicked=${game.kickedloc?.x | 0},${game.kickedloc?.y | 0}`
+            + ` trapseen=${mtmp.mtrapseen | 0}`
+            + ` goal=${ggx | 0},${ggy | 0}`
+            + ` track=${tr} poss=${ps} fmonSelf=${fmSelf} fmon=${fm.join(';')}]`);
+    }
+
+    if (cnt === 0 && !_is_unicorn_mv(mtmp.data.pmidx | 0)) {
+        /* C monmove.c:1926-1930 —
+         *     if (cnt == 0 && !is_unicorn(mtmp->data)) {
+         *         if (find_defensive(mtmp, TRUE) && use_defensive(mtmp))
+         *             return MMOVE_DONE;
+         *         return MMOVE_NOMOVES;
+         *     }
+         * THE `find_defensive` CALL WAS MISSING, and `is_unicorn` was a
+         * hardcoded `false`.  This is C's SECOND door into the monster
+         * item-use machinery and the only one that passes tryescape=TRUE,
+         * which SKIPS find_defensive's `mhp >= mhpmax` gate (muse.c:544) —
+         * so the measurement recorded at js/dochug.js ("find_defensive
+         * returns TRUE zero times across the 44 public sessions") was taken
+         * with this door shut.  seed0361-archeologist-tour step 236: a gnome
+         * lord (m_id 739) boxed in at <52,19> gets cnt==0 here, and in C
+         * quaffs the one potion of healing it carries — leaf 22042,
+         * rn2(13) @precheck(muse.c:74) then d(6,4) @use_defensive(muse.c
+         * :1165), where this port ran straight on into the next monster's
+         * distfleeck. */
+        if (find_defensive(mtmp, true) && (await use_defensive(mtmp)))
+            return MMOVE_DONE_MV;
+        return MMOVE_NOMOVES_MV;
+    }
+    /* C monmove.c:1955-2007: position selection loop */
+    let chcnt = 0;
+    let chi = -1;
+    let mmoved = MMOVE_NOTHING_MV;
+    let nix = omx, niy = omy;
+    let nidist = dist2(nix, niy, ggx, ggy);
+    const jcnt = Math.min(MTSZ_MV, cnt - 1);
+    /* C monmove.c:1935-1938 — "allow monsters be shortsighted on some levels
+     * for balance":
+     *   if (!mtmp->mpeaceful && svl.level.flags.shortsighted
+     *       && nidist > (couldsee(nix, niy) ? 144 : 36) && appr == 1)
+     *       appr = 0;
+     * This block was entirely absent here.  It is the LAST writer of `appr`
+     * before the candidate loop, so dropping it silently pinned every hostile
+     * on a shortsighted level to appr == 1 — and with appr != 0 the
+     * `!appr && !rn2(++chcnt)` reservoir sampling at monmove.c:1970 never runs
+     * at all.  `svl.level.flags.shortsighted` is set by des.level_flags()
+     * (js/sp_lev.js:1340) for medusa-3, juiblex, orcus, and the four Planes;
+     * js/mklev.js:5787 already clears it per level, so the flag was live and
+     * only the read was missing.  Measured on seed4500-knight-coverage
+     * (Medusa's level, Dlvl 24): C runs rn2(1), rn2(2), ... rn2(7) for a raven
+     * at leaf 82543 where JS ran none, and that is the session's first RNG
+     * divergence.  nidist here is dist2(omx, omy, ggx, ggy) — nix/niy are still
+     * the monster's own square at this point, exactly as in C. */
+    if (!(mtmp.mpeaceful | 0)
+        && !!(game.level && game.level.flags && game.level.flags.shortsighted)
+        && nidist > (couldsee(nix, niy) ? 144 : 36)
+        && appr === 1)
+        appr = 0;
+    /* C monmove.c:1969-1970: better_with_displacing = should_displace(mtmp,
+     * &mfp, ggx, ggy). Now real (was "should_displace stub: false").
+     * mfndpos now admits C's displacer cells; the ordinary displacement
+     * preference remains false unless should_displace itself finds a target. */
+    const better_with_displacing = should_displace(mtmp, mfp, ggx | 0, ggy | 0);
+
+    for (let i = 0; i < cnt; i++) {
+        const nx = mfp_poss[i].x | 0;
+        const ny = mfp_poss[i].y | 0;
+        const info_i = mfp_poss[i].info | 0;
+
+        /* C monmove.c:1980-1982: if (MON_AT(nx,ny) && (info[i]&ALLOW_MDISP)
+         * && !(info[i]&ALLOW_M) && !better_with_displacing) continue;
+         * Now real (was "MON_AT stub: no JS monster tracking; skip this
+         * check"). Provably a no-op today (ALLOW_MDISP is never set — see
+         * better_with_displacing note above) but wired faithfully so it
+         * activates automatically once mm_displacement lands, with no
+         * further edit needed at this site. */
+        if (m_at(nx, ny) && (info_i & ALLOW_MDISP_MV)
+            && !(info_i & ALLOW_M_MV) && !better_with_displacing)
+            continue;
+
+        if (appr !== 0) {
+            /* C monmove.c:1984-1988: mtrack history avoidance
+             * for j in 0..jcnt: if (nx==mtrack[j].x && ny==mtrack[j].y) rn2(4*(cnt-j)) → skip */
+            const mtrack = mtmp.mtrack;
+            if (Array.isArray(mtrack)) {
+                let skipped = false;
+                for (let j = 0; j < jcnt; j++) {
+                    const trk = mtrack[j];
+                    if (trk && (trk.x | 0) === nx && (trk.y | 0) === ny) {
+                        const bound = 4 * (cnt - j);
+                        const draw = rn2(bound);
+                        if (process.env.FF_MFNDTRACE === '1')
+                            pushRngLogEntry(`^mtrack_draw[moves=${game.moves | 0} id=${mtmp.m_id | 0} cand=${nx},${ny} j=${j} bound=${bound} draw=${draw}]`);
+                        if (draw) {
+                            skipped = true;
+                            break;
+                        }
+                    }
+                }
+                if (skipped) continue;
+            }
+        }
+
+        const ndist = dist2(nx, ny, ggx, ggy);
+        const nearer = ndist < nidist;
+
+        if ((appr === 1 && nearer) || (appr === -1 && !nearer)
+            || (!appr && !rn2(++chcnt))
+            /* C monmove.c:1972-1974 — the appr == -2 preferred-range band set
+             * by m_balks_at_approaching() for a throw-and-return weapon. */
+            || (appr === -2
+                && ((ndist <= prefrange_mv.min && !nearer)
+                    || (ndist >= prefrange_mv.max && nearer)))
+            || (mmoved === MMOVE_NOTHING_MV)) {
+            nix = nx;
+            niy = ny;
+            nidist = ndist;
+            chi = i;
+            mmoved = MMOVE_MOVED_MV;
+        }
+    }
+
+    if (mmoved !== MMOVE_NOTHING_MV) {
+        /* C monmove.c:2008 — a monster held by a sticking hero cannot move
+         * away while the hero remains attached.  This returns MMOVE_DONE
+         * before the dig-weapon arm and consumes no movement RNG. */
+        if (mmoved === MMOVE_MOVED_MV
+            && !((game.u?.ux | 0) === (nix | 0) && (game.u?.uy | 0) === (niy | 0))
+            && sticks(game.youmonst?.data)
+            && game.u?.ustuck === mtmp
+            && !(game.u?.uswallow | 0))
+            return MMOVE_DONE_MV;
+
+        /* C monmove.c:1990:
+         *     if (mmoved == MMOVE_MOVED && m_digweapon_check(mtmp, nix, niy))
+         *         return MMOVE_DONE;
+         * The comment that used to stand here read "m_digweapon_check stub:
+         * false".  That was a FALSE ABSENCE CLAIM: m_digweapon_check is fully
+         * ported below in this same file (js/monmove.js) and had ZERO call
+         * sites, so a tunneling monster that needs a pick (dwarf, gnome with a
+         * mattock) never spent its move WIELDING one.  It walked straight into
+         * the wall instead and postmov's dig arm fired mdig_tunnel's
+         * unconditional rnd(12), a leaf C does not draw on that pass: C spends
+         * that whole move on the wield (MMOVE_DONE — no move, no dig, no RNG),
+         * and digs on a LATER pass once the pick is in hand.
+         *
+         * seed0360-wizard-world-tour, step 182: dwarf m_id 1869 at (28,7)
+         * carrying a PICK_AXE it is not wielding picks (29,8), a diggable
+         * TRWALL.  C: weapon_check := NEED_PICK_AXE, mon_wield_item() wields
+         * the pick, m_move returns MMOVE_DONE, two distfleeck rn2(5) and
+         * nothing else.  JS: moved and dug, inserting rnd(12) @dig.c:1418 plus
+         * the IS_WALL "crashing rock" rn2(5) — the session's first RNG-value
+         * divergence, global leaf 43164.
+         *
+         * m_digweapon_check and mon_wield_item are both RNG-free, so this
+         * wiring REMOVES two JS-only leaves rather than adding any. */
+        if (mmoved === MMOVE_MOVED_MV && await m_digweapon_check(mtmp, nix, niy))
+            return MMOVE_DONE_MV;
+
+        /* C monmove.c:2030: if (ALLOW_U) nix=mux, niy=muy */
+        if (chi >= 0 && (mfp_poss[chi].info & ALLOW_U_MV)) {
+            const u = game.u;
+            nix = (mtmp.mux !== undefined ? mtmp.mux : (u?.ux ?? 0)) | 0;
+            niy = (mtmp.muy !== undefined ? mtmp.muy : (u?.uy ?? 0)) | 0;
+        }
+        /* C monmove.c:2034: if u_at(nix,niy) → MMOVE_NOTHING */
+        const u = game.u;
+        if (u && (u.ux | 0) === nix && (u.uy | 0) === niy) {
+            mtmp.mux = u.ux | 0;
+            mtmp.muy = u.uy | 0;
+            return MMOVE_NOTHING_MV;
+        }
+
+        /* C monmove.c:2043-2047:
+         *     if ((mfp.info[chi] & ALLOW_M) != 0
+         *         || (nix == mtmp->mux && niy == mtmp->muy))
+         *         return m_move_aggress(mtmp, nix, niy);
+         *
+         * THE SECOND CLAUSE WAS MISSING, and it is not the ALLOW_M case: it is
+         * the DISPLACED-IMAGE case.  When the square the selection loop picked
+         * IS the monster's believed hero position, C does not WALK there — it
+         * attacks that spot (C's own comment: "It may mistake the monster for
+         * your (displaced) image") and the monster stays where it is.  With an
+         * empty square m_move_aggress attacks nothing, draws nothing and
+         * returns MMOVE_DONE, which is why the omission was invisible on the
+         * RNG axis: seed0360 turn 59, monster m_id=4039 at (13,19) believes the
+         * hero is at (12,18) (the hero wears displacement; its real square is
+         * (10,18)).  ggx,ggy IS mux,muy (monmove.c:1855), so (12,18) has
+         * dist2 0 and always wins the loop.  C attacks the image, moves
+         * nothing, and spends its SECOND move of the turn (movement 24) going
+         * north to (13,18); this port walked onto (12,18) and stopped there.
+         * One monster one square off on a bit-identical leaf stream — and it is
+         * that monster's mtrack, one turn later, that makes C draw the
+         * rn2(28) @ m_move(monmove.c:1963) this session's whole RNG axis
+         * diverges on (leaf 110880). */
+        if (chi >= 0 && ((mfp_poss[chi].info & ALLOW_M_MV)
+                         || (nix === (mtmp.mux | 0) && niy === (mtmp.muy | 0)))) {
+            return await m_move_aggress(mtmp, nix, niy);
+        }
+
+        /* C monmove.c:2049-2060: an ordinary displacer swaps places with the
+         * monster occupying the selected ALLOW_MDISP candidate. */
+        if (chi >= 0 && (mfp_poss[chi].info & ALLOW_MDISP_MV)) {
+            const mtmp2 = m_at(nix, niy);
+            const mstatus = await mdisplacem(mtmp, mtmp2, false);
+            if (mstatus & (M_ATTK_AGR_DIED_MV | M_ATTK_DEF_DIED_MV))
+                return MMOVE_DIED_MV;
+            if (mstatus & M_ATTK_HIT_MV)
+                return MMOVE_MOVED_MV;
+            return MMOVE_DONE_MV;
+        }
+
+        /* C monmove.c:2063: if (!m_in_out_region(mtmp, nix, niy)) return
+         * MMOVE_DONE.  Real port (js/region.js); it keeps every region's
+         * monster list in step with the move and can veto it through a
+         * can_enter_f/can_leave_f callback.  Both gas-cloud region types leave
+         * those slots at NO_CALLBACK, so it returns TRUE for every region this
+         * port can create.  No RNG. */
+        if (!m_in_out_region(mtmp, nix, niy))
+            return MMOVE_DONE_MV;
+        /* C monmove.c:2066: ALLOW_ROCK && m_can_break_boulder: fracture the
+         * boulder and spend the monster's move without changing position. */
+        if (chi >= 0 && (mfp_poss[chi].info & ALLOW_ROCK_MV)
+            && await m_break_boulder_mv(mtmp, nix, niy))
+            return MMOVE_DONE_MV;
+
+        /* C monmove.c:2071 m_postmove_effect(mtmp) — hezrou/steam-vortex gas
+         * clouds, fired BEFORE the position update because monsters have no
+         * "previous location" field (monmove.c:687-692).  RNG: one rn1(3,4)
+         * inside create_gas_cloud (region.c:1303) per cloud. */
+        m_postmove_effect(mtmp);
+
+        /* C monmove.c:2073-2086: actual move — update position */
+        mtmp.mx = nix;
+        mtmp.my = niy;
+
+        /* C monmove.c:2104-2117 moves the monster, then calls
+         * maybe_unhide_at() BEFORE returning into postmov().  postmov() starts
+         * by repainting the old square, so this ordering matters while
+         * hallucinating: hideunder() can repaint the destination as a monster
+         * before the old square's object glyph consumes its display-RNG draw.
+         *
+         * gen315: cave spider #127 moves from <73,8> (an object square) to
+         * <72,8>.  C consumes rn2(383) for maybe_unhide_at(new), then
+         * rn2(463) for postmov's old object; the former port reversed them. */
+        maybe_unhide_at(mtmp.mx | 0, mtmp.my | 0);
+
+        /* C postmov (monmove.c:1467-1468):
+         *     boolean canseeit = cansee(mtmp->mx, mtmp->my),
+         *             didseeit = canseeit;
+         * evaluated ONCE at postmov entry — the monster is already standing on
+         * the new cell but the door there is still CLOSED.  UnblockDoor
+         * (monmove.c:1535) then re-caches it as `didseeit || cansee(...)`, so
+         * the PRE-OPEN value is sticky: C reports You_see() for a door the hero
+         * could see before it swung open even if the post-vision_recalc cansee()
+         * of that cell has gone false.  This port only had the post-recalc
+         * cansee(), which is the `||`'s right operand alone. */
+        const _didseeit_pm = !!cansee(mtmp.mx | 0, mtmp.my | 0);
+
+        /* C postmov (monmove.c:1472-1505): a vampire in a solid form changes
+         * into a fog cloud when it moves under a closed or locked door.  The
+         * transformation is deliberately deferred until after movement; when
+         * the monster was visible C paints the change at its old position and
+         * then places it back on the door square. */
+        const _vampDoorLoc = game.level?.locations?.[nix]?.[niy];
+        if (is_vampshifter(mtmp)
+            && !((mtmp.data?.mflags1 | 0) & M1_AMORPHOUS)
+            && ((_vampDoorLoc?.typ | 0) === DOOR_TYP_MV)
+            && (((_vampDoorLoc?.doormask | 0) & (D_LOCKED_MV | D_CLOSED_MV)) !== 0)
+            && can_fog(mtmp)) {
+            if (seenflgs) {
+                mtmp.mx = omx;
+                mtmp.my = omy;
+                newsym(nix, niy);
+                newsym(omx, omy);
+            }
+            await newcham(mtmp, PM_FOG_CLOUD,
+                          (seenflgs & 1) ? NC_SHOW_MSG : 0);
+            /* C vamp_shift always calls display_nhwindow(WIN_MESSAGE,FALSE)
+             * after newcham, even when no shape-change message was emitted. */
+            topl_force_break_now();
+            if (seenflgs) {
+                mtmp.mx = nix;
+                mtmp.my = niy;
+                newsym(omx, omy);
+                newsym(nix, niy);
+            }
+        }
+
+        /* C postmov (monmove.c:1534): newsym(omx, omy) — refresh the OLD cell
+         * (clear the monster glyph, redraw terrain/object/engraving there).
+         * Fired before mintrap, mirroring postmov order.  RNG-neutral: newsym
+         * consumes no RNG.  This is the hostile-monster analogue of the
+         * already-present dog_move() newsym pair (dogmove.js:1661-1662); without
+         * it a monster that moves within an already-visible (vision-unchanged)
+         * region never gets its glyph refreshed on the map, since vision_recalc
+         * only calls newsym on cells whose visibility changed and C's per-turn
+         * see_monsters() is gated off for the common (non-hallu, non-telepath)
+         * case (allmain.c:511-528).  Matches seed0011 step 20 grid-bug 'x'. */
+        newsym(omx, omy);
+
+        /* C postmov → mintrap: check for trap at new position.
+         * C ref: monmove.c:1535 trapret = mintrap(mtmp, NO_TRAP_FLAGS).
+         * SQKY_BOARD keeps its existing in-line squeak-message handling (the
+         * trapeffect_sqky_board leaf is not yet ported); all other trap types
+         * are routed through the ported mintrap so their RNG (e.g. MAGIC_TRAP
+         * rn2(21), and the rn2(40) escape check for already-trapped monsters)
+         * fires in C order. */
+        {
+            const _trap = t_at(nix, niy);
+            if (_trap && _trap.ttyp !== SQKY_BOARD_MV) {
+                /* C monmove.c:1535-1540: trapret = mintrap(mtmp, NO_TRAP_FLAGS);
+                 * if (trapret == Trap_Killed_Mon || trapret == Trap_Moved_Mon) {
+                 *     if (mtmp->mx) newsym(...); return MMOVE_DIED; }
+                 * A hostile monster stepping into a pit (trapeffect_pit monster
+                 * branch) can die here exactly like the tame path; propagate the
+                 * death so dochug stops and no spurious post-move RNG fires. */
+                const trapret = await mintrap(mtmp, 0);
+                if (trapret === TRAP_KILLED_MON_MV || trapret === TRAP_MOVED_MON_MV) {
+                    if (mtmp.mx) newsym(mtmp.mx | 0, mtmp.my | 0);
+                    return MMOVE_DIED_MV;
+                }
+            } else if (_trap && _trap.ttyp === SQKY_BOARD_MV) {
+                _handle_sqky_board_mon(mtmp, _trap, nix, niy);
+            }
+        }
+
+        /* C postmov (monmove.c:1543-1646): open a door, or crash through it, if
+         * 'mtmp' can.  Runs after the move+mintrap with mtmp->mx/my at the new
+         * cell.  RNG-NEUTRAL for the corpus path: the only rn2 here is the
+         * doorbuster D_LOCKED !rn2(2) (monmove.c:1622), which is NOT reached by a
+         * hands-having door-opener (the D_CLOSED && can_open branch).  Ported the
+         * common D_CLOSED→open branch (the seed0015 hostile that opens a closed
+         * door out of the hero's sight → You_hear("a door open.")) and the
+         * TRAPPED variant of it (below); the amorphous/UNLOCKDOOR/doorbuster
+         * branches still need unported world state.
+         *
+         * "the trapped branch ... is not hit by the corpus door-openers" was
+         * this comment's own claim, and seed0383 falsifies it: at step 203 a
+         * monster opens a TRAPPED closed door, C runs mb_trapped()'s rnd(15)
+         * (monmove.c:65) and prints "You hear a distant explosion.", and this
+         * port drew nothing — leaf 16839, the session's first RNG divergence. */
+        {
+            const _dloc = game.level?.locations?.[mtmp.mx | 0]?.[mtmp.my | 0];
+            if (_dloc && (_dloc.typ | 0) === DOOR_TYP_MV
+                && !(_mf1_ct & M1_WALLWALK_MV) && !can_tunnel_mv) {
+                /* C monmove.c:1789: can_open = !(nohands(ptr) || verysmall(ptr)).
+                 * Same predicate mfndpos_nontame uses to set OPENDOOR (it already
+                 * gated this monster onto the door cell). */
+                const _mndx_d = (mtmp.mndx ?? mtmp.mnum ?? 0) | 0;
+                const _mrow_d = (_mndx_d >= 0 && _mndx_d < _MONS_MV.length) ? _MONS_MV[_mndx_d] : null;
+                const _mf1_d = _mrow_d ? (_mrow_d[6] | 0) : 0;
+                const _mf2_d = _mrow_d ? (_mrow_d[7] | 0) : 0;
+                const _msize_d = (_mndx_d >= 0 && _mndx_d < _MONS_MSIZE_MV.length)
+                    ? (_MONS_MSIZE_MV[_mndx_d] | 0) : MZ_SMALL_MV;
+                const _can_open_d = !((_mf1_d & M1_NOHANDS_MV) || (_msize_d < MZ_SMALL_MV));
+                /* passes_walls / can_tunnel: false for the common ground walker
+                 * (the existing mfndpos posture); if either held the door is
+                 * skipped, as in C (the !passes_walls && !can_tunnel guard). */
+                const _dm_d = _dloc.doormask | 0;
+                const _btrapped_d = (_dm_d & D_TRAPPED_MV) !== 0;
+                /* C monmove.c:1538-1543 — a monster carrying the Master Key of
+                 * Thievery disarms the trap first, with no message.  C's
+                 * has_magic_key (artifact.c:2790) walks mon->minvent for that
+                 * artifact; no corpus monster carries it, but the read is
+                 * written out rather than assumed away. */
+                let _btrapped_now = _btrapped_d;
+                if (_btrapped_now) {
+                    let _mk = mtmp.minvent;
+                    for (; _mk; _mk = _mk.nobj)
+                        if ((_mk.oartifact | 0) === ART_MASTER_KEY_MV) break;
+                    if (_mk) {
+                        _dloc.doormask = _dm_d & ~D_TRAPPED_MV;
+                        _btrapped_now = false;
+                    }
+                }
+                if ((_dm_d & D_CLOSED_MV) === D_CLOSED_MV && !(_dm_d & D_LOCKED_MV)
+                    && _can_open_d) {
+                    let _doorDone = false;
+                    /* C UnblockDoor (monmove.c:1552): doormask = <what>; newsym;
+                     * recalc_block_point; vision_recalc(0).  <what> is D_ISOPEN
+                     * for an untrapped door and D_NODOOR for a trapped one — the
+                     * trap blows the door off its hinges (monmove.c:1577). */
+                    _dloc.doormask = _btrapped_now ? D_NODOOR_MV : D_ISOPEN_MV;
+                    newsym(mtmp.mx | 0, mtmp.my | 0);
+                    recalc_block_point(mtmp.mx | 0, mtmp.my | 0);
+                    vision_recalc(0);
+                    /* C monmove.c:1606-1615 (flags.verbose true in corpus): the
+                     * three feedback branches.  Deaf is never set for the corpus
+                     * hero, so an out-of-sight open yields You_hear("a door open.").
+                     * canspotmon(mtmp) → pline_mon; cansee-only → You_see — both
+                     * require the hero to see the door cell. */
+                    /* C monmove.c:1535 UnblockDoor — canseeit = didseeit || cansee(). */
+                    const _canseeit_d = _didseeit_pm || !!cansee(mtmp.mx | 0, mtmp.my | 0);
+                    /* C monmove.c:1576-1580 — a trapped door blows up INSTEAD of
+                     * any of the three "opens a door" feedback arms, and
+                     * mb_trapped() returns TRUE when the blast kills the mover. */
+                    if (_btrapped_now) {
+                        if (await mb_trapped(mtmp, _canseeit_d))
+                            return MMOVE_DIED_MV;
+                        _doorDone = true;
+                    }
+                    /* C monmove.c:1583 — ALL THREE feedback arms sit inside
+                     * `if (flags.verbose)`.  mb_trapped() above does NOT: the
+                     * explosion happens (and can kill) whether or not the option
+                     * is set.  This port had the arms unconditional and the
+                     * comment three lines up asserted "flags.verbose true in
+                     * corpus" as a licence to omit the test; 33 of the 688 train
+                     * sessions set !verbose, and gen406 is one of them — a
+                     * hostile opens a door out of sight at step 267 and this
+                     * port printed "You hear a door open." onto a topline C
+                     * leaves empty.  RNG-neutral: no arm draws. */
+                    let _doormsg = null;
+                    if (game.flags?.verbose === false) {
+                        /* C: the whole feedback block is skipped */
+                    } else if (_doorDone) {
+                        /* mb_trapped() gave the feedback */
+                    } else if (!_canseeit_d) {
+                        /* C monmove.c:1613: !Deaf → You_hear("a door open.").
+                         * Deaf is never set for the corpus hero. */
+                        _doormsg = 'You hear a door open.';
+                    } else if (!canspotmon(mtmp)) {
+                        /* C monmove.c:1611: canseeit && !canspotmon →
+                         * You_see("a door open."). */
+                        _doormsg = 'You see a door open.';
+                    }
+                    /* C monmove.c:1609 — canseeit && canspotmon → pline_mon(mtmp,
+                     * "%s opens a door.", Monnam(mtmp)).  This arm used to be
+                     * left out on the premise that "no current session has a
+                     * hero-visible monster open a door"; seed0014 step 439 is
+                     * exactly that case and C prints "The water nymph opens a
+                     * door." where this port printed nothing.  Monnam is
+                     * available here as Monnam_dm (imported from ./dogmove.js and
+                     * already used by this file's other naming sites), and it
+                     * carries C's own canspotmon → "It" fallback, so the guard
+                     * and the name agree by construction. */
+                    else {
+                        _doormsg = `${Monnam_dm(mtmp)} opens a door.`;
+                    }
+                    /* C monmove.c:1609-1613 routes every feedback arm through
+                     * pline/You_see/You_hear.  Keep that real display call: its
+                     * pre-message flush is the physical frame a subsequent
+                     * width-driven more() freezes. */
+                    if (_doormsg)
+                        await pline(_doormsg);
+                } else if ((_dm_d & (D_LOCKED_MV | D_CLOSED_MV)) !== 0
+                    && (_mf2_d & M2_GIANT_MAF) !== 0) {
+                    /* C monmove.c:1617-1641.  mfndpos only admits this square
+                     * for a doorbuster after the amorphous/unlock/open arms
+                     * have failed.  A locked door consumes the rn2(2) even
+                     * when it winds up merely broken. */
+                    const _maskd = (_btrapped_now
+                        || ((_dm_d & D_LOCKED_MV) !== 0 && rn2(2) === 0))
+                        ? D_NODOOR_MV : D_BROKEN_MV;
+                    _dloc.doormask = _maskd;
+                    newsym(mtmp.mx | 0, mtmp.my | 0);
+                    recalc_block_point(mtmp.mx | 0, mtmp.my | 0);
+                    vision_recalc(0);
+                    const _canseeit_d = _didseeit_pm
+                        || !!cansee(mtmp.mx | 0, mtmp.my | 0);
+                    if (_btrapped_now) {
+                        if (await mb_trapped(mtmp, _canseeit_d))
+                            return MMOVE_DIED_MV;
+                    } else if (game.flags?.verbose !== false) {
+                        let _doormsg = null;
+                        if (_canseeit_d && canspotmon(mtmp))
+                            _doormsg = `${Monnam_dm(mtmp)} smashes down a door.`;
+                        else if (_canseeit_d)
+                            _doormsg = 'You see a door crash open.';
+                        else
+                            _doormsg = 'You hear a door crash open.';
+                        const _prevd = game._pending_message;
+                        if (_prevd && _prevd.length > 0) {
+                            const _joinedd = _prevd + '  ' + _doormsg;
+                            _topl_record_join(_prevd, _joinedd);
+                            game._pending_message = _joinedd;
+                        } else {
+                            game._pending_message = _doormsg;
+                        }
+                    }
+                    if (in_rooms(mtmp.mx | 0, mtmp.my | 0, SHOPBASE_MV).length)
+                        add_damage(mtmp.mx | 0, mtmp.my | 0, 0);
+                }
+            }
+        }
+
+        /* C postmov (monmove.c:1643-1646) — "possibly dig":
+         *     if (can_tunnel && may_dig(mtmp->mx, mtmp->my) && mdig_tunnel(mtmp))
+         *         return MMOVE_DIED;
+         * This block had no JS equivalent, so a tunneling monster (a Mines gnome
+         * with a pick-axe, a dwarf, a rock mole) never drew mdig_tunnel's
+         * unconditional `int pile = rnd(12)` (dig.c:1418) and never opened the
+         * rock it walked into.  Corpus-wide the missing leaves are 260 rnd(12)
+         * at dig.c:1418 plus 41 rn2(5) at dig.c:1468 (the "crashing rock"
+         * You_hear roll) across 7 sessions; seed0030 segment 0's first
+         * divergence after the goto_level arrival fix is the first of them, at
+         * leaf 13906.  The `&&` short-circuit is load-bearing: may_dig() draws
+         * no RNG but mdig_tunnel()'s first statement does, so the call must not
+         * be hoisted. */
+        if (can_tunnel_mv && may_dig(mtmp.mx | 0, mtmp.my | 0)
+            && await mdig_tunnel(mtmp))
+            return MMOVE_DIED_MV; /* mon died (position already updated) */
+
+        /* C postmov: repaint the destination before the trailing eater/web/
+         * hide-under block.  Keeping this after dig but before postmov() is
+         * what places its display-stream draws ahead of those block's core
+         * leaves. */
+        newsym(nix, niy);
+
+        /* C mon_track_add(mtmp, omx, omy): update mtrack (monmove.c:79). */
+        mon_track_add(mtmp, omx, omy);
+
+    } else {
+        /* C monmove.c:2119-2122: a unicorn with no ordinary move can
+         * teleport. The move is spent even if relocation finds no square. */
+        if (_is_unicorn_mv(ptr.pmidx | 0) && rn2(2) && !tele_restrict(mtmp)) {
+            await rloc(mtmp, RLOC_MSG);
+            return MMOVE_MOVED_MV;
+        }
+        if (mtmp.wormno)
+            worm_nomove(mtmp);
+    }
+
+    /* C monmove.c:2073 — the mainline `return postmov(..., mmoved, ...)`. */
+    if (process.env.FF_MFNDTRACE === '1')
+        pushRngLogEntry(`^mresult[moves=${game.moves | 0} id=${mtmp.m_id | 0} xy=${mtmp.mx | 0},${mtmp.my | 0} mmoved=${mmoved | 0}]`);
+    return postmov(mtmp, mmoved); /* MMOVE_MOVED or MMOVE_NOTHING */
+}
+
+/* C ref: monmove.c:79-87 mon_track_add(mtmp, x, y).
+ *   for (j = MTSZ - 1; j > 0; j--)
+ *       mtmp->mtrack[j] = mtmp->mtrack[j - 1];
+ *   mtmp->mtrack[0].x = x;
+ *   mtmp->mtrack[0].y = y;
+ * Push (x,y) onto the front of the monster's MTSZ-deep position track, shifting
+ * the older entries back one slot (the oldest, index MTSZ-1, falls off). The
+ * arg-state-after oracle (assertArgsAfter vs the captured mtmp.mtrack string)
+ * asserts the shift; the mapstate-only effect-diff channel cannot see this
+ * per-arg array write. mtmp.mtrack is the reconstructed array of {x,y} coords. */
+export function mon_track_add(mtmp, x, y) {
+    if (!Array.isArray(mtmp.mtrack)) mtmp.mtrack = [];
+    // Ensure MTSZ slots exist so the shift is faithful even if the capture/array
+    // is short (C's mtrack is a fixed coord[MTSZ]; a missing slot reads as 0,0).
+    while (mtmp.mtrack.length < MTSZ_MV) mtmp.mtrack.push({ x: 0, y: 0 });
+    for (let j = MTSZ_MV - 1; j > 0; j--) {
+        mtmp.mtrack[j] = { x: mtmp.mtrack[j - 1].x, y: mtmp.mtrack[j - 1].y };
+    }
+    mtmp.mtrack[0].x = x;
+    mtmp.mtrack[0].y = y;
+}
+
+/* C ref: monmove.c:90-93 mon_track_clear(mtmp):
+ *   memset(mtmp->mtrack, 0, sizeof(mtmp->mtrack));
+ * Zero all MTSZ track entries. Modeled as MTSZ {x:0,y:0} coords so the
+ * arg-state-after oracle sees "0:0;0:0;0:0;0:0;". */
+export function mon_track_clear(mtmp) {
+    mtmp.mtrack = [];
+    for (let j = 0; j < MTSZ_MV; j++) mtmp.mtrack.push({ x: 0, y: 0 });
+}
+
+/* C ref: monmove.c:2222-2290 set_apparxy.
+ * Sets mtmp->mux/mtmp->muy — the monster's perceived hero position.
+ *
+ * Tame path (no RNG): mtame || ustuck || u_at(mux,muy) → mux=u.ux, muy=u.uy.
+ * Displacement paths (RNG) — invisible/displaced/underwater — require
+ * Invis/Displaced/Underwater flags + rn2(3)/rn2(4) + rn2(2*displ+1) loop.
+ * Full displacement port deferred to L15. For now, the non-tame non-trivial
+ * path also sets mux=u.ux/muy=u.uy (displ=0 branch), matching C when the
+ * hero is neither invisible nor displaced.
+ *
+ * Smoke test:
+ * 4. set_apparxy with tame mtmp: no RNG; mux=u.ux, muy=u.uy.
+ */
+export function set_apparxy(mtmp) {
+    const u = game.u;
+    if (!u || !mtmp)
+        return;
+    const mx = (mtmp.mux !== undefined ? mtmp.mux : 0) | 0;
+    const my = (mtmp.muy !== undefined ? mtmp.muy : 0) | 0;
+    /* C monmove.c:2211-2215: tame || ustuck || u_at(mx,my) → trivial.
+     * C's `mtmp == u.ustuck` is a read of the HERO struct's field; this site
+     * spelled it `game.ustuck`, a bare property of the game object that nothing
+     * in js/ has ever written.  js/mklev.js:13933 set_ustuck() — the only
+     * writer of the real field — assigns `game.u.ustuck`, and every other
+     * ustuck read in this file (js/monmove.js:477) already goes through
+     * `game.u?.ustuck`.  Measured by tools/never-initialised-field-probe.mjs:
+     * this line reads an absent field 22,073 times across 40 of the 44 public
+     * sessions, so "the grabber still has hold of you" was permanently false
+     * and a monster holding the hero fell through to the displacement half
+     * below — which draws RNG (rn2(3)/rn2(4) plus the rn2(2*displ+1) scatter
+     * pair) where C returns before touching the stream. */
+    if (mtmp.mtame
+        || mtmp === (u.ustuck ?? null)
+        || (mx === (u.ux | 0) && my === (u.uy | 0))) {
+        mtmp.mux = u.ux | 0;
+        mtmp.muy = u.uy | 0;
+        return;
+    }
+    /* C monmove.c:2241-2258: notseen/notthere/Underwater branches.
+     * notseen = (!mtmp->mcansee || (Invis && !perceives(mtmp->data)))
+     * notthere = (Displaced && mtmp->data != PM_DISPLACER_BEAST)
+     * If Underwater: displ=1
+     * If notseen && !(xorn && umoney): displ=1
+     * If notthere && couldsee(mx,my): displ=2; else displ=1
+     * If displ=0: mux=u.ux, muy=u.uy; return.
+     *
+     * L15 follow-up: full displacement loop with rn2(3)/rn2(4) gate +
+     *   rn2(2*displ+1) coordinate scatter loop + couldsee check.
+     *
+     * Conservative for now: emit displ=0 path (mux=u.ux, muy=u.uy) which is
+     * correct when hero is visible and not displaced. This matches C for the
+     * common case of a normal non-tame non-confused monster during early game. */
+    /* C youprop.h Invis = ((HInvis || EInvis) && !BInvis) and Displaced =
+     * (HDisplaced || EDisplaced).  Those C names are macros over u.uprops[];
+     * in this tree the ONLY spelling that is ever WRITTEN is the numeric
+     * u.uprops[<PROP>] table (js/makemon.js:4347 _onscary_Displaced,
+     * js/mklev.js:12711 Displaced_mv/Invis_mv, js/mcastu.js:77 all read it that
+     * way).  This function read `u.HInvis`/`u.EInvis`/`u.HDisplaced`/
+     * `u.EDisplaced` — four fields with no writer anywhere in js/, so both
+     * predicates were permanently false and the whole displacement half of
+     * set_apparxy was dead.
+     *
+     * The Ranger starts with a worn cloak of displacement, so C takes the
+     * `notthere` branch for every non-tame monster from turn 1 and rolls
+     * rn2(4) + the rn2(2*displ+1) scatter pair; seed0101 step 24 has three of
+     * those and we drew none of them. */
+    const _uprop = (p) => {
+        const r = u.uprops?.[p];
+        return r ? r : null;
+    };
+    const Invis = _Invis_mv();
+    const perceives_data = !!((mtmp.data.mflags1 || 0) & M1_SEE_INVIS);
+    const notseen = (!mtmp.mcansee || (Invis && !perceives_data));
+    const PM_DISPLACER_BEAST = 39;
+    const _pDisp = _uprop(DISPLACED_PROP);
+    const Displaced = !!(_pDisp && ((_pDisp.intrinsic | 0) || (_pDisp.extrinsic | 0)));
+    const notthere = (Displaced && (mtmp.mnum | 0) !== PM_DISPLACER_BEAST);
+    const Underwater = !!(u.uinwater);
+    let displ;
+    if (Underwater) {
+        displ = 1;
+    }
+    else if (notseen) {
+        /* C: xorn with umoney → displ=0; others → displ=1 */
+        const PM_XORN = 232;
+        const umoney = money_cnt(u.invent) | 0;
+        displ = ((mtmp.mnum | 0) === PM_XORN && umoney) ? 0 : 1;
+    }
+    else if (notthere) {
+        /* C monmove.c:2228 — displ = couldsee(mx, my) ? 2 : 1, on the monster's
+         * CURRENT belief <mux,muy>, not on its own square. */
+        displ = couldsee(mx, my) ? 2 : 1;
+    }
+    else {
+        displ = 0;
+    }
+    if (!displ) {
+        mtmp.mux = u.ux | 0;
+        mtmp.muy = u.uy | 0;
+        return;
+    }
+    /* C monmove.c:2239 — gotu = notseen ? !rn2(3) : notthere ? !rn2(4) : FALSE */
+    const gotu_roll = notseen ? rn2(3) : notthere ? rn2(4) : -1;
+    const gotu = (gotu_roll === 0) ? 1 : 0; /* !rn2(n) means rn2(n)==0 */
+    if (!gotu) {
+        /* C monmove.c:2241-2258
+         *     do {
+         *         if (++try_cnt > 200) { mx = u.ux; my = u.uy; break; }
+         *         mx = u.ux - displ + rn2(2 * displ + 1);
+         *         my = u.uy - displ + rn2(2 * displ + 1);
+         *     } while (!isok(mx, my)
+         *              || (displ != 2 && mx == mtmp->mx && my == mtmp->my)
+         *              || ((mx != u.ux || my != u.uy) && !passes_walls(mtmp->data)
+         *                  && !(accessible(mx, my)
+         *                       || (closed_door(mx, my)
+         *                           && (can_ooze(mtmp) || can_fog(mtmp)))))
+         *              || !couldsee(mx, my));
+         *
+         * The loop condition used to be a documented stub that rejected only the
+         * monster's own square, so the FIRST candidate was almost always accepted
+         * and every further iteration's rn2 pair was never drawn.  That is a
+         * variable-length RNG consumer, so a single missed retry desynchronises
+         * the whole stream: seed0030 segment 9 index 8954, where C rejects
+         * <u.ux+1, u.uy-1> and re-rolls (two more rn2(3) draws) and this port
+         * kept it.  Each guard is now the real predicate, all already ported —
+         * accessible/closed_door from js/look.js, couldsee from js/vision.js,
+         * can_ooze/can_fog in this file. */
+        const range = 2 * displ + 1;
+        const M1_WALLWALK = 0x00000008;  /* monflag.h:88 */
+        const passes_walls = ((mtmp.data?.mflags1 | 0) & M1_WALLWALK) !== 0;
+        const ux = u.ux | 0, uy = u.uy | 0;
+        let try_cnt = 0;
+        let fx = mx, fy = my;
+        for (;;) {
+            if (++try_cnt > 200) {
+                fx = ux;
+                fy = uy;
+                break; /* punt */
+            }
+            fx = (ux - displ + rn2(range)) | 0;
+            fy = (uy - displ + rn2(range)) | 0;
+            if (!isok(fx, fy))
+                continue;
+            if (displ !== 2 && fx === (mtmp.mx | 0) && fy === (mtmp.my | 0))
+                continue;
+            if ((fx !== ux || fy !== uy) && !passes_walls
+                && !(accessible(fx, fy)
+                     || (closed_door(fx, fy) && (can_ooze(mtmp) || can_fog(mtmp)))))
+                continue;
+            if (!couldsee(fx, fy))
+                continue;
+            break;
+        }
+        mtmp.mux = fx;
+        mtmp.muy = fy;
+    }
+    else {
+        mtmp.mux = u.ux | 0;
+        mtmp.muy = u.uy | 0;
+    }
+}
+
+/* C ref: monmove.c:693-705 m_postmove_effect — post-move effects for gas clouds.
+ * Hezrous create stench clouds; Steam Vortex creates harmless vapor (if !mcan).
+ * Called after location changes for monsters, before for hero.
+ * create_gas_cloud is a real function (region.c:1213), NOT a macro, and it DOES
+ * consume RNG: rn1(3,4) at region.c:1303 on every call, plus the BFS shuffle
+ * draws at :1255/:1279 for cloudsize > 1.  The C corpus shows 33 such draws
+ * across seed0360/seed0364/seed0800. */
+
+/* C ref: monmove.c:177-180 distu(x, y) - distance squared from hero to (x,y).
+ * Returns dx*dx + dy*dy where dx = x - u.ux, dy = y - u.uy. */
+function distu(x, y) {
+    const u = game.u;
+    if (!u) return 0;
+    const dx = (x | 0) - (u.ux | 0), dy = (y | 0) - (u.uy | 0);
+    return ((dx * dx) + (dy * dy)) | 0;
+}
+
+/* C ref: monmove.c:181-182 mdistu(mon) - distance squared from hero to monster.
+ * Returns distu(mon->mx, mon->my). */
+function mdistu(mon) {
+    return distu(mon.mx, mon.my);
+}
+
+/* C ref: mondata.h:35 hides_under(ptr) — (ptr->mflags1 & M1_CONCEAL) != 0L.
+ * monflag.h:92 M1_CONCEAL = 0x00000080L ("hides under objects"). */
+const M1_CONCEAL_MV = 0x00000080;
+function hides_under_mv(ptr) {
+    return !!ptr && ((ptr.mflags1 | 0) & M1_CONCEAL_MV) !== 0;
+}
+
+/* C ref: monst.h helpless(mon) — (mon)->msleeping || !(mon)->mcanmove.
+ * Same predicate js/shk.js:1474 and js/mhitm.js:3418 spell out locally. */
+function helpless_mv(mon) {
+    return !!mon && (!!(mon.msleeping | 0) || !(mon.mcanmove | 0));
+}
+
+/* C monst.h S_EEL — the eel monster class letter (js/mhitm.js:1687,
+ * js/fastforward.js:1328 and js/mklev.js hideunder() all already say 57). */
+const S_EEL_MV = 57;
+
+/* C ref: mondata.h:147 webmaker(ptr) — an mons[] IDENTITY test, exactly two
+ * indices (js/pm.generated.js PM_CAVE_SPIDER = 94, PM_GIANT_SPIDER = 96;
+ * js/cmd.js:959 spells the same predicate out for the polymorphed hero). */
+const PM_CAVE_SPIDER_MV = 94, PM_GIANT_SPIDER_MV = 96;
+function webmaker_mv(ptr) {
+    const i = ptr ? (ptr.pmidx | 0) : -1;
+    return i === PM_CAVE_SPIDER_MV || i === PM_GIANT_SPIDER_MV;
+}
+
+/* C ref: monmove.c:1226-1239 holds_up_web(coordxy x, coordxy y).
+ * NB the C short-circuit order: an off-map square answers TRUE before levl[][]
+ * is ever read, and stairway_at() is consulted only for STAIRS/LADDER. */
+function holds_up_web_mv(x, y) {
+    if (!isok(x, y))
+        return true;
+    const typ = game.level?.locations?.[x | 0]?.[y | 0]?.typ | 0;
+    if (IS_OBSTRUCTED(typ))
+        return true;
+    if (typ === STAIRS || typ === LADDER) {
+        const sway = stairway_at(x | 0, y | 0);
+        if (sway && sway.up)
+            return true;
+    }
+    if (typ === IRONBARS)
+        return true;
+    return false;
+}
+
+/* C ref: monmove.c:1242-1249 count_webbing_walls — the four cardinal
+ * neighbours, in C's order (north, east, south, west).  No RNG. */
+function count_webbing_walls_mv(x, y) {
+    return (holds_up_web_mv(x, y - 1) ? 1 : 0)
+         + (holds_up_web_mv(x + 1, y) ? 1 : 0)
+         + (holds_up_web_mv(x, y + 1) ? 1 : 0)
+         + (holds_up_web_mv(x - 1, y) ? 1 : 0);
+}
+
+/* C ref: monmove.c:1251-1264 soko_allow_web — reject webs that would interfere
+ * with solving Sokoban.  C's `Sokoban` macro is In_sokoban(&u.uz) plus the
+ * "already solved" flag; this tree carries the dungeon test only, so a solved
+ * Sokoban level is treated as unsolved (strictly more restrictive, and no
+ * corpus session is in Sokoban).  m_cansee(mon, x, y) is vision.h:42
+ * clear_path(mon->mx, mon->my, x, y). */
+function soko_allow_web_mv(mon) {
+    if (!In_sokoban(game.u?.uz))
+        return true;
+    const stway = stairway_find_dir(true); /* stairs up */
+    if (stway && clear_path(mon.mx | 0, mon.my | 0, stway.sx | 0, stway.sy | 0))
+        return true;
+    return false;
+}
+
+/* C ref: monmove.c:1267-1292 maybe_spin_web(struct monst *mtmp) — "monster
+ * might spin a web", called from postmov for every monster that moved.
+ *
+ * The rn2(1000) is the whole point: it fires for EVERY webmaker that moved and
+ * is not helpless / on a trap, whether or not a web results.  Measured on the
+ * 44-session public corpus it is drawn 44 times across 5 sessions
+ * (seed0361 x25, seed4500 x9, seed0399 x8, seed0360 x1, seed0367 x1), and
+ * seed0399's first screen miss at step 117 is exactly the first of its eight:
+ * C leaf 10137 is `rn2(1000)=41 @ maybe_spin_web(monmove.c:1279)` where JS drew
+ * nothing, so from there JS ran one leaf ahead and every remaining monster in
+ * that movemon slice moved somewhere else.
+ *
+ * None of those 44 recorded draws succeeds — the smallest is 25 and no session
+ * topline ever contains "spins a web" — so the maketrap arm below is not
+ * exercised by the public corpus and is ported from C rather than measured. */
+async function maybe_spin_web(mtmp) {
+    const ptr = mtmp.data;
+    if (webmaker_mv(ptr)
+        && !helpless_mv(mtmp) && !(mtmp.mspec_used | 0)
+        && !t_at(mtmp.mx | 0, mtmp.my | 0) && soko_allow_web_mv(mtmp)) {
+        /* C:1275 `(mtmp->data == &mons[PM_GIANT_SPIDER]) ? 15 : 5` */
+        const prob = ((((ptr.pmidx | 0) === PM_GIANT_SPIDER_MV ? 15 : 5)
+                       * (count_webbing_walls_mv(mtmp.mx | 0, mtmp.my | 0) + 1))
+                      - (3 * count_traps(WEB)));
+
+        /* C:1279 — rn2() is the left operand, so it is ALWAYS evaluated. */
+        if (rn2(1000) < prob) {
+            /* C:1280 `(trap = maketrap(mtmp->mx, mtmp->my, WEB)) != 0` — take
+             * maketrap's OWN return value, awaited.
+             *
+             * CORRECTED 2026-09-06.  The previous shape fired maketrap
+             * unawaited, swallowed any rejection with .catch(() => {}), and
+             * recovered the trap with t_at().  Its justification was "this
+             * movemon chain (movemon -> dochugw -> dochug -> m_move -> postmov)
+             * is synchronous end to end", which is not true:
+             * tools/async-boundary-census.mjs reports m_move as ASYNC and as
+             * this site's own nearest async ancestor at distance 2.  Since all
+             * seven `return postmov(...)` sites are inside that async
+             * m_move, and m_move's only two callers (js/dochug.js:590,:637)
+             * already await it, making this chain async costs ZERO call-site
+             * edits.  Swallowing the rejection was also hiding a real failure
+             * mode: on C's path maketrap cannot fail, so a throw here should
+             * surface, not be discarded. */
+            const trap = await maketrap(mtmp.mx | 0, mtmp.my | 0, WEB);
+            if (trap) {
+                mtmp.mspec_used = d(4, 4); /* 4..16 */
+                if (cansee(mtmp.mx | 0, mtmp.my | 0)) {
+                    /* C:1284 `canspotmon(mtmp) ? y_monnam(mtmp) : something` */
+                    const mbuf = canspotmon(mtmp) ? y_monnam(mtmp) : 'something';
+                    /* C:1286 pline_mon(mtmp, "%s spins a web.", upstart(mbuf));
+                     * pline_mon only adds monster-based message coloring, which
+                     * this tree does not render — every other js/ file spells it
+                     * as a plain pline() for the same reason. */
+                    pline(`${upstart(mbuf)} spins a web.`);
+                    trap.tseen = 1;
+                }
+                if (in_rooms(mtmp.mx | 0, mtmp.my | 0, SHOPBASE_MV).length)
+                    add_damage(mtmp.mx | 0, mtmp.my | 0, 0);
+            }
+        }
+    }
+}
+
+/* C ref: monmove.c:1660-1703 — postmov()'s trailing
+ *     if (mmoved == MMOVE_MOVED || mmoved == MMOVE_DONE) { ... }
+ * block, which every one of C's six `return postmov(...)` sites runs and which
+ * this port had dropped entirely.  Its rn2(5) (monmove.c:1696) is a REAL,
+ * per-moved-hider PRNG draw: seed4500 segment 0 index 7897 is C
+ * `rn2(5) @ postmov(monmove.c:1696)` where JS drew nothing, and from there our
+ * stream ran one call behind C's for the rest of the segment (it slips again at
+ * 7908, 7937, ... — the same omission re-firing, once per moving hider).
+ *
+ *   if (hides_under(ptr) || ptr->mlet == S_EEL) {
+ *       if (mtmp->mundetected || (!helpless(mtmp) && rn2(5)))
+ *           (void) hideunder(mtmp);
+ *       newsym(mtmp->mx, mtmp->my);
+ *   }
+ *
+ * Note the short-circuit: an ALREADY-hidden monster (mundetected) draws NO
+ * rn2(5), and neither does a helpless (asleep / !mcanmove) one.  hideunder()
+ * itself (js/mklev.js:9277) is RNG-free.
+ *
+ * The formerly omitted eater and redraw arms are wired below in their C order.
+ * They all precede the hides_under rn2(5), so that ordering is load-bearing.
+ * Remaining special-case limitations are confined to the shared helper
+ * implementations themselves.
+ * monmove.c:1690 maybe_spin_web() IS now ported (see maybe_spin_web below) —
+ * it draws rn2(1000) for every webmaker that moved, and seed0399's first
+ * screen miss (step 117) was the one leaf it was not drawing.
+ * monmove.c:1680-1681 `if (mpickstuff(mtmp)) mmoved = MMOVE_DONE;` IS now
+ * ported (see mpickstuff below) — without it a hostile collector standing on an
+ * item it wants never took the item, so m_search_items kept answering "the goal
+ * is underfoot, stay put" (a `return TRUE` at monmove.c:1440) on every
+ * subsequent turn and the monster froze in place for the rest of the game,
+ * skipping the mfndpos/mtrack draws C makes for it.
+ * Returns the (possibly unchanged) mmoved, as C does. */
+export async function postmov(mtmp, mmoved) {
+    if (mmoved !== MMOVE_MOVED_MV && mmoved !== MMOVE_DONE_MV)
+        return mmoved;
+    /* C:1692 — `ptr` inside postmov is re-read from mtmp->data after mintrap
+     * (monmove.c:1519 "in case mintrap() caused polymorph"), so at this point
+     * ptr IS mtmp->data; read it directly rather than caching a stale row. */
+    const ptr = mtmp.data;
+    /* C monmove.c:1661 `if (OBJ_AT(mtmp->mx, mtmp->my) && mtmp->mcanmove)`. */
+    if ((game.level?.levelObjects?.[mtmp.mx | 0]?.[mtmp.my | 0])
+        && (mtmp.mcanmove | 0)) {
+        /* C:1663-1666 — "Maybe a rock mole just ate some metal object".
+         * MUST stay above mpickstuff (C:1680) and above the hides_under rn2(5)
+         * (C:1696) or the stream slips the other way. */
+        if (metallivorous_mv(ptr)) {
+            if ((await meatmetal_mv(mtmp)) === 2)
+                return MMOVE_DIED_MV; /* C:1665 it died */
+        }
+        /* C:1668-1678 — cube and corpse-eater consumption precede pickup. */
+        if ((ptr?.pmidx | 0) === PM_GELATINOUS_CUBE_MV) {
+            const eaten = await meatobj_real(mtmp);
+            if (eaten >= 2)
+                return MMOVE_DIED_MV;
+        }
+        if (corpse_eater_mwci(ptr)) {
+            const eaten = await meatcorpse_real(mtmp);
+            if (eaten >= 2)
+                return MMOVE_DIED_MV;
+        }
+        /* C:1680-1681 */
+        if (await mpickstuff(mtmp))
+            mmoved = MMOVE_DONE_MV;
+        /* C:1683-1687 — redraw an invisible monster and any worm segments. */
+        if (mtmp.minvis) {
+            newsym(mtmp.mx | 0, mtmp.my | 0);
+            if (mtmp.wormno)
+                see_wsegs(mtmp);
+        }
+    }
+    /* C:1690 */
+    await maybe_spin_web(mtmp);
+    if (hides_under_mv(ptr) || ((ptr && (ptr.mlet | 0)) === S_EEL_MV)) {
+        if ((mtmp.mundetected | 0) || (!helpless_mv(mtmp) && rn2(5)))
+            hideunder(mtmp);
+        newsym(mtmp.mx | 0, mtmp.my | 0);
+    }
+    if (mtmp.isshk)
+        after_shk_move(mtmp);
+    return mmoved;
+}
+
+/* =====================================================================
+ * meatmetal — C ref: mon.c:1454-1529
+ *   "Maybe eat a metallic object (not just gold).
+ *    Return value: 0 => nothing happened, 1 => monster ate something,
+ *    2 => monster died"
+ *
+ * Wired from _postmov_tail (C postmov, monmove.c:1663-1666) for every
+ * metallivorous monster that MOVED (or is DONE) onto a square carrying a floor
+ * pile.  This is the first of the three eaters the _postmov_tail header lists
+ * as KNOWN GAPS, and it is inserted ABOVE mpickstuff and ABOVE the hides_under
+ * rn2(5) exactly as that header requires.
+ *
+ * It lives in this file rather than js/mklev.js (where meatobj/meatcorpse sit)
+ * because postmov's only js/ body is _postmov_tail, and because js/ has no
+ * mon.c module: the file already carries ~30 file-local `_mv`-suffixed helpers
+ * for the same reason.  Nothing else in js/ defines meatmetal, so this shadows
+ * nothing.
+ *
+ * MEASURED, gen413-reseed-seed565607 segment 0 step 1070 — a rock mole
+ * (PM_ROCK_MOLE = 92, monster #1194) tunnels from (73,12) onto (72,12) and C
+ * draws, in this order:
+ *     rn2(100)=56 @ obj_resists(zap.c:1469)   <- meatmetal's obj_resists(otmp,5,95)
+ *     rn2(100)=92 @ obj_resists(zap.c:1469)   <- m_consume_obj -> delobj -> delobj_core
+ *     rnd(25)=16  @ meatmetal(mon.c:1521)     <- the "Left behind a pile?" roll
+ * where this port fell straight through to mpickstuff and drew rnd(2) in
+ * next_ident() from splitobj instead.
+ * ===================================================================== */
+
+/* C monflag.h:115 M1_METALLIVORE; mondata.h:92 metallivorous(ptr).  0x80000000
+ * is the sign bit, so mask with >>> 0 the way acidic_mv above does. */
+const M1_METALLIVORE_MV = 0x80000000;
+function metallivorous_mv(ptr) {
+    return !!ptr && (((ptr.mflags1 >>> 0) & M1_METALLIVORE_MV) !== 0);
+}
+
+/* C objclass.h:194 is_metallic(otmp) — objects[otyp].oc_material in
+ * IRON(11)..MITHRIL(17).  _oc_material_mv above is the same generated column
+ * js/mklev.js obj_oc_material and js/do_wear.js read. */
+const MAT_IRON_MV = 11, MAT_MITHRIL_MV = 17;
+function is_metallic_mv(otmp) {
+    const m = _oc_material_mv(otmp.otyp | 0);
+    return m >= MAT_IRON_MV && m <= MAT_MITHRIL_MV;
+}
+
+/* C monst.h:277 resists_poison(mon) = Resists_Elem(mon, POISON_RES), i.e.
+ * mon_resistancebits(mon) & MR_POISON (monst.h:270).  js/mklev.js's
+ * `resists_poison` is a STUB and js/mhitu.js's real predicate is file-local, so
+ * spell it out here the same way js/mhitu.js:4742 does. */
+const MR_POISON_MV = 0x20;
+function resists_poison_mv(mon) {
+    const bits = ((mon.data ? (mon.data.mresists | 0) : 0)
+                  | (mon.mextrinsics | 0) | (mon.mintrinsics | 0));
+    return (bits & MR_POISON_MV) !== 0;
+}
+
+/* C mon.c:1466 mtmp->data == &mons[PM_RUST_MONSTER] — an mons[] IDENTITY test,
+ * so it is exactly one index (js/pm.generated.js:218). */
+const PM_RUST_MONSTER_MV = 212;
+/* C objects[] otyps: js/mklev.js:440, js/mklev.js:15618, js/mklev.js:324. */
+const AMULET_OF_STRANGULATION_MV = 203, RIN_SLOW_DIGESTION_MV = 193;
+const ROCK_MV = 474;
+
+/* C artifact.c touch_artifact(otmp, mon) returns 1 immediately when
+ * `oart == &artilist[ART_NONARTIFACT]`, i.e. for every non-artifact — which is
+ * every object any metallivore in this corpus has ever stood on.  js/mklev.js:
+ * 13618 has a real body but it is FILE-LOCAL and exported by nobody, so the
+ * ARTIFACT arm (the blast / refusal) stays a documented GAP rather than a
+ * guess: a metallivore standing on an artifact eats it here where C might
+ * refuse.  RNG-free either way — touch_artifact draws nothing. */
+function touch_artifact_mv(_otmp, _mtmp) {
+    return true;
+}
+
+/* C mon.c:1392-1452 m_consume_obj(mtmp, otmp), restricted to the case
+ * meatmetal reaches: a METALLIC object.  It is inlined rather than called
+ * because js/'s only m_consume_obj body (js/mklev.js:15170) is a throwing stub,
+ * and because for a metallic object almost every arm of C's function is
+ * statically dead:
+ *   polyfood/mlevelgain/mhealup/mstoning all require ofood(obj), i.e. otyp is
+ *   CORPSE, EGG or TIN (obj.h:318) — none of which is metallic;
+ *   `eyes` requires CARROT; deadmimic and `corpsenm` require CORPSE; slimer
+ *   requires GLOB_OF_GREEN_SLIME.  So newcham / grow_up / monstone /
+ *   mcureblindness / quickmimic / the pyrolisk explode / mon_givit are all
+ *   unreachable from here, which is consistent with the measured trace: there
+ *   is NO draw between the two obj_resists and the rnd(25).
+ * What survives for metal is exactly: the non-pet healmon, meatbox for a
+ * container, the uball/uchain special cases, and delobj.
+ *
+ * Returns nothing; the caller re-checks DEADMONSTER as C does. */
+function _m_consume_metal_obj_mv(mtmp, otmp) {
+    const ispet = !!(mtmp.mtame | 0);
+    /* C:1397-1400 non-pet: heal up to the object's weight in hp.  C passes the
+     * RAW objects[otyp].oc_weight column, NOT weight(obj) — quan is ignored, so
+     * js/weight.js's weight() (which multiplies by quan) is the wrong helper.
+     * healmon: THIS FILE EXPORTS A THROWING `healmon` STUB (below) that
+     * SHADOWS the real body at js/mklev.js:17762, so the real one is imported
+     * here under the alias healmon_real.  MEASURED: nothing imports healmon
+     * from './monmove.js' — the stub's only caller is this file's own
+     * mon_regen(), which nothing imports either — so the shadow is dead today.
+     * It is still left ALONE: removing an export changes this file's public
+     * surface, which is outside this packet's one-file scope. */
+    if (!ispet && (mtmp.mhp | 0) < (mtmp.mhpmax | 0))
+        healmon_real(mtmp, OC_WEIGHT[otmp.otyp | 0] | 0, 0);
+    /* C:1401-1402 `if (Has_contents(otmp)) meatbox(mtmp, otmp);` — Has_contents
+     * is `otmp->cobj != 0` (obj.h:334).  No vanilla container is metallic
+     * (LARGE_BOX/CHEST are WOOD, ICE_BOX PLASTIC, the bags CLOTH), so this arm
+     * is unreachable from meatmetal; meatbox is unported and is not guessed at. */
+    /* C:1403-1408 uball/uchain.  unpunish() does not exist in js/ (the only
+     * body, js/dig.js:1359, is a throwing stub), so:
+     *   - uchain: C calls unpunish() and does NOT delobj, i.e. draws NOTHING.
+     *     Return early to keep the RNG shape; the unpunish side effect is a
+     *     documented GAP.
+     *   - uball: C calls unpunish() then delobj(), i.e. the same draw as the
+     *     ordinary path.  Fall through; unpunish is the same documented GAP. */
+    const _uchain = game.u?.uchain;
+    if (_uchain && otmp === _uchain)
+        return; /* GAP: unpunish() unported — no draw either way. */
+    /* C:1421 delobj(otmp) -> delobj_core(otmp, FALSE)  (invent.c:1436-1461).
+     * `if (!force && obj_resists(obj, 0, 0))` — rn2(100), and on a TRUE the
+     * object SURVIVES (only in_use is cleared).  meatmetal returns 1 either
+     * way; that is C's behaviour, bug included (Cardinal Rule 1). */
+    if (obj_resists(otmp, 0, 0)) {
+        otmp.in_use = 0;
+        return;
+    }
+    const update_map = ((otmp.where | 0) === OBJ_FLOOR);
+    const _ox = otmp.ox | 0, _oy = otmp.oy | 0;
+    obj_extract_floor(otmp);
+    otmp.where = OBJ_DELETED;
+    if (update_map) {
+        maybe_unhide_at(_ox, _oy);
+        newsym(_ox, _oy);
+    }
+}
+
+async function meatmetal_mv(mtmp) {
+    /* C:1465-1467 — if a pet, eating is handled separately, in dog.c */
+    if (mtmp.mtame | 0)
+        return 0;
+    const vis = canseemon(mtmp);
+    const isRust = ((mtmp.data ? (mtmp.data.pmidx | 0) : -1) === PM_RUST_MONSTER_MV);
+
+    /* C:1469-1471 — eats topmost metal object if it is there */
+    for (let otmp = game.level?.levelObjects?.[mtmp.mx | 0]?.[mtmp.my | 0];
+         otmp; otmp = otmp.nexthere) {
+        /* C:1472-1477 don't eat indigestible/choking/inappropriate objects */
+        if ((isRust && !is_rustprone(otmp))
+            || ((otmp.otyp | 0) === AMULET_OF_STRANGULATION_MV
+                || (otmp.otyp | 0) === RIN_SLOW_DIGESTION_MV)
+            || ((otmp.opoisoned | 0) && !resists_poison_mv(mtmp)))
+            continue;
+        /* C:1478-1479.  The short-circuit order is load-bearing: obj_resists is
+         * INSIDE the `is_metallic(otmp) && ...` conjunct, so a non-metallic item
+         * in the pile costs NO draw at all. */
+        if (is_metallic_mv(otmp) && !obj_resists(otmp, 5, 95)
+            && touch_artifact_mv(otmp, mtmp)) {
+            if (isRust && (otmp.oerodeproof | 0)) {
+                /* C:1480-1497 — a rust monster spits a rustproof item back out.
+                 * distant_name() is called for its SIDE EFFECTS even when the
+                 * message will not be printed, so it runs inside `if (vis)` and
+                 * outside the verbose test, exactly as C does. */
+                if (vis) {
+                    const otmpname = await distant_obj_name(otmp);
+                    if (game.flags?.verbose !== false)
+                        void pline(`${Monnam_dm(mtmp)} eats ${otmpname}!`);
+                }
+                /* C:1493 the object's rustproofing is gone now */
+                otmp.oerodeproof = 0;
+                mtmp.mstun = 1;
+                if (vis) {
+                    const otmpname = await distant_obj_name(otmp);
+                    if (game.flags?.verbose !== false)
+                        void pline(`${Monnam_dm(mtmp)} spits ${otmpname} out in disgust!`);
+                }
+                /* C falls out of the if/else and keeps walking the pile. */
+            } else {
+                if (cansee(mtmp.mx | 0, mtmp.my | 0)) {
+                    const otmpname = await distant_obj_name(otmp);
+                    if (game.flags?.verbose !== false)
+                        void pline(`${Monnam_dm(mtmp)} eats ${otmpname}!`);
+                } else {
+                    /* C:1512-1515 Soundeffect (screen/audio only, no RNG) then
+                     * You_hear("a crunching sound.").  GAP, same one every
+                     * You_hear in this file carries: the Deaf / Underwater /
+                     * Unaware prefixes of pline.c You_hear are not modelled. */
+                    if (game.flags?.verbose !== false)
+                        void pline('You hear a crunching sound.');
+                }
+                /* C:1516 mtmp->meating = otmp->owt / 2 + 1 — integer division on
+                 * the CACHED weight (place_object/mksobj set owt = weight(obj)).
+                 * The countdown lives at js/monmove.js:1621 (monmove.c:1769). */
+                mtmp.meating = Math.trunc((otmp.owt | 0) / 2) + 1;
+                _m_consume_metal_obj_mv(mtmp, otmp);
+                /* C:1518-1519 DEADMONSTER(mtmp) — monst.h `(mtmp)->mhp < 1`. */
+                if ((mtmp.mhp | 0) < 1)
+                    return 2;
+                /* C:1520-1522 Left behind a pile?
+                 * UNVERIFIED AGAINST A TRACE: gen413 rolls rnd(25)=16, so the
+                 * mksobj_at(ROCK) arm is NOT exercised by the session that
+                 * motivated this port.  It is ported straight from the C and its
+                 * draw cost (mksobj's own draws for a ROCK) has not been checked
+                 * against any recording. */
+                if (rnd(25) < 3)
+                    await mksobj_at(ROCK_MV, mtmp.mx | 0, mtmp.my | 0, true, false);
+                newsym(mtmp.mx | 0, mtmp.my | 0);
+                return 1;
+            }
+        }
+    }
+    return 0;
+}
+
+/* C mondata.h:200 touch_petrifies(ptr) — an mons[] IDENTITY test, not a flag
+ * test, so it is exactly two indices. */
+const PM_CHICKATRICE_MV = 9, PM_COCKATRICE_MV = 10;
+const PM_LIZARD_MV = 326;
+/* C mondata.h:88 acidic(ptr) = (ptr->mflags1 & M1_ACID); monflag.h:112. */
+const M1_ACID_MV = 0x08000000;
+/* C defsym.h S_NYMPH = 14 (same value js/dogmove.js:249 and js/mhitm.js:82 use). */
+const S_NYMPH_MV = 14;
+/* C mkroom.h:20 SHOPBASE — the "any shop" wildcard js/shk.js in_rooms takes. */
+const SHOPBASE_MV = 14;
+function _mons_row_mv(mndx) {
+    const i = mndx | 0;
+    return (i >= 0 && i < _MONS_MV.length) ? _MONS_MV[i] : null;
+}
+function touch_petrifies_mv(mndx) {
+    return (mndx | 0) === PM_COCKATRICE_MV || (mndx | 0) === PM_CHICKATRICE_MV;
+}
+function acidic_mv(mndx) {
+    const row = _mons_row_mv(mndx);
+    return !!(row && ((row[6] >>> 0) & M1_ACID_MV));
+}
+
+/* C ref: mon.c:1847-1910 mpickstuff(struct monst *mtmp)
+ *   "pick up (perhaps part of) an object at the monster's location; returns
+ *    TRUE if an object was picked up"
+ * Called from postmov (monmove.c:1680) for every monster that MOVED or is DONE
+ * and is standing on a floor pile.  This is the hostile twin of the pet's
+ * dog_move pickup arm (js/dogmove.js:1454-1512), and it reuses that arm's
+ * already-live helpers (obj_extract_floor = C's obj_extract_self floor path,
+ * distant_obj_name = C's distant_name(otmp, doname), Monnam_dm) rather than a
+ * second copy of each.
+ *
+ * The one rn2 in this function is the shop skip at C:1858.  It sits behind
+ * *in_rooms(mx, my, SHOPBASE), so it fires only for a non-tame monster actually
+ * standing in a shop; in_rooms here is js/shk.js's real port (the js/mklev.js
+ * `return []` twin would make the draw unreachable).
+ *
+ * Returns TRUE after the FIRST object taken — C comments "pick only one
+ * object". */
+export async function mpickstuff(mtmp) {
+    /* C:1853-1854 prevent shopkeepers from leaving the door of their shop */
+    if ((mtmp.isshk | 0) && inhishop(mtmp))
+        return false;
+    /* C:1857-1859 non-tame monsters normally don't go shopping */
+    if (!(mtmp.mtame | 0)
+        && (in_rooms(mtmp.mx | 0, mtmp.my | 0, SHOPBASE_MV)[0] | 0)
+        && rn2(25))
+        return false;
+    /* C:1861-1863 item in a pool, but monster can't swim */
+    if (!could_reach_item(mtmp, mtmp.mx | 0, mtmp.my | 0))
+        return false;
+
+    let otmp2;
+    for (let otmp = game.level?.levelObjects?.[mtmp.mx | 0]?.[mtmp.my | 0];
+         otmp; otmp = otmp2) {
+        otmp2 = otmp.nexthere;
+
+        /* C:1868-1871 avoid special items — is_mines_prize/is_soko_prize are
+         * FALSE everywhere in js/ today (no prize tracking); same stub the
+         * m_search_items scan above and js/dogmove.js both carry. */
+
+        /* C:1873-1874 Nymphs take everything.  Most monsters don't pick up
+         * corpses. */
+        if (mon_would_take_item(mtmp, otmp)) {
+            const _ptr = mtmp.data;
+            const _mlet = (_ptr && (_ptr.mlet | 0)) || 0;
+            const _cnm = (otmp.corpsenm ?? -1) | 0;
+            /* C:1876-1881 — let a handful of corpse types thru to can_carry() */
+            if ((otmp.otyp | 0) === CORPSE_OTYP_MV && _mlet !== S_NYMPH_MV
+                && !touch_petrifies_mv(_cnm)
+                && _cnm !== PM_LIZARD_MV
+                && !acidic_mv(_cnm))
+                continue;
+            /* C:1882-1883 */
+            if (!await can_touch_safely(mtmp, otmp))
+                continue;
+            /* C:1884-1886 */
+            const carryamt = can_carry(mtmp, otmp);
+            if (carryamt === 0)
+                continue;
+            /* C:1887-1891 handle cases where the critter can only get some.
+             * splitobj() -> nextoid() -> next_ident() fires rnd(2)
+             * (mkobj.c:522), so a partial take is NOT RNG-free. */
+            let otmp3 = otmp;
+            if (carryamt !== ((otmp.quan ?? 1) | 0))
+                otmp3 = (await splitobj(otmp, carryamt));
+            /* C:1892-1901 — distant_name()'s side effects run even when the
+             * message is not printed, so it is called before the extract. */
+            if (cansee(mtmp.mx | 0, mtmp.my | 0)) {
+                const otmpname = await distant_obj_name(otmp3);
+                if (game.flags?.verbose !== false)
+                    void pline(`${Monnam_dm(mtmp)} picks up ${otmpname}.`);
+            }
+            /* C:1902-1903 obj_extract_self(otmp3) — remove from floor */
+            obj_extract_floor(otmp3);
+            /* C:1903 mpickobj(mtmp, otmp3) — may merge and free otmp3 */
+            void (await mpickobj(mtmp, otmp3));
+            /* C:1904-1905 let them try to equip it on the next turn */
+            check_gear_next_turn(mtmp);
+            newsym(mtmp.mx | 0, mtmp.my | 0);
+            return true; /* C:1907 pick only one object */
+        }
+    }
+    return false;
+}
+
+/* C ref: monmove.c:2140-2183 can_hide_under_obj(obj).
+ * Returns TRUE if a mon can hide under the obj.
+ * NO_HIDING_UNDER_STATUES is #ifdef'd out in the C source (never defined),
+ * so the statue-exclusion loop at the end is dead code and is not ported. */
+export function can_hide_under_obj(obj) {
+    let o = obj;
+    if (!o || (o.where | 0) !== OBJ_FLOOR)
+        return false;
+    /* can't hide in/on/under traps (except pits) even when there is an
+       object here; since obj is on floor, its <ox,oy> are up to date */
+    const t = t_at(o.ox | 0, o.oy | 0);
+    if (t && !is_pit(t.ttyp | 0))
+        return false;
+    /* can't hide under small amount of coins unless non-coins are also
+       present; we expect coins to be a single stack but don't assume that */
+    if ((o.oclass | 0) === 12 /* COIN_CLASS */) {
+        let coinquan = 0;
+        do {
+            coinquan += o.quan;
+            if (coinquan >= 10)
+                break; /* fall through to other checks */
+            o = o.nexthere;
+            if (!o)
+                return false; /* whole pile was less than 10 coins */
+        } while ((o.oclass | 0) === 12 /* COIN_CLASS */);
+    }
+    return true; /* can hide under the object */
+}
+
+/* C ref: monmove.c:204-239 dochugw(mtmp, chug).
+ * Move a monster; if a threat to busy hero, stop doing whatever it is.
+ * chug=true: monster is moving (call dochug, then check if hero should stop).
+ * chug=false: monster was just created/teleported (don't call dochug, just check if hero should stop).
+ * Returns the result of dochug (0 if chug=false). */
+export async function dochugw(mtmp, chug) {
+    const u = game.u;
+    const go = game;
+
+    /* Save mtmp's location before dochug() in case it changes */
+    const x = mtmp.mx | 0;
+    const y = mtmp.my | 0;
+
+    /* skip canspotmon() if occupation is null/falsy */
+    const already_saw_mon = (chug && go.occupation) ? canspotmon(mtmp) : 0;
+
+    /* Call dochug if chug=true, else return 0 */
+    const rd = chug ? await dochug(mtmp) : 0;
+
+    /* Check whether hero notices monster and stops current activity.
+     * All conditions must be true for stop_occupation() to be called.
+     * Condition order matches C source (lines 224-235). */
+    if (go.occupation && !rd
+        /* monster is hostile and can attack (or hallucination distorts knowledge) */
+        && (((u.flags && u.flags.hallucination) || 0) || (!mtmp.mpeaceful && !noattacks(mtmp.data)))
+        /* it's close enough to be a threat */
+        && mdistu(mtmp) <= ((BOLT_LIM + 1) * (BOLT_LIM + 1))
+        /* and either couldn't see it before, or it was too far away */
+        && (!already_saw_mon || !couldsee(x, y)
+            || distu(x, y) > ((BOLT_LIM + 1) * (BOLT_LIM + 1)))
+        /* can see it now, or sense it and would normally see it */
+        && canspotmon(mtmp) && couldsee(mtmp.mx | 0, mtmp.my | 0)
+        /* monster isn't paralyzed or afraid (scare monster/Elbereth) */
+        && mtmp.mcanmove && !onscary_stub(u.ux | 0, u.uy | 0, mtmp)) {
+        /* C monmove.c:235 — stop_occupation(), the WHOLE function.  This site
+         * used to inline only two of its three effects (`go.occupation = null;
+         * go.occtxt = null;`), silently dropping the "You stop <occtxt>."
+         * topline and the nomul(0).  Measured: this branch executes ZERO times
+         * across all 44 public sessions (probe counter, whole corpus), and
+         * frozen/score.sh is bit-identical before and after — 5900/11405, 16
+         * passing, zero sessions changed on screens OR rng.  It is kept because
+         * the partial inline is wrong the moment it does fire, not because it
+         * pays today. */
+        await stop_occupation();
+    }
+
+    return rd;
+}
+
+export function m_postmove_effect(mtmp) {
+    /* C monmove.c:674 — `boolean is_u = (mtmp == &gy.youmonst)`.  C's gy is the
+     * decl.c global struct that OWNS youmonst; this port's `game.gy` is a
+     * different object entirely (the sp_lev maze-bounds struct, js/sp_lev.js:
+     * 5304), and it has no `youmonst` member — the probe measures this read as
+     * absent in all 44 sessions, so is_u could never be 1.  The hero monst
+     * lives at `game.youmonst` (written by set_uasmon, js/polyself.js:228),
+     * which is the spelling this same file already uses at :1426 and :3109. */
+    const is_u = (mtmp === game.youmonst) ? 1 : 0;
+    const x = is_u ? game.u.ux0 : mtmp.mx;
+    const y = is_u ? game.u.uy0 : mtmp.my;
+
+    if ((mtmp.data.pmidx | 0) === PM_HEZROU) {
+        /* Hezrous create clouds of stench */
+        create_gas_cloud(x, y, 1, 8);
+    } else if ((mtmp.data.pmidx | 0) === PM_STEAM_VORTEX && !mtmp.mcan) {
+        /* Steam Vortex creates harmless vapor when not enchanted */
+        create_gas_cloud(x, y, 1, 0);
+    }
+}
+
+/* Unported helper for m_everyturn_effect: the harness-side C event_log() has
+ * no JS counterpart and emits no RNG. */
+function event_log() { /* logging — not yet ported */ }
+
+/* C ref: monmove.c:665-685 m_everyturn_effect(mtmp).  Called from mon.c:1230
+ * (movemon's per-monster loop, after the DEADMONSTER/mon_offmap checks and
+ * BEFORE the movement >= NORMAL_SPEED gate) and from allmain.c:538 for the
+ * hero.  NOTE the coordinate source differs from m_postmove_effect: C reads
+ * u.ux/u.uy here (monmove.c:671) and u.ux0/u.uy0 there (monmove.c:697),
+ * because this one runs before the hero has moved and that one after. */
+export function m_everyturn_effect(mtmp) {
+    /* C monmove.c:652 — same `mtmp == &gy.youmonst` test, same repair as
+     * m_postmove_effect above. */
+    const is_u = (mtmp === game.youmonst) ? 1 : 0;
+    const x = is_u ? game.u.ux : mtmp.mx;
+    const y = is_u ? game.u.uy : mtmp.my;
+
+    if ((mtmp.data.pmidx | 0) === PM_FOG_CLOUD) {
+        /* don't leave a vapor cloud if some other gas cloud is already
+           present, or when flowing under closed doors so that visibility
+           changes aren't mixed with messages about doing such */
+        event_log("fog_everyturn[%d@%d,%d cd=%d vr=%d]",
+                  mtmp.data.pmidx | 0, x, y,
+                  closed_door(x, y) ? 1 : 0,
+                  visible_region_at(x, y) ? 1 : 0);
+        if (!closed_door(x, y) && !visible_region_at(x, y))
+            create_gas_cloud(x, y, 1, 0); /* harmless vapor */
+    }
+}
+
+/* C ref: region.c:1207 create_gas_cloud — real port lives in js/region.js
+ * (region.c is its C home).  Re-exported here because monmove.c's three call
+ * sites (683 fog vapor, 702 hezrou stench, 704 steam-vortex vapor) are the
+ * only ones this port wires. */
+export { create_gas_cloud };
+
+/* C ref: monflag.h:87 M1_AMORPHOUS — can flow under doors */
+const M1_AMORPHOUS = 0x00000004;
+/* C monmove.c:2313-2352 stuff_prevents_passage(mtmp) — "Inventory prevents
+ * passage under door.  Used by can_ooze() and can_fog()."  RNG-free.
+ *
+ * The comment that used to sit on the throw here said it was "only reached when
+ * amorphous (|| short-circuit)".  That is true of can_ooze() and FALSE of
+ * can_fog(), which has no amorphous term at all — and can_fog is the caller
+ * that reaches it: measured 2026-08-17, seed0360-wizard-world-tour HALTS the
+ * scored run on this throw at frame 766/833, via
+ * dochug -> set_apparxy -> can_fog -> here (a vampshifter on the level).
+ *
+ * Ported verbatim, INCLUDING C's bug on the first test: `typ == COIN_CLASS`
+ * compares an OTYP against an OCLASS constant (COIN_CLASS is 12, i.e. otyp 12,
+ * an arrow-class weapon), where every other line in the function that means
+ * "class" spells it obj->oclass.  Cardinal Rule 1 — port the bug; the JS keeps
+ * the same comparison so the same objects pass and fail as in C.
+ *
+ * Constants below resolved with tools/c-const-oracle.mjs against
+ * nethack-c-v5/recorder (the 5.0 binary the corpus was recorded with), not
+ * transcribed from nethack-c/ (3.7). */
+const SPP_COIN_CLASS = 12, SPP_GEM_CLASS = 13, SPP_AMULET_CLASS = 5,
+      SPP_RING_CLASS = 4, SPP_VENOM_CLASS = 17, SPP_ARMOR_CLASS = 3;
+const SPP_ARROW = 18, SPP_BOOMERANG = 26, SPP_DAGGER = 34, SPP_CRYSKNIFE = 43,
+      SPP_SLING = 87, SPP_FEDORA = 92, SPP_LEATHER_JACKET = 135,
+      SPP_CREDIT_CARD = 223, SPP_CORPSE = 265, SPP_FORTUNE_COOKIE = 289,
+      SPP_CANDY_BAR = 288, SPP_PANCAKE = 290, SPP_LEMBAS_WAFER = 291,
+      SPP_LUMP_OF_ROYAL_JELLY = 286, SPP_SACK = 217, SPP_BAG_OF_HOLDING = 219,
+      SPP_BAG_OF_TRICKS = 220, SPP_OILSKIN_SACK = 218, SPP_LEASH = 236,
+      SPP_STETHOSCOPE = 237, SPP_BLINDFOLD = 233, SPP_TOWEL = 234,
+      SPP_TIN_WHISTLE = 245, SPP_MAGIC_WHISTLE = 246, SPP_MAGIC_MARKER = 242,
+      SPP_TIN_OPENER = 239, SPP_SKELETON_KEY = 221, SPP_LOCK_PICK = 222,
+      SPP_TALLOW_CANDLE = 224, SPP_WAX_CANDLE = 225, SPP_LARGE_BOX = 214;
+/* obj.h:288-296 — is_gloves/is_cloak/is_shirt are oclass == ARMOR_CLASS &&
+ * objects[otyp].oc_armcat == ARM_*.  js/armor_data.js holds oc_armcat as
+ * `armcat`, with ARM_GLOVES 3, ARM_CLOAK 5, ARM_SHIRT 6. */
+const SPP_ARM_GLOVES = 3, SPP_ARM_CLOAK = 5, SPP_ARM_SHIRT = 6;
+function _spp_armcat(obj, cat) {
+    if ((obj.oclass | 0) !== SPP_ARMOR_CLASS)
+        return false;
+    const row = ARMOR_DATA[obj.otyp | 0];
+    return !!row && (row.armcat | 0) === cat;
+}
+/* obj.h:337 Is_container(o) — otyp in [LARGE_BOX, BAG_OF_TRICKS] */
+function _spp_is_container(obj) {
+    const typ = obj.otyp | 0;
+    return typ >= SPP_LARGE_BOX && typ <= SPP_BAG_OF_TRICKS;
+}
+/* mondata.h:11 verysmall(ptr) = (ptr->msize < MZ_SMALL) */
+function _spp_verysmall(mndx) {
+    const msize = (mndx >= 0 && mndx < _MONS_MSIZE_MV.length)
+        ? (_MONS_MSIZE_MV[mndx] | 0) : MZ_SMALL_MV;
+    return msize < MZ_SMALL_MV;
+}
+export function stuff_prevents_passage(mtmp) {
+    /* C: if (mtmp == &gy.youmonst) chain = gi.invent; else chain = mtmp->minvent; */
+    const chain = (mtmp === game.youmonst) ? game.invent : mtmp.minvent;
+
+    for (let obj = chain; obj; obj = obj.nobj) {
+        const typ = obj.otyp | 0;
+
+        if (typ === SPP_COIN_CLASS && (obj.quan | 0) > 100)
+            return true;
+        if ((obj.oclass | 0) !== SPP_GEM_CLASS
+            && !(typ >= SPP_ARROW && typ <= SPP_BOOMERANG)
+            && !(typ >= SPP_DAGGER && typ <= SPP_CRYSKNIFE) && typ !== SPP_SLING
+            && !_spp_armcat(obj, SPP_ARM_CLOAK) && typ !== SPP_FEDORA
+            && !_spp_armcat(obj, SPP_ARM_GLOVES)
+            && typ !== SPP_LEATHER_JACKET && typ !== SPP_CREDIT_CARD
+            && !_spp_armcat(obj, SPP_ARM_SHIRT)
+            && !(typ === SPP_CORPSE && _spp_verysmall(obj.corpsenm | 0))
+            && typ !== SPP_FORTUNE_COOKIE && typ !== SPP_CANDY_BAR
+            && typ !== SPP_PANCAKE && typ !== SPP_LEMBAS_WAFER
+            && typ !== SPP_LUMP_OF_ROYAL_JELLY
+            && (obj.oclass | 0) !== SPP_AMULET_CLASS
+            && (obj.oclass | 0) !== SPP_RING_CLASS
+            && (obj.oclass | 0) !== SPP_VENOM_CLASS && typ !== SPP_SACK
+            && typ !== SPP_BAG_OF_HOLDING && typ !== SPP_BAG_OF_TRICKS
+            && !(typ === SPP_TALLOW_CANDLE || typ === SPP_WAX_CANDLE)
+            && typ !== SPP_OILSKIN_SACK && typ !== SPP_LEASH
+            && typ !== SPP_STETHOSCOPE && typ !== SPP_BLINDFOLD
+            && typ !== SPP_TOWEL
+            && typ !== SPP_TIN_WHISTLE && typ !== SPP_MAGIC_WHISTLE
+            && typ !== SPP_MAGIC_MARKER && typ !== SPP_TIN_OPENER
+            && typ !== SPP_SKELETON_KEY && typ !== SPP_LOCK_PICK)
+            return true;
+        if (_spp_is_container(obj) && obj.cobj)
+            return true;
+    }
+    return false;
+}
+/* C ref: monmove.c can_ooze(struct monst *mtmp) — amorphous & unencumbered → can flow under doors.
+ *   if (!amorphous(mtmp->data) || stuff_prevents_passage(mtmp)) return FALSE; return TRUE;
+ *   amorphous(ptr) = (ptr->mflags1 & M1_AMORPHOUS) != 0L */
+export function can_ooze(mtmp) {
+    if (!((mtmp.data.mflags1 & M1_AMORPHOUS) !== 0) || stuff_prevents_passage(mtmp))
+        return false;
+    return true;
+}
+
+/* C ref: monmove.c can_fog(struct monst *mtmp) — vampire-shifter fog-form check.
+ *   if (!(svm.mvitals[PM_FOG_CLOUD].mvflags & G_GENOD) && is_vampshifter(mtmp)
+ *       && !Protection_from_shape_changers && !stuff_prevents_passage(mtmp))
+ *       return TRUE; */
+const PM_FOG_CLOUD = 106;
+const PM_VAMPIRE = 226;
+const PM_VAMPIRE_LORD = 227;
+const PM_VLAD_THE_IMPALER = 228;
+const G_GENOD_MV = 0x02;
+
+/* is_vampshifter: local copy from js/mhitm.js (not exported) */
+function is_vampshifter(mon) {
+    return mon.cham === PM_VAMPIRE || mon.cham === PM_VAMPIRE_LORD || mon.cham === PM_VLAD_THE_IMPALER;
+}
+
+export function can_fog(mtmp) {
+    /* Protection_from_shape_changers: no source in scored corpus → always false */
+    if (!((game.mvitals?.[PM_FOG_CLOUD]?.mvflags | 0) & G_GENOD_MV) && is_vampshifter(mtmp)
+        && !false && !stuff_prevents_passage(mtmp))
+        return true;
+    return false;
+}
+
+/* C ref: monmove.c:133 m_can_break_boulder + is_rider (mondata.h:86) */
+const MS_LEADER_MCBB = 36;
+const PM_DEATH_MCBB = 311, PM_FAMINE_MCBB = 313, PM_PESTILENCE_MCBB = 312;
+function is_rider_mcbb(data) {
+    if (!data) return false;
+    const pmidx = data.pmidx | 0;
+    return pmidx === PM_DEATH_MCBB || pmidx === PM_FAMINE_MCBB || pmidx === PM_PESTILENCE_MCBB;
+}
+export function m_can_break_boulder(mtmp) {
+    return is_rider_mcbb(mtmp.data)
+        || (!mtmp.mspec_used
+            && (mtmp.isshk || mtmp.ispriest || (mtmp.data.msound === MS_LEADER_MCBB)));
+}
+
+/* C monmove.c:148-175 m_break_boulder().  The monster path uses the same
+ * fracture_rock conversion as the zap path, but does not apply hero-only
+ * Sokoban/billing side effects. */
+export async function m_break_boulder_mv(mtmp, x, y) {
+    const boulder = sobj_at(BOULDER_OTYP_MV, x, y);
+    if (!boulder || !m_can_break_boulder(mtmp))
+        return false;
+    const rider = is_rider_mcbb(mtmp.data);
+    if (!rider) {
+        const deaf = !!(game.u?.uprops?.[DEAF]?.intrinsic
+                     || game.u?.uprops?.[DEAF]?.extrinsic);
+        if (!deaf && mdistu(mtmp) < 16) {
+            if (canspotmon(mtmp))
+                await pline(`${Monnam_dm(mtmp)} mutters ${mtmp.ispriest ? 'a prayer' : 'an incantation'}.`);
+        }
+        mtmp.mspec_used = (mtmp.mspec_used | 0) + rn1(20, 10);
+    }
+    if (cansee(x, y))
+        await pline('The boulder falls apart.');
+    await fracture_rock(boulder);
+    return true;
+}
+
+/* C ref: monmove.c:1322-1334 m_avoid_kicked_loc — does monster avoid a location
+ * the hero just kicked? Returns true if monster is peaceful or tame, can see,
+ * not confused/stunned, no Conflict, and the location matches gk.kickedloc
+ * and is adjacent to hero (next2u). */
+export function m_avoid_kicked_loc(mtmp, nx, ny) {
+    const kl = game.kickedloc;
+    if (!kl) return false;
+    const kx = (kl.x | 0), ky = (kl.y | 0);
+    /* isok: x >= 1 && x <= COLNO_MV-1 && y >= 0 && y <= ROWNO_MV-1 */
+    const klok = kx >= 1 && kx <= (COLNO_MV - 1) && ky >= 0 && ky <= (ROWNO_MV - 1);
+
+    /* C: (mtmp->mpeaceful || mtmp->mtame) && mtmp->mcansee &&
+     *     !mtmp->mconf && !mtmp->mstun && !Conflict &&
+     *     isok(gk.kickedloc.x, gk.kickedloc.y) &&
+     *     nx == gk.kickedloc.x && ny == gk.kickedloc.y && next2u(nx, ny)
+     * Conflict not modeled (stub false) — no Conflict source in current sessions.
+     * next2u(nx, ny) = distu(nx, ny) <= 2 */
+    const u = game.u;
+    if (!u) return false;
+    const dx = (nx | 0) - (u.ux | 0);
+    const dy = (ny | 0) - (u.uy | 0);
+    const distu_sq = ((dx * dx) + (dy * dy)) | 0;
+
+    return ((!!(mtmp.mpeaceful | 0)) || (!!(mtmp.mtame | 0)))
+        && (!!(mtmp.mcansee | 0))
+        && !(mtmp.mconf | 0) && !(mtmp.mstun | 0)
+        /* && !Conflict (unmodeled → false) */
+        && klok
+        && (nx | 0) === kx && (ny | 0) === ky
+        && distu_sq <= 2;
+}
+
+
+/* C ref: monflag.h:108 M1_REGEN — monster regenerates hit points */
+const M1_REGEN_MON_REGEN = 0x00800000;
+
+/* C ref: mon.c:4585 healmon().  The canonical body lives in mklev.js and is
+ * already used by the other healing callers; keep this export as a thin
+ * compatibility wrapper for monmove's historical public surface. */
+export function healmon(mon, hpmax, hp) {
+    return healmon_real(mon, hpmax, hp);
+}
+
+/* C ref: dogmove.c:1448-1458 finish_meating().  Share the production body
+ * with dogmove/mhitm so mimic appearance cleanup and repainting stay aligned. */
+export function finish_meating(mon) {
+    return finish_meating_real(mon);
+}
+
+/* C ref: monmove.c:307-321 mon_regen — regenerate lost hit points and digest meals.
+ * regenerates(ptr) = (ptr->mflags1 & M1_REGEN) != 0 (from mondata.h)
+ * No RNG consumed. */
+export function mon_regen(mon, digest_meal) {
+    /* C monmove.c:310: if (svm.moves % 20 == 0 || regenerates(mon->data)) */
+    const regenerates = (mon.data.mflags1 & M1_REGEN_MON_REGEN) !== 0;
+    if (((game.moves || 0) % 20) === 0 || regenerates) {
+        /* C monmove.c:311: healmon(mon, 1, 0) */
+        healmon(mon, 1, 0);
+    }
+
+    /* C monmove.c:312-313: if (mon->mspec_used) mon->mspec_used-- */
+    if (mon.mspec_used) {
+        mon.mspec_used--;
+    }
+
+    /* C monmove.c:314-320: if (digest_meal) { if (mon->meating) { ... } } */
+    if (digest_meal) {
+        if (mon.meating) {
+            mon.meating--;
+            if (mon.meating <= 0) {
+                /* C monmove.c:318: finish_meating(mon) */
+                finish_meating(mon);
+            }
+        }
+    }
+}
+
+
+/* C ref: monmove.c:1337-1349 m_avoid_soko_push_loc(mtmp, nx, ny).
+ * "monster avoids a location nx, ny, if we're in sokoban, and there's a
+ * boulder between the location and hero".  RNG-free on every path.
+ *
+ *   if (Sokoban && (mtmp->mpeaceful || mtmp->mtame)
+ *       && !mtmp->mconf && !mtmp->mstun && !Conflict
+ *       && (dist2(nx, ny, u.ux, u.uy) == 4)
+ *       && sobj_at(BOULDER, nx + sgn(u.ux - nx), ny + sgn(u.uy - ny)))
+ *       return TRUE;
+ *   return FALSE;
+ *
+ * Sole C caller is dogmove.c:1238 (monmove.c:1977's candidate loop calls only
+ * m_avoid_kicked_loc), so js/dogmove.js dog_move imports this one definition.
+ * Conflict is unmodeled in the port (no Conflict source exists in any current
+ * session), so !Conflict is always true here — faithful for the scored corpus.
+ * KNOWN GAP: none on the RNG axis; C draws no RNG anywhere in this function,
+ * so the unmodeled Conflict term cannot shift the RNG stream either way. */
+export function m_avoid_soko_push_loc(mtmp, nx, ny) {
+    const BOULDER = 475; /* C ref: objects.h BOULDER otyp */
+
+    /* C rm.h:525 #define Sokoban svl.level.flags.sokoban_rules */
+    if (!(game.level?.flags?.sokoban_rules ?? game.sokoban)) return false;
+
+    if (!mtmp) return false;
+    /* C: (mtmp->mpeaceful || mtmp->mtame) */
+    if (!((mtmp.mpeaceful | 0) || (mtmp.mtame | 0))) return false;
+
+    /* C: !mtmp->mconf && !mtmp->mstun */
+    if ((mtmp.mconf | 0) || (mtmp.mstun | 0)) return false;
+
+    /* C: && !Conflict (unmodeled → always true) */
+
+    const u = game.u;
+    if (!u) return false;
+
+    /* C: dist2(nx, ny, u.ux, u.uy) == 4 (i.e. exactly two squares away) */
+    const dx = ((nx | 0) - (u.ux | 0)) | 0;
+    const dy = ((ny | 0) - (u.uy | 0)) | 0;
+    if ((((dx * dx) + (dy * dy)) | 0) !== 4) return false;
+
+    /* C: sobj_at(BOULDER, nx + sgn(u.ux - nx), ny + sgn(u.uy - ny)) */
+    const boulder_x = ((nx | 0) + sgn(((u.ux | 0) - (nx | 0)) | 0)) | 0;
+    const boulder_y = ((ny | 0) + sgn(((u.uy | 0) - (ny | 0)) | 0)) | 0;
+
+    return !!sobj_at(BOULDER, boulder_x, boulder_y);
+}
+
+function sgn(x) { return x > 0 ? 1 : x < 0 ? -1 : 0; }
+
+// C ref: dogmove.c:146-153 cursed_object_at(x,y) — local copy (matches the
+// existing multi-copy convention for small predicates in this codebase, e.g.
+// t_at has independent copies in trap.js/eat.js/dokick.js/makemon.js; avoids
+// a new export off dogmove.js for a 5-line helper).
+function cursed_object_at_mv(x, y) {
+    for (let o = game.level?.levelObjects?.[x]?.[y]; o; o = o.nexthere) {
+        if (o.cursed) return true;
+    }
+    return false;
+}
+
+// C ref: rm.h is_pool(x,y) — POOL..DRAWBRIDGE_UP inclusive (rm.h enum), same
+// range mfndpos_nontame already tests inline (monmove.js:443) and js/mklev.js
+// is_pool_mv/js/dokick.js is_pool use; not exported from any of those three,
+// so a fourth local copy here for undesirable_disp's use.
+function is_pool_mv2(x, y) {
+    const loc = game.level?.locations?.[x]?.[y];
+    if (!loc) return false;
+    const t = loc.typ | 0;
+    return t >= POOL_TYP_MV && t <= 19; /* POOL, MOAT, WATER, DRAWBRIDGE_UP */
+}
+
+// undesirable_disp — C ref: monmove.c:2301-2336 (window 2292-2336 incl.
+// banner comment). should_displace's only non-trivial dependency (keystone
+// spec §2.3). RNG: rn2(40) at monmove.c:2311 (pet+seen-trap) and :2318
+// (hostile+trap+knows-trap-type) — the two branches are mutually exclusive
+// (is_pet gates which one can fire), so at most one rn2(40) per call.
+export function undesirable_disp(mtmp, x, y) {
+    const is_pet = !!(mtmp.mtame | 0) && !(mtmp.isminion | 0);
+    const trap = t_at(x, y);
+
+    if (is_pet) {
+        if (trap && trap.tseen && rn2(40)) return true;
+        if (cursed_object_at_mv(x, y)) return true;
+    } else if (trap && rn2(40) && mon_knows_traps(mtmp, trap.ttyp | 0)) {
+        return true;
+    }
+    if (!accessible(x, y)
+        && !(is_pool_mv2(x, y) && is_pool_mv2(mtmp.mx | 0, mtmp.my | 0)))
+        return true;
+    return false;
+}
+
+// should_displace — ported from monmove.c:1088-1129
+// Returns true if mtmp should displace a monster at the target position
+export function should_displace(mtmp, data, ggx, ggy) {
+    let shortest_with_displacing = -1;
+    let shortest_without_displacing = -1;
+    let count_without_displacing = 0;
+
+    for (let i = 0; i < data.cnt; i++) {
+        const nx = data.poss[i].x;
+        const ny = data.poss[i].y;
+        const ndist = dist2(nx, ny, ggx, ggy);
+
+        // C mon.c MON_AT(nx,ny): real game.fmon scan (was hardcoded false —
+        // keystone spec §4's "capture-blind" carve-out is about the REPLAY
+        // FIXTURE only, where game.fmon is never populated; in live play
+        // game.fmon IS populated, so hardcoding false here made should_displace
+        // a permanent no-op once wired into dog_move/m_move, defeating the
+        // wiring's purpose. mtmp2 itself is unused by should_displace (the C
+        // only needs MON_AT's truth value here, unlike mfndpos's mm_aggression
+        // branch), so a boolean-returning scan is enough — no m_at import churn.
+        let monAt = false;
+        for (let m = game.fmon; m; m = m.nmon) {
+            if (m !== mtmp && (m.mhp | 0) > 0 && (m.mx | 0) === nx && (m.my | 0) === ny) {
+                monAt = true;
+                break;
+            }
+        }
+        if (monAt && (data.info[i] & ALLOW_MDISP_MV) && !(data.info[i] & ALLOW_M_MV)
+            && !undesirable_disp(mtmp, nx, ny)) {
+            if (shortest_with_displacing === -1
+                || (ndist < shortest_with_displacing))
+                shortest_with_displacing = ndist;
+        } else {
+            if ((shortest_without_displacing === -1)
+                || (ndist < shortest_without_displacing))
+                shortest_without_displacing = ndist;
+            count_without_displacing++;
+        }
+    }
+
+    if (shortest_with_displacing > -1
+        && (shortest_with_displacing < shortest_without_displacing
+            || !count_without_displacing))
+        return true;
+    return false;
+}
+
+// C ref: monmove.c:1133-1162 m_digweapon_check(mtmp, nix, niy)
+// boolean m_digweapon_check(struct monst *mtmp, coordxy nix, coordxy niy) {
+//   boolean can_tunnel = FALSE;
+//   struct obj *mw_tmp = MON_WEP(mtmp);
+//   if (!Is_rogue_level(&u.uz))
+//       can_tunnel = tunnels(mtmp->data);
+//   if (can_tunnel && needspick(mtmp->data) && !mwelded(mw_tmp)
+//       && (may_dig(nix, niy) || closed_door(nix, niy))) {
+//       if (closed_door(nix, niy)) {
+//           if (!mw_tmp || !is_pick(mw_tmp) || !is_axe(mw_tmp))
+//               mtmp->weapon_check = NEED_PICK_OR_AXE;
+//       } else if (IS_TREE(levl[nix][niy].typ)) {
+//           if (!mw_tmp || !is_axe(mw_tmp))
+//               mtmp->weapon_check = NEED_AXE;
+//       } else if (IS_STWALL(levl[nix][niy].typ)) {
+//           if (!mw_tmp || !is_pick(mw_tmp))
+//               mtmp->weapon_check = NEED_PICK_AXE;
+//       }
+//       if (mtmp->weapon_check >= NEED_PICK_AXE && mon_wield_item(mtmp))
+//           return TRUE;
+//   }
+//   return FALSE;
+// }
+export async function m_digweapon_check(mtmp, nix, niy) {
+    // mw_tmp (MON_WEP(mtmp), a pure pointer read with no side effects) is
+    // read lazily here rather than unconditionally at function entry like
+    // the C source — behaviorally identical (C's eager read has no visible
+    // effect before its first use below), and avoids touching mtmp.mw on
+    // the can_tunnel===false / needspick===false paths where C never uses it.
+    let can_tunnel = false;
+
+    if (!Is_rogue_level(game.u.uz))
+        can_tunnel = ((mtmp.data.mflags1 | 0) & M1_TUNNEL_MDW) !== 0;
+
+    if (can_tunnel && ((mtmp.data.mflags1 | 0) & M1_NEEDPICK_MDW) !== 0) {
+        const mw_tmp = mtmp.mw;
+        if (!mwelded(mw_tmp)
+            && (may_dig(nix, niy) || closed_door(nix, niy))) {
+            const typ = game.level?.locations?.[nix]?.[niy]?.typ;
+            if (closed_door(nix, niy)) {
+                if (!mw_tmp || !is_pick(mw_tmp) || !((mw_tmp.otyp | 0) === AXE_MDW))
+                    mtmp.weapon_check = NEED_PICK_OR_AXE;
+            } else if (IS_TREE(typ)) {
+                if (!mw_tmp || !((mw_tmp.otyp | 0) === AXE_MDW))
+                    mtmp.weapon_check = NEED_AXE;
+            } else if (IS_STWALL(typ)) {
+                if (!mw_tmp || !is_pick(mw_tmp))
+                    mtmp.weapon_check = NEED_PICK_AXE;
+            }
+            if ((mtmp.weapon_check | 0) >= NEED_PICK_AXE && await mon_wield_item(mtmp))
+                return true;
+        }
+    }
+    return false;
+}
+
+/* check whether a monster is carrying a locking/unlocking tool */
+/* C ref: monmove.c:96-105 */
+export function monhaskey(mon, for_unlocking) {
+    if (for_unlocking && m_carrying(mon, CREDIT_CARD))
+        return true;
+    return !!(m_carrying(mon, SKELETON_KEY) || m_carrying(mon, LOCK_PICK));
+}

@@ -118,6 +118,7 @@ import {
 import { config_error_add } from './botl.js';
 import { an, doname, makeplural, ansimpleoname, the } from './objnam.js';
 import { m_monnam, mon_nam, a_monnam, YMonnam, docallcmd, x_monnam } from './do_name.js';
+import { dobugreport } from './report.js';
 import { spoteffects, dopickup, doloot, dotip } from './pickup.js';
 import { objects_at, sobj_at } from './mkobj.js';
 import { stairway_at, On_stairs_up, On_stairs_dn, u_on_newpos, maybe_adjust_hero_bubble, selection_new, selection_getpoint, selection_setpoint, selection_getbounds } from './mklev.js';
@@ -1828,6 +1829,7 @@ const FUNCT_TXT = new Map([
     [dovspell, 'showspells'],
     [dodiscovered, 'known'],
     [dotogglepickup, 'autopickup'],
+    [dobugreport, 'bugreport'], // C cmd.c:1685 (after autopickup, its C predecessor)
     [doset_simple, 'options'],
     [doprgold, 'showgold'],
     [doprwep, 'seeweapon'],

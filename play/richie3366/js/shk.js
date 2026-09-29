@@ -231,6 +231,13 @@ export function muteshk(shkp) {
     return (ms | 0) <= MS_ANIMAL;
 }
 
+/**
+ * C ref: shk.c is_fshk `:5011–5015` — shopkeeper actively following the hero.
+ */
+export function is_fshk(mtmp) {
+    return !!(mtmp?.isshk && ESHK(mtmp)?.following);
+}
+
 /** C ref: hacklib.c s_suffix */
 function s_suffix(s) {
     const buf = String(s ?? '');
