@@ -167,12 +167,14 @@ const DGN_ALIGN_BITS = [
 // C decl.h emptystr[] — the bonetag default. A non-null pointer to "".
 const emptystr = '';
 
-const BRTYPE_MAP = {
-    stair: TBR_STAIR,
-    portal: TBR_PORTAL,
-    no_down: TBR_NO_DOWN,
-    no_up: TBR_NO_UP,
-};
+// C dungeon.c:872–879 brdirstr/brdirstr2i + brtypes/brtypes2i. The C
+// tables carry one trailing slot for the NULL terminator
+// (brdirstr2i[2] FALSE, brtypes2i[4] TBR_STAIR); luaL_checkoption
+// only returns 0..3, so that slot is unreachable here.
+const BR_DIR_STRS = ['up', 'down'];
+const BR_DIR_BITS = [true, false];
+const BR_TYPE_STRS = ['stair', 'portal', 'no_down', 'no_up'];
+const BR_TYPE_BITS = [TBR_STAIR, TBR_PORTAL, TBR_NO_DOWN, TBR_NO_UP];
 
 // Level name → game field for quick topology access (dungeon.c level_map[]).
 const LEVEL_MAP = [
@@ -317,27 +319,35 @@ function luaL_checkoption(value, defval, opts) {
 }
 
 /**
- * C nhlua.c get_table_int `:1016–1025`. Mandatory integer field.
+ * C nhlua.c get_table_int `:1016–1025`. Mandatory integer field:
+ * getfield, checkinteger, pop. The pop leaves no stack value.
  * @param {object} tbl
  * @param {string} name
  * @returns {number}
  */
 function get_table_int(tbl, name) {
-    return luaL_checkinteger_dgn(lua_field(tbl, name));
+    const v = lua_field(tbl, name); // C :1019 lua_getfield(L, -1, name)
+    const ret = luaL_checkinteger_dgn(v); // C :1020 (int) luaL_checkinteger
+    // C :1021 lua_pop(L, 1) — no stack slot is left behind.
+    return ret; // C :1022
 }
 
 /**
- * C nhlua.c get_table_int_opt `:1027–1039`. Nil keeps defval; any other
- * value is checkinteger. The lua_pop of the field is not a value.
+ * C nhlua.c get_table_int_opt `:1028–1039`. ret starts at defval; a
+ * non-nil field is checkinteger. The lua_pop of the field is not a value.
  * @param {object} tbl
  * @param {string} name
  * @param {number} defval
  * @returns {number}
  */
 function get_table_int_opt(tbl, name, defval) {
-    const v = lua_field(tbl, name);
-    if (lua_type(v) === 'nil') return defval | 0;
-    return luaL_checkinteger_dgn(v);
+    let ret = defval | 0; // C :1031 int ret = defval
+    const v = lua_field(tbl, name); // C :1033 lua_getfield(L, -1, name)
+    if (lua_type(v) !== 'nil') { // C :1034 !lua_isnil
+        ret = luaL_checkinteger_dgn(v); // C :1035 (int) luaL_checkinteger
+    }
+    // C :1037 lua_pop(L, 1).
+    return ret; // C :1038
 }
 
 /**
@@ -398,7 +408,10 @@ function get_table_str_opt(tbl, name, defval) {
  * @returns {number}
  */
 function get_table_option(tbl, name, defval, opts) {
-    return luaL_checkoption(lua_field(tbl, name), defval, opts);
+    const v = lua_field(tbl, name); // C :1129 lua_getfield(L, -1, name)
+    const ret = luaL_checkoption(v, defval, opts); // C :1130 luaL_checkoption
+    // C :1131 lua_pop(L, 1).
+    return ret; // C :1132
 }
 
 /**
@@ -790,44 +803,73 @@ function init_dungeon_levels(levels, pd, dngidx) {
     }
 }
 
+/**
+ * C ref: dungeon.c init_dungeon_branches `:866–930`.
+ * `branches` is the table C has on the stack after lua_getfield
+ * "branches" (the caller checked LUA_TTABLE). JS arrays are 0-based;
+ * C indexes f+1. Names stay on the proto (C frees only br_chain).
+ * panic is a throw; free is GC.
+ * @param {object} branches
+ * @param {object} pd
+ * @param {number} dngidx
+ */
 function init_dungeon_branches(branches, pd, dngidx) {
-    const nbranches = branches?.length || 0;
+    // C :885–888 lua_len, (int) lua_tointeger, store, lua_pop of the length.
+    const nbranches = lua_len(branches);
     pd.tmpdungeon[dngidx].branches = nbranches;
-    for (let f = 0; f < nbranches; f++) {
-        const B = branches[f];
-        const tmpb = {
-            name: B.name,
-            lev: { base: B.base, rand: B.range ?? 0 },
-            type: BRTYPE_MAP[B.branchtype || 'stair'] ?? TBR_STAIR,
-            up: (B.direction || 'down') === 'up',
-            chain: -1,
-        };
-        if (B.chainlevel) {
-            // C: for (bi = 0; bi < pd->n_levs + f - 1; bi++)
-            // At branch-parse time levels for this dungeon are already in pd.
-            for (let bi = 0; bi < pd.n_levs + f - 1; bi++) {
-                if (pd.tmplevel[bi]?.name === B.chainlevel) {
-                    tmpb.chain = bi;
-                    break;
-                }
-            }
-            if (tmpb.chain === -1) {
-                // Prefer matching among all levels so far (same as successful C path).
-                for (let bi = 0; bi < pd.n_levs; bi++) {
-                    if (pd.tmplevel[bi].name === B.chainlevel) {
-                        tmpb.chain = bi;
-                        break;
+    for (let f = 0; f < nbranches; f++) { // C :889
+        // C :890–891 lua_pushinteger(f + 1); lua_gettable.
+        const row = branches[f];
+        if (lua_type(row) === 'table') { // C :892
+            const br_name = get_table_str(row, 'name'); // C :893
+            const br_chain = get_table_str_opt(row, 'chainlevel', null); // C :894
+            const br_base = get_table_int(row, 'base'); // C :895
+            const br_range = get_table_int_opt(row, 'range', 0); // C :896
+            const br_type = BR_TYPE_BITS[get_table_option(row, 'branchtype', 'stair', BR_TYPE_STRS)]; // C :897–898
+            const br_up = BR_DIR_BITS[get_table_option(row, 'direction', 'down', BR_DIR_STRS)]; // C :899–900
+            // C :901 slot first, then the stores below.
+            const tmpb = {
+                name: null,
+                lev: { base: 0, rand: 0 },
+                type: 0,
+                up: false,
+                chain: 0,
+            };
+            pd.tmpbranch[pd.n_brs + f] = tmpb;
+
+            debugpline_dungeon('BRANCH[%i]:%s,(%i,%i)', f, br_name, br_base, br_range); // C :903–904
+            tmpb.name = br_name; // C :905
+            tmpb.lev.base = br_base; // C :906
+            tmpb.lev.rand = br_range; // C :907
+            tmpb.type = br_type; // C :908
+            tmpb.up = br_up; // C :909
+            tmpb.chain = -1; // C :910
+            if (br_chain != null) { // C :911 pointer, so "" still chains
+                debugpline_dungeon('CHAINBRANCH:%s', br_chain); // C :912
+                // C :913. Levels of this dungeon are already in pd
+                // (init_dungeon_levels ran first); the bound can exceed
+                // n_levs for f >= 1, where C reads past the filled
+                // prefix — no match there, so the hole is skipped.
+                for (let bi = 0; bi < pd.n_levs + f - 1; bi++) {
+                    if (strcmp(pd.tmplevel[bi]?.name, br_chain) === 0) { // C :914
+                        tmpb.chain = bi; // C :915
+                        break; // C :916
                     }
                 }
+                if (tmpb.chain === -1) { // C :918
+                    throw new Error(`Could not chain branch ${br_name} to level ${br_chain}`); // C :919–920
+                }
+                // C :921 free(br_chain) — scope drop is GC.
             }
-            if (tmpb.chain === -1) {
-                throw new Error(`Could not chain branch ${B.name} to level ${B.chainlevel}`);
-            }
+        } else {
+            throw new Error(`dungeon[${dngidx}].branches[${f}] is not a hash`); // C :924
         }
-        pd.tmpbranch[pd.n_brs + f] = tmpb;
+        // C :925 lua_pop of this branch row.
     }
-    pd.n_brs += nbranches;
-    if (pd.n_brs > BRANCH_LIMIT) throw new Error('init_dungeon: too many branches');
+    pd.n_brs += nbranches; // C :927
+    if (pd.n_brs > BRANCH_LIMIT) { // C :928
+        throw new Error('init_dungeon: too many branches'); // C :929
+    }
 }
 
 function init_dungeon_set_entry(pd, dngidx) {

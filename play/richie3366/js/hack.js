@@ -25,7 +25,7 @@ import {
     xdir, ydir, N_DIRS, xytodir, directionname,
     DIR_W, DIR_N, DIR_E, DIR_S, DIR_NW, DIR_NE, DIR_SE, DIR_SW,
     OVERLOADED, SLT_ENCUMBER, MOD_ENCUMBER, HVY_ENCUMBER, Is_airlevel, Is_waterlevel,
-    Is_earthlevel, Is_medusa_level, Is_juiblex_level,
+    Is_earthlevel, Is_medusa_level, Is_juiblex_level, Is_rogue_level,
     TELEPORT, SEE_INVIS, POISON_RES, COLD_RES, SHOCK_RES, FIRE_RES,
     SLEEP_RES, DISINT_RES, TELEPORT_CONTROL, STEALTH, FAST, INVIS,
     INTRINSIC, UNCHANGING, PASSES_WALLS, WT_SQUEEZABLE_INV,
@@ -139,12 +139,17 @@ const LEATHER = 7;
 const CANDELABRUM_OF_INVOCATION =
     objectNames.indexOf('CANDELABRUM_OF_INVOCATION');
 
-/** C ref: hack.c doorless_door — D_NODOOR / D_BROKEN only. */
-function doorless_door(x, y) {
-    const loc = game.level?.at(x, y);
-    if (!loc || !IS_DOOR(loc.typ)) return false;
-    const m = loc.doormask || 0;
-    return m === D_NODOOR || m === D_BROKEN;
+/**
+ * C ref: hack.c doorless_door `:4062–4074` — doorway with no intact
+ * door (D_NODOOR/D_BROKEN mask only); rogue-level doors count as
+ * present (diagonal ban). Canonical home (C file); steed/cmd/mhitm
+ * import it (D-3105).
+ */
+export function doorless_door(x, y) {
+    const loc = game.level?.at(x, y); // C `:4065`
+    if (!loc || !IS_DOOR(loc.typ)) return false; // C `:4067–4068`
+    if (Is_rogue_level(game.u?.uz)) return false; // C `:4071–4072`
+    return !((loc.doormask || 0) & ~(D_NODOOR | D_BROKEN)); // C `:4073`
 }
 
 /** C ref: hack.c closed_door — D_CLOSED | D_LOCKED. */
@@ -200,7 +205,9 @@ export async function You_hear(line, ...the_args) {
  * `a_monst = mtmp`. C light.c stores the union (`ls->id = *id`) and
  * compares union bytes — monst pointer identity. JS light_base keys
  * LS_MONSTER entries by the stable monst object itself (same identity),
- * so the collapsed handle is mtmp. Caller: makemon.c newcham light arms.
+ * so the collapsed handle is mtmp. C callers: 14 timer/light arms
+ * (dog/makemon/mon/polyself/sp_lev/timeout); counterparts passing the
+ * monst itself are wired by identity (explicit: mklev/makemon/polyself/timeout).
  */
 export function monst_to_any(mtmp) {
     return mtmp;
@@ -212,10 +219,58 @@ export function monst_to_any(mtmp) {
  * `stop_timer` copy that union and match the object pointer.
  * JS timers key `TIMER_OBJECT` entries by the object itself
  * (same identity), so the collapsed handle is `obj`, as
- * `monst_to_any` collapses `a_monst`. Caller: `start_glob_timeout`.
+ * `monst_to_any` collapses `a_monst`. C callers: 51 timer/light
+ * arms; counterparts passing the object itself are wired by identity
+ * (explicit: mkobj/timeout).
  */
 export function obj_to_any(obj) {
     return obj;
+}
+
+/**
+ * C ref: hack.c uint_to_any `:73–78` — `&gt.tmp_anything` with
+ * `a_uint = ui` after zeroing the union. Collapsed handle is the
+ * uint32 value (`>>> 0` renders C `unsigned`); no live C callers
+ * (extern.h decl only) — exported for family completeness (D-3105).
+ */
+export function uint_to_any(ui) {
+    return ui >>> 0;
+}
+
+/**
+ * C ref: hack.c long_to_any `:81–86` — `&gt.tmp_anything` with
+ * `a_long = lng` after zeroing. Collapsed handle is the long value
+ * (monst/obj_to_any precedent); consumer start_timer copies a_long
+ * (mkobj.js reads curr.a_long). Wired: zap.c start_melt_ice_timeout.
+ */
+export function long_to_any(lng) {
+    return lng;
+}
+
+/**
+ * C ref: hack.c rounddiv `:4550–4572` — x/y rounded half-up on
+ * absolute values with C sign handling. C `long`/`int` params render
+ * as Math.trunc (double-exact past int32, no `|0` wrap); C `:4557`
+ * panic renders as a loud throw (mklev.js:32565 precedent). Canonical
+ * home (C file); eat/weapon/polyself import it (D-3105).
+ */
+export function rounddiv(x, y) {
+    let divsgn = 1; // C `:4554`
+    let yy = Math.trunc(y); // C `int y`
+    let xx = Math.trunc(x); // C `long x`
+    if (yy === 0) throw new Error('division by zero in rounddiv'); // C `:4556–4557` panic
+    else if (yy < 0) { // C `:4558–4561`
+        divsgn = -divsgn;
+        yy = -yy;
+    }
+    if (xx < 0) { // C `:4562–4565`
+        divsgn = -divsgn;
+        xx = -xx;
+    }
+    let r = Math.trunc(xx / yy); // C `:4566`
+    const m = xx % yy; // C `:4567`
+    if (2 * m >= yy) r++; // C `:4568–4569`
+    return divsgn * r; // C `:4571`
 }
 
 /**
@@ -1792,6 +1847,19 @@ async function maybe_wail() {
  * Low-HP `maybe_wail` sets `_needs_maybe_wail` — callers must
  * `await finish_maybe_wail()` (C blocks inside losehp on You_hear).
  */
+/**
+ * C ref: hack.c showdamage `:4247–4253` — `[HP -dmg, uhp left]` when
+ * iflags.showdamage (default off). Async: JS pline awaits. Wired:
+ * mdamageu (mhitu.js); losehp's C `:4269`/:4280 sites stay deferred —
+ * JS losehp is sync, async conversion cascades (D-3105).
+ */
+export async function showdamage(dmg) {
+    if (!game.iflags?.showdamage || !dmg) return; // C guard
+    const u = game.u || {};
+    // C `pline("[HP %i, %i left]", -dmg, Upolyd ? u.mh : u.uhp)`
+    await pline(`[HP ${-(dmg | 0)}, ${Upolyd(u) ? (u.mh | 0) : (u.uhp | 0)} left]`);
+}
+
 export function losehp(n, knam, k_format = KILLED_BY) {
     const u = game.u || (game.u = {});
     if (!game.flags) game.flags = {};
@@ -3451,7 +3519,11 @@ export async function notice_mon(mtmp) {
     }
 }
 
-/** C hack.c notice_mons_cmp — qsort by distu (stable in JS). */
+/**
+ * C hack.c notice_mons_cmp `:1735–1741` — qsort by distu (stable in JS).
+ * C staticfn → file-local; sole C use `:1774–1775` qsort in
+ * notice_all_mons → arr.sort below. notice_distu ≡ C distu (squared).
+ */
 function notice_mons_cmp(m1, m2) {
     return notice_distu(m1.mx, m1.my) - notice_distu(m2.mx, m2.my);
 }

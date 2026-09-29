@@ -111,7 +111,7 @@ import {
 } from './attrib.js';
 import {
     nomul, unmul, losehp, finish_maybe_wail, still_chewing, is_pool, is_lava,
-    stop_occupation, end_running, You_hear, fall_asleep,
+    stop_occupation, end_running, You_hear, fall_asleep, rounddiv,
 } from './hack.js';
 import { Blind, near_capacity, observe_object, makeknown, getobj, freeinv,
     encumber_msg, update_inventory, useupall, useup, useupf,
@@ -1055,19 +1055,6 @@ function nonrotting_corpse(mnum) {
     return is_rider(mons(mnum));
 }
 
-/** C hack.c rounddiv — same as weapon.js */
-function rounddiv(x, y) {
-    if (!y) return 0;
-    let divsgn = 1;
-    let yy = y | 0;
-    let xx = x | 0;
-    if (yy < 0) { divsgn = -divsgn; yy = -yy; }
-    if (xx < 0) { divsgn = -divsgn; xx = -xx; }
-    let r = Math.trunc(xx / yy);
-    const m = xx % yy;
-    if (2 * m >= yy) r++;
-    return divsgn * r;
-}
 
 /**
  * C ref: eat.c food_xname `:217–235` — CORPSE → corpse_xname CXN_SINGULAR

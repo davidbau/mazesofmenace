@@ -54,7 +54,7 @@ import {
     Monnam, mon_nam, a_monnam, monverbself, pmname, Mgender, y_monnam,
     hliquid, x_monnam, minimal_monnam, YMonnam,
 } from './do_name.js';
-import { losehp, maybe_half_phys, finish_maybe_wail, is_pool, is_lava, test_move } from './hack.js';
+import { losehp, maybe_half_phys, finish_maybe_wail, is_pool, is_lava, test_move, doorless_door } from './hack.js';
 import {
     set_wounded_legs, heal_legs, legs_in_no_shape, sokoban_guilt, mintrap,
     t_at as trap_t_at, trapname, instapetrify,
@@ -139,12 +139,6 @@ function accessible_cell(x, y) {
  * NODIAG poly / boulder push / shop block_door and block_entry deferred
  * (the live `test_move` caller is steed.js ride, not this subset).
  */
-export function doorless_door(x, y) {
-    const loc = game.level?.at?.(x, y);
-    if (!loc || !IS_DOOR(loc.typ)) return false;
-    return !((loc.doormask || 0) & ~(D_NODOOR | D_BROKEN));
-}
-
 export function test_move_ok(x, y, dx, dy) {
     const nx = x + dx;
     const ny = y + dy;

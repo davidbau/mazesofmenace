@@ -254,7 +254,7 @@ import { findit, cvt_sdoor_to_door, show_map_spot } from './detect.js';
 import {
     fall_asleep, losehp, maybe_half_phys, nomul, is_pool,
     is_lava, is_moat, waterbody_name, in_rooms, dissolve_bars, stop_occupation,
-    SURFACE_AT, You_hear,
+    SURFACE_AT, You_hear, long_to_any,
 } from './hack.js';
 import {
     nonliving, is_demon, nohands, MR_FIRE, MR_COLD, MR_DISINT, MR_ELEC,
@@ -1026,7 +1026,7 @@ export function start_melt_ice_timeout(x, y, min_time) {
     }
     if (when <= MAX_ICE_TIME) {
         const where = (((x | 0) & 0xffff) << 16) | ((y | 0) & 0xffff);
-        start_timer(when, TIMER_LEVEL, MELT_ICE_AWAY, where);
+        start_timer(when, TIMER_LEVEL, MELT_ICE_AWAY, long_to_any(where)); // C `:5108–5109`
     }
 }
 

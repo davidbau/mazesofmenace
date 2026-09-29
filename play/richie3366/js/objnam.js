@@ -2807,7 +2807,8 @@ export function yname(obj) {
 
 /**
  * C ref: objnam.c Yname2 — highc first character of yname.
- * Pre-existing local clones (do/music/timeout) stay.
+ * Pre-existing local clones (do/music) stay; timeout's retired (D-3097
+ * imports this export for burn_object/see_lamp_flicker).
  */
 export function Yname2(obj) {
     return upstart(yname(obj));

@@ -88,6 +88,8 @@ import {
     is_mplayer,
     olfaction,
     is_orc,
+    has_head,
+    M1_NOTAKE,
     hides_under,
     throws_rocks,
     touch_petrifies,
@@ -167,7 +169,7 @@ import {
 } from './objects.js';
 import { ART_EXCALIBUR, ART_DEMONBANE } from './generated/artifacts_data.js';
 import { cansee, does_block, block_point } from './vision.js';
-import { newsym, Norep, canseemon, sensemon, canspotmon, pline, You, pline_mon, impossible, coord_desc, swallowed, monsym } from './display.js';
+import { newsym, Norep, canseemon, sensemon, canspotmon, pline, You, pline_mon, impossible, coord_desc, swallowed, monsym, raw_printf } from './display.js';
 import { mhidden_description } from './pager.js';
 import { emits_light, new_light_source, del_light_source, obj_sheds_light, snuff_light_source } from './light.js';
 import { begin_burn } from './timeout.js';
@@ -529,7 +531,8 @@ function align_shift(ptr) {
     return alshift;
 }
 
-// C ref: makemon.c temperature_shift — +3 when ptr resists level hot/cold.
+// C ref: makemon.c temperature_shift `:1640–1648` — whole body, in C
+// order (+3 when ptr resists level hot/cold, else 0).
 function temperature_shift(ptr) {
     const temp = game.level?.flags?.temperature | 0;
     if (!temp) return 0;
@@ -824,6 +827,19 @@ export function mkclass_poly(mletClass) {
     return first;
 }
 
+// C ref: makemon.c cmp_init_mongen_order `:1760–1777` (staticfn →
+// file-local; C takes `const void *` pair, JS the two mndx ints).
+// C `:1763–1769`: the `#if 0` G_NOGEN|G_UNIQ +99 offset arm is compiled
+// out — offsets are 0 (`:1768` live arm).
+function cmp_init_mongen_order(i1, i2) {
+    // C `:1771–1775` — mlet folded into the sort key above difficulty
+    const p1 = mons(i1);
+    const p2 = mons(i2);
+    const d1 = ((p1?.difficulty ?? 0) | (((MLET_ORD[p1?.mlet] ?? 0) << 8)));
+    const d2 = ((p2?.difficulty ?? 0) | (((MLET_ORD[p2?.mlet] ?? 0) << 8)));
+    return d1 - d2; // C `:1776`
+}
+
 // C ref: makemon.c init_mongen_order — stable sort by (mlet<<8)|difficulty
 function init_mongen_order() {
     if (mongen_order) return;
@@ -837,19 +853,66 @@ function init_mongen_order() {
         if ((mclass_maxf[mlet] ?? 0) < freq) mclass_maxf[mlet] = freq;
     }
     // Contest uses stable qsort; Array.sort is stable in modern JS engines.
+    // The `|| i1 - i2` tiebreak is pre-existing: C qsort ties are
+    // implementation order, the port pins ascending mndx (fortress-held).
     const prefix = mongen_order.slice(0, SPECIAL_PM);
-    prefix.sort((i1, i2) => {
-        const p1 = mons(i1);
-        const p2 = mons(i2);
-        const d1 = ((p1?.difficulty ?? 0) | (((MLET_ORD[p1?.mlet] ?? 0) << 8)));
-        const d2 = ((p2?.difficulty ?? 0) | (((MLET_ORD[p2?.mlet] ?? 0) << 8)));
-        return d1 - d2 || i1 - i2;
-    });
+    prefix.sort((i1, i2) => cmp_init_mongen_order(i1, i2) || i1 - i2); // C `:1824`
     for (let i = 0; i < SPECIAL_PM; i++) mongen_order[i] = prefix[i];
 }
 
 function monSi(i) {
     return mongen_order[i];
+}
+
+/**
+ * C ref: makemon.c dump_mongen `:1835–1866` — the `--dump=mongen`
+ * (ARG_DUMPMONGEN) stdout table. Caller: earlyarg.js argcheck `:536–538`.
+ * Named omissions: monst_globals_init `:1842` (memcpy of the static
+ * mons_init table — the JS mons table is module-initialized, no re-copy
+ * channel); the three raw_print sinks `:1849`/`:1863–1864` (D-3086
+ * dump_enums precedent: raw_print text has no pre-window channel and no
+ * counter effect, so the calls are dropped while raw_printf stays 1:1);
+ * freedynamicdata `:1865` (by-design: save-freeing).
+ * The `%*s`/`%3d`/`%2d` widths are pre-formatted (dump_enums `:404`
+ * precedent) so the vpline_expand strip never sees this table.
+ */
+export function dump_mongen() {
+    const nmwidth = 27; // C `:1839`
+    let prev_mlet = 0; // C `:1838` (NUL — first-iteration guard below)
+    // C `:1842` monst_globals_init() — named omission (see doc).
+    init_mongen_order(); // C `:1843`
+    raw_printf('int mongen_order[] = {'); // C `:1844`
+    for (let i = LOW_PM; i < SPECIAL_PM; ++i) { // C `:1845`
+        const ptr = mons(monSi(i));
+        // C `:1846–1847` — special mask + def_monsyms[mlet].sym (≡ monsym)
+        const special = (ptr?.geno ?? 0) & (G_NOGEN | G_UNIQ);
+        const mlet = monsym(ptr);
+        // C `:1848–1849` — blank line when the class symbol changes
+        // (raw_print sink omit — see doc).
+        if (prev_mlet && prev_mlet !== mlet) { /* raw_print("") */ }
+        // C `:1850–1852` Snprintf "PM_%s%s" (names stay far below 80)
+        const nmbuf = `PM_${monsterNames[monSi(i)]?.slice(3)}${i === SPECIAL_PM - 1 ? '' : ','}`;
+        // C `:1853–1860` — C-exact widths: 4-space indent, nm ljust 27,
+        // seq/idx %3d, diff/freq %2d, maxf %d, G_NOGEN|G_UNIQ suffix.
+        raw_printf('%s', `    ${nmbuf.padEnd(nmwidth)} /* ${i === monSi(i) ? ' ' : '.'} seq=${String(i).padStart(3)}, idx=${String(monSi(i)).padStart(3)}, sym='${mlet}', diff=${String(ptr?.difficulty ?? 0).padStart(2)}, freq=${String((ptr?.geno ?? 0) & G_FREQ).padStart(2)}[${mclass_maxf[ptr?.mlet] ?? 0}] ${special === (G_NOGEN | G_UNIQ) ? '(G_NOGEN | G_UNIQ)' : special === G_NOGEN ? '(G_NOGEN)' : special === G_UNIQ ? '(G_UNIQ)' : ''} */`);
+        prev_mlet = mlet; // C `:1861`
+    }
+    // C `:1863–1864` raw_print("};")/raw_print("") — sink omit (see doc).
+    // C `:1865` freedynamicdata() — named omission (see doc).
+}
+
+// C ref: makemon.c summon_furies `:2604–2611` — create some or all
+// remaining erinyes around the player (limit 0 = until extinct).
+// Caller: attrib.js uchangealign `:1348` (helm-on arm).
+export function summon_furies(limit) {
+    const erinys = pm('ERINYS'); // PM_ERINYS const
+    let i = 0; // C `:2607`
+    // C `:2608` mk_gen_ok(PM_ERINYS, G_GONE, 0U) && (i < limit || !limit)
+    while (mk_gen_ok(erinys, G_GONE, 0) && (i < limit || !limit)) {
+        // C `:2609` makemon(&mons[PM_ERINYS], u.ux, u.uy, ADJACENTOK|NOWAIT)
+        makemon(mons(erinys), game.u.ux, game.u.uy, MM_ADJACENTOK | MM_NOWAIT);
+        i++; // C `:2610`
+    }
 }
 
 // C ref: makemon.c mkclass → mkclass_aligned(class, spc, A_NONE)
@@ -1231,12 +1294,34 @@ function accept_newcham_form(mon, mndx) {
 }
 
 /**
- * C ref: mon.c validspecmon — accept_newcham_form; isspecmon notake/nohead
- * named omission (ordinary doppel at mklev is never isspecmon).
+ * C ref: mon.c isspecmon :4983–4987 — shopkeeper, priest, vault guard,
+ * or the quest leader (m_id match). The leader arm guards nonzero
+ * (mhitm.js precedent): leader_m_id is 0/undefined before the quest
+ * leader spawns, and no live mon carries m_id 0 on either side.
+ */
+function isspecmon(mon) {
+    if (mon.isshk || mon.ispriest || mon.isgd) return true;
+    const lid = game.quest_status?.leader_m_id | 0;
+    return !!lid && (mon.m_id | 0) === lid;
+}
+
+/**
+ * C ref: mon.c validspecmon :4993–5011 — NON_PM random; accept_newcham_form
+ * geno/polyok gate; isspecmon notake/nohead reject (notake = mondata.h
+ * M1_NOTAKE macro, inlined — not a pinned-C function, no export to import).
  */
 function validspecmon(mon, mndx) {
-    if (mndx === NON_PM) return true;
-    return !!accept_newcham_form(mon, mndx);
+    if (mndx === NON_PM) return true; /* caller wants random */
+    if (!accept_newcham_form(mon, mndx)) return false; /* geno'd or !polyok */
+    if (isspecmon(mon)) {
+        const ptr = mons(mndx);
+        /* reject notake because object manipulation is expected
+           and nohead because speech capability is expected */
+        if (((ptr?.mflags1 ?? 0) & M1_NOTAKE) || !has_head(ptr))
+            return false;
+        /* [should we check ptr->msound here too?] */
+    }
+    return true; /* potential new form is ok */
 }
 
 /**
@@ -2215,7 +2300,7 @@ export function mpickobj(mtmp, otmp) {
     return freed_otmp;
 }
 
-// C ref: makemon.c m_initthrow
+// C ref: makemon.c m_initthrow `:147–158` — whole body, in C order.
 function m_initthrow(mtmp, otyp_, oquan) {
     const otmp = mksobj(otyp_, true, false);
     otmp.quan = rn1(oquan, 3);
@@ -3158,7 +3243,11 @@ function makemon_rnd_goodpos(mon, gpflags, cc) {
     return true;
 }
 
-// C ref: makemon.c m_initgrp / m_initsgrp / m_initlgrp
+// C ref: makemon.c m_initgrp `:79–145` / m_initsgrp / m_initlgrp (n=3/10).
+// The three `#if defined(__GNUC__) && (defined(HPUX) || defined(DGUX))`
+// blocks (`:87–104` cnttmp/cntdiv debug, `:107–112` cnt check pline,
+// `:115–120` cnt clamp) are compiled out — HP-UX/DG-UX predefined
+// macros, never defined on contest builds (patchlevel.h:397).
 function m_initgrp(mtmp, x, y, n, mmflags) {
     let cnt = rnd(n);
     const ulevel = game.u?.ulevel ?? 1;

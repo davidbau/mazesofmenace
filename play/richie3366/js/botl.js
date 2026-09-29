@@ -97,6 +97,10 @@ import { WEAPON_CLASS, CLOAK_OF_PROTECTION } from './generated/objects_data.js';
 import {
     ART_MITRE_OF_HOLINESS, ART_TSURUGI_OF_MURAMASA,
 } from './generated/artifacts_data.js';
+// options.js statically imports botl.js; this back-edge is cycle-safe only
+// because match_optname is a hoisted function declaration, called at
+// runtime, never at module top level (`imports.mjs --can` verdict SAFE).
+import { match_optname } from './options.js';
 
 // C: sgn() (hacklib) — sign of an int comparison result.
 function sgn(x) {
@@ -1236,6 +1240,47 @@ export function opt_next_cond(indx) {
     return ''; // C `:1462` default value
 }
 
+/* C botl.c:852 `int cond_idx[CONDITION_COUNT]` (extern via botl.h:158) —
+ * display-order index scratch, filled + qsort(cond_cmp)'d by the condopt
+ * init arm. Write-only in C (no reader in src/ or include/); kept so the
+ * init arm's observable store order matches. */
+export const cond_idx = new Array(CONDITION_COUNT).fill(0);
+
+/**
+ * C ref: botl.c condopt `:1303–1329` — status-condition option setter.
+ * `addr` is C's `boolean *addr`: null means the init request (choice :=
+ * enabled for every row, sort-order reset, cond_idx sorted); otherwise the
+ * caller passes `&condtests[idx].choice` and C sanity-checks the pointer —
+ * JS carries the entry object instead and checks identity against
+ * condtests[idx]. C callers: options.c pfxfn_cond_ do_init `:5002` (init),
+ * parse_cond_option `:1366`.
+ */
+export function condopt(idx, addr, negated) {
+    // C `:1308–1310` sanity check.
+    if ((idx < 0 || idx >= CONDITION_COUNT)
+        || (addr && addr !== condtests[idx]))
+        return;
+
+    if (!addr) { // C `:1312`
+        // Special: init request — choices match defaults.
+        if (!game.gc) game.gc = {}; // C decl.h:223 instance_globals_c (cond_menu precedent)
+        game.gc.condmenu_sortorder = 0; // C `:1315`
+        for (let i = 0; i < CONDITION_COUNT; ++i) { // C `:1316`
+            cond_idx[i] = i; // C `:1317`
+            condtests[i].choice = condtests[i].enabled; // C `:1318`
+        }
+        // C `:1320–1321` qsort(cond_cmp); useroptions are unique so no tie
+        // survives the comparator — the contest stable sort (Constitution
+        // §4) matches C on every input here (cond_menu precedent).
+        cond_idx.sort(cond_cmp);
+    } else { // C `:1322` (addr == &condtests[idx].choice)
+        condtests[idx].enabled = negated ? false : true; // C `:1324`
+        condtests[idx].choice = condtests[idx].enabled; // C `:1325`
+        // Avoid lingering false positives if the test is no longer run.
+        condtests[idx].test = false; // C `:1327`
+    }
+}
+
 // C hacklib strcmpi — A-Z fold; useroption strings are ASCII so lowercase
 // ordering equals the C byte order (invent.js sortloot_cmp `:498–499`
 // precedent).
@@ -1260,6 +1305,30 @@ function cond_cmp(a, b) {
 // indices alphabetically by useroption.
 function menualpha_cmp(a, b) {
     return strcmpi_fold(condtests[a].useroption, condtests[b].useroption); // C `:1350`
+}
+
+/**
+ * C ref: botl.c parse_cond_option `:1354–1371` — match a `cond_<name>`
+ * option string against condtests[].useroption (leading-substring, minimum
+ * 4 unless the name is shorter) and apply it via condopt. Returns 0 on a
+ * match, 2 when the string lacks a `cond_`+name shape, 1 when no name
+ * matches (C never returns 3; the pfxfn_cond_ `:5012` arm stays defensive).
+ * Sole C caller: options.c pfxfn_cond_ do_set `:5006`.
+ */
+export function parse_cond_option(negated, opts) {
+    const prefix = 'cond_'; // C `:1357`
+    if (!opts || opts.length <= prefix.length) // C `:1359–1360`
+        return 2;
+    const uniqpart = opts.slice(prefix.length); // C `:1361`
+    for (let i = 0; i < CONDITION_COUNT; ++i) { // C `:1362`
+        const compareto = condtests[i].useroption; // C `:1363`
+        const sl = compareto.length; // C `:1364` Strlen
+        if (match_optname(uniqpart, compareto, (sl >= 4) ? 4 : sl, false)) { // C `:1365`
+            condopt(i, condtests[i], negated); // C `:1366` &condtests[i].choice
+            return 0; // C `:1367`
+        }
+    }
+    return 1; // C `:1370` !0 indicates error
 }
 
 /**

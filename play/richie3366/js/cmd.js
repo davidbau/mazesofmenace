@@ -120,7 +120,7 @@ import { an, doname, makeplural, ansimpleoname, the } from './objnam.js';
 import { m_monnam, mon_nam, a_monnam, YMonnam, docallcmd, x_monnam } from './do_name.js';
 import { spoteffects, dopickup, doloot, dotip } from './pickup.js';
 import { objects_at, sobj_at } from './mkobj.js';
-import { stairway_at, On_stairs_up, On_stairs_dn, u_on_newpos, maybe_adjust_hero_bubble, selection_new, selection_getpoint, selection_setpoint } from './mklev.js';
+import { stairway_at, On_stairs_up, On_stairs_dn, u_on_newpos, maybe_adjust_hero_bubble, selection_new, selection_getpoint, selection_setpoint, selection_getbounds } from './mklev.js';
 import { In_tutorial } from './dungeon.js';
 import { ATR_INVERSE } from './terminal.js';
 import { dopay, block_entry, block_door } from './shk.js';
@@ -140,7 +140,7 @@ import {
     closed_door, avoid_moving_on_trap, avoid_moving_on_liquid,
     escape_from_sticky_mon, domove_fight_ironbars, domove_fight_web,
     air_turbulence, slippery_ice_fumbling,
-    test_move,
+    test_move, doorless_door,
 } from './hack.js';
 import { t_at, dountrap } from './trap.js';
 import { acurr, exercise, A_DEX, Fumbling } from './attrib.js';
@@ -3371,13 +3371,6 @@ async function travel_test_move(ux, uy, dx, dy) {
     return true;
 }
 
-// C ref: hack.c doorless_door — only D_NODOOR / D_BROKEN (no intact door)
-function doorless_door(x, y) {
-    const loc = game.level?.at(x, y);
-    if (!loc || !IS_DOOR(loc.typ)) return false;
-    // Rogue-level override deferred (all rogue doors treated as present)
-    return !((loc.doormask || 0) & ~(D_NODOOR | D_BROKEN));
-}
 
 /**
  * C ref: hack.c test_move DO_MOVE + flags.mention_walls on IS_OBSTRUCTED.
@@ -3753,13 +3746,9 @@ function look_sel_setpoint(x, y, sel, c) {
     }
 }
 
-/** C selvar.c selection_getbounds — empty lx>=COLNO → full map. */
-function look_sel_bounds(sel) {
-    if (!sel || sel.lx >= COLNO) {
-        return { lx: 0, ly: 0, hx: COLNO - 1, hy: ROWNO - 1 };
-    }
-    return { lx: sel.lx, ly: sel.ly, hx: sel.hx, hy: sel.hy };
-}
+/* selection_getbounds: canonical mklev.js export (C selvar.c:76-95).
+ * The look_sel_* family passes its look_sel_new objects straight through
+ * (no wid/bounds_dirty → recalc no-ops, wid defaults to COLNO). */
 
 /**
  * C cmd.c dolookaround_floodfill_findroom — stop at wall/door/tree/bars/
@@ -3831,7 +3820,8 @@ function look_glyph_unexplored_at(x, y) {
 
 /** C cmd.c u_have_seen_whole_selection. */
 function u_have_seen_whole_selection(sel) {
-    const rect = look_sel_bounds(sel);
+    const rect = {}; // C cmd.c:1198 NhRect rect
+    selection_getbounds(sel, rect); // C cmd.c:1200
     for (let x = rect.lx; x <= rect.hx; x++) {
         for (let y = rect.ly; y <= rect.hy; y++) {
             if (isok(x, y) && look_sel_getpoint(x, y, sel)
@@ -3845,7 +3835,8 @@ function u_have_seen_whole_selection(sel) {
 
 /** C cmd.c u_have_seen_bounds_selection — rectangular outline only. */
 function u_have_seen_bounds_selection(sel) {
-    const rect = look_sel_bounds(sel);
+    const rect = {}; // C cmd.c:1216 NhRect rect
+    selection_getbounds(sel, rect); // C cmd.c:1218
     for (let x = rect.lx; x <= rect.hx; x++) {
         let y = rect.ly;
         if (isok(x, y) && look_sel_getpoint(x, y, sel)
@@ -3875,7 +3866,8 @@ function u_have_seen_bounds_selection(sel) {
 
 /** C cmd.c u_can_see_whole_selection. */
 function u_can_see_whole_selection(sel) {
-    const rect = look_sel_bounds(sel);
+    const rect = {}; // C cmd.c:1249 NhRect rect
+    selection_getbounds(sel, rect); // C cmd.c:1251
     for (let x = rect.lx; x <= rect.hx; x++) {
         for (let y = rect.ly; y <= rect.hy; y++) {
             if (isok(x, y) && look_sel_getpoint(x, y, sel) && !cansee(x, y)) {
@@ -3888,7 +3880,8 @@ function u_can_see_whole_selection(sel) {
 
 /** C selvar.c selection_is_irregular — hole in the bounding rect. */
 function look_sel_is_irregular(sel) {
-    const rect = look_sel_bounds(sel);
+    const rect = {}; // C selvar.c:750 NhRect rect
+    selection_getbounds(sel, rect); // C selvar.c:752
     for (let x = rect.lx; x <= rect.hx; x++) {
         for (let y = rect.ly; y <= rect.hy; y++) {
             if (isok(x, y) && !look_sel_getpoint(x, y, sel)) return true;
@@ -3899,7 +3892,8 @@ function look_sel_is_irregular(sel) {
 
 /** C selvar.c selection_size_description. */
 function look_sel_size_description(sel) {
-    const rect = look_sel_bounds(sel);
+    const rect = {}; // C selvar.c:766 NhRect rect
+    selection_getbounds(sel, rect); // C selvar.c:769
     const dx = (rect.hx - rect.lx + 1) | 0;
     const dy = (rect.hy - rect.ly + 1) | 0;
     const shape = look_sel_is_irregular(sel)

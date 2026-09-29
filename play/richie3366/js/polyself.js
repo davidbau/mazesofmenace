@@ -67,7 +67,7 @@ import { Some_Monnam, Mgender } from './do_name.js';
 import { rnl } from './rng.js';
 import { hideunder } from './mon.js';
 import { makeknown } from './invent.js';
-import { unmul, is_lava } from './hack.js';
+import { unmul, is_lava, rounddiv } from './hack.js';
 import { expels } from './mhitu.js';
 import { set_utrap, reset_utrap, selftouch } from './trap.js';
 import { retouch_equipment } from './artifact.js';
@@ -892,19 +892,6 @@ function copyAttrBundle(src) {
     return { a: [...(src?.a || [0, 0, 0, 0, 0, 0])] };
 }
 
-/** C hack.c rounddiv — trunc with round-half-up on abs values. */
-function rounddiv(x, y) {
-    if (!y) return 0;
-    let divsgn = 1;
-    let yy = y;
-    let xx = x;
-    if (yy < 0) { divsgn = -divsgn; yy = -yy; }
-    if (xx < 0) { divsgn = -divsgn; xx = -xx; }
-    let r = Math.trunc(xx / yy);
-    const m = xx % yy;
-    if (2 * m >= yy) r++;
-    return divsgn * r;
-}
 
 /**
  * C ref: polyself.c poly_gender — 0/1 ≡ flags.female, 2=none.

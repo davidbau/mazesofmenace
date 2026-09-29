@@ -762,12 +762,20 @@ async function p_glow3(otmp, color) {
     );
 }
 
-/** C read.c forget `:1020–1040` — bc_felt, losespells, drain skill, meverseen. */
-function forget(howmuch) {
+/**
+ * C read.c forget `:1020–1040` — amnesia core (sole C caller
+ * seffect_amnesia `:1836`): Punished (youprop.h:77 `uball != 0`) →
+ * bc_felt reset; ALL_SPELLS (spell.h:29 `0x2`) → losespells; drain
+ * rnd(howmuch ? 5 : 3) weapon skills; clear meverseen on fmon
+ * (except usteed/ustuck) and migrating_mons. Async:
+ * drain_weapon_skill awaits pline, so the caller awaits this.
+ */
+async function forget(howmuch) {
+    howmuch = howmuch | 0;
     const u = game.u || {};
-    if (u.uball) u.bc_felt = 0; // C: Punished ≡ uball
-    if ((howmuch | 0) & ALL_SPELLS) losespells();
-    drain_weapon_skill(rnd(howmuch ? 5 : 3));
+    if (u.uball) u.bc_felt = 0; /* C: Punished ≡ (uball != 0) */
+    if (howmuch & ALL_SPELLS) losespells();
+    await drain_weapon_skill(rnd(howmuch ? 5 : 3));
     for (const mtmp of game.fmon || []) {
         if (mtmp !== u.usteed && mtmp !== u.ustuck) mtmp.meverseen = 0;
     }
@@ -1425,7 +1433,7 @@ async function seffect_amnesia(sobj) {
     const sblessed = !!sobj.blessed;
     const u = game.u || {};
     known = true;
-    forget(!sblessed ? ALL_SPELLS : 0);
+    await forget(!sblessed ? ALL_SPELLS : 0);
     const Hallucination = !!((u.HHallucination | 0) || (u.Hallucination | 0));
     const plname = game.plname || u.plname || '';
     if (Hallucination) {

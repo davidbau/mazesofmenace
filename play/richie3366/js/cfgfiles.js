@@ -49,6 +49,7 @@ import {
 import { vfsReadFile, vfsWriteFile } from './storage.js';
 import { parseautocomplete } from './cmd.js';
 import { sysopt_seduce_set } from './sys.js';
+import { dupstr } from './dungeon.js'; // C config_erradd `:1572` (imports.mjs SAFE: hoisted fn)
 
 /** C ref: hack.h `:1504–1506` FEATURE_NOTICE_VER(3, 7, 0). */
 const FEATURE_NOTICE_VER_3_7_0 = (3 << 24) | (7 << 16);
@@ -205,6 +206,13 @@ let ignoreStatementErrors = false;
  * raw_printf: pline+wait_synch is the windowed input boundary (map). */
 let configErrorData = null;
 
+/* C cfgfiles.c `:1467` file-static config_error_msg — the in_lua error
+ * list (`:1566–1574`), drained by l_get_config_errors (lua-callable
+ * `get_config_errors`, nhlua.c:1887). No JS Lua state exists (mklev.js
+ * themerooms precedent), so the drain is named and nothing sets
+ * iflags.in_lua today; the list shape still matches the C struct. */
+let configErrorMsg = null;
+
 function trunc(s, n) {
     const t = String(s ?? '');
     return t.length > n ? t.slice(0, n) : t;
@@ -259,8 +267,10 @@ function punctTail(buf) {
 }
 
 /**
- * C ref: cfgfiles.c config_erradd `:1543–1589`.
- * in_lua arm (`:1566–1574`) is the lua error list — named (no lua state).
+ * C ref: cfgfiles.c config_erradd `:1543–1589` in C order.
+ * Named: wait_synch `:1562` (windowed input boundary — parser stays sync,
+ * parseoptions precedent); the l_get_config_errors drain of the in_lua
+ * list (lua-stack sink, nhlua.c:1887; no JS Lua state).
  */
 export function config_erradd(buf) {
     let text = buf && buf.length ? String(buf) : 'Unknown error'; // C `:1549–1550`
@@ -270,7 +280,16 @@ export function config_erradd(buf) {
     if (!ready) { // C `:1557–1563`
         const prefix = !game.iflags?.window_inited ? 'config_error_add: ' : '';
         configMsg(prefix + text + punct);
+        // C `:1562` wait_synch — named (see doc comment).
         return;
+    }
+    if (game.iflags?.in_lua) { // C `:1566–1574`
+        configErrorMsg = { // C `:1568–1573` alloc + prepend
+            line_num: configErrorData.line_num, // C `:1571`
+            errormsg: dupstr(text), // C `:1572`
+            next: configErrorMsg, // C `:1570`
+        };
+        return; // C `:1574`
     }
     if (!configErrorData) return;
     configErrorData.num_errors++; // C `:1577`
@@ -1025,10 +1044,17 @@ export function parse_conf_str(str, proc) {
 }
 
 /**
- * C ref: cfgfiles.c parse_conf_file `:1843–1860`, fed by a VFS string
- * (fgets of inbufsz-1 chars, newline included when it fits).
+ * C ref: cfgfiles.c parse_conf_file `:1843–1860` in C order.
+ * Rule #2 adaptation: C takes FILE*; the caller passes the VFS file text
+ * and the loop replays fgets of inbufsz-1 chars (newline included when
+ * it fits). C callers: read_config_file `:1638` (wired below);
+ * read_wizkit files.c:2594 (keeps its parse_wizkit_text subset clone,
+ * review-154 debt — named); read_sym_file files.c:2646 (MISSING — named).
+ * @param {string} text
+ * @param {(line: string) => boolean} proc
+ * @returns {boolean}
  */
-function parse_conf_text(text, proc) {
+export function parse_conf_file(text, proc) {
     const parser = {};
     cnf_parser_init(parser); // C `:1848`
     free_config_sections(); // C `:1849`
@@ -1062,7 +1088,7 @@ export function read_config_file(filename, src) {
     free_config_sections(); // C `:1636`
     if (!game.iflags) game.iflags = {};
     game.iflags.parse_config_file_src = src | 0; // C `:1637`
-    const rv = parse_conf_text(text, parse_config_line); // C `:1639`
+    const rv = parse_conf_file(text, parse_config_line); // C `:1638`
     free_config_sections(); // C `:1642`
     reset_duplicate_opt_detection(); // C `:1645`
     return rv; // C `:1646`

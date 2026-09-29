@@ -55,7 +55,7 @@ import { resists_poison } from './zap.js';
 import { dist2 } from './hacklib.js';
 import { level_mon_at } from './worm.js';
 import { lookup_bones_id } from './bones.js';
-import { selection_recalc_bounds } from './mklev.js';
+import { selection_getbounds } from './mklev.js';
 import { find_mid } from './mon.js';
 
 const MAX_CLOUD_SIZE = 150;
@@ -1201,24 +1201,6 @@ export async function create_gas_cloud(x, y, cloudsize, damage) {
     return cloud;
 }
 
-/**
- * C ref: selvar.c selection_getbounds `:76-95` — recalc first (C `:82`),
- * then empty (lx >= wid) → full map, else the stored bounds. sel.lx..hy
- * is the JS store for C sel->bounds.*.
- */
-function selection_getbounds(sel) {
-    if (!sel) return { lx: 0, ly: 0, hx: COLNO - 1, hy: ROWNO - 1 };
-    selection_recalc_bounds(sel); // C `:82`
-    const lx = sel.lx | 0;
-    if (lx >= COLNO) return { lx: 0, ly: 0, hx: COLNO - 1, hy: ROWNO - 1 };
-    return {
-        lx,
-        ly: sel.ly | 0,
-        hx: sel.hx | 0,
-        hy: sel.hy | 0,
-    };
-}
-
 /** C ref: selvar.c selection_getpoint — Set-backed JS selection. */
 function selection_getpoint_sel(x, y, sel) {
     if (!sel || x < 0 || y < 0 || x >= COLNO || y >= ROWNO) return 0;
@@ -1232,7 +1214,8 @@ function selection_getpoint_sel(x, y, sel) {
  */
 export async function create_gas_cloud_selection(sel, damage) {
     const inside_cloud = is_hero_inside_gas_cloud();
-    const r = selection_getbounds(sel);
+    const r = {}; // C region.c:1322 NhRect r
+    selection_getbounds(sel, r); // C region.c:1323
     // C create_gas_cloud_selection :1325: create_region(NULL, 0)
     // (defaults + clear_heros_fault / REG_NOT_HEROS inside), then
     // add_rect_to_reg per selected point.

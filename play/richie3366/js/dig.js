@@ -66,7 +66,7 @@ import { wield_tool, welded } from './wield.js';
 import {
     Fumbling, adjalign, acurr, A_STR, A_INT, A_WIS, A_DEX, A_CON, A_CHA, exercise,
 } from './attrib.js';
-import { dbon, dmgval } from './weapon.js';
+import { dbon, dmgval, abon } from './weapon.js';
 import { depth, dist2 } from './hacklib.js';
 import { get_level } from './dungeon.js';
 import { align_str, uhis } from './roles.js';
@@ -1592,20 +1592,7 @@ function greatest_erosion(obj) {
     return Math.max(obj.oeroded | 0, obj.oeroded2 | 0);
 }
 
-/** C ref: weapon.c abon — strength band used in dig effort. */
-function abon() {
-    const str = acurr(A_STR);
-    const STR18_50 = 18 + 50;
-    let sbon;
-    if (str < 6) sbon = -2;
-    else if (str < 8) sbon = -1;
-    else if (str < 17) sbon = 0;
-    else if (str <= 18) sbon = 1;
-    else if (str < STR18_50) sbon = 1;
-    else sbon = 2;
-    if ((game.u?.ulevel | 0) < 3) sbon += 1;
-    return sbon;
-}
+/* weapon.c abon now imported from weapon.js (canonical home). */
 
 function Race_if(pm) {
     return (game.urace?.mnum | 0) === (pm | 0);

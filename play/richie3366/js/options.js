@@ -203,6 +203,7 @@ import {
     status_hilite_linestr_done, status_hilite_linestr_gather,
     match_str2clr, match_str2attr, status_version,
     config_error_add, status_initialize,
+    condopt, parse_cond_option,
 } from './botl.js';
 import { classify_terrain } from './hack.js';
 import { vision_recalc } from './vision.js';
@@ -9100,6 +9101,65 @@ function wc_set_font_name(opttype, fontname) {
 }
 
 /**
+ * C options.c pfxfn_cond_ `:4994–5036` (staticfn) — optfn behind the
+ * `cond_` allopt row (optlist.h NHOPTP cond_ `:904–905`, idx 215): config
+ * `cond_<name>` / `!cond_<name>` go through here (optfn_o_status_cond
+ * do_set `:8425` defers to it). do_init resets choices to defaults via
+ * condopt; do_set parses via parse_cond_option (0 marks opt_set_in_config,
+ * 3 ambiguous / 1,2,default unknown — C never returns 3, the arm stays
+ * defensive); get_val/get_cnf_val clear the out buffer; do_handler is
+ * "not used" in C (set_hidden rows are never listed — doset endpass caps
+ * at set_wiznofuz — so the cond_menu() call is a named omission: async in
+ * JS, unreachable in C). C dispatch is the allopt table: parseoptions
+ * do_set `:637`, allopt_array_init do_init `:7428`, get_option_value
+ * `:8496`.
+ * @param {number} optidx C optidx (allopt_idx of the cond_ row; UNUSED)
+ * @param {number} req REQ_DO_INIT / REQ_DO_SET / REQ_GET_VAL / REQ_GET_CNF_VAL / REQ_DO_HANDLER
+ * @param {boolean} negated
+ * @param {string|{buf:string}} opts do_set option string / get_val holder
+ * @param {string} op value tail (UNUSED)
+ * @returns {number} OPTN_* result
+ */
+export function pfxfn_cond_(optidx, req, negated, opts, op) {
+    if (req === REQ_DO_INIT) { // C `:5001`
+        condopt(0, null, 0); // C `:5002` make the choices match defaults
+        return OPTN_OK; // C `:5003`
+    }
+    if (req === REQ_DO_SET) { // C `:5005`
+        const reslt = parse_cond_option(negated, opts); // C `:5006`
+
+        switch (reslt) { // C `:5008`
+        case 0: // C `:5009`
+            opt_set_in_config[PFX_COND_IDX] = true; // C `:5010`
+            break; // C `:5011`
+        case 3: // C `:5012`
+            config_error_add('Ambiguous condition option %s', opts); // C `:5013`
+            break; // C `:5014`
+        case 1: // C `:5015`
+        case 2: // C `:5016`
+        default: // C `:5017`
+            config_error_add('Unknown condition option %s (%d)', opts, reslt); // C `:5018`
+            break; // C `:5019`
+        }
+        if (reslt !== 0) // C `:5021`
+            return OPTN_ERR; // C `:5022`
+        /* [FIXME?  redraw seems like overkill; botl update should suffice] */ // C `:5023`
+        mark_opt_need_redraw(); // C `:5024` go.opt_need_redraw = TRUE
+        return OPTN_OK; // C `:5025`
+    }
+    if (req === REQ_GET_VAL || req === REQ_GET_CNF_VAL) { // C `:5027`
+        set_optbuf(opts, ''); // C `:5028` opts[0] = '\0'
+        return OPTN_OK; // C `:5029`
+    }
+    if (req === REQ_DO_HANDLER) { // C `:5031` not used
+        // Named omission: (void) cond_menu() — async in JS, and the arm is
+        // unreachable in C (set_hidden rows are never doset-listed).
+        return OPTN_OK; // C `:5033`
+    }
+    return OPTN_OK; // C `:5035`
+}
+
+/**
  * C options.c pfxfn_font `:5038–5165` (staticfn) — shared do_set/get_val
  * body behind the ten optfn_font_* wrappers. do_set maps optidx to the
  * window_option_types slot (font_size_* additionally gates on `duplicate`
@@ -9775,7 +9835,7 @@ const allopt = [
     // optlist.h:896 NHOPTB(wraptext)
     { name: 'wraptext', opttyp: BoolOpt, idx: 214, setwhere: SET_IN_GAME, initval: false, addr: null /* C: &iflags.wc2_wraptext, no live field */, optfn: null },
     // optlist.h:904 NHOPTP(cond_)
-    { name: 'cond_', opttyp: CompOpt, idx: 215, setwhere: SET_HIDDEN, initval: false, addr: null, optfn: null },
+    { name: 'cond_', opttyp: CompOpt, idx: 215, setwhere: SET_HIDDEN, initval: false, addr: null, optfn: pfxfn_cond_ },
     // optlist.h:906 NHOPTP(font)
     { name: 'font', opttyp: CompOpt, idx: 216, setwhere: SET_HIDDEN, initval: false, addr: null, optfn: null },
 ];

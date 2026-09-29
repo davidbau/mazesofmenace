@@ -1746,8 +1746,8 @@ function mapfrag_error(mf) {
  * l_selection_check). A fresh selection covers the whole level
  * (C `:5108–5109` selection_clear) or the get_location ANY_LOC rect
  * (C `:5111–5119`, get_location_coord twin). Bounds are
- * selection_getbounds (C selvar.c:77: recalc + empty→full level,
- * region.js:1146 idiom); x starts at max(1, lx) while y starts at ly
+ * selection_getbounds (C selvar.c:77: recalc + empty→full level);
+ * x starts at max(1, lx) while y starts at ly
  * like C `:5123–5124`. Per cell, mapfrag_match short-circuits before
  * rn2(100) (C `:5127–5129`); else the MATCH_WALL/typ check runs before
  * rn2 (C `:5131–5134`). Locally-built selections are freed
@@ -1815,10 +1815,8 @@ export function lspo_replace_terrain(opts) {
                     selection_setpoint(x, y, sel, 1); // C :5117
         }
     }
-    selection_recalc_bounds(sel); // C selvar.c:82 (selection_getbounds recalc half)
-    let rect;
-    if (!sel || sel.lx >= COLNO) rect = { lx: 0, ly: 0, hx: COLNO - 1, hy: ROWNO - 1 }; // C selvar.c:84-89 empty → full level
-    else rect = { lx: sel.lx, ly: sel.ly, hx: sel.hx, hy: sel.hy }; // C selvar.c:90-95
+    const rect = {}; // C sp_lev.c:5120 NhRect rect
+    selection_getbounds(sel, rect); // C sp_lev.c:5121 (selvar.c:82-94)
     for (let x = Math.max(1, rect.lx); x <= rect.hx; x++) // C :5123
         for (let y = rect.ly; y <= rect.hy; y++) // C :5124 (no lower clamp, like C)
             if (selection_getpoint(x, y, sel)) { // C :5125
@@ -4396,8 +4394,10 @@ export function selection_iterate_lua(sel, fn) {
     if (typeof fn !== 'function')
         throw new Error('l_selection_iterate: wrong parameters');
     if (!sel?.pts?.size) return;
-    for (let y = sel.ly; y <= sel.hy; y++) {
-        for (let x = Math.max(1, sel.lx); x <= sel.hx; x++) {
+    const rect = {}; // C nhlsel.c:930 NhRect rect
+    selection_getbounds(sel, rect); // C nhlsel.c:934
+    for (let y = rect.ly; y <= rect.hy; y++) {
+        for (let x = Math.max(1, rect.lx); x <= rect.hx; x++) {
             if (sel.pts.has(`${x},${y}`)) fn(x, y);
         }
     }
@@ -29124,16 +29124,18 @@ function ensure_way_out() {
 // C ref: selvar.c selection_rndcoord — walk x-outer then y; rn2(count)
 function selection_rndcoord(sel, removeit) {
     if (!sel || !sel.pts.size) return null;
+    const rect = {}; // C `:292` NhRect rect
+    selection_getbounds(sel, rect); // C `:294`
     let idx = 0;
-    for (let dx = sel.lx; dx <= sel.hx; dx++) {
-        for (let dy = sel.ly; dy <= sel.hy; dy++) {
+    for (let dx = rect.lx; dx <= rect.hx; dx++) {
+        for (let dy = rect.ly; dy <= rect.hy; dy++) {
             if (sel.pts.has(`${dx},${dy}`)) idx++;
         }
     }
     if (!idx) return null;
     let c = rn2(idx);
-    for (let dx = sel.lx; dx <= sel.hx; dx++) {
-        for (let dy = sel.ly; dy <= sel.hy; dy++) {
+    for (let dx = rect.lx; dx <= rect.hx; dx++) {
+        for (let dy = rect.ly; dy <= rect.hy; dy++) {
             const key = `${dx},${dy}`;
             if (!sel.pts.has(key)) continue;
             if (!c) {
@@ -29209,8 +29211,10 @@ function selection_filter_percent(sel, pct) {
     const pts = new Set();
     let lx = COLNO, ly = ROWNO, hx = 0, hy = 0;
     if (!sel || !sel.pts.size) return { pts, lx: 0, ly: 0, hx: -1, hy: -1 };
-    for (let x = sel.lx; x <= sel.hx; x++) {
-        for (let y = sel.ly; y <= sel.hy; y++) {
+    const rect = {}; // C `:230` NhRect rect
+    selection_getbounds(sel, rect); // C `:237`
+    for (let x = rect.lx; x <= rect.hx; x++) {
+        for (let y = rect.ly; y <= rect.hy; y++) {
             const key = `${x},${y}`;
             if (!sel.pts.has(key)) continue;
             if (rn2(100) < pct) {
@@ -29229,8 +29233,10 @@ function selection_filter_percent(sel, pct) {
 // C ref: selection.room() iterate order — x-outer then y (same as filter_percent)
 function selection_iterate(sel, fn) {
     if (!sel || !sel.pts.size) return;
-    for (let x = sel.lx; x <= sel.hx; x++) {
-        for (let y = sel.ly; y <= sel.hy; y++) {
+    const rect = {}; // C `:732` NhRect rect
+    selection_getbounds(sel, rect); // C `:737`
+    for (let x = rect.lx; x <= rect.hx; x++) {
+        for (let y = rect.ly; y <= rect.hy; y++) {
             if (sel.pts.has(`${x},${y}`)) fn(x, y);
         }
     }
@@ -29585,8 +29591,8 @@ function selection_not(sel) {
  * C sel->bounds.* (a missing bounds_dirty on hand-built literals reads as
  * clean, and those literals already carry tight bounds). Empty keeps the
  * C reset shape (lx=COLNO, ly=ROWNO, hx=hy=0); the scans find exactly the
- * membership min/max. Exported: region.js selection_getbounds (C selvar.c
- * `:82`) calls it, as does selection_sub (C nhlsel.c `:380`).
+ * membership min/max. Exported: selection_getbounds (C selvar.c `:82`)
+ * calls it, as does selection_sub (C nhlsel.c `:380`).
  */
 export function selection_recalc_bounds(sel) {
     if (!sel) return;
@@ -29696,21 +29702,30 @@ function random_wdir() {
     return wdirs[rn2(4)];
 }
 
-// C ref: selvar.c selection_getbounds `:76-95` — recalc first (C `:82`),
-// then empty (lx >= wid) reads as the full map (`:84-89`), else the
-// stored bounds (`:90-94`). region.js:1146 holds the region-side copy;
-// this one serves the selvar grow family in this module.
-function selvar_getbounds_rect(sel) {
+/**
+ * C ref: selvar.c selection_getbounds `:76-95` — whole body in C order:
+ * guard (`:80-81`), recalc (`:82`), empty (bounds.lx >= wid) writes the
+ * full map (`:84-89`), else the stored bounds (`:90-94`). sel.lx..hy is
+ * the JS store for C sel->bounds.*; sel.wid defaults to COLNO like
+ * selection_new. Canonical home: retires the selvar_getbounds_rect clone
+ * (this spot), the region.js clone and the cmd.js look_sel_bounds clone;
+ * the iterate/filter/rndcoord family now routes its rect reads through
+ * here so dirty-subset bounds recalc like C.
+ */
+export function selection_getbounds(sel, b) {
+    if (!sel || !b) return; // C `:80-81`
     selection_recalc_bounds(sel); // C `:82`
-    const wid = sel.wid ?? COLNO;
-    if ((sel.lx | 0) >= wid) // C `:84` empty
-        return { lx: 0, ly: 0, hx: COLNO - 1, hy: ROWNO - 1 }; // C `:85-89`
-    return { // C `:90-94`
-        lx: sel.lx | 0,
-        ly: sel.ly | 0,
-        hx: sel.hx | 0,
-        hy: sel.hy | 0,
-    };
+    if ((sel.lx | 0) >= (sel.wid ?? COLNO)) { // C `:84` empty
+        b.lx = 0; // C `:85-89`
+        b.ly = 0;
+        b.hx = COLNO - 1;
+        b.hy = ROWNO - 1;
+    } else { // C `:90-94`
+        b.lx = sel.lx | 0;
+        b.ly = sel.ly | 0;
+        b.hx = sel.hx | 0;
+        b.hy = sel.hy | 0;
+    }
 }
 
 /**
@@ -29732,7 +29747,8 @@ export function selection_do_grow(ov, dir) {
     let d = dir | 0;
     if (d === W_RANDOM) // C `:333-334`
         d = random_wdir();
-    let rect = selvar_getbounds_rect(ov); // C `:336`
+    const rect = {}; // C `:325` NhRect rect
+    selection_getbounds(ov, rect); // C `:336`
     for (let x = Math.max(0, rect.lx - 1); // C `:338-339`
          x <= Math.min(COLNO - 1, rect.hx + 1); x++)
         for (let y = Math.max(0, rect.ly - 1);
@@ -29757,7 +29773,7 @@ export function selection_do_grow(ov, dir) {
                 selection_setpoint(x, y, tmp, 1); // C `:358`
             }
         }
-    rect = selvar_getbounds_rect(tmp); // C `:361`
+    selection_getbounds(tmp, rect); // C `:361`
     for (let x = rect.lx; x <= rect.hx; x++) // C `:363-364`
         for (let y = rect.ly; y <= rect.hy; y++)
             if (selection_getpoint(x, y, tmp)) // C `:365`
@@ -30555,8 +30571,10 @@ function selection_filter_mapchar(sel, typ) {
     const pts = new Set();
     let lx = COLNO, ly = ROWNO, hx = 0, hy = 0;
     if (!sel || !sel.pts.size) return { pts, lx: 0, ly: 0, hx: -1, hy: -1 };
-    for (let x = sel.lx; x <= sel.hx; x++) {
-        for (let y = sel.ly; y <= sel.hy; y++) {
+    const rect = {}; // C `:252` NhRect rect
+    selection_getbounds(sel, rect); // C `:259`
+    for (let x = rect.lx; x <= rect.hx; x++) {
+        for (let y = rect.ly; y <= rect.hy; y++) {
             const key = `${x},${y}`;
             if (!sel.pts.has(key)) continue;
             const loc = game.level.at(x, y);

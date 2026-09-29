@@ -1,19 +1,24 @@
 /**
  * C-home for `nethack-c/upstream/src/earlyarg.c` — early command-line
- * argument handling (`-s` scores display path).
+ * argument handling (`early_options` scan, `lopt` matcher, consume
+ * helpers, terminate/usage/scores tails, `argcheck`, debug/dump arms).
  *
- * Rule #2: no argv/process/filesystem plumbing lives here. The caller
- * passes the already-adjusted C (argc, argv) slice and the hackdir; only
- * in-process work runs.
+ * Rule #2: no process/filesystem plumbing lives here. C's `argc`/`argv`
+ * out-params arrive as `{ v }` boxes (botl.js anything-box precedent);
+ * `chdirx`/`exit`/`dlb`/`whoami`/signal arms are named omissions and C
+ * ATTRNORETURN tails render as their live effects + return.
  */
 
 import { game } from './gstate.js';
-import { prscore, nh_terminate_capture } from './topten.js';
-import { BUFSZ } from './const.js';
-import { match_optname } from './options.js';
+import { prscore } from './topten.js';
+import { BUFSZ, EXIT_SUCCESS, EXIT_FAILURE } from './const.js';
+import { match_optname, initoptions } from './options.js';
 import { dupstr } from './dungeon.js';
 import { raw_printf, MAX_GLYPH, MAXPCHARS, MAXMCLASSES } from './display.js';
-import { strncmpi, strstri } from './hacklib.js';
+import { strncmpi, strstri, eos } from './hacklib.js';
+import { config_error_init, config_error_done, config_erradd } from './cfgfiles.js';
+import { dump_all_glyphids } from './glyphs.js';
+import { nh_terminate } from './end.js';
 import { getversionstring } from './version.js';
 import { monsterNames, NUMMONS, NON_PM, LOW_PM, SPECIAL_PM } from './generated/monsters_data.js';
 import { objectNames, NUM_OBJECTS, LAST_GENERIC, FIRST_OBJECT, FIRST_REAL_GEM, LAST_REAL_GEM, MAXOCLASSES } from './generated/objects_data.js';
@@ -21,6 +26,7 @@ import { NROFARTIFACTS, artilistRaw } from './generated/artifacts_data.js';
 import { ENUMDUMP_CMAP, ENUMDUMP_MON_SYMS, ENUMDUMP_MON_DEFCHARS, ENUMDUMP_OC_DEFCHARS, ENUMDUMP_OC_CLASSES, ENUMDUMP_OC_SYMS } from './generated/enumdumps_data.js';
 import { MCASTU_SPELL_DEFS } from './mcastu.js';
 import { MAXSPELL } from './spell.js';
+import { dump_mongen } from './makemon.js';
 // imports.mjs --can: earlyarg.js has no importers, so these edges cannot
 // close a cycle. version.js stays a leaf (const.js reads it at load);
 // early_version_info lives here so it can call raw_printf.
@@ -30,10 +36,9 @@ import { MAXSPELL } from './spell.js';
  * `-s` early-arg path: show score subsets, then terminate without
  * starting play. Whole body in C order with per-arm `:line` cites.
  *
- * C is synchronous; this is async only because the one live callee,
- * `prscore`, is async in JS (render surface). C's ATTRNORETURN is
- * unrepresentable without a process to exit: after the terminate tail
- * this returns to the caller.
+ * C is synchronous; this is async only because `prscore` is async in
+ * JS (render surface). C's ATTRNORETURN is unrepresentable without a
+ * process to exit: after the terminate tail this returns to the caller.
  *
  * @param {number} argc C argc after the caller's `argc + 1` adjustment
  * @param {string[]} argv C argv after the caller's `argv - 1` adjustment
@@ -43,42 +48,421 @@ import { MAXSPELL } from './spell.js';
  * @returns {Promise<void>}
  */
 export async function scores_only(argc, argv, dir) {
-    /* C `:407–410` — config_error_done(): flush queued config-file errors
-       now, in case an error summary is coming. Named omit: the JS
-       config_error_add is a sink (js/botl.js:1149, drops everything), so
-       no queue can exist and done() would be a structural no-op. */
+    // C `:407–410` — flush queued config errors now, in case an error
+    // summary is coming. Live since config_erradd (D-3098) queues.
+    config_error_done();
     /* C `:412–416` — CHDIR chdirx(dir, FALSE) (nhUse(dir) without CHDIR;
        config.h:438 defines CHDIR, so chdirx is the live arm). Rule #2
        omit: no CWD/filesystem in scored JS. */
-    /* C `:417–422` — SYSCF gate (config.h:233 live): wrap initoptions()
-       in iflags.initoptions_noterminate (sysconf options affect whether
-       panictrace is enabled). Named omit of the call: initoptions() is
-       live (js/options.js) but startup-unwired (JS options resolve
-       in-process at startup (VFS/storage)) — calling it here would
-       re-run the config passes outside the boot order; the signal-trace
-       enablement it gates is omitted below. */
+    // C `:417–421` — SYSCF gate (config.h:233 live): sysconf options
+    // affect whether panictrace is enabled, so run initoptions() with
+    // termination suppressed. Live export js/options.js.
+    if (!game.iflags) game.iflags = {};
+    game.iflags.initoptions_noterminate = true; // C `:418`
+    initoptions(); // C `:419`
+    game.iflags.initoptions_noterminate = false; // C `:420`
     /* C `:423–427` — PANICTRACE ARGV0 save + panictrace_setsignals(TRUE)
-       (live via CRASHREPORT on linux, config.h:244–276). Platform omit:
-       no signal/stack-trace setup in scored JS. */
+       (config.h:276 live on linux). Platform omit: no signal/stack-trace
+       setup in scored JS. */
     /* C `:428–430` — UNIX whoami(): set up default plname[] from the OS
        user. Platform omit: no OS user in scored JS (cf. getuid()→0 in
        js/topten.js); the plname default is owned by the JS
        startup/askname path. */
-    await prscore(argc, argv); // C `:431` — live export js/topten.js:1021
-
+    await prscore(argc, argv); // C `:431` — live export js/topten.js
     /* C `:432–437` — MSWIN_GRAPHICS wait_synch: compiles out
        (config.h:61 leaves MSWIN_GRAPHICS undefined). */
+    // C `:439` — nh_terminate(EXIT_SUCCESS), bypassing opt_terminate().
+    // Live export js/end.js (sets in_moveloop/exiting/gameover); the
+    // process exit itself has no scored counterpart — return (NOTREACHED).
+    nh_terminate(EXIT_SUCCESS);
+}
 
-    /* C `:439` — nh_terminate(EXIT_SUCCESS), bypassing opt_terminate():
-       end.c:1676 program_state.in_moveloop = 0 (no return to play);
-       l_nhcore_call(NHCORE_GAME_EXIT) has no JS port layer;
-       freedynamicdata/dlb_cleanup are save-freeing (never in JS);
-       exit() has no scored counterpart — the contest boundary is the
-       live nh_terminate_capture() (same call as done2 js/end.js:1208 and
-       the save-quit path js/save.js:1164), then return (C NOTREACHED). */
+/* C earlyarg.c:54 — ArgVal_novalue (note: not 'const' in C; JS
+   strings are immutable, so a const is exact). */
+const ARGVAL_NOVALUE = '[nothing]';
+/* C earlyarg.c:56–65 — enum cmdlinearg (file-local in C too). */
+const ARGVAL_REQUIRED = 0, ARGVAL_OPTIONAL = 1, ARGVAL_DISALLOWED = 2,
+    ARGVAL_MASK = 3, ARGNAME_ONELETTER = 4, ARGNAME_MASK = 4,
+    ARGERR_SILENT = 0, ARGERR_COMPLAIN = 8, ARGERR_MASK = 8;
+
+/**
+ * C ref: earlyarg.c lopt `:71–144` (staticfn → file-local).
+ * Match one command-line token against an option name: `-w[indowtype]`
+ * prefix, `=`/`:` value, one-letter `-wfoo`, or the next argv element.
+ * Whole body in C order. C's `char **`/`int *` out-params are `{ v }`
+ * boxes; C null-pointer tests render as `=== null` (an empty-string
+ * argv element is non-null in C but falsy in JS, so bare truthiness
+ * would misread it). `charAt` renders C's NUL-at-end indexing.
+ * @param {string} arg command line token (leading dashes pre-stripped)
+ * @param {number} lflags cmdlinearg bits (value/name/error classes)
+ * @param {string} optname option's full name (`-windowtype`)
+ * @param {string} origarg token before dash-prefix removal (diagnostics)
+ * @param {{v:number}} argcBox argc in/out
+ * @param {{v:string[]}} argvBox argv in/out
+ * @returns {string|null} value, ARGVAL_NOVALUE, or null (bail)
+ */
+function lopt(arg, lflags, optname, origarg, argcBox, argvBox) {
+    const argc = argcBox.v; // C `:78`
+    const argv = argvBox.v; // C `:79`
+    // C `:80` — argv[1] is only read when argc > 1.
+    const nextarg = (argc > 1 && argv[1][0] !== '-') ? argv[1] : null;
+    const opttype = lflags & ARGVAL_MASK; // C `:81`
+    const oneletterok = (lflags & ARGNAME_MASK) === ARGNAME_ONELETTER; // C `:82`
+    const complain = (lflags & ARGERR_MASK) === ARGERR_COMPLAIN; // C `:83`
+    // C config_error_add(fmt, "%.60s") ≡ pre-truncated text fed to the
+    // live config_erradd core (D-3098); the botl.js same-named export
+    // stays the options/doset message sink.
+    const bail = (msg) => { // C loptbail `:87–90`
+        if (complain) config_erradd(`${msg}${origarg.slice(0, 60)}`);
+        return null;
+    };
+
+    /* first letter must match */
+    if (arg.charAt(1) !== optname.charAt(1)) // C `:86`
+        return bail('Unknown option: ');
+
+    let p = null; // C `:100–101` — '=' wins over ':'.
+    const eqAt = arg.indexOf('=');
+    if (eqAt >= 0) p = arg.slice(eqAt);
+    else {
+        const colonAt = arg.indexOf(':');
+        if (colonAt >= 0) p = arg.slice(colonAt);
+    }
+    if (p !== null && opttype === ARGVAL_DISALLOWED) // C `:103–104`
+        return bail('Value not allowed: '); // C loptnotallowed `:91–94`
+
+    const l = p !== null ? arg.length - p.length : arg.length; // C `:106`
+    if ((l > 2 || oneletterok) // C `:107`
+        && arg.slice(0, l) === optname.slice(0, l)) { // strncmp `:107`
+        /* "-windowtype[=foo]" */
+        if (p !== null)
+            p = p.slice(1); /* past '=' or ':' */ // C `:110`
+        else if (opttype === ARGVAL_REQUIRED)
+            p = arg.slice(eos(arg)); /* "-w[indowtype]" w/o "=foo":
+               take foo from next element */ // C `:111–113`
+        else
+            return ARGVAL_NOVALUE; // C `:114–115`
+    } else if (oneletterok) {
+        /* "-w..." but not "-w[indowtype[=foo]]" */
+        if (p === null) {
+            p = arg.slice(2); /* past 'w' of "-wfoo" */ // C `:119`
+            /* C `:120–124` — `#if 0` "-w:foo" arm (not supported,
+               callers don't expect it): compiles out, cited only. */
+        } else {
+            /* "-w...=foo" but not "-w[indowtype]=foo" */
+            return bail('Unknown option: '); // C `:125–127`
+        }
+    } else {
+        return bail('Unknown option: '); // C `:129–131`
+    }
+    if (p === null || p === '') { // C `:132` — `!p || !*p`
+        /* "-w[indowtype]" w/o '='/':' if there is a next element, use
+           it for "foo"; if not, supply a non-Null bogus value */
+        if (nextarg !== null
+            && (opttype === ARGVAL_REQUIRED || opttype === ARGVAL_OPTIONAL)) {
+            p = nextarg; // C `:137`
+            argcBox.v--; // C `:137` --(*argc_p)
+            argvBox.v = argvBox.v.slice(1); // C `:137` ++(*argv_p)
+        } else if (opttype === ARGVAL_REQUIRED) {
+            return bail('Missing required value: '); // C loptrequired `:138–139`
+        } else {
+            p = ARGVAL_NOVALUE; /* there is no next element */ // C `:141`
+        }
+    }
+    return p; // C `:143`
+}
+
+/**
+ * C ref: earlyarg.c consume_arg `:149–162` (staticfn → file-local).
+ * Move argv[ndx] to the end of the array, then reduce argc to hide it
+ * so process_options() never sees it; elements get reordered but all
+ * remain intact. Mutates the boxed array in place (reference stable).
+ */
+function consume_arg(ndx, acBox, avBox) {
+    const av = avBox.v; // C `:151`
+    const ac = acBox.v; // C `:152`
+    /* "-one -two -three -four" -> "-two -three -four -one" */
+    if (ac > 2) { // C `:155`
+        const gone = av[ndx]; // C `:156`
+        for (let i = ndx + 1; i < ac; ++i) // C `:157–158`
+            av[i - 1] = av[i];
+        av[ac - 1] = gone; // C `:159`
+    }
+    acBox.v--; // C `:161` --(*ac_p)
+}
+
+/**
+ * C ref: earlyarg.c consume_two_args `:166–176` (staticfn → file-local).
+ * Consume a "-two arg" pair so the hidden tail reads "-two arg"
+ * rather than the "arg -two" two plain consume_arg() calls give.
+ */
+function consume_two_args(ndx, acBox, avBox) {
+    /* when consuming "-two arg" from "-two arg -three -four",
+       the *ac_p manipulation results in "-three -four -two arg"
+       rather than the "-three -four arg -two" that would happen
+       with just two ordinary consume_arg() calls */
+    consume_arg(ndx, acBox, avBox); // C `:172`
+    acBox.v++; /* bring the final slot back into view */ // C `:173`
+    consume_arg(ndx, acBox, avBox); // C `:174`
+    acBox.v--; /* take away restored slot */ // C `:175`
+}
+
+/**
+ * C ref: earlyarg.c early_options `:180–361` — scan argv for the early
+ * (pre-window) options: debug/dump/version/showpaths/directory/help/
+ * nethackrc/scores/usage/windowtype. Whole body in C order; per-iteration
+ * locals are `{ v }` boxes so lopt's `--argc/++argv` consume arm lands
+ * exactly where C's does. Async only because scores_only awaits prscore.
+ * Every C `opt_terminate()/opt_usage()/scores_only()` tail is NOTREACHED
+ * (process exit); with no process to exit the live effects run and this
+ * returns instead.
+ * @param {{v:number}} argcBox argc in/out (argv[0] is the program name)
+ * @param {{v:string[]}} argvBox argv in/out
+ * @param {{v:string}} hackdirBox hackdir in/out
+ */
+export async function early_options(argcBox, argvBox, hackdirBox) {
+    let ndx = 0, consumed = 0; // C `:183`
+    let oldargc; // C `:183`
+
+    // C `:185–188` — ENHANCED_SYMBOLS (config.h:368) defines this arm.
+    if (argcheck(argcBox.v, argvBox.v, ARG_DUMPGLYPHIDS) === 2) {
+        opt_terminate();
+        return; // C NOTREACHED (no process to exit)
+    }
+
+    config_error_init(false, 'command line', false); // C `:190`
+
+    /* treat "nethack ?" as a request for usage info; due to shell
+       processing, player likely has to use "nethack \?" or "nethack '?'" */
+    if (argcBox.v > 1 && argvBox.v[1] === '?') { // C `:195–196`
+        opt_usage(hackdirBox.v); /* doesn't return */
+        return; // C NOTREACHED
+    }
+
+    /*
+     * Both *argc_p and *argv_p account for the program name as (*argv_p)[0];
+     * local argc and argv implicitly discard that (by starting 'ndx' at 1).
+     * argcheck() doesn't mind, prscore() (via scores_only()) does (for the
+     * number of args it gets passed, not for the value of argv[0]).
+     */
+    for (ndx = 1; ndx < argcBox.v; ndx += (consumed ? 0 : 1)) { // C `:204`
+        consumed = 0; // C `:205`
+        const argcB = { v: argcBox.v - ndx }; // C `:206`
+        const argvB = { v: argvBox.v.slice(ndx) }; // C `:207` argv = *argv_p + ndx
+
+        let arg = argvB.v[0]; // C `:209` arg = origarg = argv[0]
+        const origarg = arg;
+        /* skip any args intended for deferred options */
+        if (arg.charAt(0) !== '-') // C `:211–212`
+            continue;
+        /* allow second dash if arg name is longer than one character */
+        if (arg.charAt(0) === '-' && arg.charAt(1) === '-' && arg.charAt(2) !== '' // C `:214–217`
+            && (arg.charAt(3) !== '' && arg.charAt(3) !== '=' && arg.charAt(3) !== ':'))
+            arg = arg.slice(1); // C `:218` ++arg
+
+        switch (arg.charAt(1)) { /* char after leading dash */ // C `:220`
+        case 'b': // C `:221`
+            // C `:222–228` — CRASHREPORT (config.h:250, linux) `--bidshow`.
+            if (argcheck(argcB.v, argvB.v, ARG_BIDSHOW) === 2) {
+                opt_terminate();
+                return; // C NOTREACHED
+            }
+            break;
+        case 'd': { // C `:229`
+            // C `:232` — NODUMPENUMS is commented out (config.h:360), so
+            // the `#ifndef NODUMPENUMS` ARG_DUMPENUMS arm below is live.
+            if (argcheck(argcB.v, argvB.v, ARG_DEBUG) === 1) { // C `:230`
+                consume_arg(ndx, argcBox, argvBox); // C `:231`
+                consumed = 1;
+            } else if (argcheck(argcB.v, argvB.v, ARG_DUMPENUMS) === 2) { // C `:233`
+                opt_terminate();
+                return; // C NOTREACHED
+            } else if (argcheck(argcB.v, argvB.v, ARG_DUMPMONGEN) === 2) { // C `:237`
+                opt_terminate();
+                return; // C NOTREACHED
+            } else if (argcheck(argcB.v, argvB.v, ARG_DUMPWEIGHTS) === 2) { // C `:239`
+                opt_terminate();
+                return; // C NOTREACHED
+            } else {
+                // C `:243` — CHDIR (config.h:438) live.
+                oldargc = argcB.v; // C `:244`
+                const darg = lopt(arg, // C `:245–247`
+                    (ARGVAL_REQUIRED | ARGNAME_ONELETTER | ARGERR_SILENT),
+                    '-directory', origarg, argcB, argvB);
+                if (darg === null) { // C `:248–249`
+                    errorNoReturn('Flag -d must be followed by a directory name.');
+                    return; // C error() never returns (NORETURN)
+                }
+                if (darg.charAt(0) !== 'e') { /* avoid matching -decgraphics or -debug */ // C `:250`
+                    hackdirBox.v = darg; // C `:251` *hackdir_p = arg
+                    if (oldargc === argcB.v) { // C `:252`
+                        consume_arg(ndx, argcBox, argvBox);
+                        consumed = 1;
+                    } else {
+                        consume_two_args(ndx, argcBox, argvBox); // C `:255`
+                        consumed = 2;
+                    }
+                }
+            }
+            break;
+        }
+        case 'h': // C `:260`
+        case '?': // C `:261`
+            if (lopt(arg, ARGVAL_DISALLOWED, '-help', origarg, argcB, argvB) !== null // C `:262`
+                || lopt(arg, ARGVAL_DISALLOWED | ARGNAME_ONELETTER, '-?', // C `:263–264`
+                    origarg, argcB, argvB) !== null) {
+                opt_usage(hackdirBox.v); /* doesn't return */ // C `:265`
+                return; // C NOTREACHED
+            }
+            break;
+        case 'n': { // C `:267`
+            oldargc = argcB.v; // C `:268`
+            let narg;
+            if (arg === '-no-nethackrc') /* no abbreviation allowed */ // C `:269`
+                narg = '/dev/null'; // C `:270` nhStr ≡ identity cast
+            else
+                narg = lopt(arg, (ARGVAL_REQUIRED | ARGERR_COMPLAIN), // C `:272–273`
+                    '-nethackrc', origarg, argcB, argvB);
+            if (narg !== null) { // C `:274`
+                if (!game.gc) game.gc = {};
+                game.gc.cmdline_rcfile = dupstr(narg); // C `:275`
+                if (oldargc === argcB.v) { // C `:276`
+                    consume_arg(ndx, argcBox, argvBox);
+                    consumed = 1;
+                } else {
+                    consume_two_args(ndx, argcBox, argvBox); // C `:279`
+                    consumed = 2;
+                }
+            }
+            break;
+        }
+        case 's': // C `:282`
+            if (argcheck(argcB.v, argvB.v, ARG_SHOWPATHS) === 2) { // C `:283`
+                if (!game.gd) game.gd = {};
+                game.gd.deferred_showpaths = true; // C `:284`
+                game.gd.deferred_showpaths_dir = hackdirBox.v; // C `:285`
+                config_error_done(); // C `:286`
+                return; // C `:287`
+            }
+            /* check for "-s" request to show scores */
+            if (lopt(arg, // C `:290–295`
+                    ((ARGVAL_DISALLOWED | ARGERR_COMPLAIN)
+                     /* only accept one-letter if there is just one
+                        dash; reject "--s" because prscore() via
+                        scores_only() doesn't understand it */
+                     | ((origarg.charAt(1) !== '-') ? ARGNAME_ONELETTER : 0)),
+                    /* [ought to omit val-disallowed and accept
+                       --scores=foo since -s foo and -sfoo are
+                       allowed, but -s form can take more than one
+                       space-separated argument and --scores=foo
+                       isn't suited for that] */
+                    '-scores', origarg, argcB, argvB) !== null) {
+                /* at this point, argv[0] contains "-scores" or a leading
+                   substring of it; prscore() (via scores_only()) expects
+                   that to be in argv[1] so we adjust the pointer to make
+                   that be the case; if there are any non-early args waiting
+                   to be passed along to process_options(), the resulting
+                   argv[0] will be one of those rather than the program
+                   name but prscore() doesn't care */
+                // C `:309` — argv-1 ≡ the live slot before this ndx; the
+                // -s lopt above is ArgValDisallowed so it never consumed
+                // (local argv still ≡ base+ndx).
+                await scores_only(argcB.v + 1,
+                    [argvBox.v[ndx - 1], ...argvB.v], hackdirBox.v);
+                return; // C NOTREACHED
+            }
+            break;
+        case 'u': // C `:313`
+            // C `:314–316` — UNIX (config.h:18) arm; the WIN32/MSDOS/AMIGA
+            // `-u<name>` arm below it compiles out.
+            if (lopt(arg, ARGVAL_DISALLOWED, '-usage', origarg, argcB, argvB) !== null) { // C `:315`
+                opt_usage(hackdirBox.v); // C `:316`
+                return; // C NOTREACHED
+            }
+            break;
+        case 'v': // C `:331`
+            if (argcheck(argcB.v, argvB.v, ARG_VERSION) === 2) { // C `:332`
+                opt_terminate();
+                return; // C NOTREACHED
+            }
+            break;
+        case 'w': { /* windowtype: "-wfoo" or "-w[indowtype]=foo"
+                   * or "-w[indowtype]:foo" or "-w[indowtype] foo" */ // C `:337–338`
+            const warg = lopt(arg, // C `:340–341`
+                (ARGVAL_REQUIRED | ARGNAME_ONELETTER | ARGERR_COMPLAIN),
+                '-windowtype', origarg, argcB, argvB);
+            if (!game.gc) game.gc = {};
+            // C `:342–343` free(gc.cmdline_windowsys) — N/A, JS strings
+            // unowned (options.js:6883 precedent).
+            game.gc.cmdline_windowsys = warg !== null ? dupstr(warg) : null; // C `:344`
+            break;
+        }
+        /* C `:346–353` — case 'D'/'X' wizard/discover toggles compile out
+           (`#if !defined(UNIX) && !defined(VMS)`; UNIX is defined). */
+        default: // C `:354`
+            break;
+        }
+    }
+    /* empty or "N errors on command line" */
+    config_error_done(); // C `:358`
+    return; // C `:359`
+}
+
+/**
+ * C ref: sys/share/unixtty.c error `:473–486` — fatal error: tty reset,
+ * message + newline, exit(EXIT_FAILURE). Not a pinned-C function (sys/
+ * platform layer); this file-local renders its two observable effects
+ * for the early_options `:249` -d arm. `window_inited` is false this
+ * early (exit_nhwindows arm vacuous) and settty is tty-only.
+ * @param {string} msg already-formatted text (Vprintf ≡ verbatim here)
+ */
+function errorNoReturn(msg) {
+    raw_printf('%s', `${msg}\n`); // C `:482–483` Vprintf + putchar
+    nh_terminate(EXIT_FAILURE); // C `:485` exit(EXIT_FAILURE)
+    // C NOTREACHED ≡ return to the (returning) caller below.
+}
+
+/**
+ * C ref: earlyarg.c opt_terminate `:366–373` (staticfn → file-local).
+ * Terminate without starting play (`nethack --version`, `nethack -s
+ * Zelda`); C exits, so every call site returns after the call.
+ */
+function opt_terminate() {
     if (!game.program_state) game.program_state = {};
-    game.program_state.in_moveloop = 0;
-    nh_terminate_capture();
+    game.program_state.early_options = 0; // C `:368`
+    config_error_done(); /* free memory allocated by config_error_init() */ // C `:369`
+    nh_terminate(EXIT_SUCCESS); // C `:371`
+    /*NOTREACHED*/
+}
+
+/**
+ * C ref: earlyarg.c opt_usage `:376–387` (staticfn → file-local).
+ * Show usage help, then terminate (call sites return after the call).
+ * @param {string} hackdir C hackdir (chdir arm only)
+ */
+function opt_usage(hackdir) {
+    /* C `:378–381` — CHDIR chdirx(hackdir, TRUE) is the live arm
+       (config.h:438). Rule #2 omit: no CWD/filesystem in scored JS. */
+    void hackdir;
+    // C `:383` dlb_init() — named omit (data-library/file init).
+    // C `:385` genl_display_file(USAGEHELP, TRUE) — named omit (usagehlp
+    // text window; no scored channel — own row if ever wired).
+    opt_terminate(); // C `:386`
+}
+
+/**
+ * C ref: earlyarg.c after_opt_showpaths `:391–400` — deferred-showpaths
+ * tail: back to the showpaths dir, then terminate (no return in C).
+ * Sole C caller files.c:3101 (do_deferred_showpaths, itself unported —
+ * options.js:6976 names the omit); exported for that path.
+ * @param {string} dir C gd.deferred_showpaths_dir (chdir arm only)
+ */
+export function after_opt_showpaths(dir) {
+    /* C `:393–397` — CHDIR chdirx(dir, FALSE) is the live arm
+       (config.h:438). Rule #2 omit: no CWD/filesystem in scored JS. */
+    void dir;
+    opt_terminate(); // C `:398`
+    /*NOTREACHED*/
 }
 
 /**
@@ -278,10 +662,10 @@ export function argcheck(argc, argv, eArg) {
         dump_enums();
         return 2;
     case ARG_DUMPGLYPHIDS: // C `:532–534`
-        // Named omission: earlyarg.c:806 dump_glyphids → dump_all_glyphids(stdout).
+        dump_glyphids(); // C `:533`
         return 2;
     case ARG_DUMPMONGEN: // C `:536–538`
-        // Named omission: makemon.c:1835 dump_mongen.
+        dump_mongen(); // C `:537`
         return 2;
     case ARG_DUMPWEIGHTS: // C `:538–540`
         // Named omission: hack.c:4421 dump_weights.
@@ -408,4 +792,15 @@ function dump_enums() {
         // counts per line that C raw_print never records.
     }
     // C `:800` final raw_print("") — same sink omit.
+}
+
+/**
+ * C ref: earlyarg.c dump_glyphids `:806–809` — `--dumpglyphids` tail:
+ * dump every glyph id. C passes stdout; the JS callee takes a
+ * line-sink (glyphs.js Rule #2 adaptation), fed here to raw_printf
+ * (dump_mongen `:884` precedent — no trailing newline on the channel).
+ * Sole C caller `:533` (argcheck ARG_DUMPGLYPHIDS, wired above).
+ */
+export function dump_glyphids() {
+    dump_all_glyphids((line) => raw_printf('%s', line)); // C `:808`
 }

@@ -8,7 +8,7 @@
 import { game } from './gstate.js';
 import { rn2, rnd, rnl, d } from './rng.js';
 import {
-    flush_topl_more, pline, You_feel, canseemon, bot, pline_mon, newsym,
+    flush_topl_more, pline, You, You_feel, canseemon, bot, pline_mon, newsym,
     impossible,
 } from './display.js';
 import { cansee, couldsee } from './vision.js';
@@ -21,7 +21,7 @@ import {
     WEAPON_CLASS, GEM_CLASS, TOOL_CLASS, BALL_CLASS, CHAIN_CLASS,
     objectNames, objectNameStrs, is_axe, is_pick, is_spear, LEATHER, SILVER,
 } from './objects.js';
-import { is_pool, handle_tip } from './hack.js';
+import { is_pool, handle_tip, rounddiv } from './hack.js';
 import { dist2 } from './hacklib.js';
 import {
     is_ammo, ammo_and_launcher, matching_launcher, is_missile, mwelded, is_weptool, bimanual,
@@ -60,7 +60,8 @@ import { flooreffects } from './do.js';
 import { artifact_light, begin_burn, end_burn } from './timeout.js';
 import { mbodypart } from './polyself.js';
 import { attacktype_fordmg } from './uhitm.js';
-import { acurr, A_STR } from './attrib.js';
+import { acurr, A_STR, A_DEX } from './attrib.js';
+import { adj_lev } from './makemon.js';
 import { m_carrying, mon_has_shield } from './mon.js';
 import { mhis, monsndx } from './mondata.js';
 import { ATR_INVERSE, ATR_NONE } from './terminal.js';
@@ -181,19 +182,6 @@ async function possibly_unwield_drop(mon, obj, mw_tmp, polyspot) {
     }
 }
 
-/** C hack.c rounddiv */
-function rounddiv(x, y) {
-    if (!y) return 0;
-    let divsgn = 1;
-    let yy = y;
-    let xx = x;
-    if (yy < 0) { divsgn = -divsgn; yy = -yy; }
-    if (xx < 0) { divsgn = -divsgn; xx = -xx; }
-    let r = Math.trunc(xx / yy);
-    const m = xx % yy;
-    if (2 * m >= yy) r++;
-    return divsgn * r;
-}
 
 /**
  * C ref: weapon.c hitval `:149–187` — spe (weapon/weptool) + oc_hitbon,
@@ -1071,18 +1059,53 @@ export async function add_weapon_skill(n) {
 }
 
 /**
+ * C ref: weapon.c lose_weapon_skill `:1453–1473` — drop n skill slots on
+ * level drain (adjabil oldlevel>newlevel, attrib.c:1072): free slots
+ * first, else pop the last advanced skill, rank--, refund
+ * slots_required-1. C panic on an already-Unskilled record entry ≡ loud
+ * throw (insert_branch precedent).
+ */
+export function lose_weapon_skill(n) {
+    const u = game.u || {};
+    n = n | 0;
+    while (--n >= 0) {
+        /* deduct first from unused slots then from last placed one, if any */
+        if (u.weapon_slots) {
+            u.weapon_slots--;
+        } else if (u.skills_advanced) {
+            const skill = u.skill_record[--u.skills_advanced];
+            if (P_SKILL(skill) <= P_UNSKILLED) {
+                throw new Error(`lose_weapon_skill (${skill})`);
+            }
+            set_P_SKILL(skill, P_SKILL(skill) - 1); /* drop skill one level */
+            /* Lost skill might have taken more than one slot; refund rest. */
+            u.weapon_slots = slots_required(skill) - 1;
+            /* It might now be possible to advance some other pending
+               skill by using the refunded slots, but giving a message
+               to that effect would seem pretty confusing.... */
+        }
+    }
+}
+
+/**
  * C ref: weapon.c drain_weapon_skill `:1476–1514` — drop n advanced
- * skills (mhitu AD_DRIN D-1329). Each pick `rn2(skills_advanced)` then
- * shift skill_record, P_SKILL--, refund slots_required at the new
- * rank, maybe rn2-clip P_ADVANCE. C panics if rank was already
- * Unskilled; JS skips the decrement.
+ * skills (C callers: read.c forget `:1031`, uhitm.c mhitu AD_DRIN
+ * `:3269` D-1329). memset tmpskills ≡ fill(0); each pick
+ * `rn2(skills_advanced)`, unlink the record entry by left-shift,
+ * skills_advanced--, P_SKILL-- with the C panic on an
+ * already-Unskilled entry (≡ loud throw, lose_weapon_skill precedent
+ * above), refund slots_required at the new rank, rn2-clip P_ADVANCE
+ * into the lower band; then one You message per drained skill.
+ * Async: the message loop awaits pline (C You is sync); both C
+ * callers' JS sites await this.
  */
 export async function drain_weapon_skill(n) {
     const u = game.u || {};
-    const tmpskills = new Array(P_NUM_SKILLS).fill(0);
+    const tmpskills = new Array(P_NUM_SKILLS).fill(0); /* C: memset 0 */
     n = n | 0;
     while (--n >= 0) {
         if (u.skills_advanced) {
+            /* Pick a random skill, deleting it from the list. */
             const i = rn2(u.skills_advanced);
             const skill = u.skill_record[i];
             tmpskills[skill] = 1;
@@ -1090,9 +1113,13 @@ export async function drain_weapon_skill(n) {
                 u.skill_record[j] = u.skill_record[j + 1];
             }
             u.skills_advanced--;
-            if (P_SKILL(skill) <= P_UNSKILLED) continue;
-            set_P_SKILL(skill, P_SKILL(skill) - 1);
+            if (P_SKILL(skill) <= P_UNSKILLED) {
+                throw new Error(`drain_weapon_skill (${skill})`);
+            }
+            set_P_SKILL(skill, P_SKILL(skill) - 1); /* drop skill one level */
+            /* refund slots used for skill */
             u.weapon_slots = (u.weapon_slots | 0) + slots_required(skill);
+            /* drain skill training to a value appropriate for new level */
             const curradv = practice_needed_to_advance(P_SKILL(skill));
             const prevadv = practice_needed_to_advance(P_SKILL(skill) - 1);
             if ((P_ADVANCE(skill) | 0) >= curradv) {
@@ -1102,9 +1129,10 @@ export async function drain_weapon_skill(n) {
     }
     for (let skill = 0; skill < P_NUM_SKILLS; skill++) {
         if (tmpskills[skill]) {
-            const some = P_SKILL(skill) >= P_BASIC ? 'some of ' : '';
-            await pline(
-                `You forget ${some}your training in ${P_NAME(skill)}.`,
+            await You(
+                'forget %syour training in %s.',
+                P_SKILL(skill) >= P_BASIC ? 'some of ' : '',
+                P_NAME(skill),
             );
         }
     }
@@ -1318,6 +1346,45 @@ export function weapon_type(obj) {
 export function uwep_skill_type() {
     if (game.u?.twoweap) return P_TWO_WEAPON_COMBAT;
     return weapon_type(game.u?.uwep);
+}
+
+/**
+ * C ref: weapon.c abon `:950–989` — to-hit bonus from STR/DEX bands
+ * (+1 kludge for ulevel<3); a poly'd hero uses the form's level
+ * instead. Canonical home (C weapon.c): replaces the former dig.js /
+ * uhitm.js local clones (dig's dropped the DEX + Upolyd arms, both
+ * capped the STR ladder at sbon 2). C `&mons[u.umonnum]` ≡
+ * `game.youmonst.data` when Upolyd; the `?.data` guard only fires in
+ * states C cannot reach (Upolyd with no form entry).
+ */
+export function abon() {
+    const str = acurr(A_STR), dex = acurr(A_DEX);
+
+    if (Upolyd(game.u) && game.youmonst?.data) {
+        return adj_lev(game.youmonst.data) - 3;
+    }
+
+    /* this used to be '<= 18/50' for bonus of 1 but got changed to '< 18/50'
+       so that '18/50' gives a bonus of 2; gnome and orc player characters
+       have max Str of 18/50 and giving an extra bonus at that break point
+       provides an incentive for them to max out that characteristic */
+    let sbon;
+    if (str < 6) sbon = -2;
+    else if (str < 8) sbon = -1;
+    else if (str < 17) sbon = 0;
+    else if (str < STR18(50)) sbon = 1; /* up to 18/49 */
+    else if (str < STR18(100)) sbon = 2;
+    else sbon = 3;
+
+    /* Game tuning kludge: make it a bit easier for a low level character to
+     * hit */
+    sbon += ((game.u?.ulevel | 0) < 3) ? 1 : 0;
+
+    if (dex < 4) return sbon - 3;
+    else if (dex < 6) return sbon - 2;
+    else if (dex < 8) return sbon - 1;
+    else if (dex < 14) return sbon;
+    else return sbon + dex - 14;
 }
 
 /**

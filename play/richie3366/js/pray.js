@@ -38,7 +38,7 @@
 
 import { game } from './gstate.js';
 import { rn2, rn1, rnl, rnz, rnd, d, rn2_on_display_rng } from './rng.js';
-import { pline, You, verbalize, You_feel, newsym, impossible, see_monsters, shieldeff } from './display.js';
+import { pline, You, Your, verbalize, You_feel, newsym, impossible, see_monsters, shieldeff } from './display.js';
 import { nomul, carrying, losehp, finish_maybe_wail, You_hear, is_pool, is_lava } from './hack.js';
 import { upstart } from './hacklib.js';
 import { weapon_type, unrestrict_weapon_skill, add_weapon_skill, P_RESTRICTED } from './weapon.js';
@@ -82,6 +82,7 @@ import { attrcurse, rndcurse } from './sit.js';
 import {
     An, an, xname, makeplural, vtense, corpse_xname,
     ansimpleoname, simpleonames, otense, Yobjnam2, yname,
+    gloves_simple_name,
 } from './objnam.js';
 import {
     objectNames, POT_WATER, POTION_CLASS, WEAPON_CLASS, SPBOOK_CLASS,
@@ -107,7 +108,7 @@ import { you_unwere } from './were.js';
 import {
     make_slimed, make_stoned, make_sick,
     make_confused, make_stunned, make_hallucinated,
-    make_glib, make_deaf,
+    make_glib, make_deaf, Glib,
 } from './potion.js';
 import { init_uhunger, floorfood, carried } from './eat.js';
 import { Soundeffect } from './sndprocs.js';
@@ -515,23 +516,34 @@ function worst_cursed_item() {
 }
 
 /**
- * C ref: pray.c fix_curse_trouble — glow + uncurse (+ Glib gloves clear).
- * Named omit: update_inventory redraw; PLNMSG_OBJ_GLOWS.
+ * C ref: pray.c fix_curse_trouble `:349–370` — C order: impossible
+ * on null; Glib arm (make_glib + Your/gloves_simple_name, early
+ * return when already uncursed); glow gate (!Blind ||
+ * ublindf+Blindfolded_only) with what-or-Yobjnam2 + hcolor(NH_AMBER),
+ * last_msg PLNMSG_OBJ_GLOWS, bknown sans set_bknown; uncurse;
+ * update_inventory. NH_AMBER ≡ 'amber' (no color-name config in JS;
+ * potion.js/read.js precedent). Your is the live display.js export
+ * (pray-local clone removed).
  */
 async function fix_curse_trouble(otmp, what) {
     const u = game.u || {};
-    if (!otmp) return;
-    if (otmp === u.uarmg && (u.Glib | 0)) {
+    if (!otmp) {
+        await impossible('fix_curse_trouble: nothing to uncurse.');
+        return;
+    }
+    if (otmp === u.uarmg && Glib()) {
         make_glib(0);
-        await pline('Your gloves are no longer slippery.');
-        if (!otmp.cursed) return;
+        await Your('%s are no longer slippery.', gloves_simple_name(u.uarmg));
+        if (!otmp.cursed)
+            return;
     }
     if (!Blind() || (otmp === u.ublindf && Blindfolded_only())) {
-        const glow = what || `Your ${xname(otmp)} softly glows`;
-        await pline(`${glow} ${hcolor('amber')}.`);
-        otmp.bknown = !Hallucination();
+        await pline('%s %s.', what || Yobjnam2(otmp, 'softly glow'), hcolor('amber'));
+        game.iflags.last_msg = PLNMSG_OBJ_GLOWS;
+        otmp.bknown = Hallucination() ? 0 : 1;
     }
     await uncurse(otmp);
+    update_inventory();
 }
 
 /**
@@ -1626,11 +1638,6 @@ async function pleased(g_align) {
     let kick_on_butt = u.uevent?.udemigod ? 1 : 0;
     if (u.uevent?.uhand_of_elbereth) kick_on_butt++;
     if (kick_on_butt) u.ublesscnt += kick_on_butt * rnz(1000);
-}
-
-/** C ref: pline.c Your — prefix "Your " (file-local like artifact.js/zap.js). */
-async function Your(rest) {
-    await pline(`Your ${rest}`);
 }
 
 /**

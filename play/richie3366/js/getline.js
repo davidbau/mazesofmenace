@@ -780,6 +780,28 @@ const EXT_CMDS = [
         },
     },
     {
+        // C: cmd.c:1951-1952 "wizcustom" IFBURIED|WIZMODECMD|NOFUZZERCMD
+        // (no AUTOCOMPLETE) → wiz_custom (D-3089; runners review 2049)
+        name: 'wizcustom',
+        wiz: true,
+        autocomplete: false,
+        run: async () => {
+            const { wiz_custom } = await import('./wizcmds.js');
+            return wiz_custom();
+        },
+    },
+    {
+        // C: cmd.c:1967-1969 "wizkill" IFBURIED|AUTOCOMPLETE|WIZMODECMD|
+        // CMD_M_PREFIX|NOFUZZERCMD → wiz_kill (D-3089; runners review 2049)
+        name: 'wizkill',
+        wiz: true,
+        autocomplete: true,
+        run: async () => {
+            const { wiz_kill } = await import('./wizcmds.js');
+            return wiz_kill();
+        },
+    },
+    {
         // C: cmd.c "invoke" IFBURIED|AUTOCOMPLETE → doinvoke (D-0715)
         name: 'invoke',
         wiz: false,
@@ -921,6 +943,29 @@ const EXT_CMDS = [
         },
     },
     {
+        // C: cmd.c:1928-1929 "vision" IFBURIED|AUTOCOMPLETE|WIZMODECMD
+        // (unconditional) → wiz_show_vision (D-3085; runners review 2045)
+        name: 'vision',
+        wiz: true,
+        autocomplete: true,
+        run: async () => {
+            const { wiz_show_vision } = await import('./wizcmds.js');
+            return wiz_show_vision();
+        },
+    },
+    {
+        // C: cmd.c:1985-1986 "wizmondiff" IFBURIED|AUTOCOMPLETE|WIZMODECMD
+        // (#if DEVEL||DEBUG — live: patchlevel.h:35-37 defines DEBUG)
+        // → wiz_mon_diff (D-3085; runners review 2045)
+        name: 'wizmondiff',
+        wiz: true,
+        autocomplete: true,
+        run: async () => {
+            const { wiz_mon_diff } = await import('./wizcmds.js');
+            return wiz_mon_diff();
+        },
+    },
+    {
         // C: cmd.c "migratemons" IFBURIED|AUTOCOMPLETE|WIZMODECMD → wiz_migrate_mons (D-2779)
         name: 'migratemons',
         wiz: true,
@@ -938,6 +983,29 @@ const EXT_CMDS = [
         run: async () => {
             const { wiz_show_stats } = await import('./wizcmds.js');
             return wiz_show_stats();
+        },
+    },
+    {
+        // C: cmd.c:2002-2003 "wmode" IFBURIED|AUTOCOMPLETE|WIZMODECMD
+        // → wiz_show_wmodes
+        name: 'wmode',
+        wiz: true,
+        autocomplete: true,
+        run: async () => {
+            const { wiz_show_wmodes } = await import('./wizcmds.js');
+            return wiz_show_wmodes();
+        },
+    },
+    {
+        // C: cmd.c:1977-1978 "wizobjprobs" IFBURIED|WIZMODECMD
+        // (no AUTOCOMPLETE; #if DEVEL||DEBUG — live: patchlevel.h:36
+        // defines DEBUG) → wiz_objprobs
+        name: 'wizobjprobs',
+        wiz: true,
+        autocomplete: false,
+        run: async () => {
+            const { wiz_objprobs } = await import('./wizcmds.js');
+            return wiz_objprobs();
         },
     },
     {

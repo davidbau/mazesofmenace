@@ -24,16 +24,19 @@ import {
     ENERGY_REGENERATION, PROTECTION, PROT_FROM_SHAPE_CHANGERS,
     POLYMORPH_CONTROL, UNCHANGING, REFLECTING, FREE_ACTION, FIXED_ABIL,
     LIFESAVED, Upolyd, COLNO, ROWNO, STONE, S_sink, S_fountain, S_vbeam, S_rslant,
+    SDOOR, CORR, IS_WALL, IS_ROOM, IS_DOOR, WM_MASK,
     COULD_SEE, IN_SIGHT, TEMP_LIT, NEUTRAL,
     In_sokoban, Is_knox, In_endgame, ARM, u_at,
     Is_stronghold, Is_botlevel, has_mgivenname, MGIVENNAME,
     MIGR_EXACT_XY, MIGR_RANDOM, MM_NOMSG,
     DIED, XKILL_NOMSG, SUPPRESS_IT, SUPPRESS_HALLUCINATION, SUPPRESS_SADDLE,
     ARTICLE_YOUR, ARTICLE_THE, ARTICLE_A, PRIMARYSET, KNOWN_HANDLING,
+    G_EXTINCT, MON_OFFMAP, MON_MIGRATING, MON_LIMBO, MON_ENDGAME_MIGR,
+    ESHK, EPRI, EGD,
 } from './const.js';
 import { ATR_INVERSE } from './terminal.js';
 import { make_blinded, save_currentstate } from './do.js';
-import { m_at, rescham, dmonsfree } from './mon.js';
+import { m_at, rescham, dmonsfree, mongone } from './mon.js';
 import { dobjsfree } from './mkobj.js';
 /* C lock.c maybe_reset_pick — hoisted fn, called only from
    makemap_prepost (`imports.mjs --can wizcmds.js lock.js` SAFE). */
@@ -50,11 +53,11 @@ import { check_wornmask_slots } from './worn.js';
 import { rn2 } from './rng.js';
 import { float_vs_flight, body_part } from './polyself.js';
 import { pooleffects } from './pickup.js';
-import { mons, olfaction, NUMMONS, nonliving } from './monsters.js';
+import { mons, olfaction, NUMMONS, nonliving, G_UNIQ } from './monsters.js';
 import { PM_GRID_BUG, PM_SAMURAI, pmnames } from './generated/monsters_data.js';
 /* C mondata.c mstrength — hoisted fn (`imports.mjs --can wizcmds.js mondata.js mstrength` SAFE). */
-import { mstrength } from './mondata.js';
-import { NUM_OBJECTS } from './objects.js';
+import { mstrength, monsndx } from './mondata.js';
+import { NUM_OBJECTS, FIRST_OBJECT, MAXOCLASSES, objectNameStrs } from './objects.js';
 /* C dungeon.c overview_stats — hoisted fn
    (`imports.mjs --can wizcmds.js dungeon.js overview_stats` SAFE). */
 import { overview_stats, on_level } from './dungeon.js';
@@ -81,6 +84,12 @@ import { done } from './end.js';
 /* C uhis — #wizkill killer-name possessive
    (`imports.mjs --can wizcmds.js roles.js uhis` SAFE). */
 import { uhis } from './roles.js';
+/* C dog.c keepdogs — makemap_remove_mons pets-only keep
+   (`imports.mjs --can wizcmds.js dog.js keepdogs` SAFE). */
+import { keepdogs } from './dog.js';
+/* C shk.c setpaid — makemap_unmakemon local-shopkeeper settle
+   (`imports.mjs --can wizcmds.js shk.js setpaid` SAFE). */
+import { setpaid } from './shk.js';
 
 const DEFAULT_TIMEOUT_INCR = 30;
 
@@ -533,12 +542,98 @@ function zero_dest_area() {
 }
 
 /**
+ * C ref: wizcmds.c makemap_unmakemon `:73–105` (staticfn) — uncreate one
+ * monster for the old incarnation of a #wizmakemap level: un-extinct a
+ * unique (`:80–81`, ignores DEADMONSTER per the C comment), decrement
+ * born (`:82–83`), vault-guard isgd clear then fall through to mongone
+ * (`:88–89`), dead monsters return already-discarded (`:90–91`),
+ * same-level shopkeeper setpaid (`:92–93`), then the migratory arm
+ * re-prepends onto fmon so dmonsfree bookkeeping stays in sync
+ * (`:95–103`) before mongone (`:104`).
+ * JS fmon/migrating_mons are arrays: C nmon splice ≡ unshift/splice
+ * (teleport.js:2892 / vault.js:467 precedent). Vitals-ensure mirrors
+ * makemon.js unmakemon (C svm.mvitals[] always present; JS on-demand).
+ * Async only because JS mongone awaits.
+ */
+async function makemap_unmakemon(mtmp, migratory) {
+    const ndx = monsndx(mtmp.data); // C `:75`
+    if (!game.mvitals) game.mvitals = [];
+    if (!game.mvitals[ndx]) game.mvitals[ndx] = { mvflags: 0, born: 0, died: 0 };
+    const mv = game.mvitals[ndx];
+    // C `:80–81` — uncreate any unique so it can be remade.
+    if ((((mtmp.data?.geno | 0)) & G_UNIQ) !== 0) {
+        mv.mvflags = (mv.mvflags | 0) & ~G_EXTINCT;
+    }
+    // C `:82–83` — plain decrement (no 255-cap guard; that is unmakemon's).
+    if ((mv.born | 0)) mv.born = (mv.born | 0) - 1;
+
+    // C `:88–93` — vault guard falls through to mongone after isgd clear.
+    if (mtmp.isgd) {
+        mtmp.isgd = 0;
+    } else if ((mtmp.mhp | 0) < 1) { // DEADMONSTER, monst.h:214
+        return;
+    } else if (mtmp.isshk && on_level(game.u?.uz, ESHK(mtmp)?.shoplevel)) {
+        setpaid(mtmp);
+    }
+    if (migratory) {
+        // C `:100–103` — caller already unlinked from migrating_mons.
+        mtmp.mstate = (mtmp.mstate | 0) | MON_OFFMAP;
+        mtmp.mstate &= ~(MON_MIGRATING | MON_LIMBO | MON_ENDGAME_MIGR);
+        if (!game.fmon) game.fmon = [];
+        mtmp.nmon = game.fmon[0] || null;
+        game.fmon.unshift(mtmp);
+    }
+    await mongone(mtmp); // C `:104`
+}
+
+/**
+ * C ref: wizcmds.c makemap_remove_mons `:110–150` — keepdogs(TRUE) pets-only
+ * keep (`:116`), unmake every surviving fmon member (`:118–123`), unmake
+ * migrating shk/priest/guard whose home level is this one (`:132–142`),
+ * dmonsfree (`:144`), then fmon must be empty (`:145–146`).
+ * The fmon walk is a snapshot: makemap_unmakemon → mongone splices the
+ * live array underneath (keepdogs dog.js:448 precedent for the C nmon
+ * walk). Sole C caller: cmd.c:992 makemap_prepost(pre).
+ */
+export async function makemap_remove_mons() {
+    const u = game.u || {};
+    // C `:116` — pets-only keep (ascending-style release from traps etc).
+    await keepdogs(true);
+    // C `:118–123` — dead members stay for dmonsfree below.
+    for (const mtmp of [...(game.fmon || [])]) {
+        if ((mtmp.mhp | 0) < 1) continue; // DEADMONSTER, monst.h:214
+        await makemap_unmakemon(mtmp, false);
+    }
+    // C `:132–142` — migrating home-level shk/priest/guard keep stale
+    // mextra for this level; C unlinks via mprev then passes migratory.
+    const mig = game.migrating_mons || [];
+    for (let i = 0; i < mig.length;) {
+        const mtmp = mig[i];
+        if (mtmp.mextra
+            && ((mtmp.isshk && on_level(u.uz, ESHK(mtmp)?.shoplevel))
+                || (mtmp.ispriest && on_level(u.uz, EPRI(mtmp)?.shrlevel))
+                || (mtmp.isgd && on_level(u.uz, EGD(mtmp)?.gdlevel)))) {
+            mig.splice(i, 1);
+            await makemap_unmakemon(mtmp, true);
+        } else {
+            i++;
+        }
+    }
+    game.migrating_mons = mig;
+    // C `:144–146` — release dead/unmade; fmon must be empty now.
+    await dmonsfree();
+    if ((game.fmon || []).length) {
+        await impossible("makemap_remove_mons: 'fmon' did not get emptied?");
+    }
+}
+
+/**
  * C ref: cmd.c makemap_prepost — discard (pre) then place (post) after
  * #wizmakemap mklev. Post places via u_on_rndspot
  * ((amulet?1:0)|(wiztower?2:0)) (D-1288; C :1043–1046) instead of
  * safe_teleds, then losedogs / kill_genocided / u_collide_m / initrack /
  * Punished placebc / docrt / flush / splev / check_special_room(FALSE).
- * Named omissions: makemap_remove_mons / mine·soko prize;
+ * Named omissions: mine·soko prize;
  * digging memset; polearm.hitmon;
  * savelev freeing nhfile;
  * sp_lev.c lspo_reset_level / lspo_finalize_level.
@@ -546,8 +641,9 @@ function zero_dest_area() {
 export async function makemap_prepost(pre, wiztower) {
     const u = game.u || (game.u = {});
     if (pre) {
-        // C cmd.c:992-993 — makemap_remove_mons (named omit) then
-        // rm_mapseen: discard overview info for the level being remade.
+        // C cmd.c:992-993 — makemap_remove_mons then rm_mapseen:
+        // discard monsters and overview info for the level being remade.
+        await makemap_remove_mons();
         const { rm_mapseen, ledger_no } = await import('./dungeon.js');
         rm_mapseen(ledger_no(game.u?.uz));
         const { ballrelease, unplacebc } = await import('./ball.js');
@@ -2225,4 +2321,112 @@ export async function wiz_kill() {
     }
     await dmonsfree(); // C `:343` — force dead-monster cleanup
     return ECMD_OK; // C `:345` — no time elapses
+}
+
+// ── wiz_show_wmodes / wiz_objprobs ──
+/**
+ * C ref: wizcmds.c wiz_show_wmodes `:656–689` — wizard `#wmode` dump
+ * (cmd.c extcmdlist "wmode" `:2002–2003`, IFBURIED|AUTOCOMPLETE|WIZMODECMD
+ * → EXT_CMDS runnable entry in getline.js) of wall-info modes: '@' at
+ * the hero, '0'+(wall_info&WM_MASK) on walls/secret doors, '#' on
+ * corridors, '.' on rooms/doors, 'x' elsewhere. NHW_TEXT via
+ * show_text_pages (file idiom): each C putstr is one collected line;
+ * display_nhwindow/destroy_nhwindow subsume into the page wait. C has
+ * no callers (dispatched from the extcmd table only) — the JS caller
+ * is the getline.js `#wmode` runner.
+ */
+export async function wiz_show_wmodes() {
+    const { show_text_pages } = await import('./pager.js');
+    // C `:663` — boolean istty = WINDOWPORT(tty). The scored port is
+    // tty (options.js windowport_tty() unconditionally true; bones.js
+    // idiom), so the gate is a constant, kept in C position.
+    const istty = true;
+    const lines = []; // C `:665` win = create_nhwindow(NHW_TEXT)
+    if (istty)
+        lines.push(''); // C `:666–667` putstr(win, 0, "") — tty blank top line
+    // C `:668` — for (y = 0; y < ROWNO; y++).
+    for (let y = 0; y < ROWNO; y++) {
+        // C `:669–681` — row[x] per cell for x in 0..COLNO-1, but C
+        // `:684` prints &row[1] (column 0 is off the left screen
+        // edge), so JS builds that same run directly (wiz_show_vision
+        // idiom).
+        let row = '';
+        for (let x = 1; x < COLNO; x++) {
+            const lev = game.level?.at(x, y); // C `:670` lev = &levl[x][y]
+            // C cells always exist; STONE is the JS unloaded-level
+            // guard (wiz_map_levltyp idiom).
+            const typ = lev?.typ ?? STONE;
+            if (u_at(x, y)) { // C `:671–672`
+                row += '@';
+            } else if (IS_WALL(typ) || typ === SDOOR) { // C `:673–674`
+                // C `:674` '0' + (lev->wall_info & WM_MASK).
+                row += String.fromCharCode(48 + (((lev?.wall_info || 0) & WM_MASK)));
+            } else if (typ === CORR) { // C `:675–676`
+                row += '#';
+            } else if (IS_ROOM(typ) || IS_DOOR(typ)) { // C `:677–678`
+                row += '.';
+            } else { // C `:679–680`
+                row += 'x';
+            }
+        }
+        // C `:682–684` — row[COLNO] = '\0'; putstr(win, 0, &row[1]).
+        lines.push(row);
+    }
+    // C `:686–687` — display_nhwindow(win, TRUE); destroy_nhwindow(win).
+    await show_text_pages(lines);
+    return ECMD_OK; // C `:688`
+}
+
+/**
+ * C ref: wizcmds.c wiz_objprobs `:1831–1868` — wizard `#wizobjprobs`
+ * dump (cmd.c extcmdlist "wizobjprobs" `:1977–1978`,
+ * IFBURIED|WIZMODECMD, no AUTOCOMPLETE; the `#if DEVEL||DEBUG` guard
+ * is live — patchlevel.h:36 defines DEBUG — so the row ships like
+ * wizmondiff; → EXT_CMDS runnable entry in getline.js) of
+ * per-object generation probabilities: "%4d / %4d (%6.2f%%): %s"
+ * per named object with a blank line before each new object class.
+ * NHW_TEXT via show_text_pages (file idiom). C has no callers
+ * (dispatched from the extcmd table only) — the JS caller is the
+ * getline.js `#wizobjprobs` runner.
+ */
+export async function wiz_objprobs() {
+    const { show_text_pages } = await import('./pager.js');
+    const objs = game.objects || []; // C `objects[]` global
+    // C `:1838` — oclass starts at the first object's class so the
+    // first named row prints no leading blank line.
+    let oclass = objs[FIRST_OBJECT]?.oc_class | 0;
+    // C `:1839` — memset(probsum, 0, sizeof probsum).
+    const probsum = new Array(MAXOCLASSES).fill(0);
+    // C `:1841–1843` — class totals over every otyp, placeholders
+    // included (their oc_prob is 0, so they add nothing).
+    for (let otyp = FIRST_OBJECT; otyp < NUM_OBJECTS; otyp++) {
+        probsum[objs[otyp]?.oc_class | 0] += objs[otyp]?.oc_prob | 0;
+    }
+    const lines = []; // C `:1845` win = create_nhwindow(NHW_TEXT)
+    // C `:1846–1863`.
+    for (let otyp = FIRST_OBJECT; otyp < NUM_OBJECTS; otyp++) {
+        // C `:1847–1849` — placeholders for extra descriptions carry
+        // no name (OBJ_NAME(objclass.h:190) ≡ generated
+        // objectNameStrs, null there); skip before the class-break
+        // test so the blank line tracks named rows only.
+        const name = objectNameStrs[otyp];
+        if (!name)
+            continue;
+        // C `:1851–1853` — blank line before a new class's first row.
+        if ((objs[otyp]?.oc_class | 0) !== oclass)
+            lines.push('');
+        oclass = objs[otyp]?.oc_class | 0; // C `:1854`
+        // C `:1856–1862` — "%4d / %4d (%6.2f%%): %s". The division is
+        // C float (Math.fround), the widths padStart (no truncation
+        // either side: %4d/%6.2f never truncate).
+        const prob = objs[otyp]?.oc_prob | 0;
+        const total = probsum[oclass] | 0;
+        const pct = Math.fround((prob * 100) / total).toFixed(2);
+        lines.push(
+            `${String(prob).padStart(4)} / ${String(total).padStart(4)} (${pct.padStart(6)}%): ${name}`,
+        );
+    }
+    // C `:1864–1865` — display_nhwindow(win, FALSE); destroy_nhwindow(win).
+    await show_text_pages(lines);
+    return ECMD_OK; // C `:1867`
 }

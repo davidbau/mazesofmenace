@@ -25,7 +25,7 @@ import {
 import { thrwmu, spitmu, breamu } from './mthrowu.js';
 import { find_offensive, use_offensive } from './muse.js';
 import { destroy_items, resists_drli, Drain_resistance, drain_item } from './zap.js';
-import { nomul, stop_occupation, maybe_half_phys, is_pool, losehp, unmul, fall_asleep, You_hear } from './hack.js';
+import { nomul, stop_occupation, maybe_half_phys, is_pool, losehp, unmul, fall_asleep, You_hear, showdamage } from './hack.js';
 import { upstart } from './hacklib.js';
 import { rnd, d, rn2, rn1 } from './rng.js';
 import {
@@ -90,7 +90,7 @@ import {
 } from './invent.js';
 import { burn_away_slime } from './timeout.js';
 import {
-    get_mattk, mhitm_knockback, mhitm_mgc_atk_negated, mhitm_ad_drst, mhitm_ad_dren, mhitm_ad_deth, mhitm_ad_dise, mhitm_ad_pest, mhitm_ad_stck, mhitm_ad_conf, mattackm, rustm,
+    get_mattk, mhitm_knockback, mhitm_mgc_atk_negated, mhitm_ad_drst, mhitm_ad_dren, mhitm_ad_deth, mhitm_ad_dise, mhitm_ad_pest, mhitm_ad_stck, mhitm_ad_conf, mhitm_ad_ssex, mattackm, rustm,
     could_seduce, failed_grab, engulf_target, SYSOPT_SEDUCE, mon_poly, mondead, erode_armor,
     golemeffects_mm,
     AT_NONE, AT_CLAW, AT_KICK, AT_BITE, AT_STNG, AT_TUCH, AT_BUTT, AT_WEAP,
@@ -603,7 +603,7 @@ export async function wildmiss(mtmp, mattk) {
 
 /**
  * C ref: mhitu.c mdamageu — subtract HP; Upolyd mh<1 → rehumanize;
- * else uhp<1 → done_in_by. showdamage deferred.
+ * else uhp<1 → done_in_by. showdamage wired (D-3105).
  */
 export async function mdamageu(mtmp, n) {
     let dmg = n | 0;
@@ -613,6 +613,7 @@ export async function mdamageu(mtmp, n) {
     const u = game.u || (game.u = {});
     if (Upolyd(u)) {
         u.mh = (u.mh || 0) - dmg;
+        await showdamage(dmg); // C `:1912`
         if ((u.mh || 0) > (u.mhmax || 0)) u.mh = u.mhmax;
         if ((u.mh || 0) < 1) {
             u.mh = 0;
@@ -621,6 +622,7 @@ export async function mdamageu(mtmp, n) {
         return;
     }
     u.uhp = (u.uhp || 0) - dmg;
+    await showdamage(dmg); // C `:1920`
     if ((u.uhp || 0) > (u.uhpmax || 0)) u.uhp = u.uhpmax;
     if ((u.uhp || 0) < 1) {
         await done_in_by(mtmp, DIED);
@@ -2118,7 +2120,7 @@ async function gulpmu(mtmp, mattk) {
  * Brag/remarks is pline_mon (D-1240); charm-fail stays pline.
  * uhitm + mhitm arms live in mhitm.js mhitm_ad_sedu (blnd/elec precedent).
  */
-async function mhitm_ad_sedu_u(mtmp, mattk, mhm) {
+export async function mhitm_ad_sedu_u(mtmp, mattk, mhm) {
     if (is_animal(mtmp.data)) {
         await hitmsg(mtmp, mattk);
         if (mtmp.mcan) return;
@@ -2185,24 +2187,6 @@ async function mhitm_ad_sedu_u(mtmp, mattk, mhm) {
         mhm.done = true;
         return;
     }
-}
-
-/**
- * C ref: uhitm.c mhitm_ad_ssex `:4750–4778` — mhitu (monster→you) arm.
- * SYSOPT_SEDUCE (default on) → doseduce when could_seduce==1 && !mcan.
- * Named: uhitm hero-as-seducer; mhitm mon-mon AD_SSEX.
- */
-async function mhitm_ad_ssex(mtmp, mattk, mhm) {
-    if (SYSOPT_SEDUCE()) {
-        if (could_seduce(mtmp, game.youmonst, mattk) === 1 && !mtmp.mcan) {
-            if (await doseduce(mtmp)) {
-                mhm.hitflags = M_ATTK_AGR_DONE;
-                mhm.done = true;
-            }
-        }
-        return;
-    }
-    await mhitm_ad_sedu_u(mtmp, mattk, mhm);
 }
 
 /**
@@ -2972,7 +2956,9 @@ async function mhitm_adtyping_u(mtmp, mattk, mhm) {
         await mhitm_ad_sedu_u(mtmp, mattk, mhm);
         break;
     case AD_SSEX:
-        await mhitm_ad_ssex(mtmp, mattk, mhm);
+        /* C ref: uhitm.c mhitm_adtyping `:4797` → mhitm_ad_ssex
+           mhitu arm (mdef is youmonst). */
+        await mhitm_ad_ssex(mtmp, mattk, game.youmonst, mhm);
         break;
     case AD_BLND:
         await mhitm_ad_blnd_u(mtmp, mattk, mhm);

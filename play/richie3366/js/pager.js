@@ -1013,19 +1013,31 @@ function look_region(nearby) {
 }
 
 /**
- * C ref: pager.c append_str `:82–106` — append " or "+new_str unless new_str
+ * C ref: pager.c append_str `:82–104` — append " or "+new_str unless new_str
  * already occurs in buf (case-insensitive strstri). BUFSZ-capped: at most
  * BUFSZ-1 chars total; sep then truncated new_str. Returns 1 if anything
  * was appended (even a partial " or "), else 0.
  */
 export function append_str(bufHolder, new_str) {
-    if (strstri(bufHolder.s, new_str)) return 0;
+    /* :89–90 — C tests the returned pointer against NULL; strstri returns
+     * tail-or-null, so `!= null` is exact even for an empty new_str (C
+     * returns buf, non-NULL). */
+    if (strstri(bufHolder.s, new_str) != null) return 0; /* already present */
     const oldlen = bufHolder.s.length;
-    if (oldlen >= BUFSZ - 1) return 0;
+    if (oldlen >= BUFSZ - 1) {
+        /* :93–95 — overfull buf logs impossible, then falls to return 0.
+         * Fire-and-forget: this sync look helper cannot await the async
+         * impossible (artifact.js/botl.js precedent); %lu preformatted
+         * since the JS formatter expands %s/%d only. */
+        if (oldlen > BUFSZ - 1)
+            void impossible("append_str: 'buf' contains %s characters.", String(oldlen >>> 0));
+        return 0; /* no space available */
+    }
+    /* :100–103 — some space available, but not necessarily enough */
     const space_left = BUFSZ - 1 - oldlen;
     const sep = ' or ';
     bufHolder.s += sep.slice(0, space_left);
-    if (space_left > sep.length) {
+    if (space_left > sep.length) { /* sizeof sep - 1 */
         bufHolder.s += String(new_str).slice(0, space_left - sep.length);
     }
     return 1;

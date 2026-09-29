@@ -30,14 +30,23 @@ import {
 } from './makemon.js';
 
 /**
- * C ref: makemon.c init_mextra `:1059–1063` + newmextra `:1064–1072`.
- * C allocs sizeof (struct mextra) then init_mextra copies zeromextra
- * (all extension pointers NULL) and sets mcorpsenm = NON_PM.
- * JS absent keys are NULL; mcorpsenm is explicit so MCORPSENM reads NON_PM.
+ * C ref: makemon.c init_mextra `:1059–1063` (staticfn → file-local;
+ * lives beside its only caller newmextra, as in C `:1065–1073`).
+ * C `:1061` `*mex = zeromextra` copies all-NULL extension pointers —
+ * JS absent keys are NULL, so only the corpsenm assignment is live.
+ */
+function init_mextra(mex) {
+    mex.mcorpsenm = NON_PM; // C `:1062`
+}
+
+/**
+ * C ref: makemon.c newmextra `:1065–1073` — alloc + init_mextra + return.
+ * mcorpsenm stays explicit so MCORPSENM reads NON_PM, not undefined.
  */
 export function newmextra() {
-    // C `:1061–1062` *mex = zeromextra; mex->mcorpsenm = NON_PM
-    return { mcorpsenm: NON_PM };
+    const mextra = {}; // C `:1070` alloc(sizeof (struct mextra))
+    init_mextra(mextra); // C `:1071`
+    return mextra; // C `:1072`
 }
 
 /**

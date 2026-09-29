@@ -39,7 +39,7 @@ import { heal_legs, float_down, instapetrify } from './trap.js';
 import { unconscious } from './teleport.js';
 import { stop_occupation, nomul, is_pool, is_lava, carrying, You_hear, monst_to_any, obj_to_any, confdir, fall_asleep } from './hack.js';
 import { run_timers, start_timer, stop_timer, weight,
-    obj_extract_self, delobj, objects_at, attach_egg_hatch_timeout,
+    obj_extract_self, objects_at, attach_egg_hatch_timeout,
     obj_has_timer, rider_revival_time, rot_corpse, set_corpsenm,
     free_omid, free_omonst, sobj_at, TIMEOUT_FUNC_NAMES,
 } from './mkobj.js';
@@ -51,7 +51,7 @@ import { make_blinded } from './do.js';
 import { Fumbling, Fast, Very_fast, acurr, adjattrib, exercise, stone_luck, A_STR, A_DEX, A_CON } from './attrib.js';
 import { pline, You, Your, You_feel, You_see, newsym, canseemon, verbalize, Norep, see_monsters, impossible, urgent_pline, Hallucination } from './display.js';
 import { inv_weight, update_inventory, useup, useupall } from './invent.js';
-import { doname, makeplural, xname, an, The, the, vtense } from './objnam.js';
+import { doname, makeplural, xname, an, the, vtense, Yname2, shk_your } from './objnam.js';
 import { rn2, rnd, rn1, d } from './rng.js';
 import { objectNames } from './objects.js';
 import {
@@ -79,6 +79,7 @@ import { Monnam, s_suffix, x_monnam, hcolor, rndmonnam, hliquid, type_is_pname, 
 import { find_ac } from './u_init.js';
 import { any_visible_region, visible_region_summary, region_danger } from './region.js';
 import { done, find_delayed_killer, dealloc_killer } from './end.js';
+import { obfree } from './shk.js';
 
 /**
  * Props whose TIMEOUT is already decremented by the dedicated arms below
@@ -1692,20 +1693,14 @@ export function get_mon_location(mon, locflags = 0) {
     return null;
 }
 
+/**
+ * C ref: shk.c Shk_Your `:5876–5882` — shk_your(buf, obj) then highc(*buf).
+ * File-local one-liner over the live objnam.js shk_your export (D-3097);
+ * no live Shk_Your export exists and C's other callers are shop paths
+ * outside this file, so the name stays local (cf. D-3010).
+ */
 function Shk_Your(obj) {
-    if (carried(obj)) return 'Your ';
-    if (obj?.where === OBJ_MINVENT && obj.ocarry) {
-        return `${Monnam(obj.ocarry)}'s `;
-    }
-    return 'The ';
-}
-
-function Yname2(obj) {
-    if (carried(obj)) {
-        const s = `your ${xname(obj)}`;
-        return s.charAt(0).toUpperCase() + s.slice(1);
-    }
-    return The(xname(obj));
+    return upstart(shk_your(obj));
 }
 
 /**
@@ -1922,33 +1917,52 @@ async function lantern_message(obj) {
 }
 
 /**
- * C ref: timeout.c burn_object — BURN_OBJECT timer callback.
- * Envelope: fuel milestones + burn-out useup; away-timeout catch-up.
- * Away-timeout candle/oil and age-0 candle call maybe_unhide_at
- * (C `:1416`, `:1652`). Named omit: update_inventory redraw.
+ * C ref: timeout.c burn_object `timeout.c:1383–1680` — BURN_OBJECT timer
+ * callback (D-3097 restart in C order). C takes `anything *arg`
+ * (`obj = arg->a_obj`); the JS timer dispatcher (mkobj.js run_timer)
+ * resolves curr.obj, so the signature stays (obj, timeout). Whole body in
+ * C order: away-timeout catch-up (unhide `:1416`), POT_OIL burn-away,
+ * lamp milestones (lantern/flicker `:1482`, about-out `:1492`),
+ * candle/menorah milestones (unhide `:1652`), impossible default
+ * (`:1673`), newsym + update_inventory tail.
+ * D-3097 deltas vs the pre-restart body: need_invupdate arms +
+ * update_inventory() tail (were a named omit); default arm now calls
+ * impossible; extract+obfree(obj, null) replaces delobj (whose
+ * obj_resists gate burned a spurious rn2(100) C never draws); Yname2 is
+ * the live objnam.js export (local clone retired); Shk_Your is a
+ * one-liner over the live shk_your export; the Hallucination post-message
+ * test uses the live Hallucination() helper. Retained: the `if (msg)`
+ * guard around the Blind '' post-message (C pline("") is a tty no-op)
+ * and the `&& loc` guard on the tail newsym (need_newsym implies a
+ * found location in C).
  */
 export async function burn_object(obj, timeout) {
-    if (!obj) return;
+    if (!obj) return; /* JS-artifact guard; C callers pass non-null */
     const moves = game.moves | 0;
     const menorah = (obj.otyp | 0) === CANDELABRUM_OF_INVOCATION;
     const many = menorah ? (obj.spe | 0) > 1 : (obj.quan | 0) > 1;
 
+    /* timeout while away */
     if ((timeout | 0) !== moves) {
         const how_long = moves - (timeout | 0);
         if (how_long >= (obj.age | 0)) {
             obj.age = 0;
             end_burn(obj, false);
             if (menorah) {
-                obj.spe = 0;
+                obj.spe = 0; /* no more candles */
                 obj.owt = weight(obj);
             } else if (Is_candle(obj) || (obj.otyp | 0) === POT_OIL) {
-                let burnMtmp = null;
+                let mtmp = null;
                 if ((obj.where | 0) === OBJ_FLOOR)
-                    burnMtmp = m_at(obj.ox | 0, obj.oy | 0);
+                    mtmp = m_at(obj.ox | 0, obj.oy | 0);
+                /* get rid of candles and burning oil potions;
+                   we know this object isn't carried by hero,
+                   nor is it migrating */
                 obj_extract_self(obj);
-                delobj(obj);
-                if (burnMtmp)
-                    await maybe_unhide_at(burnMtmp.mx | 0, burnMtmp.my | 0);
+                obfree(obj, null);
+                obj = null;
+                if (mtmp)
+                    await maybe_unhide_at(mtmp.mx | 0, mtmp.my | 0);
             }
         } else {
             obj.age = (obj.age | 0) - how_long;
@@ -1957,142 +1971,216 @@ export async function burn_object(obj, timeout) {
         return;
     }
 
+    /* only interested in INVENT, FLOOR, and MINVENT */
     const loc = get_obj_location(obj, 0);
     const canseeit = !Blind() && !!loc && cansee(loc.x, loc.y);
+    /* set `whose' to be "Your " or "Fred's " or "The goblin's " */
     const whose = Shk_Your(obj);
-    const bytouch = obj.where === OBJ_INVENT
+    /* when carrying the light source, you can feel the heat from lit lamp
+       or candle so you'll be notified when it burns out even if blind at
+       the time; brass lantern doesn't radiate sufficient heat for that
+       (however, inventory formatting drops "(lit)" so player can tell) */
+    const bytouch = (obj.where | 0) === OBJ_INVENT
         && (obj.otyp | 0) !== BRASS_LANTERN;
     let need_newsym = false;
+    let need_invupdate = false;
 
+    /* obj->age is the age remaining at this point.  */
     switch (obj.otyp | 0) {
     case POT_OIL:
+        /* this should only be called when we run out */
         if (canseeit) {
-            if (obj.where === OBJ_INVENT || obj.where === OBJ_MINVENT) {
+            switch (obj.where | 0) {
+            case OBJ_INVENT:
+                need_invupdate = true;
+                /*FALLTHRU*/
+            case OBJ_MINVENT:
                 await pline(`${whose}potion of oil has burnt away.`);
-            } else if (obj.where === OBJ_FLOOR) {
+                break;
+            case OBJ_FLOOR:
                 await You_see('a burning potion of oil go out.');
                 need_newsym = true;
+                break;
             }
         }
-        end_burn(obj, false);
-        if (carried(obj)) useupall(obj);
-        else {
-            if (obj.where === OBJ_MIGRATING) obj.owornmask = 0;
+        end_burn(obj, false); /* turn off light source */
+        if (carried(obj)) {
+            useupall(obj);
+        } else {
+            /* clear migrating obj's destination code before obfree
+               to avoid false complaint of deleting worn item */
+            if ((obj.where | 0) === OBJ_MIGRATING) obj.owornmask = 0;
             obj_extract_self(obj);
-            delobj(obj);
+            obfree(obj, null);
         }
         obj = null;
         break;
 
     case BRASS_LANTERN:
-    case OIL_LAMP: {
-        const age = obj.age | 0;
-        if (age === 150 || age === 100 || age === 50) {
+    case OIL_LAMP:
+        switch (obj.age | 0) {
+        case 150:
+        case 100:
+        case 50:
             if (canseeit) {
                 if ((obj.otyp | 0) === BRASS_LANTERN)
                     await lantern_message(obj);
                 else
                     await see_lamp_flicker(
-                        obj, age === 50 ? ' considerably' : '',
+                        obj, (obj.age | 0) === 50 ? ' considerably' : '',
                     );
             }
-        } else if (age === 25) {
+            break;
+
+        case 25:
             if (canseeit) {
                 if ((obj.otyp | 0) === BRASS_LANTERN) {
                     await lantern_message(obj);
-                } else if (obj.where === OBJ_INVENT
-                    || obj.where === OBJ_MINVENT) {
-                    await pline(`${Yname2(obj)} seems about to go out.`);
-                } else if (obj.where === OBJ_FLOOR) {
-                    await You_see('%s about to go out.', an(xname(obj)));
+                } else {
+                    switch (obj.where | 0) {
+                    case OBJ_INVENT:
+                    case OBJ_MINVENT:
+                        await pline(`${Yname2(obj)} seems about to go out.`);
+                        break;
+                    case OBJ_FLOOR:
+                        await You_see('%s about to go out.', an(xname(obj)));
+                        break;
+                    }
                 }
             }
-        } else if (age === 0) {
+            break;
+
+        case 0:
+            /* even if blind you'll know if holding it */
             if (canseeit || bytouch) {
-                if (obj.where === OBJ_INVENT || obj.where === OBJ_MINVENT) {
-                    if ((obj.otyp | 0) === BRASS_LANTERN) {
+                switch (obj.where | 0) {
+                case OBJ_INVENT:
+                    need_invupdate = true;
+                    /*FALLTHRU*/
+                case OBJ_MINVENT:
+                    if ((obj.otyp | 0) === BRASS_LANTERN)
                         await pline(`${whose}lantern has run out of power.`);
-                    } else {
+                    else
                         await pline(`${Yname2(obj)} has gone out.`);
-                    }
-                } else if (obj.where === OBJ_FLOOR) {
-                    if ((obj.otyp | 0) === BRASS_LANTERN) {
+                    break;
+                case OBJ_FLOOR:
+                    if ((obj.otyp | 0) === BRASS_LANTERN)
                         await You_see('a lantern run out of power.');
-                    } else {
+                    else
                         await You_see('%s go out.', an(xname(obj)));
-                    }
+                    break;
                 }
             }
             end_burn(obj, false);
+            break;
+
+        default:
+            /*
+             * Someone added fuel to the lamp while it was
+             * lit. Just fall through and let begin_burn()
+             * handle the new age.
+             */
+            break;
         }
-        if (obj && (obj.age | 0)) begin_burn(obj, true);
+
+        if ((obj.age | 0))
+            begin_burn(obj, true);
+
         break;
-    }
 
     case CANDELABRUM_OF_INVOCATION:
     case TALLOW_CANDLE:
-    case WAX_CANDLE: {
-        const age = obj.age | 0;
-        if (age === 75) {
+    case WAX_CANDLE:
+        switch (obj.age | 0) {
+        case 75:
             if (canseeit) {
-                if (obj.where === OBJ_INVENT || obj.where === OBJ_MINVENT) {
+                switch (obj.where | 0) {
+                case OBJ_INVENT:
+                case OBJ_MINVENT:
                     await pline(
                         `${whose}${menorah ? "candelabrum's " : ''}candle${
                             many ? 's are' : ' is'} getting short.`,
                     );
-                } else if (obj.where === OBJ_FLOOR) {
+                    break;
+                case OBJ_FLOOR:
                     await You_see(
                         `${menorah ? "a candelabrum's " : many ? 'some ' : 'a '
                         }candle${many ? 's' : ''} getting short.`,
                     );
+                    break;
                 }
             }
-        } else if (age === 15) {
+            break;
+
+        case 15:
             if (canseeit) {
-                if (obj.where === OBJ_INVENT || obj.where === OBJ_MINVENT) {
+                switch (obj.where | 0) {
+                case OBJ_INVENT:
+                case OBJ_MINVENT:
                     await pline(
                         `${whose}${menorah ? "candelabrum's " : ''}candle${
                             many ? "s'" : "'s"} flame${many ? 's' : ''} flicker${
                             many ? '' : 's'} low!`,
                     );
-                } else if (obj.where === OBJ_FLOOR) {
+                    break;
+                case OBJ_FLOOR:
                     await You_see(
                         `${menorah ? "a candelabrum's " : many ? 'some ' : 'a '
                         }candle${many ? "s'" : "'s"} flame${
                             many ? 's' : ''} flicker low!`,
                     );
+                    break;
                 }
             }
-        } else if (age === 0) {
+            break;
+
+        case 0:
+            /* we know even if blind and in our inventory */
             if (canseeit || bytouch) {
                 if (menorah) {
-                    if (obj.where === OBJ_INVENT || obj.where === OBJ_MINVENT) {
+                    switch (obj.where | 0) {
+                    case OBJ_INVENT:
+                        need_invupdate = true;
+                        /*FALLTHRU*/
+                    case OBJ_MINVENT:
                         await pline(
                             `${whose}candelabrum's flame${
                                 many ? 's die' : ' dies'}.`,
                         );
-                    } else if (obj.where === OBJ_FLOOR) {
+                        break;
+                    case OBJ_FLOOR:
                         await You_see(
                             `a candelabrum's flame${many ? 's' : ''} die.`,
                         );
+                        break;
                     }
                 } else {
-                    if (obj.where === OBJ_INVENT || obj.where === OBJ_MINVENT) {
+                    switch (obj.where | 0) {
+                    case OBJ_INVENT:
+                        /* no need_invupdate for update_inventory() necessary;
+                           useupall() -> freeinv() handles it */
+                        /*FALLTHRU*/
+                    case OBJ_MINVENT:
                         await pline(
                             `${Yname2(obj)} ${many ? 'are' : 'is'} consumed!`,
                         );
-                    } else if (obj.where === OBJ_FLOOR) {
+                        break;
+                    case OBJ_FLOOR:
+                        /*
+                          You see some wax candles consumed!
+                          You see a wax candle consumed!
+                         */
                         await You_see(
                             '%s%s consumed!',
                             many ? 'some ' : '',
                             many ? xname(obj) : an(xname(obj)),
                         );
                         need_newsym = true;
+                        break;
                     }
-                    const u = game.u || {};
-                    const hallu = !!(u.Hallucination
-                        || ((u.HHallucination | 0) & TIMEOUT));
-                    const msg = hallu
+
+                    /* post message */
+                    const msg = Hallucination()
                         ? (many ? 'They shriek!' : 'It shrieks!')
                         : Blind() ? ''
                             : (many ? 'Their flames die.' : 'Its flame dies.');
@@ -2100,30 +2188,51 @@ export async function burn_object(obj, timeout) {
                 }
             }
             end_burn(obj, false);
+
             if (menorah) {
-                obj.spe = 0;
+                obj.spe = 0; /* no candles */
                 obj.owt = weight(obj);
-            } else if (carried(obj)) {
-                useupall(obj);
-                obj = null;
+                if (carried(obj))
+                    need_invupdate = true;
             } else {
-                const onfloor = obj.where === OBJ_FLOOR;
-                if (obj.where === OBJ_MIGRATING) obj.owornmask = 0;
-                obj_extract_self(obj);
-                if (onfloor && loc)
-                    await maybe_unhide_at(loc.x | 0, loc.y | 0);
-                delobj(obj);
+                if (carried(obj)) {
+                    useupall(obj);
+                } else {
+                    const onfloor = (obj.where | 0) === OBJ_FLOOR;
+
+                    /* clear migrating obj's destination code
+                       so obfree won't think this item is worn */
+                    if ((obj.where | 0) === OBJ_MIGRATING) obj.owornmask = 0;
+                    obj_extract_self(obj);
+                    if (onfloor && loc)
+                        await maybe_unhide_at(loc.x | 0, loc.y | 0);
+                    obfree(obj, null);
+                }
                 obj = null;
             }
+            break; /* case [age ==] 0 */
+
+        default:
+            /*
+             * Someone added fuel (candles) to the menorah while
+             * it was lit. Just fall through and let begin_burn()
+             * handle the new age.
+             */
+            break;
         }
-        if (obj && (obj.age | 0)) begin_burn(obj, true);
-        break;
-    }
+
+        if (obj && (obj.age | 0))
+            begin_burn(obj, true);
+        break; /* case [otyp ==] candelabrum|tallow_candle|wax_candle */
 
     default:
+        await impossible('burn_object: unexpected obj %s', xname(obj));
         break;
     }
-    if (need_newsym && loc) newsym(loc.x, loc.y);
+    if (need_newsym && loc)
+        newsym(loc.x, loc.y);
+    if (need_invupdate)
+        update_inventory();
 }
 
 function Deaf_hatch() {

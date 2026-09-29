@@ -44,7 +44,7 @@ import { pline, pline_mon, newsym, canseemon, canspotmon, sensemon, tp_sensemon,
 import { cansee } from './vision.js';
 import {
     dmgval, hitval, P_SKILL, weapon_hit_bonus, martial_bonus,
-    dbon, weapon_dam_bonus, use_skill, weapon_type, uwep_skill_type,
+    abon, dbon, weapon_dam_bonus, use_skill, weapon_type, uwep_skill_type,
     special_dmgval, silver_sears, MON_WEP, setmnotwielded, possibly_unwield,
     is_wet_towel, dry_a_towel,
 } from './weapon.js';
@@ -56,7 +56,7 @@ import { near_capacity, useup, useupall, hold_another_object, Blind, observe_obj
 import { PM_BARBARIAN, PM_MONK, PM_KNIGHT, PM_SAMURAI, PM_ARCHEOLOGIST, PM_WIZARD, PM_HUMAN, PM_HEALER, PM_ROGUE, PM_ELF } from './generated/monsters_data.js';
 import {
     find_mac, get_mattk, make_corpse, monstone, mhitm_knockback, monkilled, mondead,
-    troll_baned, mhitm_ad_poly, mhitm_ad_slee, mhitm_ad_heal, mhitm_ad_blnd, mhitm_ad_ston, mhitm_ad_elec, mhitm_ad_sedu, mhitm_ad_tlpt, mhitm_ad_rust, mhitm_ad_corr, mhitm_ad_fire, mhitm_ad_dren, mhitm_ad_conf, could_seduce, failed_grab, shade_miss,
+    troll_baned, mhitm_ad_poly, mhitm_ad_slee, mhitm_ad_heal, mhitm_ad_blnd, mhitm_ad_ston, mhitm_ad_elec, mhitm_ad_sedu, mhitm_ad_ssex, mhitm_ad_tlpt, mhitm_ad_rust, mhitm_ad_corr, mhitm_ad_fire, mhitm_ad_dren, mhitm_ad_conf, could_seduce, failed_grab, shade_miss,
     shade_aware, paralyze_monst,
     mhitm_mgc_atk_negated, mhitm_ad_drst, mhitm_ad_deth, mhitm_ad_dise, mhitm_ad_pest, mhitm_ad_stck, erode_armor, engulf_target, golemeffects_mm,
     attk_protection,
@@ -100,7 +100,7 @@ import { artifact_hit, youmonst, is_art, artifact_exists, shade_glare, find_arti
 import { artifact_light } from './timeout.js';
 import { xname, vtense, The, the, An, an, singular, makeplural, cxname, simpleonames, obj_is_pname, otense, mshot_xname, Yobjnam2, Yname2, doname, corpse_xname, ysimple_name, yname } from './objnam.js';
 import { abuse_dog, tamedog } from './dog.js';
-import { makemon, makemon_appear_msg, newcham, adj_lev, clone_mon, mpickobj } from './makemon.js';
+import { makemon, makemon_appear_msg, newcham, clone_mon, mpickobj } from './makemon.js';
 import { ndemon } from './minion.js';
 import { ART_GIANTSLAYER, ART_STORMBRINGER, ART_SNICKERSNEE, ART_CLEAVER } from './generated/artifacts_data.js';
 import { paranoid_query } from './getline.js';
@@ -474,34 +474,7 @@ function m_at(x, y) {
     return null;
 }
 
-/**
- * C ref: weapon.c abon — poly'd hero ignores STR/DEX bands entirely
- * (`if (Upolyd) return adj_lev(&mons[u.umonnum]) - 3`, weapon.c:955-956).
- */
-function abon() {
-    // Same rnd(20) then misses in C, hits in JS while poly'd
-    // (scen-poly-Rogue-92026: yeti claws, dieroll 8 both sides).
-    if (Upolyd(game.u) && game.youmonst?.data) {
-        return adj_lev(game.youmonst.data) - 3;
-    }
-    const str = acurr(A_STR);
-    const dex = acurr(A_DEX);
-    const STR18_50 = 18 + 50; // STR18(50) encoding stub: treat encoded >18 as high
-    let sbon;
-    // Full 18/xx encoding deferred; early heroes use raw acurr ≤18
-    if (str < 6) sbon = -2;
-    else if (str < 8) sbon = -1;
-    else if (str < 17) sbon = 0;
-    else if (str <= 18) sbon = 1; // up to 18 (incl. unencoded)
-    else if (str < STR18_50) sbon = 1;
-    else sbon = 2;
-    if ((game.u?.ulevel | 0) < 3) sbon += 1;
-    if (dex < 4) return sbon - 3;
-    if (dex < 6) return sbon - 2;
-    if (dex < 8) return sbon - 1;
-    if (dex < 14) return sbon;
-    return sbon + dex - 14;
-}
+/* weapon.c abon now imported from weapon.js (canonical home). */
 
 /** C ref: you.h Luck — u.uluck + u.moreluck */
 function Luck() {
@@ -2844,12 +2817,16 @@ async function damageum_adtyping(mattk, mdef, mhm) {
            attacker) arm zeroes the leftover d(); no message, no steal
            roll (those are the mhitu `:4577–4586` arm). */
         mhm.damage = 0;
-    } else if (adtyp === AD_SEDU || adtyp === AD_SSEX || adtyp === AD_SITM) {
+    } else if (adtyp === AD_SEDU || adtyp === AD_SITM) {
         /* C ref: uhitm.c mhitm_adtyping `:4799` → mhitm_ad_sedu `:4629–4632`
-           (AD_SSEX via mhitm_ad_ssex `:4754–4758`) — uhitm (hero as
-           attacker) arm: steal_it, leftover d() zeroed. Routed through the
-           shared mhitm.js arm (poly precedent). */
+           — uhitm (hero as attacker) arm: steal_it, leftover d() zeroed.
+           Routed through the shared mhitm.js arm (poly precedent). */
         await mhitm_ad_sedu(game.youmonst, mattk, mdef, mhm);
+    } else if (adtyp === AD_SSEX) {
+        /* C ref: uhitm.c mhitm_adtyping `:4797` → mhitm_ad_ssex `:4754–4758`
+           uhitm (hero as attacker) arm: steal_it via mhitm_ad_sedu,
+           leftover d() zeroed. */
+        await mhitm_ad_ssex(game.youmonst, mattk, mdef, mhm);
     } else if (adtyp === AD_SGLD) {
         await damageum_ad_sgld(mdef, mhm);
     } else if (adtyp === AD_CURS) {
