@@ -80,6 +80,7 @@ import { pri_move } from './priest.js';
 /* C ref: region.c — create_gas_cloud/visible_region_at/m_in_out_region are
  * region.c functions called from monmove.c:682-683, :702-704 and :2063. */
 import { create_gas_cloud, visible_region_at, m_in_out_region } from './region.js';
+import { ENV } from './hostenv.js';
 /* C ref: hack.h:49 — BOLT_LIM = 8; BOLT_LIM*BOLT_LIM = 64 */
 const BOLT_LIM = 8;
 /* C ref: trap.h — SQKY_BOARD = 4 */
@@ -2315,7 +2316,7 @@ export async function m_move(mtmp, after) {
     for (let i = 0; i < real_cnt; i++)
         mfp_poss.push({ x: mfp.poss[i].x, y: mfp.poss[i].y, info: mfp.info[i] | 0 });
     const cnt = mfp_poss.length;
-    if (process.env.FF_MFNDTRACE === '1') {
+    if (ENV.FF_MFNDTRACE === '1') {
         const tr = (mtmp.mtrack || []).map(t => `${t?.x | 0}:${t?.y | 0}`).join(';');
         const ps = mfp_poss.map(p => {
             const tt = t_at(p.x | 0, p.y | 0);
@@ -2421,7 +2422,7 @@ export async function m_move(mtmp, after) {
                     if (trk && (trk.x | 0) === nx && (trk.y | 0) === ny) {
                         const bound = 4 * (cnt - j);
                         const draw = rn2(bound);
-                        if (process.env.FF_MFNDTRACE === '1')
+                        if (ENV.FF_MFNDTRACE === '1')
                             pushRngLogEntry(`^mtrack_draw[moves=${game.moves | 0} id=${mtmp.m_id | 0} cand=${nx},${ny} j=${j} bound=${bound} draw=${draw}]`);
                         if (draw) {
                             skipped = true;
@@ -2854,7 +2855,7 @@ export async function m_move(mtmp, after) {
     }
 
     /* C monmove.c:2073 — the mainline `return postmov(..., mmoved, ...)`. */
-    if (process.env.FF_MFNDTRACE === '1')
+    if (ENV.FF_MFNDTRACE === '1')
         pushRngLogEntry(`^mresult[moves=${game.moves | 0} id=${mtmp.m_id | 0} xy=${mtmp.mx | 0},${mtmp.my | 0} mmoved=${mmoved | 0}]`);
     return postmov(mtmp, mmoved); /* MMOVE_MOVED or MMOVE_NOTHING */
 }

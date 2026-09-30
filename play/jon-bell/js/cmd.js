@@ -560,7 +560,7 @@ function isRushKey(key) {
  * state at command and domove boundaries only; it never reads or advances
  * RNG and is inert unless FF_RUNTRACE=1 is explicitly set. */
 function ffRunTrace(tag, fields = '') {
-    if (typeof process !== 'undefined' && process.env?.FF_RUNTRACE === '1') {
+    if (typeof process !== 'undefined' && ENV?.FF_RUNTRACE === '1') {
         const g = game;
         pushRngLogEntry(`^runtrace[tag=${tag} frame=${g._ff_last_input_frame ?? -1}`
             + ` moves=${g.moves | 0} multi=${g.multi | 0}`
@@ -9001,7 +9001,7 @@ async function doddrop() {
             if (!njp) njpObj = o;
             njp++;
         }
-    if (typeof process !== 'undefined' && process.env?.FF_DEBUG_JP)
+    if (typeof process !== 'undefined' && ENV?.FF_DEBUG_JP)
         console.error('JPDBG', njp, [...(function*(){for(let o=g.invent;o;o=o.nobj)yield {otyp:o.otyp,p:o.pickup_prev,where:o.where};})()]);
     /* BUC cluster: blank separator then B/C/U/X (pickup.c:1379-1433). */
     if (bcnt || ccnt || ucnt || xcnt || njp) {
@@ -41915,7 +41915,7 @@ async function domove_core(dx, dy) {
         dx = u.dx | 0;
         dy = u.dy | 0;
     }
-    if (typeof process !== 'undefined' && process.env && process.env.FF_DIRTRACE === '1') {
+    if (typeof process !== 'undefined' && ENV && ENV.FF_DIRTRACE === '1') {
         try {
             const { pushRngLogEntry } = await import('./rng.js');
             pushRngLogEntry(`^ff_domove[moves=${game.moves | 0} ux=${u.ux | 0} uy=${u.uy | 0}`
@@ -42300,7 +42300,7 @@ async function domove_core(dx, dy) {
         ffRunTrace('closed-door', `nx=${newx} ny=${newy} mask=${blocksLoc.doormask | 0}`
             + ` auto=${game.flags?.autoopen === false ? 0 : 1}`
             + ` impaired=${_uprop_active('CONFUSION') || _uprop_active('STUNNED') || _uprop_active('FUMBLING') ? 1 : 0}`);
-        if (typeof process !== 'undefined' && process.env && process.env.FF_DOORTRACE === '1')
+        if (typeof process !== 'undefined' && ENV && ENV.FF_DOORTRACE === '1')
             pushRngLogEntry(`^doortrace[ux=${u.ux|0} uy=${u.uy|0} nx=${newx} ny=${newy} mask=${blocksLoc.doormask|0} run=${game.context?.run?1:0} auto=${game.flags?.autoopen===false?0:1}]`);
         /* C ref: hack.c:1076-1077 — the first statement inside test_move's
          *     } else if (IS_DOOR(tmpr->typ)) { if (closed_door(x, y)) {
@@ -42880,7 +42880,7 @@ export async function _spoteffects_pickup(redrawPending = false) {
         const lvlObjs = game.level?.levelObjects;
         const ux2 = u.ux | 0, uy2 = u.uy | 0;
         let head = lvlObjs?.[ux2]?.[uy2] ?? null;
-        if (typeof process !== 'undefined' && process.env?.FF_INVENT_TRACE === '1') {
+        if (typeof process !== 'undefined' && ENV?.FF_INVENT_TRACE === '1') {
             const objs = [];
             for (let o = head; o; o = o.nexthere)
                 objs.push(`${o.otyp ?? 0}:${o.where ?? 0}`);
@@ -44198,6 +44198,7 @@ export function merge_choice(objlist, obj) {
  * this replaces threw 'not yet ported: begin_burn', which is what made
  * doapply()'s lamp arm unwritable (see use_lamp below). */
 export { begin_burn, end_burn } from './timeout.js';
+import { ENV } from './hostenv.js';
 
 /* C ref: apply.c:4472-4524 flip_through_book(struct obj *obj) — doapply()'s
  * SPBOOK_CLASS arm, taken BEFORE the otyp switch (apply.c:4238-4239).

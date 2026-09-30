@@ -185,6 +185,7 @@ import { impossible } from './steed.js';
  * artifact_hit's SPFX_DRLI arm (Stormbringer) heals the hero for half the
  * drained HP. */
 import { healup, make_sick, make_stoned } from './potion.js';
+import { ENV } from './hostenv.js';
 function makesingular(str) { return makesingular_real(str); }
 
 /* object class constants (global for zap.js drain_item) */
@@ -4354,7 +4355,7 @@ export async function xkilled(mtmp, xkflags) {
      * mhp<=0, so the m_at half of this was already true; js/display.js newsym
      * walks fmon unfiltered, so the GLYPH half needed the unlink to move.) */
     const dx = (mtmp.mx | 0), dy = (mtmp.my | 0);
-    if (typeof process !== 'undefined' && process.env?.FF_DEATH_TRACE === '1') {
+    if (typeof process !== 'undefined' && ENV?.FF_DEATH_TRACE === '1') {
         const cell = game.level?.at(dx, dy);
         pushRngLogEntry(`^xkilled[x=${dx},y=${dy},mndx=${mndx},mhp=${mtmp.mhp | 0},` +
             `typ=${cell?.typ ?? -1},seenv=${cell?.seenv ?? -1},lit=${cell?.lit ? 1 : 0},` +

@@ -4,6 +4,7 @@
 import { game } from './gstate.js';
 import { KEY_BINDINGS } from './terminal.js';
 import { pushRngLogEntry } from './rng.js';
+import { ENV } from './hostenv.js';
 const _inputQueue = [];
 export function pushKey(key) {
     _inputQueue.push(typeof key === 'number' ? key : key.charCodeAt(0));
@@ -30,7 +31,7 @@ export function pushKeys(keys) {
 // readers (display.js more() sets 'more' for the page-ack loop); a plain rhack read
 // leaves it null → 'cmdloop'.
 function _emitPromptState() {
-    if (typeof process === 'undefined' || !process.env || process.env.FF_PROMPTSTATE !== '1')
+    if (typeof process === 'undefined' || !ENV || ENV.FF_PROMPTSTATE !== '1')
         return;
     const g = game;
     let kind = g._promptKind || null;
@@ -46,7 +47,7 @@ function _emitPromptState() {
 }
 
 function _emitToplInputTrace(phase) {
-    if (typeof process === 'undefined' || process.env?.FF_TOPL_TRACE !== '1')
+    if (typeof process === 'undefined' || ENV?.FF_TOPL_TRACE !== '1')
         return;
     const g = game;
     const enc = (v) => encodeURIComponent(String(v ?? '').slice(0, 100));
@@ -61,7 +62,7 @@ function _emitToplInputTrace(phase) {
 }
 
 function _emitActionTrace(key) {
-    if (typeof process === 'undefined' || process.env?.FF_ACTION_TRACE !== '1')
+    if (typeof process === 'undefined' || ENV?.FF_ACTION_TRACE !== '1')
         return;
     const g = game;
     const x = g.u?.ux | 0, y = g.u?.uy | 0;

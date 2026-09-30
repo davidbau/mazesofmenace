@@ -26,8 +26,7 @@
 //
 // DISPLAY-CHANNEL ONLY: display_file consumes keystrokes, never RNG.
 
-import { readFileSync } from 'fs';
-import { resolve_dat } from './dat_source.js';
+import { dat_content } from './dat_source.js';
 
 /* global.h:15-27 */
 export const HELP = 'help';
@@ -61,12 +60,7 @@ const _cache = new Map();
  *
  * Returning null (nothing found at any root) lands in dlb_file_lines' catch,
  * which is C's `if (!f) { if (complain) pline("Cannot open \"%s\".") }` arm. */
-function dat_path(fname) {
-    const exists = (p) => {
-        try { readFileSync(p); return true; } catch (e) { return false; }
-    };
-    return resolve_dat(fname, exists);
-}
+
 
 /**
  * The lines dlb_fgets() yields for one dat file.
@@ -84,17 +78,13 @@ function dat_path(fname) {
 export function dlb_file_lines(fname) {
     if (_cache.has(fname))
         return _cache.get(fname);
-    /* dat_path() is called OUTSIDE the catch on purpose: a "this name differs
-     * between 3.7 and 5.0 and was never vendored" throw must not be laundered
-     * into C's benign "Cannot open" arm.  (No topic constant below is in that
-     * set today, so this cannot fire — it is here so it stays true.) */
-    const path = dat_path(fname);
-    let lines;
-    try {
-        lines = readFileSync(path, 'utf-8').replace(/\n$/, '').split('\n');
-    } catch (e) {
-        lines = null;
-    }
+    /* dat_content() is called OUTSIDE any catch on purpose: a "this name
+     * differs between 3.7 and 5.0 and was never vendored" throw must not be
+     * laundered into C's benign "Cannot open" arm.  (No topic constant below
+     * is in that set today, so this cannot fire — it is here so it stays
+     * true.) */
+    const raw = dat_content(fname);
+    const lines = raw === null ? null : raw.replace(/\n$/, '').split('\n');
     _cache.set(fname, lines);
     return lines;
 }

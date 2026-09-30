@@ -662,7 +662,7 @@ export function x_monnam(mtmp, article, adjective, suppress, called) {
      * diverges, this tells us which visible monster naming call actually
      * consumed the hallucinatory name draw, including its visibility and
      * suppression inputs. */
-    if (do_hallu && typeof process !== 'undefined' && process.env?.FF_NAME_TRACE === '1')
+    if (do_hallu && typeof process !== 'undefined' && ENV?.FF_NAME_TRACE === '1')
         pushRngLogEntry(`^name_trace[moves=${game.moves | 0} id=${mtmp.m_id | 0} xy=${mtmp.mx | 0},${mtmp.my | 0}`
             + ` mndx=${mdat.pmidx | 0} article=${article | 0} suppress=${suppress | 0}`
             + ` mappear=${do_mappear ? 1 : 0} cansee=${canspotmon(mtmp) ? 1 : 0}]`);
@@ -4829,6 +4829,7 @@ export function name_to_monplus(in_str, remainder_p, gender_name_var) {
  * adjalign is js/attrib.js:451's complete body; the stub here shadowed it for
  * this module.  Neither had a live caller until check_caitiff got one. */
 import { adjalign as _adjalign_attrib } from './attrib.js';
+import { ENV } from './hostenv.js';
 export function You(line, ...args) {
     pline('You ' + (args.length ? String(line).replace(/%s/g, () => String(args.shift())) : String(line)));
 }

@@ -28,6 +28,8 @@
  *   tools/reviewer/anti-scaffold-check.mjs.
  */
 
+import { ENV } from './hostenv.js';
+
 // ─── Embedded captured records ────────────────────────────────────────────────
 //
 // Each record preserves the original JSONL schema minus two large fields:
@@ -150217,8 +150219,7 @@ export function disableAssertions() { __assertionsEnabled = false; }
 export function assertionsEnabled() { return __assertionsEnabled;  }
 
 // Auto-enable from environment (dev-runner integration).
-if (typeof process !== 'undefined' && process.env
-    && process.env.NETHACK_JS_ASSERTIONS === '1') {
+if (ENV.NETHACK_JS_ASSERTIONS === '1') {
     __assertionsEnabled = true;
 }
 

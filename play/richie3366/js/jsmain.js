@@ -176,6 +176,11 @@ export class NethackGame {
         // OPTIONS=menuinvertmode:N (optfn_menuinvertmode do_set, 0-2) overrides.
         g.iflags = {
             autodescribe: true, prevmsg_window: 's', menuinvertmode: 1,
+            // C options.c initoptions_init `:7188–7189` — menu_headings
+            // attr ATR_INVERSE (7, wintype.h) + color NO_COLOR (8);
+            // initoptions_init is not on the JS startup path, so the
+            // default lives here like menuinvertmode. rc overrides below.
+            menu_headings: { attr: 7, color: 8 },
             ...opts.iflags,
         };
         // C ref: options.c / symbols.c — default Primary ASCII; symset:DECgraphics

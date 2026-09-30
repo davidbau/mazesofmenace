@@ -1,7 +1,8 @@
 // worn.js — Monster armor don/doff helpers.
 // C ref: worn.c — which_armor, wearmask_to_obj, wearslot, mon_set_minvis,
 //   m_dowear, m_dowear_type, update_mon_extrinsics, extra_pref,
-//   racial_exception, check_wornmask_slots; mon.c check_gear_next_turn.
+//   racial_exception, check_wornmask_slots, wornmask_to_armcat, allunworn;
+//   mon.c check_gear_next_turn.
 // Named omissions:
 //   dragon-scale altprop beyond alchemy smock.
 // extract_from_minvent calls the D-2734 sync obj_no_longer_held core
@@ -11,6 +12,7 @@
 import { game } from './gstate.js';
 import {
     W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU, W_AMUL, W_WEP,
+    W_ARMOR,
     W_RINGL, W_RINGR, W_SWAPWEP, W_QUIVER, W_TOOL, W_BALL, W_CHAIN, W_SADDLE,
     W_ART, W_ARTI, I_SPECIAL, NEUTRAL, AC_MAX, OBJ_MINVENT, P_NONE,
     DISMOUNT_FELL,
@@ -298,6 +300,24 @@ function is_weptool(obj) {
 }
 
 /**
+ * C ref: worn.c allunworn `:188–201` — clear twoweap, null every worn[]
+ * slot. C runs after invent objects were freed without unwearing (game
+ * save); owornmask is untouched because the objects are already gone.
+ * Slots in C worn[] order (`:18–34`); JS nulls match setnotworn idiom.
+ */
+export function allunworn() {
+    const u = game.u || (game.u = {});
+    u.twoweap = false; // C `:193` u.twoweap = 0 — direct, no botl
+    for (const slot of [
+        'uarm', 'uarmc', 'uarmh', 'uarms', 'uarmg', 'uarmf', 'uarmu',
+        'uleft', 'uright', 'uwep', 'uswapwep', 'uquiver', 'uamul',
+        'ublindf', 'uball', 'uchain',
+    ]) {
+        u[slot] = null; // C `:197–199` *(wp->w_obj) = 0
+    }
+}
+
+/**
  * C ref: worn.c wearmask_to_obj — first worn[] slot whose mask bit is
  * set. Caller zap.c poly_obj after set_wear (D-1510; amulet of change
  * may have destroyed otmp).
@@ -326,6 +346,39 @@ export function wearmask_to_obj(wornmask) {
         if (mask & wornmask) return obj || null;
     }
     return null;
+}
+
+/**
+ * C ref: worn.c wornmask_to_armcat `:218–246` — worn-slot mask to the
+ * armor category. `mask & W_ARMOR` must equal exactly one slot bit or
+ * cat stays 0 (no default arm). Inverse of armcat_to_wornmask below.
+ */
+export function wornmask_to_armcat(mask) {
+    let cat = 0;
+    switch ((mask | 0) & W_ARMOR) {
+    case W_ARM:
+        cat = ARM_SUIT;
+        break;
+    case W_ARMC:
+        cat = ARM_CLOAK;
+        break;
+    case W_ARMH:
+        cat = ARM_HELM;
+        break;
+    case W_ARMS:
+        cat = ARM_SHIELD;
+        break;
+    case W_ARMG:
+        cat = ARM_GLOVES;
+        break;
+    case W_ARMF:
+        cat = ARM_BOOTS;
+        break;
+    case W_ARMU:
+        cat = ARM_SHIRT;
+        break;
+    }
+    return cat | 0;
 }
 
 /**

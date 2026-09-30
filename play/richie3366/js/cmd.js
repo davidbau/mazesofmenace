@@ -89,7 +89,7 @@ import {
 import { dig_typ, use_pick_axe2 } from './dig.js';
 import { rehumanize, body_part, domonability } from './polyself.js';
 import { Levitation, Flying } from './mhitu.js';
-import { doopen, doopen_indir, doclose, doforce } from './lock.js';
+import { doopen, doopen_indir, doclose, doforce, getdir } from './lock.js';
 import { doextcmd, getlin, mungspaces, extcmd_run_by_txt, paranoid_query } from './getline.js';
 import { strstri, strsubst, upstart, trimspaces } from './hacklib.js';
 import { dosearch, doterrain } from './detect.js';
@@ -2509,6 +2509,24 @@ export function parseautocomplete(autocomplete, condition) {
  * C caller: options.c optfn_o_autocomplete do_handler `:8362` (wired in
  * js/options.js doset).
  */
+
+/**
+ * C ref: cmd.c count_autocompletions `:3312–3322` — count extcmdlist rows
+ * with AUTOCOMP_ADJ set. The generated EXTCMDLIST omits the C null
+ * terminator (handler_rebind_keys_add `:2159` precedent), so the loop runs
+ * to the end instead of stopping at a null ef_txt (`:3317`).
+ * Sole C caller: options.c optfn_o_autocomplete get_val `:8358` (wired in
+ * js/options.js).
+ */
+export function count_autocompletions() {
+    let n = 0; // C `:3315`
+    for (const efp of EXTCMDLIST) { // C `:3317`
+        if ((efp.flags & AUTOCOMP_ADJ) !== 0) // C `:3318`
+            n++;
+    }
+    return n; // C `:3321`
+}
+
 export async function handler_change_autocompletions() {
     // C `:2462–2481` — one row per adjustable command.
     const raw = [
@@ -3404,6 +3422,49 @@ export async function doherecmdmenu() {
     const ch = await here_cmd_menu();
     if (!ch || ch === '\0' || ch === '\x1b') return ECMD_OK;
     return ECMD_TIME;
+}
+
+/**
+ * C ref: cmd.c dotherecmdmenu `:4342–4375` — #therecmdmenu ("a way to
+ * test there_cmd_menu without mouse"). Click-stamped cell first, else
+ * getdir; getdir/here_cmd_menu/there_cmd_menu are async in JS. C reads
+ * BSS-zero clicklook_cc ({0,0} is isok-false since x>=1), so an
+ * unstamped game.gc falls through to getdir the same way. ECMD check
+ * is the doherecmdmenu shape: C `(ch && ch != ESC)` with NUL falsy.
+ * @returns {Promise<number>} ECMD_*
+ */
+export async function dotherecmdmenu() {
+    const u = game.u || {};
+    const x = (game.gc?.clicklook_cc?.x | 0); // `:4347`
+    const y = (game.gc?.clicklook_cc?.y | 0); // `:4348`
+    let ch;
+
+    if (!game.iflags) game.iflags = {};
+    game.iflags.getdir_click = CLICK_1 | CLICK_2; // `:4350` allow 'far' click
+
+    if (isok(x, y)) { // `:4352`
+        if (x === (u.ux | 0) && y === (u.uy | 0)) // `:4353`
+            ch = await here_cmd_menu(); // `:4354`
+        else
+            ch = await there_cmd_menu(x, y, game.iflags.getdir_click); // `:4356`
+        game.gc.clicklook_cc = { x: -1, y: -1 }; // `:4357`
+        game.iflags.getdir_click = 0; // `:4358`
+        return (!ch || ch === '\0' || ch === '\x1b') ? ECMD_OK : ECMD_TIME; // `:4359`
+    }
+
+    const dir = await getdir(null); // `:4362` (const char *) 0
+    const click = game.iflags.getdir_click | 0; // `:4363`
+    game.iflags.getdir_click = 0; // `:4364`
+
+    if (!dir || !isok((u.ux | 0) + (u.dx | 0), (u.uy | 0) + (u.dy | 0))) // `:4366`
+        return ECMD_CANCEL; // `:4367`
+
+    if ((u.dx | 0) || (u.dy | 0)) // `:4369`
+        ch = await there_cmd_menu((u.ux | 0) + (u.dx | 0), (u.uy | 0) + (u.dy | 0), click); // `:4370`
+    else
+        ch = await here_cmd_menu(); // `:4372`
+
+    return (!ch || ch === '\0' || ch === '\x1b') ? ECMD_OK : ECMD_TIME; // `:4374`
 }
 
 

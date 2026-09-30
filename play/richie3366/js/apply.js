@@ -9,6 +9,7 @@ import {
     verbalize, mon_visible, tp_sensemon, see_with_infrared, tmp_at,
     set_msg_xy, bot, impossible, You, You_cant, There, pline_The, You_see,
     map_object, obj_glyph, glyph_at, feel_newsym,
+    Hallucination as Hallucination_youprop,
 } from './display.js';
 import { cansee, couldsee, howmonseen, unblock_point, recalc_block_point } from './vision.js';
 import {
@@ -49,7 +50,7 @@ import { pick_lock, getdir } from './lock.js';
 import { ustatusline, mstatusline } from './insight.js';
 import {
     m_at, dist2, seemimic, see_monster_closeup, find_mid, mnexto, wake_nearby,
-    wakeup, wake_nearto,
+    wakeup, wake_nearto, mdistu,
 } from './mon.js';
 import {
     compactify_invlets, makeknown, near_capacity, observe_object, prinv,
@@ -141,7 +142,7 @@ import { polymon, mbodypart, body_part } from './polyself.js';
 import { unpunish } from './read.js';
 import { findit, openit, cvt_sdoor_to_door } from './detect.js';
 import { surface } from './sit.js';
-import { level_difficulty } from './hacklib.js';
+import { level_difficulty, isqrt } from './hacklib.js';
 import { mon_adjust_speed } from './muse.js';
 
 const LOCK_PICK = objectNames.indexOf('LOCK_PICK');
@@ -3200,19 +3201,6 @@ const cant_reach = "can't reach that spot from here.";
 const msg_slipsfree = 'The bullwhip slips free.';
 const msg_snap = 'Snap!';
 
-/** C hacklib.c isqrt — integer square root (odd-subtraction). */
-function isqrt_pole(val) {
-    let rt = 0;
-    let odd = 1;
-    let v = val | 0;
-    while (v >= odd) {
-        v -= odd;
-        odd += 2;
-        rt++;
-    }
-    return rt;
-}
-
 function distu_apply(x, y) {
     const u = game.u || {};
     return dist2(u.ux | 0, u.uy | 0, x | 0, y | 0);
@@ -3663,6 +3651,12 @@ export function glyph_is_poleable_at(x, y) {
         || glyph_is_statue_glyph_at(x, y);
 }
 
+/**
+ * C ref: apply.c calc_pole_range `:3371–3386` (staticfn) — min 4, max by
+ * uwep skill (basic-or-less 4 / skilled 5 / expert+ 8), mirrored to the
+ * gp polearm_range_min/max cells. Out-params become the returned
+ * { min_range, max_range } (both C callers destructure). Local like C.
+ */
 function calc_pole_range() {
     const typ = uwep_skill_type();
     const min_range = 4;
@@ -3676,6 +3670,12 @@ function calc_pole_range() {
     return { min_range, max_range };
 }
 
+/**
+ * C ref: apply.c get_valid_polearm_position `:3321–3331` (staticfn) —
+ * isok + distu inside the gp pole range + cansee (or couldsee a
+ * poleable glyph). distu is a C macro (hack.h `:1531` → dist2);
+ * distu_apply is its expansion (dist2 is symmetric). Local like C.
+ */
 function get_valid_polearm_position(x, y) {
     if (!isok(x, y)) return false;
     const min_range = game.gp?.polearm_range_min | 0;
@@ -3686,13 +3686,17 @@ function get_valid_polearm_position(x, y) {
 }
 
 /**
- * C ref: apply.c find_poleable_mon — unique poleable glyph in range.
+ * C ref: apply.c find_poleable_mon `:3284–3318` (staticfn) — unique
+ * poleable glyph in range; two candidates or none is FALSE.
  * Skip tame/peaceful only when glyph_is_monster(glyph_at) && m_at (D-1040).
+ * impaired is C `:3292` (Confusion || Stunned || Hallucination); the
+ * Hallucination arm uses the gated youprop (D-1493), not the sticky
+ * field (aliased: do_name.js squats the bare `Hallucination` name).
  */
 export function find_poleable_mon(pos) {
     const impaired = !!(game.u?.Confusion || game.u?.HConfusion
-        || game.u?.Stunned || game.u?.HStun || game.u?.Hallucination);
-    const rt = isqrt_pole(game.gp?.polearm_range_max | 0);
+        || game.u?.Stunned || game.u?.HStun || Hallucination_youprop()); // C `:3292`
+    const rt = isqrt(game.gp?.polearm_range_max | 0); // C `:3293`
     const u = game.u || {};
     const lo_x = Math.max((u.ux | 0) - rt, 1);
     const hi_x = Math.min((u.ux | 0) + rt, COLNO - 1);
@@ -3758,22 +3762,27 @@ function snickersnee_used_dist_attk(obj) {
 }
 
 /**
- * C ref: apply.c could_pole_mon — wielded pole and a reachable target.
+ * C ref: apply.c could_pole_mon `:3391–3412` — wielded polearm with a
+ * reachable target (the dothrow.c `:561` gate). hitm snapshots the
+ * polearm.hitmon cell at entry (`:3395`); DEADMONSTER is mhp < 1
+ * (monst.h `:214`); mdistu is the live mon.js export (C `:3406` calls
+ * it twice — pure, so one call).
  */
 export function could_pole_mon() {
     const u = game.u || {};
-    if (!u.uwep || !is_pole(u.uwep)) return false;
-    const { min_range, max_range } = calc_pole_range();
-    const cc = { x: u.ux | 0, y: u.uy | 0 };
-    if (!find_poleable_mon(cc)) {
-        const hitm = game.context?.polearm?.hitmon;
-        if (hitm && (hitm.mhp | 0) > 0 && sensemon(hitm)) {
-            const d = distu_apply(hitm.mx, hitm.my);
-            if (d <= max_range && d >= min_range) return true;
+    const hitm = game.context?.polearm?.hitmon; // C `:3395`
+    if (!u.uwep || !is_pole(u.uwep)) return false; // C `:3397–3398`
+    const { min_range, max_range } = calc_pole_range(); // C `:3400`
+    const cc = { x: u.ux | 0, y: u.uy | 0 }; // C `:3402–3403`
+    if (!find_poleable_mon(cc)) { // C `:3404`
+        if (hitm && (hitm.mhp | 0) > 0 && sensemon(hitm)) { // C `:3405–3406`
+            const d = mdistu(hitm); // C `:3406`
+            if (d <= max_range && d >= min_range) return true; // C `:3407`
         }
-        return false;
+    } else {
+        return true; // C `:3409`
     }
-    return true;
+    return false; // C `:3411`
 }
 
 /**

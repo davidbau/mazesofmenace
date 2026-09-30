@@ -1,3 +1,4 @@
+import { ENV } from './hostenv.js';
 // js/route_telemetry.js — WRITE-ONLY route-attribution telemetry channel.
 //
 // Commissioned by tasks/generated/build-instrument-tty-paging-001.yaml (§3,
@@ -26,7 +27,7 @@
 //    the caller already has in hand.
 
 const ON = (() => {
-    try { return typeof process !== 'undefined' && !!process.env && process.env.NH_ROUTE_TELEMETRY === '1'; }
+    try { return typeof process !== 'undefined' && !!ENV && ENV.NH_ROUTE_TELEMETRY === '1'; }
     catch { return false; }
 })();
 

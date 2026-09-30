@@ -1998,6 +1998,7 @@ import { um_dist as um_dist_mu } from './cmd.js';
 import { Some_Monnam as Some_Monnam_mu, Adjmonnam as Adjmonnam_mu } from './mhitm.js';
 import { some_mon_nam } from './mhitm.js';
 import { RIGHT_HANDED as RIGHT_HANDED_MU } from './const.js';
+import { ENV } from './hostenv.js';
 
 /* C mondata.h is_animal(ptr) — M1_ANIMAL. */
 function is_animal_mu(data) { return !!data && ((data.mflags1 | 0) & M1_ANIMAL_MU) !== 0; }
@@ -4287,7 +4288,7 @@ const VENOM_CLASS_MU = 17;  /* objclass.h */
  * port drew none of them, which is where seed0108's RNG stream left C's
  * (first divergence at leaf 2788). */
 export async function thrwmu(mtmp) {
-    if (process.env.FF_MATTACK_TRACE === '1')
+    if (ENV.FF_MATTACK_TRACE === '1')
         pushRngLogEntry(`^thrwmu_enter[id=${mtmp.m_id|0} pos=${mtmp.mx|0},${mtmp.my|0} target=${mtmp.mux|0},${mtmp.muy|0}]`);
     const u = game.u || (game.u = {});
     /* C mthrowu.c:1188-1192 — "Rearranged beginning so monsters can use
@@ -4440,7 +4441,7 @@ function monmulti(mtmp, otmp, mwep) {
         multishot = quan;
     if (multishot < 1)
         multishot = 1;
-    if (process.env.FF_MATTACK_TRACE === '1')
+    if (ENV.FF_MATTACK_TRACE === '1')
         pushRngLogEntry(`^monmulti[id=${mtmp.m_id|0} obj=${otmp.otyp|0} quan=${quan} launcher=${mwep?.otyp ?? -1} shots=${multishot}]`);
     return multishot;
 }
@@ -4483,13 +4484,13 @@ async function monshoot(mtmp, otmp, mwep) {
     gm.m_shot.n = multishot;
     const gt = g.gt || (g.gt = {});
     for (gm.m_shot.i = 1; gm.m_shot.i <= gm.m_shot.n; gm.m_shot.i++) {
-        if (process.env.FF_MATTACK_TRACE === '1')
+        if (ENV.FF_MATTACK_TRACE === '1')
             pushRngLogEntry(`^monshoot_shot[id=${mtmp.m_id|0} i=${gm.m_shot.i|0} n=${gm.m_shot.n|0} hp=${mtmp.mhp|0}]`);
         await m_throw(mtmp, mtmp.mx | 0, mtmp.my | 0,
                 sgn_mu(gt.tbx | 0), sgn_mu(gt.tby | 0), dm, otmp);
-        if (process.env.FF_MATTACK_TRACE === '1')
+        if (ENV.FF_MATTACK_TRACE === '1')
             pushRngLogEntry(`^monshoot_done[id=${mtmp.m_id|0} i=${gm.m_shot.i|0} n=${gm.m_shot.n|0} hp=${mtmp.mhp|0} pending=${game._pendingDeath ? 1 : 0}]`);
-        if (process.env.FF_MATTACK_TRACE === '1')
+        if (ENV.FF_MATTACK_TRACE === '1')
             pushRngLogEntry(`^monshoot_page_probe[id=${mtmp.m_id|0} i=${gm.m_shot.i|0} more=${_topline_more_pending() ? 1 : 0} force=${game._topl_force_breaks?.length|0} topl=${encodeURIComponent(String(game._pending_message || '').slice(-100))}]`);
         /* C:299-306 — cancel pending shots if the thrower died mid-volley. */
         if ((mtmp.mhp | 0) <= 0 && gm.m_shot.i < gm.m_shot.n)
@@ -5294,7 +5295,7 @@ export async function m_throw(mon, x, y, dx, dy, range, obj) {
                     dam = maybe_half_phys_mu(dam);
                 hitu = await thitu_mu(hitv, dam, singleobj, null);
             }
-            if (process.env.FF_MATTACK_TRACE === '1')
+            if (ENV.FF_MATTACK_TRACE === '1')
                 pushRngLogEntry(`^mthrow_hit[id=${mon.m_id|0} otyp=${singleobj.otyp|0} hit=${hitu ? 1 : 0} mesg=${gm.mesg_given|0} hp=${game.u?.uhp|0}]`);
             /* C mthrowu.c:758-760 — the hero-targeted BLINDING_VENOM arm
              * spends rnd(25) after thitu succeeds.  This is deliberately
@@ -6635,7 +6636,7 @@ export async function mattacku(mtmp) {
      * synchronous with respect to the hero's form). */
     game._olduasmon_mndx = _hero_form_mndx_mu();
     const mndx = (mtmp.mndx ?? mtmp.mnum ?? -1) | 0;
-    if (process.env.FF_MATTACK_TRACE === '1')
+    if (ENV.FF_MATTACK_TRACE === '1')
         pushRngLogEntry(`^mattacku_enter[id=${mtmp.m_id|0} pm=${mndx} pos=${mtmp.mx|0},${mtmp.my|0} target=${mtmp.mux|0},${mtmp.muy|0} pass=${game._ffMlPass|0} swallow=${game.u?.uswallow ? 1 : 0}]`);
     let { ranged, range2, foundyou } = calc_mattacku_vars(mtmp);
     /* C mhitu.c:511-513 — the very first thing mattacku does, UNCONDITIONALLY
@@ -6904,7 +6905,7 @@ export async function mattacku(mtmp) {
          * substitutions and for the seed4500 master-lich measurement. */
         const mattk = getmattk(mtmp, true, null, i, sum);
         if (!mattk) continue;
-        if (process.env.FF_MATTACK_TRACE === '1')
+        if (ENV.FF_MATTACK_TRACE === '1')
             pushRngLogEntry(`^mattacku_attack[id=${mtmp.m_id|0} slot=${i} aatyp=${mattk.aatyp|0} adtyp=${mattk.adtyp|0} damn=${mattk.damn|0} damd=${mattk.damd|0} range=${range2 ? 1 : 0} found=${foundyou ? 1 : 0}]`);
         /* C mhitu.c:786-790 — skipnonmagc suppresses everything but AT_MAGC;
          * skipdrin suppresses a mind flayer's remaining brain-drain tentacles

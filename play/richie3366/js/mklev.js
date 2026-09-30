@@ -968,15 +968,20 @@ function levregion_add(lregion) {
 /**
  * C ref: sp_lev.c lspo_teleport_region / l_get_lregion (unpacked table).
  * dir default "both" → LR_TELE. Missing exclude → delarea -1,-1,-1,-1 and
- * del_islev. Named omit: Lua argc parse; other load_* still push lregions
- * by hand (earth/fire/air/hell) rather than this helper.
+ * del_islev. Named omit: unknown dir falls back to LR_TELE where C
+ * get_table_option nhl_errors (house ?? idiom, lspo_exclusion precedent);
+ * other load_* still push lregions by hand (earth/fire/air/hell) rather
+ * than this helper.
  */
 export function l_teleport_region(opts) {
+    create_des_coder(); // C lspo_teleport_region :5449
+    const o = opts ?? {}; // C :5450 lcheck_param_table
+    if (o === null || typeof o !== 'object') nhl_error('l_teleport_region: Wrong parameters');
     // C l_get_lregion (sp_lev.c:5410–5441): required "region", optional
     // "exclude" over pre-set -1s; del_islev forced when exclude x1 < 0.
-    const region = get_table_region_unpacked(opts, 'region', false); // :5414
-    const exclude = get_table_region_unpacked(opts, 'exclude', true); // :5421
-    const dir = opts.dir || 'both';
+    const region = get_table_region_unpacked(o, 'region', false); // :5414
+    const exclude = get_table_region_unpacked(o, 'exclude', true); // :5421
+    const dir = o.dir || 'both';
     const rtype = dir === 'up' ? LR_UPTELE
         : dir === 'down' ? LR_DOWNTELE
         : LR_TELE;
@@ -991,8 +996,8 @@ export function l_teleport_region(opts) {
                 x2: exclude[2], y2: exclude[3],
             }
             : { x1: -1, y1: -1, x2: -1, y2: -1 },
-        in_islev: !!opts.region_islev,
-        del_islev: !!opts.exclude_islev,
+        in_islev: !!o.region_islev,
+        del_islev: !!o.exclude_islev,
         rtype,
         padding: 0,
         rname: { str: null },
@@ -1005,6 +1010,8 @@ export function l_teleport_region(opts) {
 /**
  * C ref: sp_lev.c lspo_levregion / l_get_lregion.
  * type default "stair-down". Missing exclude → delarea -1 and del_islev.
+ * Named omit: unknown type falls back to LR_DOWNSTAIR where C
+ * get_table_option nhl_errors (house ?? idiom).
  */
 const LREGION_TYPES = {
     'stair-down': LR_DOWNSTAIR,
@@ -1017,11 +1024,14 @@ const LREGION_TYPES = {
 };
 
 export function l_levregion(opts) {
+    create_des_coder(); // C lspo_levregion :5484
+    const o = opts ?? {}; // C :5485 lcheck_param_table
+    if (o === null || typeof o !== 'object') nhl_error('l_levregion: Wrong parameters');
     // C l_get_lregion (sp_lev.c:5410–5441): required "region", optional
     // "exclude" over pre-set -1s; del_islev forced when exclude x1 < 0.
-    const region = get_table_region_unpacked(opts, 'region', false); // :5414
-    const exclude = get_table_region_unpacked(opts, 'exclude', true); // :5421
-    const rtype = LREGION_TYPES[opts.type || 'stair-down'] ?? LR_DOWNSTAIR;
+    const region = get_table_region_unpacked(o, 'region', false); // :5414
+    const exclude = get_table_region_unpacked(o, 'exclude', true); // :5421
+    const rtype = LREGION_TYPES[o.type || 'stair-down'] ?? LR_DOWNSTAIR;
     const lregion = {
         inarea: {
             x1: region[0], y1: region[1],
@@ -1033,11 +1043,11 @@ export function l_levregion(opts) {
                 x2: exclude[2], y2: exclude[3],
             }
             : { x1: -1, y1: -1, x2: -1, y2: -1 },
-        in_islev: !!opts.region_islev,
-        del_islev: !!opts.exclude_islev,
+        in_islev: !!o.region_islev,
+        del_islev: !!o.exclude_islev,
         rtype,
-        padding: opts.padding | 0,
-        rname: { str: opts.name ?? null },
+        padding: o.padding | 0,
+        rname: { str: o.name ?? null },
     };
     if (!exclude || exclude[0] < 0)
         lregion.del_islev = true;
@@ -1239,6 +1249,106 @@ export function lspo_drawbridge(opts) {
     return 0;
 }
 
+// C ref: sp_lev.c lspo_mazewalk static tables `:5771–5776`. North/south/
+// east/west order with W_* values — not the drawbridge table above
+// (DB_* values, west/east swapped).
+const LSPO_MAZEWALK_DIRS = ['north', 'south', 'east', 'west', 'random'];
+const LSPO_MAZEWALK_DIRS2I = [W_NORTH, W_SOUTH, W_EAST, W_WEST, W_RANDOM];
+
+/**
+ * C ref: sp_lev.c lspo_mazewalk `:5769–5869` — des.mazewalk entry in C
+ * order. Unpacked forms (C `:5782` lua_gettop): (mx, my, dir?) triple
+ * (C `:5786–5789`; dir defaults "random" like luaL_checkoption) or the
+ * table form (C `:5790–5796`: x/y-or-coord via get_table_xy_or_coord,
+ * "typ" via get_table_mapchr_opt default ROOM, "stocked" via
+ * get_table_boolean_opt default 1, "dir" via get_table_option default
+ * "random"). A non-table arg-1 throws like C lcheck_param_table.
+ * get_location_coord ANY_LOC (C `:5803`), the isok guard
+ * (C `:5805–5809`), ftyp<1 corrmaze default (C `:5811–5813`), the
+ * W_RANDOM roll (C `:5815–5816`), the one-step move switch
+ * (C `:5819–5834`; the default arm impossibles then falls through to
+ * the write, like C), the non-door write (C `:5836–5839`), the
+ * odd-parity fixups (C `:5846–5862`; the x arm writes, the y arm only
+ * moves, like C), walkfrom (C `:5864`), fill_empty_maze when stocked
+ * (C `:5865–5866`). levl indexes go through level.at with a null
+ * guard (walkfrom idiom above — C indexes raw levl).
+ * Named: lcheck_param_table (table-or-empty + object check);
+ * get_table_mapchr_opt / get_table_boolean_opt / get_table_option
+ * (inline splev_chr2typ / splev_opt_boolean / splev_opt_index, C
+ * nhlua.c :256/:1107/:1122); luaL_checkinteger
+ * (luaL_checkinteger_unpacked).
+ */
+export function lspo_mazewalk(a, b, c) {
+    const argc = arguments.length; // C :5782 lua_gettop
+    create_des_coder(); // C :5784
+    let mx, my, ftyp = ROOM, fstocked = 1, dir = -1; // C :5779-5780
+    if (argc === 3) { // C :5786
+        mx = luaL_checkinteger_unpacked(a); // C :5787
+        my = luaL_checkinteger_unpacked(b); // C :5788
+        dir = LSPO_MAZEWALK_DIRS2I[splev_opt_index(c, 'random', LSPO_MAZEWALK_DIRS)]; // C :5789
+    } else { // C :5790
+        const o = a ?? {}; // C :5791 lcheck_param_table
+        if (o === null || typeof o !== 'object') throw new Error('lspo_mazewalk: Wrong parameters');
+        const mm = get_table_xy_or_coord(o); // C :5793
+        mx = mm.x;
+        my = mm.y;
+        if (o.typ != null && o.typ !== '') { // C :5794 get_table_mapchr_opt (nhlua.c:256-271: missing/empty → defval)
+            if (typeof o.typ !== 'string' || o.typ.length !== 1)
+                throw new Error('lspo_mazewalk: Erroneous map char');
+            ftyp = splev_chr2typ(o.typ); // C nhlua.c:393-397 check_mapchr
+            if (ftyp === INVALID_TYPE) throw new Error('lspo_mazewalk: Erroneous map char'); // C nhlua.c:265-266
+        }
+        fstocked = splev_opt_boolean(o.stocked, 1); // C :5795
+        dir = LSPO_MAZEWALK_DIRS2I[splev_opt_index(o.dir, 'random', LSPO_MAZEWALK_DIRS)]; // C :5796
+    }
+    let x = mx | 0; // C :5799-5801 (mcoord pack is implicit in the twin)
+    let y = my | 0;
+    const coder = game.gc?.coder ?? null; // C gc.coder->croom
+    const pos = get_location_coord(ANY_LOC, coder?.croom ?? null, x, y); // C :5803
+    x = pos.x;
+    y = pos.y;
+    if (!isok(x, y)) throw new Error('lspo_mazewalk: mazewalk coord not ok'); // C :5805-5809 nhl_error
+    if (ftyp < 1) ftyp = game.level?.flags?.corrmaze ? CORR : ROOM; // C :5811-5813
+    if (dir === W_RANDOM) dir = random_wdir(); // C :5815-5816
+    switch (dir) { // C :5819 (move, not mz_move — C comment)
+    case W_NORTH: // C :5820
+        y--; // C :5821
+        break;
+    case W_SOUTH: // C :5823
+        y++; // C :5824
+        break;
+    case W_EAST: // C :5826
+        x++; // C :5827
+        break;
+    case W_WEST: // C :5829
+        x--; // C :5830
+        break;
+    default: // C :5832
+        impossible('mazewalk: Bad direction'); // C :5833
+    }
+    const loc = game.level.at(x, y); // C :5836 levl[x][y]
+    if (loc && !IS_DOOR(loc.typ)) { // C :5836
+        loc.typ = ftyp; // C :5837
+        loc.flags = 0; // C :5838
+    }
+    if (!(x % 2)) { // C :5846
+        if (dir === W_EAST) x++; // C :5847-5848
+        else x--; // C :5849-5850
+        const loc2 = game.level.at(x, y); // C :5852-5853 (no IS_DOOR check, like C)
+        if (loc2) {
+            loc2.typ = ftyp; // C :5853
+            loc2.flags = 0; // C :5854
+        }
+    }
+    if (!(y % 2)) { // C :5857
+        if (dir === W_SOUTH) y++; // C :5858-5859
+        else y--; // C :5860-5861
+    }
+    walkfrom(x, y, ftyp); // C :5864
+    if (fstocked) fill_empty_maze(); // C :5865-5866
+    return 0; // C :5868
+}
+
 /**
  * C ref: sp_lev.c lspo_gold `:4480–4522` — des.gold entry in C order.
  * C dispatches on the Lua stack shape; JS takes the unpacked equivalents:
@@ -1276,6 +1386,77 @@ export function lspo_gold(a, b, c) {
     if (amount < 0) amount = rnd(200); // C :4521-4522
     mkgold(amount, pos.x, pos.y); // C :4523
     return 0;
+}
+
+/**
+ * C ref: sp_lev.c lspo_message `:3076–3109` — des.message entry in C
+ * order. Unpacked form: (msg) string. argc<1 throws like C `:3083–3087`
+ * nhl_error("Wrong parameters"); a non-string throws like C `:3091`
+ * luaL_checkstring (house string-only idiom, lspo_terrain precedent).
+ * Appends to game.lev_message newline-joined like C `:3093–3107`
+ * (alloc/memcpy/Free ≡ string concat under GC; the null-vs-'' split
+ * mirrors C's NULL-pointer check, not string falsiness). Strlen ≡
+ * length (des messages are ASCII). Returns 0 results like C `:3109`.
+ */
+export function lspo_message(msg) {
+    const argc = arguments.length; // C :3081 lua_gettop
+    if (argc < 1) nhl_error('lspo_message: Wrong parameters'); // C :3083-3087 (NOTREACHED)
+    create_des_coder(); // C :3089
+    if (typeof msg !== 'string') nhl_error('lspo_message: Wrong parameters'); // C :3091 luaL_checkstring
+    const old = game.lev_message; // C :3093-3094 gl.lev_message
+    game.lev_message = (old === null || old === undefined) ? msg : old + '\n' + msg; // C :3095-3107
+    return 0; // C :3109
+}
+
+// C ref: sp_lev.c lspo_corridor static tables `:4532–4537`.
+const LSPO_WALLDIRS = ['all', 'random', 'north', 'west', 'east', 'south'];
+const LSPO_WALLDIRS2I = [W_ANY, W_RANDOM, W_NORTH, W_WEST, W_EAST, W_SOUTH];
+
+/**
+ * C ref: sp_lev.c lspo_corridor `:4529–4554` — des.corridor entry in C
+ * order. Unpacked-table form (opts object; lcheck_param_table ≡
+ * table-or-empty + object check). Required srcroom/srcdoor/destroom/
+ * destdoor via luaL_checkinteger_unpacked like C get_table_int
+ * (nhlua.c:1017–1025); srcwall/destwall via splev_opt_index default
+ * "all" like C get_table_option `:4542–4546`. Async: create_corridor
+ * awaits impossible on the W_ANY/W_RANDOM guard. No table-form
+ * des.corridor call exists in dat/*.lua (only des.random_corridors).
+ */
+export async function lspo_corridor(opts) {
+    create_des_coder(); // C :4539
+    const o = opts ?? {}; // C :4541 lcheck_param_table
+    if (o === null || typeof o !== 'object') nhl_error('lspo_corridor: Wrong parameters');
+    const tc = { // C :4542-4546
+        src: {
+            room: luaL_checkinteger_unpacked(o.srcroom),
+            door: luaL_checkinteger_unpacked(o.srcdoor),
+            wall: LSPO_WALLDIRS2I[splev_opt_index(o.srcwall, 'all', LSPO_WALLDIRS)],
+        },
+        dest: {
+            room: luaL_checkinteger_unpacked(o.destroom),
+            door: luaL_checkinteger_unpacked(o.destdoor),
+            wall: LSPO_WALLDIRS2I[splev_opt_index(o.destwall, 'all', LSPO_WALLDIRS)],
+        },
+    };
+    await create_corridor(tc); // C :4548
+    return 0; // C :4550
+}
+
+/**
+ * C ref: sp_lev.c lspo_random_corridors `:4558–4574` —
+ * des.random_corridors entry in C order. L UNUSED: no args read.
+ * All -1 corridor into create_corridor (→ makecorridors like C
+ * `:2675–2678`). Async: awaits create_corridor. The quest/mines
+ * loader sites keep the pre-existing inline makecorridors()
+ * (equivalent all -1 path, sync chain; cf create_corridor doc).
+ */
+export async function lspo_random_corridors() {
+    create_des_coder(); // C :4562
+    await create_corridor({ // C :4564-4570
+        src: { room: -1, door: -1, wall: -1 },
+        dest: { room: -1, door: -1, wall: -1 },
+    }); // C :4572
+    return 0; // C :4574
 }
 
 // C ref: sp_lev.c trap_types static table `:4322–4347`.
@@ -1728,6 +1909,89 @@ function mapfrag_error(mf) {
     const center = mapfrag_get(mf, Math.trunc(mf.wid / 2), Math.trunc(mf.hei / 2)); // C :290
     if (center === MAX_TYPE || center === INVALID_TYPE) return 'mapfragment center must be valid terrain'; // C :290-294
     return null;
+}
+
+/**
+ * C ref: sp_lev.c lspo_terrain `:4978–5038` — des.terrain entry in C
+ * order. Unpacked forms (C `:4983` lua_gettop): (opts) table form
+ * (C `:4989–5001`: x/y-or-coord via get_table_xy_or_coord, the -1,-1
+ * "selection" field via l_selection_check, required "typ" via
+ * get_table_mapchr, "lit" via get_table_int_opt default NOCHANGE),
+ * (coord, typStr) pair (C `:5002–5009`: table-but-not-selection first
+ * arg — a selection userdata is not LUA_TTABLE in C — plus a string),
+ * (selection, typStr) pair (C `:5010–5012`), or (x, y, typStr) triple
+ * (C `:5013–5016`). Anything else throws like C `:5018` nhl_error.
+ * The INVALID_TYPE gate (C `:5021–5022`), the selection iterate
+ * (C `:5025`, wiring sel_set_ter through the unpacked ter/tlit),
+ * else get_location_coord ANY_LOC (C `:5027–5028`), the isok guard
+ * (C `:5029–5033`) and the single sel_set_ter (C `:5034`) follow in
+ * order. Missing/non-1-char/unknown "typ" throws "Erroneous map
+ * char" (C nhlua.c:241-252 get_table_mapchr + check_mapchr :393-397);
+ * a non-string type arg throws like C luaL_checkstring (lspo_trap
+ * precedent). l_selection_check errors on a missing selection (C
+ * nhlsel.c:58-66 luaL_checktype USERDATA — no nil pass), so -1,-1
+ * without a selection-shaped field throws.
+ * Named: lcheck_param_table (table-or-empty + object check);
+ * l_selection_check (pts-Set shape check); get_table_mapchr /
+ * check_mapchr (inline string + splev_chr2typ, C nhlua.c:241/393).
+ */
+export function lspo_terrain(a, b, c) {
+    const argc = arguments.length; // C :4983 lua_gettop
+    create_des_coder(); // C :4985
+    const tmpterrain = { tlit: SET_LIT_NOCHANGE, ter: INVALID_TYPE }; // C :4986-4987
+    let x = 0, y = 0; // C :4981
+    let sel = null; // C :4982
+    if (argc === 1) { // C :4989
+        const o = a ?? {}; // C :4991 lcheck_param_table
+        if (o === null || typeof o !== 'object') throw new Error('lspo_terrain: Wrong parameters');
+        const mm = get_table_xy_or_coord(o); // C :4993
+        x = mm.x;
+        y = mm.y; // C :4994
+        if (mm.x === -1 && mm.y === -1) { // C :4995
+            const s = o.selection; // C :4996 lua_getfield
+            if (!s || typeof s !== 'object' || !(s.pts instanceof Set)) // C :4997 l_selection_check
+                throw new Error('lspo_terrain: selection expected');
+            sel = s;
+        }
+        if (typeof o.typ !== 'string' || o.typ.length !== 1) // C :5000 get_table_mapchr
+            throw new Error('lspo_terrain: Erroneous map char');
+        tmpterrain.ter = splev_chr2typ(o.typ); // C nhlua.c:393-397 check_mapchr
+        if (tmpterrain.ter === INVALID_TYPE) throw new Error('lspo_terrain: Erroneous map char'); // C nhlua.c:247-248
+        tmpterrain.tlit = splev_opt_int(o.lit, SET_LIT_NOCHANGE); // C :5001
+    } else if (argc === 2 && a !== null && typeof a === 'object' // C :5002-5003 LUA_TTABLE
+               && !(a.pts instanceof Set) && typeof b === 'string') { // (a selection is LUA_TUSERDATA, not TABLE)
+        if (b.length !== 1) tmpterrain.ter = INVALID_TYPE; // C :5005 check_mapchr(checkstring(2))
+        else tmpterrain.ter = splev_chr2typ(b);
+        const out = { x: 0, y: 0 };
+        get_coord(a, out); // C :5007 get_coord(L, 1, &tx, &ty)
+        x = out.x; // C :5008
+        y = out.y; // C :5009
+    } else if (argc === 2) { // C :5010
+        if (!a || typeof a !== 'object' || !(a.pts instanceof Set)) // C :5011 l_selection_check
+            throw new Error('lspo_terrain: selection expected');
+        sel = a;
+        if (typeof b !== 'string') throw new Error('lspo_terrain: Wrong parameters'); // C :5012 luaL_checkstring
+        tmpterrain.ter = b.length === 1 ? splev_chr2typ(b) : INVALID_TYPE; // C :5012 check_mapchr
+    } else if (argc === 3) { // C :5013
+        x = luaL_checkinteger_unpacked(a); // C :5014
+        y = luaL_checkinteger_unpacked(b); // C :5015
+        if (typeof c !== 'string') throw new Error('lspo_terrain: Wrong parameters'); // C :5016 luaL_checkstring
+        tmpterrain.ter = c.length === 1 ? splev_chr2typ(c) : INVALID_TYPE; // C :5016 check_mapchr
+    } else {
+        throw new Error('lspo_terrain: Wrong parameters'); // C :5018 nhl_error
+    }
+    if (tmpterrain.ter === INVALID_TYPE) throw new Error('lspo_terrain: Erroneous map char'); // C :5021-5022
+    if (sel) { // C :5024
+        selection_iterate(sel, (sx, sy, t) => sel_set_ter(sx, sy, t.ter, t.tlit), tmpterrain); // C :5025
+    } else {
+        const coder = game.gc?.coder ?? null; // C gc.coder->croom
+        const pos = get_location_coord(ANY_LOC, coder?.croom ?? null, x, y); // C :5027-5028 (RANDOM when x=y=-1)
+        x = pos.x;
+        y = pos.y;
+        if (!isok(x, y)) throw new Error('lspo_terrain: terrain coord not ok'); // C :5029-5033 nhl_error
+        sel_set_ter(x, y, tmpterrain.ter, tmpterrain.tlit); // C :5034
+    }
+    return 0; // C :5037
 }
 
 /**
@@ -4854,8 +5118,8 @@ function splev_irregular_oroom(dx1, dy1, rlit) {
  * C ref: sp_lev.c sel_set_wall_property `:986-996` — OR prop into
  * wall_info on stone walls, trees and iron bars (C `:990-995`, incl. the
  * 3.6.2 iron-bars note checked by chewing/zap_over_floor). The isok + null
- * guards stand in for C selection_iterate's isok gate (`selvar.c:736`);
- * the JS same-file selection_iterate (x-outer/y-inner, C order) has none,
+ * guards mirror C selection_iterate's isok gate (`selvar.c:741`), now also
+ * present in the JS same-file selection_iterate (x-outer/y-inner, C order),
  * cf. sel_set_ter's guards. prop passes by value (C takes genericptr arg).
  */
 function sel_set_wall_property(x, y, prop) {
@@ -15051,10 +15315,10 @@ function load_earth() {
     g.level.flags.hardfloor = true;
     g.level.flags.shortsighted = true;
 
-    g.lev_message =
-        'Well done, mortal!\n'
-        + 'But now thou must face the final Test...\n'
-        + 'Prove thyself worthy or perish!';
+    // C: des.message ×3 (dat/earth.lua:17-19) → lev_message newline-joined
+    lspo_message('Well done, mortal!');
+    lspo_message('But now thou must face the final Test...');
+    lspo_message('Prove thyself worthy or perish!');
 
     // C ref: dat/earth.lua des.map — 76×20 cavern (mostly diggable rock)
     const EARTH_MAP = `
@@ -15434,9 +15698,9 @@ function load_air() {
     g.level.flags.shortsighted = true;
     g.level.flags.stormy = true;
 
-    // C: des.message ×2 → lev_message newline-joined for deliver_splev_message
-    g.lev_message =
-        'What a strange feeling!\nYou notice that there is no gravity here.';
+    // C: des.message ×2 (dat/air.lua:12-13) → lev_message newline-joined
+    lspo_message('What a strange feeling!');
+    lspo_message('You notice that there is no gravity here.');
 
     // C ref: dat/air.lua des.map — 76×20 AIR
     const AIR_MAP = `
@@ -15620,11 +15884,10 @@ function load_astral() {
     g.level.flags.shortsighted = true;
     // "solidify" → coder.solidify (epilogue solidify_map)
 
-    // C: des.message ×3 → lev_message newline-joined; convert_line at deliver
-    g.lev_message =
-        'You arrive on the Astral Plane!\n'
-        + 'Here the High Temple of %d is located.\n'
-        + 'You sense alarm, hostility, and excitement in the air!';
+    // C: des.message ×3 (dat/astral.lua:10-12) → lev_message newline-joined
+    lspo_message('You arrive on the Astral Plane!');
+    lspo_message('Here the High Temple of %d is located.');
+    lspo_message('You sense alarm, hostility, and excitement in the air!');
 
     // C ref: dat/astral.lua des.map — 75×20 temples (string form lit=FALSE)
     const ASTRAL_MAP = `
@@ -22100,6 +22363,74 @@ function luaL_checkinteger_unpacked(v) {
     const got = (v == null) ? 'nil'
         : (typeof v === 'object' ? 'table' : typeof v);
     nhl_error(`bad argument (number expected, got ${got})`);
+}
+
+/**
+ * C ref: lauxlib lua_tointeger, as nhl_abs_coord calls it on stack
+ * positions 1/2 (`:4818–4819`). Unlike luaL_checkinteger, a wrong
+ * type is NOT an error: a finite number truncates toward 0, a
+ * numeric string converts the way lua_tonumber does, anything else
+ * (nil, table, boolean) is 0.
+ */
+function lua_tointeger_unpacked(v) {
+    if (typeof v === 'number' && Number.isFinite(v)) return Math.trunc(v);
+    if (typeof v === 'string' && v.trim() !== '' && Number.isFinite(Number(v)))
+        return Math.trunc(Number(v));
+    return 0; // C lua_tointeger: not a number, not convertible → 0
+}
+
+/**
+ * C ref: sp_lev.c cvt_to_abscoord `:4771–4788` — guts of
+ * nhl_abs_coord (`:4757` comment): add the map origin (coder-room
+ * lx/ly when a coder room is active, else gx.xstart/gy.ystart) onto
+ * an in/out coord pair. Unpacked stand-in for (coordxy *x,
+ * coordxy *y): mutates xy in place (get_coord out-param idiom).
+ * Outside mklev the offsets are 0 (C `:4773–4780` comment).
+ * @param {{x:number,y:number}} xy in/out coord pair
+ */
+export function cvt_to_abscoord(xy) {
+    const coder = game.gc?.coder ?? null; // C `:4781` gc.coder
+    if (coder && coder.croom) { // C `:4781` gc.coder->croom
+        xy.x = (xy.x + coder.croom.lx) | 0; // C `:4782`
+        xy.y = (xy.y + coder.croom.ly) | 0; // C `:4783`
+    } else { // C `:4784`
+        xy.x = (xy.x + (game.splev_xstart | 0)) | 0; // C `:4785` gx.xstart
+        xy.y = (xy.y + (game.splev_ystart | 0)) | 0; // C `:4786` gy.ystart
+    }
+}
+
+/**
+ * C ref: sp_lev.c nhl_abs_coord `:4810–4836` — the `nh.abscoord`
+ * entry (nhlua.c `:1863`): convert a map/room-relative coord to
+ * absolute. Unpacked forms (C `:4814` lua_gettop): an (x, y) pair
+ * (C `:4817–4822`; lua_tointeger, so mistypes are 0, never an
+ * error) returning the converted [x, y] pair (C pushes 2 values),
+ * or a single {x, y} table (C `:4823–4830`; get_table_int ≡
+ * luaL_checkinteger_unpacked on the fields, `:5979` precedent)
+ * returning a fresh {x, y} table (C `:4827–4829` lua_newtable +
+ * entries). Anything else is nhl_error (C `:4831–4833`; the
+ * return after it is NOTREACHED).
+ * Named: nhl_add_table_entry_int (by-design; the table arm builds
+ * the object directly).
+ */
+export function nhl_abs_coord(a, b) {
+    const argc = arguments.length; // C `:4814` lua_gettop
+    let x = -1, y = -1; // C `:4815`
+    if (argc === 2) { // C `:4817`
+        x = lua_tointeger_unpacked(a) | 0; // C `:4818` (coordxy) lua_tointeger
+        y = lua_tointeger_unpacked(b) | 0; // C `:4819`
+        const xy = { x, y };
+        cvt_to_abscoord(xy); // C `:4820`
+        return [xy.x, xy.y]; // C `:4821–4822` two pushed integers
+    } else if (argc === 1 && a !== null && typeof a === 'object') { // C `:4823` LUA_TTABLE
+        x = luaL_checkinteger_unpacked(a.x) | 0; // C `:4824` (coordxy) get_table_int "x"
+        y = luaL_checkinteger_unpacked(a.y) | 0; // C `:4825` (coordxy) get_table_int "y"
+        const xy = { x, y };
+        cvt_to_abscoord(xy); // C `:4826`
+        return { x: xy.x, y: xy.y }; // C `:4827–4829` newtable + x/y entries
+    } else {
+        nhl_error('nhl_abs_coord: Wrong args'); // C `:4832` (NOTREACHED below)
+    }
 }
 
 /**
@@ -29472,14 +29803,21 @@ function selection_filter_percent(sel, pct) {
     return { pts, lx, ly, hx, hy };
 }
 
-// C ref: selection.room() iterate order — x-outer then y (same as filter_percent)
-function selection_iterate(sel, fn) {
-    if (!sel || !sel.pts.size) return;
-    const rect = {}; // C `:732` NhRect rect
+// C ref: selvar.c selection_iterate `:726-743` — whole body in C order:
+// null guard (`:734-735`), getbounds (`:737`), x-outer/y-inner scan
+// (`:739-740`) gated on isok + selection_getpoint (`:741`), callback
+// with arg (`:742`). No empty-selection shortcut: C scans the getbounds
+// rect (full map when empty, `:84-89`) and getpoint reads 0 everywhere,
+// so the callback never fires — the old `!sel.pts.size` return was
+// behaviorally identical but not C. Call-site closures keep the (x, y)
+// shape; arg passes through for C-signature fidelity.
+function selection_iterate(sel, fn, arg) {
+    if (!sel) return; // C `:734-735`
+    const rect = {}; // C `:732` NhRect rect (getbounds fills all four)
     selection_getbounds(sel, rect); // C `:737`
-    for (let x = rect.lx; x <= rect.hx; x++) {
-        for (let y = rect.ly; y <= rect.hy; y++) {
-            if (sel.pts.has(`${x},${y}`)) fn(x, y);
+    for (let x = rect.lx; x <= rect.hx; x++) { // C `:739`
+        for (let y = rect.ly; y <= rect.hy; y++) { // C `:740`
+            if (isok(x, y) && selection_getpoint(x, y, sel)) fn(x, y, arg); // C `:741-742`
         }
     }
 }
@@ -31984,9 +32322,9 @@ export function search_door(croom, wall, cnt) {
  * wall }, dest: { room, door, wall } }. Async: the W_ANY/W_RANDOM guard
  * reports via impossible (async, continues like C) then returns.
  * The dig_corridor return is discarded like C's (void) cast (:2723).
- * Named omissions: lspo_corridor table-form (sp_lev.c:4551 — no
- * des.corridor table call in the compiled levels); lspo_random_corridors
- * (:4571) stays inline as makecorridors() at the loader sites.
+ * Des entries lspo_corridor / lspo_random_corridors are exported above;
+ * no table-form des.corridor call exists in dat/*.lua, and the quest /
+ * mines loaders keep the equivalent inline makecorridors() (sync chain).
  */
 export async function create_corridor(c) {
     if (c.src.room === -1) { // :2675–2678

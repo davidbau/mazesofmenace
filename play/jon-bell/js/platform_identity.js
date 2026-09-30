@@ -1,3 +1,4 @@
+import { ENV } from './hostenv.js';
 // js/platform_identity.js
 //
 // THE ONE SWITCH FOR THE REFERENCE BUILD'S PLATFORM IDENTITY.
@@ -52,7 +53,7 @@ export const PLATFORM_UNIX = 'unix';
  * lookup.
  */
 const requestedPlatform = (typeof process !== 'undefined' && process?.env)
-    ? process.env.TELEPORT_PLATFORM
+    ? ENV.TELEPORT_PLATFORM
     : undefined;
 export const ORGANISER_PLATFORM = requestedPlatform === PLATFORM_UNIX
     ? PLATFORM_UNIX

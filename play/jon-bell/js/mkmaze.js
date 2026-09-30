@@ -63,6 +63,7 @@ import { depth } from './hacklib.js';
 import { MKOBJ_OC_CLASS, MKOBJ_OC_PROB } from './mkobj_data.js';
 import { PM_ORC, PM_ORC_SHAMAN, PM_ORC_CAPTAIN } from './pm.generated.js';
 import { MM_NONAME, MIGR_RANDOM, MIGR_LEFTOVERS, has_mgivenname } from './const.js';
+import { ENV } from './hostenv.js';
 
 // CAN_OVERWRITE_TERRAIN — rm.h:339-340
 // #define CAN_OVERWRITE_TERRAIN(ttyp) \
@@ -737,7 +738,7 @@ export function bughack() {
  * fires only if a monster happens to be standing on a marker-pool square. */
 export async function baalz_fixup() {
     const bh = bughack();
-    const baalzTrace = typeof process !== 'undefined' && process.env?.FF_BAALZ_TRACE === '1';
+    const baalzTrace = typeof process !== 'undefined' && ENV?.FF_BAALZ_TRACE === '1';
     const trace = (tag, x, y) => {
         if (baalzTrace)
             pushRngLogEntry(`^baalz_trace[tag=${tag} xy=${x | 0},${y | 0} typ=${game.level?.at(x, y)?.typ | 0}`

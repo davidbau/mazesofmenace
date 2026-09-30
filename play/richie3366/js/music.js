@@ -29,7 +29,7 @@ import {
     D_NODOOR, PIT, TT_PIT, TT_BURIEDBALL, AM_SANCTUM, AM_MASK, Amask2align,
     is_pit, u_at, COLNO, ROWNO, SHOPBASE, ARTICLE_THE, ARTICLE_A, SUPPRESS_SADDLE,
     XKILL_NOMSG, NO_KILLER_PREFIX, Upolyd, has_mgivenname,
-    Is_astralevel, In_endgame, In_sokoban, In_V_tower,
+    Is_astralevel, In_endgame, Is_sanctum, In_sokoban, In_V_tower,
     BZ_OFS_AD, KILLED_BY, DRAWBRIDGE_DOWN, IS_DRAWBRIDGE, Never_mind,
     Is_stronghold, ACH_TUNE, isok,
 } from './const.js';
@@ -462,12 +462,12 @@ function Hero_playnotes(_instr, _notes, _vol) {
     /* no-op */
 }
 
-/** C ref: music.c generic_lvl_desc. */
+/** C ref: music.c generic_lvl_desc `:478–492` — astral/plane/sanctum/puzzle/tower/dungeon chain. */
 function generic_lvl_desc() {
     const uz = game.u?.uz;
     if (Is_astralevel(uz)) return 'astral plane';
     if (In_endgame(uz)) return 'plane';
-    // Is_sanctum deferred → rare sanctum wording
+    if (Is_sanctum(uz)) return 'sanctum'; // C `:484–485`
     if (In_sokoban(uz)) return 'puzzle';
     if (In_V_tower(uz)) return 'tower';
     return 'dungeon';

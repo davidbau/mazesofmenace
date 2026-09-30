@@ -558,6 +558,17 @@ const EXT_CMDS = [
         },
     },
     {
+        // C: cmd.c:1899-1900 "therecmdmenu" AUTOCOMPLETE|GENERALCMD|MOUSECMD
+        // → dotherecmdmenu
+        name: 'therecmdmenu',
+        wiz: false,
+        autocomplete: true,
+        run: async () => {
+            const { dotherecmdmenu } = await import('./cmd.js');
+            return dotherecmdmenu();
+        },
+    },
+    {
         name: 'travel',
         wiz: false,
         autocomplete: true,

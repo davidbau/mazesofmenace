@@ -189,6 +189,7 @@ import { newcham } from './mklev.js';
 import { bypass_obj } from './worn.js';
 import { NON_PM, MCORPSENM, ismnum, NO_NC_FLAGS, NC_SHOW_MSG, NC_VIA_WAND_OR_SPELL } from './const.js';
 import { PM_LONG_WORM } from './pm.generated.js';
+import { ENV } from './hostenv.js';
 // ── Wand type constants (objects.h — Wave-D build, WAN_LIGHT base = 410) ─────
 // C ref: nethack-c/include/objects.h WAND() entries, sequential from WAN_LIGHT.
 const WAN_LIGHT = 410;
@@ -2410,7 +2411,7 @@ export function _mon_reflects_zap(mon, fmt) {
 /* C zap.c:4772 dobuzz — the ray loop. */
 export async function dobuzz(type, nd, sxIn, syIn, dxIn, dyIn, sayhit, saymiss, forcemiss) {
     const g = game, u = g.u;
-    if (process.env.FF_BZZ_TRACE === '1')
+    if (ENV.FF_BZZ_TRACE === '1')
         pushRngLogEntry(`^buzz_enter[type=${type|0} nd=${nd|0} from=${sxIn|0},${syIn|0} dir=${dxIn|0},${dyIn|0} force=${forcemiss ? 1 : 0}]`);
     const fltyp = zaptype(type), damgtype = fltyp % 10;
     _buzz_fltyp = fltyp; /* for the bounce message text */
@@ -2489,7 +2490,7 @@ export async function dobuzz(type, nd, sxIn, syIn, dxIn, dyIn, sayhit, saymiss, 
         }
 
         let mon = m_at(sx, sy);
-        if (process.env.FF_BZZ_TRACE === '1')
+        if (ENV.FF_BZZ_TRACE === '1')
             pushRngLogEntry(`^buzz_cell[x=${sx|0},y=${sy|0} mon=${mon ? (mon.m_id|0) : 0} pm=${mon?.data?.mndx ?? -1} range=${range|0}]`);
         if (cansee(sx, sy)) {
             /* C zap.c:4830-4841 — reveal/unreveal invisible monsters before tmp_at(),

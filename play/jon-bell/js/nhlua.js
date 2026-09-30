@@ -1,13 +1,12 @@
 // Core Lua lifetime and callbacks: frozen v5 src/nhlua.c and decl.c.
 // Lua execution belongs to the authored interpreter; callback bodies remain
 // the actual dat/nhcore.lua / nhlib.lua functions, not JS approximations.
-import { readFileSync } from 'node:fs';
 import { game } from './gstate.js';
 import { createLevelLuaState } from './lua/nh_state.js';
 import { LuaTable } from './lua/interp.js';
 import { tokenize } from './lua/lexer.js';
 import { parse } from './lua/parser.js';
-import { resolve_dat } from './dat_source.js';
+import { dat_content } from './dat_source.js';
 import { impossible } from './pline.js';
 import { TtyMenu, PICK_NONE } from './tty_menu.js';
 import { l_obj_gc } from './nhlobj.js';
@@ -77,14 +76,15 @@ export async function nhl_done(L) {
 }
 
 export async function nhl_loadlua(L, name) {
-    const file = resolve_dat(name, p => {
-        try { readFileSync(p); return true; } catch { return false; }
-    });
-    if (!file) {
+    /* dat_content() is called OUTSIDE any catch on purpose: a "this name
+     * differs between 3.7 and 5.0 and was never vendored" throw must not be
+     * laundered into C's benign "cannot open" arm below. */
+    const source = dat_content(name);
+    if (source === null) {
         await impossible('nhl_loadlua: Error opening (%s)', name);
         return false;
     }
-    await L.run(parse(tokenize(readFileSync(file, 'utf8'))));
+    await L.run(parse(tokenize(source)));
     return true;
 }
 

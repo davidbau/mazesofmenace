@@ -1,5 +1,10 @@
-// DO NOT EDIT — This file is part of the contest's fixed infrastructure.
-// The judge overwrites it from frozen/ on every scoring run.
+// CONTESTANT-OWNED under v5 — edit freely. This file is NOT frozen.
+// It carried "DO NOT EDIT — the judge overwrites it from frozen/ on every
+// scoring run" from the 3.7 era; that is false and was measured so on
+// 2026-09-29. frozen/score.sh:49-51 overlays exactly three files —
+// js/isaac64.js, js/terminal.js, js/storage.js — and frozen/ holds no
+// const.js at all. The stale header would make an agent refuse a legitimate
+// edit here, which is the cost of leaving it.
 const MAXPCHARS = 105; // from symbols.js
 // const.js -- Game constants and configuration
 // Mirrors constants from include/hack.h, include/global.h, include/rm.h

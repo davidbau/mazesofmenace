@@ -28,6 +28,7 @@ import { vision_debug_snapshot } from './vision.js';
 // only ever set by tools/input-desync-triage.mjs). See js/route_telemetry.js.
 import { routeTag, routeFrameTick } from './route_telemetry.js';
 import { restore_saved_game, dorecover, restore_preamble } from './restore.js';
+import { ENV } from './hostenv.js';
 /**
  * LEGACY (gameFromSession) ONLY — the v5 runSegment() path does NOT use this.
  *
@@ -409,7 +410,7 @@ export class NethackGame {
             // them.  This is intentionally state-only and is read by the
             // optional action trace in input.js.
             game._ff_last_input_frame = keyIdx;
-            if (typeof process !== 'undefined' && process.env?.FF_PAGE_TRACE === '1') {
+            if (typeof process !== 'undefined' && ENV?.FF_PAGE_TRACE === '1') {
                 const snap = game._paintedSnapshot;
                 pushRngLogEntry(`^page_input[frame=${keyIdx} pending=${encodeURIComponent(String(game._pending_message || '').slice(0,96))}`
                     + ` inMore=${game._inMovemonMore ? 1 : 0} snap=${snap ? 1 : 0} cells=${snap?.cells?.size ?? -1}`
@@ -420,7 +421,7 @@ export class NethackGame {
              * diagnostic can correlate an object's BUC/price state with the
              * exact screen boundary that exposed it.  The probe is inert in
              * normal scoring and bounded to the first 512 floor objects. */
-            if (typeof process !== 'undefined' && process.env?.FF_OBJECT_TRACE === '1') {
+            if (typeof process !== 'undefined' && ENV?.FF_OBJECT_TRACE === '1') {
                 const rows = [];
                 let count = 0;
                 for (let o = game.fobj; o && count++ < 512; o = o.nobj) {
@@ -442,7 +443,7 @@ export class NethackGame {
              * can be either a stale repaint or an actual movement mismatch;
              * FF_MOVE_TRACE=1 records the hero and live monster positions at
              * the same input boundary without touching gameplay or RNG. */
-            if (typeof process !== 'undefined' && process.env?.FF_MOVE_TRACE === '1') {
+            if (typeof process !== 'undefined' && ENV?.FF_MOVE_TRACE === '1') {
                 const mons = [];
                 for (let mm = game.fmon, n = 0; mm && n++ < 128; mm = mm.nmon) {
                     mons.push(`${mm.mnum ?? mm.data?.mnum ?? -1}:${mm.mx | 0},${mm.my | 0}`
@@ -454,7 +455,7 @@ export class NethackGame {
             /* Optional discoveries-page probe.  It records the live per-class
              * discovery lists and inventory identities at the page boundary,
              * making a missing row distinguishable from a renderer omission. */
-            if (typeof process !== 'undefined' && process.env?.FF_DISCOVERY_TRACE === '1') {
+            if (typeof process !== 'undefined' && ENV?.FF_DISCOVERY_TRACE === '1') {
                 const ds = Object.entries(game._disco || {})
                     .map(([k, v]) => `${k}:${Array.isArray(v) ? v.join('.') : ''}`).join('|');
                 const inv = [];
@@ -474,8 +475,8 @@ export class NethackGame {
              * state at each input boundary in the existing diagnostic log;
              * it is inert unless explicitly requested and never affects game
              * state or RNG. */
-            if (typeof process !== 'undefined' && process.env?.FF_CELL_TRACE) {
-                const m = String(process.env.FF_CELL_TRACE).match(/^(-?\d+),(-?\d+)$/);
+            if (typeof process !== 'undefined' && ENV?.FF_CELL_TRACE) {
+                const m = String(ENV.FF_CELL_TRACE).match(/^(-?\d+),(-?\d+)$/);
                 if (m) {
                     const cx = Number(m[1]) | 0, cy = Number(m[2]) | 0;
                     const loc = game.level?.at?.(cx, cy) || null;
@@ -502,7 +503,7 @@ export class NethackGame {
             }
             // Observe the pending input boundary without dismissing a pager
             // or recalculating vision. No game state or RNG values are changed.
-            if (typeof process !== 'undefined' && process.env?.FF_VISION_TRACE === '1') {
+            if (typeof process !== 'undefined' && ENV?.FF_VISION_TRACE === '1') {
                 pushRngLogEntry('^vision_input[' + JSON.stringify({
                     frame: keyIdx, ...vision_debug_snapshot(),
                 }) + ']');
@@ -547,7 +548,7 @@ export class NethackGame {
             /* Optional scored-path inventory probe.  It is deliberately
              * environment-gated and writes only to the existing diagnostic
              * RNG log, so ordinary replays and scores are unchanged. */
-            if (typeof process !== 'undefined' && process.env?.FF_INVENT_TRACE === '1') {
+            if (typeof process !== 'undefined' && ENV?.FF_INVENT_TRACE === '1') {
                 const inv = [];
                 for (let o = game.invent; o; o = o.nobj)
                     inv.push(`${o.invlet ?? 0}:${o.otyp ?? 0}:${o.pickup_prev ? 1 : 0}`);

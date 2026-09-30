@@ -3413,8 +3413,8 @@ export function status_hilite_remove(id) {
  *
  * Callers: botl.c:4556 → status_hilite_menu below.
  * botl.c:4300 is the tail of status_hilite_menu_add (named omission,
- * no JS site). options.c:4035 is optfn_statushilites do_set (optfn
- * still null — named omission).
+ * no JS site). options.c:4035 is optfn_statushilites do_set (live in
+ * js/options.js, gated on !opt_from_file like C).
  */
 export function reset_status_hilites() {
     if (game.iflags?.hilite_delta) { // C `:2323`

@@ -31,6 +31,7 @@ import { add_weapon_skill, lose_weapon_skill } from './uhitm.js';
 import monsPackAt from './makemon_mons.json' with { type: 'json' };
 import monMattkPackAt from './makemon_mattk.json' with { type: 'json' };
 import monPmnamesPackAt from './makemon_pmnames.json' with { type: 'json' };
+import { ENV } from './hostenv.js';
 /* C attrib.h:
  *   A_STR=0, A_INT=1, A_WIS=2, A_DEX=3, A_CON=4, A_CHA=5, A_MAX=6
  */
@@ -463,7 +464,7 @@ export function exercise(i, inc_or_dec) {
         return;
     const aexe = getAexe(u);
     if (Math.abs(aexe[i] | 0) < AVAL) {
-        if (process.env.FF_TURNTRACE === '1')
+        if (ENV.FF_TURNTRACE === '1')
             pushRngLogEntry(`^exercise_js[moves=${g.moves | 0} attr=${i | 0} inc=${inc_or_dec ? 1 : 0}]`);
         /* C attrib.c:509:
          *   AEXE(i) += (inc_or_dec) ? (rn2(19) > ACURR(i)) : -rn2(2);

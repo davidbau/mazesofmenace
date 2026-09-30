@@ -44,8 +44,7 @@ import { christen_monst, poly_when_stoned } from './mhitm.js';
 import { within_bounded_area } from './rect.js';
 import { create_gas_cloud, create_gas_cloud_selection as create_region_gas_cloud_selection } from './region.js';
 import { PM_MINOTAUR, PM_ARCHEOLOGIST, PM_WIZARD, PM_FIRE_VORTEX, PM_FLAMING_SPHERE, PM_FIRE_ELEMENTAL, PM_SALAMANDER, PM_VAMPIRE, PM_VAMPIRE_LORD, PM_VLAD_THE_IMPALER, PM_CLERIC, PM_DWARF, PM_GNOME, NUMMONS } from './pm.generated.js';
-import { readFileSync } from 'fs';
-import { resolve_dat } from './dat_source.js';
+import { dat_content } from './dat_source.js';
 import { tokenize } from './lua/lexer.js';
 import { parse } from './lua/parser.js';
 import { nhl_init, nhl_done } from './nhlua.js';
@@ -59,6 +58,7 @@ import { m_into_limbo } from './dog.js';
 import { placebc, unplacebc } from './ball.js';
 import { obj_resists } from './zap.js';
 import { rloco as steal_rloco } from './steal.js';
+import { ENV } from './hostenv.js';
 const MONS_PMNAMES = monPmnamesPack.pmnames;
 
 const MONS_ROWS = monsPack.mons;
@@ -4809,7 +4809,7 @@ const MPLAYER_CBS = {
      * MON_AT exactly as C is; m_at returns null when the square is free. */
     rlocInsurance: async (x, y) => {
         const occupant = m_at(x, y);
-        if (typeof process !== 'undefined' && process.env?.FF_MPLAYER_TRACE === '1')
+        if (typeof process !== 'undefined' && ENV?.FF_MPLAYER_TRACE === '1')
             pushRngLogEntry(`^mplayer_insurance[xy=${x | 0},${y | 0} occupied=${occupant ? 1 : 0}`
                 + ` id=${occupant?.m_id | 0} mndx=${occupant?.mndx ?? occupant?.data?.pmidx ?? -1}]`);
         if (occupant)
@@ -6536,7 +6536,7 @@ export function find_level(s) {
 
 // C ref: mkmaze.c:414-499 put_lregion_here().
 async function put_lregion_here(x, y, nlx, nly, nhx, nhy, rtype, oneshot, lev) {
-    const lregionTrace = typeof process !== 'undefined' && process.env?.FF_LREGION_TRACE === '1';
+    const lregionTrace = typeof process !== 'undefined' && ENV?.FF_LREGION_TRACE === '1';
     if (lregionTrace)
         pushRngLogEntry(`^splev_lregion_try[x=${x | 0},${y | 0} rtype=${rtype | 0} oneshot=${oneshot ? 1 : 0}]`);
     if (splev_bad_location(x, y, nlx, nly, nhx, nhy) || is_exclusion_zone(rtype, x, y)) {
@@ -6985,15 +6985,9 @@ async function fixup_special() {
 // through resolve_dat() makes that fail loudly with the vendoring instruction
 // instead.  See js/dat_source.js.
 async function loadLuaFile(name) {
-    const path = resolve_dat(name, (p) => { try { readFileSync(p); return true; } catch (e) { return false; } });
-    if (path === null)
-        throw new Error(`Failed to read dat/${name}: not found under js/dat or nethack-c/dat`);
-    let source;
-    try {
-        source = readFileSync(path, 'utf-8');
-    } catch (e) {
-        throw new Error(`Failed to read ${path}: ${e.message}`);
-    }
+    const source = dat_content(name);
+    if (source === null)
+        throw new Error(`Failed to read dat/${name}: not carried in js/dat_bundle.js`);
     const interp = await nhl_init();
     const ast = parse(tokenize(source));
     try {

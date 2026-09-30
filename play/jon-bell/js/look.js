@@ -64,6 +64,7 @@ import { Blind } from './vision.js';
 import { can_reach_floor } from './hold_another_object.js';
 import { doname, doname_with_price, corpse_xname, an, vtense, CXN_ARTICLE } from './objnam.js';
 import { DEFSYM_EXPLANATION } from './defsym_data.js';
+import { ENV } from './hostenv.js';
 /* mbodypart: C polyself.c:1956 — needed only by look_here's u.uswallow arm
  * ("Contents of <mon's> stomach").  js/cmd.js already imports FROM this file
  * (`_dfeature_at as look_dfeature_at`), so this creates the same kind of
@@ -82,8 +83,8 @@ import { force_decor, mbodypart, set_msg_xy, instapetrify,
  * direction, with the corrct/noturn/m0/i0/x0/y0 ledger that gated it.  Emitted
  * ONLY when FF_DIRTRACE=1 (pushRngLogEntry is a no-op unless the rng log is
  * enabled, which only the dev/diff tooling does) → ZERO effect on scored runs. */
-const _DIRTRACE = (typeof process !== 'undefined' && process.env
-    && process.env.FF_DIRTRACE === '1');
+const _DIRTRACE = (typeof process !== 'undefined' && ENV
+    && ENV.FF_DIRTRACE === '1');
 
 // C ref: rm.h IS_DOOR(typ) — only the DOOR typ
 function _is_door(typ) { return typ === DOOR; }
@@ -813,7 +814,7 @@ export function end_running(and_travel) {
     const ctx = game.context;
     if (!ctx) return;
     const wasRunning = !!(ctx.run | 0);
-    if (process.env.FF_RUN_TRACE === '1')
+    if (ENV.FF_RUN_TRACE === '1')
         pushRngLogEntry(`^run_end_enter[run=${ctx.run|0} multi=${game.multi|0} move=${ctx.move?1:0} mv=${ctx.mv?1:0} travel=${ctx.travel?1:0} andTravel=${and_travel?1:0} moves=${game.moves|0}]`);
     /* C hack.c:4131-4136 — `if (svc.context.run) { svc.context.run = 0;
      *     if (flags.time) disp.time_botl = TRUE; ... }'.  moveloop_core suppresses
@@ -845,7 +846,7 @@ export function end_running(and_travel) {
     if ((game.multi | 0) > 0) {
         game.multi = 0;
     }
-    if (process.env.FF_RUN_TRACE === '1')
+    if (ENV.FF_RUN_TRACE === '1')
         pushRngLogEntry(`^run_end_exit[run=${ctx.run|0} multi=${game.multi|0} move=${ctx.move?1:0} mv=${ctx.mv?1:0} travel=${ctx.travel?1:0} timeBotl=${game.disp?.time_botl|0} frozen=${game._timeBotlFrozenMoves ?? -1} moves=${game.moves|0}]`);
 }
 

@@ -3655,7 +3655,7 @@ export async function mondied_dm(mdef) {
     if ((mdef.mhp | 0) > 0) return;
     const deadMx = mdef.mx | 0;
     const deadMy = mdef.my | 0;
-    if (typeof process !== 'undefined' && process.env?.FF_DEATH_TRACE === '1') {
+    if (typeof process !== 'undefined' && ENV?.FF_DEATH_TRACE === '1') {
         const cell = game.level?.at(deadMx, deadMy);
         pushRngLogEntry(`^mondied_dm[x=${deadMx},y=${deadMy},mndx=${(mdef.mndx ?? mdef.mnum ?? -1) | 0},` +
             `mhp=${mdef.mhp | 0},typ=${cell?.typ ?? -1},seenv=${cell?.seenv ?? -1},` +
@@ -4803,6 +4803,7 @@ export async function monstone(mtmp) {
  * that module already imports finish_meating from THIS file, so the cycle
  * already exists and is function-call-only (no module-evaluation-time use). */
 import { update_monster_region as update_monster_region_real } from './region.js';
+import { ENV } from './hostenv.js';
 
 /* place_worm_tail_randomly and remove_worm are a required pair in
  * mdisplacem(): C removes the old tail before laying it back out, and the

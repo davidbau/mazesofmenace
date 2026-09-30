@@ -81,6 +81,7 @@ import { mon_has_amulet } from './sit.js';
 import { healmon, mpickobj } from './mklev.js';
 import { obj_extract_floor, distant_obj_name, Monnam_dm } from './dogmove.js';
 import { pline } from './display.js';
+import { ENV } from './hostenv.js';
 /* C mondata.h:81 perceives(ptr) — (ptr)->mflags1 & M1_SEE_INVIS. */
 const M1_SEE_INVIS = 0x01000000;
 /* C vision.h:50-53 m_canseeu(m) —
@@ -279,7 +280,7 @@ function m_arrival(mon) {
 }
 
 export async function dochug(mtmp) {
-    if (typeof process !== 'undefined' && process.env?.FF_DH_TRACE)
+    if (typeof process !== 'undefined' && ENV?.FF_DH_TRACE)
         pushRngLogEntry(`^dh_enter[id=${mtmp?.m_id ?? 0} mndx=${mtmp?.mndx ?? mtmp?.mnum ?? -1} xy=${mtmp?.mx ?? 0},${mtmp?.my ?? 0} can=${mtmp?.mcanmove ?? 0} sleep=${mtmp?.msleeping ?? 0} strat=${mtmp?.mstrategy ?? 0}]`);
     if (!mtmp)
         return 0;
@@ -417,7 +418,7 @@ export async function dochug(mtmp) {
     /* C monmove.c:813 — distfleeck(mtmp, &inrange, &nearby, &scared).
      * Always fires rn2(5) for bravegremlin. */
     let { inrange, nearby, scared } = distfleeck(mtmp);
-    if (typeof process !== 'undefined' && process.env?.FF_DH_TRACE)
+    if (typeof process !== 'undefined' && ENV?.FF_DH_TRACE)
         pushRngLogEntry(`^dh_pre[id=${mtmp?.m_id ?? 0} moved=${inrange}/${nearby}/${scared}]`);
     /* C monmove.c:793-800 — "search for and potentially use defensive or
      * miscellaneous items."
@@ -634,7 +635,7 @@ export async function dochug(mtmp) {
          * Recalc fires rn2(5) again. MMOVE_DIED=2. */
         if (status !== MMOVE_DIED) {
             const rc = distfleeck(mtmp); /* C: recalculate distfleeck after m_move */
-            if (typeof process !== 'undefined' && process.env?.FF_DH_TRACE)
+            if (typeof process !== 'undefined' && ENV?.FF_DH_TRACE)
                 pushRngLogEntry(`^dh_post[id=${mtmp?.m_id ?? 0} status=${status}]`);
             pf_inrange = rc.inrange; pf_scared = rc.scared; pf_nearby = rc.nearby;
         }
@@ -684,7 +685,7 @@ export async function dochug(mtmp) {
         if (status === MMOVE_DIED) return 1;
         /* C monmove.c:940-941: if (status != MMOVE_DIED) distfleeck recalc. */
         const rc = distfleeck(mtmp);
-        if (typeof process !== 'undefined' && process.env?.FF_DH_TRACE)
+        if (typeof process !== 'undefined' && ENV?.FF_DH_TRACE)
             pushRngLogEntry(`^dh_post[id=${mtmp?.m_id ?? 0} status=${status}]`);
         pf_inrange = rc.inrange; pf_scared = rc.scared; pf_nearby = rc.nearby;
     }

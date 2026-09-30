@@ -4,6 +4,7 @@
 // Contest: only core context is used for parity.
 import { isaac64_init, isaac64_next_uint64 } from './isaac64.js';
 import { game } from './gstate.js';
+import { ENV } from './hostenv.js';
 let _rngLog = [];
 let _rngLogEnabled = false;
 // Captured-input replay RNG — two tape modes, mutually exclusive.
@@ -139,7 +140,7 @@ export function pushRngLogEntry(entry) { if (_rngLogEnabled)
 // for the only consumer.
 // ---------------------------------------------------------------------
 const _STEP_EXPLORER_RNG_TRACE = !!(typeof process !== 'undefined'
-    && process.env && process.env.STEP_EXPLORER_RNG_TRACE);
+    && ENV && ENV.STEP_EXPLORER_RNG_TRACE);
 function _stepExplorerCallerTag() {
     // Allocating an Error captures the JS call stack on V8. We walk past
     // this helper + the immediate rn2/rnd/d/rne/rnz frame and report the

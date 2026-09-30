@@ -118,6 +118,7 @@ async function maybe_generate_rnd_mon() {
         await makemon(null, 0, 0, 0);
 }
 import { nhlib_com_pager_rng } from "./nhlib.js";
+import { ENV } from './hostenv.js';
 /* C ref: nethack-c-v5/upstream/src/role.c roles[] [lgod, ngod, cgod].  The
  * table itself now lives with roles[] in js/roles.js (ROLE_GODS) so role_init()
  * and this legacy replay arm cannot drift apart. */
@@ -480,7 +481,7 @@ export async function ff_movemon_one_pass() {
      * 256).  A Fast hero (u.umovement banks > NORMAL_SPEED, e.g. a monk) can
      * take TWO domove()s between two movemon passes in C; this marker exposes
      * whether the JS multi>0 run loop (allmain.js) reproduces that pairing. */
-    if (process.env.FF_RUNBANK_TRACE === '1') {
+    if (ENV.FF_RUNBANK_TRACE === '1') {
         pushRngLogEntry(`^ff_worldtick[moves=${g.moves | 0} ux=${g.u ? g.u.ux | 0 : -1} uy=${g.u ? g.u.uy | 0 : -1}]`);
     }
     let somebody_can_move = false;
@@ -505,7 +506,7 @@ export async function ff_movemon_one_pass() {
     const roster = [];
     for (let m = g.fmon; m; m = m.nmon)
         roster.push(m);
-    if (process.env.FF_MFNDTRACE === '1') {
+    if (ENV.FF_MFNDTRACE === '1') {
         const census = roster.slice(0, 128).map(m => `${m.m_id | 0}:${m.mnum ?? m.data?.pmidx ?? -1}@${m.mx | 0},${m.my | 0}`).join(';');
         pushRngLogEntry(`^fmon_census[moves=${g.moves | 0} count=${roster.length} mons=${census}]`);
     }
@@ -516,7 +517,7 @@ export async function ff_movemon_one_pass() {
          * iterator position around the awaited dochug call.  A pager can yield
          * from inside dochug; capturing both sides makes it possible to prove
          * whether a future continuation resumes at the same roster index. */
-        if (process.env.FF_MLTRACE === '1') {
+        if (ENV.FF_MLTRACE === '1') {
             game._ffMlCursor = { pass: game._ffMlPass | 0, roster: i | 0,
                 count: roster.length | 0, phase: 'before-dochug',
                 mid: m.m_id | 0, moves: game.moves | 0 };
@@ -574,8 +575,8 @@ export async function ff_movemon_one_pass() {
          * coarse per-turn ^ff_herotrace pass count.  Emitted ONLY when FF_MLTRACE=1;
          * pushRngLogEntry is a no-op unless the rng log is enabled (dev/diff tooling
          * only) → ZERO effect on scored runs, consumes NO rng. */
-        if (typeof process !== 'undefined' && process.env
-            && process.env.FF_MLTRACE === '1') {
+        if (typeof process !== 'undefined' && ENV
+            && ENV.FF_MLTRACE === '1') {
             const _mnum = (m.mndx ?? m.mnum ?? 0) | 0;
             const _mid = (m.m_id | 0);
             const _mv0 = (m.movement | 0);
@@ -735,7 +736,7 @@ export async function ff_movemon_one_pass() {
          * breamu -> dobuzz, whose plines page).  An unawaited call would
          * resume the breath ray AFTER the next monster had moved. */
         await dochugw(m, true);
-        if (process.env.FF_MLTRACE === '1') {
+        if (ENV.FF_MLTRACE === '1') {
             game._ffMlCursor = { pass: game._ffMlPass | 0, roster: i | 0,
                 count: roster.length | 0, phase: 'after-dochug',
                 mid: m.m_id | 0, moves: game.moves | 0 };
@@ -789,7 +790,7 @@ export async function ff_movemon_one_pass() {
      * nothing) and screen-neutral (nodes are already off-map, newsym'd at
      * m_detach time). */
     dmonsfree();
-    if (process.env.FF_MLTRACE === '1')
+    if (ENV.FF_MLTRACE === '1')
         pushRngLogEntry(`^ff_movemon_pass[moves=${g.moves | 0} pass=${g._ffMlPass | 0} roster=${roster.length | 0} somebody=${somebody_can_move ? 1 : 0}]`);
     return somebody_can_move;
 }
@@ -1806,7 +1807,7 @@ async function fastforward_step_generic_turn() {
  * by the unported Ctrl-V wizard level-teleport command — tracked separately,
  * not a moveloop regression (per-turn faithfulness verified; see GATES.md). */
 export const FF_FAITHFUL = !(typeof process !== 'undefined'
-    && process.env && process.env.FF_FAITHFUL === '0');
+    && ENV && ENV.FF_FAITHFUL === '0');
 
 /* PHASE: MOVEMON — ONE movemon() pass (mon.c:1314), the body of the inner
  * do-while of allmain.c:252-256:

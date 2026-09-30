@@ -14,6 +14,7 @@ import { PM_LONG_WORM_TAIL } from './pm.generated.js';
 import { is_moat } from './dokick.js';
 import { _glyph_ident } from './cmd.js';
 import { pushRngLogEntry } from './rng.js';
+import { ENV } from './hostenv.js';
 
 const _isMonGlyph = (loc) => loc?.disp_cls === GLYPHCLS_MON;
 const _isInvisibleGlyph = (loc) => loc?.disp_cls === GLYPHCLS_INVIS;
@@ -49,7 +50,7 @@ export async function do_vicinity_map(sobj) {
     const randomFarsight = !sobj;
     const loY = Math.max(0, (u.uy | 0) - 5), hiY = Math.min(ROWNO - 1, (u.uy | 0) + 6);
     const loX = Math.max(1, (u.ux | 0) - 9), hiX = Math.min(COLNO - 1, (u.ux | 0) + 10);
-    if (typeof process !== 'undefined' && process.env?.FF_VISION_TRACE === '1')
+    if (typeof process !== 'undefined' && ENV?.FF_VISION_TRACE === '1')
         pushRngLogEntry(`^vision_vicinity[entry=1 moves=${g.moves | 0} incomingMove=${g.context?.move ? 1 : 0} loX=${loX} hiX=${hiX} loY=${loY} hiY=${hiY} random=${randomFarsight ? 1 : 0} active=${extended ? 1 : 0}]`);
     const savedViz = g.viz_array?.[u.uy]?.[u.ux];
     u.uprops = u.uprops || {};

@@ -12,7 +12,7 @@
 import { game } from './gstate.js';
 import { strstri, mungspaces, strncmpi } from './hacklib.js';
 import { nhgetch } from './input.js';
-import { flush_screen, flush_topl_more, pline } from './display.js';
+import { flush_screen, flush_topl_more, impossible, pline } from './display.js';
 import {
     SCROLL_CLASS, SPBOOK_CLASS, objectNames, objectNameStrs, objectDescrs,
 } from './objects.js';
@@ -87,9 +87,13 @@ function obj_descr(otyp) {
 }
 
 /**
- * C ref: write.c cost — base ink cost of scroll / spellbook type.
+ * C ref: write.c cost `:14–57` — base ink cost of scroll / spellbook type.
+ * SPBOOK `:17–18`; SCR_MAIL `:22–23` (`#ifdef MAIL_STRUCTURES`, always
+ * defined — `include/global.h:430`); BLANK_PAPER/default `:53–55`
+ * impossible then `return 1000` (`:57`). Async: C `:55` impossible can
+ * block on --More--; the single caller `dowrite` (C `write.c:256`) awaits.
  */
-function cost(otmp) {
+async function cost(otmp) {
     if (otmp.oclass === SPBOOK_CLASS) {
         return 10 * ((game.objects?.[otmp.otyp]?.oc_level) | 0);
     }
@@ -115,7 +119,8 @@ function cost(otmp) {
         return 20;
     }
     if (o === SCR_GENOCIDE) return 30;
-    // SCR_BLANK_PAPER / default — C impossible
+    // SCR_BLANK_PAPER / default — C `:53–55` impossible, then `:57`.
+    await impossible("You can't write such a weird scroll!");
     return 1000;
 }
 
@@ -387,7 +392,7 @@ export async function dowrite(pen) {
 
     // check_unpaid(pen) deferred
 
-    const basecost = cost(new_obj);
+    const basecost = await cost(new_obj);
     if ((pen.spe | 0) < Math.trunc(basecost / 2)) {
         await pline('Your marker is too dry to write that!');
         obfree(new_obj);

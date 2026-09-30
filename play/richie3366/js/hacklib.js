@@ -24,6 +24,27 @@ export function dist2(x1, y1, x2, y2) {
     return (x1 - x2) * (x1 - x2) + (y1 - y2) * (y1 - y2);
 }
 
+/**
+ * C ref: hacklib.c isqrt `:681–700` — integer square root by
+ * odd-subtraction, no floating point. C mutates the `val` parameter;
+ * JS copies to a local. Callers: apply.c find_poleable_mon `:3293`
+ * (live import); dothrow.c `:1667` + spell.c `:2244` keep their
+ * pre-existing js/dothrow.js + js/spell.js locals (out of scope).
+ * @param {number} val
+ * @returns {number}
+ */
+export function isqrt(val) {
+    let rt = 0; // C `:684`
+    let odd = 1; // C `:685`
+    let v = val | 0; // C `:682` param
+    while (v >= odd) { // C `:694`
+        v = v - odd; // C `:695`
+        odd = odd + 2; // C `:696`
+        rt = rt + 1; // C `:697`
+    }
+    return rt; // C `:699`
+}
+
 /* C ref: hacklib.c:830-837 — swapbits(val, bita, bitb) swaps bit a with bit b in val. */
 export function swapbits(val, bita, bitb) {
     val |= 0; bita |= 0; bitb |= 0;

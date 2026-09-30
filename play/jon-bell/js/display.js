@@ -67,6 +67,7 @@ import { routeTag } from './route_telemetry.js';
  * that file does rather than growing a tenth private approximation. */
 import { unconscious } from './pickup.js';
 import { is_fainted } from './eat.js';
+import { ENV } from './hostenv.js';
 
 // ── Trap glyph table ──
 // C ref: include/defsym.h trap PCHAR entries (lines 157-183) + include/rm.h:484
@@ -1426,7 +1427,7 @@ function _glyph_is_generic_object(obj) {
  * statue's REMEMBERED glyph is a separate draw the caller makes under its own
  * hero_memory gate (display.c:354-362). */
 function _hallucinated_obj_glyph(obj) {
-    if (typeof process !== 'undefined' && process.env?.FF_DISPLAY_TRACE === '1') {
+    if (typeof process !== 'undefined' && ENV?.FF_DISPLAY_TRACE === '1') {
         const seq = game.__ff_display_trace_seq = (game.__ff_display_trace_seq | 0) + 1;
         const caller = String(new Error().stack || '').split('\n')[2]?.trim()
             .replace(/^at\s+/, '').replace(/\s+\([^)]*\)$/, '') || '?';
@@ -1629,7 +1630,7 @@ export function see_nearby_objects() {
                 continue;
             /* skip if no object or the object has already been marked seen */
             const obj = game.level?.levelObjects?.[ix]?.[iy] ?? null;
-            if (typeof process !== 'undefined' && process.env?.FF_NEAR_TRACE === '1' && obj) {
+            if (typeof process !== 'undefined' && ENV?.FF_NEAR_TRACE === '1' && obj) {
                 pushRngLogEntry(`^near_object[otyp=${obj.otyp | 0} id=${obj.o_id ?? 0} xy=${ix},${iy}`
                     + ` dknown=${obj.dknown ? 1 : 0} cansee=${cansee(ix, iy) ? 1 : 0}`
                     + ` dist=${(ix - ux) * (ix - ux) + (iy - uy) * (iy - uy)}`
@@ -2254,11 +2255,11 @@ function mon_overrides_region(mon, mx, my) {
 // ── newsym ──
 export function newsym(x, y) {
     /* Diagnostic-only visibility provenance; inert unless explicitly enabled. */
-    if (typeof process !== 'undefined' && process.env?.FF_VISION_TRACE === '1') {
+    if (typeof process !== 'undefined' && ENV?.FF_VISION_TRACE === '1') {
         const t = game.__vision_trace_newsym || (game.__vision_trace_newsym = []);
         t.push([x | 0, y | 0]);
     }
-    if (typeof process !== 'undefined' && process.env?.FF_DISPLAY_TRACE === '1') {
+    if (typeof process !== 'undefined' && ENV?.FF_DISPLAY_TRACE === '1') {
         game.__ff_display_newsym_caller = String(new Error().stack || '').split('\n')[2]?.trim()
             .replace(/^at\s+/, '').replace(/\s+\([^)]*\)$/, '') || '?';
     }
@@ -3249,7 +3250,7 @@ function _painted_moves(live) {
 export function time_botl_moves_incremented(preMoves) {
     const g = game;
     if (!g) return;
-    const _runTrace = process.env.FF_RUN_TRACE === '1';
+    const _runTrace = ENV.FF_RUN_TRACE === '1';
     if (!g.flags || !g.flags.time) { g._timeBotlFrozenMoves = null; return; }
     /* C allmain.c:261-263 gates the time update on context.run alone.  A
      * travel endpoint re-arms run=8 for domove's final movement checks even
@@ -3273,7 +3274,7 @@ export function time_botl_run_ended() {
     if (!g) return;
     if (g.flags && g.flags.time && g.disp) g.disp.time_botl = 1;
     g._timeBotlFrozenMoves = null;
-    if (process.env.FF_RUN_TRACE === '1')
+    if (ENV.FF_RUN_TRACE === '1')
         pushRngLogEntry(`^time_botl_run_ended[moves=${g.moves|0} run=${g.context?.run|0} multi=${g.multi|0} timeBotl=${g.disp?.time_botl|0}]`);
 }
 function _maybe_snapshot_painted_screen() {
@@ -5679,7 +5680,7 @@ export function topl_force_break_now() {
     const g = game;
     const line = String(g?._pending_message || '');
     if (!line) return;
-    if (process.env.FF_MLTRACE === '1')
+    if (ENV.FF_MLTRACE === '1')
         pushRngLogEntry(`^topl_force_break[line=${encodeURIComponent(line.slice(-96))}]`);
     const joins = (g._topl_joins_src === line && Array.isArray(g._topl_joins))
         ? g._topl_joins : null;
@@ -5897,7 +5898,7 @@ export function _topline_more_pending() {
 // either (seed1900-wizard-quaff-zap steps 9-11 are exactly this case).
 export function _defer_until_more_dismissed(fn) {
     (game._deferred_post_more ||= []).push(fn);
-    if (process.env.FF_MATTACK_TRACE === '1')
+    if (ENV.FF_MATTACK_TRACE === '1')
         pushRngLogEntry(`^topl_more_queue[count=${game._deferred_post_more.length|0}]`);
 }
 
@@ -5962,11 +5963,11 @@ async function _topl_more(committed, dismissMore) {
      * space each set morc to themselves.  This loop used to `break` and return
      * undefined, which made morc unreadable at every caller. */
     let morc = 0;
-    if (process.env.FF_MLTRACE === '1')
+    if (ENV.FF_MLTRACE === '1')
         pushRngLogEntry(`^topl_more_enter[committed=${encodeURIComponent(String(committed).slice(0,80))} stop=${game._topl_win_stop?1:0} armed=${game._topl_win_stop_armed?1:0} urgent=${game._topl_urgent_next?1:0} pending=${encodeURIComponent(String(game._pending_message || '').slice(0,80))}]`);
     while (true) {
         const key = await nhgetch(); /* preNhgetchHook captures the --More-- screen */
-        if (process.env.FF_MLTRACE === '1')
+        if (ENV.FF_MLTRACE === '1')
             pushRngLogEntry(`^topl_more_key[key=${key == null ? 'null' : (key | 0)} stop=${game._topl_win_stop?1:0} armed=${game._topl_win_stop_armed?1:0} urgent=${game._topl_urgent_next?1:0} pending=${encodeURIComponent(String(game._pending_message || '').slice(0,80))}]`);
         if (key === 10 /* \n */ || key === 13 /* \r */) {
             morc = 0;                      /* getline.c:240-241 — break, morc stays 0 */
@@ -6034,7 +6035,7 @@ export async function force_more_pages(full, retainFinalFrame = true) {
                 }
             }
         }
-        if (typeof process !== 'undefined' && process.env?.FF_PAGE_TRACE === '1') {
+        if (typeof process !== 'undefined' && ENV?.FF_PAGE_TRACE === '1') {
             pushRngLogEntry(`^force_pages_select[i=${i} consumed=${consumed} end=${end}`
                 + ` page=${encodeURIComponent(String(page).slice(0,72))}`
                 + ` forced=${forcedIndex} frame=${frame ? 1 : 0} off=${frame?.off ?? -1}`
@@ -6088,7 +6089,7 @@ export async function force_more_pages(full, retainFinalFrame = true) {
 export async function force_more(committed, dismissMore) {
     const g = game;
     if (!g) return 0;
-    if (typeof process !== 'undefined' && process.env?.FF_PAGE_TRACE === '1'
+    if (typeof process !== 'undefined' && ENV?.FF_PAGE_TRACE === '1'
         && String(committed || '').includes('crackles with electricity')) {
         pushRngLogEntry(`^force_more_stack[${encodeURIComponent(String(new Error().stack || '').split('\n').slice(1, 7).join(' <- '))}]`);
     }
@@ -6484,7 +6485,7 @@ export function pline_flush_point() {
     flush_screen_point(1);
 }
 async function _flush_screen_body(mode) {
-    if (typeof process !== 'undefined' && process.env?.FF_TOPL_TRACE === '1') {
+    if (typeof process !== 'undefined' && ENV?.FF_TOPL_TRACE === '1') {
         const line = String(game._pending_message || '');
         const joins = _topl_joins_for(line);
         const result = String(game._resultMessage || '');
@@ -6566,7 +6567,7 @@ async function _flush_screen_body(mode) {
         const _forcedFrameIdx = _topl_force_break_entry(committed);
         const _forcedFrame = (_forcedFrameIdx >= 0)
             ? (game._topl_force_breaks[_forcedFrameIdx].frame || null) : null;
-        if (process.env.FF_MLTRACE === '1') {
+        if (ENV.FF_MLTRACE === '1') {
             const forcedText = _forcedFrameIdx >= 0
                 ? encodeURIComponent(String(game._topl_force_breaks[_forcedFrameIdx]?.text || '').slice(0,64)) : '';
             pushRngLogEntry(`^topl_frame_select[page=${pageIdx | 0} end=${consumed + committed.length}`
@@ -6621,13 +6622,13 @@ async function _flush_screen_body(mode) {
             _pageFrozen = true;
         }
         routeTag('_topl_split_for_more', committed); /* telemetry only */
-        if (process.env.FF_MATTACK_TRACE === '1' || process.env.FF_MLTRACE === '1') {
+        if (ENV.FF_MATTACK_TRACE === '1' || ENV.FF_MLTRACE === '1') {
             pushRngLogEntry(`^topl_page_ready[page=${pageIdx | 0} snap=${game._paintedSnapshot ? 1 : 0}`
                 + ` cells=${game._paintedSnapshot?.cells?.size ?? -1} inMore=${game._inMovemonMore ? 1 : 0}]`);
             pushRngLogEntry(`^topl_more_commit[page=${pageIdx|0} committed=${encodeURIComponent(String(committed).slice(0,96))} remainder=${encodeURIComponent(String(remainder).slice(0,96))}]`);
         }
         const _morc = await _topl_more(committed);
-        if (process.env.FF_MATTACK_TRACE === '1' || process.env.FF_MLTRACE === '1') {
+        if (ENV.FF_MATTACK_TRACE === '1' || ENV.FF_MLTRACE === '1') {
             const _mc = game._ffMlCursor;
             pushRngLogEntry(`^topl_more_return[page=${pageIdx|0} morc=${_morc|0} moves=${game.moves|0} umv=${game.u?.umovement|0}`
                 + ` pending=${encodeURIComponent(String(game._pending_message || '').slice(0,96))}`
@@ -6642,7 +6643,7 @@ async function _flush_screen_body(mode) {
         } else if (runFrame || _pageFrozen) {
             game._paintedSnapshot = _savedSnap;
         }
-        if (process.env.FF_MATTACK_TRACE === '1' || process.env.FF_MLTRACE === '1')
+        if (ENV.FF_MATTACK_TRACE === '1' || ENV.FF_MLTRACE === '1')
             pushRngLogEntry(`^topl_page_restored[page=${pageIdx | 0} snap=${game._paintedSnapshot ? 1 : 0}`
                 + ` cells=${game._paintedSnapshot?.cells?.size ?? -1} inMore=${game._inMovemonMore ? 1 : 0}]`);
         pageIdx++;
@@ -6692,7 +6693,7 @@ async function _flush_screen_body(mode) {
          * (topl.c:241-245).  _topl_more has already armed _topl_win_stop_armed
          * so any pline that arrives before the next nhgetch is suppressed too. */
         if (_morc === 27 /* ESC */) {
-            if (process.env.FF_MLTRACE === '1')
+            if (ENV.FF_MLTRACE === '1')
                 pushRngLogEntry(`^topl_stop_after_esc[committed=${encodeURIComponent(String(committed).slice(0,80))} rem=${encodeURIComponent(String(remainder).slice(0,80))} joins=${(remainderJoins || []).join(',')}]`);
             /* ...but an URGENT message later in this same accumulated topline
              * ENDS the suppression window before the next input does.
@@ -6835,7 +6836,7 @@ async function _flush_screen_body(mode) {
     // same instant, and before the bot() flush below so a queued SET_BOTL is
     // honoured by this render.  RNG-free by contract — see the queue's header.
     if (hadMore && game._deferred_post_more && game._deferred_post_more.length) {
-        if (process.env.FF_MATTACK_TRACE === '1')
+        if (ENV.FF_MATTACK_TRACE === '1')
             pushRngLogEntry(`^topl_more_drain[count=${game._deferred_post_more.length|0}]`);
         const pendFns = game._deferred_post_more;
         game._deferred_post_more = [];
@@ -7183,7 +7184,7 @@ export async function urgent_pline(msg, ...args) {
     const g = game;
     if (args.length > 0)
         msg = nh_sprintf(msg, args);
-    if (process.env.FF_MLTRACE === '1')
+    if (ENV.FF_MLTRACE === '1')
         pushRngLogEntry(`^topl_urgent[msg=${encodeURIComponent(String(msg).slice(0,96))} stop=${game._topl_win_stop?1:0} armed=${game._topl_win_stop_armed?1:0} plen=${String(game._pending_message||'').length}]`);
     if (g._topl_win_stop) {
         /* tty_clear_nhwindow(WIN_MESSAGE): the topline is cleared and
@@ -7251,11 +7252,11 @@ export async function getobj_never_mind(qbuf) {
 export async function pline(msg, ...args) {
     if (args.length > 0)
         msg = nh_sprintf(msg, args);
-    if (typeof process !== 'undefined' && process.env?.FF_TOPL_TRACE === '1') {
+    if (typeof process !== 'undefined' && ENV?.FF_TOPL_TRACE === '1') {
         const _enc = (v) => encodeURIComponent(String(v ?? '').slice(0, 100));
         pushRngLogEntry(`^topl_pline[msg=${_enc(msg)} pending=${_enc(game._pending_message)} stop=${game._topl_win_stop ? 1 : 0} armed=${game._topl_win_stop_armed ? 1 : 0} arrival=${game._arrival_more_suppress ? 1 : 0}]`);
     }
-    if (typeof process !== 'undefined' && process.env?.FF_MLTRACE === '1'
+    if (typeof process !== 'undefined' && ENV?.FF_MLTRACE === '1'
         && (String(msg).includes('carrot') || String(msg).includes('see again'))) {
         const _p = String(game._pending_message || ''), _r = String(game._resultMessage || '');
         pushRngLogEntry(`^ml_pline[msglen=${String(msg).length} msghead=${encodeURIComponent(String(msg).slice(0,80))} plen=${_p.length} phead=${encodeURIComponent(_p.slice(0,80))} rlen=${_r.length} rhead=${encodeURIComponent(_r.slice(0,80))} joins=${(game._topl_joins || []).join(',')}]`);

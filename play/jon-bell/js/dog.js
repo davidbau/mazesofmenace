@@ -962,7 +962,7 @@ function stairway_find_arrive(fromdlev) {
  * are synchronous; keeping this function synchronous is required by losedogs
  * and by the level restore path. */
 export async function mon_arrive(mtmp, when) {
-    if (typeof process !== 'undefined' && process.env?.FF_MIG_TRACE === '1') {
+    if (typeof process !== 'undefined' && ENV?.FF_MIG_TRACE === '1') {
         pushRngLogEntry(`^migrate_trace[id=${mtmp?.m_id | 0} mndx=${mtmp?.mndx ?? mtmp?.data?.pmidx ?? -1}`
             + ` when=${when | 0} xy=${mtmp?.mx | 0},${mtmp?.my | 0} mig=${mtmp?.migflags | 0}]`);
     }
@@ -1703,6 +1703,7 @@ function make_happy_shk(mtmp, flag) { /* stub */ }
  * declares nothing in this module's scope, so tamedog()'s own call below still
  * read an undeclared global.  Import it, then export the local binding. */
 import { mon_wield_item, m_at } from './uhitm.js';
+import { ENV } from './hostenv.js';
 export { mon_wield_item };
 /* C ref: nethack-c/src/dog.c:22-30 newedog
  *     if (!mtmp->mextra) mtmp->mextra = newmextra();

@@ -7,6 +7,7 @@ import { monPmname, permonstTemplate } from './makemon.js';
 import { rn2, rn2_on_display_rng, pushRngLogEntry } from './rng.js';
 import { get_rnd_line_from_section } from './mklev.js';
 import { BOGUSMON_LINES, BOGUSMON_OFFSETS, BOGUSMON_SIZE, MD_PAD_BOGONS } from './bogusmon_data.js';
+import { ENV } from './hostenv.js';
 
 /* C monflag.h enum mgender { MALE, FEMALE, NEUTRAL, NUM_MGENDERS } */
 const MALE = 0, FEMALE = 1;
@@ -124,13 +125,13 @@ export function rndmonnam_ex() {
 
     if (name >= SPECIAL_PM_DN) {
         const out = bogusmon();
-        if (typeof process !== 'undefined' && process.env?.FF_NAME_TRACE === '1')
+        if (typeof process !== 'undefined' && ENV?.FF_NAME_TRACE === '1')
             pushRngLogEntry(`^rndmonnam[name=${encodeURIComponent(out.name)} code=${out.code.charCodeAt(0) || 0} pick=${name}]`);
         return out;
     }
     /* C mondata.h pmname(pm, mgender); rn2_on_display_rng(2) is MALE/FEMALE. */
     const out = { name: monPmname(name, rn2_on_display_rng(2)), code: '\0' };
-    if (typeof process !== 'undefined' && process.env?.FF_NAME_TRACE === '1')
+    if (typeof process !== 'undefined' && ENV?.FF_NAME_TRACE === '1')
         pushRngLogEntry(`^rndmonnam[name=${encodeURIComponent(out.name)} code=0 pick=${name}]`);
     return out;
 }

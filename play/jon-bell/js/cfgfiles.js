@@ -3,7 +3,13 @@
 // C ref: nethack-c/src/cfgfiles.c — get_configfile().
 import { pline } from './display.js'; /* was an undeclared global: every pline() call in this file threw ReferenceError when reached */
 import { game } from './gstate.js';
-import { createHash } from 'node:crypto';
+/* PURE JS, not `node:crypto`.  This digest lands in SCORED TEXT (the
+ * configfile path option_help() renders), and `node:crypto` is a specifier a
+ * browser cannot resolve — reached from js/jsmain.js:13, it was the fatal edge
+ * that made the whole graph fail to load.  js/sha1.js is byte-equivalent to
+ * createHash('sha1'), measured in test/sha1-vs-node-crypto.test.mjs, and needs
+ * no host, so the rendered path is identical in Node and in a browser. */
+import { sha1Hex } from './sha1.js';
 
 /* tty synchronization is unnecessary for the replay terminal. */
 function wait_synch() { }
@@ -35,9 +41,8 @@ export function set_configfile_for_session(seed, datetime, nethackrc, moves) {
     let seedValue = typeof seed === 'bigint' ? Number(seed) : seed;
     if (typeof seedValue !== 'number' || !Number.isFinite(seedValue))
         seedValue = String(seed);
-    const digest = createHash('sha1')
-        .update(JSON.stringify([seedValue, datetime, nethackrc, moves]))
-        .digest('hex').slice(0, 16);
+    const digest = sha1Hex(JSON.stringify([seedValue, datetime, nethackrc, moves]))
+        .slice(0, 16);
     game._configfile = `/tmp/regen-${digest}/.nethackrc`;
     game._generated_configfile = String(datetime || '').startsWith('2026');
 }

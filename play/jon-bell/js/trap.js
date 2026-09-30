@@ -190,6 +190,7 @@ import { obj_no_longer_held } from './cmd.js';
 import { mwepgone, poisoned as poisoned_trap } from './uhitm.js';
 import { weight, encumber_msg } from './weight.js';
 import { uwepgone, uswapwepgone } from './steal.js';
+import { ENV } from './hostenv.js';
 /* C ref: include/trap.h:97-103 trap_effect return values. */
 const Trap_Effect_Finished = 0;
 const Trap_Caught_Mon = 1;
@@ -427,7 +428,7 @@ function trap_msize(mndx) {
  *   tmp = 2 + ((geno & G_FREQ) < 2) + verysmall;
  *   return !rn2(tmp); */
 function corpse_chance_mon(mtmp) {
-    if (process.env.FF_DEATH_TRACE === '1')
+    if (ENV.FF_DEATH_TRACE === '1')
         pushRngLogEntry(`^corpse_chance[id=${mtmp.m_id|0} pm=${(mtmp.mndx ?? mtmp.mnum ?? -1)|0} pos=${mtmp.mx|0},${mtmp.my|0}]`);
     const mndx = (mtmp.mndx ?? mtmp.mnum ?? -1) | 0;
     const row = (mndx >= 0 && mndx < _TRAP_MONS.length) ? _TRAP_MONS[mndx] : null;
@@ -3998,7 +3999,7 @@ async function trapeffect_slp_gas_trap_mon(mtmp, trap) {
  *   else { place_object; observe; stackobj; }
  * No poison check (that is the dart trap only). */
 async function trapeffect_arrow_trap(trap, trflags) {
-    if (process.env.FF_TRAP_TRACE === '1')
+    if (ENV.FF_TRAP_TRACE === '1')
         pushRngLogEntry(`^arrow_trap_hero[x=${game.u?.ux|0},y=${game.u?.uy|0} trap=${trap?.tx|0},${trap?.ty|0}]`);
     void trflags;
     if ((trap.once | 0) && trap.tseen && !rn2(15)) {
@@ -4927,7 +4928,7 @@ async function trapeffect_rocktrap_mon(mtmp, trap) {
 }
 /* Shared arrow/dart skeleton for the non-poison, non-d_override missiles. */
 async function missile_trap_mon(mtmp, trap, otyp, tlev) {
-    if (process.env.FF_TRAP_TRACE === '1')
+    if (ENV.FF_TRAP_TRACE === '1')
         pushRngLogEntry(`^missile_trap_mon[id=${mtmp.m_id|0} otyp=${otyp|0} tlev=${tlev|0} pos=${mtmp.mx|0},${mtmp.my|0}]`);
     const seen = (trap.once | 0) && trap.tseen;
     if (seen && !rn2(15)) {
@@ -6011,7 +6012,7 @@ async function shieldeff_mon(mon) {
     }
 }
 async function trapeffect_selector_mon(mtmp, trap, trflags) {
-    if (typeof process !== 'undefined' && process.env?.FF_TRAP_TRACE === '1') {
+    if (typeof process !== 'undefined' && ENV?.FF_TRAP_TRACE === '1') {
         pushRngLogEntry(`^trap_trace[id=${mtmp?.m_id | 0} mndx=${mtmp?.mndx ?? mtmp?.data?.pmidx ?? -1}`
             + ` xy=${mtmp?.mx | 0},${mtmp?.my | 0} txy=${trap?.tx | 0},${trap?.ty | 0} typ=${trap?.ttyp | 0}]`);
     }

@@ -81,6 +81,7 @@ import { getpos } from './cmd.js';
 import { learnscroll } from './read.js';
 /* C potion.c:260 make_blinded — canonical transient-blindness transition. */
 import { make_blinded } from './zap.js';
+import { ENV } from './hostenv.js';
 /* C ref: include/hack.h flag bits for collect_coords() */
 export const CC_NO_FLAGS = 0x00;
 export const CC_INCL_CENTER = 0x01;
@@ -2295,7 +2296,7 @@ const RLOC_NONE_TP = 0x00;
  * distfleeck recalc — one rn2(5) that C does not draw.  Returning
  * Trap_Effect_Finished drew it. */
 export async function mtele_trap(mtmp, trap, in_sight) {
-    if (typeof process !== 'undefined' && process.env?.FF_TRAP_TRACE === '1') {
+    if (typeof process !== 'undefined' && ENV?.FF_TRAP_TRACE === '1') {
         pushRngLogEntry(`^mtele_trace[id=${mtmp?.m_id | 0} mndx=${mtmp?.mndx ?? mtmp?.data?.pmidx ?? -1}`
             + ` xy=${mtmp?.mx | 0},${mtmp?.my | 0} txy=${trap?.tx | 0},${trap?.ty | 0}`
             + ` once=${trap?.once ? 1 : 0} tame=${mtmp?.mtame | 0}]`);
@@ -2349,7 +2350,7 @@ export function tele_restrict(mon) {
     return false;
 }
 export async function rloc(mtmp, rlocflags) {
-    if (typeof process !== 'undefined' && process.env?.FF_TELE_TRACE === '1')
+    if (typeof process !== 'undefined' && ENV?.FF_TELE_TRACE === '1')
         pushRngLogEntry(`^tele_trace[fn=rloc moves=${game.moves | 0} id=${mtmp?.m_id | 0}`
             + ` mndx=${mtmp?.mndx ?? mtmp?.mnum ?? mtmp?.data?.pmidx ?? -1}`
             + ` xy=${mtmp?.mx | 0},${mtmp?.my | 0} flags=${rlocflags | 0}]`);
@@ -2476,7 +2477,7 @@ export async function rloc(mtmp, rlocflags) {
 
 /* C ref: teleport.c:2261-2292 */
 export async function u_teleport_mon(mtmp, give_feedback) {
-    if (typeof process !== 'undefined' && process.env?.FF_TELE_TRACE === '1')
+    if (typeof process !== 'undefined' && ENV?.FF_TELE_TRACE === '1')
         pushRngLogEntry(`^tele_trace[fn=u_teleport_mon moves=${game.moves | 0} id=${mtmp?.m_id | 0}`
             + ` mndx=${mtmp?.mndx ?? mtmp?.mnum ?? mtmp?.data?.pmidx ?? -1}`
             + ` xy=${mtmp?.mx | 0},${mtmp?.my | 0} feedback=${give_feedback ? 1 : 0}]`);

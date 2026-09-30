@@ -31,7 +31,7 @@
 //
 // DISPLAY-CHANNEL ONLY:  no rn2/rnd/d/rne/rnz call site exists anywhere in
 // checkfile(), so nothing here may consume RNG.
-import { readFileSync } from 'fs';
+import { dat_content } from './dat_source.js';
 import { makesingular } from './objnam.js';
 
 // ── hacklib/strutil helpers this port did not have yet ──
@@ -68,29 +68,13 @@ export function tabexpand(sbuf) {
 
 let _dbase = null; /* [{ keys: string[], lines: string[] }] in file order */
 
-function dbase_path() {
-    /* js/sp_lev.js loadLuaFile() reads `nethack-c/dat/<name>` relative to the
-     * process cwd (the repo root, for every runner in this project); resolve the
-     * same file relative to THIS module as a fallback so a runner started from
-     * elsewhere still finds it. */
-    const rel = 'nethack-c/dat/data.base';
-    try {
-        readFileSync(rel);
-        return rel;
-    } catch (e) {
-        return new URL('../nethack-c/dat/data.base', import.meta.url);
-    }
-}
-
 function load_dbase() {
     if (_dbase) return _dbase;
-    let raw;
-    try {
-        raw = readFileSync(dbase_path(), 'utf-8');
-    } catch (e) {
-        /* C ref: pager.c:846-850 — dlb_fopen(DATAFILE) failure plines
-         * "Cannot open 'data' file!" and returns FALSE.  Signalled to the
-         * caller as an empty database (no entry ever found). */
+    /* C ref: pager.c:846-850 — dlb_fopen(DATAFILE) failure plines
+     * "Cannot open 'data' file!" and returns FALSE.  Signalled to the
+     * caller as an empty database (no entry ever found). */
+    const raw = dat_content('data.base');
+    if (raw === null) {
         _dbase = [];
         return _dbase;
     }

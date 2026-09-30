@@ -3718,7 +3718,7 @@ function hates_light(data) {
 }
 
 export function find_offensive(mtmp) {
-    if (process.env.FF_OFFENSE_TRACE === '1')
+    if (ENV.FF_OFFENSE_TRACE === '1')
         pushRngLogEntry(`^offense_enter[moves=${game.moves|0} id=${mtmp.m_id|0} pos=${mtmp.mx|0},${mtmp.my|0} target=${mtmp.mux|0},${mtmp.muy|0}]`);
     let obj, mtmp_helmet;
     let reflection_skip;
@@ -3873,7 +3873,7 @@ export function find_offensive(mtmp) {
             game.has_offense = MUSE_CAMERA;
         }
     }
-    if (process.env.FF_OFFENSE_TRACE === '1') {
+    if (ENV.FF_OFFENSE_TRACE === '1') {
         const inv = [];
         for (let o = mtmp.minvent; o && inv.length < 32; o = o.nobj)
             inv.push(`${o.otyp}:${o.spe}:${o.oclass}`);
@@ -6802,6 +6802,7 @@ export async function monflee(mtmp, fleetime, first, fleemsg) {
  * (this repo's steal.c host).  Re-exported so this module's importers keep
  * resolving the name, rather than leaving a second, throwing definition. */
 import { somegold } from './steal.js';
+import { ENV } from './hostenv.js';
 export { somegold };
 function _splitobj_panic(msg) { throw new Error(`panic: ${msg}`); }
 

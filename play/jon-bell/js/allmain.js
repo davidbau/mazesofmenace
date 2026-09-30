@@ -57,7 +57,7 @@ import { pline_flush_point } from './display.js';
 import { PM_COCKATRICE, PM_CHICKATRICE } from './pm.generated.js';
 
 function ffRunTrace(tag, fields = '') {
-    if (typeof process !== 'undefined' && process.env?.FF_RUNTRACE === '1') {
+    if (typeof process !== 'undefined' && ENV?.FF_RUNTRACE === '1') {
         const g = game;
         pushRngLogEntry(`^runtrace[tag=${tag} frame=${g._ff_last_input_frame ?? -1}`
             + ` moves=${g.moves | 0} multi=${g.multi | 0}`
@@ -107,6 +107,7 @@ import { doname, makeplural } from './objnam.js';
 import { is_ice } from './engrave.js';
 import { wake_nearto } from './mklev.js';
 import { which_armor } from './makemon.js';
+import { ENV } from './hostenv.js';
 
 // ── calendar.c port (subset): getnow/getlt/phase_of_the_moon/friday_13th ──
 // C ref: calendar.c.  moveloop_preamble (allmain.c:60-71) calls
@@ -776,7 +777,7 @@ export async function newgame() {
 export function nomul(nval) {
     const g = game;
     const cur = (g.multi | 0);
-    if (typeof process !== 'undefined' && process.env && process.env.FF_MLTRACE === '1') {
+    if (typeof process !== 'undefined' && ENV && ENV.FF_MLTRACE === '1') {
         const st = (new Error().stack || '').split('\n').slice(2, 5)
             .map((l) => (l.match(/\/(js\/[a-z_0-9]+\.js:\d+)/) || [, '?'])[1]).join(' <- ');
         pushRngLogEntry(`^ml_nomul[nval=${nval} cur=${cur} moves=${g.moves | 0} from=${st}]`);
@@ -830,7 +831,7 @@ export function nomul(nval) {
 export function interrupt_multi(msg) {
     const g = game;
     const ctx = g.context || {};
-    if (typeof process !== 'undefined' && process.env && process.env.FF_MLTRACE === '1') {
+    if (typeof process !== 'undefined' && ENV && ENV.FF_MLTRACE === '1') {
         pushRngLogEntry(`^ml_interrupt[multi=${g.multi | 0} occ=${g.occupation ? 1 : 0}`
             + ` uhp=${g.u?.uhp | 0} uhpmax=${g.u?.uhpmax | 0} moves=${g.moves | 0}]`);
     }
@@ -884,7 +885,7 @@ export function interrupt_multi(msg) {
  * function before continuing combat, trap, timeout, or turn output. */
 export async function stop_occupation(options) {
     const g = game;
-    if (typeof process !== 'undefined' && process.env && process.env.FF_MLTRACE === '1') {
+    if (typeof process !== 'undefined' && ENV && ENV.FF_MLTRACE === '1') {
         const _stack = new Error().stack || '';
         const _caller = (_stack.split('\n')[2] || '').trim().replace(/\s+/g, '_').slice(0, 96);
         pushRngLogEntry(`^ml_stopocc[multi=${g.multi | 0} occ=${g.occupation ? 1 : 0}`
@@ -1083,13 +1084,13 @@ async function faithful_moveloop_turn() {
     // diverges from C's distfleeck ux/uy for the same turn.  Emitted ONLY when
     // FF_HEROTRACE=1 (pushRngLogEntry is a no-op unless the rng log is enabled,
     // which only the dev/diff tooling enables) → ZERO effect on scored runs.
-    const _heroTrace = (typeof process !== 'undefined' && process.env
-        && process.env.FF_HEROTRACE === '1');
+    const _heroTrace = (typeof process !== 'undefined' && ENV
+        && ENV.FF_HEROTRACE === '1');
     // FF_TURNTRACE is a compact boundary side channel used by
     // tools/turn-boundary-trace.mjs.  It records phase entry/exit only; the
     // marker is inert unless the RNG log is enabled by a diagnostic replay.
-    const _turnTrace = (typeof process !== 'undefined' && process.env
-        && process.env.FF_TURNTRACE === '1');
+    const _turnTrace = (typeof process !== 'undefined' && ENV
+        && ENV.FF_TURNTRACE === '1');
     // C allmain.c:245 — do { ... } while (u.umovement < NORMAL_SPEED): the
     // "hero can't move this turn" outer loop.  Each iteration runs the monster
     // movement inner loop; if the hero still can't move (umv < NORMAL_SPEED and
@@ -1417,12 +1418,12 @@ async function faithful_moveloop_turn() {
     const _seerMoves = g.moves || 1;
     const _seerDue = _seerMoves >= g.context.seer_turn;
     const _seerActive = timed_clairvoyance_active();
-    if (typeof process !== 'undefined' && process.env?.FF_VISION_TRACE === '1')
+    if (typeof process !== 'undefined' && ENV?.FF_VISION_TRACE === '1')
         pushRngLogEntry(`^vision_seer[moves=${_seerMoves} seer_turn=${g.context.seer_turn | 0} incomingMove=1 due=${_seerDue ? 1 : 0} active=${_seerActive ? 1 : 0}]`);
     if (_seerDue) {
         if (_seerActive) await do_vicinity_map(null);
         g.context.seer_turn = (g.moves || 1) + rn1(31, 15);
-        if (typeof process !== 'undefined' && process.env?.FF_VISION_TRACE === '1')
+        if (typeof process !== 'undefined' && ENV?.FF_VISION_TRACE === '1')
             pushRngLogEntry(`^vision_seer_resched[moves=${_seerMoves} next=${g.context.seer_turn | 0}]`);
     }
     if (_heroTrace) {
@@ -2065,7 +2066,7 @@ async function nh_timeout_blinded() {
     const t = BlindedTimeout();
     if (!t)
         return; /* C: `upp->intrinsic & TIMEOUT` is 0 -- not counted down */
-    if (typeof process !== 'undefined' && process.env && process.env.FF_MLTRACE === '1')
+    if (typeof process !== 'undefined' && ENV && ENV.FF_MLTRACE === '1')
         pushRngLogEntry(`^ml_blind[t=${t | 0} moves=${game.moves | 0} multi=${game.multi | 0}]`);
     set_HBlinded(HBlinded_raw() - 1);
     if (BlindedTimeout() !== 0)
@@ -2495,7 +2496,7 @@ export function monster_nearby() {
             // C: canspotmon — hero can see or sense it.
             if (!canspotmon(mtmp))
                 continue;
-            if (typeof process !== 'undefined' && process.env && process.env.FF_MLTRACE === '1') {
+            if (typeof process !== 'undefined' && ENV && ENV.FF_MLTRACE === '1') {
                 pushRngLogEntry(`^ml_near[x=${x | 0} y=${y | 0} mndx=${mndx | 0}`
                     + ` peaceful=${mtmp.mpeaceful ? 1 : 0} canmove=${mtmp.mcanmove === false ? 0 : 1}`
                     + ` frozen=${mtmp.mfrozen | 0} sleeping=${mtmp.msleeping | 0}`
@@ -2621,7 +2622,7 @@ async function moveloop_core_faithful() {
     // the same boundary C records it.  Emitted ONLY when FF_MLTRACE=1
     // (pushRngLogEntry is a no-op unless the rng log is enabled, which only the
     // dev/diff tooling enables) → ZERO effect on scored runs, ZERO RNG consumed.
-    if (typeof process !== 'undefined' && process.env && process.env.FF_MLTRACE === '1') {
+    if (typeof process !== 'undefined' && ENV && ENV.FF_MLTRACE === '1') {
         const u = g.u || {};
         pushRngLogEntry(
             `^ml_entry[moves=${g.moves | 0} incomingMove=${incomingMove ? 1 : 0}`
@@ -2646,7 +2647,7 @@ async function moveloop_core_faithful() {
         _postMealPreFrame = g._occCurFrame;
     }
     if (incomingMove) {
-        if (process.env.FF_MATTACK_TRACE === '1')
+        if (ENV.FF_MATTACK_TRACE === '1')
             pushRngLogEntry(`^ml_pre_world[result=${encodeURIComponent(String(g._resultMessage || '').slice(0,96))} pending=${encodeURIComponent(String(g._pending_message || '').slice(0,96))} force=${g._topl_force_breaks?.length|0}]`);
         // ── cmdq fireassist swap: capture the pre-movemon frame ──────────────────
         // C ref: win/tty/topl.c more().  When this world block is the fireassist
@@ -2737,7 +2738,7 @@ async function moveloop_core_faithful() {
          * cannot reveal a lost update_topl boundary; include both the durable
          * result hint captured above and the live pending-line side-channel.
          * DISPLAY telemetry only; absent unless FF_TOPL_TRACE=1. */
-        if (typeof process !== 'undefined' && process.env?.FF_TOPL_TRACE === '1') {
+        if (typeof process !== 'undefined' && ENV?.FF_TOPL_TRACE === '1') {
             const _pendingJoins = _topl_joins_snapshot(g._pending_message);
             pushRngLogEntry(
                 `^topl_merge_boundary[result=${encodeURIComponent(String(g._resultMessage || ''))}`
@@ -2771,7 +2772,7 @@ async function moveloop_core_faithful() {
         const _mergedResultJoins = _topl_joins_snapshot(g._resultMessage);
         if (g._resultMessage && _mergedResultJoins && _mergedResultJoins.length)
             g._resultMessageJoins = { src: g._resultMessage, joins: _mergedResultJoins.slice() };
-        if (typeof process !== 'undefined' && process.env?.FF_TOPL_TRACE === '1') {
+        if (typeof process !== 'undefined' && ENV?.FF_TOPL_TRACE === '1') {
             pushRngLogEntry(
                 `^topl_merge_result[result=${encodeURIComponent(String(g._resultMessage || ''))}`
                 + ` joins=${(_mergedResultJoins || []).join(',')}]`);
@@ -2980,11 +2981,11 @@ async function moveloop_core_faithful() {
      *
      * RNG-free on the scored stream: every newsym() this reaches draws only
      * from rn2_on_display_rng, the separate DISPLAY isaac64 context. */
-    if (typeof process !== 'undefined' && process.env?.FF_DISPLAY_TRACE === '1') {
+    if (typeof process !== 'undefined' && ENV?.FF_DISPLAY_TRACE === '1') {
         pushRngLogEntry(`^vision_boundary[phase=before_redraw moves=${g.moves | 0} mv=${g.context?.mv ? 1 : 0} blind=${Blind() ? 1 : 0} full=${g.vision_full_recalc ? 1 : 0}]`);
     }
     faithful_input_redraw();
-    if (typeof process !== 'undefined' && process.env?.FF_DISPLAY_TRACE === '1') {
+    if (typeof process !== 'undefined' && ENV?.FF_DISPLAY_TRACE === '1') {
         pushRngLogEntry(`^vision_boundary[phase=after_redraw moves=${g.moves | 0} mv=${g.context?.mv ? 1 : 0} blind=${Blind() ? 1 : 0} full=${g.vision_full_recalc ? 1 : 0}]`);
     }
     // ===================== CARRIED-OVER multi<0 COUNTDOWN (pre-rhack) ============
@@ -3056,12 +3057,12 @@ async function moveloop_core_faithful() {
     }
     // Vision + display (shared with calibrated path).
     if (g.vision_full_recalc) {
-        if (typeof process !== 'undefined' && process.env?.FF_DISPLAY_TRACE === '1') {
+        if (typeof process !== 'undefined' && ENV?.FF_DISPLAY_TRACE === '1') {
             pushRngLogEntry(`^vision_boundary[phase=before_recalc moves=${g.moves | 0} mv=${g.context?.mv ? 1 : 0} blind=${Blind() ? 1 : 0} full=1]`);
         }
         vision_recalc(0);
         g.vision_full_recalc = 0;
-        if (typeof process !== 'undefined' && process.env?.FF_DISPLAY_TRACE === '1') {
+        if (typeof process !== 'undefined' && ENV?.FF_DISPLAY_TRACE === '1') {
             pushRngLogEntry(`^vision_boundary[phase=after_recalc moves=${g.moves | 0} full=${g.vision_full_recalc ? 1 : 0}]`);
         }
     }
@@ -3882,7 +3883,7 @@ async function moveloop_core_faithful() {
         let occGuard = 0;
         while (g.occupation === timed_occupation && (g.multi | 0) >= 0
                && occGuard++ < 4096) {
-            if (typeof process !== 'undefined' && process.env && process.env.FF_MLTRACE === '1') {
+            if (typeof process !== 'undefined' && ENV && ENV.FF_MLTRACE === '1') {
                 pushRngLogEntry(
                     `^ml_occ[phase=pre guard=${occGuard | 0} moves=${g.moves | 0}`
                     + ` multi=${g.multi | 0} occ=${g.occupation ? 1 : 0}`
@@ -3951,7 +3952,7 @@ async function moveloop_core_faithful() {
                 await stop_occupation();
                 reset_eat();
             }
-            if (typeof process !== 'undefined' && process.env && process.env.FF_MLTRACE === '1') {
+            if (typeof process !== 'undefined' && ENV && ENV.FF_MLTRACE === '1') {
                 pushRngLogEntry(
                     `^ml_occ[phase=post guard=${occGuard | 0} moves=${g.moves | 0}`
                     + ` multi=${g.multi | 0} occ=${g.occupation ? 1 : 0}`
@@ -4153,7 +4154,7 @@ async function moveloop_core_faithful() {
     run_page_frame_reset();
     while ((g.multi | 0) > 0) {
         const isMv = !!(g.context && g.context.mv);
-        if (typeof process !== 'undefined' && process.env && process.env.FF_MLTRACE === '1') {
+        if (typeof process !== 'undefined' && ENV && ENV.FF_MLTRACE === '1') {
             pushRngLogEntry(`^ml_multi[moves=${g.moves | 0} multi=${g.multi | 0}`
                 + ` mv=${isMv ? 1 : 0} run=${(g.context && g.context.run) | 0} occ=${g.occupation ? 1 : 0}]`);
         }
@@ -4268,7 +4269,7 @@ async function moveloop_core_faithful() {
             // the value lookaround() left in u.dx/u.dy this iteration.  Paired with
             // look.js's ^ff_dirtrace, this shows the run-loop CONTINUATION direction
             // (RNG-neutral; only when FF_DIRTRACE=1 and the rng log is enabled).
-            if (typeof process !== 'undefined' && process.env && process.env.FF_DIRTRACE === '1') {
+            if (typeof process !== 'undefined' && ENV && ENV.FF_DIRTRACE === '1') {
                 pushRngLogEntry(
                     `^ff_runstep[moves=${g.moves | 0} ux=${g.u.ux | 0} uy=${g.u.uy | 0}`
                     + ` dx=${g.u.dx | 0} dy=${g.u.dy | 0} multi=${multiBeforeDomove}`
@@ -4295,7 +4296,7 @@ async function moveloop_core_faithful() {
              * domove()s happen between two movemon passes (worldticks) and
              * compare that count/position against C's ^ctx_move[...umv=X]
              * gap structure. */
-            if (process.env.FF_RUNBANK_TRACE === '1') {
+            if (ENV.FF_RUNBANK_TRACE === '1') {
                 pushRngLogEntry(`^ff_rundomove[moves=${g.moves | 0} ux=${g.u.ux | 0} uy=${g.u.uy | 0} multi=${g.multi | 0}]`);
             }
             stopped = !(g.multi | 0);
@@ -4647,14 +4648,14 @@ async function moveloop_core_impl() {
         }
         const seerDue = moves >= g.context.seer_turn;
         const clairActive = timed_clairvoyance_active();
-        if (typeof process !== 'undefined' && process.env?.FF_VISION_TRACE === '1')
+        if (typeof process !== 'undefined' && ENV?.FF_VISION_TRACE === '1')
             pushRngLogEntry(`^vision_seer[moves=${moves} seer_turn=${g.context.seer_turn | 0} incomingMove=${incomingMove ? 1 : 0} due=${seerDue ? 1 : 0} active=${clairActive ? 1 : 0}]`);
         if (seerDue) {
             if (clairActive) await do_vicinity_map(null);
             /* C ref: allmain.c:470 — svc.context.seer_turn = svm.moves + rn1(31,15)
              * rn1(31,15) = rn2(31) + 15, range 15..45. */
             g.context.seer_turn = moves + rn1(31, 15);
-            if (typeof process !== 'undefined' && process.env?.FF_VISION_TRACE === '1')
+            if (typeof process !== 'undefined' && ENV?.FF_VISION_TRACE === '1')
                 pushRngLogEntry(`^vision_seer_resched[moves=${moves} next=${g.context.seer_turn | 0}]`);
         }
     }

@@ -18,14 +18,15 @@ import { pushRngLogEntry } from './rng.js';
  * neither module body calls the other at evaluation time, so the live ESM
  * binding is resolved by the time _blocks() first runs. */
 import { visible_region_at } from './region.js';
+import { ENV } from './hostenv.js';
 const COULD_SEE = 0x1;
 const IN_SIGHT = 0x2;
 let _visionTraceSeq = 0;
 
 function _visionTraceCells(array) {
-    if (typeof process === 'undefined' || process.env?.FF_VISION_TRACE !== '1')
+    if (typeof process === 'undefined' || ENV?.FF_VISION_TRACE !== '1')
         return '';
-    const raw = process.env.FF_VISION_TRACE_CELLS || '40,3;41,3;42,3;39,4;40,4;42,4;43,4';
+    const raw = ENV.FF_VISION_TRACE_CELLS || '40,3;41,3;42,3;39,4;40,4;42,4;43,4';
     return raw.split(';').map((part) => {
         const [xs, ys] = part.split(',');
         const x = Number(xs), y = Number(ys);
@@ -40,7 +41,7 @@ function _visionTraceCells(array) {
 }
 
 function _visionTrace(phase, control, u, array) {
-    if (typeof process === 'undefined' || process.env?.FF_VISION_TRACE !== '1')
+    if (typeof process === 'undefined' || ENV?.FF_VISION_TRACE !== '1')
         return;
     const marker = `^vision_recalc[seq=${++_visionTraceSeq} phase=${phase} control=${control | 0}`
         + ` hero=${u?.ux | 0},${u?.uy | 0} cells=${_visionTraceCells(array)}]`;
@@ -1082,8 +1083,8 @@ export function vision_debug_snapshot() {
     const copy = (grid) => Array.from({ length: ROWNO }, (_, y) =>
         Array.from({ length: COLNO }, (_, x) => grid?.[y]?.[x] ?? 0));
     const cells = [];
-    if (typeof process !== 'undefined' && process.env?.FF_VISION_TRACE === '1') {
-        const spec = process.env.FF_VISION_TRACE_CELLS || '40,3;41,3;42,3;39,4;40,4;42,4;43,4';
+    if (typeof process !== 'undefined' && ENV?.FF_VISION_TRACE === '1') {
+        const spec = ENV.FF_VISION_TRACE_CELLS || '40,3;41,3;42,3;39,4;40,4;42,4;43,4';
         for (const token of spec.split(';')) {
             const m = token.match(/^(\d+),(\d+)$/);
             if (!m) continue;
@@ -1107,7 +1108,7 @@ export function vision_debug_snapshot() {
         vizExtent: nonzero.length ? { minX: Math.min(...nonzero.map((p) => p[0])), maxX: Math.max(...nonzero.map((p) => p[0])), minY: Math.min(...nonzero.map((p) => p[1])), maxY: Math.max(...nonzero.map((p) => p[1])) } : null,
         cells,
     };
-    if (typeof process !== 'undefined' && process.env?.FF_VISION_TRACE === '1') game.__vision_trace_newsym = [];
+    if (typeof process !== 'undefined' && ENV?.FF_VISION_TRACE === '1') game.__vision_trace_newsym = [];
     return out;
 }
 // C ref: couldsee(x, y)
@@ -1163,7 +1164,7 @@ function _block_or_unblock(x, y) {
     _vision_rebuild_grid();
     if (game.viz_array?.[y]?.[x]) {
         game.vision_full_recalc = 1;
-        if (typeof process !== 'undefined' && process.env?.FF_DISPLAY_TRACE === '1') {
+        if (typeof process !== 'undefined' && ENV?.FF_DISPLAY_TRACE === '1') {
             const frames = String(new Error().stack || '').split('\n').slice(2, 5)
                 .map((s) => s.trim().replace(/^at\s+/, '').replace(/\s+\([^)]*\)$/, '')).join('|');
             pushRngLogEntry(`^vision_dirty[x=${x | 0} y=${y | 0} moves=${game.moves | 0} viz=1 stack=${frames}]`);

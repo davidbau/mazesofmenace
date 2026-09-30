@@ -773,7 +773,7 @@ function lregion_is_exclusion_zone(type, x, y) {
  * fourth pair, JS took it (leaf 22808 of 120639). */
 async function put_lregion_here(x, y, nlx, nly, nhx, nhy, rtype, oneshot, lev) {
     const lregionTrace = typeof process !== 'undefined'
-        && process.env?.FF_LREGION_TRACE === '1';
+        && ENV?.FF_LREGION_TRACE === '1';
     if (lregionTrace)
         pushRngLogEntry(`^lregion_try[x=${x | 0},${y | 0} bounds=${lxSafe(nlx)},${lxSafe(nly)},${lxSafe(nhx)},${lxSafe(nhy)} oneshot=${oneshot ? 1 : 0}]`);
     if (bad_location(x, y, nlx, nly, nhx, nhy)
@@ -954,7 +954,7 @@ function next_ident() {
     if (g.context.ident == null)
         g.context.ident = 2; /* id 1 is reserved for gy.youmonst */
     const res = g.context.ident;
-    if (typeof process !== 'undefined' && process.env?.FF_IDENT_TRACE === '1') {
+    if (typeof process !== 'undefined' && ENV?.FF_IDENT_TRACE === '1') {
         const m = g.u?.uz?.dlevel;
         pushRngLogEntry(`^ident_trace[moves=${g.moves} dlevel=${m} ident=${res}]`);
     }
@@ -1460,10 +1460,10 @@ export function set_corpsenm(obj, id) {
 }
 // C ref: mkobj.c mksobj — create a specific object
 async function mksobj(otyp, init, artif) {
-    if (typeof process !== 'undefined' && process.env?.FF_MKOBJ_TRACE === '3')
+    if (typeof process !== 'undefined' && ENV?.FF_MKOBJ_TRACE === '3')
         pushRngLogEntry(`^mksobj[moves=${game.moves | 0} dlevel=${game.u?.uz?.dlevel | 0} otyp=${otyp | 0}]`);
     const oclass = MKOBJ_OC_CLASS[otyp] | 0;
-    if (typeof process !== 'undefined' && process.env?.FF_MKOBJ_TRACE === '1') {
+    if (typeof process !== 'undefined' && ENV?.FF_MKOBJ_TRACE === '1') {
         game.__mkobjTraceCount = (game.__mkobjTraceCount | 0) + 1;
         if ((game.__mkobjTraceCount | 0) <= 512)
             pushRngLogEntry(`^mkobj_trace[n=${game.__mkobjTraceCount | 0} otyp=${otyp | 0}`
@@ -2208,7 +2208,7 @@ export async function mksobj_migr_to_species(otyp, mflags2, init, artif) {
 
 /* C mkobj.c:239-249 — mksobj_at: make specific object then place it */
 async function mksobj_at(otyp, x, y, init, artif) {
-    if (typeof process !== 'undefined' && process.env?.FF_MKOBJ_TRACE === '2')
+    if (typeof process !== 'undefined' && ENV?.FF_MKOBJ_TRACE === '2')
         pushRngLogEntry(`^mksobj_at[otyp=${otyp | 0} xy=${x | 0},${y | 0}]`);
     const otmp = await mksobj(otyp, init, artif);
     place_object(otmp, x, y);
@@ -2259,7 +2259,7 @@ async function mkobj(oclass, artif) {
     }
     if ((MKOBJ_OC_CLASS[i] | 0) !== oclass)
         i = MKOBJ_SVB_BASES[oclass];
-    if (typeof process !== 'undefined' && process.env?.FF_MKOBJ_TRACE === '1')
+    if (typeof process !== 'undefined' && ENV?.FF_MKOBJ_TRACE === '1')
         pushRngLogEntry(`^mkobj_pick[class=${oclass | 0} otyp=${i | 0} artif=${artif ? 1 : 0}]`);
     return await mksobj(i, true, artif);
 }
@@ -2271,7 +2271,7 @@ export async function mkobj_at(oclass, x, y, artif) {
 }
 /* C mkobj.c:2004-2021 — mkgold: place or merge a gold pile at (x,y). */
 export async function mkgold(amount, x, y) {
-    const goldTrace = typeof process !== 'undefined' && process.env?.FF_MKGOLD_TRACE === '1';
+    const goldTrace = typeof process !== 'undefined' && ENV?.FF_MKGOLD_TRACE === '1';
     if (goldTrace)
         pushRngLogEntry(`^mkgold_enter[amount=${amount | 0} xy=${x | 0},${y | 0}]`);
     if (amount <= 0) {
@@ -5103,7 +5103,7 @@ export async function set_mimic_sym(mon) {
 // C ref: makemon.c:1214–1260 (rndmonst path), next_ident, newmonhp
 export async function makemon(mdat, x, y, mmflags) {
     mmflags |= 0;
-    if (typeof process !== 'undefined' && process.env?.FF_MAKEMON_TRACE === '1') {
+    if (typeof process !== 'undefined' && ENV?.FF_MAKEMON_TRACE === '1') {
         const g = game;
         const mndx = mdat == null ? -1 : makemonPtrMndx(mdat);
         pushRngLogEntry(`^makemon_trace[moves=${g.moves} dlevel=${g.u?.uz?.dlevel} mndx=${mndx} xy=${x},${y} flags=${mmflags}]`);
@@ -6738,7 +6738,7 @@ function get_rnd_text_epitaph() {
  * `\` / reading the grave would show nothing). */
 export function make_grave(x, y, text) {
     const loc = game.level?.at(x, y);
-    const graveTrace = typeof process !== 'undefined' && process.env?.FF_GRAVE_TRACE === '1';
+    const graveTrace = typeof process !== 'undefined' && ENV?.FF_GRAVE_TRACE === '1';
     if (graveTrace)
         pushRngLogEntry(`^grave_try[xy=${x | 0},${y | 0} typ=${loc?.typ ?? -1} trap=${t_at(x, y) ? 1 : 0}]`);
     if (!loc || (loc.typ !== ROOM && loc.typ !== GRAVE) || t_at(x, y))
@@ -7109,7 +7109,7 @@ async function _mkcorpstat_corpse(corpsenm, x, y, corpstatflags) {
 }
 export async function make_corpse(mtmp, x, y, corpseflags) {
     const g = game;
-    if (process.env.FF_DEATH_TRACE === '1')
+    if (ENV.FF_DEATH_TRACE === '1')
         pushRngLogEntry(`^make_corpse[id=${mtmp.m_id|0} pm=${(mtmp.mndx ?? mtmp.mnum ?? -1)|0} pos=${x|0},${y|0}]`);
     const mndx = (mtmp.mndx ?? mtmp.mnum ?? 0) | 0;
     /* C mon.c:576-579 — make_corpse's own preamble, before the switch:
@@ -7244,6 +7244,7 @@ export function rest_engravings(saved) {
 }
 export { l_nhcore_init } from './nhlua.js';
 import { nh_callback_run, NHCB_LVL_ENTER } from './nhlua.js';
+import { ENV } from './hostenv.js';
 // C ref: mklev.c mklev()
 export async function mklev() {
     const g = game;
@@ -7844,7 +7845,7 @@ async function makelevel_generate() {
     // proto[0], then fill_lvl[0], then In_quest, then In_hell/medusa.  In_quest
     // is the one arm still missing (quest fill levels are unreached).
     const slev = Is_special(uz0);
-    if (typeof process !== 'undefined' && process.env && process.env.FF_LEVELTRACE === '1')
+    if (typeof process !== 'undefined' && ENV && ENV.FF_LEVELTRACE === '1')
         pushRngLogEntry(`^level_js[moves=${game.moves | 0} dnum=${uz0?.dnum | 0} dlevel=${uz0?.dlevel | 0}`
             + ` proto=${slev?.proto || ''} rndlevs=${slev?.rndlevs | 0}`
             + ` sp=${slev ? 1 : 0}]`);
@@ -14355,7 +14356,7 @@ export function hideunder(mtmp) {
         /* C mon.c:4782-4783 — computed on `seeit` alone, so a visible monster
          * that FAILS to hide still pays y_monnam()'s cost (which under
          * Hallucination draws RNG through rndmonnam()). */
-        if (typeof process !== 'undefined' && process.env?.FF_HIDE_TRACE === '1')
+        if (typeof process !== 'undefined' && ENV?.FF_HIDE_TRACE === '1')
             pushRngLogEntry(`^hide_trace[moves=${game.moves | 0} id=${mtmp.m_id | 0} xy=${mtmp.mx | 0},${mtmp.my | 0} seeit=${seeit ? 1 : 0} cansee=${canseemon(mtmp) ? 1 : 0} undetected=${undetected ? 1 : 0} hallu=${game.u?.uprops?.[MK_HALLUC]?.intrinsic ? 1 : 0}]`);
         if (seeit)
             seenmon = y_monnam(mtmp);
@@ -14456,7 +14457,7 @@ async function restrap(mtmp) {
     if (mtmp.mcan | 0) return false;
     if (((mtmp.m_ap_type | 0) & M_AP_TYPMASK_RS) !== 0) return false;
     if (cansee(mtmp.mx | 0, mtmp.my | 0)) return false;
-    if (process.env.FF_TURNTRACE === '1')
+    if (ENV.FF_TURNTRACE === '1')
         pushRngLogEntry(`^restrap_js[moves=${game.moves | 0} id=${mtmp.m_id | 0}]`);
     if (rn2(3)) return false;
     if (game.u && mtmp === game.u.ustuck) return false;
@@ -16210,7 +16211,7 @@ export async function mondead(mtmp) {
     /* FF_DEATH_TRACE is deliberately opt-in and RNG-neutral.  It records the
      * map state at the exact mondead boundary, which is the only useful point
      * for diagnosing cells hidden by a monster until its death repaint. */
-    if (typeof process !== 'undefined' && process.env?.FF_DEATH_TRACE === '1') {
+    if (typeof process !== 'undefined' && ENV?.FF_DEATH_TRACE === '1') {
         const cell = game.level?.at(mx, my);
         pushRngLogEntry(`^mondead[x=${mx},y=${my},mndx=${(mtmp.mndx ?? mtmp.mnum ?? -1) | 0},` +
             `mhp=${mtmp.mhp | 0},typ=${cell?.typ ?? -1},seenv=${cell?.seenv ?? -1},` +
@@ -17887,7 +17888,7 @@ async function minliquid_core(mtmp) {
     const mx = mtmp.mx | 0, my = mtmp.my | 0;
     const loc = game.level?.at(mx, my);
     const typ = loc ? (loc.typ | 0) : STONE;
-    if (typeof process !== 'undefined' && process.env?.FF_LIQUID_TRACE === '1')
+    if (typeof process !== 'undefined' && ENV?.FF_LIQUID_TRACE === '1')
         pushRngLogEntry(`^liquid_trace[moves=${game.moves | 0} id=${mtmp?.m_id | 0}`
             + ` mndx=${mtmp?.mndx ?? mtmp?.mnum ?? mtmp?.data?.pmidx ?? -1}`
             + ` xy=${mx},${my} typ=${typ}]`);
@@ -17917,7 +17918,7 @@ async function minliquid_core(mtmp) {
      * Water's WATER squares has inpool FALSE (is_flyer) and waterwall TRUE, so
      * this must be tested before the eel `else`, not inside the pool arm. */
     const waterwall = isok(mx, my) && IS_WATERWALL(typ);
-    if (typeof process !== 'undefined' && process.env?.FF_LIQUID_TRACE === '2')
+    if (typeof process !== 'undefined' && ENV?.FF_LIQUID_TRACE === '2')
         pushRngLogEntry(`^liquid_decision[moves=${game.moves | 0} id=${mtmp?.m_id | 0}`
             + ` xy=${mx},${my} typ=${typ} lava=${is_lava_here ? 1 : 0}`
             + ` pool=${inpool ? 1 : 0} wall=${waterwall ? 1 : 0}`
@@ -18371,7 +18372,7 @@ export function mfndpos(mon, data, flag) {
          * actual rejection sites so C/JS traces can be joined by id/coord;
          * this helper is inert in normal gameplay and does not inspect RNG. */
         const traceReject = (nx, ny, reason) => {
-            if (typeof process !== 'undefined' && process.env?.FF_MFNDTRACE === '1')
+            if (typeof process !== 'undefined' && ENV?.FF_MFNDTRACE === '1')
                 pushRngLogEntry(`^mfnd_reject[moves=${game.moves | 0} id=${mon.m_id | 0} mnum=${mndx}`
                     + ` xy=${x},${y} cand=${nx},${ny} reason=${reason} flag=${flag >>> 0}`
                     + ` typ=${game.level?.at(nx, ny)?.typ ?? -1}]`);
@@ -18569,7 +18570,7 @@ export function mfndpos(mon, data, flag) {
                         const sideA = bad_rock_mv(mdat, x, ny);
                         const sideB = bad_rock_mv(mdat, nx, y);
                         const squeeze = cant_squeeze_thru_mv(mon);
-                        if (typeof process !== 'undefined' && process.env?.FF_MFNDTRACE === '1')
+                        if (typeof process !== 'undefined' && ENV?.FF_MFNDTRACE === '1')
                             pushRngLogEntry(`^mfnd_diag[moves=${game.moves | 0} id=${mon.m_id | 0} mnum=${mndx} xy=${x},${y} cand=${nx},${ny} a=${sideA ? 1 : 0} b=${sideB ? 1 : 0} squeeze=${squeeze | 0} skip=${sideA && sideB && squeeze ? 1 : 0}]`);
                         if (sideA && sideB && squeeze) {
                             traceReject(nx, ny, 'tight_squeeze');

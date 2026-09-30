@@ -366,7 +366,7 @@ export function getObjName(otyp) {
  */
 export function discover_object(oindx, mark_as_known, mark_as_encountered, credit_hero) {
     const g = game;
-    const trace = typeof process !== 'undefined' && process.env?.FF_DISCOVERY_TRACE === '1';
+    const trace = typeof process !== 'undefined' && ENV?.FF_DISCOVERY_TRACE === '1';
     if (trace)
         pushRngLogEntry(`^discover_event[otyp=${oindx | 0} class=${MKOBJ_OC_CLASS[oindx | 0] ?? -1}`
             + ` known=${mark_as_known ? 1 : 0} enc=${mark_as_encountered ? 1 : 0}`
@@ -469,7 +469,7 @@ export function undiscover_object(oindx) {
  * js/objnam.js for xname_flags(); export the real one so both resolve here. */
 export function observe_object(obj) {
     const oindx = obj.otyp | 0;
-    if (typeof process !== 'undefined' && process.env?.FF_OBS_TRACE === '1') {
+    if (typeof process !== 'undefined' && ENV?.FF_OBS_TRACE === '1') {
         let caller = '';
         try {
             caller = String(new Error().stack || '').split('\n')[2]?.trim()?.replace(/^at\s+/, '') || '';
@@ -525,6 +525,7 @@ function MKOBJ_OC_CLASS_LOCAL(otyp) {
 }
 // C owns skill-based recognition in spell.c; retain the old import path.
 export { skill_based_spellbook_id } from './spell.js';
+import { ENV } from './hostenv.js';
 /* Fixed (non-shuffled) descriptions for weapons, from WEAPON_TABLE; null when
  * the type is outside the weapon range or has no description (NoDes). */
 function _fixedDescrOf(otyp) {
