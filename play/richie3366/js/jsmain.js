@@ -14,18 +14,18 @@ import { game, resetGame } from './gstate.js';
 import { decl_globals_init } from './decl.js';
 import { sys_early_init } from './sys.js';
 import { initRng, enableRngLog, getRngLog } from './rng.js';
-import { setStorageForTesting } from './storage.js';
+import { setStorageForTesting, vfsReadFile, vfsWriteFile } from './storage.js';
+import { SYSCONF_TEXT } from './generated/sysconf_data.js';
 import { pushKey, nhgetch } from './input.js';
 import { newgame, moveloop_core, welcome, moveloop_preamble, init_sound_disp_gamewindows } from './allmain.js';
 import { getmailstatus } from './mail.js';
 import { try_restore_save } from './save.js';
 import { vision_recalc, init_vision_globals } from './vision.js';
-import { parseNethackrc, set_playmode, init_fruit_chain } from './options.js';
+import { parseNethackrc, set_playmode, init_fruit_chain, initoptions_init, RC_FILE_OPT, set_configfile_name } from './options.js';
 import { flush_screen, serialize_for_scoring, reset_display_messages, docrt, bot } from './display.js';
 import { GameDisplay } from './game_display.js';
 import { askname_if_needed } from './askname.js';
 import { player_selection } from './player_selection.js';
-import { PARANOID_PRAY, PARANOID_SWIM, PARANOID_TRAP, AUTOUNLOCK_APPLY_KEY, VI_NUMBER, VI_BRANCH } from './const.js';
 import { check_special_room } from './hack.js';
 
 // ── NethackGame ──
@@ -105,90 +105,34 @@ export class NethackGame {
         reset_display_messages();
         // Frozen VFS contract: the harness shares this handle across segments.
         setStorageForTesting(this._storage);
+        // C unixmain.c:150 → options.c initoptions_init: builtin defaults
+        // precede system OPTIONS, which precede the user rc. The installed
+        // sysconf is embedded for Rule #2 and provisioned only when absent.
+        if (vfsReadFile('sysconf') == null) vfsWriteFile('sysconf', SYSCONF_TEXT);
+        // The session API supplies the seed for both C init_random streams.
+        initRng(this._seed);
+        enableRngLog();
+        initoptions_init();
+        // C nh_terminate is noreturn; its ESM adapter records exit state.
+        if (g.program_state?.gameover) return;
+        // C initoptions_finish → rcfile changes phase and config filename.
+        set_configfile_name(null);
+        g.go.opt_phase = RC_FILE_OPT;
         // Stored now for future C time predicates; consumers remain incomplete.
         g.datetime = this._datetime;
 
-        // Parse nethackrc
-        const opts = parseNethackrc(this._nethackrc);
-        // C: options.c initoptions_base — paranoia_bits default
-        g.plname = opts.name || '';
-        g.flags = {
-            verbose: true,
-            // C optlist.h NHOPTB silent — opt_out default On
-            silent: true,
-            // C optlist.h NHOPTB fixinv — opt_out On → flags.invlet_constant
-            invlet_constant: true,
-            // C options.c initoptions_base — disclose default 'n'*6; tombstone on
-            end_disclose: 'n'.repeat(6),
-            tombstone: true,
-            // C options.c initoptions_base — end_top=3, end_around=2, end_own=0
-            end_top: 3,
-            end_around: 2,
-            end_own: false,
-            paranoia_bits: PARANOID_PRAY | PARANOID_SWIM | PARANOID_TRAP,
-            // C recorder options.c:7174 initoptions_init (absent from pinned upstream)
-            versinfo: g.nomakedefs?.git_branch ? VI_BRANCH : VI_NUMBER,
-            // C options.c / optlist.h — tips default On
-            tips: true,
-            // C optlist.h confirm — opt_out default On
-            confirm: true,
-            // C options.c initoptions_base — autounlock default apply-key
-            autounlock: AUTOUNLOCK_APPLY_KEY,
-            ...opts.flags,
-        };
-        if (g.flags.paranoia_bits == null) {
-            g.flags.paranoia_bits = PARANOID_PRAY | PARANOID_SWIM | PARANOID_TRAP;
-        }
-        if (g.flags.tips == null) g.flags.tips = true;
-        if (g.flags.confirm == null) g.flags.confirm = true;
-        if (g.flags.silent == null) g.flags.silent = true;
-        if (g.flags.invlet_constant == null) g.flags.invlet_constant = true;
-        if (!g.flags.end_disclose || typeof g.flags.end_disclose !== 'string') {
-            g.flags.end_disclose = 'n'.repeat(6);
-        }
-        // C optlist.h NHOPTB accessiblemsg &a11y.accessiblemsg (D-1218);
-        // mention_map &a11y.glyph_updates (D-1219); spot_monsters
-        // &a11y.mon_notices (D-1235); mon_movement &a11y.mon_movement
-        // (D-1236). OPTIONS= writes the a11y bag; default Off.
-        // In-game msg_loc zero is optfn_boolean !opt_initial only
-        // (accessiblemsg).
-        if (typeof opts.a11y?.accessiblemsg === 'boolean'
-            || typeof opts.a11y?.glyph_updates === 'boolean'
-            || typeof opts.a11y?.mon_notices === 'boolean'
-            || typeof opts.a11y?.mon_movement === 'boolean') {
-            if (!g.a11y) g.a11y = { msg_loc: { x: 0, y: 0 } };
-            if (typeof opts.a11y.accessiblemsg === 'boolean') {
-                g.a11y.accessiblemsg = opts.a11y.accessiblemsg;
-            }
-            if (typeof opts.a11y.glyph_updates === 'boolean') {
-                g.a11y.glyph_updates = opts.a11y.glyph_updates;
-            }
-            if (typeof opts.a11y.mon_notices === 'boolean') {
-                g.a11y.mon_notices = opts.a11y.mon_notices;
-            }
-            if (typeof opts.a11y.mon_movement === 'boolean') {
-                g.a11y.mon_movement = opts.a11y.mon_movement;
-            }
-        }
-        // C optlist.h — autodescribe default On (opt_out); rc may negate.
-        // C options.c initoptions_init `:7279` — iflags.menuinvertmode = 1:
-        // bulk select/invert skip SKIPINVERT rows unless already set; rc
-        // OPTIONS=menuinvertmode:N (optfn_menuinvertmode do_set, 0-2) overrides.
-        g.iflags = {
-            autodescribe: true, prevmsg_window: 's', menuinvertmode: 1,
-            // C options.c initoptions_init `:7188–7189` — menu_headings
-            // attr ATR_INVERSE (7, wintype.h) + color NO_COLOR (8);
-            // initoptions_init is not on the JS startup path, so the
-            // default lives here like menuinvertmode. rc overrides below.
-            menu_headings: { attr: 7, color: 8 },
-            ...opts.iflags,
-        };
+        // Overlay the user rc on the initialized live option bags. No
+        // defaults may be reapplied after the system configuration pass.
+        const opts = parseNethackrc(this._nethackrc, true);
+        g.plname = opts.name;
         // C ref: options.c / symbols.c — default Primary ASCII; symset:DECgraphics
         // (or boolean DECgraphics) loads H_DEC showsyms. Never assume DEC.
-        const sym = String(opts.symset || '').toLowerCase();
-        g.iflags.decgraphics = sym === 'decgraphics'
-            || opts.flags?.DECgraphics === true
-            || opts.flags?.decgraphics === true;
+        const sym = String(opts.symset || g.symset || '').toLowerCase();
+        if (sym || opts.flags?.DECgraphics != null || opts.flags?.decgraphics != null) {
+            g.iflags.decgraphics = sym === 'decgraphics'
+                || opts.flags?.DECgraphics === true
+                || opts.flags?.decgraphics === true;
+        }
         // C: gs.symset[PRIMARYSET].name for doset_simple get_val
         if (opts.symset) g.symset = String(opts.symset);
         else if (g.iflags.decgraphics) g.symset = 'DECgraphics';
@@ -213,17 +157,13 @@ export class NethackGame {
         // C initoptions_finish fruitadd(pl_fruit) before newgame / mksobj
         // so SLIME_MOLD spe hits fruit_from_indx (D-1511).
         init_fruit_chain();
-        g.program_state = {};
+        g.go.opt_initial = false; // C initoptions_finish :7382
         // C: moves starts 0; u_init_role sets 1 after mklev (see u_init.c)
         g.moves = 0;
 
         // Role/race filled by setup_role_race_from_rc in newgame
         g.urole = { name: { m: 'Tourist', f: 'Tourist' } };
         g.urace = { adj: 'human' };
-
-        // Initialize PRNG
-        initRng(this._seed);
-        enableRngLog();
 
         // Install display
         if (this._pendingDisplay) {
@@ -401,7 +341,7 @@ export async function runSegment(input) {
     // at game.getScreens() afterwards; whatever the contestant
     // captured is what gets compared.
     const maxIter = Math.max(moves.length * 8, 1024);
-    for (let iter = 0; iter < maxIter; iter++) {
+    for (let iter = 0; iter < maxIter && !game.program_state?.gameover; iter++) {
         try {
             await moveloop_core();
         } catch (e) {
@@ -414,4 +354,3 @@ export async function runSegment(input) {
 
     return nhGame;
 }
-

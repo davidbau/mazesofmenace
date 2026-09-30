@@ -144,7 +144,7 @@ import { make_engr_at, make_grave, wipe_engr_at, random_engraving, del_engr_at, 
 import { cmd_from_ecname } from './dokeylist.js';
 import {
     find_level, dungeon_branch, at_dgn_entrance, insert_branch, get_level,
-    on_level, init_dungeons, Is_special, Invocation_lev, In_W_tower, dupstr,
+    on_level, init_dungeons, Is_special, Invocation_lev, In_W_tower, dupstr, get_table_option, get_table_str_opt,
 } from './dungeon.js';
 import { premap_detect } from './detect.js';
 import {
@@ -965,93 +965,83 @@ function levregion_add(lregion) {
     });
 }
 
-/**
- * C ref: sp_lev.c lspo_teleport_region / l_get_lregion (unpacked table).
- * dir default "both" → LR_TELE. Missing exclude → delarea -1,-1,-1,-1 and
- * del_islev. Named omit: unknown dir falls back to LR_TELE where C
- * get_table_option nhl_errors (house ?? idiom, lspo_exclusion precedent);
- * other load_* still push lregions by hand (earth/fire/air/hell) rather
- * than this helper.
- */
-export function l_teleport_region(opts) {
-    create_des_coder(); // C lspo_teleport_region :5449
-    const o = opts ?? {}; // C :5450 lcheck_param_table
-    if (o === null || typeof o !== 'object') nhl_error('l_teleport_region: Wrong parameters');
-    // C l_get_lregion (sp_lev.c:5410–5441): required "region", optional
-    // "exclude" over pre-set -1s; del_islev forced when exclude x1 < 0.
-    const region = get_table_region_unpacked(o, 'region', false); // :5414
-    const exclude = get_table_region_unpacked(o, 'exclude', true); // :5421
-    const dir = o.dir || 'both';
-    const rtype = dir === 'up' ? LR_UPTELE
-        : dir === 'down' ? LR_DOWNTELE
-        : LR_TELE;
-    const lregion = {
-        inarea: {
-            x1: region[0], y1: region[1],
-            x2: region[2], y2: region[3],
-        },
-        delarea: exclude
-            ? {
-                x1: exclude[0], y1: exclude[1],
-                x2: exclude[2], y2: exclude[3],
-            }
-            : { x1: -1, y1: -1, x2: -1, y2: -1 },
-        in_islev: !!o.region_islev,
-        del_islev: !!o.exclude_islev,
-        rtype,
-        padding: 0,
-        rname: { str: null },
-    };
-    if (!exclude || exclude[0] < 0)
-        lregion.del_islev = true;
-    levregion_add(lregion);
+/** C nhlua.c:225–236: empty table only for no arguments; discard extras. */
+function lcheck_param_table(args) {
+    const table = args.length < 1 ? {} : args[0];
+    if (table === null || typeof table !== 'object')
+        nhl_error('bad argument (table expected)');
+    return table;
 }
 
-/**
- * C ref: sp_lev.c lspo_levregion / l_get_lregion.
- * type default "stair-down". Missing exclude → delarea -1 and del_islev.
- * Named omit: unknown type falls back to LR_DOWNSTAIR where C
- * get_table_option nhl_errors (house ?? idiom).
- */
-const LREGION_TYPES = {
-    'stair-down': LR_DOWNSTAIR,
-    'stair-up': LR_UPSTAIR,
-    portal: LR_PORTAL,
-    branch: LR_BRANCH,
-    teleport: LR_TELE,
-    'teleport-up': LR_UPTELE,
-    'teleport-down': LR_DOWNTELE,
-};
+/** C nhlua.c:1078–1104. String results are option indices in pinned C. */
+function get_table_boolean(table, name) {
+    const value = table[name];
+    let ret = -1;
+    if (typeof value === 'string') {
+        ret = get_table_option(table, name, null, ['true', 'false', 'yes', 'no']);
+    } else if (typeof value === 'boolean') {
+        ret = value ? 1 : 0;
+    } else if (typeof value === 'number') {
+        ret = luaL_checkinteger_unpacked(value, 32);
+        if (ret < 0 || ret > 1) ret = -1;
+    }
+    if (ret === -1) nhl_error('Expected a boolean');
+    return ret;
+}
 
-export function l_levregion(opts) {
-    create_des_coder(); // C lspo_levregion :5484
-    const o = opts ?? {}; // C :5485 lcheck_param_table
-    if (o === null || typeof o !== 'object') nhl_error('l_levregion: Wrong parameters');
-    // C l_get_lregion (sp_lev.c:5410–5441): required "region", optional
-    // "exclude" over pre-set -1s; del_islev forced when exclude x1 < 0.
-    const region = get_table_region_unpacked(o, 'region', false); // :5414
-    const exclude = get_table_region_unpacked(o, 'exclude', true); // :5421
-    const rtype = LREGION_TYPES[o.type || 'stair-down'] ?? LR_DOWNSTAIR;
-    const lregion = {
+/** C nhlua.c:1106–1118: nil defaults; every other type is validated. */
+function get_table_boolean_opt(table, name, defval) {
+    if (table[name] != null) return get_table_boolean(table, name);
+    return defval;
+}
+
+/** C sp_lev.c:5410–5436: region, exclude, booleans, negative exclude guard. */
+function l_get_lregion(table) {
+    const region = get_table_region_unpacked(table, 'region', false);
+    const narrow = value => typeof value === 'bigint'
+        ? Number(BigInt.asIntN(16, value)) : (value << 16) >> 16;
+    const tmplregion = {
         inarea: {
-            x1: region[0], y1: region[1],
-            x2: region[2], y2: region[3],
+            x1: narrow(region[0]), y1: narrow(region[1]),
+            x2: narrow(region[2]), y2: narrow(region[3]),
         },
-        delarea: exclude
-            ? {
-                x1: exclude[0], y1: exclude[1],
-                x2: exclude[2], y2: exclude[3],
-            }
-            : { x1: -1, y1: -1, x2: -1, y2: -1 },
-        in_islev: !!o.region_islev,
-        del_islev: !!o.exclude_islev,
-        rtype,
-        padding: o.padding | 0,
-        rname: { str: o.name ?? null },
     };
-    if (!exclude || exclude[0] < 0)
-        lregion.del_islev = true;
-    levregion_add(lregion);
+    // C keeps the lua_Integer x1 for the final guard, before coordxy narrowing.
+    const exclude = get_table_region_unpacked(table, 'exclude', true) ?? [-1, -1, -1, -1];
+    tmplregion.delarea = {
+        x1: narrow(exclude[0]), y1: narrow(exclude[1]),
+        x2: narrow(exclude[2]), y2: narrow(exclude[3]),
+    };
+    tmplregion.in_islev = get_table_boolean_opt(table, 'region_islev', 0);
+    tmplregion.del_islev = get_table_boolean_opt(table, 'exclude_islev', 0);
+    if (exclude[0] < 0) tmplregion.del_islev = 1;
+    return tmplregion;
+}
+
+/** C sp_lev.c:5442–5460 lspo_teleport_region (unpacked des table). */
+export function l_teleport_region(opts) {
+    create_des_coder();
+    const table = lcheck_param_table(arguments);
+    const tmplregion = l_get_lregion(table);
+    tmplregion.rtype = [LR_TELE, LR_DOWNTELE, LR_UPTELE][
+        get_table_option(table, 'dir', 'both', ['both', 'down', 'up'])];
+    tmplregion.padding = 0;
+    tmplregion.rname = { str: null };
+    levregion_add(tmplregion);
+}
+
+/** C sp_lev.c:5471–5494 lspo_levregion (unpacked des table). */
+export function l_levregion(opts) {
+    create_des_coder();
+    const table = lcheck_param_table(arguments);
+    const tmplregion = l_get_lregion(table);
+    tmplregion.rtype = [LR_DOWNSTAIR, LR_UPSTAIR, LR_PORTAL, LR_BRANCH,
+        LR_TELE, LR_UPTELE, LR_DOWNTELE][get_table_option(table, 'type', 'stair-down',
+        ['stair-down', 'stair-up', 'portal', 'branch', 'teleport', 'teleport-up', 'teleport-down'])];
+    // C get_table_int_opt :1028–1039, then coordxy assignment (:5489).
+    tmplregion.padding = table.padding == null ? 0 : luaL_checkinteger_unpacked(table.padding, 16);
+    tmplregion.rname = { str: get_table_str_opt(table, 'name', null) };
+    levregion_add(tmplregion);
 }
 
 /**
@@ -22351,32 +22341,78 @@ function nhl_error(msg) {
 }
 
 /**
- * C ref: lauxlib luaL_checkinteger, as get_coord calls it on the "x"/"y"
- * fields (:5331, :5339). A finite number truncates toward 0 like the
- * file's other checkinteger stand-in; a numeric string converts the same
- * way lua_isnumber does. Anything else is nhl_error (C typeerror).
+ * Lua 5.4.8 lobject.c luaO_str2num/l_str2int and C99 strtod syntax.
+ * Preserve integer strings as signed-64 BigInts until the C destination
+ * cast; converting "9223372036854775807" to a JS Number loses its low bits.
+ * Decimal integer overflow falls back to a float; hex integers wrap u64.
  */
-function luaL_checkinteger_unpacked(v) {
-    if (typeof v === 'number' && Number.isFinite(v)) return Math.trunc(v);
-    if (typeof v === 'string' && v.trim() !== '' && Number.isFinite(Number(v)))
-        return Math.trunc(Number(v));
+function lua_number_unpacked(v) {
+    if (typeof v === 'number') return v;
+    if (typeof v !== 'string') return null;
+    const text = v.replace(/^[ \t\n\v\f\r]+|[ \t\n\v\f\r]+$/g, '');
+    if (/^[+-]?\d+$/.test(text)) {
+        const integer = BigInt(text);
+        if (integer >= -(1n << 63n) && integer < (1n << 63n)) return integer;
+        return Number(text);
+    }
+    if (/^[+-]?0[xX][0-9a-fA-F]+$/.test(text)) {
+        const negative = text[0] === '-';
+        const integer = BigInt(text.replace(/^[+-]/, ''));
+        return BigInt.asIntN(64, negative ? -integer : integer);
+    }
+    if (/^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/.test(text))
+        return Number(text);
+    const hex = /^([+-]?)0[xX]([0-9a-fA-F]*)(?:\.([0-9a-fA-F]*))?(?:[pP]([+-]?\d+))?$/.exec(text);
+    if (!hex || !(hex[2] + (hex[3] ?? '')).length) return null;
+    // Convert the exact hexadecimal significand, rounding once to double
+    // (nearest, ties to even), including the subnormal/underflow boundary.
+    const fraction = hex[3] ?? '';
+    let mantissa = BigInt('0x' + hex[2] + fraction);
+    if (!mantissa) return 0;
+    let exponent = Number(hex[4] ?? 0) - 4 * fraction.length;
+    const bits = mantissa.toString(2).length;
+    const discard = Math.max(0, bits - 53, -1074 - exponent);
+    if (discard > bits) return 0;
+    if (discard) {
+        const shift = BigInt(discard);
+        const remainder = mantissa & ((1n << shift) - 1n);
+        mantissa >>= shift;
+        const half = 1n << (shift - 1n);
+        if (remainder > half || (remainder === half && (mantissa & 1n))) mantissa++;
+        exponent += discard;
+    }
+    const number = Number(mantissa) * (2 ** exponent);
+    return hex[1] === '-' ? -number : number;
+}
+
+// Lua 5.4.8 lvm.c luaV_flttointeger(F2Ieq), luaconf.h
+// lua_numbertointeger: integral floats in [-2^63, 2^63) only.
+function lua_integer_unpacked(number) {
+    if (typeof number === 'bigint') return number;
+    if (typeof number === 'number' && Number.isInteger(number)
+        && number >= -(2 ** 63) && number < 2 ** 63) return BigInt(number);
+    return null;
+}
+
+/**
+ * Lua 5.4.8 lauxlib.c luaL_checkinteger/interror: no truncation.
+ * The optional width applies a C destination cast before returning a JS
+ * Number, so coordinate/table input retains exact low bits of Lua integers.
+ */
+function luaL_checkinteger_unpacked(v, width = null) {
+    const number = lua_number_unpacked(v);
+    const integer = lua_integer_unpacked(number);
+    if (integer !== null)
+        return Number(width === null ? integer : BigInt.asIntN(width, integer));
+    if (number !== null) nhl_error('bad argument (number has no integer representation)');
     const got = (v == null) ? 'nil'
         : (typeof v === 'object' ? 'table' : typeof v);
     nhl_error(`bad argument (number expected, got ${got})`);
 }
 
-/**
- * C ref: lauxlib lua_tointeger, as nhl_abs_coord calls it on stack
- * positions 1/2 (`:4818–4819`). Unlike luaL_checkinteger, a wrong
- * type is NOT an error: a finite number truncates toward 0, a
- * numeric string converts the way lua_tonumber does, anything else
- * (nil, table, boolean) is 0.
- */
+// Lua 5.4.8 lapi.c lua_tointegerx: a failed conversion returns integer 0.
 function lua_tointeger_unpacked(v) {
-    if (typeof v === 'number' && Number.isFinite(v)) return Math.trunc(v);
-    if (typeof v === 'string' && v.trim() !== '' && Number.isFinite(Number(v)))
-        return Math.trunc(Number(v));
-    return 0; // C lua_tointeger: not a number, not convertible → 0
+    return lua_integer_unpacked(lua_number_unpacked(v)) ?? 0n;
 }
 
 /**
@@ -22385,24 +22421,25 @@ function lua_tointeger_unpacked(v) {
  * lx/ly when a coder room is active, else gx.xstart/gy.ystart) onto
  * an in/out coord pair. Unpacked stand-in for (coordxy *x,
  * coordxy *y): mutates xy in place (get_coord out-param idiom).
+ * Every compound write narrows to signed-16 coordxy (global.h:71).
  * Outside mklev the offsets are 0 (C `:4773–4780` comment).
  * @param {{x:number,y:number}} xy in/out coord pair
  */
 export function cvt_to_abscoord(xy) {
     const coder = game.gc?.coder ?? null; // C `:4781` gc.coder
     if (coder && coder.croom) { // C `:4781` gc.coder->croom
-        xy.x = (xy.x + coder.croom.lx) | 0; // C `:4782`
-        xy.y = (xy.y + coder.croom.ly) | 0; // C `:4783`
+        xy.x = ((xy.x + coder.croom.lx) << 16) >> 16; // C `:4782`
+        xy.y = ((xy.y + coder.croom.ly) << 16) >> 16; // C `:4783`
     } else { // C `:4784`
-        xy.x = (xy.x + (game.splev_xstart | 0)) | 0; // C `:4785` gx.xstart
-        xy.y = (xy.y + (game.splev_ystart | 0)) | 0; // C `:4786` gy.ystart
+        xy.x = ((xy.x + (game.splev_xstart | 0)) << 16) >> 16; // C `:4785` gx.xstart
+        xy.y = ((xy.y + (game.splev_ystart | 0)) << 16) >> 16; // C `:4786` gy.ystart
     }
 }
 
 /**
  * C ref: sp_lev.c nhl_abs_coord `:4810–4836` — the `nh.abscoord`
  * entry (nhlua.c `:1863`): convert a map/room-relative coord to
- * absolute. Unpacked forms (C `:4814` lua_gettop): an (x, y) pair
+ * absolute. Unpacked forms (C `:4813` lua_gettop): an (x, y) pair
  * (C `:4817–4822`; lua_tointeger, so mistypes are 0, never an
  * error) returning the converted [x, y] pair (C pushes 2 values),
  * or a single {x, y} table (C `:4823–4830`; get_table_int ≡
@@ -22414,17 +22451,17 @@ export function cvt_to_abscoord(xy) {
  * the object directly).
  */
 export function nhl_abs_coord(a, b) {
-    const argc = arguments.length; // C `:4814` lua_gettop
-    let x = -1, y = -1; // C `:4815`
-    if (argc === 2) { // C `:4817`
-        x = lua_tointeger_unpacked(a) | 0; // C `:4818` (coordxy) lua_tointeger
-        y = lua_tointeger_unpacked(b) | 0; // C `:4819`
+    const argc = arguments.length; // C `:4813` lua_gettop
+    let x = -1, y = -1; // C `:4814`
+    if (argc === 2) { // C `:4816`
+        x = Number(BigInt.asIntN(16, lua_tointeger_unpacked(a))); // C `:4817` (coordxy) lua_tointeger
+        y = Number(BigInt.asIntN(16, lua_tointeger_unpacked(b))); // C `:4818`
         const xy = { x, y };
-        cvt_to_abscoord(xy); // C `:4820`
-        return [xy.x, xy.y]; // C `:4821–4822` two pushed integers
+        cvt_to_abscoord(xy); // C `:4819`
+        return [xy.x, xy.y]; // C `:4820–4822` two pushed integers
     } else if (argc === 1 && a !== null && typeof a === 'object') { // C `:4823` LUA_TTABLE
-        x = luaL_checkinteger_unpacked(a.x) | 0; // C `:4824` (coordxy) get_table_int "x"
-        y = luaL_checkinteger_unpacked(a.y) | 0; // C `:4825` (coordxy) get_table_int "y"
+        x = luaL_checkinteger_unpacked(a.x, 16); // C `:4824` (coordxy) get_table_int "x"
+        y = luaL_checkinteger_unpacked(a.y, 16); // C `:4825` (coordxy) get_table_int "y"
         const xy = { x, y };
         cvt_to_abscoord(xy); // C `:4826`
         return { x: xy.x, y: xy.y }; // C `:4827–4829` newtable + x/y entries
@@ -22605,8 +22642,8 @@ function lspo_object_from_string(paramstr, arg2, arg3) {
 }
 
 /**
- * C lua_isnumber for get_table_int_or_random. Same predicate as
- * luaL_checkinteger_unpacked in this file: a finite number, or a string
+ * Existing lua_isnumber adapter for get_table_int_or_random: a finite
+ * number, or a string
  * whose trimmed form is a finite Number (Lua skips leading and trailing
  * spaces). A non-finite number is not an integer in that stand-in.
  * @param {*} v
@@ -22787,19 +22824,21 @@ function lspo_bool_opt(v, dflt) {
 }
 
 /**
- * C ref: sp_lev.c get_table_intarray_entry :5260–5280 (unpacked; not
- * lua_State). 1-based entry read: a number truncates like lua_tointeger
- * (Math.trunc — no ToInt32 wrap); a numeric string coerces like
- * lua_isnumber/lua_tointeger. Anything else throws like C nhl_error
- * ("Array entry #… is %s, expected number" — C prints a hardcoded 1).
+ * C sp_lev.c:5260–5279: lua_isnumber then lua_tointeger, which returns
+ * zero for fractional/out-of-range floats. The unpacked array replaces
+ * the Lua stack index adjustment; integer strings retain all 64 bits.
  */
 function get_table_intarray_entry_unpacked(arr, entrynum) {
-    const v = arr[entrynum - 1]; // C :5267–5268 lua_pushinteger + lua_gettable
-    if (typeof v === 'number' && Number.isFinite(v)) return Math.trunc(v); // :5270
-    if (typeof v === 'string' && v.trim() !== '' && !Number.isNaN(Number(v)))
-        return Math.trunc(Number(v)); // C lua_isnumber coerces numeric strings
-    const typename = v == null ? 'nil' : (Array.isArray(v) ? 'table' : typeof v);
-    nhl_error(`Array entry #1 is ${typename}, expected number`); // C :5273–5276
+    const value = arr[entrynum - 1];
+    const number = lua_number_unpacked(value);
+    if (number !== null) {
+        const integer = lua_integer_unpacked(number) ?? 0n;
+        const result = Number(integer);
+        return Number.isSafeInteger(result) ? result : integer;
+    }
+    const typename = value == null ? 'nil'
+        : (typeof value === 'object' ? 'table' : typeof value);
+    nhl_error(`Array entry #1 is ${typename}, expected number`);
 }
 
 /**

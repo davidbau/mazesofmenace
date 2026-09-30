@@ -369,7 +369,7 @@ function get_table_str(tbl, name) {
 /**
  * C nhlua.c get_table_str_opt `:1052–1076`. String or nil uses
  * luaL_optstring (nil → defval, which may be NULL). A function is
- * pcalled and the result must be a string or nil. Anything else is
+ * pcalled and luaL_optstring accepts a string, number, or nil. Anything else is
  * nhl_error("get_table_str_opt: no string"). Return is dupstr or NULL.
  * `if (ret)` in C is a pointer test: "" is kept, only NULL is dropped.
  * @param {object} tbl
@@ -377,7 +377,7 @@ function get_table_str(tbl, name) {
  * @param {string|null} defval
  * @returns {string|null}
  */
-function get_table_str_opt(tbl, name, defval) {
+export function get_table_str_opt(tbl, name, defval) {
     const v = lua_field(tbl, name);
     const ltyp = lua_type(v);
     let ret;
@@ -391,6 +391,27 @@ function get_table_str_opt(tbl, name, defval) {
         const pt = lua_type(produced);
         if (pt === 'nil') ret = defval;
         else if (pt === 'string') ret = produced;
+        else if (pt === 'number') {
+            // Unpacked JS integer numbers represent Lua integers. Lua floats
+            // use luaconf.h lua_number2str (%.14g), including exponent padding.
+            if (Number.isInteger(produced) && Math.abs(produced) < 2 ** 63) {
+                ret = String(produced);
+            } else if (!Number.isFinite(produced)) {
+                ret = Number.isNaN(produced) ? 'nan' : (produced < 0 ? '-inf' : 'inf');
+            } else {
+                const rounded = produced.toExponential(13);
+                const [digits, power] = rounded.split('e');
+                const exponent = Number(power);
+                if (exponent < -4 || exponent >= 14) {
+                    const significand = digits.replace(/\.?0+$/, '');
+                    ret = significand + 'e' + (exponent < 0 ? '-' : '+')
+                        + String(Math.abs(exponent)).padStart(2, '0');
+                } else {
+                    ret = Number(produced.toPrecision(14)).toFixed(Math.max(0, 13 - exponent))
+                        .replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '');
+                }
+            }
+        }
         else throw new Error('get_table_str_opt: no string');
     } else {
         throw new Error('get_table_str_opt: no string');
@@ -407,7 +428,7 @@ function get_table_str_opt(tbl, name, defval) {
  * @param {readonly string[]} opts
  * @returns {number}
  */
-function get_table_option(tbl, name, defval, opts) {
+export function get_table_option(tbl, name, defval, opts) {
     const v = lua_field(tbl, name); // C :1129 lua_getfield(L, -1, name)
     const ret = luaL_checkoption(v, defval, opts); // C :1130 luaL_checkoption
     // C :1131 lua_pop(L, 1).

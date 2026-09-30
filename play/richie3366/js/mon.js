@@ -1000,19 +1000,20 @@ export function mcalcmove(mon, m_moving) {
 }
 
 /**
- * C ref: monmove.c mon_regen — HP tick + mspec_used; digest_meal=false from
- * mcalcdistress (meating countdown lives in m_move).
+ * C ref: monmove.c mon_regen :307–320 — HP tick, special-attack cooldown,
+ * and optional meal completion. mcalcdistress calls with digest_meal=false.
  */
-function mon_regen(mon, digest_meal) {
-    const moves = game.moves | 0;
-    if (moves % 20 === 0 || regenerates(mon.data)) {
-        // healmon(mon, 1, 0) subset — bump HP only
-        if ((mon.mhp | 0) < (mon.mhpmax | 0)) mon.mhp = (mon.mhp | 0) + 1;
-    }
-    if (mon.mspec_used) mon.mspec_used = (mon.mspec_used | 0) - 1;
-    if (digest_meal && mon.meating) {
-        mon.meating = (mon.meating | 0) - 1;
-        // finish_meating deferred here (m_move path owns it)
+export function mon_regen(mon, digest_meal) {
+    if (game.moves % 20 === 0 || regenerates(mon.data))
+        healmon(mon, 1, 0);
+    if (mon.mspec_used)
+        mon.mspec_used--;
+    if (digest_meal) {
+        if (mon.meating) {
+            mon.meating--;
+            if (mon.meating <= 0)
+                finish_meating(mon);
+        }
     }
 }
 

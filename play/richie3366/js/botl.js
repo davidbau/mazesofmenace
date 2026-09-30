@@ -19,6 +19,8 @@
 // and the tty path commits do_statusline1 / do_statusline2 instead.
 
 import { game } from './gstate.js';
+import { config_error_add } from './cfgfiles.js';
+export { config_error_add } from './cfgfiles.js'; // existing callers use the C cfgfiles sink
 import {
     MAXBLSTATS,
     BL_TITLE, BL_STR, BL_DX, BL_CO, BL_IN, BL_WI, BL_CH, BL_ALIGN,
@@ -1478,8 +1480,8 @@ export async function cond_menu() {
  * two exports below are live for those future rows. The interactive
  * chooser / field menu / remove family is below (`:3811+`, D-2757).
  * `status_hilite_menu_add` (`:3889–4302`) stays a named omission.
- * Named omissions (map): config_error_add sink (options.c; bad_negation
- * precedent in options.js) — FALSE propagation at every site is kept.
+ * Diagnostics use cfgfiles.js config_error_add; existing abbreviated
+ * threshold diagnostics and omitted format arguments are map-named.
  */
 
 // C wintype.h:128-134 — window-system text attributes. NOT the terminal.js
@@ -1574,15 +1576,6 @@ const statusAlignTxt = ['chaotic', 'neutral', 'lawful'];
 const statusHungerTxt = [
     'Satiated', '', 'Hungry', 'Weak', 'Fainting', 'Fainted', 'Starved',
 ];
-
-/* C options.c config_error_add() — config-error sink. bad_negation
- * (options.js) precedent: the message text is a named omission (map);
- * FALSE propagation at every call site below is kept. Exported for the
- * bind_key `:2698`/`:2704`/`:2712` arms (cmd.js; same 98-module SCC,
- * called only inside function bodies). */
-export function config_error_add(_fmt, ..._args) {
-    // Named omission (map): config_error_add sink.
-}
 
 // C stdlib atoi/atol as s_to_anything() uses them: leading whitespace,
 // optional sign, digit run; 0 when no digits. One helper covers both C

@@ -12,10 +12,10 @@ import {
 } from './const.js';
 import {
     pline, tty_wait_synch, raw_printf, MAXPCHARS, SYM_OFF_X,
-    update_ov_primary_symset, vpline_expand,
+    update_ov_primary_symset,
 } from './display.js';
 import { trimspaces } from './hacklib.js';
-import { config_error_add, parse_status_hl1 } from './botl.js';
+import { parse_status_hl1 } from './botl.js';
 import { mungspaces, paranoid_query } from './getline.js';
 import { rn2 } from './rng.js';
 import { str2role } from './roles.js';
@@ -333,8 +333,7 @@ export function config_erradd(buf) {
     configMsg(tag + ' ' + lineno + text + punct);
 }
 
-/** Local sink for this file. botl.js config_error_add stays the no-op
- * used by options/doset (established named omission). */
+/** Preformatted cfgfiles diagnostics share the same config_erradd sink. */
 function cnf_error(text) {
     config_erradd(text);
 }
@@ -368,22 +367,71 @@ export function config_error_done() {
     return n; // C `:1620`
 }
 
-/**
- * C ref: cfgfiles.c vconfig_error_add `:1875–1890` (staticfn → file-local).
- * vsnprintf into BIGBUFSZ, chop to BUFSZ-1, forward to live config_erradd.
- * Format via display.js vpline_expand (vraw_printf `:8173` precedent — the
- * same expand-then-chop shape; width/precision strip is the map-named
- * vpline_expand limitation). C caller `:1870` (config_error_add) stays the
- * botl.js no-op sink (established named omission) — this goes live with it.
- */
-function vconfig_error_add(fmt, args) {
-    let text = String(fmt); // C `:1878` buf[BIGBUFSZ]
-    if (text.includes('%')) text = vpline_expand(text, args).text; // C `:1880` vsnprintf
-    // C `:1881–1887` DEBUG truncation panic — compiled out (NH_DEVEL_STATUS
-    // is NH_STATUS_RELEASED per patchlevel.h:33, so the `#else` nhUse(vlen);
-    // vpline_expand's .ln is likewise dropped).
-    if (text.length > BUFSZ - 1) text = text.slice(0, BUFSZ - 1); // C `:1888` buf[BUFSZ-1] = 0
-    config_erradd(text); // C `:1889`
+// Adapter for cfgfiles.c:1880 vsnprintf: the integer, character and string
+// conversions used by pinned config_error_add callers, including precision
+// (coloratt.c:367/386) and size_t (cfgfiles.c:1883's DEBUG diagnostic).
+// Strings are C byte strings; stop at NUL and do not expand '%' in arguments.
+function config_error_format(fmt, args) {
+    let arg = 0;
+    return String(fmt).split('\0', 1)[0].replace(
+        /%%|%([-+ #0]*)(\*|\d+)?(?:\.(\*|\d*))?(hh|ll|h|l|j|z|t)?([scdiuoxX])/g,
+        (match, flags, width, precision, length, verb) => {
+            if (match === '%%') return '%';
+            let w = width === '*' ? Number(args[arg++]) | 0 : Number(width || 0);
+            if (w < 0) { flags += '-'; w = -w; }
+            let p = precision === undefined ? null
+                : precision === '*' ? Number(args[arg++]) | 0 : Number(precision);
+            if (p !== null && p < 0) p = null;
+            const value = args[arg++];
+            let text, prefix = '';
+            if (verb === 's') {
+                text = String(value ?? '(null)').split('\0', 1)[0];
+                if (p !== null) text = text.slice(0, p);
+            } else if (verb === 'c') {
+                text = String.fromCharCode(typeof value === 'number'
+                    ? value & 0xff : String(value ?? '').charCodeAt(0) & 0xff);
+            } else {
+                const bits = length === 'hh' ? 8 : length === 'h' ? 16
+                    : ['l', 'll', 'j', 'z', 't'].includes(length) ? 64 : 32;
+                let n = typeof value === 'bigint' ? value : BigInt(Math.trunc(Number(value) || 0));
+                const signed = verb === 'd' || verb === 'i';
+                n = signed ? BigInt.asIntN(bits, n) : BigInt.asUintN(bits, n);
+                if (signed) {
+                    if (n < 0n) { prefix = '-'; n = -n; }
+                    else if (flags.includes('+')) prefix = '+';
+                    else if (flags.includes(' ')) prefix = ' ';
+                }
+                const radix = verb === 'o' ? 8 : verb === 'x' || verb === 'X' ? 16 : 10;
+                text = n === 0n && p === 0 ? '' : n.toString(radix);
+                if (verb === 'X') text = text.toUpperCase();
+                if (p !== null) text = text.padStart(Math.min(p, 5 * BUFSZ), '0');
+                if (flags.includes('#')) {
+                    if (verb === 'o' && !text.startsWith('0')) text = '0' + text;
+                    else if ((verb === 'x' || verb === 'X') && n !== 0n)
+                        prefix = verb === 'x' ? '0x' : '0X';
+                }
+            }
+            // More than BIGBUFSZ padding cannot affect the final BUFSZ chop.
+            const pad = Math.min(Math.max(0, w - prefix.length - text.length), 5 * BUFSZ);
+            if (flags.includes('-')) return prefix + text + ' '.repeat(pad);
+            if (verb !== 's' && verb !== 'c' && p === null && flags.includes('0'))
+                return prefix + '0'.repeat(pad) + text;
+            return ' '.repeat(pad) + prefix + text;
+        },
+    );
+}
+
+/** C ref: cfgfiles.c:1864–1872 — varargs wrapper, shared by every caller. */
+export function config_error_add(str, ...args) {
+    vconfig_error_add(str, args); // C :1870
+}
+
+/** C ref: cfgfiles.c:1874–1890 — format, chop, then enqueue/report. */
+function vconfig_error_add(str, args) {
+    let buf = config_error_format(str, args); // C :1878–1880 BIGBUFSZ + vsnprintf
+    // C :1881–1887 DEBUG panic compiled out (patchlevel.h NH_STATUS_RELEASED).
+    buf = buf.slice(0, BUFSZ - 1).split('\0', 1)[0]; // C :1888 buf[BUFSZ-1] = 0
+    config_erradd(buf); // C :1889
 }
 
 /**

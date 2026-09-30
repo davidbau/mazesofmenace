@@ -218,7 +218,7 @@ import {
     count_status_hilites, reset_status_hilites,
     clear_status_hilites, parse_status_hl1,
     match_str2clr, match_str2attr, status_version,
-    config_error_add, status_initialize,
+    status_initialize,
     condopt, parse_cond_option,
 } from './botl.js';
 import { classify_terrain } from './hack.js';
@@ -227,6 +227,7 @@ import {
     get_changed_key_binds, handler_rebind_keys, count_bind_keys,
     reset_commands, update_rest_on_space, handler_change_autocompletions,
     bind_mousebtn, bind_specialkey, count_autocompletions,
+    authorize_wizard_mode, authorize_explore_mode,
 } from './cmd.js';
 import { cmd_from_func, cmdname_from_func, visctrl, bind_param_set, bind_param_clear } from './dokeylist.js';
 import {
@@ -243,7 +244,7 @@ import {
 import {
     clearrolefilter, setrolefilter, rolefilterstring,
 } from './player_selection.js';
-import { rcfile, read_config_file, config_error_init, config_error_done, assure_syscf_file } from './cfgfiles.js';
+import { rcfile, read_config_file, config_error_init, config_error_done, config_error_add, assure_syscf_file } from './cfgfiles.js';
 import { nh_terminate } from './end.js';
 import { do_deferred_showpaths } from './files.js'; // C initoptions `:7112` (imports.mjs: hoisted fn, lazy reads only)
 
@@ -604,7 +605,7 @@ async function query_msgtype() {
  * gp.plinemsg_types. C `:7733` static re_error kept; the compile-fail
  * arm describes via the live regex_error_desc, frees first (OOM
  * ordering — the unlinked tmp is GC), then the config_error_add call
- * (no-op sink, test_regex_pattern precedent).
+ * (shared cfgfiles.js configuration-error sink).
  */
 export function msgtype_add(typ, pattern) {
     const re_error = 'MSGTYPE regex error'; // C `:7733`
@@ -705,7 +706,7 @@ function msgtype_count() {
 /**
  * C ref: options.c msgtype_parse_add `:7843–7866` — sscanf
  * `%10s \"%255[^\"]\"` then str_start_is on msgtype_names, whole body in C order
- * (the config_error_add arms are the no-op sink, msgtype_add `:7747` precedent).
+ * (the config_error_add arms use the shared cfgfiles.js sink).
  */
 export function msgtype_parse_add(str) {
     // C `:7848` sscanf == 2: %10s skips leading space, takes to 10 non-space;
@@ -882,27 +883,30 @@ export function option_help_lines() {
 }
 
 /**
- * C ref: options.c set_playmode — after playmode:debug / -D (wizard set),
- * strcpy(plname, "wizard") when authorize_wizard_mode succeeds.
- * Contest/JS: flags.debug already means wizard authorized (no
- * sysopt.wizards gate); explore authorize / deferred_X explore prompt
- * deferred.
- * NOTE (D-next): a C-order restart with the live authorize gates was
- * reverted — it refuses explore where C grants, because JS sessions
- * never load the recorder sysconf's WIZARDS-star / EXPLORERS-star lines
- * (game.sysopt keeps the sys_early_init nulls). Port that sysconf seed
- * first, then re-apply the `:10134–10150` restart (unixmain.c:627–636
- * authorize_wizard_mode beside authorize_explore_mode in cmd.js).
+ * C options.c:10134–10152 — authorize wizard before renaming, then try
+ * explore after a refusal. Normal play preserves deferred_X. flags.debug
+ * and flags.explore are the C fields; keep the existing JS aliases coherent.
  */
 export function set_playmode() {
-    if (!game.flags) game.flags = {};
-    if (game.flags.debug || game.flags.wizard) {
-        game.plname = 'wizard';
-        // C: discover = !wizard after successful wizard entry
-        game.flags.explore = false;
-        if (game.iflags) game.iflags.deferred_X = false;
+    const flags = game.flags || (game.flags = {});
+    const iflags = game.iflags || (game.iflags = {});
+    let wizard = !!(flags.debug || flags.wizard || game.wizard);
+    let discover = !!(flags.explore || flags.discover || game.discover);
+    if (wizard) { // C :10136
+        if (authorize_wizard_mode()) { // C :10137–10138
+            game.plname = 'wizard';
+            gp.plnamelen = game.plname.length;
+        } else {
+            wizard = false; // C :10140
+        }
+        discover = !wizard; // C :10145
+        iflags.deferred_X = false; // C :10146
     }
-    // C: if (discover && !authorize_explore_mode()) clear — deferred
+    if (discover && !authorize_explore_mode()) { // C :10148
+        discover = iflags.deferred_X = false; // C :10149
+    }
+    flags.debug = flags.wizard = game.wizard = wizard;
+    flags.explore = flags.discover = game.discover = discover;
 }
 
 /**
@@ -1426,8 +1430,7 @@ function check_misc_menu_command(opts, _op) {
  * C options.c `illegal_menu_cmd_key` `:8037–8057` (staticfn) — TRUE for NUL,
  * CR/LF/ESC/space, digits, letters other than '@' (C `letter()` counts '@'
  * as a letter; hacklib.c `:62–72`), and default object-class symbols.
- * Both `config_error_add` arms are the named map sink (no JS config-error
- * channel); the `visctrl` text belongs to those messages.
+ * Both `config_error_add` calls remain omitted at these caller sites; the `visctrl` text belongs to those messages.
  */
 function illegal_menu_cmd_key(c) {
     c &= 0xff; // C uchar `:8038`
@@ -1682,7 +1685,7 @@ export function optfn_msg_window(optidx, req, negated, opts, op, iflagsBag) {
             tmp = negated ? 's' : 'f'; // C `:2478`
         } else {
             if (negated) { // C `:2480`
-                bad_negation(allopt_name(optidx), true); // C `:2481` (stub: sink named)
+                bad_negation(allopt_name(optidx), true); // C `:2481` (shared cfgfiles sink)
                 return OPTN_ERR; // C `:2482`
             }
             tmp = lowc(op[0]); // C `:2484 lowc(*op)`
@@ -1695,7 +1698,7 @@ export function optfn_msg_window(optidx, req, negated, opts, op, iflagsBag) {
             iflags.prevmsg_window = tmp; // C `:2491`
             break;
         default:
-            // Named omission (map): config_error_add("Unknown %s parameter '%s'") — no JS config-error sink (file precedent).
+            // Named omission (map): config_error_add("Unknown %s parameter '%s'") — this caller diagnostic is not yet wired.
             retval = OPTN_ERR; // C `:2496`
         }
         return retval; // C `:2499`
@@ -1832,7 +1835,7 @@ export function optfn_menu_objsyms(optidx, req, negated, opts, op, iflagsBag) {
             const i = Number.parseInt(op, 10); // C `:2251` atoi
             if (i >= objsymvals.length) { // C `:2252`
                 // Named omission (map): config_error_add("Illegal %s parameter '%s'",
-                // allopt[optidx].name, op) — no JS config-error sink (file precedent).
+                // allopt[optidx].name, op) — this caller diagnostic is not yet wired.
                 void optidx;
                 return OPTN_ERR; // C `:2255`
             }
@@ -2150,7 +2153,7 @@ export function optfn_whatis_coord(optidx, req, negated, opts, _op, iflagsBag, o
                 iflags.getpos_coords = c; // C `:4722`
             else {
                 // Named omission (map): config_error_add("Unknown %s parameter '%s'")
-                // — no JS config-error sink (file precedent).
+                // — this caller diagnostic is not yet wired.
                 return OPTN_ERR; // C `:4726`
             }
         } else
@@ -2268,7 +2271,7 @@ export function optfn_number_pad(optidx, req, negated, opts, _op, iflagsBag, opt
             if (Number.isNaN(mode) || mode < -1 || mode > 4 // C `:2599`
                 || (mode === 0 && op[0] !== '0')) {
                 // Named omission (map): config_error_add("Illegal %s parameter '%s'",
-                // allopt[optidx].name, op) — no JS config-error sink (file precedent).
+                // allopt[optidx].name, op) — this caller diagnostic is not yet wired.
                 void optidx;
                 return OPTN_ERR; // C `:2602`
             } else if (mode <= 0) { // C `:2603`
@@ -4080,7 +4083,7 @@ export function optfn_versinfo(optidx, req, negated, opts, op) {
         const have_branch = !!(vgb && vgb[0]); // C `:4489–4490`
         const dflt = have_branch ? VI_BRANCH : VI_NUMBER; // C `:4491`
         if (negated) { // C `:4493`
-            bad_negation(optname, true); // C `:4494` (stub: sink named)
+            bad_negation(optname, true); // C `:4494` (shared cfgfiles sink)
             return OPTN_SILENTERR; // C `:4495`
         }
         op = string_for_opt(opts, false); // C `:4497` (reassigns op)
@@ -4131,6 +4134,126 @@ export function warning_opts(opts, optype) {
             : def_warnsyms[i].ch.charCodeAt(0);
     assign_warnings(translate); // C `:7536`
     return true; // C `:7537`
+}
+
+/**
+ * C options.c:2290–2317 — menuinvertmode accepts atoi values 0 through 2.
+ * A missing value is a no-op; invalid values keep the old mode. Negation
+ * is UNUSED in this body (the parser owns the option-level restriction).
+ * The optional bag lets startup use the same body before installing iflags.
+ */
+export function optfn_menuinvertmode(optidx, req, _negated, opts, op, iflagsBag) {
+    const iflags = iflagsBag || game.iflags || (game.iflags = {});
+    if (req === REQ_DO_INIT) { // C :2296–2298
+        return OPTN_OK;
+    }
+    if (req === REQ_DO_SET) { // C :2299–2310
+        if (op !== EMPTY_OPTSTR) {
+            const mode = opt_atoi(op);
+            if (mode < 0 || mode > 2) {
+                config_error_add("Illegal %s parameter '%s'", allopt_name(optidx), op);
+                return OPTN_ERR;
+            }
+            iflags.menuinvertmode = mode;
+        }
+        return OPTN_OK;
+    }
+    if (req === REQ_GET_VAL || req === REQ_GET_CNF_VAL) { // C :2312–2314
+        set_optbuf(opts, String(iflags.menuinvertmode | 0));
+        return OPTN_OK;
+    }
+    return OPTN_OK;
+}
+
+/**
+ * C options.c:2523–2546 — msghistory is environment/config-only. A bare
+ * negation stores zero; negation with a value is rejected. Positive bare
+ * use leaves the unsigned field unchanged. get_val uses C's %u conversion.
+ * opts holds the complete option string; C re-derives op with the env gate.
+ */
+export function optfn_msghistory(optidx, req, negated, opts, _op, iflagsBag, optInitial) {
+    const iflags = iflagsBag || game.iflags || (game.iflags = {});
+    if (req === REQ_DO_INIT) { // C :2527–2529
+        return OPTN_OK;
+    }
+    if (req === REQ_DO_SET) { // C :2530–2540
+        const op = string_for_env_opt(allopt_name(optidx), opts, negated,
+            optInitial ?? game.go?.opt_initial);
+        if ((negated && op === EMPTY_OPTSTR)
+            || (!negated && op !== EMPTY_OPTSTR)) {
+            iflags.msg_history = (negated ? 0 : opt_atoi(op)) >>> 0;
+        } else if (negated) {
+            bad_negation(allopt_name(optidx), true);
+            return OPTN_ERR;
+        }
+        return OPTN_OK;
+    }
+    if (req === REQ_GET_VAL || req === REQ_GET_CNF_VAL) { // C :2542–2544
+        set_optbuf(opts, String(iflags.msg_history >>> 0));
+        return OPTN_OK;
+    }
+    return OPTN_OK;
+}
+
+/**
+ * C options.c:2549–2571 — name uses the environment gate even though
+ * negated is UNUSED. nmcpy owns the PL_NSIZ bound and comma termination.
+ * The JS out buffer for get_val is the same holder used by other optfns.
+ */
+export function optfn_name(optidx, req, _negated, opts, _op, optInitial) {
+    if (req === REQ_DO_INIT) { // C :2553–2555
+        return OPTN_OK;
+    }
+    if (req === REQ_DO_SET) { // C :2556–2565
+        const op = string_for_env_opt(allopt_name(optidx), opts, false,
+            optInitial ?? game.go?.opt_initial);
+        if (op !== EMPTY_OPTSTR) {
+            game.plname = nmcpy(op, PL_NSIZ);
+        } else {
+            return OPTN_ERR;
+        }
+        return OPTN_OK;
+    }
+    if (req === REQ_GET_VAL || req === REQ_GET_CNF_VAL) { // C :2567–2569
+        set_optbuf(opts, String(game.plname ?? ''));
+        return OPTN_OK;
+    }
+    return OPTN_OK;
+}
+
+/**
+ * C options.c:8446–8474 — STATUS_HILITES is compiled in. Only the handler
+ * can reach input, so get_val/do_init/do_set retain the sync optfn contract
+ * and the do_handler arm returns the awaited menu continuation below.
+ * C's empty do_set arm deliberately falls through to the final optn_ok.
+ */
+export function optfn_o_status_hilites(_optidx, req, _negated, opts, _op) {
+    if (req === REQ_DO_INIT) { // C :8453–8455
+        return OPTN_OK;
+    }
+    if (req === REQ_DO_SET) { // C :8456–8457
+    }
+    if (req === REQ_GET_VAL || req === REQ_GET_CNF_VAL) { // C :8458–8463
+        if (opts == null) return OPTN_ERR;
+        set_optbuf(opts, currently_set_val(count_status_hilites()));
+        return OPTN_OK;
+    }
+    if (req === REQ_DO_HANDLER) { // C :8464
+        return optfn_o_status_hilites_handler();
+    }
+    return OPTN_OK;
+}
+
+// C options.c:8464–8472 — do_handler split at the input-bearing callee.
+async function optfn_o_status_hilites_handler() {
+    if (!await status_hilite_menu()) { // C :8465–8466
+        return OPTN_ERR;
+    } else {
+        if (wc2_supported('hilite_status')) { // C :8468–8469
+            preference_update('hilite_status');
+        }
+    }
+    return OPTN_OK;
 }
 
 /* C options.c string_for_env_opt `:6682–6690` (staticfn). */
@@ -4420,10 +4543,10 @@ function rc_do_set_role_family(canonName, optfn, negated, opts, op) {
     return reslt;
 }
 
-export function parseNethackrc(rc) {
+export function parseNethackrc(rc, defaultsInitialized = false) {
     // C cfgfiles.c cnf_line_MSGTYPE → msgtype_parse_add onto gp.plinemsg_types.
-    // Free first so a reused Node process does not keep the previous rc list.
-    msgtype_free();
+    // Standalone parsing resets the list; startup reset it before sysconf.
+    if (!defaultsInitialized) msgtype_free();
     // C read_config_file `:1633` clears dupdetected before the file is read.
     // Startup calls this function, not rcfile(), so the bracket lives here.
     // A reused Node process would otherwise treat the next file's first
@@ -4431,45 +4554,54 @@ export function parseNethackrc(rc) {
     reset_duplicate_opt_detection();
     duplicateOpt = false; // C options.c:502, fresh file
     const result = {
-        name: '', role: -1, race: -1, gender: -1, align: -1,
-        flags: {}, iflags: {},
+        name: defaultsInitialized ? (game.plname || '') : '',
+        role: defaultsInitialized ? (get_cnf_role_opt(OPT_ROLE) || -1) : -1,
+        race: defaultsInitialized ? (get_cnf_role_opt(OPT_RACE) || -1) : -1,
+        gender: defaultsInitialized ? (get_cnf_role_opt(OPT_GENDER) || -1) : -1,
+        align: defaultsInitialized ? (get_cnf_role_opt(OPT_ALIGNMENT) || -1) : -1,
+        flags: defaultsInitialized ? game.flags : {},
+        iflags: defaultsInitialized ? game.iflags : {},
         // C optlist.h NHOPTB accessiblemsg addr &a11y.accessiblemsg (D-1218);
         // mention_map &a11y.glyph_updates (D-1219); spot_monsters
         // &a11y.mon_notices (D-1235); mon_movement &a11y.mon_movement
         // (D-1236).
-        a11y: {},
+        a11y: defaultsInitialized ? (game.a11y || {}) : {},
+        symset: defaultsInitialized ? game.symset : undefined,
         // C: cfgfiles.c BINDINGS → parsebindings → Cmd.cmdbinds overlays
-        binds: new Map(),
+        binds: defaultsInitialized ? (game.Cmd?.binds || new Map()) : new Map(),
     };
-    // C options.c `:7426–7430` optfn(do_init) pass before the rc file.
-    optfn_menu_objsyms(allopt_idx('menu_objsyms'), REQ_DO_INIT, false, '', EMPTY_OPTSTR, result.iflags);
-    // C allopt_array_init `:7428` optfn(do_init). The flags object built in
-    // jsmain replaces game.flags, so the mode is also stored on the rc result.
-    optfn_sortvanquished(allopt_idx('sortvanquished'), REQ_DO_INIT, false, '', EMPTY_OPTSTR);
-    result.flags.vanq_sortmode = game.flags.vanq_sortmode;
-    // C allopt_array_init `:7428` optfn_sortdiscoveries do_init stores 'o'
-    // on the rc flags bag (jsmain replaces game.flags).
-    optfn_sortdiscoveries(
-        allopt_idx('sortdiscoveries'), REQ_DO_INIT, false, '', EMPTY_OPTSTR, result.flags,
-    );
-    // C allopt_array_init `:7428` optfn(do_init). soundlib's init is optn_ok.
-    optfn_soundlib(allopt_idx('soundlib'), REQ_DO_INIT, false, '', EMPTY_OPTSTR);
-    // C allopt_array_init `:7428` optfn(do_init). petattr's init is optn_ok.
-    optfn_petattr(allopt_idx('petattr'), REQ_DO_INIT, false, '', EMPTY_OPTSTR);
-    // C allopt_array_init `:7428` do_init. gender/race/role/alignment
-    // inits are optn_ok (no flag write).
-    optfn_gender(allopt_idx('gender'), REQ_DO_INIT, false, '', EMPTY_OPTSTR);
-    optfn_race(allopt_idx('race'), REQ_DO_INIT, false, '', EMPTY_OPTSTR);
-    optfn_role(allopt_idx('role'), REQ_DO_INIT, false, '', EMPTY_OPTSTR);
-    optfn_alignment(allopt_idx('alignment'), REQ_DO_INIT, false, '', EMPTY_OPTSTR);
-    // C allopt_array_init `:7428` do_init. These five return optn_ok and
-    // do not write the initoptions defaults (those stay stand-ins on get_val).
-    optfn_boulder(allopt_idx('boulder'), REQ_DO_INIT, false, '', EMPTY_OPTSTR);
-    optfn_pickup_types(allopt_idx('pickup_types'), REQ_DO_INIT, false, '', EMPTY_OPTSTR, result.flags);
-    optfn_runmode(allopt_idx('runmode'), REQ_DO_INIT, false, '', EMPTY_OPTSTR, result.flags);
-    optfn_scores(allopt_idx('scores'), REQ_DO_INIT, false, '', EMPTY_OPTSTR, result.flags);
-    optfn_sortloot(allopt_idx('sortloot'), REQ_DO_INIT, false, '', EMPTY_OPTSTR, result.flags);
-    result.iflags.getpos_coords = GPCOORDS_NONE; // C initoptions_init `:7190`
+    // Startup already ran allopt_array_init before sysconf; direct parser
+    // users retain the standalone defaults. C never reinitializes at rcfile.
+    if (!defaultsInitialized) {
+        // C options.c `:7426–7430` optfn(do_init) pass before the rc file.
+        optfn_menu_objsyms(allopt_idx('menu_objsyms'), REQ_DO_INIT, false, '', EMPTY_OPTSTR, result.iflags);
+        // Standalone parser callers receive their own result bags.
+        optfn_sortvanquished(allopt_idx('sortvanquished'), REQ_DO_INIT, false, '', EMPTY_OPTSTR);
+        result.flags.vanq_sortmode = game.flags.vanq_sortmode;
+        // C allopt_array_init `:7428` optfn_sortdiscoveries do_init stores 'o'
+        // on the standalone rc flags bag.
+        optfn_sortdiscoveries(
+            allopt_idx('sortdiscoveries'), REQ_DO_INIT, false, '', EMPTY_OPTSTR, result.flags,
+        );
+        // C allopt_array_init `:7428` optfn(do_init). soundlib's init is optn_ok.
+        optfn_soundlib(allopt_idx('soundlib'), REQ_DO_INIT, false, '', EMPTY_OPTSTR);
+        // C allopt_array_init `:7428` optfn(do_init). petattr's init is optn_ok.
+        optfn_petattr(allopt_idx('petattr'), REQ_DO_INIT, false, '', EMPTY_OPTSTR);
+        // C allopt_array_init `:7428` do_init. gender/race/role/alignment
+        // inits are optn_ok (no flag write).
+        optfn_gender(allopt_idx('gender'), REQ_DO_INIT, false, '', EMPTY_OPTSTR);
+        optfn_race(allopt_idx('race'), REQ_DO_INIT, false, '', EMPTY_OPTSTR);
+        optfn_role(allopt_idx('role'), REQ_DO_INIT, false, '', EMPTY_OPTSTR);
+        optfn_alignment(allopt_idx('alignment'), REQ_DO_INIT, false, '', EMPTY_OPTSTR);
+        // C allopt_array_init `:7428` do_init. These five return optn_ok and
+        // do not write the initoptions defaults (those stay stand-ins on get_val).
+        optfn_boulder(allopt_idx('boulder'), REQ_DO_INIT, false, '', EMPTY_OPTSTR);
+        optfn_pickup_types(allopt_idx('pickup_types'), REQ_DO_INIT, false, '', EMPTY_OPTSTR, result.flags);
+        optfn_runmode(allopt_idx('runmode'), REQ_DO_INIT, false, '', EMPTY_OPTSTR, result.flags);
+        optfn_scores(allopt_idx('scores'), REQ_DO_INIT, false, '', EMPTY_OPTSTR, result.flags);
+        optfn_sortloot(allopt_idx('sortloot'), REQ_DO_INIT, false, '', EMPTY_OPTSTR, result.flags);
+        result.iflags.getpos_coords = GPCOORDS_NONE; // C initoptions_init `:7190`
+    }
     if (!rc) return result;
 
     for (const rawLine of rc.split('\n')) {
@@ -4532,7 +4664,12 @@ export function parseNethackrc(rc) {
                 const key = stripped.slice(0, colonIdx).trim().toLowerCase();
                 const val = stripped.slice(colonIdx + 1).trim();
 
-                if (key === 'name') result.name = val;
+                if (key === 'name') {
+                    if (negated) continue; // C :626 — optlist.h:124 negateok-No
+                    // C :2560–2563 — use the environment gate and bounded nmcpy.
+                    if (optfn_name(allopt_idx('name'), REQ_DO_SET, negated,
+                        stripped, val, true) === OPTN_OK) result.name = game.plname;
+                }
                 else if (key === 'role') {
                     // C optfn_role do_set (opt_initial). result.role stays the
                     // raw spelling so init_role_flags_from_rc still str2role's it.
@@ -4671,13 +4808,13 @@ export function parseNethackrc(rc) {
                     );
                 }
                 else if (key === 'menuinvertmode') {
-                    // C options.c optfn_menuinvertmode do_set: atoi(op),
-                    // 0-2 else config error (prior value kept).
-                    if (negated) continue;
-                    const mode = Number.parseInt(val, 10);
-                    if (mode === 0 || mode === 1 || mode === 2) {
-                        result.iflags.menuinvertmode = mode;
-                    }
+                    if (negated) continue; // C :626 — optlist.h:485 negateok-No
+                    optfn_menuinvertmode(allopt_idx('menuinvertmode'), REQ_DO_SET,
+                        negated, stripped, val, result.iflags);
+                }
+                else if (key === 'msghistory') {
+                    optfn_msghistory(allopt_idx('msghistory'), REQ_DO_SET,
+                        negated, stripped, val, result.iflags, true);
                 }
                 else if (key === 'disclose') {
                     // C optfn_disclose do_set (opt_initial) on result.flags.
@@ -4996,6 +5133,10 @@ export function parseNethackrc(rc) {
                     optfn_runmode(
                         allopt_idx('runmode'), REQ_DO_SET, negated, stripped, EMPTY_OPTSTR, result.flags,
                     );
+                }
+                else if (lname === 'msghistory') {
+                    optfn_msghistory(allopt_idx('msghistory'), REQ_DO_SET,
+                        negated, stripped, EMPTY_OPTSTR, result.iflags, true);
                 }
                 else if (lname === 'pickup_types') {
                     if (negated) continue; // C `:626` negateok-No
@@ -5599,7 +5740,7 @@ export function free_menu_coloring() {
  * validated callers only (test_regex_pattern ran first); recompile can
  * still fail, then FALSE. C `:587` static re_error kept; the fail arm
  * describes via the live regex_error_desc, frees first (OOM ordering),
- * then the config_error_add call (no-op sink, msgtype_add precedent).
+ * then the config_error_add call (shared cfgfiles.js sink).
  * C `:590` guards NULL only: an empty pattern compiles
  * (match-everything), reachable from add_menu_coloring's
  * `MENUCOLOR==color` / `""` arms.
@@ -7138,10 +7279,6 @@ export function optfn_fruit(optidx, req, negated, opts, _op, optInitial) {
         const valOptional = negated || !optInit; // C `:1717`
         const optstr = typeof opts === 'string' ? opts : String(opts ?? '');
         let op = string_for_opt(optstr, valOptional); // C `:1717`
-        // C string_for_opt `:6678` — JS helper omits the sink; this caller
-        // still fires it when the value is required.
-        if (!valOptional && op === EMPTY_OPTSTR)
-            config_error_add("Missing parameter for '%s'", optstr);
         if (negated) { // C `:1718`
             if (op !== EMPTY_OPTSTR) { // C `:1719`
                 bad_negation('fruit', true); // C `:1720`
@@ -7226,11 +7363,6 @@ export function optfn_petattr(optidx, req, negated, opts, _op, optInitial) {
         /* WINCAP2 petattr:string */
         const optstr = typeof opts === 'string' ? opts : String(opts ?? '');
         const op = string_for_opt(optstr, negated); // C `:3151` val_optional = negated
-        // C string_for_opt `:6675–6676` when the value is required. The
-        // helper omits the sink; retval stays optn_ok like C (the error
-        // does not select the optn_err arms below).
-        if (!negated && op === EMPTY_OPTSTR)
-            config_error_add("Missing parameter for '%s'", optstr);
         if (op !== EMPTY_OPTSTR && negated) { // C `:3152–3155`
             bad_negation(allopt_name(optidx), true);
             retval = OPTN_ERR;
@@ -8511,6 +8643,12 @@ export function initoptions_init() {
     if (!game.iflags) game.iflags = {};
     const flags = game.flags;
     const iflags = game.iflags;
+    // Each fresh game represents C process startup: module-static lists
+    // and role-option strings must start empty before system config.
+    if (!game.go.optionsArrayInited) {
+        msgtype_free();
+        for (const values of roleoptvals) values.fill(null);
+    }
     game.go.opt_phase = BUILTIN_OPT; // C `:7127`
     /* C `:7129` sf_init() — named omit, see doc above. */
     allopt_array_init(); // C `:7130`
@@ -8567,7 +8705,7 @@ export function initoptions_init() {
     iflags.wc_align_message = ALIGN_TOP; // C `:7260`
     iflags.wc_align_status = ALIGN_BOTTOM; // C `:7261`
     iflags.wc2_statuslines = 2; // C `:7263`
-    iflags.wc2_petattr = ATR_INVERSE; // C `:7264`
+    iflags.wc2_petattr = MC_ATR_INVERSE; // C `:7264` wintype.h attr (7), not tty bitmask
     iflags.wc2_windowborders = 2; // C `:7266` 'Auto'
     iflags.menuinvertmode = 1; // C `:7279`
     const slime = objectNames.indexOf('SLIME_MOLD');
@@ -8578,11 +8716,14 @@ export function initoptions_init() {
     // with "fruit" (D-1511).
     game.pl_fruit = nmcpy('slime mold', PL_FSIZ);
     assure_syscf_file(); // C `:7289`
+    if (game.program_state?.gameover) return; // C fatal open never returns
     config_error_init(true, SYSCF_FILE, false); // C `:7290`
     game.go.opt_phase = SYSCF_OPT; // C `:7293`
     if (!read_config_file(SYSCF_FILE, SET_IN_SYSCONF)) { // C `:7294`
-        if (config_error_done() && !iflags.initoptions_noterminate) // C `:7295`
+        if (config_error_done() && !iflags.initoptions_noterminate) { // C `:7295`
             nh_terminate(EXIT_FAILURE); // C `:7296`
+            return; // C exit() does not reach the second config_error_done.
+        }
     }
     config_error_done(); // C `:7298`
 }
@@ -8598,8 +8739,10 @@ export function initoptions_init() {
  * are wired; no named omits remain in this body.
  */
 export function initoptions() {
-    if ((game.go?.opt_phase | 0) !== BUILTIN_OPT) // C `:7087–7088`
+    if ((game.go?.opt_phase | 0) !== BUILTIN_OPT) { // C `:7087–7088`
         initoptions_init();
+        if (game.program_state?.gameover) return; // propagate C noreturn
+    }
     /* C `:7090–7108` SYSCF (config.h:233) + SYSCF_FILE (config.h:234)
        both live on this build. */
     assure_syscf_file(); // C `:7093`
@@ -8999,7 +9142,7 @@ async function doset_compound_via_getlin(opt) {
             reslt = OPTN_OK; // C `:8439` unconditional
         } else if (name === 'status highlight rules') {
             // C optfn_o_status_hilites do_handler `:8464–8471` status_hilite_menu (doset precedent); TRUE → optn_ok.
-            reslt = (await status_hilite_menu()) ? OPTN_OK : OPTN_ERR;
+            reslt = await optfn_o_status_hilites(allopt_idx(name), REQ_DO_HANDLER, false, null, EMPTY_OPTSTR);
         } else if (name === 'symset') {
             // Named omission: handler_symset `:6320–6328` → symbols.c
             // do_symset (no live JS port; symset-file IO under Rule #2).
@@ -9100,7 +9243,7 @@ function simple_opt_get_val(opt) {
         return currently_set_val(count_menucolors());
     }
     if (name === 'status highlight rules') {
-        return currently_set_val(game.iflags?.status_hilite_count ?? 0);
+        return doset_compopt_get_val(optfn_o_status_hilites, name);
     }
     if (name === 'status condition fields') {
         return currently_set_val(count_cond()); // C optfn_o_status_cond get_val `:8427–8432`
@@ -9924,7 +10067,7 @@ const OPT_BOOL_VALOK = new Set(['menucolors']);
  * the two C pline arms (idlecheckpoint notice, toggled message); the body
  * otherwise runs synchronously in C order. Word parse reuses
  * optfn_boolean_word (same true/yes/on/1 : false/no/off/0 mapping);
- * config_error_add is the no-op map sink (return values kept).
+ * config_error_add formats/reports via cfgfiles.js (return values kept).
  * @param {number} optidx C optidx (allopt row index)
  * @param {number} req REQ_DO_INIT / REQ_DO_SET / REQ_GET_VAL / REQ_GET_CNF_VAL
  * @param {boolean} negated
@@ -10534,7 +10677,7 @@ export async function doset() {
         { name: 'hilite_status', get_val: () => doset_compopt_get_val(optfn_hilite_status, 'hilite_status') },
         { name: 'menu_headings', get_val: () => doset_compopt_get_val(optfn_menu_headings, 'menu_headings'), handler: true },
         { name: 'menu_objsyms', get_val: () => doset_compopt_get_val(optfn_menu_objsyms, 'menu_objsyms'), handler: true },
-        { name: 'menuinvertmode', val: '1' },
+        { name: 'menuinvertmode', get_val: () => doset_compopt_get_val(optfn_menuinvertmode, 'menuinvertmode') },
         { name: 'menustyle', get_val: () => doset_compopt_get_val(optfn_menustyle, 'menustyle'), handler: true },
         { name: 'mouse_support', get_val: () => doset_compopt_get_val(optfn_mouse_support, 'mouse_support') },
         { name: 'msg_window', get_val: () => doset_compopt_get_val(optfn_msg_window, 'msg_window'), handler: true },
@@ -10584,11 +10727,11 @@ export async function doset() {
         { name: 'menu colors', val: currently_set_val(count_menucolors()) },
         { name: 'message types', val: currently_set_val(msgtype_count()) },
         { name: 'status condition fields', val: currently_set_val(count_cond()) }, // C optfn_o_status_cond get_val `:8427–8432`
-        { name: 'status highlight rules', val: currently_set_val(count_status_hilites()) }, // C options.c:8461 get_val (n_currently_set)
+        { name: 'status highlight rules', get_val: () => doset_compopt_get_val(optfn_o_status_hilites, 'status highlight rules') }, // C options.c:8461 get_val (n_currently_set)
     ]) {
         // C `:8892` doset_add_menu (OthrOpt; all 7 rows set_in_game so
         // indexoffset is nonzero — optlist.h NHOPTO rows are selectable).
-        raw.push(doset_add_menu(t.name, t.val, 1, { kind: 'othr' }));
+        raw.push(doset_add_menu(t.name, t.get_val ? t.get_val() : t.val, 1, { kind: 'othr' }));
     }
 
     if (!game.go) game.go = {};
@@ -10657,16 +10800,7 @@ export async function doset() {
         } else if (name === 'status condition fields') {
             if (await cond_menu()) opt_set_in_config[PFX_COND_IDX] = true;
         } else if (name === 'status highlight rules') {
-            // C `:8465–8470`. The menu returns TRUE (`botl.c:4577`), so
-            // the optn_err arm is not taken. preference_update runs only
-            // when the window port advertises hilite_status; the contest
-            // tty's wincap2 is 0, so wc2_supported is false.
-            if (await status_hilite_menu()) {
-                if (wc2_supported('hilite_status')) {
-                    // Named omission: preference_update("hilite_status")
-                    // (options.c:8469). No JS body.
-                }
-            }
+            await optfn_o_status_hilites(allopt_idx(name), REQ_DO_HANDLER, false, null, EMPTY_OPTSTR);
         }
     }
     // C options.c doset `:8973` reset_needed_visuals after picks.
@@ -10894,7 +11028,7 @@ export function pfxfn_font(optidx, req, negated, opts, op) {
                     allopt_name(optidx), opts);
                 return OPTN_ERR; // C `:5078`
             }
-            if (duplicateOpt) complain_about_duplicate(optidx); // C `:5080–5081` (sink: botl.js no-op)
+            if (duplicateOpt) complain_about_duplicate(optidx); // C `:5080–5081` (shared cfgfiles sink)
             if (opttype > 0 && !negated // C `:5082–5083`
                 && (op = string_for_opt(opts, false)) !== EMPTY_OPTSTR) {
                 switch (opttype) { // C `:5084`
@@ -10927,7 +11061,7 @@ export function pfxfn_font(optidx, req, negated, opts, op) {
             // C `:5111–5113` set_font_name is MACOS9-only (not this build).
             return OPTN_OK; // C `:5114`
         } else if (negated) { // C `:5115`
-            bad_negation(allopt_name(optidx), true); // C `:5116` (stub: sink named)
+            bad_negation(allopt_name(optidx), true); // C `:5116` (shared cfgfiles sink)
             return OPTN_ERR; // C `:5117`
         }
         return OPTN_OK; // C `:5119`
@@ -11059,7 +11193,7 @@ export async function optfn_suppress_alert(optidx, req, negated, opts, op) {
     }
     if (req === REQ_DO_SET) { // C `:4142`
         if (negated) { // C `:4143`
-            bad_negation(allopt_name(optidx), false); // C `:4144` (stub: sink named)
+            bad_negation(allopt_name(optidx), false); // C `:4144` (shared cfgfiles sink)
             return OPTN_ERR; // C `:4145`
         } else if (op !== EMPTY_OPTSTR) { // C `:4146`
             await feature_alert_opts(op, allopt_name(optidx)); // C `:4147` (void)
@@ -11101,7 +11235,7 @@ const allopt = [
     // optlist.h:120 NHOPTC(playmode)
     { name: 'playmode', opttyp: CompOpt, idx: 1, setwhere: SET_GAMEVIEW, initval: false, addr: null, optfn: optfn_playmode },
     // optlist.h:123 NHOPTC(name)
-    { name: 'name', opttyp: CompOpt, idx: 2, setwhere: SET_GAMEVIEW, initval: false, addr: null, optfn: null },
+    { name: 'name', opttyp: CompOpt, idx: 2, setwhere: SET_GAMEVIEW, initval: false, addr: null, optfn: optfn_name },
     // optlist.h:126 NHOPTC(role)
     { name: 'role', opttyp: CompOpt, idx: 3, setwhere: SET_GAMEVIEW, initval: false, addr: null, optfn: optfn_role },
     // optlist.h:129 NHOPTC(race)
@@ -11315,7 +11449,7 @@ const allopt = [
     // optlist.h:482 NHOPTO("menu colors")
     { name: 'menu colors', opttyp: OthrOpt, idx: 108, setwhere: SET_IN_GAME, initval: true, addr: null, optfn: null },
     // optlist.h:484 NHOPTC(menuinvertmode)
-    { name: 'menuinvertmode', opttyp: CompOpt, idx: 109, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: null },
+    { name: 'menuinvertmode', opttyp: CompOpt, idx: 109, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: optfn_menuinvertmode },
     // optlist.h:487 NHOPTC(menustyle)
     { name: 'menustyle', opttyp: CompOpt, idx: 110, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: optfn_menustyle },
     // optlist.h:490 NHOPTO("message types") — has_handler On
@@ -11333,7 +11467,7 @@ const allopt = [
     // optlist.h:509 NHOPTC(msg_window)
     { name: 'msg_window', opttyp: CompOpt, idx: 117, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: optfn_msg_window },
     // optlist.h:516 NHOPTC(msghistory)
-    { name: 'msghistory', opttyp: CompOpt, idx: 118, setwhere: SET_GAMEVIEW, initval: false, addr: null, optfn: null },
+    { name: 'msghistory', opttyp: CompOpt, idx: 118, setwhere: SET_GAMEVIEW, initval: false, addr: null, optfn: optfn_msghistory },
     // optlist.h:521 NHOPTB(news)
     { name: 'news', opttyp: BoolOpt, idx: 119, setwhere: SET_IN_CONFIG, initval: false, addr: { obj: 'flags', key: 'news' }, optfn: null },
     // optlist.h:529 NHOPTB(nudist)
@@ -11447,7 +11581,7 @@ const allopt = [
     // optlist.h:724 NHOPTC(statushilites)
     { name: 'statushilites', opttyp: CompOpt, idx: 174, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: optfn_statushilites },
     // optlist.h:727 NHOPTO("status highlight rules")
-    { name: 'status highlight rules', opttyp: OthrOpt, idx: 175, setwhere: SET_IN_GAME, initval: true, addr: null, optfn: null },
+    { name: 'status highlight rules', opttyp: OthrOpt, idx: 175, setwhere: SET_IN_GAME, initval: true, addr: null, optfn: optfn_o_status_hilites },
     // optlist.h:734 NHOPTC(statuslines)
     { name: 'statuslines', opttyp: CompOpt, idx: 176, setwhere: SET_IN_GAME, initval: false, addr: null, optfn: optfn_statuslines },
     // optlist.h:740 NHOPTC(suppress_alert)
@@ -11665,8 +11799,8 @@ export function match_optname(userString, optName, minLength, valAllowed) {
 
 /* C options.c `string_for_opt` `:6664–6680` (staticfn) — value tail after
  * the first ':' (or '=' when it comes first); EMPTY_OPTSTR stands in for C's
- * `empty_optstr`. The `:6675–6677` "Missing parameter" arm calls the live
- * config_error_add (botl.js no-op sink — text discarded there, not here). */
+ * `empty_optstr`. The `:6675–6677` "Missing parameter" arm calls the shared
+ * cfgfiles.js formatter and config_erradd sink. */
 function string_for_opt(opts, valOptional) {
     let colon = opts.indexOf(':'); // C `:6669`
     const equals = opts.indexOf('=');
@@ -11678,11 +11812,13 @@ function string_for_opt(opts, valOptional) {
     return opts.slice(colon + 1); // C `:6679`
 }
 
-/* C options.c `bad_negation` `:6693–6700` (staticfn) — body is one
+/* C options.c `bad_negation` `:6692–6697` (staticfn) — body is one
  * config_error_add ("The %s option may not %sbe negated.", optname,
- * with_parameter ? "both have a value and " : ""); named omission (map). */
-function bad_negation(_optname, _withParameter) {
-    // Named omission (map): config_error_add sink.
+ * with_parameter ? "both have a value and " : ""). */
+function bad_negation(optname, withParameter) {
+    // C options.c:6695–6696 — the shared live configuration-error sink.
+    config_error_add('The %s option may not %sbe negated.', optname,
+        withParameter ? 'both have a value and ' : '');
 }
 
 /* C options.c `determine_ambiguities` `:6703–6737` (staticfn) — pairwise
@@ -11747,11 +11883,12 @@ export function disregard_this_option(optidx) {
 /* C options.c allopt_array_init `:7404–7433`. One-shot: copy is the live
  * table (no separate allopt_init image), then initval writes, ambiguity
  * scan, heed, and every optfn(do_init). Caller options.c:7130 is
- * initoptions_init (live, same file); do not call from the partial
- * optfn do_init list at `:2187`. */
-let optionsArrayInited = false;
+ * initoptions_init (live, same file and wired from startup). Standalone
+ * parseNethackrc retains its partial do_init list. */
 export function allopt_array_init() {
-    if (optionsArrayInited) return; // C `:7410`
+    // A fresh NethackGame models a fresh C process, including this static.
+    if (!game.go) game.go = {};
+    if (game.go.optionsArrayInited) return; // C `:7410`
     determine_ambiguities(); // C `:7412` (memcpy of allopt_init is the live table)
     for (let i = 0; allopt[i] && allopt[i].name; i++) { // C `:7413–7416`
         const addr = allopt[i].addr;
@@ -11765,7 +11902,7 @@ export function allopt_array_init() {
         if (allopt[i].optfn)
             allopt[i].optfn(i, REQ_DO_INIT, false, EMPTY_OPTSTR, EMPTY_OPTSTR);
     }
-    optionsArrayInited = true; // C `:7431`
+    game.go.optionsArrayInited = true; // C `:7431`
 }
 
 /* C options.c `duplicate_opt_detection` `:6782–6788` (staticfn) — only
@@ -11784,7 +11921,7 @@ function duplicate_opt_detection(optidx) {
 
 /* C options.c `complain_about_duplicate` `:6789–6809` (staticfn) — the
  * MACOS9 early return (`:6794–6798`) is compiled out on unix; the body is
- * one config_error_add call (live botl.js no-op sink). using_alias is
+ * one config_error_add call (shared cfgfiles.js sink). using_alias is
  * usingAliasOpt; allopt[optidx].alias reads OPT_ALIAS (C optlist.h `:45`,
  * NoAlias rows never take the arm — C only sets using_alias on an alias
  * match). */
@@ -11807,7 +11944,7 @@ function complain_about_duplicate(optidx) {
  * exactly like C with a null optfn. Live effects: comma recursion, negation folding,
  * duplicate detection state, opt_set_in_config marking (fires once an optfn
  * ships), and the S_ → parsesymbols/check_gold_symbol fallback (both live).
- * Named omissions (map): config_error_add sink (6 sites), switch_symbols
+ * Named omissions (map): six config_error_add caller diagnostics, switch_symbols
  * application. disregard/heed setters are live (`heed_all_options` and
  * siblings); rows still start unset (C FALSE) until one of them runs.
  * Sync like C (no prompts in-body).

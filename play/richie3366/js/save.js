@@ -8,6 +8,7 @@
 // Level blob codec: js/lev_json.js (shared with bones.js).
 
 import { game } from './gstate.js';
+import { set_playmode } from './options.js';
 import { getnow, time_from_yyyymmddhhmmss, yyyymmddhhmmss } from './calendar.js';
 import { timet_delta } from './allmain.js';
 import { vfsReadFile, vfsWriteFile, vfsDeleteFile } from './storage.js';
@@ -800,7 +801,23 @@ export async function try_restore_save() {
     }
 
     game.plname = payload.plname || game.plname;
-    game.flags = { ...(game.flags || {}), ...(payload.flags || {}) };
+    // C restore.c:587–595 — a startup wizard request overrides saved modes;
+    // saved special modes must pass authorization again. Explore requested
+    // for a normal save stays deferred until the save has been removed.
+    const newgameflags = game.flags || {};
+    game.flags = { ...newgameflags, ...(payload.flags || {}) };
+    const restoredWizard = !!(game.flags.debug || game.flags.wizard);
+    const restoredExplore = !!(game.flags.explore || game.flags.discover);
+    game.iflags.deferred_X = !!(newgameflags.explore && !restoredExplore);
+    game.wizard = restoredWizard;
+    game.discover = restoredExplore;
+    if (newgameflags.debug) {
+        game.flags.debug = game.flags.wizard = game.wizard = true;
+        game.flags.explore = game.flags.discover = game.discover = false;
+        game.iflags.deferred_X = false;
+    } else if (restoredWizard || restoredExplore) {
+        set_playmode();
+    }
     // C: iflags (perm_invent, graphics) stay from nethackrc; not in save.
     game.context = { ...(payload.context || {}) };
     game.moves = payload.moves | 0;
