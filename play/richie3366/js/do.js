@@ -97,7 +97,7 @@ import {
 } from './dungeon.js';
 import { record_achievement } from './insight.js';
 import { livelog_printf } from './pline.js';
-import { com_pager, convert_line } from './questpgr.js';
+import { com_pager, deliver_by_pline } from './questpgr.js';
 import { keepdogs, losedogs, mon_catchup_elapsed_time, update_mlstmv, discard_migrations } from './dog.js';
 import { save_track, rest_track } from './track.js';
 import { m_at, mnexto, m_into_limbo, hide_monst, hideunder, restore_cham, wake_nearto, dist2, kill_genocided_monsters, ceiling_hider, dmonsfree, healmon } from './mon.js';
@@ -2275,10 +2275,7 @@ export async function deliver_splev_message() {
     const msg = game.lev_message;
     if (!msg) return;
     game.lev_message = null;
-    // C questpgr.c deliver_by_pline — convert_line (%d deity) then pline("%s")
-    for (const line of String(msg).split('\n')) {
-        if (line) await pline(convert_line(line));
-    }
+    await deliver_by_pline(msg);
 }
 
 /**

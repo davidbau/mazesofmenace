@@ -491,13 +491,18 @@ function get_dgn_align(entry) {
     return a;
 }
 
+// C ref: dungeon.c correct_branch_type `:439–454` — TBR→BR map in C
+// order; default impossible-then-BR_STAIR. `void impossible`: started
+// not awaited so this stays sync (In_W_tower `:1284` precedent).
 function correct_branch_type(tbr) {
     switch (tbr.type) {
         case TBR_STAIR: return BR_STAIR;
         case TBR_NO_UP: return tbr.up ? BR_NO_END1 : BR_NO_END2;
         case TBR_NO_DOWN: return tbr.up ? BR_NO_END2 : BR_NO_END1;
         case TBR_PORTAL: return BR_PORTAL;
-        default: return BR_STAIR;
+        default:
+            void impossible('correct_branch_type: unknown branch type');
+            return BR_STAIR;
     }
 }
 

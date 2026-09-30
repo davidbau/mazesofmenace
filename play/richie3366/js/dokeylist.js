@@ -10,8 +10,8 @@
 // `reset_commands` (D-2861), `cmdbinds_live` uses `_layoutSlots` for
 // number_pad, phone, swap_yz, pcHack, and the rest_on_space clone.
 // `keylist_putcmds` reads that live table (`cmdbind_get`) and
-// `game.Cmd._bindParam` (set by `bind_key`). Named omission: rc
-// `parsebindings` still strips `(param)` before the overlay is stored.
+// `game.Cmd._bindParam` (set by `bind_key`; rc `parsebindings` stores it
+// live too via overlay_bind_key, cut from the overlay name like C).
 // rhack movement still walks letter keys rather than the slot table.
 
 import {

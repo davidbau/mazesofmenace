@@ -189,7 +189,7 @@ import {
     objectNames, objectNameStrs, objects,
     MAXOCLASSES, def_oc_syms, def_char_to_objclass, VENOM_CLASS,
 } from './objects.js';
-import { EXTCMDLIST, INTERNALCMD } from './generated/extcmdlist_data.js';
+import { EXTCMDLIST, INTERNALCMD, CMD_PARAM } from './generated/extcmdlist_data.js';
 import { LOADSYMS, SYM_CONTROL } from './generated/glyphsyms_data.js';
 import { COLORTABLE } from './generated/colortable_data.js';
 import { dupstr } from './dungeon.js';
@@ -211,8 +211,9 @@ import { vision_recalc } from './vision.js';
 import {
     get_changed_key_binds, handler_rebind_keys, count_bind_keys,
     reset_commands, update_rest_on_space, handler_change_autocompletions,
+    bind_mousebtn, bind_specialkey,
 } from './cmd.js';
-import { cmd_from_func, cmdname_from_func, visctrl } from './dokeylist.js';
+import { cmd_from_func, cmdname_from_func, visctrl, bind_param_set, bind_param_clear } from './dokeylist.js';
 import {
     Is_rogue_level,
     ROLE_NONE, ROLE_RANDOM, PL_NSIZ,
@@ -687,22 +688,30 @@ function msgtype_count() {
 
 /**
  * C ref: options.c msgtype_parse_add `:7843–7866` — sscanf
- * `%10s \"%255[^\"]\"` then str_start_is on msgtype_names.
+ * `%10s \"%255[^\"]\"` then str_start_is on msgtype_names, whole body in C order
+ * (the config_error_add arms are the no-op sink, msgtype_add `:7747` precedent).
  */
 export function msgtype_parse_add(str) {
-    const m = String(str ?? '').match(/^\s*(\S{1,10})\s+"([^"]{0,255})"/);
-    if (!m) return false;
-    const token = m[1];
-    const pattern = m[2];
-    let typ = -1;
-    for (let i = 0; i < msgtype_names.length; i++) {
-        if (str_start_is(msgtype_names[i].name, token, true)) {
-            typ = msgtype_names[i].msgtyp;
-            break;
+    // C `:7848` sscanf == 2: %10s skips leading space, takes to 10 non-space;
+    // the format space skips separator space; %255[^"] needs 1+ non-quote.
+    const m = String(str ?? '').match(/^\s*(\S{1,10})\s+"([^"]{1,255})"/);
+    if (m) {
+        const token = m[1]; // C `:7845` msgtype[11] via %10s
+        const pattern = m[2]; // C `:7844` pattern[256] via %255[^"]
+        let typ = -1; // C `:7849`
+        for (let i = 0; i < msgtype_names.length; i++) { // C `:7852` SIZE
+            if (str_start_is(msgtype_names[i].name, token, true)) { // C `:7853`
+                typ = msgtype_names[i].msgtyp; // C `:7854`
+                break; // C `:7855`
+            }
         }
+        if (typ !== -1) // C `:7857`
+            return msgtype_add(typ, pattern); // C `:7858`
+        config_error_add("Unknown message type '%s'", token); // C `:7860`
+    } else {
+        config_error_add('Malformed MSGTYPE'); // C `:7862`
     }
-    if (typ === -1) return false;
-    return msgtype_add(typ, pattern);
+    return false; // C `:7864` FALSE
 }
 
 /**
@@ -719,6 +728,21 @@ let configfile = CONTEST_RECORDER_CONFIGFILE;
 
 export function get_configfile() {
     return configfile;
+}
+
+/**
+ * C ref: cfgfiles.c default_configfile `:125–139` / get_default_configfile
+ * `:148–152`. Contest is UNIX → ".nethackrc" (`:128`); the MACOS9/BEOS/
+ * MSDOS/WIN32 CONFIG_FILE / NetHack.cnf arms are compiled out.
+ * C callers: files.c reveal_paths `:3369` (unix arm; unported — named),
+ * `:3387` (__APPLE__-gated; named), `:3398`/`:3400` (!UNIX, compiled
+ * out); cfgfiles.c fopen_config_file `:280`/`:284` (MICRO/MACOS9/BEOS/
+ * WIN32, compiled out — D-3117). JS fopen_config_file already inlines
+ * the UNIX literal (cfgfiles.js:456–460); not rewired.
+ * @returns {string}
+ */
+export function get_default_configfile() {
+    return '.nethackrc'; // C `:128` UNIX
 }
 
 export function set_configfile_name(fname) {
@@ -914,55 +938,131 @@ export function txt2key(txt) {
 }
 
 /**
- * C ref: options.c parsebindings — after BIND=/BINDINGS= prefix stripped.
- * Fills outMap: keyCode → command name (lowercase). "nothing" deletes.
- * Named omissions: mouse1/mouse2; menu-cmd aliases; CMD_PARAM (...);
- * escaped-comma key tokens (\,:cmd). "nothing" unbinds (Map null).
+ * C ref: options.c parsebindings `:7596–7674` in C order — BINDINGS= value
+ * after the prefix is stripped. Quote-aware comma scan (`:7606–7619`: a
+ * leading comma is a key, `\\,` / `','` commas are skipped), tail-first
+ * recursion with ret aggregation (`:7620–7626`), first-colon split
+ * (`:7628–7631`, missing colon returns FALSE outright), trimspaces on the
+ * command (`:7633`), mouse1/mouse2 arm (`:7635–7642`, a failed bind falls
+ * through to txt2key like C), txt2key (`:7644–7649`), bind_specialkey
+ * (`:7651–7653`), menu-command arm (`:7655–7666`), extcmd arm (`:7668–7672`,
+ * a miss records an error but returns ret).
+ * Sole C caller: cfgfiles.c:621 cnf_line_BINDINGS (wired at cfgfiles.js
+ * cnf_line_BINDINGS + parseNethackrc BIND= below).
+ * JS adaptation (pre-existing, D-0897/D-2550): extcmd binds land in the
+ * outMap overlay (read over defaults at key resolution) instead of the
+ * live keymap, but the bind_key `:2661–2728` match flow runs exactly —
+ * overlay_bind_key below. Mouse, special-key and menu-alias arms write
+ * their live stores at parse time like C.
  */
 export function parsebindings(bindings, outMap) {
-    if (!bindings || !outMap) return false;
-    let ok = true;
-    // C recurses right-to-left on list commas; for plain key:cmd lists,
-    // left-to-right split matches when no quoted commas.
-    for (const piece of String(bindings).split(',')) {
-        const part = piece.trim();
-        if (!part) continue;
-        const colon = part.indexOf(':');
-        if (colon < 0) {
-            ok = false;
-            continue;
-        }
-        const keyTok = part.slice(0, colon).trim();
-        const cmdTok = part.slice(colon + 1).trim();
-        const key = txt2key(keyTok);
-        if (!key) {
-            ok = false;
-            continue;
-        }
-        if (cmdTok.toLowerCase() === 'nothing') {
-            // C bind_key "nothing" → cmdbind_remove (key stays unbound).
-            // Keep the Map entry so rhack skips if/else (D-1657).
-            outMap.set(key, null);
-            continue;
-        }
-        // Strip optional (param) — CMD_PARAM body deferred; name must match.
-        let cmdName = cmdTok;
-        const paren = cmdName.indexOf('(');
-        if (paren >= 0 && cmdName.endsWith(')')) {
-            cmdName = cmdName.slice(0, paren).trim();
-        }
-        // C bind_key: match extcmdlist ef_txt, skip INTERNALCMD
-        const want = cmdName.toLowerCase();
-        const ext = EXTCMDLIST.find(
-            (e) => e.txt.toLowerCase() === want && !(e.flags & INTERNALCMD),
-        );
-        if (!ext) {
-            ok = false;
-            continue;
-        }
-        outMap.set(key, ext.txt.toLowerCase());
+    if (!bindings || !outMap) return false; // C NONNULLARG1 + JS overlay
+    const mousebtn_names = ['mouse1', 'mouse2']; // C `:7602–7604` static
+    const s = String(bindings);
+    // C `:7606–7619` — first comma: key comma at 0, else skip `\,`/`','`.
+    let sep = s.indexOf(',');
+    if (sep === 0) sep = s.indexOf(',', 1); // C `:7610–7611`
+    else if (sep > 0 && (s[sep - 1] === '\\' // C `:7617`
+        || (s[sep - 1] === "'" && s[sep + 1] === "'")))
+        sep = s.indexOf(',', sep + 2); // C `:7618`
+    // C `:7620–7626` — break off the first binding; parse the tail first.
+    let ret = true; // C `:7601`
+    let first = s;
+    if (sep !== -1) {
+        first = s.slice(0, sep); // C `:7623` *bind = 0
+        if (!parsebindings(s.slice(sep + 1), outMap)) ret = false; // C `:7624–7625`
     }
-    return ok;
+    // C `:7628–7631` — split the single binding around the FIRST colon.
+    const colon = first.indexOf(':');
+    if (colon < 0) return false; // C `:7630` (ret dropped, like C)
+    const keyTok = first.slice(0, colon); // C: key side untrimmed
+    const bind = trimspaces(first.slice(colon + 1)); // C `:7631–7633`
+    // C `:7635–7642` — mouse1/mouse2 arm; a failed bind falls through.
+    for (let i = 0; i < mousebtn_names.length; i++) { // C `:7635` SIZE
+        if (keyTok === mousebtn_names[i]) { // C `:7636` strcmp
+            if (!bind_mousebtn(i + 1, bind)) {
+                config_error_add('Error binding mouse button %i', i + 1); // C `:7638`
+            } else {
+                return ret; // C `:7640`
+            }
+        }
+    }
+    // C `:7644–7649` — read the key (txt2key trims, `:6976`).
+    const key = txt2key(keyTok);
+    if (!key) {
+        config_error_add("Unknown key binding key '%s'", keyTok); // C `:7647`
+        return false; // C `:7648`
+    }
+    if (bind_specialkey(key, bind)) return ret; // C `:7652–7653`
+    // C `:7655–7666` — menu commands.
+    for (let i = 0; i < default_menu_cmd_info.length; i++) { // C `:7656` NUL end
+        if (default_menu_cmd_info[i].name !== bind) continue; // C `:7657` strcmp
+        if (illegal_menu_cmd_key(key)) {
+            config_error_add('Bad menu key %s:%s', visctrl(key), bind); // C `:7659`
+            return false; // C `:7660`
+        }
+        add_menu_cmd_alias(String.fromCharCode(key), // C `:7662` (char) key
+            default_menu_cmd_info[i].cmd);
+        return ret; // C `:7664`
+    }
+    // C `:7668–7672` — extended commands over the overlay (below). A miss
+    // records an error but returns ret.
+    if (!overlay_bind_key(key, bind, outMap)) {
+        config_error_add("Unknown key binding command '%s'", bind); // C `:7670`
+    }
+    return ret; // C `:7672`
+}
+
+/**
+ * C ref: cmd.c bind_key `:2661–2728` match flow over the BIND= overlay
+ * Map (the live bind_key writes the live keymap; RC binds defer to the
+ * overlay, applied over defaults at key resolution — pre-existing,
+ * D-0897/D-2550). "nothing" unbinds (`:2668–2671`, Map null per D-1657),
+ * the (param) cut is C-exact (`:2680–2686`: first '(' + last ')',
+ * ordered), ef_txt match is case-insensitive with the INTERNALCMD skip
+ * (`:2690–2693`), the bind lands in the overlay (`:2694` cmdbind_add),
+ * the CMD_PARAM error arms call the live sink (`:2696–2712`) and params
+ * store live (`:2706–2708`). Returns bind_key's boolean.
+ */
+function overlay_bind_key(key, command, outMap) {
+    const k = key & 0xff; // C uchar key
+    const cmd = String(command ?? '');
+    if (cmd.toLowerCase() === 'nothing') { // C `:2669` strcmpi
+        bind_param_clear(k); // C `:2670` via cmdbind_remove `:2169–2170`
+        outMap.set(k, null); // C `:2670` cmdbind_remove → overlay null
+        return true; // C `:2671`
+    }
+    let buf = cmd; // C `:2674–2677`
+    let p = null; // C `:2679`
+    const open = buf.indexOf('('); // C `:2680` strchr
+    const close = buf.lastIndexOf(')'); // C `:2681` strrchr
+    if (open >= 0 && close >= 0 && close > open) { // C `:2680–2682`
+        p = buf.slice(open + 1, close); // C `:2683–2686`
+        buf = buf.slice(0, open);
+    }
+    for (const extcmd of EXTCMDLIST) { // C `:2689`
+        if (buf.toLowerCase() !== extcmd.txt.toLowerCase()) continue; // C `:2690–2691`
+        if (((extcmd.flags | 0) & INTERNALCMD) !== 0) continue; // C `:2692–2693`
+        bind_param_clear(k); // C `:2694` via cmdbind_add `:2141–2143`
+        outMap.set(k, extcmd.txt.toLowerCase()); // C `:2694` cmdbind_add
+        if (((extcmd.flags | 0) & CMD_PARAM) !== 0) { // C `:2696`
+            if (p === null) { // C `:2697`
+                config_error_add("'%s' requires a parameter", buf); // C `:2698`
+            } else {
+                const maxlen = Math.min(30, p.length) + 1; // C `:2701`
+                if (maxlen <= 1) { // C `:2703`
+                    config_error_add('Required parameter cannot be empty'); // C `:2704`
+                } else {
+                    bind_param_set(k, p.slice(0, maxlen - 1)); // C `:2706–2708`
+                }
+            }
+        } else if (p !== null && p.length > 0) { // C `:2711`
+            config_error_add("'%s' does not take a parameter", buf); // C `:2712`
+        }
+        // C `:2714–2721` #if 0 — dead in C, omitted (live bind_key same).
+        return true; // C `:2723`
+    }
+    return false; // C `:2727`
 }
 
 /**
@@ -3183,7 +3283,7 @@ export async function handler_versinfo() {
         { text: 'game name', selectable: true, selected: (vi & VI_NAME) !== 0, a_int: VI_NAME, selector: 'g', gselector: '2' },
         // C `:6593–6601` NH_DEVEL_STATUS == NH_STATUS_RELEASED (patchlevel.h
         // `:33`/`:25`) so "(not applicable)" is live; "(not available)" compiled out.
-        { text: have_branch ? 'development branch' : '(not applicable)', selectable: true, selected: (vi & VI_BRANCH) !== 0, a_int: VI_BRANCH, selector: 'b', gselector: '3' },
+        { text: have_branch ? 'development branch' : '(not applicable)', selectable: true, selected: (vi & VI_BRANCH) !== 0, a_int: VI_BRANCH, selector: 'b', gselector: '4' }, // C `:6594` n+'0', n=VI_BRANCH=4
     ];
     const picks = await select_menu_pick_any(raw, { cancelValue: null }); // C `:6604` end/select/destroy (destroy inside the helper)
     if (picks !== null && picks.length > 0) { // C `:6605` n > 0 (cancel and finish-empty both keep)

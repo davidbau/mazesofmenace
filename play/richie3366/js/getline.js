@@ -26,7 +26,7 @@ import { key2txt, visctrl, cmd_from_func } from './dokeylist.js';
 import { rn2 } from './rng.js';
 import {
     BUFSZ, COLNO, ROWNO, QBUFSZ, PARANOID_CONFIRM,
-    ECM_IGNOREAC, ECM_EXACTMATCH, ECM_NO1CHARCMD,
+    ECM_IGNOREAC, ECM_EXACTMATCH, ECM_NO1CHARCMD, ECM_NOFLAGS,
     INTERNALCMD, AUTOCOMPLETE, WIZMODECMD, CMD_NOT_AVAILABLE,
     CMD_M_PREFIX,
     CMDQ_KEY, CMDQ_USER_INPUT, CQ_CANNED, CQ_REPEAT, PLNMSG_UNKNOWN,
@@ -298,70 +298,9 @@ export async function getlin(query, bufp) {
 }
 
 /**
- * C ref: cmd.c extcmdlist — every AUTOCOMPLETE entry (excl. CMD_NOT_AVAILABLE /
- * INTERNALCMD). Used only for NEWAUTOCOMP uniqueness in ext_cmd_getlin_hook;
- * runnable bodies stay in EXT_CMDS below. Incomplete runners must not shrink
- * this set or prefixes like "c" falsely unique-match "chat".
- */
-const EXT_CMD_AC = [
-    { name: '?', wiz: false },
-    { name: 'adjust', wiz: false },
-    { name: 'annotate', wiz: false },
-    { name: 'chat', wiz: false },
-    { name: 'chronicle', wiz: false },
-    { name: 'conduct', wiz: false },
-    { name: 'dip', wiz: false },
-    { name: 'enhance', wiz: false },
-    { name: 'force', wiz: false },
-    { name: 'genocided', wiz: false },
-    { name: 'herecmdmenu', wiz: false },
-    { name: 'history', wiz: false },
-    { name: 'invoke', wiz: false },
-    { name: 'jump', wiz: false },
-    { name: 'levelchange', wiz: true },
-    { name: 'lightsources', wiz: true },
-    { name: 'loot', wiz: false },
-    { name: 'migratemons', wiz: true },
-    { name: 'monster', wiz: false },
-    { name: 'name', wiz: false },
-    { name: 'offer', wiz: false },
-    { name: 'overview', wiz: false },
-    { name: 'panic', wiz: true },
-    { name: 'polyself', wiz: true },
-    { name: 'pray', wiz: false },
-    { name: 'quit', wiz: false },
-    { name: 'ride', wiz: false },
-    { name: 'rub', wiz: false },
-    { name: 'sit', wiz: false },
-    { name: 'stats', wiz: true },
-    { name: 'terrain', wiz: false },
-    { name: 'therecmdmenu', wiz: false },
-    { name: 'timeout', wiz: true },
-    { name: 'tip', wiz: false },
-    { name: 'travel', wiz: false },
-    { name: 'turn', wiz: false },
-    { name: 'untrap', wiz: false },
-    { name: 'vanquished', wiz: false },
-    { name: 'version', wiz: false },
-    { name: 'vision', wiz: true },
-    { name: 'wipe', wiz: false },
-    { name: 'wizbury', wiz: true },
-    { name: 'wizdispmacros', wiz: true },
-    { name: 'wizintrinsic', wiz: true },
-    { name: 'wizkill', wiz: true },
-    { name: 'wizmondiff', wiz: true },
-    { name: 'wizrumorcheck', wiz: true },
-    { name: 'wizseenv', wiz: true },
-    { name: 'wizshownhuuid', wiz: true },
-    { name: 'wizsmell', wiz: true },
-    { name: 'wiztelekinesis', wiz: true },
-    { name: 'wizwhere', wiz: true },
-    { name: 'wmode', wiz: true },
-];
-
-/**
  * Runnable extended-command table (C extcmdlist subset with JS bodies).
- * Enter resolution uses this list; progressive paint uses EXT_CMD_AC.
+ * Enter resolution uses this list; per-keystroke completion goes
+ * through extcmds_match like C's ext_cmd_getlin_hook.
  */
 const EXT_CMDS = [
     {
@@ -913,6 +852,76 @@ const EXT_CMDS = [
         },
     },
     {
+        // C: cmd.c:1699-1700 "debugfuzzer" IFBURIED|WIZMODECMD|NOFUZZERCMD (no AUTOCOMPLETE) → wiz_fuzzer
+        name: 'debugfuzzer',
+        wiz: true,
+        autocomplete: false,
+        run: async () => {
+            const { wiz_fuzzer } = await import('./wizcmds.js');
+            return wiz_fuzzer();
+        },
+    },
+    {
+        // C: cmd.c:1793-1794 "panic" IFBURIED|AUTOCOMPLETE|WIZMODECMD → wiz_panic
+        name: 'panic',
+        wiz: true,
+        autocomplete: true,
+        run: async () => {
+            const { wiz_panic } = await import('./wizcmds.js');
+            return wiz_panic();
+        },
+    },
+    {
+        // C: cmd.c:1953-1954 C('e') "wizdetect" IFBURIED|WIZMODECMD (no AUTOCOMPLETE) → wiz_detect
+        name: 'wizdetect',
+        wiz: true,
+        autocomplete: false,
+        run: async () => {
+            const { wiz_detect } = await import('./wizcmds.js');
+            return wiz_detect();
+        },
+    },
+    {
+        // C: cmd.c:1972-1973 "wizloaddes" IFBURIED|WIZMODECMD|NOFUZZERCMD (no AUTOCOMPLETE) → wiz_load_splua
+        name: 'wizloaddes',
+        wiz: true,
+        autocomplete: false,
+        run: async () => {
+            const { wiz_load_splua } = await import('./wizcmds.js');
+            return wiz_load_splua();
+        },
+    },
+    {
+        // C: cmd.c:1974-1975 "wizloadlua" IFBURIED|WIZMODECMD|NOFUZZERCMD (no AUTOCOMPLETE) → wiz_load_lua
+        name: 'wizloadlua',
+        wiz: true,
+        autocomplete: false,
+        run: async () => {
+            const { wiz_load_lua } = await import('./wizcmds.js');
+            return wiz_load_lua();
+        },
+    },
+    {
+        // C: cmd.c:1992-1993 "wizshownhuuid" AUTOCOMPLETE|WIZMODECMD → wiz_show_nhuuid
+        name: 'wizshownhuuid',
+        wiz: true,
+        autocomplete: true,
+        run: async () => {
+            const { wiz_show_nhuuid } = await import('./wizcmds.js');
+            return wiz_show_nhuuid();
+        },
+    },
+    {
+        // C: cmd.c:1996-1997 "wiztelekinesis" IFBURIED|AUTOCOMPLETE|WIZMODECMD → wiz_telekinesis
+        name: 'wiztelekinesis',
+        wiz: true,
+        autocomplete: true,
+        run: async () => {
+            const { wiz_telekinesis } = await import('./wizcmds.js');
+            return wiz_telekinesis();
+        },
+    },
+    {
         // C: cmd.c "wizidentify" IFBURIED|WIZMODECMD (no AUTOCOMPLETE) → wiz_identify
         name: 'wizidentify',
         wiz: true,
@@ -1234,12 +1243,22 @@ const EXT_CMDS = [
         run: async () => (await import('./detect.js')).dosearch(),
     },
     {
+        // C: cmd.c '!' IFBURIED|GENERALCMD|NOFUZZERCMD → dosh_core.
+        name: 'shell', wiz: false, autocomplete: false,
+        run: async () => (await import('./cmd.js')).dosh_core(),
+    },
+    {
         name: 'showgold', wiz: false, autocomplete: false,
         run: async () => (await import('./invent.js')).doprgold(),
     },
     {
         name: 'showspells', wiz: false, autocomplete: false,
         run: async () => (await import('./spell.js')).dovspell(),
+    },
+    {
+        // C: cmd.c C('z') IFBURIED|GENERALCMD|NOFUZZERCMD → dosuspend_core.
+        name: 'suspend', wiz: false, autocomplete: false,
+        run: async () => (await import('./cmd.js')).dosuspend_core(),
     },
     {
         name: 'swap', wiz: false, autocomplete: false,
@@ -1345,6 +1364,22 @@ export function extcmds_match(findstr, ecmflags) {
 }
 
 /**
+ * C ref: cmd.c extcmds_getentry `:2100–2106` — bounds-checked
+ * extcmdlist row (`i < 0 || i > extcmdlist_length` → 0, where
+ * `extcmdlist_length` is `SIZE(extcmdlist) - 1` (`:2097`)). C's
+ * `i == length` returns the `{ 0 }` terminator row; the generated
+ * EXTCMDLIST has no terminator, and callers only pass match
+ * indices below the length, so out-of-range is null.
+ * Caller: `getline.c:278` ext_cmd_getlin_hook (wired below).
+ * @param {number} i
+ * @returns {{ key: number, txt: string, desc: string, flags: number } | null}
+ */
+export function extcmds_getentry(i) {
+    if (i < 0 || i > EXTCMDLIST.length - 1) return null;
+    return EXTCMDLIST[i];
+}
+
+/**
  * C ref: cmd.c accept_menu_prefix `:3507–3512` — CMD_M_PREFIX on the
  * resolved extcmdlist row (not a name set). cmd_from_func(do_reqmenu)
  * visctrl named (this port's m-prefix key is always 'm').
@@ -1355,23 +1390,17 @@ function accept_menu_prefix(extcmd) {
     return !!(extcmd && ((extcmd.flags | 0) & CMD_M_PREFIX));
 }
 
-/** C ref: cmd.c extcmds_match(ECM_NOFLAGS) — AUTOCOMPLETE + !WIZ unless wizard */
-function availableAcNames() {
-    return EXT_CMD_AC.filter((ec) => !ec.wiz || wizardMode());
-}
-
 /**
- * C ref: getline.c ext_cmd_getlin_hook → extcmds_match(base, ECM_NOFLAGS)
- * Unique AUTOCOMPLETE prefix → expand to full ef_txt.
+ * C ref: getline.c ext_cmd_getlin_hook `:271–285` — unique AUTOCOMPLETE
+ * prefix expands to the full ef_txt. Wired through live
+ * extcmds_match(base, ECM_NOFLAGS) + extcmds_getentry like C.
  */
 function extCmdAutocomplete(base) {
     if (!base) return null;
-    const lower = base.toLowerCase();
-    const matches = availableAcNames().filter((ec) =>
-        ec.name.toLowerCase().startsWith(lower),
-    );
-    if (matches.length === 1) return matches[0].name;
-    return null;
+    const matches = extcmds_match(base, ECM_NOFLAGS);
+    if (matches.length !== 1) return null;
+    const ec = extcmds_getentry(matches[0]);
+    return ec ? ec.txt : null;
 }
 
 /** C `strncmp` of the first `n` chars. A short string's NUL loses. */

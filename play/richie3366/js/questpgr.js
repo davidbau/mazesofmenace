@@ -1032,14 +1032,23 @@ function synthesize_window_synopsis(text) {
 }
 
 /**
- * C ref: questpgr.c deliver_by_pline — split on newline, convert_line each, pline.
- * Used when lua sets output="pline" (quest_portal), which must NOT promote
- * to NHW_TEXT despite embedded newlines.
+ * C ref: questpgr.c deliver_by_pline `:422–436` (staticfn) — copynchars
+ * chunk walk (BUFSZ-1 cap, newline stop), msgp += strlen+1, convert_line
+ * each chunk, pline("%s"). Every callee live: eos/copynchars (hacklib),
+ * convert_line (in-file), pline (display). C quirks kept: a >255-char
+ * line truncates mid-line and skips one char; blank lines pline empty;
+ * a trailing newline adds no extra pline. Exported for the
+ * deliver_splev_message caller (C `:659`, js/do.js).
  */
-async function deliver_by_pline(raw) {
-    if (!raw) return;
-    for (const line of String(raw).split('\n')) {
-        await pline(convert_line(line));
+export async function deliver_by_pline(str) {
+    const s = String(str ?? '');
+    const msgend = eos(s);
+    let msgp = 0;
+    while (msgp < msgend) {
+        /* copynchars() will stop at newline if it finds one */
+        const in_line = copynchars(s.slice(msgp, msgend), BUFSZ - 1);
+        msgp += in_line.length + 1;
+        await pline(convert_line(in_line));
     }
 }
 

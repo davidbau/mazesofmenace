@@ -49,9 +49,10 @@ import {
     A_CG_HELM_ON,
     A_CG_HELM_OFF,
     LL_ALIGNMENT,
+    WEAK,
 } from './const.js';
 import { objectNames } from './objects.js';
-import { pline, You_feel, impossible, Hallucination } from './display.js';
+import { pline, You_feel, impossible, Hallucination, see_monsters } from './display.js';
 import { aligns } from './roles.js';
 import { make_confused } from './potion.js';
 import { livelog_printf } from './pline.js';
@@ -740,6 +741,48 @@ export function set_moreluck() {
     }
 }
 
+/**
+ * C ref: attrib.c restore_attrib `:455–484` — countdown for temporary
+ * attribute losses/gains toward equilibrium (-1 while weak/wounded-legged,
+ * else 0); expired timer steps ATEMP toward 0 and resets ATIME to
+ * 100/ACURR(CON); encumber_msg when botl. C has no callers (the moveloop
+ * call is long gone — see the C comment), so this ships called from
+ * nowhere, like C.
+ */
+export async function restore_attrib() {
+    const u = game.u || {};
+    // C youprop.h Wounded_legs macro: u.Wounded_legs ||
+    // HWounded_legs&TIMEOUT || EWounded_legs (allmain.js / apply.js precedent).
+    const wounded = !!(u.Wounded_legs
+        || ((u.HWounded_legs | 0) & TIMEOUT)
+        || (u.EWounded_legs | 0));
+    for (let i = 0; i < A_MAX; i++) { /* all temporary losses/gains */
+        // C :472–473
+        const equilibrium = (((i === A_STR && (u.uhs | 0) >= WEAK)
+            || (i === A_DEX && wounded)) ? -1 : 0);
+        const atemp = u.atemp?.a?.[i] | 0;
+        const atime = u.atime?.a?.[i] | 0;
+        // C :474
+        if (atemp !== equilibrium && atime !== 0) {
+            // C :475 — --(ATIME(i)) countdown for change
+            u.atime.a[i] = atime - 1;
+            if (!(u.atime.a[i] | 0)) {
+                // C :476–477
+                const newtemp = atemp + (atemp > 0 ? -1 : 1);
+                u.atemp.a[i] = newtemp;
+                if (game.disp) game.disp.botl = true;
+                // C :478–479 — reset timer
+                if (newtemp) u.atime.a[i] = Math.trunc(100 / acurr(A_CON));
+            }
+        }
+    }
+    // C :483–484 — reads live disp.botl (may predate this call), like C
+    if (game.disp?.botl) {
+        const { encumber_msg } = await import('./invent.js');
+        await encumber_msg();
+    }
+}
+
 /** C ref: align.h ALIGNLIM — (10 + moves/200) */
 export function ALIGNLIM() {
     return 10 + Math.trunc((game.moves ?? 0) / 200);
@@ -841,7 +884,8 @@ export async function uchangealign(newalign, reason) {
  * C ref: attrib.c innate tables + role_abil() / adjabil().
  * Prop names match the H* macros that C stores via long* ability.
  * Level-up add_weapon_skill / lose_weapon_skill via the adjabil tail (oldlevel>0).
- * postadjabil see_monsters deferred (init path has u.ulevel==0 → no-op).
+ * postadjabil wired behind the C :1063 changed-gate (init path u.ulevel==0
+ * returns early inside postadjabil itself).
  */
 const arc_abil = [
     { ulevel: 1, prop: 'HSearching', gainstr: '', losestr: '' },
@@ -945,9 +989,21 @@ function role_abil(rolePm) {
 }
 
 /**
+ * C ref: attrib.c postadjabil `:780–786` (staticfn) — after an ability's
+ * bits change, Warning/See_invisible need a monster-glyph refresh.
+ * @param {string} prop H* field name (C long* identity on &HWarning/&HSee_invisible)
+ */
+function postadjabil(prop) {
+    // C :782–783 — initializing hero; don't attempt screen update yet
+    if (!(game.u?.ulevel | 0)) return;
+    // C :784–785
+    if (prop === 'HWarning' || prop === 'HSee_invisible') see_monsters();
+}
+
+/**
  * C ref: attrib.c adjabil(oldlevel, newlevel)
  * Grants/revokes role and (elf/orc) race intrinsics by level thresholds.
- * Gain You_feel for nonempty gainstr; weapon-skill tail live, postadjabil deferred.
+ * Gain You_feel for nonempty gainstr; weapon-skill tail and postadjabil live.
  */
 export async function adjabil(oldlevel, newlevel) {
     const u = game.u || (game.u = {});
@@ -1000,7 +1056,8 @@ export async function adjabil(oldlevel, newlevel) {
                 else if (entry.gainstr) await You_feel('less %s!', entry.gainstr);
             }
         }
-        // postadjabil deferred
+        // C :1063–1064 — it changed
+        if (prev !== (u[prop] || 0)) postadjabil(prop);
     }
     // C attrib.c:1068–1073 — a level change grants or drains skill slots
     // (add_weapon_skill is async: give_may_advance_msg can reach nhgetch).

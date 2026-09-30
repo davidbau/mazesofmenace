@@ -55,7 +55,7 @@ import {
     clear_committed_status,
     docorner, dxdy_to_dist_descr,
 } from './display.js';
-import { xprname, an, the, vtense, doname, distant_name, Japanese_item_name, xname, cxname_singular, set_xname_observe, set_distant_cansee, ansimpleoname, simpleonames, gloves_simple_name, set_not_fully_identified, makeplural, makesingular, body_part_latebound, corpse_xname, killer_xname, maybereleaseobuf } from './objnam.js';
+import { xprname, an, the, vtense, doname, distant_name, Japanese_item_name, xname, cxname_singular, set_xname_observe, set_distant_cansee, ansimpleoname, simpleonames, gloves_simple_name, set_not_fully_identified, makeplural, makesingular, body_part_latebound, corpse_xname, killer_xname, maybereleaseobuf, safe_qbuf } from './objnam.js';
 import { yn_function, y_n, getlin, mungspaces } from './getline.js';
 import { get_count, pmatchi, cmdq_pop, cmdq_clear } from './cmd.js';
 import { mergable, merged, is_damageable, stop_timer, splitobj, unsplitobj, clear_splitobjs, unknwn_contnr_contents, weight, delobj, curse } from './mkobj.js';
@@ -342,7 +342,7 @@ import { is_quest_artifact } from './quest.js';
 import {
     askchain, add_valid_menu_class, collect_obj_classes,
     count_buc, count_justpicked, allow_category,
-    query_category, query_objlist,
+    query_category, query_objlist, allow_all,
 } from './pickup.js';
 import { is_ammo, is_pole } from './wield.js';
 import { is_wet_towel, can_advance } from './weapon.js';
@@ -4565,29 +4565,74 @@ function cinv_doname(obj) {
 }
 
 /**
- * C invent.c display_cinventory :5446–5473 — container/statue contents.
- * Caller: zap.c bhito WAN_PROBING (D-1445). Title via cinv_doname.
- * PICK_NONE query_objlist analog; empty → "(empty)". Always cknown.
- * Named omit: safe_qbuf overflow → cinv_ansimpleoname; PICK_ONE.
+ * C invent.c cinv_ansimpleoname :5422–5441 (staticfn) — safe_qbuf altfunc
+ * when the full doname() result is too long: insert "trapped" after the
+ * leading article when otrapped. The C `if (strncmp(...))` arms fire on
+ * MISMATCH (kept verbatim — no `!` in C): the first non-matching
+ * article's strsubst runs (a strstr miss, so usually a no-op); the final
+ * else arm inserts at the front (C strstr(bp,"") hits, but JS strsubst
+ * no-ops on empty orig, hence the explicit prepend).
+ */
+function cinv_ansimpleoname(obj) {
+    let result = ansimpleoname(obj);
+    // C `:5428` — result is an obuf[], always fits.
+    if (obj?.otrapped) {
+        if (result.slice(0, 2) !== 'a ') { // C `:5429` strncmp(result,"a ",2)
+            result = strsubst(result, 'a ', 'a trapped ');
+        } else if (result.slice(0, 3) !== 'an ') { // C `:5431`
+            result = strsubst(result, 'an ', 'an trapped ');
+        } else if (result.slice(0, 4) !== 'the ') { // C `:5434`
+            result = strsubst(result, 'the ', 'the trapped ');
+        } else { // C `:5437–5438` — strsubst(result, "", "trapped ").
+            result = `trapped ${result}`;
+        }
+    }
+    return result;
+}
+
+/**
+ * C invent.c display_cinventory :5446–5473 — container/statue contents
+ * for wand of probing (sole C caller: zap.c bhito :2255; JS zap.js:5633,
+ * D-1445). Title via live safe_qbuf (cinv_doname + cinv_ansimpleoname
+ * overflow, last resort "that"); non-empty → live query_objlist
+ * INVORDER_SORT PICK_NONE allow_all; empty → split invdisp_nothing
+ * inline (ledger: hdr/''/txt PICK_NONE sequence). Always sets cknown.
+ * PICK_NONE select returns n=0, so ret is NULL.
  * @returns {Promise<object|null>}
  */
 export async function display_cinventory(obj) {
-    if (!obj) return null;
-    const headingAttr = game.program_state?.gameover ? 0 : ATR_INVERSE;
-    const qbuf = `Contents of ${cinv_doname(obj)}:`;
-    const items = [];
-    for (let otmp = obj.cobj; otmp; otmp = otmp.nobj) items.push(otmp);
-    if (items.length) {
-        await query_objlist_pick_none_binv(qbuf, items, true);
+    // C `:5453–5457` — (void) safe_qbuf(qbuf, "Contents of ", ":", ...).
+    const qbuf = safe_qbuf(null, 'Contents of ', ':', obj,
+        cinv_doname, cinv_ansimpleoname, 'that');
+    let n;
+    let pick_list = [];
+    if (obj.cobj) {
+        // C `:5460–5461` — n = query_objlist(qbuf, &cobj, INVORDER_SORT,
+        // &selected, PICK_NONE, allow_all); chain order into an array.
+        const items = [];
+        for (let o = obj.cobj; o; o = o.nobj) items.push(o);
+        const res = await query_objlist(
+            qbuf, items, INVORDER_SORT, PICK_NONE, allow_all);
+        n = res.n;
+        pick_list = res.pick_list;
     } else {
+        // C `:5463–5464` — invdisp_nothing(qbuf, "(empty)"); n = 0.
+        const headingAttr = game.program_state?.gameover ? 0 : ATR_INVERSE;
         await select_menu_pick_none([
             { text: qbuf, attr: headingAttr },
             { text: '', attr: 0 },
             { text: '(empty)', attr: 0 },
         ]);
+        n = 0;
     }
-    obj.cknown = 1;
-    return null;
+    let ret;
+    if (n > 0) { // C `:5466–5470` — ret = selected[0].item.a_obj; free.
+        ret = pick_list[0].obj;
+    } else {
+        ret = null;
+    }
+    obj.cknown = 1; // C `:5471`
+    return ret; // C `:5472`
 }
 
 /**

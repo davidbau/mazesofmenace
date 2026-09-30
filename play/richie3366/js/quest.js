@@ -5,7 +5,7 @@
 // posthanks/banished pager texts
 // (calls live in chat_with_leader — miss no-ops after the C nhl_init shuffle);
 // exercise side-effects beyond call; full convert_arg
-// catalogue for assignquest; find_quest_artifact OBJ_INVENT/MIGRATING.
+// catalogue for assignquest.
 // nexttime/othertime: Arc+Bar+Pri; goal_first: Arc+Bar+Pri+Kni+Sam,
 // goal_next: Arc+Bar+Pri+Kni (other-role goal_* miss then D-1662
 // common retry; still no body).
@@ -16,7 +16,8 @@ import { game } from './gstate.js';
 import {
     In_quest, MIN_QUEST_ALIGN, MIN_QUEST_LEVEL, MAGIC_PORTAL,
     UTOTYPE_NONE, UTOTYPE_PORTAL, UTOTYPE_RMPORTAL, STRAT_WAITMASK,
-    OBJ_FLOOR, OBJ_MINVENT, OBJ_BURIED, DEAF, LL_ACHIEVE,
+    OBJ_FLOOR, OBJ_MINVENT, OBJ_BURIED, OBJ_INVENT, OBJ_MIGRATING,
+    Has_contents, DEAF, LL_ACHIEVE,
 } from './const.js';
 import { qt_pager, com_pager } from './questpgr.js';
 import { livelog_printf } from './pline.js';
@@ -119,25 +120,48 @@ async function on_locate() {
 }
 
 /**
- * C ref: questpgr.c is_quest_artifact / find_qarti — oartifact == questarti.
+ * C ref: questpgr.c find_qarti `:72–84` (staticfn) — is_quest_artifact
+ * down the nobj chain, recursing into Has_contents cobj before the next
+ * sibling (`:80` order, `&&` short-circuit). Uses the live in-file
+ * is_quest_artifact (C `:66–70`, oartifact == urole.questarti).
+ * JS shaping: invent is an Array (D-1691), so an array head is walked
+ * head-first (invent.js o_on precedent); every other chain stays nobj.
+ * A null head (C `:17` — gi.invent can be null) finds nothing.
  */
 function find_qarti(objChainHead) {
-    const want = game.urole?.questarti | 0;
-    if (!want) return null;
+    if (Array.isArray(objChainHead)) {
+        for (const head of objChainHead) {
+            const hit = find_qarti(head);
+            if (hit) return hit;
+        }
+        return null;
+    }
     for (let otmp = objChainHead; otmp; otmp = otmp.nobj) {
-        if ((otmp.oartifact | 0) === want) return otmp;
+        if (is_quest_artifact(otmp))
+            return otmp;
+        if (Has_contents(otmp)) {
+            const qarti = find_qarti(otmp.cobj);
+            if (qarti)
+                return qarti;
+        }
     }
     return null;
 }
 
 /**
- * C ref: questpgr.c find_quest_artifact — floor / minvent / buried subset.
- * Named omission: OBJ_INVENT and OBJ_MIGRATING chains (C also skips invent
- * when on_goal builds whichobjchains without OBJ_INVENT).
+ * C ref: questpgr.c find_quest_artifact `:88–120` — INVENT / FLOOR /
+ * MINVENT over fmon / MIGRATING (migrating_mons minvent, then
+ * migrating_objs) / BURIED, first hit wins, `!qarti &&` chain gates.
+ * DEADMONSTER is monst.h:214 (mhp < 1); the null-mhp guard is the
+ * pre-existing in-file shape. JS shaping: invent/fmon/migrating_mons
+ * are Arrays (invent.js D-1691 / dog.js precedents); fobj /
+ * migrating_objs / buriedobjlist stay nobj chains.
  */
 function find_quest_artifact(whichchains) {
     let qarti = null;
-    if ((whichchains & (1 << OBJ_FLOOR)) !== 0)
+    if ((whichchains & (1 << OBJ_INVENT)) !== 0)
+        qarti = find_qarti(game.invent);
+    if (!qarti && (whichchains & (1 << OBJ_FLOOR)) !== 0)
         qarti = find_qarti(game.fobj);
     if (!qarti && (whichchains & (1 << OBJ_MINVENT)) !== 0) {
         for (const mtmp of game.fmon || []) {
@@ -145,6 +169,16 @@ function find_quest_artifact(whichchains) {
             qarti = find_qarti(mtmp.minvent);
             if (qarti) break;
         }
+    }
+    if (!qarti && (whichchains & (1 << OBJ_MIGRATING)) !== 0) {
+        /* check migrating objects and minvent of migrating monsters */
+        for (const mtmp of game.migrating_mons || []) {
+            if (mtmp?.mhp != null && mtmp.mhp <= 0) continue;
+            qarti = find_qarti(mtmp.minvent);
+            if (qarti) break;
+        }
+        if (!qarti)
+            qarti = find_qarti(game.migrating_objs);
     }
     if (!qarti && (whichchains & (1 << OBJ_BURIED)) !== 0)
         qarti = find_qarti(game.level?.buriedobjlist || game.buriedobjlist);

@@ -45,7 +45,7 @@ import {
     W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU, W_ARMOR,
     W_RING, W_RINGL, W_RINGR, W_AMUL, W_TOOL, W_WEAPONS, W_WEP, W_SWAPWEP,
     W_QUIVER, W_BALL, W_CHAIN, LEFT_RING, RIGHT_RING, W_ART,
-    ECMD_OK, ECMD_FAIL, ECMD_TIME, HANDS_SYM, CMDQ_KEY,
+    ECMD_OK, ECMD_FAIL, ECMD_TIME, ECMD_CANCEL, HANDS_SYM, CMDQ_KEY,
     ERODE_BURN, ERODE_RUST, ERODE_ROT, ERODE_CORRODE, ERODE_CRACK, ERODE_NONE,
     ER_NOTHING, ER_DESTROYED, EF_PAY, EF_DESTROY,
     TIMEOUT, BLINDED, FAST, TELEPAT, STEALTH, SLEEPY, I_SPECIAL,
@@ -2061,29 +2061,40 @@ async function armor_or_accessory_off(obj) {
 }
 
 /**
- * C do_wear.c dotakeoff `:1831–1852` — 'T' command.
- * Live invent.c getobj("take off", takeoff_ok, GETOBJ_NOFLAGS) covers the
- * prompt/filter arms the clone missed: sortloot SORTLOOT_INVLET order (not
- * charCode sort), compactify past 5, DOWNPLAY accessories in altlets with
- * forceprompt (not dropped), EXCLUDE_INACCESS covering cloak/suit/gloves
- * feeding the "else" in "don't have anything else to take off", ?/* via
- * display_pickinv, in_doagain readchar, force_invmenu ?/*, digit
- * No-count, HANDS mime_action, gold/throw/botl/CQ_REPEAT, silly_thing and
- * split_otmp. uskin merged-with-skin stays a named omit (see doremring).
- * @returns {number} 0 = no turn, 1 = took time
+ * C do_wear.c dotakeoff `:1833–1855` — 'T' command.
+ * count_worn_stuff(FALSE) default when Narmorpieces is 1; uskin
+ * merged-with-skin arm (`:1840–1844`); live invent.c getobj("take off",
+ * takeoff_ok, GETOBJ_NOFLAGS) covers the prompt/filter arms:
+ * sortloot SORTLOOT_INVLET order (not charCode sort), compactify past 5,
+ * DOWNPLAY accessories in altlets with forceprompt (not dropped),
+ * EXCLUDE_INACCESS covering cloak/suit/gloves feeding the "else" in
+ * "don't have anything else to take off", ?/* via display_pickinv,
+ * in_doagain readchar, force_invmenu ?/*, digit No-count, HANDS
+ * mime_action, gold/throw/botl/CQ_REPEAT, silly_thing and split_otmp.
+ * @returns {Promise<number>} ECMD_OK / ECMD_CANCEL / armor_or_accessory_off
  */
 export async function dotakeoff() {
     let otmp = count_worn_stuff(false);
     if (!Narmorpieces && !Naccessories) {
-        await pline('Not wearing any armor or accessories.');
-        return 0;
+        /* C `:1839` — assert(GRAY_DRAGON_SCALES > YELLOW_DRAGON_SCALE_MAIL). */
+        const uskin = (game.u || {}).uskin;
+        if (uskin)
+            await pline_The('%s merged with your skin!',
+                ((uskin.otyp | 0) >= GRAY_DRAGON_SCALES)
+                    ? 'dragon scales are'
+                    : 'dragon scale mail is');
+        else
+            await pline('Not wearing any armor or accessories.');
+        return ECMD_OK;
     }
     const paranoid = !!(game.flags?.paranoid_confirm?.remove
         || game.flags?.paranoid_remove);
     if (Narmorpieces !== 1 || paranoid || game.item_action_in_progress) {
         otmp = await getobj('take off', takeoff_ok, GETOBJ_NOFLAGS);
     }
-    if (!otmp) return 0;
+    if (!otmp)
+        return ECMD_CANCEL;
+
     return armor_or_accessory_off(otmp);
 }
 
@@ -4001,23 +4012,6 @@ export async function stop_donning(stolenobj) {
 }
 
 /**
- * C ref: invent.c useup — invent consume one (no obj_resists). Local for
- * wornarm_destroyed; floor path not needed for disintegrate_arm.
- */
-function invent_useup(otmp) {
-    if (!otmp) return;
-    if ((otmp.quan || 1) > 1) {
-        otmp.quan--;
-        return;
-    }
-    const inv = game.invent || [];
-    const idx = inv.indexOf(otmp);
-    if (idx >= 0) inv.splice(idx, 1);
-    otmp.quan = 0;
-    otmp.where = 0; // OBJ_FREE
-}
-
-/**
  * C ref: do_wear.c maybe_destroy_armor — match atmp, obj_resists(0,90).
  * @returns {object|null}
  */
@@ -4031,14 +4025,18 @@ function maybe_destroy_armor(armor, atmp, resistedRef) {
 }
 
 /**
- * C ref: do_wear.c wornarm_destroyed — *_off then invent useup.
- * Named omissions: cancel_don when donning; lava dunk side-effect free.
+ * C ref: do_wear.c wornarm_destroyed `:3144–3182` (staticfn) — cancel_don
+ * when donning, *_off by slot, then invent scan + useup (o_id-guarded:
+ * *_off may have freed wornarm as a side effect, e.g. a lava dunk).
  */
 async function wornarm_destroyed(wornarm) {
     if (!wornarm) return;
-    const u = game.u || {};
     const wornoid = wornarm.o_id;
-    // cancel_don deferred
+    /* C `:3151–3155` — cancel_don() resets afternmv but not uarmc/uarm/&c,
+       so this runs before the slot tests below. */
+    if (donning(wornarm))
+        cancel_don();
+    const u = game.u || {};
     if (wornarm === u.uarmc) await Cloak_off();
     else if (wornarm === u.uarm) await Armor_off();
     else if (wornarm === u.uarmu) await Shirt_off();
@@ -4047,9 +4045,11 @@ async function wornarm_destroyed(wornarm) {
     else if (wornarm === u.uarmf) await Boots_off();
     else if (wornarm === u.uarms) await Shield_off();
 
+    /* C `:3170–3174` — scan invent (not carried()) with the o_id guard;
+       break runs right after useup so no nextobj pre-fetch is needed. */
     for (const invobj of game.invent || []) {
         if (invobj === wornarm && invobj.o_id === wornoid) {
-            invent_useup(wornarm);
+            useup(wornarm);
             break;
         }
     }
@@ -4058,7 +4058,7 @@ async function wornarm_destroyed(wornarm) {
 /**
  * C ref: do_wear.c disintegrate_arm — destroy one worn armor piece
  * (god_zaps_you / dragon breath / destroy-armor scroll).
- * Named omissions: cancel_don;
+ * Named omissions:
  * cloak/suit name polish beyond armor_doff_simple_name.
  * @param {object|null} atmp specific piece or null for any
  * @returns {Promise<number>} 1 if destroyed, else 0

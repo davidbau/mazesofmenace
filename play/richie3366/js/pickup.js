@@ -137,7 +137,7 @@ import { rider_cant_reach, dismount_steed } from './steed.js';
 import { is_waterwall } from './dbridge.js';
 import { is_ice } from './zap.js';
 import { incr_itimeout_HLevitation } from './potion.js';
-import { which_armor, extract_from_minvent } from './worn.js';
+import { which_armor, extract_from_minvent, bypass_obj, clear_bypasses } from './worn.js';
 import { unconscious } from './teleport.js';
 import {
     get_adjacent_loc, pick_lock, autokey, doforce, u_have_forceable_weapon,
@@ -3726,12 +3726,24 @@ function bypass_objlist_ask(head, on) {
     walk_obj_list(head, false, (o) => { o.bypass = on ? 1 : 0; });
 }
 
-function nxt_unbypassed_loot(sorted, listhead, cursor) {
-    while (cursor.i < sorted.length) {
-        const obj = sorted[cursor.i].obj;
-        cursor.i++;
+/**
+ * C ref: worn.c nxt_unbypassed_loot `:1159–1174` — next sorted-loot entry
+ * whose obj is still on the live chain and not bypassed (Multiple-Drop
+ * may delete objects, leaving stale pointers in the sorted array).
+ * C re-scans from lootarray[0] on every call — no cursor: previously
+ * returned entries are skipped via the bypass bit that bypass_obj sets
+ * (`:1168`, which also raises context.bypasses). A null entry obj ends
+ * the scan like C's `while ((obj = lootarray->obj) != 0)`; the JS
+ * sortloot array has no NULL terminator so the scan is length-bounded.
+ * obj_still_on_list is the listhead nobj walk plus the Array-invent
+ * adaptation. Sole caller: askchain below (C invent.c:2433).
+ */
+function nxt_unbypassed_loot(sorted, listhead) {
+    for (let i = 0; i < sorted.length; i++) {
+        const obj = sorted[i].obj;
+        if (!obj) break;
         if (obj_still_on_list(obj, listhead) && !obj.bypass) {
-            obj.bypass = 1;
+            bypass_obj(obj);
             return obj;
         }
     }
@@ -3750,7 +3762,8 @@ function container_gone(fn) {
 
 /**
  * C invent.c askchain `:2376–2541`. Live: put-in/take-out, take off,
- * identify (D-1602), drop (D-1635). Named: worn.c clear_bypasses.
+ * identify (D-1602), drop (D-1635), ret: global clear_bypasses `:2539`
+ * (unsortloot `:2535` frees the Loot array — GC here).
  */
 export async function askchain(getHead, ininv, olets, allflag, fn, ckfn, mx, word) {
     const take_out = word === 'take out';
@@ -3779,9 +3792,9 @@ export async function askchain(getHead, ininv, olets, allflag, fn, ckfn, mx, wor
         bypass_objlist_ask(live0, false);
         const firstObj = Array.isArray(live0) ? live0[0] : live0;
         if (firstObj && firstObj.oclass === COIN_CLASS) ilet--;
-        const cursor = { i: 0 };
         let otmp;
-        while ((otmp = nxt_unbypassed_loot(sorted, getHead(), cursor))) {
+        /* C `:2433` — same sortedchn every call; re-scans from [0]. */
+        while ((otmp = nxt_unbypassed_loot(sorted, getHead()))) {
             if (ilet === 'z'.charCodeAt(0)) ilet = 'A'.charCodeAt(0);
             else if (ilet === 'Z'.charCodeAt(0)) ilet = NOINVSYM.charCodeAt(0);
             else ilet++;
@@ -3844,13 +3857,16 @@ export async function askchain(getHead, ininv, olets, allflag, fn, ckfn, mx, wor
                         unsplitobj(otmp);
                     }
                     if (tmp < 0) {
-                        bypass_objlist_ask(getHead(), false);
+                        /* C ret: `:2534–2540` — global clear (fn may have
+                           moved objects to a different chain). */
+                        clear_bypasses();
                         return cnt;
                     }
                 }
                 cnt += tmp;
                 if (--mx === 0) {
-                    bypass_objlist_ask(getHead(), false);
+                    /* C ret: `:2534–2540` — global clear. */
+                    clear_bypasses();
                     return cnt;
                 }
                 // FALLTHROUGH
@@ -3860,7 +3876,8 @@ export async function askchain(getHead, ininv, olets, allflag, fn, ckfn, mx, wor
                 break;
             case 'q':
                 if (ident) cnt = -1;
-                bypass_objlist_ask(getHead(), false);
+                /* C ret: `:2534–2540` — global clear. */
+                clear_bypasses();
                 return cnt;
             default:
                 break;
@@ -3877,7 +3894,8 @@ export async function askchain(getHead, ininv, olets, allflag, fn, ckfn, mx, wor
     } else if (!dud && !cnt) {
         await pline('No applicable objects.');
     }
-    bypass_objlist_ask(getHead(), false);
+    /* C ret: `:2534–2540` — unsortloot is GC here; global clear_bypasses. */
+    clear_bypasses();
     return cnt;
 }
 

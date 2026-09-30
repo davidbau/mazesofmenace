@@ -266,7 +266,8 @@ export const spe_GoingStale = 2;
 /** C ref: spell.h MAX_SPELL_STUDY */
 const MAX_SPELL_STUDY = 3;
 
-/** C ref: spell.c SPELLMENU_* */
+/** C ref: spell.c SPELLMENU_* `:8–11` */
+const SPELLMENU_DUMP = -3;
 const SPELLMENU_CAST = -2;
 const SPELLMENU_VIEW = -1;
 const SPELLMENU_SORT = MAXSPELL;
@@ -504,7 +505,11 @@ function spelltypemnemonic(skill) {
     case P_CLERIC_SPELL: return 'clerical';
     case P_ESCAPE_SPELL: return 'escape';
     case P_MATTER_SPELL: return 'matter';
-    default: return '';
+    default:
+        // C `:852`: impossible-then-"" — `void impossible`: started not
+        // awaited so this stays sync (dungeon.js correct_branch_type precedent).
+        void impossible('Unknown spell skill, %d;', skill);
+        return '';
     }
 }
 
@@ -1634,6 +1639,22 @@ async function spellsortmenu() {
 }
 
 /**
+ * C ref: spell.c show_spells `:2059–2069` — dumplog spell list. Sole C
+ * caller end.c:601 dump_everything is by-design (D-1776), so unwired.
+ */
+export async function show_spells() {
+    // C: int unused = SPELLMENU_DUMP
+    if (spellid(0) === NO_SPELL) {
+        await pline("You didn't know any spells.");
+        await pline('%s', '');
+    } else {
+        await pline('Spells:');
+        // C: nhUse(dospellmenu("", SPELLMENU_DUMP, &unused)) — return ignored
+        await dospellmenu('', SPELLMENU_DUMP);
+    }
+}
+
+/**
  * C ref: spell.c dospellmenu — VIEW / CAST (PICK_NONE / PICK_ONE + sort).
  * Returns { ok, splnum }; ok false = cancel / decline.
  * VIEW first call: letter or `+` returns ok:true (dovspell dispatches
@@ -1649,8 +1670,10 @@ async function dospellmenu(prompt, splaction) {
     // %-20 / %-12 columns stays normal (observed seed0106 recording).
     // C dospellmenu: if (wizard) Sprintf(eos(buf), "%c%6s", sep, "turns")
     // — "turns" is 5 chars so %6s adds a leading pad → "  turns".
+    // C `:2104`: DUMP heading has no 4-space indent (no "a - " letters).
+    const nameHead = splaction === SPELLMENU_DUMP ? 'Name' : '    Name';
     const headingParts = [
-        { text: '    Name', attr: ATR_INVERSE },
+        { text: nameHead, attr: ATR_INVERSE },
         { text: '                 ', attr: 0 }, // rest of %-20s + ' ' before Level
         { text: 'Level Category', attr: ATR_INVERSE },
         { text: '     ', attr: 0 }, // Category pad + ' ' before Fail
@@ -1772,6 +1795,20 @@ export function losespells() {
             exercise(A_WIS, false);
             nzap--;
         }
+    }
+}
+
+/**
+ * C ref: spell.c book_substitution `:658–665` — retarget an interrupted
+ * read when the book object is replaced (extern.h:3082; no C call sites).
+ */
+export function book_substitution(old_obj, new_obj) {
+    const spbook = game.context?.spbook;
+    if (!spbook) return;
+    // C: pointer identity old_obj == svc.context.spbook.book
+    if (old_obj === spbook.book) {
+        spbook.book = new_obj;
+        if (spbook.book) spbook.o_id = spbook.book.o_id;
     }
 }
 
@@ -1899,6 +1936,49 @@ async function getspell() {
     const picked = await dospellmenu('Choose which spell to cast', SPELLMENU_CAST);
     if (!picked.ok) return null;
     return picked.splnum;
+}
+
+/**
+ * C ref: spell.c dowizcast `:787–815` — wizard "cast any spell" menu over
+ * SPE_DIG..SPE_BLANK_PAPER-1 object names; pick → spelleffects(otyp,
+ * FALSE, TRUE), cancel → ECMD_OK. No C call sites (dead in C); menu via
+ * the dospellmenu corner-menu pattern. Letters are display-order
+ * window-port selection (C passes accelerator 0).
+ */
+export async function dowizcast() {
+    // C `:797–804`: n = SPE_DIG+i, break at SPE_BLANK_PAPER
+    const otyps = [];
+    for (let i = 0; i < MAXSPELL; i++) {
+        const n = SPE_DIG + i;
+        if (n >= SPE_BLANK_PAPER) break;
+        otyps.push(n);
+    }
+    // C `:805–806`: end_menu "Cast which spell?"; select_menu PICK_ONE
+    const entries = [
+        { text: 'Cast which spell?', attr: ATR_INVERSE },
+        { text: '', attr: 0 },
+    ];
+    const choices = [];
+    for (let k = 0; k < otyps.length; k++) {
+        // C: OBJ_NAME(objects[n]) ≡ oc_name, like spellname()
+        const mlet = spellet(k);
+        entries.push({ text: `${mlet} - ${objectNameStrs[otyps[k]] || ''}`, attr: 0 });
+        choices.push({ key: mlet, otyp: otyps[k] });
+    }
+    for (;;) {
+        await paint_corner_nhw_menu(entries, '(end) ');
+        await flush_screen(1);
+        const key = await nhgetch();
+        await dismiss_nhw_menu();
+        // C: n <= 0 → ECMD_OK
+        if (key === 27 || key === 13 || key === 10 || key === 32) return ECMD_OK;
+        const hit = choices.find((c) => c.key === String.fromCharCode(key));
+        if (hit) {
+            // C `:810–813`: i = selected a_int; spelleffects(i, FALSE, TRUE)
+            return spelleffects(hit.otyp, false, true);
+        }
+        // invalid → re-prompt
+    }
 }
 
 /**

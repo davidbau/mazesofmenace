@@ -2139,7 +2139,7 @@ export function lspo_map(a, contentsFn) {
 /**
  * C ref: sp_lev.c lspo_finalize_level `:6014–6064` — des finalize in C
  * order. fromDes ≡ C `L` non-null (des interpreter context); false is the
- * C NULL form (wizard-debug wiz_load_splua, unported — arm kept for it).
+ * C NULL form (wizard-debug wiz_load_splua, js/wizcmds.js).
  * The FIXME corrmaze overload and the premap branch-stairs ordering comment
  * are C's own. fill_special_room/makemap_prepost are async, so this is
  * async (C is sync Lua).
@@ -3003,7 +3003,7 @@ function makemaz_maze_fallback() {
  * in `load_special_proto` below, reused here. Callers pass the name with
  * LEV_EXT (mkmaze.c `:1186`, wiz_load_splua `:384–386`); the stem dispatches.
  * Named omissions: `load_lua` bare-file IO; wizcmds.c `:389`
- * `wiz_load_splua` caller (unported wizard-debug — no JS site).
+ * `lspo_reset_level` (no scored analogue — fresh coder per entry).
  */
 export async function load_special(name) {
     let stem = String(name ?? '');

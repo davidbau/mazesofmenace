@@ -209,10 +209,11 @@ let ignoreStatementErrors = false;
 let configErrorData = null;
 
 /* C cfgfiles.c `:1467` file-static config_error_msg — the in_lua error
- * list (`:1566–1574`), drained by l_get_config_errors (lua-callable
- * `get_config_errors`, nhlua.c:1887). No JS Lua state exists (mklev.js
- * themerooms precedent), so the drain is named and nothing sets
- * iflags.in_lua today; the list shape still matches the C struct. */
+ * list (`:1566–1574`), drained live by l_get_config_errors below
+ * (lua-callable `get_config_errors`, nhlua.c:1887). No JS Lua state
+ * exists (mklev.js themerooms precedent), so the export returns a JS
+ * array instead of pushing a Lua table; nothing sets iflags.in_lua
+ * today; the list shape still matches the C struct. */
 let configErrorMsg = null;
 
 function trunc(s, n) {
@@ -262,6 +263,31 @@ function config_error_nextline(line) {
     return true; // C `:1511`
 }
 
+/**
+ * C ref: cfgfiles.c l_get_config_errors `:1514–1539` — whole body in C order.
+ * Lua-stack sink (nhlua.c:1887 registers it as lua `get_config_errors`):
+ * no JS Lua state exists (D-3098 / mklev.js themerooms precedent), so the
+ * pushed table is returned as a JS array instead. Callees
+ * nhl_add_table_entry_int/str (`:1528–1529`) are by-design (no scored
+ * analogue) — their effect is the `{ line, error }` shape below. Drain
+ * order: C walks head→tail pushing idx 1..n (`:1524–1536`), so entry 0
+ * is the most recent error; free() ≡ GC, head nulled (`:1537`).
+ * C caller: sole — the nhlua.c:1887 registration (named; no Lua in ESM).
+ * @returns {{line:number,error:string}[]}
+ */
+export function l_get_config_errors() {
+    let dat = configErrorMsg; // C `:1519`
+    const out = []; // C `:1522` lua_newtable
+    while (dat) { // C `:1524`
+        // C `:1525–1530` pushinteger + newtable + add_int/add_str + settable
+        out.push({ line: dat.line_num, error: dat.errormsg });
+        const tmp = dat.next; // C `:1531`
+        dat = tmp; // C `:1535` (free `:1532–1534` ≡ GC)
+    }
+    configErrorMsg = null; // C `:1537`
+    return out; // C `:1539` return 1 (the table)
+}
+
 function punctTail(buf) {
     // C `:1552–1555` — period unless the text already ends in . ! ?
     const last = buf.length ? buf[buf.length - 1] : '';
@@ -271,8 +297,9 @@ function punctTail(buf) {
 /**
  * C ref: cfgfiles.c config_erradd `:1543–1589` in C order.
  * Named: wait_synch `:1562` (windowed input boundary — parser stays sync,
- * parseoptions precedent); the l_get_config_errors drain of the in_lua
- * list (lua-stack sink, nhlua.c:1887; no JS Lua state).
+ * parseoptions precedent). The in_lua list drains live through
+ * l_get_config_errors above (lua registration nhlua.c:1887 named —
+ * no Lua state in ESM, the export returns a JS array).
  */
 export function config_erradd(buf) {
     let text = buf && buf.length ? String(buf) : 'Unknown error'; // C `:1549–1550`
@@ -675,6 +702,29 @@ function cnf_line_nhUse(_bufp) {
     return true;
 }
 
+/**
+ * C ref: cfgfiles.c cnf_line_DEBUGFILES `:838–849` (staticfn → file-local).
+ * C `:841–842`: a getenv("DEBUGFILES") value wins over SYSCF; JS has no
+ * getenv (Rule #2 — sys.js keeps env_dbgfl 0), so the store arm runs.
+ */
+function cnf_line_DEBUGFILES(bufp) {
+    if (!sysoptBag().env_dbgfl) // C `:843`
+        cnf_store_str('debugfiles', bufp); // C `:844–846` free + dupstr
+    return true; // C `:848`
+}
+
+/**
+ * C ref: cfgfiles.c cnf_line_BONES_POOLS `:873–885` (staticfn → file-local).
+ * C `:876–880`: atoi, then (n<=0)?0:min(n,10) — the max-10 clamp keeps
+ * (N % bones.pools) one digit so bones file names keep their length.
+ */
+function cnf_line_BONES_POOLS(bufp) {
+    let n = parseInt(bufp, 10); // C atoi `:878`
+    if (!Number.isFinite(n)) n = 0;
+    sysoptBag().bones_pools = n <= 0 ? 0 : Math.min(n, 10); // C `:880`
+    return true; // C `:884`
+}
+
 /** C ref: cfgfiles.c cnf_line_CHECK_SAVE_UID `:905–912` (staticfn → file-local). */
 function cnf_line_CHECK_SAVE_UID(bufp) {
     let n = parseInt(bufp, 10); // C atoi `:908`
@@ -875,10 +925,10 @@ const configLineStmt = [
     { name: 'SHELLERS', len: 8, syscnf: true, origbuf: false, fn: (b) => cnf_store_str('shellers', b) },
     { name: 'MSGHANDLER', len: 9, syscnf: true, origbuf: false, fn: (b) => cnf_store_str('msghandler', b) },
     { name: 'EXPLORERS', len: 7, syscnf: true, origbuf: false, fn: (b) => cnf_store_str('explorers', b) },
-    { name: 'DEBUGFILES', len: 5, syscnf: true, origbuf: false, fn: (b) => cnf_store_str('debugfiles', b) },
+    { name: 'DEBUGFILES', len: 5, syscnf: true, origbuf: false, fn: cnf_line_DEBUGFILES },
     { name: 'DUMPLOGFILE', len: 7, syscnf: true, origbuf: false, fn: (b) => cnf_store_str('dumplogfile', b) },
     { name: 'GENERICUSERS', len: 12, syscnf: true, origbuf: false, fn: (b) => cnf_store_str('genericusers', b) },
-    { name: 'BONES_POOLS', len: 10, syscnf: true, origbuf: false, fn: (b) => cnf_store_str('bones_pools', b) },
+    { name: 'BONES_POOLS', len: 10, syscnf: true, origbuf: false, fn: cnf_line_BONES_POOLS },
     { name: 'SUPPORT', len: 7, syscnf: true, origbuf: false, fn: (b) => cnf_store_str('support', b) },
     { name: 'RECOVER', len: 7, syscnf: true, origbuf: false, fn: (b) => cnf_store_str('recover', b) },
     { name: 'CHECK_SAVE_UID', len: 14, syscnf: true, origbuf: false, fn: cnf_line_CHECK_SAVE_UID },
@@ -923,6 +973,30 @@ export function heed_all_config_statements() {
 export function disregard_all_config_statements() {
     for (let i = 0; i < disregardedConfigLines.length; i++) // C `:1992–1993`
         disregardedConfigLines[i] = true;
+}
+
+/**
+ * C ref: cfgfiles.c heed_this_config_statement `:1996–2001`.
+ * Index runs over config_line_stmt order (`:1386` SIZE); the JS table
+ * keeps C order row-for-row (59 rows: 20 + 28 SYSCF + 7 + 4 QT,
+ * USER_SOUNDS omitted both sides), so indices align.
+ * C callers: none (extern.h decl only).
+ * @param {number} statement_idx
+ */
+export function heed_this_config_statement(statement_idx) {
+    if (statement_idx >= 0 && statement_idx < disregardedConfigLines.length) // C `:1999`
+        disregardedConfigLines[statement_idx] = false; // C `:2000`
+}
+
+/**
+ * C ref: cfgfiles.c disregard_this_config_statement `:2002–2007`.
+ * Table-index note as heed_this_config_statement above.
+ * C callers: none (extern.h decl only).
+ * @param {number} statement_idx
+ */
+export function disregard_this_config_statement(statement_idx) {
+    if (statement_idx >= 0 && statement_idx < disregardedConfigLines.length) // C `:2005`
+        disregardedConfigLines[statement_idx] = true; // C `:2006`
 }
 
 /**

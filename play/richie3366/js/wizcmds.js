@@ -4,7 +4,7 @@
 import { game } from './gstate.js';
 import { cmd_from_func, ecname_from_fn, UNAVAILCMD } from './dokeylist.js';
 import { pline, You, There, docrt, impossible, flush_topl_more, Warn_of_mon, glyph_at, glyph_is_monster, glyph_is_invisible_id, map_invisible, unmap_invisible, canspotmon, glyph_is_cmap, glyph_to_cmap, glyph_is_cmap_zap, glyph_to_mon, glyph_is_object, glyph_to_obj, NO_GLYPH, MAX_GLYPH, MAXPCHARS } from './display.js';
-import { getlin, yn_function, ynq, paranoid_query } from './getline.js';
+import { getlin, yn_function, ynq, y_n, paranoid_query } from './getline.js';
 import { pluslvl, losexp } from './exper.js';
 import { makewish } from './zap.js';
 import { create_particular } from './read.js';
@@ -32,7 +32,8 @@ import {
     DIED, XKILL_NOMSG, SUPPRESS_IT, SUPPRESS_HALLUCINATION, SUPPRESS_SADDLE,
     ARTICLE_YOUR, ARTICLE_THE, ARTICLE_A, PRIMARYSET, KNOWN_HANDLING, Never_mind,
     G_EXTINCT, MON_OFFMAP, MON_MIGRATING, MON_LIMBO, MON_ENDGAME_MIGR,
-    ESHK, EPRI, EGD,
+    ESHK, EPRI, EGD, UTOTYPE_NONE,
+    fuzzer_impossible_panic, fuzzer_impossible_continue,
 } from './const.js';
 import { ATR_INVERSE } from './terminal.js';
 import { make_blinded, save_currentstate } from './do.js';
@@ -40,7 +41,7 @@ import { m_at, rescham, dmonsfree, mongone } from './mon.js';
 import { dobjsfree } from './mkobj.js';
 /* C lock.c maybe_reset_pick — hoisted fn, called only from
    makemap_prepost (`imports.mjs --can wizcmds.js lock.js` SAFE). */
-import { maybe_reset_pick } from './lock.js';
+import { maybe_reset_pick, getdir } from './lock.js';
 import { minimal_monnam, mon_nam, x_monnam } from './do_name.js';
 import { strsubst, depth, mungspaces, strncmpi, upstart, dist2 } from './hacklib.js';
 import { getpos } from './getpos.js';
@@ -90,6 +91,13 @@ import { keepdogs } from './dog.js';
 /* C shk.c setpaid — makemap_unmakemon local-shopkeeper settle
    (`imports.mjs --can wizcmds.js shk.js setpaid` SAFE). */
 import { setpaid } from './shk.js';
+/* C dothrow.c mhurtle/hurtle — #wiztelekinesis hurtle arms
+   (`imports.mjs --can wizcmds.js dothrow.js mhurtle` SAFE;
+   `... hurtle` SAFE — hoisted declarations). */
+import { mhurtle, hurtle } from './dothrow.js';
+/* C detect.c findit — #wizdetect reveal arm
+   (`imports.mjs --can wizcmds.js detect.js findit` SAFE). */
+import { findit } from './detect.js';
 
 const DEFAULT_TIMEOUT_INCR = 30;
 
@@ -427,6 +435,70 @@ export async function wiz_level_tele() {
 }
 
 /**
+ * C ref: wizcmds.c wiz_detect `:229–237` — #wizdetect reveals secret
+ * doors, traps and hidden monsters via findit (`:232`); non-wizards get
+ * the unavailcmd line with ecname_from_fn (`:234`). `wizard` ≡
+ * flags.debug (flag.h:30); `|| flags.wizard` mirrors the WIZMODECMD
+ * dispatcher gate (wiz_level_tele precedent).
+ */
+export async function wiz_detect() {
+    if (game.flags?.debug || game.flags?.wizard) { /* C :231 */
+        await findit(); /* C :232 */
+    } else {
+        await pline(UNAVAILCMD, ecname_from_fn('wizdetect')); /* C :234 */
+    }
+    return ECMD_OK; /* C :235–236 */
+}
+
+/**
+ * C ref: wizcmds.c wiz_load_lua `:353–372` — #wizloadlua prompts for a
+ * lua file, appends “.lua” when there is no dot, and loads it.
+ * ESC/empty → ECMD_CANCEL (`:362–363`); non-wizards get unavailcmd
+ * (`:370`). Named omission: `:366` load_lua (ledger by-design — file IO,
+ * no scored analogue).
+ */
+export async function wiz_load_lua() {
+    if (game.flags?.debug || game.flags?.wizard) { /* C :354 */
+        // C `:357–358` sbi (NHL_SB_SAFE|NHL_SB_DEBUGGING, 16MB caps) —
+        // sandbox limits ride with the load_lua omit below.
+        const buf0 = await getlin('Load which lua file?'); /* C :361 */
+        let buf = String(buf0 ?? '');
+        if (buf[0] === '\x1b' || buf.length === 0) return ECMD_CANCEL; /* C :362–363 */
+        if (!buf.includes('.')) buf += '.lua'; /* C :364–365 strchr/strcat */
+        // C `:366` load_lua(buf, &sbi) — named omit (by-design, file IO).
+        void buf;
+    } else {
+        await pline(UNAVAILCMD, ecname_from_fn('wizloadlua')); /* C :370 */
+    }
+    return ECMD_OK; /* C :371 */
+}
+
+/**
+ * C ref: wizcmds.c wiz_load_splua `:376–394` — #wizloaddes prompts for
+ * a des lua file, appends “.lua”, resets the level coder, loads the
+ * special level and finalizes. ESC/empty → ECMD_CANCEL (`:382–383`).
+ * Dynamic mklev import: mklev.js statically imports wizcmds.js
+ * (makemap_prepost), so a static edge back would cycle (wiz_flip_level
+ * precedent). Named omission: `:389` lspo_reset_level (no scored
+ * analogue — each load_special entry builds a fresh des coder).
+ */
+export async function wiz_load_splua() {
+    if (game.flags?.debug || game.flags?.wizard) { /* C :377 */
+        const buf0 = await getlin('Load which des lua file?'); /* C :381 */
+        let buf = String(buf0 ?? '');
+        if (buf[0] === '\x1b' || buf.length === 0) return ECMD_CANCEL; /* C :382–383 */
+        if (!buf.includes('.')) buf += '.lua'; /* C :384–386 */
+        // C `:389` lspo_reset_level(NULL) — named omit (no scored analogue).
+        const { load_special, lspo_finalize_level } = await import('./mklev.js');
+        await load_special(buf); /* C :390 */
+        await lspo_finalize_level(false); /* C :391 NULL form */
+    } else {
+        await pline(UNAVAILCMD, ecname_from_fn('wizloaddes')); /* C :393 */
+    }
+    return ECMD_OK; /* C :394 */
+}
+
+/**
  * C ref: wizcmds.c wiz_flip_level `:412–442` — #wizfliplevel transposes
  * the current level. Prompts (`:414–415`); the levregions / mtrack /
  * migrating-monsters caveat (`:417–424`) is a comment only. `wizard` is
@@ -455,6 +527,88 @@ export async function wiz_flip_level() {
         }
     }
     return ECMD_OK; /* C :441 */
+}
+
+/**
+ * C ref: wizcmds.c wiz_telekinesis `:494–528` — #wiztelekinesis hurtles
+ * a chosen monster (or the hero) 6 steps in a chosen direction, re-seeding
+ * the cursor at the victim's landing spot until a level change starts
+ * (utotype leaves UTOTYPE_NONE, `:524`). getpos cancel / cc.x < 1 and
+ * getdir cancel → ECMD_CANCEL (`:505–506`, `:510–511`). The `:508`
+ * m_at assignment stays ahead of the canspotmon || u_at test, as in C.
+ */
+export async function wiz_telekinesis() {
+    const u = game.u || (game.u = {});
+    const cc = { x: u.ux, y: u.uy }; /* C :499–500 */
+    let mtmp = null; /* C :497 */
+    await pline('Pick a monster to hurtle.'); /* C :502 */
+    do {
+        const ans = await getpos(cc, true, 'a monster'); /* C :504 */
+        if (ans < 0 || (cc.x | 0) < 1) return ECMD_CANCEL; /* C :505–506 */
+        mtmp = m_at(cc.x, cc.y); /* C :508 assignment inside the test */
+        if ((mtmp != null && canspotmon(mtmp)) || u_at(cc.x, cc.y)) { /* C :508–509 */
+            if (!(await getdir('which direction?'))) return ECMD_CANCEL; /* C :510–511 */
+            if (mtmp) { /* C :513 */
+                await mhurtle(mtmp, u.dx, u.dy, 6); /* C :514 */
+                if ((mtmp.mhp | 0) >= 1 && canspotmon(mtmp)) { /* C :515 !DEADMONSTER */
+                    cc.x = mtmp.mx; /* C :516 */
+                    cc.y = mtmp.my; /* C :517 */
+                }
+            } else { /* C :519 */
+                await hurtle(u.dx, u.dy, 6, false); /* C :520 */
+                cc.x = u.ux; /* C :521 */
+                cc.y = u.uy;
+            }
+        }
+    } while ((u.utotype | 0) === UTOTYPE_NONE); /* C :524 */
+    return ECMD_OK; /* C :525–526 */
+}
+
+/**
+ * C ref: wizcmds.c wiz_panic `:534–545` — #panic crash-tests panic
+ * handling behind a paranoid query; under the fuzzer it tops up
+ * HP/energy instead (`:537–540`). panic() → the house throw idiom
+ * (alloc.js precedent: C panic aborts, JS throws loud, never silent).
+ */
+export async function wiz_panic() {
+    const u = game.u || (game.u = {});
+    if (game.iflags?.debug_fuzzer) { /* C :537 */
+        u.uhp = 1000; /* C :538 */
+        u.uhpmax = 1000;
+        u.uen = 1000; /* C :539 */
+        u.uenmax = 1000;
+        return ECMD_OK;
+    }
+    if (await paranoid_query(true, /* C :542–543 */
+        'Do you want to call panic() and end your game?')) {
+        throw new Error('Crash test (#panic).'); /* C :544 panic */
+    }
+    return ECMD_OK;
+}
+
+/**
+ * C ref: wizcmds.c wiz_fuzzer `:549–565` — #debugfuzzer starts fuzz
+ * testing behind a paranoid query plus the panic-after-impossible y_n
+ * (`:558`; 'n' → continue, anything else → panic). The first-run
+ * notice is gated on suppress_alert < FEATURE_NOTICE_VER(3,7,0)
+ * (`:552`; hack.h:1504–1506 macro, version.js precedent).
+ */
+export async function wiz_fuzzer() {
+    // C `:552` FEATURE_NOTICE_VER(3, 7, 0) — (3<<24)|(7<<16)|(0<<8).
+    const notice_ver = (((3 << 24) | (7 << 16) | (0 << 8)) >>> 0);
+    if ((game.flags?.suppress_alert ?? 0) < notice_ver) {
+        await pline('The fuzz tester will make NetHack execute random keypresses.'); /* C :553 */
+        await There('is no conventional way out of this mode.'); /* C :554 */
+    }
+    if (await paranoid_query(true, 'Do you want to start fuzz testing?')) { /* C :556 */
+        /* C `:557` — Thoth, take the reins */
+        if ((await y_n('Do you want to call panic() after impossible()?')) === 'n') { /* C :558 */
+            game.iflags.debug_fuzzer = fuzzer_impossible_continue; /* C :559 */
+        } else {
+            game.iflags.debug_fuzzer = fuzzer_impossible_panic; /* C :561 */
+        }
+    }
+    return ECMD_OK;
 }
 
 /**
@@ -2131,6 +2285,17 @@ export async function wiz_show_seenv() {
 }
 
 // ── wiz_mon_diff / wiz_show_vision ──
+/**
+ * C ref: wizcmds.c wiz_show_nhuuid `:1782–1786` — #wizshownhuuid prints
+ * the game's NHUUID. Named omission: the svn.nhuuid value itself
+ * (get_nhuuid is platform startup code with no scored analogue; CROSS
+ * builds likewise print empty — pcmain.c:755 stub precedent).
+ */
+export async function wiz_show_nhuuid() {
+    await pline('The NHUUID for this game is { %s }.', game.svn?.nhuuid ?? ''); /* C :1784 */
+    return ECMD_OK; /* C :1785 */
+}
+
 /**
  * C ref: wizcmds.c wiz_mon_diff `:1789–1828` — wizard review of monster
  * difficulty ratings: one line per monster whose hardcoded `difficulty`

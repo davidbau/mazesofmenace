@@ -69,6 +69,7 @@ import {
     se_courtly_conversation, se_sceptor_pounding,
     se_low_buzzing, se_angry_drone, se_bees,
     se_someone_searching, se_guards_footsteps,
+    number_of_se_entries, se_mappings_init,
 } from './generated/seffects_data.js';
 import { p_coaligned, priest_talk, inhistemple, temple_occupied } from './priest.js';
 import { uhis } from './roles.js';
@@ -396,6 +397,133 @@ export function base_soundname_to_filename(basename, buf, bufsz, approach) {
     // C `:2147–2149` — sff_default/sff_baseknown_add_rest rejected (no dir
     // knowledge here; sff_default lives in get_sound_effect_filename).
     return null;
+}
+
+/* ——— SND_SOUNDEFFECTS_AUTOMAP source-level ports —————————————————————
+ * C ref: sounds.c `:1959–2081` (`#ifdef SND_SOUNDEFFECTS_AUTOMAP`).
+ * The contest unix build defines no SND_SOUNDEFFECTS_AUTOMAP (no
+ * -D under sys/unix, include/config.h silent), so contest C compiles
+ * none of it; ported here as live source-level bodies per the
+ * USER_SOUNDS D-2776 precedent above, deliberately unwired: C has no
+ * callers in this build (extern.h `:3025–3027` decl only; only
+ * platform backends outside the build call in).
+ */
+
+/**
+ * C ref: sounds.c `:1977` semap_basenames + `:1978`
+ * basenames_initialized. Index 0 stays null (C NULL: the `:1986` loop
+ * starts at 1 and the `:1987` guard rejects seid 0, so it is never
+ * assigned — the `:1972` `{ se_zero_invalid, "" }` init row never
+ * lands). `se_mappings_init` is the generated table
+ * (scripts/extract-seffects.py from seffects.h).
+ */
+const semap_basenames = new Array(number_of_se_entries).fill(null);
+let basenames_initialized = false;
+
+/**
+ * C ref: sounds.c initialize_semap_basenames `:1980–1992` in C order
+ * (C staticfn, so module-local). Sole C caller:
+ * get_sound_effect_filename `:2012` (wired below); `:1962` is the
+ * prototype.
+ */
+function initialize_semap_basenames() {
+    // C `:1985` — "to avoid things getting out of sequence; seid an
+    // index to the name".
+    for (let i = 1; i < se_mappings_init.length; ++i) { // C `:1986`
+        // C `:1987–1990` — SIZE ≡ length on both sides.
+        if (se_mappings_init[i].seid > 0
+                && se_mappings_init[i].seid < semap_basenames.length)
+            semap_basenames[se_mappings_init[i].seid]
+                = se_mappings_init[i].base_filename;
+    }
+}
+
+/**
+ * C ref: sounds.c get_sound_effect_filename `:1994–2080` in C order.
+ * No C callers in this build (extern.h `:3025–3027` decl only), so no
+ * JS caller. C `(buf, bufsz)` is a fixed array the havedir arm appends
+ * into and C returns buf-or-NULL; JS follows the
+ * base_soundname_to_filename convention above: `buf` is the existing
+ * content (null ≡ C NULL) and the return is the new content (null ≡ C
+ * NULL). sff_* are the module consts above (sndprocs.h `:296–301`).
+ */
+export function get_sound_effect_filename(seidint, buf, bufsz, approach) {
+    const prefix = 'se_'; // C `:2001` static const char prefix[]
+    const suffix = '.wav'; // C `:2001` static const char suffix[]
+    // C `:2002–2006` (the `:2003` seid cast stays commented out; cp is
+    // folded into the slash test below; sizes stay exact — PATHLEN
+    // scale, no 2^53 concern).
+    let consumes = 0;
+    let baselen = 0;
+    let existinglen = 0;
+    const ourdir = sounddir; // C `:2004` — module `char *sounddir`
+    let needslash = true; // C `:2006` boolean
+    const ap = approach | 0; // C `:1999` int32_t approach
+    // C `:2008` — buf may be NULL (no NONNULLARG here); `== null`
+    // keeps C pointer semantics ("" is non-null).
+    if (buf === null || buf === undefined) return null;
+    if ((ourdir === null || ourdir === undefined) && ap === sff_default)
+        return null;
+
+    // C `:2011–2014` — lazy one-time init.
+    if (!basenames_initialized) {
+        initialize_semap_basenames();
+        basenames_initialized = true;
+    }
+
+    // C `:2016–2017` — an out-of-range id reads no entry (C would be
+    // UB there; the `:2040` baselen gate returns NULL either way —
+    // JS-only totality, topologize D-2597 precedent).
+    const id = seidint | 0; // C `:1996` int32_t seidint
+    const base = (id >= 0 && id < semap_basenames.length)
+        ? semap_basenames[id] : null;
+    if (base !== null && base !== undefined) baselen = base.length;
+
+    // C `:2019` — sizeof prefix - 1 ≡ length.
+    consumes = prefix.length + baselen;
+    const existing = String(buf);
+    const cap = bufsz | 0; // C size_t bufsz (`| 0` int idiom)
+    // C `:2020–2036`
+    if (ap === sff_default) {
+        // C `:2021` — sizeof suffix - 1 + strlen(ourdir) + 1 for '/'.
+        consumes += suffix.length + ourdir.length + 1;
+    } else if (ap === sff_havedir_append_rest) {
+        // C `:2023` consumes line is commented out upstream.
+        existinglen = existing.length; // C `:2024`
+        if (existinglen > 0) {
+            // C `:2026–2030` — cp walks to the last char and back; the
+            // only observable is the trailing-slash test.
+            const last = existing.charAt(existinglen - 1);
+            if (last === '/' || last === '\\') needslash = false;
+        }
+        if (needslash) consumes++; // C `:2032–2033` for '/'
+        consumes += existinglen; // C `:2034`
+        consumes += suffix.length; // C `:2035` sizeof suffix - 1
+    }
+    consumes += 1; // C `:2037` trailing NUL
+    // C `:2038–2040` (the `:2038–2039` comment warns existinglen can
+    // exceed bufsz when the caller skipped the trailing NUL).
+    if (!baselen || consumes > cap || existinglen >= cap) return null;
+
+    // C `:2043–2059` #if 0 Strcat block — compiled out, not ported; the
+    // `:2060–2077` #else Snprintf block below is live.
+    if (ap === sff_default) {
+        // C `:2061–2063` — Snprintf(buf, bufsz, "%s/%s%s%s", ourdir,
+        // prefix, base, suffix); the `:2040` guard guarantees no
+        // truncation, so this is exact concatenation.
+        return `${ourdir}/${prefix}${base}${suffix}`;
+    } else if (ap === sff_havedir_append_rest) {
+        // C `:2064–2072` — slash written at cp (`:2065–2070`,
+        // existinglen++ feeds the Snprintf bound) then Snprintf(cp,
+        // bufsz - (existinglen + 1), "%s%s%s", prefix, base, suffix);
+        // exact concatenation by the same guard.
+        return existing + (needslash ? '/' : '') + prefix + base + suffix;
+    } else if (ap === sff_base_only) {
+        // C `:2073–2074` — Snprintf(buf, bufsz, "%s%s", prefix, base).
+        return prefix + base;
+    }
+    // C `:2075–2076` — sff_baseknown_add_rest and anything else.
+    return null; // C `:2079` returns buf on the taken arms above.
 }
 
 const STATUE = objectNames.indexOf('STATUE');
