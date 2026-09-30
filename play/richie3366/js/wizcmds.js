@@ -30,7 +30,7 @@ import {
     Is_stronghold, Is_botlevel, has_mgivenname, MGIVENNAME,
     MIGR_EXACT_XY, MIGR_RANDOM, MM_NOMSG,
     DIED, XKILL_NOMSG, SUPPRESS_IT, SUPPRESS_HALLUCINATION, SUPPRESS_SADDLE,
-    ARTICLE_YOUR, ARTICLE_THE, ARTICLE_A, PRIMARYSET, KNOWN_HANDLING,
+    ARTICLE_YOUR, ARTICLE_THE, ARTICLE_A, PRIMARYSET, KNOWN_HANDLING, Never_mind,
     G_EXTINCT, MON_OFFMAP, MON_MIGRATING, MON_LIMBO, MON_ENDGAME_MIGR,
     ESHK, EPRI, EGD,
 } from './const.js';
@@ -424,6 +424,37 @@ export async function wiz_level_tele() {
     }
     await level_tele();
     return ECMD_OK;
+}
+
+/**
+ * C ref: wizcmds.c wiz_flip_level `:412–442` — #wizfliplevel transposes
+ * the current level. Prompts (`:414–415`); the levregions / mtrack /
+ * migrating-monsters caveat (`:417–424`) is a comment only. `wizard` is
+ * flags.debug (flag.h:30); the `|| wizard` mirrors the WIZMODECMD
+ * dispatcher gate (wiz_level_tele precedent). 0 → flip_level_rnd(3,
+ * TRUE), else flip_level(c, TRUE) (`:431–434`), then docrt (`:436`);
+ * anything outside "0123" (ESC/quit) → Never_mind (`:437–438`).
+ * Dynamic mklev import: mklev.js statically imports wizcmds.js
+ * (makemap_prepost), so a static edge back would cycle (wiz_identify's
+ * invent.js precedent).
+ */
+export async function wiz_flip_level() {
+    if (game.flags?.debug || game.flags?.wizard) { /* C :425 */
+        const c = await yn_function( /* C :426 */
+            'Flip 0=randomly, 1=vertically, 2=horizontally, 3=both:',
+            '0123', '\0', true,
+        );
+        if (c && '0123'.includes(c)) { /* C :428 — strchr(choices, c) */
+            const n = c.charCodeAt(0) - 48; /* C :429 — c -= '0' */
+            const { flip_level, flip_level_rnd } = await import('./mklev.js');
+            if (!n) flip_level_rnd(3, true); /* C :431–432 */
+            else flip_level(n, true); /* C :433–434 */
+            await docrt(); /* C :436 */
+        } else {
+            await pline(Never_mind); /* C :438 */
+        }
+    }
+    return ECMD_OK; /* C :441 */
 }
 
 /**

@@ -903,6 +903,16 @@ const EXT_CMDS = [
         },
     },
     {
+        // C: cmd.c:1959-1960 "wizfliplevel" IFBURIED|WIZMODECMD (no AUTOCOMPLETE) → wiz_flip_level
+        name: 'wizfliplevel',
+        wiz: true,
+        autocomplete: false,
+        run: async () => {
+            const { wiz_flip_level } = await import('./wizcmds.js');
+            return wiz_flip_level();
+        },
+    },
+    {
         // C: cmd.c "wizidentify" IFBURIED|WIZMODECMD (no AUTOCOMPLETE) → wiz_identify
         name: 'wizidentify',
         wiz: true,

@@ -7,8 +7,9 @@
 //
 // doapply()'s switch has thirty-odd named arms. Its live groups include
 // BULLWHIP and polearms, CREAM_PIE, STETHOSCOPE, OIL_LAMP/MAGIC_LAMP/
-// BRASS_LANTERN through apply.c use_lamp(), WAX_CANDLE/TALLOW_CANDLE through
-// use_candle(), and the LOCK_PICK/CREDIT_CARD/SKELETON_KEY arm that lock.c
+// BRASS_LANTERN through apply.c use_lamp(), CANDELABRUM_OF_INVOCATION through
+// use_candelabrum(), WAX_CANDLE/TALLOW_CANDLE through use_candle(), and the
+// LOCK_PICK/CREDIT_CARD/SKELETON_KEY arm that lock.c
 // pick_lock() serves; MAGIC_MARKER delegates to write.c dowrite() in
 // js/write.js; containers delegate to pickup.c use_container() in js/pickup.js;
 // BAG_OF_TRICKS delegates to makemon.c bagotricks() in js/makemon.js; musical
@@ -179,6 +180,7 @@ import {
     confdir,
     extcmdRow,
     getdir,
+    get_adjacent_loc,
     paranoid_query,
     set_occupation,
     y_n,
@@ -207,12 +209,20 @@ import {
     unmap_invisible,
 } from './display.js';
 import {
-    Amonnam, Monnam, c_obj_colors, hcolor, mon_nam, monverbself, obj_pmname,
+    Amonnam, l_monnam, Monnam, noit_mon_nam, c_obj_colors, hcolor, mon_nam, monverbself, obj_pmname,
     pmname, x_monnam, y_monnam,
 } from './do_name.js';
 import { can_reach_floor, cant_reach_floor, freehand } from './engrave.js';
 import { game } from './gstate.js';
-import { check_capacity, losehp, near_capacity, nomul, overexertion, spoteffects } from './hack.js';
+import {
+    check_capacity,
+    invocation_pos,
+    losehp,
+    near_capacity,
+    nomul,
+    overexertion,
+    spoteffects,
+} from './hack.js';
 import { dist2, highc, isqrt, s_suffix, strstri, truncateByteString, upstart } from './hacklib.js';
 import { mstatusline, ustatusline } from './insight.js';
 import { gulp_blnd_check } from './mhitu.js';
@@ -254,11 +264,13 @@ import {
     is_vampshifter,
     perceives,
     haseyes,
+    has_head,
     mhe,
     is_rider,
     is_whirly,
     nohands,
     nolimbs,
+    unsolid,
     pronoun_gender,
     slithy,
     throws_rocks,
@@ -293,6 +305,7 @@ import {
     is_graystone,
     is_flimsy,
     is_pick,
+    isCandle,
     hasContents,
     newObject,
     objectType,
@@ -319,6 +332,7 @@ import {
     Tobjnam,
     the,
     The,
+    vtense,
     Yobjnam2,
     Yname2,
     otense,
@@ -442,7 +456,7 @@ import {
     AD_BLND, AT_ENGL, AT_WEAP, MZ_TINY, PM_AMOROUS_DEMON,
     PM_ARCHEOLOGIST, PM_FLOATING_EYE, PM_HEALER, PM_MEDUSA,
     PM_HORSE, PM_STONE_GOLEM, PM_UMBER_HULK, S_GHOST, S_NYMPH,
-    S_VAMPIRE, PM_GNOME,
+    S_VAMPIRE, PM_GNOME, PM_LONG_WORM,
 } from './monsters.js';
 import { body_part, mbodypart, poly_gender, polymon } from './polyself.js';
 import { attacktype_fordmg } from './mondata.js';
@@ -1042,6 +1056,128 @@ export async function use_pole(obj, autohit, state = game) {
 // C ref: apply.c get_mleash() (880-887). The leash belongs to the hero's
 // inventory, and its leashmon id names the monster; the monster's minvent is
 // not searched here.
+// C ref: apply.c number_leashed() (698-708). The count is based on active
+// inventory leash objects, not on monsters' mleashed bits.
+export function number_leashed(state = game) {
+    let count = 0;
+    for (let object = state.invent; object; object = object.nobj) {
+        if (object.otyp === LEASH && object.leashmon !== 0)
+            count++;
+    }
+    return count;
+}
+
+// C ref: apply.c leashable() (761-766). The source reads mnum and the
+// monster's current data; newcham() calls this after installing its new form.
+export function leashable(monster) {
+    return monster?.mnum !== PM_LONG_WORM
+        && !unsolid(monster?.data)
+        && (!nolimbs(monster?.data) || has_head(monster?.data));
+}
+
+// C ref: apply.c use_leash() (769-810). The direction prompt, active-leash
+// limit, mounted downward case, and time result follow the source order.
+async function use_leash(obj, state = game, env = {}) {
+    const u = state.u;
+    if (u.uswallow) {
+        const phrase = !obj.leashmon
+            ? `leash ${noit_mon_nam(u.ustuck, state, env)} from inside.`
+            : obj.leashmon === u.ustuck?.m_id
+                ? `unleash ${noit_mon_nam(u.ustuck, state, env)} from inside.`
+                : `unleash anything from inside ${noit_mon_nam(u.ustuck, state, env)}.`;
+        await ttyPline(`You can't ${phrase}`, state);
+        return ECMD_OK;
+    }
+    if (!obj.leashmon && number_leashed(state) >= 2) {
+        await ttyPline('You cannot leash any more pets.', state);
+        return ECMD_OK;
+    }
+
+    const cc = {};
+    if (!await get_adjacent_loc(null, null, u.ux, u.uy, cc, state))
+        return ECMD_OK;
+
+    if (u_at(cc.x, cc.y, state)) {
+        if (u.usteed && u.dz > 0) {
+            await use_leash_core(obj, u.usteed, cc, 1, state, env);
+            return ECMD_TIME;
+        }
+        await ttyPline('Leash yourself?  Very funny...', state);
+        return ECMD_OK;
+    }
+
+    const monster = m_at(cc.x, cc.y, state);
+    if (!monster) {
+        await ttyPline('There is no creature there.', state);
+        unmap_invisible(cc.x, cc.y, state);
+        return ECMD_TIME;
+    }
+
+    await use_leash_core(obj, monster, cc,
+        canSpotMonster(monster, state) ? 1 : 0, state, env);
+    return ECMD_TIME;
+}
+
+// C ref: apply.c use_leash_core() (821-877). A successful attachment updates
+// both C-owned sides of the leash pair before refreshing the inventory view.
+async function use_leash_core(obj, monster, cc, spotmon, state, env = {}) {
+    if (!spotmon && !glyph_is_invisible(glyph_at(cc.x, cc.y, state))) {
+        await ttyPline(
+            `You fail to ${obj.leashmon ? 'un' : ''}leash something.`, state,
+        );
+        map_invisible(cc.x, cc.y, state);
+    } else if (!monster.mtame) {
+        await ttyPline(
+            `${Monnam(monster, state, env)} ${!obj.leashmon ? 'cannot be' : 'is not'} leashed!`,
+            state,
+        );
+    } else if (!obj.leashmon) {
+        if (monster.mleashed) {
+            await ttyPline(
+                `This ${spotmon ? l_monnam(monster, state, env) : 'creature'} is already leashed.`,
+                state,
+            );
+        } else if (unsolid(monster.data)) {
+            await ttyPline('The leash would just fall off.', state);
+        } else if (nolimbs(monster.data) && !has_head(monster.data)) {
+            await ttyPline(
+                `${Monnam(monster, state, env)} has no extremities the leash would fit.`,
+                state,
+            );
+        } else if (!leashable(monster)) {
+            let name = l_monnam(monster, state, env);
+            if (cc.x !== monster.mx || cc.y !== monster.my)
+                name = `${s_suffix(name)} tail`;
+            await ttyPline(
+                `The leash won't fit onto ${spotmon ? 'your ' : ''}${name}.`,
+                state,
+            );
+        } else {
+            await ttyPline(
+                `You slip the leash around ${spotmon ? 'your ' : ''}${l_monnam(monster, state, env)}.`,
+                state,
+            );
+            monster.mleashed = 1;
+            obj.leashmon = monster.m_id;
+            monster.msleeping = 0;
+            update_inventory({ ...env, state });
+        }
+    } else if (obj.leashmon !== monster.m_id) {
+        await ttyPline('This leash is not attached to that creature.', state);
+    } else if (obj.cursed) {
+        await ttyPline('The leash would not come off!', state);
+        set_bknown(obj, true, { ...env, state });
+    } else {
+        monster.mleashed = 0;
+        obj.leashmon = 0;
+        update_inventory({ ...env, state });
+        await ttyPline(
+            `You remove the leash from ${spotmon ? 'your ' : ''}${l_monnam(monster, state, env)}.`,
+            state,
+        );
+    }
+}
+
 export function get_mleash(monster, state = game) {
     for (let object = state.invent; object; object = object.nobj) {
         if (object.otyp === LEASH && object.leashmon === monster.m_id)
@@ -2901,6 +3037,96 @@ export async function use_lamp(obj, state = game, env = {}) {
     }
 }
 
+// C ref: apply.c use_candelabrum() (1319-1386). Keep the snuff, empty, water,
+// cursed/swallowed, candle-count, and invocation branches in source order;
+// end_burn() and begin_burn() own their timer and light side effects.
+export async function use_candelabrum(obj, state = game, env = {}) {
+    const message = env.message ?? ttyPline;
+    const s = obj.spe !== 1 ? 'candles' : 'candle';
+
+    if (obj.lamplit) {
+        await message(`You snuff the ${s}.`, state);
+        end_burn(obj, true, { ...env, state });
+        return;
+    }
+    if (obj.spe <= 0) {
+        const name = xnameFresh(obj, state);
+        await message(`This ${name} has no ${s}.`, state);
+        for (let otmp = state.invent; otmp; otmp = otmp.nobj) {
+            if (isCandle(otmp)) {
+                await message(
+                    `To attach candles, apply them instead of the ${name}.`,
+                    state,
+                );
+                break;
+            }
+        }
+        return;
+    }
+    if (state.u?.uinwater) {
+        await message('You cannot make fire under water.', state);
+        return;
+    }
+    if (state.u?.uswallow || obj.cursed) {
+        if (!heroIsBlind(state)) {
+            await message(
+                `${The(s, state)} ${vtense(s, 'flicker')} for a moment,`
+                    + ` then ${vtense(s, 'die')}.`,
+                state,
+            );
+        }
+        return;
+    }
+    if (obj.spe < 7) {
+        await message(
+            `There ${vtense(s, 'are')} only ${obj.spe} ${s} in `
+                + `${the(xnameFresh(obj, state), state)}.`,
+            state,
+        );
+        if (!heroIsBlind(state)) {
+            await message(
+                `${obj.spe === 1 ? 'It is' : 'They are'} lit.  `
+                    + `${Tobjnam(obj, 'shine', state)} dimly.`,
+                state,
+            );
+        }
+    } else {
+        await message(
+            `${The(xnameFresh(obj, state), state)}'s ${s} burn`
+                + `${heroIsBlind(state) ? '.' : ' brightly!'}`,
+            state,
+        );
+    }
+
+    if (!invocation_pos(state.u.ux, state.u.uy, state)
+        || On_stairs(state.u.ux, state.u.uy, state)) {
+        await message(
+            `The ${s} ${vtense(s, 'are')} being rapidly consumed!`, state,
+        );
+        obj.age = Math.trunc(((obj.age ?? 0) + 1) / 2);
+        if (obj.age === 0) {
+            if (state === game) note_unported('pline.c impossible');
+            obj.age = 1;
+        }
+    } else {
+        if (obj.spe === 7) {
+            if (heroIsBlind(state)) {
+                await message(
+                    `${Tobjnam(obj, 'radiate', state)} a strange warmth!`,
+                    state,
+                );
+            } else {
+                await message(
+                    `${Tobjnam(obj, 'glow', state)} with a strange light!`,
+                    state,
+                );
+            }
+        }
+        obj.known = true;
+    }
+    begin_burn(obj, false, { ...env, state });
+}
+
 // C ref: apply.c use_candle() (1387-1468). Attaching a candle stack to the
 // carried candelabrum consumes the accepted split, while a negative answer,
 // a missing/full candelabrum, or a swallowed hero delegates to use_lamp().
@@ -3156,10 +3382,8 @@ async function use_unicorn_horn(obj, state = game, env = {}) {
 // only after every named case has failed to match.
 const DOAPPLY_UNPORTED_NAMED_ARMS = new Set([
     LUMP_OF_ROYAL_JELLY,
-    LEASH,
     BELL,
     BELL_OF_OPENING,
-    CANDELABRUM_OF_INVOCATION,
     POT_OIL,
     TOWEL,
     TIN_OPENER,
@@ -4066,6 +4290,13 @@ export async function doapply(state = game, env = {}) {
         // apply.c discards use_tinning_kit()'s result.
         await use_tinning_kit(obj, state, env);
         return ECMD_TIME;
+    case CANDELABRUM_OF_INVOCATION:
+        // apply.c:4337-4338. use_candelabrum() is void; retain doapply's
+        // initial ECMD_TIME result after its source branches.
+        await use_candelabrum(obj, state, env);
+        return ECMD_TIME;
+    case LEASH:
+        return use_leash(obj, state, env);
     case CREAM_PIE:
         return use_cream_pie(obj, state, env);
     case BULLWHIP:

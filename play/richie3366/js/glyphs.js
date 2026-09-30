@@ -46,6 +46,7 @@ import {
     glyph_is_warning, glyph_to_mon, glyph_to_obj, glyph_to_body_corpsenm,
     glyph_to_statue_corpsenm, glyph_to_swallow, glyph_to_explosion,
     glyph_to_cmap,
+    NO_GLYPH,
 } from './display.js';
 import {
     S_stone, S_vwall, S_ndoor, S_altar, S_grave, S_digbeam, S_vbeam,
@@ -238,6 +239,39 @@ function find_glyph_in_cache(id) {
 /* C glyphs.c glyphid_cache_status `:454–458` (global). */
 export function glyphid_cache_status() {
     return glyphidCache !== null;
+}
+
+/**
+ * C glyphs.c match_glyph `:458–467` (global; extern.h:1175) — resolve a
+ * `G_` glyph reference (with an optional R-G-B color attached) through
+ * glyphrep. C copies buf into workbuf[BUFSZ] first (`:465`); JS strings
+ * are immutable and glyphrep never mutates op (it re-copies at `:126`),
+ * so the copy is elided and buf passes through. C callers:
+ * parse_sym_line symbols.c:486 (unported — named omission) and
+ * parsesymbols symbols.c:825 (wired: options.js parsesymbolsSeg G_ arm).
+ */
+export function match_glyph(buf) {
+    return glyphrep(buf); // C `:466`
+}
+
+/**
+ * C glyphs.c glyphrep `:470–481` (global; extern.h:1174) — parse one
+ * glyphrep spec into custom-map entries; 1 on success, 0 on failure.
+ * The `:474–475` no-cache `reslt = 1` is debugger-only (`nhUse` `:476`
+ * elided) and always overwritten by the `:477` call below. The `&glyph`
+ * out-param rides a `{ v }` box (the glyphrep_to_custom_map_entries
+ * precedent); C never reads `glyph` after, so the box is discarded.
+ * Sole C caller match_glyph `:466` (wired above).
+ */
+export function glyphrep(op) {
+    let reslt = 0; // C `:472`
+    const glyphBox = { v: NO_GLYPH }; // C `:472` glyph = NO_GLYPH
+    if (!glyphidCache) // C `:474`
+        reslt = 1; // C `:475` for debugger use only; no cache available
+    reslt = glyphrep_to_custom_map_entries(op, glyphBox); // C `:477`
+    if (reslt) // C `:478`
+        return 1; // C `:479`
+    return 0; // C `:480`
 }
 
 /* C defsym.h MONSYM(idx 1-based) + parse_id `:1093` `val = i + 1` — mlet

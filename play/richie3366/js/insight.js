@@ -91,7 +91,7 @@ import {
     is_rider, is_male, is_female, is_neuter, vampshifted,
 } from './monsters.js';
 import { an, just_an, makeplural } from './objnam.js';
-import { upstart, ordin, strncmpi, depth, lowc } from './hacklib.js';
+import { upstart, ordin, strncmpi, depth, lowc, strstri, strsubst } from './hacklib.js';
 import { align_str, align_gname, u_gname, rank_of, rank_to_xlev, genders } from './roles.js';
 import { x_monnam, a_monnam, pmname } from './do_name.js';
 import { newuexp } from './exper.js';
@@ -239,14 +239,21 @@ export function N_times(n) {
 }
 
 /**
- * C ref: insight.c enlght_line + contractions.
- * Builds " %s%s%s%s." then contracts " not " forms.
+ * C ref: insight.c enlght_line `:127–156` (C `staticfn`, exported for the
+ * JS enlightenment builders in invent.js) — format `" %s%s%s%s."` (`:148`),
+ * contract ` not ` forms (`:133–147` table; NO_ENLGHT_CONTRACTIONS is not
+ * defined in the contest build), then emit (`:155`). C's gate is
+ * case-insensitive `strstri` (`:150`); replacement is first-only
+ * case-sensitive `strsubst` per row (`:151–153`; hacklib.c:544 `strstr`),
+ * not replace-all. C's trailing `enlght_out(buf)` is the per-builder line
+ * sink (the `out` closure below / invent.js renderers); this returns the
+ * text and every caller routes it into its sink.
  */
-function enlght_line(start, middle, end, ps) {
+export function enlght_line(start, middle, end, ps) {
     let buf = ` ${start}${middle}${end}${ps}.`;
-    if (buf.includes(' not ')) {
+    if (strstri(buf, ' not ')) {
         for (const [from, to] of CONTRA) {
-            if (buf.includes(from)) buf = buf.split(from).join(to);
+            buf = strsubst(buf, from, to);
         }
     }
     return buf;

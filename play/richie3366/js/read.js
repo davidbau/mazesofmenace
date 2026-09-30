@@ -31,7 +31,7 @@
 // tower + burn_away_slime, explode ZT_SPELL_O_FIRE / SCROLL_CLASS /
 // EXPL_FIERY; doread allowlist + nodisappear).
 // Named omissions: fortune/credit-card/marker/coin/orb + their Braille arms
-// (doread Blind formula/book gate live); doread T_SHIRT/ALCHEMY_SMOCK/HAWAIIAN_SHIRT (hawaiian_design);
+// (doread Blind formula/book gate live);
 // study_book novel / dull sleep (occupation learn D-0907);
 // SCR_BLANK_PAPER seffects; SCR_IDENTIFY SPE_IDENTIFY cast; menu_identify traditional
 // ggetobj; discover_artifact / learn_egg_type in fully_identify_obj;
@@ -65,7 +65,7 @@
 // SPBOOK_CLASS → study_book (already-known refresh yn) + create_particular
 // named-monster path for #wizgenesis.
 // Named omissions: fortune/credit-card/marker/coin/orb + their Braille arms
-// (doread Blind formula/book gate live); doread T_SHIRT/ALCHEMY_SMOCK/HAWAIIAN_SHIRT (hawaiian_design);
+// (doread Blind formula/book gate live);
 // study_book novel / dull sleep (occupation learn D-0907);
 // seffect_fire SCR_FIRE live; SCR_BLANK_PAPER; SCR_IDENTIFY SPE_IDENTIFY cast;
 // menu_identify traditional ggetobj; discover_artifact / learn_egg_type;
@@ -94,8 +94,8 @@
 
 import { game } from './gstate.js';
 import { quest_info } from './questpgr.js';
-import { pline, You, Your, urgent_pline, newsym, You_feel, verbalize, canspotmon, tmp_at, cmap_to_glyph, map_invisible, shieldeff, monsym } from './display.js';
-import { xname, makeplural, an, vtense, otense, otyp_is_charged, Yname2, Yobjnam2, Tobjnam, doname, actualoname, singular } from './objnam.js';
+import { pline, You, You_cant, Your, urgent_pline, newsym, You_feel, verbalize, canspotmon, tmp_at, cmap_to_glyph, map_invisible, shieldeff, monsym } from './display.js';
+import { xname, makeplural, an, vtense, otense, otyp_is_charged, Yname2, Yobjnam2, Tobjnam, doname, actualoname, singular, tshirt_text, apron_text, hawaiian_design, shk_your } from './objnam.js';
 import {
     SCROLL_CLASS, SPBOOK_CLASS, COIN_CLASS, WEAPON_CLASS, GEM_CLASS,
     ARMOR_CLASS, BALL_CLASS, CHAIN_CLASS, WAND_CLASS, RING_CLASS, TOOL_CLASS,
@@ -115,7 +115,7 @@ import { study_book, can_chant, losespells } from './spell.js';
 import { scrolltele, level_tele } from './teleport.js';
 import { trycall, hcolor, Monnam, mon_nam, s_suffix, hliquid } from './do_name.js';
 import { chwepon, is_weptool } from './wield.js';
-import { destroy_arm, disintegrate_arm, some_armor, any_worn_armor_ok, count_worn_armor, setworn, hard_helmet, Ring_gone, Ring_off, Ring_on, adj_abon } from './do_wear.js';
+import { destroy_arm, disintegrate_arm, some_armor, any_worn_armor_ok, count_worn_armor, setworn, hard_helmet, Ring_gone, Ring_off, Ring_on, adj_abon, suit_simple_name } from './do_wear.js';
 import { dropy, flooreffects } from './do.js';
 import { placebc, set_bc, move_bc } from './ball.js';
 import { rn2, rnd, rn1, d } from './rng.js';
@@ -214,6 +214,7 @@ const SCR_SCARE_MONSTER = _on('SCR_SCARE_MONSTER'), SPE_CAUSE_FEAR = _on('SPE_CA
 const SCR_CHARGING = _on('SCR_CHARGING'), SCR_AMNESIA = _on('SCR_AMNESIA');
 const SCR_EARTH = _on('SCR_EARTH'), SCR_STINKING_CLOUD = _on('SCR_STINKING_CLOUD'), SCR_FIRE = _on('SCR_FIRE');
 const ROCK = _on('ROCK'), BOULDER = _on('BOULDER'), CORNUTHAUM = _on('CORNUTHAUM');
+const T_SHIRT = _on('T_SHIRT'), ALCHEMY_SMOCK = _on('ALCHEMY_SMOCK'), HAWAIIAN_SHIRT = _on('HAWAIIAN_SHIRT');
 const ELVEN_LEATHER_HELM = _on('ELVEN_LEATHER_HELM'), ELVEN_MITHRIL_COAT = _on('ELVEN_MITHRIL_COAT'), ELVEN_CLOAK = _on('ELVEN_CLOAK'), ELVEN_SHIELD = _on('ELVEN_SHIELD'), ELVEN_BOOTS = _on('ELVEN_BOOTS');
 const BLACK_DRAGON_SCALE_MAIL = _on('BLACK_DRAGON_SCALE_MAIL'), BLACK_DRAGON_SCALES = _on('BLACK_DRAGON_SCALES'), SILVER_DRAGON_SCALE_MAIL = _on('SILVER_DRAGON_SCALE_MAIL'), SILVER_DRAGON_SCALES = _on('SILVER_DRAGON_SCALES'), SHIELD_OF_REFLECTION = _on('SHIELD_OF_REFLECTION');
 const GRAY_DRAGON_SCALES = _on('GRAY_DRAGON_SCALES'), YELLOW_DRAGON_SCALES = _on('YELLOW_DRAGON_SCALES'), GRAY_DRAGON_SCALE_MAIL = _on('GRAY_DRAGON_SCALE_MAIL');
@@ -2187,7 +2188,7 @@ export async function doread() {
     const otyp = scroll.otyp;
     // C ref: read.c:359 doread — no longer 'just picked up' (eat.js/apply.js idiom)
     scroll.pickup_prev = 0;
-    // shirt / credit / marker / coin / orb / candy deferred
+    // credit / marker / coin / orb / candy deferred
     // C ref: read.c:365-377 doread — cookie reads via outrumor, which owns
     // the Blind gate; first read while !Blind marks the literate conduct.
     if (otyp === FORTUNE_COOKIE) {
@@ -2210,8 +2211,47 @@ export async function doread() {
         return 1; // C ECMD_TIME (this file returns 1 for TIME, 0 for OK)
     }
 
+    // C ref: read.c:376-413 doread — shirt/smock reads (next in C order
+    // after the cookie arm; C buf[] scratch collapses to JS strings).
+    if (otyp === T_SHIRT || otyp === ALCHEMY_SMOCK || otyp === HAWAIIAN_SHIRT) {
+        // C read.c:332 doread — function-static Braille message.
+        const find_any_braille = 'feel any Braille writing.';
+        if (Blind()) { // C :380-383
+            await You_cant(find_any_braille);
+            return 0;
+        }
+        // C :384-391 — can't read a shirt worn under a suit (under a
+        // cloak is ok); the smock is exempt like C.
+        const uw = game.u || {};
+        if ((otyp === T_SHIRT || otyp === HAWAIIAN_SHIRT) && uw.uarm && scroll === uw.uarmu) {
+            await pline(`${scroll.unpaid ? 'That' : 'Your'} shirt is obscured by ${shk_your(uw.uarm)}${suit_simple_name(uw.uarm)}.`);
+            return 0;
+        }
+        if (otyp === HAWAIIAN_SHIRT) { // C :392-396 (a picture, not text: no literate conduct)
+            await pline(`${game.flags?.verbose !== false ? 'The design' : 'It'} features ${hawaiian_design(scroll)}.`);
+            return 1;
+        }
+        // C :397-400 — post-increment: test then always bump (cookie-arm idiom).
+        if (!game.u) game.u = {};
+        if (!game.u.uconduct) game.u.uconduct = {};
+        if (!(game.u.uconduct.literate | 0)) {
+            livelog_printf(LL_CONDUCT,
+                `became literate by reading ${scroll.otyp === T_SHIRT ? 'a T-shirt' : 'an apron'}`);
+        }
+        game.u.uconduct.literate = (game.u.uconduct.literate | 0) + 1;
+        // C :402-413 — slogan + verbose endpunct.
+        const mesg = otyp === T_SHIRT ? tshirt_text(scroll) : apron_text(scroll);
+        let endpunct = '';
+        if (game.flags?.verbose !== false) {
+            if (mesg.length > 0 && !'.!?'.includes(mesg[mesg.length - 1])) endpunct = '.';
+            await pline('It reads:');
+        }
+        await pline(`"${mesg}"${endpunct}`);
+        return 1;
+    }
+
     // C read.c:491–493 doread — a can of grease has no label (ECMD_OK).
-    // Shirt, credit card, marker, coin, orb, and candy stay the
+    // Credit card, marker, coin, orb, and candy stay the
     // "silly thing" fallthrough below.
     if ((otyp | 0) === CAN_OF_GREASE) {
         await pline(`This ${singular(scroll, xname)} has no label.`);

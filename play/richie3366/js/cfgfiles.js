@@ -12,7 +12,7 @@ import {
 } from './const.js';
 import {
     pline, tty_wait_synch, raw_printf, MAXPCHARS, SYM_OFF_X,
-    update_ov_primary_symset,
+    update_ov_primary_symset, vpline_expand,
 } from './display.js';
 import { trimspaces } from './hacklib.js';
 import { config_error_add, parse_status_hl1 } from './botl.js';
@@ -339,6 +339,24 @@ export function config_error_done() {
     if (!game.program_state) game.program_state = {};
     game.program_state.config_error_ready = configErrorData != null; // C `:1619`
     return n; // C `:1620`
+}
+
+/**
+ * C ref: cfgfiles.c vconfig_error_add `:1875–1890` (staticfn → file-local).
+ * vsnprintf into BIGBUFSZ, chop to BUFSZ-1, forward to live config_erradd.
+ * Format via display.js vpline_expand (vraw_printf `:8173` precedent — the
+ * same expand-then-chop shape; width/precision strip is the map-named
+ * vpline_expand limitation). C caller `:1870` (config_error_add) stays the
+ * botl.js no-op sink (established named omission) — this goes live with it.
+ */
+function vconfig_error_add(fmt, args) {
+    let text = String(fmt); // C `:1878` buf[BIGBUFSZ]
+    if (text.includes('%')) text = vpline_expand(text, args).text; // C `:1880` vsnprintf
+    // C `:1881–1887` DEBUG truncation panic — compiled out (NH_DEVEL_STATUS
+    // is NH_STATUS_RELEASED per patchlevel.h:33, so the `#else` nhUse(vlen);
+    // vpline_expand's .ln is likewise dropped).
+    if (text.length > BUFSZ - 1) text = text.slice(0, BUFSZ - 1); // C `:1888` buf[BUFSZ-1] = 0
+    config_erradd(text); // C `:1889`
 }
 
 /**

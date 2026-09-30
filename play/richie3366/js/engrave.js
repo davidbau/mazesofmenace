@@ -23,7 +23,8 @@
 // domove smudge via maybe_smudge_engr → wipe_engr_at(rnd(5)).
 // **doengrave non-hands stylus sfx** (D-1689: wand/weapon/marker/towel/
 // gem oc_tough / boots / large/silly); canned KEY was D-1675.
-// Named omissions: altar/jello/swallow/lava/pool; livelog;
+// Named omissions: altar/jello-consumer/swallow/lava/pool (jello is computed
+// in doengrave_ctx_init; its tickle arm `:998` is unported); livelog;
 // allmain DEX timeout D-1372; dokick(2) D-1360;
 // uhitm do_attack(3) D-1373; dothrow throw_obj(2) D-1374;
 // dig.c still stubbed;
@@ -39,7 +40,8 @@
 // sticks exported for sit.js dosit lap D-1072; ceiling_hider +
 // Flying||MZ_HUGE D-1082; Flying reads uprops[FLYING] (D-1085; confer
 // writes extrinsic, not EFlying); check_pit teeter/shaft D-1083.
-// disturb_grave (D-0985) via kick_nondoor / engraving callers.
+// disturb_grave whole (impossible arms, NO_MM_FLAGS) via kick_nondoor +
+// doengrave `:1019` grave arm (finger smudge / undisturbed summon).
 // Engraving map glyphs (S_engroom/S_engrcorr) live in display.js newsym.
 
 import { game } from './gstate.js';
@@ -63,11 +65,11 @@ import {
 import {
     DUST, ENGRAVE, BURN, MARK, ENGR_BLOOD, HEADSTONE, N_ENGRAVE, ICE,
     ENGRAVEFILE, EPITAPHFILE, MD_PAD_RUMORS,
-    ROOM, GRAVE, IS_GRAVE, MM_NOMSG, COLNO, ROWNO, CLOUD,
+    ROOM, GRAVE, IS_GRAVE, NO_MM_FLAGS, COLNO, ROWNO, CLOUD,
     ACCESSIBLE, IS_FOUNTAIN, IS_AIR, IS_POOL, IS_LAVA, EXT_ENCUMBER,
     Never_mind, Is_airlevel, Is_waterlevel, P_RIDING, P_BASIC,
     FLYING, GETOBJ_SUGGEST, GETOBJ_DOWNPLAY, GETOBJ_PROMPT,
-    ECMD_TIME, WAND_BACKFIRE_CHANCE, FINGERTIP, HAND, DRAWBRIDGE_DOWN,
+    ECMD_OK, ECMD_TIME, WAND_BACKFIRE_CHANCE, FINGERTIP, HAND, DRAWBRIDGE_DOWN,
 } from './const.js';
 import { nomul, is_lava, is_pool, SURFACE_AT } from './hack.js';
 import { t_at, uteetering_at_seen_pit, uescaped_shaft, ceiling } from './trap.js';
@@ -402,7 +404,7 @@ export function make_grave(x, y, str) {
     loc.typ = GRAVE;
     del_engr(engr_at(x, y));
     let text = str;
-    if (!text) {
+    if (text == null) { // C make_grave `if (!str)` — NULL only; "" engraves empty
         text = get_rnd_text(EPITAPHFILE, rn2, MD_PAD_RUMORS) || '';
     }
     make_engr_at(x, y, text, null, 0, HEADSTONE);
@@ -824,15 +826,27 @@ function is_hands_stylus(otmp) {
         || !!(otmp && (otmp._hands || otmp._hands_obj || otmp.otyp === -1));
 }
 
-/** C engrave.c doengrave_ctx_init `:544–579`. jello named (swallow gated). */
+/**
+ * C engrave.c doengrave_ctx_init `:544–579` (C staticfn, so module-local).
+ * C order: flag defaults (ptext TRUE) → ret/type/oetype → otmp/oep →
+ * bufs (buf/ebuf/fbuf/qbuf/post_engr_text) + writer NULL → oep oetype →
+ * demon/vampire ENGR_BLOOD → jello (swallow, non-animal non-whirly
+ * steed `:576`) → frosted. everb/eloc are JS prompt words (C builds
+ * qbuf inline at `:1187`); the jello/altar consumer arms in doengrave
+ * stay omitted (header). `edata &&` guards a C-unreachable null ustuck.
+ */
 function doengrave_ctx_init() {
     const u = game.u || {};
+    const edata = u.ustuck?.data ?? null;
     const de = {
         dengr: false, doblind: false, doknown: false, eow: false,
         ptext: true, teleengr: false, zapwand: false, disprefresh: false,
-        adding: false, ret: 0, type: DUST, oetype: 0, otmp: null,
-        oep: engr_at(u.ux, u.uy), buf: '', ebuf: '', post_engr_text: '',
-        writer: '', everb: 'write in', eloc: 'floor', jello: false,
+        adding: false, ret: ECMD_OK, type: DUST, oetype: 0, otmp: null,
+        oep: engr_at(u.ux, u.uy),
+        buf: '', ebuf: '', fbuf: '', qbuf: '', post_engr_text: '',
+        writer: null, everb: 'write in', eloc: 'floor',
+        jello: !!(u.uswallow && edata
+            && !(is_animal(edata) || is_whirly(edata))),
         frosted: is_ice(u.ux, u.uy),
     };
     if (de.oep) de.oetype = de.oep.engr_type | 0;
@@ -1480,6 +1494,24 @@ export async function doengrave() {
         );
     }
 
+    /* C `:1019–1031` — grave: finger only smudges; undisturbed summons
+       a ghoul via disturb_grave (sets disturbed so once-only). The jello
+       `:998` and altar `:1013` arms above stay omitted (header). */
+    {
+        const gloc = game.level?.at(u.ux, u.uy);
+        if (IS_GRAVE(gloc?.typ)) {
+            if (is_hands_stylus(de.otmp)) {
+                await You('would only make a small smudge on the %s.', surface(u.ux, u.uy));
+                if (de.disprefresh) newsym(u.ux, u.uy);
+                return de.ret;
+            } else if (!gloc.horizontal) {
+                await disturb_grave(u.ux, u.uy);
+                if (de.disprefresh) newsym(u.ux, u.uy);
+                return de.ret;
+            }
+        }
+    }
+
     if (!await doengrave_sfx_item(de)) {
         if (de.disprefresh) newsym(u.ux, u.uy);
         return de.ret;
@@ -1661,16 +1693,24 @@ export async function doengrave() {
 }
 
 /**
- * C ref: engrave.c disturb_grave — kick/engrave on undisturbed headstone.
- * Branch envelope: You disturb; set horizontal(disturbed); makemon
- * PM_GHOUL; exercise WIS false. Named omit: impossible() diagnostics.
+ * C ref: engrave.c disturb_grave `:1706–1721` — kick/engrave on a grave.
+ * C order: non-grave → impossible `:1713`; already disturbed →
+ * impossible `:1715`; else You disturb, set disturbed, makemon PM_GHOUL
+ * with NO_MM_FLAGS (appear message allowed — not MM_NOMSG), exercise
+ * WIS false. lev->disturbed IS the 'horizontal' bit (dokick.c:1118).
  */
 export async function disturb_grave(x, y) {
     const lev = game.level?.at(x, y);
-    if (!lev || !IS_GRAVE(lev.typ)) return;
-    if (lev.horizontal) return; // already disturbed
-    await pline('You disturb the undead!');
+    if (!lev || !IS_GRAVE(lev.typ)) {
+        await impossible("Disturbing grave that isn't a grave? (%d)", lev?.typ ?? 0);
+        return;
+    }
+    if (lev.horizontal) {
+        await impossible('Disturbing already disturbed grave?');
+        return;
+    }
+    await You('disturb the undead!');
     lev.horizontal = 1;
-    if (PM_GHOUL >= 0) makemon(mons(PM_GHOUL), x, y, MM_NOMSG);
+    makemon(mons(PM_GHOUL), x, y, NO_MM_FLAGS);
     exercise(A_WIS, false);
 }

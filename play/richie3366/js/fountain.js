@@ -111,6 +111,7 @@ import { makeplural, the, xname, an } from './objnam.js';
 import { somegold } from './steal.js';
 import { yn_function } from './getline.js';
 import { visible_region_at, create_gas_cloud } from './region.js';
+import { fruitname } from './potion.js';
 
 const LONG_SWORD = objectNames.indexOf('LONG_SWORD');
 const POT_POLYMORPH = objectNames.indexOf('POT_POLYMORPH');
@@ -821,8 +822,9 @@ export async function drinkfountain() {
             const poisRes = !!(u.HPoison_resistance || u.EPoison_resistance
                 || u.Poison_resistance);
             if (poisRes) {
+                // C fountain.c:302-303 — fruitname(FALSE), not a fixed string
                 await pline(
-                    'Perhaps it is runoff from the nearby fruit farm.',
+                    `Perhaps it is runoff from the nearby ${fruitname(false)} farm.`,
                 );
                 losehp(rnd(4), 'unrefrigerated sip of juice', KILLED_BY_AN);
                 break;

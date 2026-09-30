@@ -907,9 +907,10 @@ export function assigninvlet(otmp) {
     otmp.invlet = '#';
 }
 
+// C ref: invent.c `:735` inv_rank macro — pure `invlet ^ 040` with no
+// gold exception (GOLD_SYM '$' ranks 4, after no-free-letter '#' = 3).
 function inv_rank(o) {
     const ilet = o.invlet;
-    if (ilet === GOLD_SYM) return -1;
     if (typeof ilet === 'string' && ilet.length === 1)
         return ilet.charCodeAt(0) ^ 0x20; // C: invlet ^ 040
     return 999;

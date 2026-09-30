@@ -5,14 +5,14 @@
 import { game } from './gstate.js';
 // C: end.c really_done ESCAPED fake-Amulet arm — carrying() is a hoisted
 // function decl in the shared SCC; call-time use only (no TDZ read).
-import { carrying } from './hack.js';
+import { carrying, nomul } from './hack.js';
 import { rn2, d } from './rng.js';
 import { deepest_lev_reached, depth, strstri } from './hacklib.js';
 import {
     pline, flush_topl_more, bot, You_feel, clear_nhwindow_message,
     canspotmon, Hallucination, curs_on_u, newsym, impossible, You,
 } from './display.js';
-import { yn_function, paranoid_query } from './getline.js';
+import { yn_function, y_n, ynq, paranoid_query } from './getline.js';
 import { show_text_pages, show_nhw_menu_text } from './pager.js';
 import { genl_outrip_lines } from './rip.js';
 import { Goodbye } from './roles.js';
@@ -41,6 +41,7 @@ import {
     M_AP_TYPE, M_AP_MONSTER,
     FIRE_RES, STONE_RES, INTRINSIC,
     WRITING, NHF_BONESFILE,
+    UTOTYPE_ATSTAIRS, fuzzer_off, EXIT_FAILURE,
 } from './const.js';
 import { G_NOCORPSE, G_UNIQ, mons, likes_gold, likes_gems, likes_objs, likes_magic, is_vampshifter, is_undead } from './monsters.js';
 import { m_at, mongone, dmonsfree, zombie_maker, m_carrying } from './mon.js';
@@ -73,7 +74,10 @@ import {
     list_vanquished, list_genocided, show_conduct, count_achievements,
     record_achievement,
 } from './insight.js';
-import { show_overview } from './dungeon.js';
+import { show_overview, In_tutorial } from './dungeon.js';
+// C: end.c done2 abandon arm → do.c schedule_goto (imports.mjs --can:
+// SAFE, hoisted function decl, call-time use only).
+import { schedule_goto } from './do.js';
 import { A_CON, acurr, adjattrib } from './attrib.js';
 import { init_uhunger } from './eat.js';
 // C: end.c savelife release arms call mon.c unstuck + mhitu.c expels
@@ -443,32 +447,46 @@ function money_cnt(invent) {
 /* deepest_lev_reached: canonical import from hacklib.js (dungeon.c:1338–1371). */
 
 /**
- * C ref: end.c should_query_disclose_option.
+ * C ref: end.c should_query_disclose_option `:475–515` (staticfn).
+ * strchr over decl.c disclosure_options "iavgco" (`:54`); bad index →
+ * impossible + DISCLOSE_PROMPT_DEFAULT_YES/ask; bad category →
+ * impossible + ask with C's initial `*defquery = 'n'` (`:482`).
+ * Async only because the live `impossible` (display.js) awaits.
  * @returns {{ ask: boolean, defquery: string }}
  */
-function should_query_disclose_option(category) {
-    const idx = DISCLOSURE_OPTIONS.indexOf(category);
-    if (idx < 0 || idx >= NUM_DISCLOSURE_OPTIONS) {
-        return { ask: true, defquery: DISCLOSE_PROMPT_DEFAULT_YES };
+async function should_query_disclose_option(category) {
+    let defquery = 'n'; // C `:482`
+    const dop = DISCLOSURE_OPTIONS.indexOf(category); // C strchr `:483`
+    if (dop >= 0) {
+        const idx = dop; // C `:484` pointer difference
+        if (idx < 0 || idx >= NUM_DISCLOSURE_OPTIONS) { // C `:485`
+            await impossible( // C `:486–488` (%s: JS impossible has no %c)
+                'should_query_disclose_option: bad disclosure index %d %s',
+                idx, category);
+            return { ask: true, defquery: DISCLOSE_PROMPT_DEFAULT_YES };
+        }
+        const ed = String(game.flags?.end_disclose || '');
+        const disclose = ed[idx] || DISCLOSE_PROMPT_DEFAULT_NO; // C `:492`
+        if (disclose === DISCLOSE_YES_WITHOUT_PROMPT) { // C `:493–495`
+            return { ask: false, defquery: 'y' };
+        }
+        if (disclose === DISCLOSE_SPECIAL_WITHOUT_PROMPT) { // C `:496–498`
+            return { ask: false, defquery: 'a' };
+        }
+        if (disclose === DISCLOSE_NO_WITHOUT_PROMPT) { // C `:499–501`
+            return { ask: false, defquery: 'n' };
+        }
+        if (disclose === DISCLOSE_PROMPT_DEFAULT_YES) { // C `:502–504`
+            return { ask: true, defquery: 'y' };
+        }
+        if (disclose === DISCLOSE_PROMPT_DEFAULT_SPECIAL) { // C `:505–507`
+            return { ask: true, defquery: 'a' };
+        }
+        return { ask: true, defquery: 'n' }; // C `:508–511` else
     }
-    const ed = String(game.flags?.end_disclose || '');
-    const disclose = ed[idx] || DISCLOSE_PROMPT_DEFAULT_NO;
-    if (disclose === DISCLOSE_YES_WITHOUT_PROMPT) {
-        return { ask: false, defquery: 'y' };
-    }
-    if (disclose === DISCLOSE_SPECIAL_WITHOUT_PROMPT) {
-        return { ask: false, defquery: 'a' };
-    }
-    if (disclose === DISCLOSE_NO_WITHOUT_PROMPT) {
-        return { ask: false, defquery: 'n' };
-    }
-    if (disclose === DISCLOSE_PROMPT_DEFAULT_YES) {
-        return { ask: true, defquery: 'y' };
-    }
-    if (disclose === DISCLOSE_PROMPT_DEFAULT_SPECIAL) {
-        return { ask: true, defquery: 'a' };
-    }
-    return { ask: true, defquery: 'n' };
+    await impossible( // C `:513`
+        'should_query_disclose_option: bad category %s', category);
+    return { ask: true, defquery }; // C `:514` ('n' from `:482`)
 }
 
 /**
@@ -799,7 +817,7 @@ async function disclose(how, taken) {
         const qbuf = taken
             ? 'Do you want to see what you had when you died?'
             : 'Do you want your possessions identified?';
-        const { ask, defquery } = should_query_disclose_option('i');
+        const { ask, defquery } = await should_query_disclose_option('i');
         const c = ask
             ? await yn_function(qbuf, 'ynq', defquery)
             : defquery;
@@ -817,7 +835,7 @@ async function disclose(how, taken) {
     }
 
     if (!stop()) {
-        const { ask, defquery } = should_query_disclose_option('a');
+        const { ask, defquery } = await should_query_disclose_option('a');
         const c = ask
             ? await yn_function(
                 'Do you want to see your attributes?',
@@ -842,19 +860,19 @@ async function disclose(how, taken) {
     }
 
     if (!stop()) {
-        const { ask, defquery } = should_query_disclose_option('v');
+        const { ask, defquery } = await should_query_disclose_option('v');
         await list_vanquished(defquery, ask);
     }
 
     if (!stop()) {
-        const { ask, defquery } = should_query_disclose_option('g');
+        const { ask, defquery } = await should_query_disclose_option('g');
         await list_genocided(defquery, ask);
     }
 
     if (!stop()) {
         // C ref: end.c:664-680 — Sprintf "conduct%s?" with " and achievements"
         // iff count_achievements() > 0; yn asked only when should_query 'c'.
-        const { ask, defquery } = should_query_disclose_option('c');
+        const { ask, defquery } = await should_query_disclose_option('c');
         let c;
         if (ask) {
             const acnt = count_achievements();
@@ -879,7 +897,7 @@ async function disclose(how, taken) {
     }
 
     if (!stop()) {
-        const { ask, defquery } = should_query_disclose_option('o');
+        const { ask, defquery } = await should_query_disclose_option('o');
         const c = ask
             ? await yn_function(
                 'Do you want to see the dungeon overview?',
@@ -1784,38 +1802,121 @@ export async function finish_losehp_done() {
 }
 
 /**
- * C ref: end.c done2 — `#quit` (GENERALCMD, ECMD_OK; no turn).
- * Named omissions: In_tutorial abandon / schedule_goto;
- * Dump-core 'y' → NH_abort / sound_exit (treated as stopprint quit);
- * curs_on_u / wait_synch / multi nomul on cancel (topline clear only).
- * ParanoidQuit getlin "yes" via paranoid_query when bit set (D-0999).
+ * C ref: end.c done1 `:68–86` — SIGINT handler (Ctrl-C during play).
+ * C order: ignore re-arm (`:71`) → debug_fuzzer off (`:73`) → ignintr
+ * message-clear + nomul arm (`:74–82`) else done2() (`:83–84`).
+ * Named omissions: signal() re-arms (`:71`, `:76`, no signals in scored
+ * ESM); wait_synch (`:80`, no JS counterpart). C takes
+ * `int sig_unused UNUSED`; signal-only, no C callers.
+ */
+export async function done1() {
+    // C `:71` signal(SIGINT, SIG_IGN) — no signals in scored ESM.
+    if (!game.iflags) game.iflags = {};
+    game.iflags.debug_fuzzer = fuzzer_off; // C `:73`
+    if (game.flags?.ignintr) { // C `:74`
+        // C `:76` signal(SIGINT, done1) re-arm — no signals in scored ESM.
+        clear_nhwindow_message(); // C `:78` clear_nhwindow(WIN_MESSAGE)
+        await curs_on_u(); // C `:79`
+        // C `:80` wait_synch — named omission (no JS counterpart).
+        if ((game.multi | 0) > 0) // C `:81–82` gm.multi
+            nomul(0);
+    } else {
+        await done2(); // C `:84`
+    }
+}
+
+/**
+ * C ref: end.c done2 `:90–148` — `#quit` (GENERALCMD, ECMD_OK; no turn).
+ * C order: tutorial abandon gate (`:94–96`) → cancel arm (`:98–117`) →
+ * wizard Dump-core arm (`:120–144`, unix `ynq("Dump core?")` `:130`) →
+ * done(QUIT) (`:146`). ParanoidQuit getlin "yes" via paranoid_query
+ * when the bit is set (D-0999).
+ * Named omissions: signal() re-arms (`:101`, `:135`, no signals in
+ * scored ESM); wait_synch (`:105`, no JS counterpart); exit_nhwindows
+ * (`:140`, window teardown while the session continues); NH_abort
+ * (`:141`, by-design C runtime — the port ends the run via
+ * nh_terminate(EXIT_FAILURE) instead, skipping game-over processing
+ * as C does). VMS/LATTICE prompt arms (`:122–129`) are not this build.
  */
 export async function done2() {
-    // C: paranoid_query(ParanoidQuit, …). Default paranoia_bits omit
-    // PARANOID_QUIT → yn_function.
+    let abandon_tutorial = false; // C `:92`
+    // C `:94–95` — In_tutorial gate; y_n 'y' abandons.
+    if (In_tutorial(game.u?.uz)
+        && (await y_n('Switch from the tutorial back to regular play?')) === 'y')
+        abandon_tutorial = true; // C `:96`
+    // C `:98–99` — abandon short-circuits the quit prompt.
     const flags = game.flags || {};
     const paranoidQuit = ((flags.paranoia_bits | 0) & PARANOID_QUIT) !== 0;
-    const ok = await paranoid_query(paranoidQuit, 'Really quit without saving?');
-    if (!ok) {
-        // C end.c done2 cancel arm: clear_nhwindow(WIN_MESSAGE) so the
-        // yn prompt does not linger into the next nhgetch capture.
-        clear_nhwindow_message();
-        return ECMD_OK;
+    if (abandon_tutorial
+        || !(await paranoid_query(paranoidQuit, 'Really quit without saving?'))) {
+        // C `:101` signal(SIGINT, done1) — no signals in scored ESM.
+        // clear_nhwindow(WIN_MESSAGE) so the yn prompt does not linger
+        // into the next nhgetch capture.
+        clear_nhwindow_message(); // C `:103`
+        await curs_on_u(); // C `:104`
+        // C `:105` wait_synch — named omission (no JS counterpart).
+        if ((game.multi | 0) > 0) // C `:106–107` gm.multi
+            nomul(0);
+        if ((game.multi | 0) === 0) { // C `:108`
+            if (!game.u) game.u = {};
+            game.u.uinvulnerable = false; // C `:109` avoid ctrl-C bug -dlc
+            game.u.usleep = 0; // C `:110`
+        }
+        if (abandon_tutorial) // C `:113–115`
+            schedule_goto(game.u.ucamefrom, UTOTYPE_ATSTAIRS, 'Resuming regular play.', null);
+        return ECMD_OK; // C `:116`
     }
 
-    // C: wizard → ynq("Dump core?") — wizard ≡ flags.debug
+    // C `:120` — wizard ≡ flags.debug (flag.h:30); file convention also
+    // honors flags.wizard (insight.js:468).
     if (game.flags?.debug || game.flags?.wizard) {
-        const c = await yn_function('Dump core?', 'ynq', 'q');
-        if (c === 'y' || c === 'q') {
-            // C: 'y' → NH_abort (deferred); 'q' → done_stopprint++
+        const c = await ynq('Dump core?'); // C `:130`
+        if (c === 'y') { // C `:133`
+            // C `:135` signal(SIGINT, done1) — no signals in scored ESM.
+            // C `:137–138` — nosound_procs leaves this NULL (sounds.c:1730).
+            const exitSound = game.soundprocs?.sound_exit_nhsound;
+            if (typeof exitSound === 'function') exitSound('done2');
+            // C `:140–141` exit_nhwindows + NH_abort — window teardown +
+            // process abort have no scored analogue (NH_abort by-design);
+            // end the run without game-over processing, as C does.
+            nh_terminate(EXIT_FAILURE);
+            return ECMD_OK;
+        } else if (c === 'q') { // C `:142–143`
             if (!game.program_state) game.program_state = {};
             game.program_state.done_stopprint =
                 (game.program_state.done_stopprint | 0) + 1;
         }
     }
 
-    await done(QUIT);
+    await done(QUIT); // C `:146`
     return ECMD_OK;
+}
+
+/**
+ * C ref: end.c done_intr `:154–164` — SIGINT/SIGQUIT ignore handler
+ * (staticfn; `#ifndef NO_SIGNAL`, compiled in the contest unix build).
+ * Named omissions: signal() ignores (`:157`, `:160`, no signals in
+ * scored ESM). C takes `int sig_unused UNUSED`; signal-only, no C
+ * callers besides done_hangup (`:175`).
+ */
+function done_intr() {
+    if (!game.program_state) game.program_state = {};
+    game.program_state.done_stopprint = // C `:156`
+        (game.program_state.done_stopprint | 0) + 1;
+    // C `:157–162` signal(SIGINT/SIGQUIT, SIG_IGN) — no signals in ESM.
+}
+
+/**
+ * C ref: end.c done_hangup `:169–177` — hangup handler (staticfn; unix
+ * arm `:166`, HANGUPHANDLING live per global.h:278).
+ * Named omissions: sethanguphandler (`:174`, no signals in scored ESM).
+ * C takes `(int sig)`; signal-only, no C callers.
+ */
+function done_hangup() {
+    if (!game.program_state) game.program_state = {};
+    game.program_state.done_hup = (game.program_state.done_hup | 0) + 1; // C `:172`
+    // C `:174` sethanguphandler(SIG_IGN) — no signals in scored ESM.
+    done_intr(); // C `:175`
 }
 
 /**

@@ -21,7 +21,7 @@ import {
     splittable, will_feel_cockatrice, feel_cockatrice, is_worn,
     not_fully_identified,
     taking_off, count_unpaid, tally_BUCX, getobj, Blind, hold_another_object, currency,
-    makeknown, useup, useupf,
+    makeknown, useup, useupf, consume_obj_charge,
 } from './invent.js';
 import {
     nomul, check_special_room, set_uinwater, is_pool, is_lava, in_rooms, dosinkfall,
@@ -36,7 +36,7 @@ import { addinv } from './u_init.js';
 import {
     an, doname, Doname2, makesingular, xname, cxname, cxname_singular, xprname,
     the as theArt, The, body_part_latebound,
-    safe_qbuf, ansimpleoname, otense, Tobjnam,
+    safe_qbuf, ansimpleoname, otense, Tobjnam, vtense,
     yname as yname_objnam, Yname2,
     thesimpleoname as thesimpleoname_objnam,
     ysimple_name as ysimple_name_objnam,
@@ -79,7 +79,7 @@ import {
     IS_GRAVE, W_SADDLE, SUPPRESS_SADDLE, ynqchars,
     P_RIDING, P_BASIC, Is_waterlevel, Is_airlevel, Upolyd, WWALKING, FLYING, SWIMMING,
     MAGICAL_BREATHING, DISMOUNT_FELL, DISMOUNT_GENERIC,
-    MAY_HIT, MAY_DESTROY, T_LOOTED, NO_MM_FLAGS,
+    MAY_HIT, MAY_DESTROY, T_LOOTED, NO_MM_FLAGS, isok,
 } from './const.js';
 import {
     t_at, dotrap, drown, lava_effects, instapetrify, float_down, ceiling,
@@ -88,7 +88,7 @@ import {
 import { carried } from './eat.js';
 import { obj_is_burning } from './light.js';
 import { snuff_lit } from './apply.js';
-import { age_is_relative, get_obj_location } from './timeout.js';
+import { age_is_relative, get_obj_location, Is_candle } from './timeout.js';
 import { livelog_printf } from './pline.js';
 import { uhis } from './roles.js';
 import {
@@ -184,6 +184,13 @@ const ICE_BOX = objectNames.indexOf('ICE_BOX');
 const STATUE = objectNames.indexOf('STATUE');
 const AMULET_OF_YENDOR = objectNames.indexOf('AMULET_OF_YENDOR');
 const CANDELABRUM_OF_INVOCATION = objectNames.indexOf('CANDELABRUM_OF_INVOCATION');
+const POT_OIL = objectNames.indexOf('POT_OIL');
+const OIL_LAMP = objectNames.indexOf('OIL_LAMP');
+const MAGIC_LAMP = objectNames.indexOf('MAGIC_LAMP');
+const CAN_OF_GREASE = objectNames.indexOf('CAN_OF_GREASE');
+const FOOD_RATION = objectNames.indexOf('FOOD_RATION');
+const CRAM_RATION = objectNames.indexOf('CRAM_RATION');
+const LEMBAS_WAFER = objectNames.indexOf('LEMBAS_WAFER');
 const BELL_OF_OPENING = objectNames.indexOf('BELL_OF_OPENING');
 const SPE_BOOK_OF_THE_DEAD = objectNames.indexOf('SPE_BOOK_OF_THE_DEAD');
 const LEASH = objectNames.indexOf('LEASH');
@@ -454,6 +461,23 @@ export function allow_category(obj) {
     if (game.picked_filter && !obj.pickup_prev) return false;
     /* C `:591` */
     return true;
+}
+
+/**
+ * C pickup.c allow_cat_no_uchain `:597–604` — askchain filter: everything
+ * but the punished chain whose unpaid flag or oclass is in
+ * valid_menu_classes. C carries no call sites (prototype `:23` only);
+ * kept for C completeness. JS null guard: C is NONNULLARG1-shaped.
+ */
+function allow_cat_no_uchain(obj) {
+    if (!obj) return false;
+    const vmc = game.valid_menu_classes || [];
+    if (obj !== game.u?.uchain
+        && ((vmc.includes('u') && obj.unpaid)
+            || vmc.includes(obj.oclass))) {
+        return true;
+    }
+    return false;
 }
 
 /**
@@ -3714,7 +3738,12 @@ function nxt_unbypassed_loot(sorted, listhead, cursor) {
     return null;
 }
 
-function container_gone_ask(fn) {
+/**
+ * C pickup.c container_gone `:2903–2908` — result only meaningful while
+ * use_container() is executing: fn is a container mover and the magic bag
+ * explosion cleared gc.current_container (JS: game._current_container).
+ */
+function container_gone(fn) {
     return (fn === in_container || fn === out_container)
         && !game._current_container;
 }
@@ -3809,7 +3838,7 @@ export async function askchain(getHead, ininv, olets, allflag, fn, ckfn, mx, wor
             case 'y': {
                 const tmp = await fn(otmp);
                 if (tmp <= 0) {
-                    if (container_gone_ask(fn)) {
+                    if (container_gone(fn)) {
                         otmp = null;
                     } else if (otmp && otmp !== otmpo) {
                         unsplitobj(otmp);
@@ -4579,11 +4608,16 @@ async function reverse_loot() {
     return true;
 }
 
-/** C ref: pickup.c mon_beside */
+/**
+ * C pickup.c mon_beside `:2072–2085` — 3x3 scan for an adjacent monster.
+ * isok guards the grid read; MON_AT ≡ m_at (rm.h `:515–516`, live `#else`).
+ */
 function mon_beside(x, y) {
     for (let i = -1; i <= 1; i++) {
         for (let j = -1; j <= 1; j++) {
-            if (m_at(x + i, y + j)) return true;
+            const nx = x + i;
+            const ny = y + j;
+            if (isok(nx, ny) && m_at(nx, ny)) return true;
         }
     }
     return false;
@@ -5182,11 +5216,12 @@ function tip_ok(obj) {
 }
 
 /**
- * C ref: pickup.c dotip — #tip empty container onto floor.
+ * C ref: pickup.c dotip `:3562–3677` — #tip empty container onto floor.
  * Ported: floor ynq (D-1654); m-prefix skip / TRADITIONAL boxes>1 gate;
  * getobj("tip", tip_ok, GETOBJ_PROMPT) + container/horn tipcontainer
- * (D-1665); choose_tip_container_menu when boxes>1 (D-1679).
- * Named omissions: candle/oil/grease/food/venom spill; statue.
+ * (D-1665); choose_tip_container_menu when boxes>1 (D-1679);
+ * !verbose "a container" capacity noun, candle/oil/grease/food/venom
+ * spill chain, potion pline_The, statue arm (this D).
  * Wires tiphat (sounds.js) when the tipped item is the worn helm.
  * @returns {Promise<number>} ECMD_*
  */
@@ -5204,8 +5239,11 @@ export async function dotip() {
     if (boxes > 0
         && (!game.iflags?.menu_requested
             || (style === MENU_TRADITIONAL && boxes > 1))) {
+        // C `:3592–3593` — !verbose names "a container"; else one/it.
+        let tipWhat = boxes > 1 ? 'one' : 'it';
+        if (game.flags?.verbose === false) tipWhat = 'a container';
         const overloaded = check_capacity(
-            `You can't tip ${boxes > 1 ? 'one' : 'it'} while carrying so much.`,
+            `You can't tip ${tipWhat} while carrying so much.`,
         );
         if (overloaded) {
             await pline(game._check_capacity_msg);
@@ -5240,14 +5278,52 @@ export async function dotip() {
         await tipcontainer(cobj);
         return ECMD_TIME;
     }
-    if (cobj.oclass === POTION_CLASS) {
-        await pline(`The ${xname(cobj)} ${otense(cobj, 'are')} securely sealed.`);
-        return ECMD_OK;
+    // C `:3633–3650` — assorted spill cases ("wax" even for tallow candles
+    // to avoid giving away info).
+    let spillage = null;
+    const otyp = cobj.otyp | 0;
+    if (Is_candle(cobj) && cobj.lamplit) {
+        spillage = 'wax';
+    } else if ((otyp === POT_OIL && cobj.lamplit)
+        || (otyp === OIL_LAMP && (cobj.age | 0) !== 0)
+        || (otyp === MAGIC_LAMP && (cobj.spe | 0) !== 0)) {
+        // C todo: reduce potion burn timer / lamp fuel.
+        spillage = 'oil';
+    } else if (otyp === CAN_OF_GREASE && (cobj.spe | 0) > 0) {
+        // C: charge consumed below.
+        spillage = 'grease';
+    } else if (otyp === FOOD_RATION || otyp === CRAM_RATION
+        || otyp === LEMBAS_WAFER) {
+        spillage = 'crumbs';
+    } else if (cobj.oclass === VENOM_CLASS) {
+        spillage = 'venom';
     }
-    // C pickup.c `:3670–3671`: tipping the worn helm tips it at a monster
-    if (u.uarmh && cobj === u.uarmh)
+    if (spillage) {
+        // C `:3651–3666` — pool/lava dissipation tail, then the spill.
+        let buf = '';
+        if (is_pool(u.ux, u.uy)) {
+            buf = ` and gradually ${vtense(spillage, 'dissipate')}`;
+        } else if (is_lava(u.ux, u.uy)) {
+            buf = ` and immediately ${vtense(spillage, 'burn')} away`;
+        }
+        await pline(`Some ${spillage} ${vtense(spillage, 'spill')} onto the ${surface(u.ux, u.uy)}${buf}.`);
+        // C: shop usage message comes after the spill message.
+        if (otyp === CAN_OF_GREASE && (cobj.spe | 0) > 0) {
+            await consume_obj_charge(cobj, true);
+        }
+        // C: something [useless] happened.
+        return ECMD_TIME;
+    }
+    // C `:3667–3676` — potion / worn-helm / statue / nothing chain.
+    if (cobj.oclass === POTION_CLASS) { // can't pour potions...
+        await pline_The('%s %s securely sealed.', xname(cobj), otense(cobj, 'are'));
+    } else if (u.uarmh && cobj === u.uarmh) {
+        // C: tipping the worn helm tips it at a monster.
         return (await tiphat()) ? ECMD_TIME : ECMD_OK;
-    /* spill / statue named */
-    await pline(nothing_happens);
+    } else if (otyp === STATUE) {
+        await pline('Nothing interesting happens.');
+    } else {
+        await pline(nothing_happens);
+    }
     return ECMD_OK;
 }

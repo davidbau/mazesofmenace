@@ -8033,9 +8033,11 @@ let _vpline_in_pline = 0;
  * (percent signs inside it are NOT expanded); else vsnprintf.
  * JS covers the contest's pline verbs (`%s/%d/%i/%u/%ld/%lu/%x/%X/%o/%c/%%`
  * with optional flags/width/precision, stripped before conversion).
+ * Exported for cfgfiles.js vconfig_error_add (same expand-then-chop shape
+ * as vraw_printf below).
  * @returns {{ text: string, ln: number }}
  */
-function vpline_expand(fmt, args) {
+export function vpline_expand(fmt, args) {
     const f = String(fmt);
     if (!f.includes('%')) return { text: f, ln: f.length };
     if (f === '%s') {

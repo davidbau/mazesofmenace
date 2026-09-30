@@ -1468,7 +1468,7 @@ export const TIMEOUT_FUNC_NAMES = [
  * which is `ROT_ORGANIC`, so that coercion is not the index.
  * An unknown string is -1 (start_timer panics; it must not match rot).
  */
-function timeout_func_index(action) {
+export function timeout_func_index(action) {
     if (action === 'MELT_ICE_AWAY' || action === 'melt_ice_away' || action === 'melt-ice')
         return MELT_ICE_AWAY;
     if (typeof action === 'string') {
@@ -4170,61 +4170,91 @@ export function mkcorpstat(objtype, mtmp, ptr, x, y, corpstatflags) {
 }
 
 /**
- * C ref: mkobj.c newoextra — allocate oextra bag on obj.
+ * C ref: mkobj.c newoextra `:85–93` — alloc a zeroed oextra bag and
+ * return it; every caller assigns (`otmp->oextra = newoextra()`).
+ * `alloc` is GC (D-2991); `init_oextra` (`:79–83`, staticfn) is
+ * by-design unported — a fresh `{}` already reads zero under every
+ * `has_*` gate, and explicit zero keys would be truthy-distinct under
+ * `!= null` (`js/lev_json.js` omonst restmon gate). Callers: newomonst
+ * `:117`, newomid `:146`, new_omailcmd `:160`, copy_oextra `:423`,
+ * new_oname (do_name.c:68), restore.c:195 (save/JSON — named).
  */
-function newoextra(obj) {
-    if (!obj.oextra) obj.oextra = {};
-    return obj.oextra;
+export function newoextra() {
+    return {};
 }
 
 /**
- * C ref: mkobj.c newomonst — attach empty monst shell for saved traits.
+ * C ref: mkobj.c newomonst `:113–125` — ensure the bag, then attach a
+ * fresh monst shell (`newmonst()` is an alloc macro, monst.h:204;
+ * `*m = cg.zeromonst` zeroes it). The shell is always filled by its
+ * caller — save_mtraits key-copy, copy_oextra memcpy, restmon — and no
+ * JS reader reaches a bare shell (`{}` reads zero under `has_omonst`;
+ * explicit zero keys would trip `lev_json.js != null`), so `{}` is the
+ * zero state here. Callers: copy_oextra `:428`, save_mtraits `:2162`,
+ * restore.c:207 (save/JSON — named).
  */
 export function newomonst(otmp) {
     if (!otmp) return;
-    newoextra(otmp);
+    if (!otmp.oextra) otmp.oextra = newoextra();
     if (!otmp.oextra.omonst) otmp.oextra.omonst = {};
 }
 
 /**
- * C ref: mkobj.c free_omonst — drop saved traits monst.
+ * C ref: mkobj.c free_omonst `:127–140` — drop the saved-traits shell
+ * (note: takes `otmp`, reads OMONST off it — `:104` comment). `:134–135`
+ * dealloc_mextra is GC: the whole shell is dropped below with no live
+ * reader after (D-2275 named, stands). Callers: dealloc_oextra `:104`,
+ * resetobjs (bones.c:157), zombify_mon (do.c:2308), revive (zap.c:991).
  */
 export function free_omonst(otmp) {
-    if (otmp?.oextra?.omonst) {
-        otmp.oextra.omonst = null;
-        delete otmp.oextra.omonst;
-    }
+    if (!otmp?.oextra) return;
+    const m = OMONST(otmp);
+    if (!m) return;
+    otmp.oextra.omonst = null;
+    delete otmp.oextra.omonst;
 }
 
 /**
- * C ref: mkobj.c newomid — ensure oextra; OMID starts 0 until assigned.
+ * C ref: mkobj.c newomid `:142–148` — ensure the bag, OMID starts 0
+ * (unconditional in C; every JS caller assigns after or guards).
+ * Callers: copy_oextra `:445`, obj_attach_mid `:2151`,
+ * add_one_tobill (shk.c:3357), restore.c:224 (save/JSON — named).
  */
 export function newomid(otmp) {
     if (!otmp) return;
-    newoextra(otmp);
-    if (otmp.oextra.omid == null) otmp.oextra.omid = 0;
+    if (!otmp.oextra) otmp.oextra = newoextra();
+    otmp.oextra.omid = 0;
 }
 
 /**
- * C ref: mkobj.c free_omid — clear corpse↔ghost link.
+ * C ref: mkobj.c free_omid `:150–154` — clear corpse↔ghost link
+ * (unconditional `OMID = 0`; every C caller guards with has_omid, so
+ * the `?.oextra` guard never fires). Callers: splitobj `:497`,
+ * bill_dummy_object `:729`, zombify_mon (do.c:2306), revive
+ * (zap.c:989 + :1093), restore.c:1527 (save/JSON — named).
  */
 export function free_omid(otmp) {
     if (otmp?.oextra) otmp.oextra.omid = 0;
 }
 
 /**
- * C ref: mkobj.c new_omailcmd `:157–167` — ensure oextra, drop any old
+ * C ref: mkobj.c new_omailcmd `:156–164` — ensure oextra, drop any old
  * mail command, dup the response string (scroll-of-mail feedback).
+ * `dupstr('')` is truthy in C but `''` is falsy here; unreachable —
+ * every caller passes truthy (copy has_omailcmd-gated, mail
+ * response_cmd-gated, restore buflen>0-gated). Callers: copy_oextra
+ * `:441`, newmail (mail.c:429), restore.c:219 (save/JSON — named).
  */
 export function new_omailcmd(otmp, response_cmd) {
     if (!otmp) return;
-    newoextra(otmp);
+    if (!otmp.oextra) otmp.oextra = newoextra();
     if (OMAILCMD(otmp)) free_omailcmd(otmp);
     otmp.oextra.omailcmd = response_cmd ? String(response_cmd) : '';
 }
 
 /**
- * C ref: mkobj.c free_omailcmd `:169–176` — drop the mail command string.
+ * C ref: mkobj.c free_omailcmd `:166–173` — drop the mail command
+ * string. Sole C caller: new_omailcmd `:162`.
  */
 export function free_omailcmd(otmp) {
     if (otmp?.oextra?.omailcmd) {
@@ -4235,8 +4265,9 @@ export function free_omailcmd(otmp) {
 
 /**
  * C ref: mkobj.c dealloc_oextra `:95–111` — drop oname / omonst /
- * omailcmd then the oextra bag. Caller dealloc_obj_real. Named: zap.c
- * poly_obj caller.
+ * omailcmd then the oextra bag. Callers: dealloc_obj_real `:2818`
+ * and fracture_rock (zap.c:5564 — the D-2275 "poly_obj" label was a
+ * misread of the enclosing function; both sites wired).
  */
 export function dealloc_oextra(o) {
     const x = o?.oextra;
@@ -4255,11 +4286,12 @@ export function dealloc_oextra(o) {
  * nmon cleared (the `#if 0` m_id renewal stays out — m_id is copied),
  * then copy_mextra when the source keeps mextra; omailcmd via
  * new_omailcmd; omid via newomid (callers free_omid after: only one
- * association with m_id).
+ * association with m_id). The `:433` assert holds by construction
+ * (newomonst just ran), so no JS assert.
  */
 export function copy_oextra(obj2, obj1) {
     if (!obj2 || !obj1 || !obj1.oextra) return;
-    if (!obj2.oextra) newoextra(obj2);
+    if (!obj2.oextra) obj2.oextra = newoextra();
     if (has_oname(obj1)) oname(obj2, ONAME(obj1), ONAME_SKIP_INVUPD);
     if (has_omonst(obj1)) {
         if (!OMONST(obj2)) newomonst(obj2);

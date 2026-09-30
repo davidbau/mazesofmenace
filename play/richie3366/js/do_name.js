@@ -69,7 +69,7 @@ import {
 import { getlin } from './getline.js';
 import { getpos } from './getpos.js';
 import { object_from_map } from './pager.js';
-import { objects_at, SIR_TERRY_NOVELS } from './mkobj.js';
+import { objects_at, SIR_TERRY_NOVELS, newoextra } from './mkobj.js';
 import { rank_of, genders, align_gname } from './roles.js';
 import {
     an, just_an, xname, simpleonames, ansimpleoname, set_y_monnam, set_noit_mon_nam,
@@ -1481,7 +1481,7 @@ export function lookup_novel(lookname, otmp) {
 export function new_oname(obj, lth) {
     if (!obj) return;
     if (lth) {
-        if (!obj.oextra) obj.oextra = {};
+        if (!obj.oextra) obj.oextra = newoextra();
         else free_oname(obj);
         obj.oextra.oname = '';
     } else if (has_oname(obj)) {

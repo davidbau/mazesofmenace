@@ -250,7 +250,7 @@ import { ing_suffix, strstri, strsubst, ordin, highc, lcase } from './hacklib.js
 import { visctrl } from './dokeylist.js';
 import { select_menu_pick_any, select_menu_pick_one, hide_unhide_msgtypes, set_option_mod_status, SET_GAMEVIEW } from './options.js';
 import { rn2 } from './rng.js';
-import { background_enlightenment } from './insight.js';
+import { background_enlightenment, enlght_line as enlght_line_txt } from './insight.js';
 import {
     FOUNTAIN, THRONE, SINK, ALTAR, GRAVE, TREE, IRONBARS,
     DRAWBRIDGE_DOWN, DBWALL,
@@ -5245,26 +5245,8 @@ export function weapon_descr(obj) {
  * warded/guarded/protected display (insight.c uses the same C function).
  */
 
-/**
- * C ref: insight.c enlght_line — " %s%s%s%s." + not-contractions.
- */
-function enlght_line_txt(start, middle, end, ps = '') {
-    let buf = ` ${start}${middle}${end}${ps}.`;
-    const contra = [
-        [' are not ', " aren't "],
-        [' were not ', " weren't "],
-        [' have not ', " haven't "],
-        [' had not ', " hadn't "],
-        [' can not ', " can't "],
-        [' could not ', " couldn't "],
-    ];
-    if (buf.includes(' not ')) {
-        for (const [from, to] of contra) {
-            if (buf.includes(from)) buf = buf.split(from).join(to);
-        }
-    }
-    return buf;
-}
+// enlght_line_txt is insight.js enlght_line (imported above) — one
+// implementation of C insight.c enlght_line `:127–156` for all builders.
 
 /** C youprop.h Deaf ≡ HDeaf || EDeaf || uroleplay.deaf */
 function hero_Deaf(u = game.u || {}) {
@@ -9306,13 +9288,13 @@ function extract_invent(obj) {
     }
 }
 
-/** C ref: invent.c reorder_invent — bubble by invlet ^ 040. */
+/** C ref: invent.c reorder_invent `:738–767` + inv_rank `:735` — bubble by
+ * invlet ^ 040 with no gold exception ('$' ranks 4, after '#' = 3). */
 function reorder_invent_adjust() {
     const inv = game.invent;
     if (!inv || inv.length < 2) return;
     const rank = (o) => {
         const ilet = o.invlet;
-        if (ilet === GOLD_SYM_ADJ) return -1;
         if (typeof ilet === 'string' && ilet.length === 1) return ilet.charCodeAt(0) ^ 0x20;
         return 999;
     };

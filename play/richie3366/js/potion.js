@@ -119,7 +119,7 @@ import {
 import { yn_function } from './getline.js';
 import {
     doname, xname, short_oname, thesimpleoname, simpleonames, makeplural,
-    The, the, vtense, an, cxname, yname, Yobjnam2,
+    makesingular, The, the, vtense, an, cxname, yname, Yobjnam2,
 } from './objnam.js';
 import {
     dipfountain, drinkfountain, drinksink, dipsink,
@@ -174,7 +174,7 @@ import { can_reach_floor } from './engrave.js';
 import { surface } from './sit.js';
 import { bcsign } from './rumors.js';
 import { more_experienced, pluslvl, rndexp } from './exper.js';
-import { depth } from './hacklib.js';
+import { depth, strstri } from './hacklib.js';
 import {
     trycall, docall, hliquid, a_monnam, Monnam, hcolor, x_monnam, mon_nam,
     Hallucination, rndmonnam,
@@ -414,15 +414,18 @@ async function peffect_oil(otmp) {
 }
 
 /**
- * C ref: objnam.c fruitname — pl_fruit (+ " juice" when juice).
+ * C ref: objnam.c fruitname `:412–427` — strstri " of " skip (`:417–422`),
+ * makesingular (`:424`), " juice" suffix. nextobuf is a GC no-op (plain
+ * return); strstri's tail includes the match so +4 skips it like C.
  * Exported for do.c dosinkring RIN_POISON_RESISTANCE (D-2527).
+ * @param {boolean} juice whether to append " juice"
+ * @returns {string}
  */
 export function fruitname(juice) {
-    const raw = String(game.pl_fruit || game.flags?.fruit || 'slime mold');
-    const of = raw.toLowerCase().indexOf(' of ');
-    const fruitNam = of >= 0 ? raw.slice(of + 4) : raw;
-    // makesingular deferred — default fruit has no trailing s
-    return juice ? `${fruitNam} juice` : fruitNam;
+    const raw = String(game.pl_fruit || game.flags?.fruit || 'slime mold'); // C svp.pl_fruit
+    const hit = strstri(raw, ' of '); // C :417
+    const fruitNam = makesingular(hit ? hit.slice(4) : raw); // C :419-424
+    return juice ? `${fruitNam} juice` : fruitNam; // C :424
 }
 
 /**

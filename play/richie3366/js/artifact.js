@@ -1454,6 +1454,25 @@ export function artifact_exists(otmp, name, mod, flgs) {
 }
 
 /**
+ * C ref: artifact.c arti_immune `:979–990` — whole body in C order:
+ * NONART gate, AD_PHYS never immune, attk/defn/cary adtyp match.
+ * No C callers (declaration only in extern.h) — exported for parity.
+ * @param {object} obj
+ * @param {number} dtyp
+ * @returns {boolean}
+ */
+export function arti_immune(obj, dtyp) {
+    const weap = get_artifact(obj);
+    const list = artilist();
+    if (weap === list[0]) return false;
+    const dt = dtyp | 0;
+    if (dt === AD_PHYS) return false; /* nothing is immune to phys dmg */
+    return (weap.attk?.adtyp | 0) === dt
+        || (weap.defn?.adtyp | 0) === dt
+        || (weap.cary?.adtyp | 0) === dt;
+}
+
+/**
  * C ref: artifact.c bane_applies `:992–1005` — DBONUS-only copy through
  * spec_applies (same-file, C order). No RNG on the hero path.
  */
@@ -3212,6 +3231,26 @@ export async function artifact_hit(magr, mdef, otmp, dmgBox, dieroll) {
 }
 
 /**
+ * C ref: artifact.c abil_to_adtyp `:2320–2341` — E-prop identity to
+ * defense adtyp (static table, linear scan, 0 default). C keys on
+ * `long *` identity (`&EFire_resistance`…); JS keys on the propidx in
+ * C table order, mirroring the sibling abil_to_spfx below (C
+ * staticfn, so local).
+ */
+function abil_to_adtyp(propidx) {
+    switch (propidx | 0) {
+    case FIRE_RES: return AD_FIRE;
+    case COLD_RES: return AD_COLD;
+    case SHOCK_RES: return AD_ELEC;
+    case ANTIMAGIC: return AD_MAGM;
+    case DISINT_RES: return AD_DISN;
+    case POISON_RES: return AD_DRST;
+    case DRAIN_RES: return AD_DRLI;
+    default: return 0;
+    }
+}
+
+/**
  * C ref: artifact.c abil_to_spfx — E-prop identity to wielded/worn spfx.
  */
 function abil_to_spfx(propidx) {
@@ -3233,48 +3272,69 @@ function abil_to_spfx(propidx) {
 }
 
 /**
- * C ref: artifact.c what_gives — first invent item conveying extrinsic.
- * Ported: artifact abil_to_spfx match when wielded/worn; non-artifact
- * wornmask match (rings/armor/amulet/tool); wielded-Sunsword EBlnd_resist
- * (C artifact.c:2411–2417; only Sunsword ever sets EBlnd_resist&W_WEP).
- * Named omissions: abil_to_adtyp cary/defn arms;
- * what_gives cspfx match (conferral is D-1539); EWarn_of_mon warntype guard.
+ * C ref: artifact.c what_gives `:2376–2424` — first invent item
+ * conveying extrinsic. Whole body in C order: wornmask + twoweap
+ * `:2382–2388`, dtyp/spfx/wornbits `:2389–2391`, invent scan `:2393`
+ * with the EWarn_of_mon warntype.obj guard folded into the
+ * artifact-branch condition `:2394–2395`, dtyp cary/defn arms
+ * `:2399–2404`, spfx cspfx + wielded/worn arms `:2405–2412`,
+ * wielded-Sunsword EBlnd_resist `:2413–2416`, non-artifact wornmask
+ * match `:2418–2421`. No !bits early return and no wield-bits gate on
+ * the tables — C scans unconditionally (the artifact arms do not read
+ * *abil). C keys abil on `long *` identity; JS takes the extrinsic
+ * bits + propidx (D-2025 calling convention, kept).
  * @param {number} extrinsicBits u.uprops[prop].extrinsic
- * @param {number} propidx u_prop index selecting the abil_to_spfx row
+ * @param {number} propidx u_prop index selecting the abil table rows
  * @returns {object|null}
  */
 export function what_gives(extrinsicBits, propidx = -1) {
     const bits = extrinsicBits | 0;
-    if (!bits) return null;
     let wornmask = W_ARM | W_ARMC | W_ARMH | W_ARMS
         | W_ARMG | W_ARMF | W_ARMU
         | W_AMUL | W_RINGL | W_RINGR | W_TOOL
         | W_ART | W_ARTI;
     if (game.u?.twoweap) wornmask |= W_SWAPWEP;
+    // C :2389–2391 — dtyp/spfx from the abil tables, ungated.
+    const needDtyp = abil_to_adtyp(propidx);
+    const needSpfx = abil_to_spfx(propidx);
     const wornbits = wornmask & bits;
-    // C: abil_to_spfx(abil); wielded/worn spfx arm only (cspfx deferred).
-    const needSpfx = (bits & (W_WEP | W_SWAPWEP | W_ART | W_ARTI))
-        ? abil_to_spfx(propidx)
-        : 0;
+    const warnMon = propidx === WARN_OF_MON;
     const list = artilist();
     for (const obj of game.invent || []) {
         if (!obj) continue;
-        if (obj.oartifact) {
+        // C :2394–2395 — Warn_of_mon artifacts count only while
+        // warntype.obj names monsters (set by set_artifact_intrinsic
+        // SPFX_WARN, same file); gated artifacts fall into the wornmask
+        // arm below, exactly like C's else.
+        if (obj.oartifact
+            && (!warnMon || ((game.context?.warntype?.obj | 0) !== 0))) {
             const art = get_artifact(obj);
             if (art === list[0]) continue;
-            // C: (art->spfx & spfx) == spfx && obj->owornmask
-            if (needSpfx && ((art.spfx | 0) & needSpfx) === needSpfx
-                && (obj.owornmask | 0)) {
-                return obj;
+            // C :2399–2404 — dtyp: carried cary.adtyp, or defn.adtyp
+            // while wielded/worn (any worn slot but W_ART/W_ARTI).
+            if (needDtyp) {
+                if ((art.cary.adtyp | 0) === needDtyp
+                    || ((art.defn.adtyp | 0) === needDtyp
+                        && (((obj.owornmask | 0) & ~(W_ART | W_ARTI)) !== 0))) {
+                    return obj;
+                }
             }
-            // C artifact.c:2411–2417 — wielded Sunsword conveys
-            // EBlnd_resist (abil == &EBlnd_resist, W_WEP bit set).
+            // C :2405–2412 — spfx: carried cspfx, or spfx while
+            // wielded/worn.
+            if (needSpfx) {
+                if (((art.cspfx | 0) & needSpfx) === needSpfx) return obj;
+                if (((art.spfx | 0) & needSpfx) === needSpfx
+                    && (obj.owornmask | 0)) return obj;
+            }
+            // C :2413–2416 — wielded Sunsword conveys EBlnd_resist
+            // (abil == &EBlnd_resist, W_WEP bit set).
             if (propidx === BLND_RES && obj === game.u?.uwep
                 && (bits & W_WEP) !== 0) {
                 return obj;
             }
             continue;
         }
+        // C :2418–2421 — non-artifact (or warntype-gated) wornmask match.
         if (wornbits && wornbits === (wornmask & (obj.owornmask | 0))) {
             return obj;
         }

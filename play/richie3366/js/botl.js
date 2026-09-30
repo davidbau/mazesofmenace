@@ -86,7 +86,7 @@ import { bimanual, is_weptool } from './wield.js';
 import { helm_simple_name } from './do_wear.js';
 import {
     upstart, strNsubst, stripchars, str_start_is, fuzzymatch, lowc,
-    deepest_lev_reached,
+    deepest_lev_reached, eos,
 } from './hacklib.js';
 import { clr2colorname } from './artifact.js';
 import { humanoid, mons, is_flyer, NON_PM } from './monsters.js';
@@ -616,6 +616,49 @@ export function exp_percent_changing() {
         }
     }
     return false; // C :2124
+}
+
+// C botl.c:2131–2141 stat_cap_indx() — encumbrance index for the tty
+// status highlighter (wintty.c:4574): the BL_CAP anything int of the live
+// buffer (`:2136`). The `#else` near_capacity() arm (`:2138`) is compiled
+// out (STATUS_HILITES is defined, config.h:616). Unbuilt blstats reads 0
+// (init_blstats zero-inits a_int; linestr_gather `?.` precedent).
+export function stat_cap_indx() {
+    return game.gb?.blstats?.[now_or_before_idx]?.[BL_CAP]?.a?.a_int | 0; // C `:2136`
+}
+
+// C botl.c:2146–2156 stat_hunger_indx() — hunger index for the tty status
+// highlighter: the BL_HUNGER anything int of the live buffer (`:2151`).
+// The `#else` u.uhs arm (`:2153`) is compiled out (STATUS_HILITES is
+// defined, config.h:616). No C callers; exported like C (extern).
+export function stat_hunger_indx() {
+    return game.gb?.blstats?.[now_or_before_idx]?.[BL_HUNGER]?.a?.a_int | 0; // C `:2151`
+}
+
+// C botl.c:2160–2165 bl_idx_to_fldname() — initblstats[].fldname for a
+// valid index (the JS field is `name`; status_hilite2str `:112–143`
+// mirror note), NULL (null) outside [0, MAXBLSTATS) (`:2165`). No C
+// callers beyond the extern.h:286 declaration; exported like C.
+export function bl_idx_to_fldname(idx) {
+    idx |= 0; // C int param
+    if (idx >= 0 && idx < MAXBLSTATS) return initblstats[idx].name; // C `:2163–2164`
+    return null; // C `:2165`
+}
+
+// C botl.c:2170–2178 repad_with_dashes() — the tty HP bar's critical-HP
+// restyle (wintty.c:5137): walk back from eos over trailing space pairs,
+// replacing the second space of each pair with a dash (`:2175–2177`). C
+// mutates the buffer in place; JS strings are immutable, so this returns
+// the restyled string (eos index-walk precedent, hacklib.js).
+export function repad_with_dashes(inoutbuf) {
+    const s = String(inoutbuf ?? '');
+    const ch = s.split('');
+    let p = eos(s); // C `:2173` end index (pointer in C)
+    while (p >= 2 && ch[p - 1] === ' ' && ch[p - 2] === ' ') { // C `:2175`
+        ch[p - 1] = '-'; // C `:2176`
+        p -= 2; // C `:2177`
+    }
+    return ch.join('');
 }
 
 // C botl.c:675 Is_Temp_Hilite — file-local macro, #undef later in the file.
@@ -2857,6 +2900,23 @@ function conditionbitmask2str(ul) {
     return buf;
 }
 
+// C botl.c:3351–3366 clear_status_hilites() — drop every threshold chain
+// in both blstats buffers and zero the (now stale) hilite_rule caches
+// (`:3363–3365`). C frees each node (`:3359–3362`); GC drops the chain
+// here (status_hilite_linestr_done precedent). Unbuilt blstats is a no-op
+// (C static zero-init frees nothing). Sole C caller: the hilite_status
+// do_set negated arm (options.c:1867), a named omission (JS optfn null).
+export function clear_status_hilites() {
+    for (let i = 0; i < MAXBLSTATS; ++i) { // C `:3356`
+        for (let b = 0; b <= 1; ++b) {
+            const slot = game.gb?.blstats?.[b]?.[i];
+            if (!slot) continue;
+            slot.thresholds = null; // C `:3363` (+ free chain `:3359–3362`)
+            slot.hilite_rule = null; // C `:3365` stale pointer
+        }
+    }
+}
+
 // C botl.c:3369–3399 hlattr2attrname() (staticfn) — 'bold+dim' style names,
 // 'normal' for HL_NONE (`:3377–3380`); NULL when attrib is 0 or buf missing
 // (`:3369`, `:3398`). C writes into the caller buffer when the name fits
@@ -2925,6 +2985,18 @@ function status_hilite_linestr_countfield(fld) {
     for (let tmp = status_hilite_str; tmp; tmp = tmp.next) { // C `:3469`
         if (countall || tmp.fld === fld) count++; // C `:3470–3471`
     }
+    return count;
+}
+
+// C botl.c:3477–3485 count_status_hilites() — gather the linestr list,
+// count every line (BL_FLUSH counts all, `:3465`), free the list
+// (`:3481–3483`). C callers: the hilite_status get_val (options.c:1887)
+// and the status-highlight-rules get_val (options.c:8461), both wired in
+// js/options.js doset rows.
+export function count_status_hilites() {
+    status_hilite_linestr_gather(); // C `:3481`
+    const count = status_hilite_linestr_countfield(BL_FLUSH); // C `:3482`
+    status_hilite_linestr_done(); // C `:3483`
     return count;
 }
 

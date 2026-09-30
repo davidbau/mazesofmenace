@@ -193,7 +193,7 @@ import { EXTCMDLIST, INTERNALCMD } from './generated/extcmdlist_data.js';
 import { LOADSYMS, SYM_CONTROL } from './generated/glyphsyms_data.js';
 import { COLORTABLE } from './generated/colortable_data.js';
 import { dupstr } from './dungeon.js';
-import { glyphrep_to_custom_map_entries, free_glyphid_cache, glyphid_cache_status, fill_glyphid_cache, apply_customizations, reset_customcolors, reset_customsymbols } from './glyphs.js';
+import { glyphrep_to_custom_map_entries, free_glyphid_cache, glyphid_cache_status, fill_glyphid_cache, apply_customizations, reset_customcolors, reset_customsymbols, match_glyph } from './glyphs.js';
 import { yyyymmddhhmmss } from './calendar.js';
 import { getlin, mungspaces } from './getline.js';
 import { makesingular, fruit_from_name, makeplural } from './objnam.js';
@@ -201,6 +201,7 @@ import { clr2colorname } from './artifact.js';
 import {
     opt_next_cond, cond_menu, status_hilite_menu,
     status_hilite_linestr_done, status_hilite_linestr_gather,
+    count_status_hilites,
     match_str2clr, match_str2attr, status_version,
     config_error_add, status_initialize,
     condopt, parse_cond_option,
@@ -9096,7 +9097,7 @@ export async function doset() {
         { name: 'disclose', get_val: () => doset_compopt_get_val(optfn_disclose, 'disclose'), handler: true },
         { name: 'fruit', val: 'slime mold' },
         { name: 'glyph', val: '(to be done)' },
-        { name: 'hilite_status', val: '(none)' },
+        { name: 'hilite_status', get_val: () => (count_status_hilites() ? '(see "status highlight rules" below)' : '(none)') }, // C options.c:1887 get_val
         { name: 'menu_headings', val: 'no-color&inverse' },
         { name: 'menu_objsyms', get_val: () => doset_compopt_get_val(optfn_menu_objsyms, 'menu_objsyms'), handler: true },
         { name: 'menuinvertmode', val: '1' },
@@ -9145,7 +9146,7 @@ export async function doset() {
         { name: 'menu colors', val: currently_set_val(count_menucolors()) },
         { name: 'message types', val: currently_set_val(msgtype_count()) },
         { name: 'status condition fields', val: '(16 currently set)' },
-        { name: 'status highlight rules', val: '(0 currently set)' },
+        { name: 'status highlight rules', val: currently_set_val(count_status_hilites()) }, // C options.c:8461 get_val (n_currently_set)
     ]) {
         // C `:8892` doset_add_menu (OthrOpt; all 7 rows set_in_game so
         // indexoffset is nonzero — optlist.h NHOPTO rows are selectable).
@@ -10933,7 +10934,7 @@ function parsesymbolsSeg(buf, start, which_set) {
     const symp = match_sym(symname); // C `:823`
     let is_glyph = false;
     if (!symp && symname[0] === 'G' && symname[1] === '_') { // C `:824–826`
-        is_glyph = match_glyph(symname); // bare: glyphs.c:458, named omit
+        is_glyph = match_glyph(symname); // C `:824–826` G_ arm — live glyphs.js
     }
     if (!symp && !is_glyph) return false; // C `:829`
     if (symp) { // C `:830`
@@ -10959,8 +10960,9 @@ function parsesymbolsSeg(buf, start, which_set) {
  * SYMBOLS/ROGUESYMBOLS value (or OPTIONS S_ item) into the override tables
  * + the savedSymbols registry, in C order. Exported (C extern,
  * extern.h:3180). The `:837` glyphrep_to_custom_map_entries arm (H_UTF8
- * handling, u+ values) is wired to glyphs.js. Named omissions (map):
- * match_glyph (G_ names) and the switch_symbols application step at the
+ * handling, u+ values) is wired to glyphs.js, as is the `:824–826` G_
+ * arm (live match_glyph). Named omissions (map):
+ * the switch_symbols application step at the
  * wired callers (JS reads ov_* lazily at render; reset_glyphmap stays
  * untouched per the fortress guard).
  */
